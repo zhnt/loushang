@@ -59,9 +59,11 @@ export function validateProjection(kind: string, value: unknown) {
   assert.equal(root.protocolVersion, "loushang.execution/v1");
   assert.equal(root.resultType, kind); id(root.requestId, 128);
   if (kind === "snapshot") {
-    const hasGoal = root.result !== null && typeof root.result === "object" && "supportsGoalProgress" in root.result;
-    const result = object(root.result, ["serviceInstanceId", "source", "executions", ...(hasGoal ? ["supportsGoalProgress"] : [])]);
-    if (hasGoal) assert.equal(result.supportsGoalProgress, true);
+    const goalCapabilities = ["supportsGoalProgress", "supportsGoalStart"].filter(
+      (field) => root.result !== null && typeof root.result === "object" && field in root.result,
+    );
+    const result = object(root.result, ["serviceInstanceId", "source", "executions", ...goalCapabilities]);
+    for (const flag of goalCapabilities) assert.equal(result[flag], true);
     id(result.serviceInstanceId, 128);
     const source = object(result.source, ["source", "observation", "draft", "truncated"]);
     const optionalFields = ["submissionMode", "userChoice"].filter(

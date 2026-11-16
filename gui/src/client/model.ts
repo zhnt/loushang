@@ -156,6 +156,7 @@ export interface SessionSnapshot {
   readonly messages: readonly ConversationMessage[];
   readonly execution?: ExecutionProjection | null;
   readonly supportsGoalProgress?: true;
+  readonly supportsGoalStart?: true;
   readonly pendingApprovals?: readonly PendingApproval[];
   readonly userChoice?: UserChoicePromptV1;
   readonly documents: readonly ReadonlyDocument[];
@@ -318,6 +319,7 @@ export interface HarnessClientUiPort {
   interrupt(sessionId: string): Promise<ControlReceipt>;
   respondInteraction?(sessionId: string, interactionId: string, outcome: InteractionOutcome): Promise<ControlReceipt>;
   createSession?(input: CreateSessionInput): Promise<CreateSessionReceipt>;
+  startGoal?(input: Omit<SubmitTextInput, "text">, expectedInstanceId?: string): Promise<SubmitReceipt>;
   goalProgress?(sessionId: string, executionId: string): Promise<ExecutionGoalProgressV1 | null>;
   sessionModels?(sessionId: string): Promise<SessionModels>;
   selectModel?(sessionId: string, modelId: string, thinkingLevel?: ThinkingLevel): Promise<SessionModels>;

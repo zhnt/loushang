@@ -254,6 +254,7 @@ class ExecutionSessionSnapshotV1:
     source: ExecutionSourceSnapshotV1
     executions: ExecutionSessionViewV1
     supports_goal_progress: bool = False
+    supports_goal_start: bool = False
 
     def __post_init__(self) -> None:
         _identifier(self.service_instance_id)
@@ -261,8 +262,8 @@ class ExecutionSessionSnapshotV1:
             ExecutionSessionViewV1
         ) or self.source.source.identity != self.executions.identity:
             raise ValueError("invalid execution composite snapshot")
-        if type(self.supports_goal_progress) is not bool:
-            raise TypeError("invalid Goal progress capability")
+        if any(type(flag) is not bool for flag in (self.supports_goal_progress, self.supports_goal_start)):
+            raise TypeError("invalid Goal capability")
 
 
 ExecutionGoalStatusV1 = Literal["active", "paused", "completed", "abandoned", "failed", "superseded"]
@@ -315,6 +316,7 @@ class ExecutionOperationV1(str, Enum):
     SUBMIT = "execution/submit"
     GET = "execution/get"
     GOAL_PROGRESS = "execution/goal_progress"
+    GOAL_START = "execution/goal_start"
     FIND = "execution/find_submission"
     INTERRUPT = "execution/interrupt"
     SNAPSHOT = "execution/snapshot"
@@ -360,7 +362,9 @@ class ExecutionCallV1:
             SessionSnapshotRequestV1
         ):
             raise TypeError("invalid execution call")
-        submission = self.operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND}
+        submission = self.operation in {
+            ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND, ExecutionOperationV1.GOAL_START,
+        }
         execution = self.operation in {
             ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
         }

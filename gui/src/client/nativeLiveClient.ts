@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { validateGoalProgress } from "../../contracts/goalProgress";
 import { validateUserChoice } from "../../contracts/userChoice";
 import { ApprovalResponses } from "./approvalResponses";
+import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { thinkingLevels, type ThinkingLevel } from "./model";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -224,6 +225,17 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       const result = await invoke<unknown>("live_goal_progress", { input: { sessionId, executionId, serviceInstanceId } });
       return result === null ? null : validateGoalProgress(result, executionId);
     },
+    async startGoal(input, expectedInstanceId) {
+      const serviceInstanceId = current?.serviceInstanceId;
+      const unknown = unknownGoalStart(input.submissionId);
+      if (!serviceInstanceId || (expectedInstanceId && expectedInstanceId !== serviceInstanceId)) return unknown;
+      try {
+        const result = await invoke("live_goal_start", { input: { ...input, serviceInstanceId } });
+        return goalStartReceipt(result, input.submissionId);
+      } catch {
+        return unknown;
+      }
+    },
     async submitText(input) {
       const receipt = await invoke<{ accepted: boolean; reason?: string | null; executionId?: string | null }>("live_submit_text", { input });
       return {
@@ -316,7 +328,9 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
   const sessions = root.sessions.map((raw, index) => {
     const session = object(raw);
     if (identifier(session.serviceInstanceId) !== serviceInstanceId) throw new Error("instance");
-    if ("supportsGoalProgress" in session && session.supportsGoalProgress !== true) throw new Error("Goal capability");
+    for (const key of ["supportsGoalProgress", "supportsGoalStart"]) {
+      if (key in session && session[key] !== true) throw new Error("Goal capability");
+    }
     const source = object(session.source);
     const sourceSnapshot = object(source.source);
     if ("submissionMode" in sourceSnapshot && sourceSnapshot.submissionMode !== "execution") {
@@ -552,6 +566,7 @@ function projectSession(
     messages,
     execution: projectExecution(snapshot),
     supportsGoalProgress: snapshot.supportsGoalProgress,
+    supportsGoalStart: snapshot.supportsGoalStart,
     pendingApprovals: snapshot.pendingApprovals ?? [],
     userChoice: source.userChoice,
     documents: [],

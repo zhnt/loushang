@@ -105,6 +105,13 @@ export default interface Resources {
       "validity": "Validity",
       "yes": "Yes"
     },
+    "goalStart": {
+      "accepted": "Goal accepted. Waiting for execution status.",
+      "label": "Start Goal",
+      "pending": "Starting Goal…",
+      "rejected": "Goal start rejected.",
+      "unknown": "Goal start outcome is unknown. Reconnecting can restore the original execution status."
+    },
     "header": {
       "actions": "Session actions",
       "bottomHint": "Bottom panel unavailable in this fixture",

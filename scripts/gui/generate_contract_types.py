@@ -154,11 +154,13 @@ def generate() -> dict[str, str]:
                 "    pub user_choice: Option<UserChoicePromptV1>,",
             ])
         if cls.__name__ == "ExecutionSessionSnapshotV1":
-            ts.append("  readonly supportsGoalProgress?: true;")
-            rs.extend([
-                '    #[serde(rename = "supportsGoalProgress", skip_serializing_if = "Option::is_none")]',
-                "    pub supports_goal_progress: Option<bool>,",
-            ])
+            for flag in execution._GOAL_CAPABILITIES:
+                field = execution._camel(flag)
+                ts.append(f"  readonly {field}?: true;")
+                rs.extend([
+                    f'    #[serde(rename = "{field}", skip_serializing_if = "Option::is_none")]',
+                    f"    pub {flag}: Option<bool>,",
+                ])
         ts.append("}")
         rs.append("}")
     for name, members in sorted(unions.items()):

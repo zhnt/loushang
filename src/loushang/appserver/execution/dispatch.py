@@ -4,7 +4,11 @@ import inspect
 from typing import cast
 
 from ..protocol import AppErrorCodeV1, AppServiceError
-from .client import ExecutionObservationPortV1, ExecutionPortV1
+from .client import (
+    ExecutionGoalControlPortV1,
+    ExecutionObservationPortV1,
+    ExecutionPortV1,
+)
 from .model import (
     ExecutionCallV1,
     ExecutionEventsV1,
@@ -24,6 +28,14 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
         return await client.snapshot_execution_session(*args)
     if call.operation is ExecutionOperationV1.EVENTS:
         return ExecutionEventsV1(await client.read_execution_events(*args))
+    if isinstance(client, ExecutionGoalControlPortV1):
+        match call.operation:
+            case ExecutionOperationV1.GOAL_START:
+                return await client.goal_start(*args, cast(str, call.submission_id))
+            case ExecutionOperationV1.FIND:
+                return await client.goal_find(*args, cast(str, call.submission_id))
+            case ExecutionOperationV1.INTERRUPT:
+                return await client.goal_interrupt(*args, cast(str, call.execution_id))
     if not isinstance(client, ExecutionPortV1):
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     match call.operation:

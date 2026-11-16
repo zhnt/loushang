@@ -12,6 +12,7 @@ from loushang.appserver.execution.model import (
     ExecutionCallV1,
     ExecutionGoalProgressV1,
     ExecutionOperationV1,
+    ExecutionRecordV1,
     ExecutionServiceErrorV1,
     ExecutionStatusV1,
 )
@@ -192,6 +193,14 @@ async def test_optional_execution_connection_submit_snapshot_interrupt_and_old_o
                     request_id, ExecutionOperationV1.GOAL_PROGRESS, control, "instance",
                     execution_id=record.state.execution_id,
                 ), ExecutionGoalProgressV1, False, False,
+            )
+        assert unsupported.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+        assert not snapshot.supports_goal_start
+        with pytest.raises(AppServiceError) as unsupported:
+            await remote._send_execution(
+                lambda request_id: ExecutionCallV1(
+                    request_id, ExecutionOperationV1.GOAL_START, control, "instance", submission_id="goal",
+                ), ExecutionRecordV1, False, False,
             )
         assert unsupported.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
         result = await client.interrupt_execution(control, "instance", record.state.execution_id)

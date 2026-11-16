@@ -288,6 +288,12 @@ struct Snapshot {
         deserialize_with = "present"
     )]
     supports_goal_progress: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    supports_goal_start: Option<bool>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -343,6 +349,7 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
         let view = &e.result.executions;
         if !envelope(&e, kind)
             || e.result.supports_goal_progress == Some(false)
+            || e.result.supports_goal_start == Some(false)
             || !identifier(&e.result.service_instance_id, 128)
             || !s.identity.valid()
             || s.user_choice.as_ref().is_some_and(|choice| !choice.valid())

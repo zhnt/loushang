@@ -65,6 +65,14 @@ pub(crate) struct LiveSubmitInput {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveGoalStartInput {
+    session_id: String,
+    submission_id: String,
+    service_instance_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LiveInterruptInput {
     session_id: String,
     execution_id: String,
@@ -284,24 +292,93 @@ pub(crate) async fn live_submit_text(
                     control.connection_epoch,
                     &control.service_instance_id,
                 )?;
-                let (reply, receive) = mpsc::sync_channel(1);
-                recovered
-                    .sender
-                    .send(ControlCommand::FindSubmission {
-                        session_id: recovery_session_id,
-                        submission_id: recovery_submission_id,
-                        reply,
-                    })
-                    .map_err(|_| "live recovery connection changed".to_owned())?;
-                let result = receive
-                    .recv_timeout(Duration::from_secs(6))
-                    .map_err(|_| "live submission recovery timed out".to_owned())?;
-                control_receipt(result, true)
+                control_receipt(
+                    find_live_submission(&recovered, &recovery_session_id, &recovery_submission_id),
+                    true,
+                )
             }
         }
     })
     .await
     .map_err(|_| "live submit worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_goal_start(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveGoalStartInput,
+) -> Result<serde_json::Value, String> {
+    let control = current_control(&state)?;
+    if control.service_instance_id != input.service_instance_id {
+        return Err("live Host instance changed".to_owned());
+    }
+    let controls = state.control.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        let result = control
+            .sender
+            .send(ControlCommand::StartGoal {
+                session_id: input.session_id.clone(),
+                submission_id: input.submission_id.clone(),
+                reply,
+            })
+            .map_err(|_| ())
+            .and_then(|()| {
+                receive
+                    .recv_timeout(Duration::from_secs(6))
+                    .unwrap_or(Err(()))
+            });
+        let result =
+            result.unwrap_or_else(|()| recover_goal_submission(&controls, &control, &input));
+        let mut receipt = serde_json::to_value(control_receipt(Ok(result), true)?)
+            .map_err(|_| "invalid Goal submission receipt".to_owned())?;
+        receipt["submissionId"] = serde_json::Value::String(input.submission_id);
+        Ok(receipt)
+    })
+    .await
+    .map_err(|_| "live Goal start worker failed".to_owned())?
+}
+
+fn find_live_submission(
+    control: &LiveControl,
+    session_id: &str,
+    submission_id: &str,
+) -> Result<ControlResult, ()> {
+    let (reply, receive) = mpsc::sync_channel(1);
+    control
+        .sender
+        .send(ControlCommand::FindSubmission {
+            session_id: session_id.to_owned(),
+            submission_id: submission_id.to_owned(),
+            reply,
+        })
+        .map_err(|_| ())?;
+    receive
+        .recv_timeout(Duration::from_secs(6))
+        .map_err(|_| ())?
+}
+
+fn recover_goal_submission(
+    controls: &Arc<RwLock<Option<LiveControl>>>,
+    original: &LiveControl,
+    input: &LiveGoalStartInput,
+) -> ControlResult {
+    let find = |control: &LiveControl| {
+        find_live_submission(control, &input.session_id, &input.submission_id)
+    };
+    let found = find(original).or_else(|()| {
+        let reconnected = wait_for_reconnected_control(
+            controls,
+            original.connection_epoch,
+            &input.service_instance_id,
+        )
+        .map_err(|_| ())?;
+        find(&reconnected)
+    });
+    match found {
+        Ok(receipt @ ControlResult::Submitted(_)) => receipt,
+        _ => ControlResult::Missing,
+    }
 }
 
 #[tauri::command]

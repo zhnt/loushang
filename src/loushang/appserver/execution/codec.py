@@ -73,6 +73,8 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ExecutionEventsV1: ("events",),
     ExecutionInterruptResultV1: ("record", "disposition"),
 }
+_GOAL_CAPABILITIES = ("supports_goal_progress", "supports_goal_start")
+
 _KINDS: dict[str, type] = {
     "resume_input_lookup": ResumeInputLookupResultV1,
     "goal_progress": ExecutionGoalProgressV1,
@@ -104,8 +106,10 @@ def _encode(value: object) -> object:
             encoded["submissionMode"] = value.submission_mode.value
         if value.user_choice is not None:
             encoded["userChoice"] = _encode(value.user_choice)
-    if type(value) is ExecutionSessionSnapshotV1 and value.supports_goal_progress:
-        encoded["supportsGoalProgress"] = True
+    if type(value) is ExecutionSessionSnapshotV1:
+        for flag in _GOAL_CAPABILITIES:
+            if getattr(value, flag):
+                encoded[_camel(flag)] = True
     return encoded
 
 
@@ -142,8 +146,8 @@ def _decode(expected: object, raw: object) -> object:
     wire_fields = {_camel(name) for name in fields}
     if expected is SessionSnapshotV1 and type(raw) is dict:
         wire_fields.update({"submissionMode", "userChoice"} & raw.keys())
-    if expected is ExecutionSessionSnapshotV1 and type(raw) is dict and "supportsGoalProgress" in raw:
-        wire_fields.add("supportsGoalProgress")
+    if expected is ExecutionSessionSnapshotV1 and type(raw) is dict:
+        wire_fields.update(_camel(flag) for flag in _GOAL_CAPABILITIES if _camel(flag) in raw)
     value = _object(raw, wire_fields)
     annotations = get_type_hints(expected)
     values = {
@@ -160,10 +164,13 @@ def _decode(expected: object, raw: object) -> object:
         values["submission_mode"] = mode
         if "userChoice" in value:
             values["user_choice"] = _decode(UserChoicePromptV1, value["userChoice"])
-    if expected is ExecutionSessionSnapshotV1 and "supportsGoalProgress" in value:
-        if value["supportsGoalProgress"] is not True:
-            raise InvalidAppMessageError()
-        values["supports_goal_progress"] = True
+    if expected is ExecutionSessionSnapshotV1:
+        for flag in _GOAL_CAPABILITIES:
+            field = _camel(flag)
+            if field in value:
+                if value[field] is not True:
+                    raise InvalidAppMessageError()
+                values[flag] = True
     return expected(**values)
 
 
@@ -198,7 +205,9 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             raise InvalidAppMessageError()
         operation = ExecutionOperationV1(_string(root["operation"]))
         fields = {"control", "expectedInstanceId"}
-        if operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND}:
+        if operation in {
+            ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND, ExecutionOperationV1.GOAL_START,
+        }:
             fields.add("submissionId")
         if operation in {
             ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
