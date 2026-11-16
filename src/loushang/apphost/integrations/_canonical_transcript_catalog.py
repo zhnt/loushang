@@ -55,7 +55,7 @@ from loushang.harness.transcript.store_admission import (
 )
 
 if TYPE_CHECKING:
-    from loushang.apphost.managed.workspaces import WorkspaceRegistry
+    from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
 
 
 class CanonicalTranscriptScope(Protocol):
@@ -744,7 +744,7 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
     catalogs retain their existing native storage and Session lifetimes.
     """
 
-    registry: WorkspaceRegistry
+    registry: HostWorkspaceRegistryPort
     _catalogs: dict[Path, WorkspaceCatalogT]
     _loaded: bool
     _closed: bool

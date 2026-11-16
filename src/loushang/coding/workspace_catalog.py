@@ -10,7 +10,7 @@ from pathlib import Path
 from loushang.apphost.integrations._canonical_transcript_catalog import (
     _WorkspaceTranscriptCatalogMethods,
 )
-from loushang.apphost.managed.workspaces import WorkspaceRegistry
+from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
 from loushang.appserver.protocol import SessionScopeV1
 from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 
@@ -33,7 +33,7 @@ class CodingWorkspaceCatalog(
     """
 
     def __init__(
-        self, registry: WorkspaceRegistry, session_root: Path, store_state_root: Path
+        self, registry: HostWorkspaceRegistryPort, session_root: Path, store_state_root: Path
     ):
         self.registry = registry
         self._root = session_root

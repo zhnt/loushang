@@ -7,12 +7,18 @@ import sys
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
-from loushang.appserver.protocol import SessionAvailabilityV1, SessionCompatibilityV1
+from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
+from loushang.appserver.protocol import (
+    SessionAvailabilityV1,
+    SessionCompatibilityV1,
+    WorkspaceRequestV1,
+)
 from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
 from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
 from loushang.coding.hosted_catalog import (
@@ -538,6 +544,55 @@ def test_two_workspaces_route_real_transcripts_without_runtime_or_cwd_switch(tmp
         finally:
             await catalog.close()
     asyncio.run(scenario())
+
+
+def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_catalogs(
+    tmp_path, monkeypatch,
+):
+    project = tmp_path / "project"
+    temporary = tmp_path / "scratch"
+    project.mkdir()
+    temporary.mkdir()
+    registry = Mock(spec=HostWorkspaceRegistryPort)
+    registry.list.return_value = (project,)
+    registry.register.return_value = project
+    registry.select.return_value = project
+    registry.allocate_temporary.return_value = temporary
+    registry.is_temporary.side_effect = lambda path: path == temporary
+    closed = []
+    registry.close.side_effect = lambda: closed.append("registry")
+
+    async def scenario():
+        catalog = CodingWorkspaceCatalog(registry, tmp_path / "sessions", tmp_path / "stores")
+        try:
+            await catalog.load()
+            assert await catalog.register(str(project)) == project
+            scope = await catalog.select(str(project))
+            assert scope.cwd == project
+            allocated = await catalog.workspace(WorkspaceRequestV1("allocate-temporary"))
+            assert [item.path for item in allocated.workspaces] == [str(temporary)]
+            projects = await catalog.workspace(WorkspaceRequestV1("projects"))
+            assert [item.path for item in projects.workspaces] == [str(project)]
+
+            close_project = catalog._catalogs[project].close
+
+            async def close_session_catalog():
+                await close_project()
+                closed.append("session catalog")
+
+            monkeypatch.setattr(catalog._catalogs[project], "close", close_session_catalog)
+            candidate = await catalog.create_candidate(_intent(scope))
+            await candidate.close()
+        finally:
+            await catalog.close()
+        assert closed == ["session catalog", "registry"]
+
+    asyncio.run(scenario())
+    registry.open.assert_called_once_with()
+    registry.list.assert_called_once_with()
+    registry.register.assert_called_once_with(str(project))
+    registry.select.assert_called_once_with(str(project))
+    registry.allocate_temporary.assert_called_once_with()
 
 
 def test_workspace_catalog_reopens_previous_project_store(tmp_path):
