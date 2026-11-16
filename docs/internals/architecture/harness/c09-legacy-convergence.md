@@ -1,9 +1,9 @@
 # C09 历史兼容、迁移与快照证据收敛
 
 - Authority: descriptive audit / execution evidence
-- Design status: proposed
-- Implementation status: partial
-- Owner: Coding / Harness Package Product / Resources
+- Design status: accepted — implementation-owner review within C09 scope
+- Implementation status: implemented; locally validated
+- Owner: Coding / Harness Package Product / Resources / Plugin Management / Resource Item Authoring
 - 基线：`23912e28c7b2e71b3feeb04ad686f24084055ff6`，执行开始时已 fetch 并核实等于 `origin/main`。
 - 本次仅处理 C09；旧 Coding 整体 Goal 的完成记录不构成本次验收。
 - 方法查阅：本机 archmethod clean `master`，commit `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`；未声称已与方法上游同步。
@@ -86,21 +86,26 @@ Coding 继续执行当前受认证 review 的生成、操作员 review ID 匹配
 底层 byte I/O、根目录约束、文件锁与 JSONL 引擎直接复用现有 Journal / Resources。
 新增内容是三条路径共用的固定接受事务及诊断 Profile；A199 的 local 专用事务不计为本轮迁移。
 
-## 当前验证与成本
+## 验证与成本
 
-实现候选的局部验证：
+最终 28 个变更生产源的 mypy、29 个 Python 文件的 Ruff 均通过；34 个 Coding 模块的公开导出及 172 组公开签名/名义字段声明保持基线契约。既有 CLI 的 636 个断言 AST、45 个测试入口及参数化未变；测试源码净增 9 行，仅适配已迁至真实共享 bootstrap owner 的故障注入点，没有新增 case、断言、测试路线或 PR 门禁。
 
-- 首批接受/导入边界 220 passed；早期 CLI/清点/快照 179 passed。这两份结果属于较早候选，不替代最终完整 diff 验证。
-- 安装/启用原集成场景 6 passed；runtime 故障差分 20 passed。
-- 首 B 快照完整场景 1 passed；成员清点/cutover 22 passed。
-- 配置投影首次回归 24 passed；采纳读模型 CLI 三类场景 10 passed。
-- 最新原生 cutover/配置投影/目录故障回放/惰性 Wheel 场景 144 passed，29 deselected。
-- 最新 envelope 及回执发布兼容 55 passed。
-- 公开值类型首轮本地差分 5 passed：比较三种 envelope 的原错误链、字段/slots/pickle；备份值错误与 ABI；candidate 九字段 ABI 和子类不能绕过惰性检查。
-- builtin 采纳故障注入最初有 1 项失败，因为旧 Coding 私有注入入口已迁出。将注入点移动到实际共享 bootstrap 后，原四个参数化场景与备份状态场景共 5 passed，未改变原断言或增加测试条件。
-- 全部 28 个变更生产源已通过 Ruff/mypy，变更 CLI 测试已通过 Ruff；最终完整 checker 中的文档 9 项及架构依赖事实检查已过。28 个生产源和 1 个测试文件的冻结 SHA256 均与正在执行检查的候选一致。完整适用本地检查尚未通过，Windows 原生证据仍须由既有平台工作流给出。
+使用原 `scripts/ci/check_changed.py --base origin/main` 选出的全部可本地执行路线，原脚本顺序执行并返回 0：
 
-差分观察脚本只在产品树外本地执行，不进入 PR 门禁。测试源码净增加 9 行，仅调整已有故障注入适配；没有新增 case、路线、断言或工作流。
+| 既有路线 | 通过 | 跳过 | 未选中 |
+| --- | ---: | ---: | ---: |
+| Coding | 4,240 | 24 | 76 |
+| Harness（含原架构/运行支持检查） | 6,356 | 113 | 0 |
+| Hosting（含原消费者检查） | 513 | 60 | 0 |
+| unit_coding | 4,238 | 24 | 78 |
+| unit_harness | 5,939 | 110 | 3 |
+| unit_hosting | 397 | 56 | 4 |
+
+各路线存在覆盖重叠，不将表中数字相加宣称唯一测试数。文档不变量 9 项、生成依赖事实、Harness 909 源及 Hosting 36 源的既有类型检查亦通过。完整 Coding 路线包含现有 session/tool/persistence/resume 与取消/退出 smoke；不以仅静态导入代替真实会话行为证据。
+
+补充的局部兼容观察覆盖安装/启用故障、首 B 快照、接受记录、备份、源码重捕获、配置投影、管理/退休/Instance 证明及公开值类型的字段、slots、pickle；完整导入边界/Resource Item/Wheel/名义 ABI 组合为 211 passed。惰性检查逐语句 AST 对照中，仅分离名义入口/返回适配，其余校验语句及三类路径 regex 与基线相同。本地差分脚本位于产品树外，不进入 PR 门禁，也不重复计入表中唯一覆盖。
+
+本机原固定 runtime 目录的祖先 775 权限及 AGENTS.md 会影响安全准入与 context 发现；用户在目录例外请求后指示继续，本轮仅测试命令临时使用 `/home/dev/.cache/loushang-tests-c09`。不改变工作区权限、正常 Product/AppHost runtime 路径或其他 lanes 规则。安全选择器显式传给外层 pytest，Make 使用既有 `PYTEST_RUNNER` 变量；不把项目专用 `--skip-host-runtime` 写入全局 `PYTEST_ADDOPTS`，避免污染测试内临时仓库的独立验证。39 个受该调用问题影响的现有场景复跑全部通过，随后完整原检查计划通过，没有修改 Product 语义或测试断言。
 
 相对基线的生产源码变化：Coding −1,301，Harness +1,721，其他 0，合计 +420 行。
 C09 当前 34 文件、7,624 行。职责收敛已完成实现候选，但不冒称系统净精简。
@@ -135,10 +140,7 @@ C09 当前 34 文件、7,624 行。职责收敛已完成实现候选，但不冒
 这些是机制实现体的计数，保留的产品调用入口不计为重复体。另退出 5 个无消费者私有转发及失效常量，按胶水清理单列；它们不增加上述重复流程计数。通用化、Profile 和兼容适配的新增行已全额计入生产系统 +420，未将按流程计数的去重换算为未经证明的行数。
 
 
-最初的完整本地 checker 在最终责任复核发现通用证明残留后主动中断（exit 130），
-不是测试通过，也不是 Product 故障或环境 deadlock；补齐后须对新候选重新执行完整检查。
-epoch/原 retirement 组件的 33 项回归已过，最新 management/Instance 证明与 capture ABI 场景另有 5 passed，7 deselected。
-该复核纠正了此前把整段 epoch/操作一致性证明笼统归为旧格式的过宽结论。
+测试净变化 +9 行；文档净变化 +173 行（含本文与职责清单），均不计入生产源码 +420。
 
 ## 共享 owner 与兼容边界
 
@@ -156,23 +158,12 @@ builtin 重放额外复核 epoch；disabled 空文件不是不存在；Windows �
 配置投影保留原 json.dumps 语义，未盲目替换成额外收紧输入的 canonical_json_bytes。
 Coding 的公开记录仍保自身声明字段、slots、模块路径和名义类型；共享空 slots 基类只承接既有值规则。
 
-## 完成审计与未完成交付
+## 完成审计与保留义务
 
-34 个文件的职责/支持/旧数据依赖已给出明确结论；实现候选的通用机制已沿上述 owner 收敛，旧体与无用私有入口同步退出。
-尚未完成的是最终候选的完整适用本地检查、既有远端平台检查，以及 commit/push/PR/merge/本地同步。
-在这些证据关闭前不声明 Goal 完成，不把较早或局部测试当成全量完成证据，也不以迁移比例代替验收。
-完成交付后按用户原指令暂停 Goal。
+34 个文件已逐一核对调用方、支持范围、旧数据依赖和共享 owner；旧通用实现及无消费者胶水同步退出。Coding 剩余 7,624 行的具体保留理由见逐文件表，包括产品信任/批准、旧版本字段与允许组合、操作员选择、资源/作用域准入和必要名义入口；不以类型名含 Coding、legacy 字样或任意迁移百分比替代判断。
+
+各通用链路沿现有 owner 收敛，没有第二个 catalog/store/ledger、并行迁移框架或大量 Protocol/回调/supplier 拼接。A157、A168、A199 是本轮基线，已共享机制不重复计为收益。清单中的退出候选需要真实存量与消费者证据，不能据此删除未证实可退出的历史支持。
+
+职责边界复核由 Codex 实现 owner 在本任务授权范围内完成；以实际单一 owner、公开契约与无环依赖、兼容差分和完整本地检查作为接受证据，不声称用户另行批准架构或协议修订。macOS/Windows 原生、安装/真实 LSP、Host Runtime 等平台检查沿用既有 Actions 路线，本机结果不替代这些平台证据；交付检查及合并记录以关联 PR 为准。
 
 整体清单见 [Coding 职责清单](coding-responsibility-inventory.md)。
-
-最终 checker 的 Coding 阶段观察到 4 项 bootstrap 失败，取得 traceback 时中断，结果为 4 failed / 550 passed / 76 deselected，不能作为全量通过证据。四项已在基线 `23912e28c` 的独立工作树复现（4 failed / 99 deselected）：强制测试运行目录位于工作区下，资源发现向上读取本机 `/home/dev/lsspace/AGENTS.md`，影响扩展发现和提示词预期。保留失败，不改写产品语义或扩大/削弱仓库门禁；仍须完成其余适用检查并取得干净平台的现有 CI 结果。
-
-最终候选的既有 `make check-hosting` 已终态通过：Ruff 通过，mypy 36 个源文件通过，513 passed / 60 skipped（317.66 秒）。`unit_hosting` 仅选择 `tests/hosting`，已被该检查覆盖，不重复运行。既有完整 Harness 类型检查也已通过 909 个源文件，Coding/Harness 完整回归仍在执行。
-
-完整旧候选 Harness 检查终态为 127 failed / 6,229 passed / 113 skipped（2238.79 秒）；将全部 127 个失败 nodeid 逐项放到不可变基线复跑，结果为 126 failed / 1 passed。唯一本轮新增失败是 `test_harness_internal_dependency_graph_is_acyclic`：Resources 中的惰性检查反向引用 Authoring payload codec。已将完整惰性检查归入现有 `plugin_authoring.resource_item`，继续复用原 codec，不复制解析或增加回调；修正后三源 Ruff/mypy 通过，完整导入边界、Resource Item、旧 Wheel 及本地名义 ABI/防子类绕过合计 211 passed（89.37 秒）。
-
-旧候选的 canonical local skill CLI 采纳/重放四种参数场景全部通过（4 passed / 506.72 秒）；该结果属于 owner 修正前的实现，不冒称新候选的完整检查。旧 Coding 全套因已确认的架构回归而主动中断，部分结果为 164 failed / 1,985 passed / 14 skipped / 76 deselected / 41 errors；它不是全量终态通过证据。
-
-已复现的本机问题包括指定 runtime 目录祖先 `/home/dev/lsspace` 的 775 权限被原 DirectoryWriterLease 拒绝，以及祖先 AGENTS.md 对资源发现的影响。没有 chmod 工作区、放宽安全检查或改写测试断言。临时改用私有磁盘 cache 测试目录的规则例外已向用户提出，等待明确答复；答复前不启动依赖该例外的检查。
-
-旧 Coding 的 205 个失败/错误中，4 项先前已在基线复现；其余 201 项逐项复跑基线为 144 failed / 16 passed / 41 errors（358.43 秒）。仅在旧整套运行失败的 16 项，随后在当前修正候选上独立复跑全部通过（204.80 秒）。不把这些结果等同于最终完整回归通过。惰性 Wheel 检查另完成逐语句 AST 对照：仅分离名义入口/返回适配，其余校验语句及三类路径 regex 均与基线相同。
