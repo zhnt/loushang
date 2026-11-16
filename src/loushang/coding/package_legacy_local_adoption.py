@@ -8,6 +8,7 @@ from typing import Literal
 
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
+    bootstrap_reviewed_product_plugins,
     preserve_removed_product_plugin,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
@@ -54,9 +55,9 @@ from .package_legacy_source_consumption import (
     consume_coding_accepted_legacy_local_source,
 )
 from .package_product_runtime import (
+    _CODING_BUILTIN_BOOTSTRAP_POLICY,
     CODING_PACKAGE_PRODUCT_POLICY_REVISION,
     CodingFencedProductApplicationOwner,
-    _bootstrap_coding_builtin_plugin,
     open_coding_fenced_product_application_owner,
 )
 
@@ -179,8 +180,7 @@ def adopt_coding_legacy_local_data_review(
             item
             for item in product_owner.runtime_owner.product_owner.policy.bindings
             if item.plugin_id == plugin_id
-            and item.source_trust_class
-            in LEGACY_LOCAL_DATA_TRUST_CLASSES
+            and item.source_trust_class in LEGACY_LOCAL_DATA_TRUST_CLASSES
         )
         expected_trust = trust_class_for_legacy_data_resource(resource_kind)
         if bound and (
@@ -250,29 +250,14 @@ def adopt_coding_legacy_local_data_review(
         product = product_owner.runtime_owner.product_owner
         for builtin_id in acceptance.review.removed_builtin_ids:
             _preserve_removed_builtin(product_owner, acceptance, builtin_id)
-        for builtin_id in (
-            "coding.base",
-            "coding.lsp.default",
-            "coding.arch.default",
-        ):
-            if builtin_id in acceptance.review.removed_builtin_ids:
-                continue
-            history = tuple(
-                item
-                for item in product.desired_state.transitions()
-                if item.mutation.installation_key.plugin_id == builtin_id
-            )
-            if (
-                history
-                and getattr(history[-1].mutation, "actor_id", None) != product.actor_id
-            ):
-                # A later operator choice owns this builtin's current state.
-                continue
-            _bootstrap_coding_builtin_plugin(
-                product_owner,
-                builtin_id,
-                enable=builtin_id not in disabled_builtins,
-            )
+        bootstrap_reviewed_product_plugins(
+            product,
+            ("coding.base", "coding.lsp.default", "coding.arch.default"),
+            disabled_ids=disabled_builtins,
+            removed_ids=acceptance.review.removed_builtin_ids,
+            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+            strict_history=False,
+        )
     finally:
         product_owner.close()
     return CodingLegacyLocalSkillAdoptionV1(

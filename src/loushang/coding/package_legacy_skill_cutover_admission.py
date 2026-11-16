@@ -3,21 +3,14 @@
 from __future__ import annotations
 
 import json
-import re
 import zipfile
 from dataclasses import dataclass
-from hashlib import sha256
-from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal
 
 from loushang.harness.plugin_authoring.resource_item import (
-    ResourceItemDeclarationPayload,
-)
-from loushang.harness.resources._descriptor_parsing import (
-    _prompt_descriptor_from_text,
-    _skill_descriptor_from_text,
+    _inspect_legacy_local_data_wheel,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
@@ -26,11 +19,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
-from loushang.harness.resources.plugins.declarations import (
-    PluginDeclarationDocumentCodec,
-)
-from loushang.harness.resources.plugins.manifest import PluginManifestParser
-from loushang.harness.resources.theme_document import parse_theme_document_v1
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .package_legacy_configured_source import (
@@ -72,9 +60,6 @@ from .package_legacy_snapshot_member import (
 )
 from .package_pre_b_snapshot import CodingPreBSnapshotPreparation
 
-_SKILL_PATH = re.compile(r"[A-Za-z0-9._-]+/skills/[A-Za-z0-9._-]+/SKILL\.md\Z")
-_PROMPT_PATH = re.compile(r"[A-Za-z0-9._-]+/prompts/[A-Za-z0-9._-]+\.md\Z")
-_THEME_PATH = re.compile(r"[A-Za-z0-9._-]+/themes/[A-Za-z0-9._-]+\.json\Z")
 # Each member is reacquired and rebuilt while the first-fence lock is held.
 _MAX_LOCAL_DATA_PLUGINS = 16
 _REMOVABLE_BUILTIN_PLUGIN_IDS = frozenset(
@@ -449,138 +434,10 @@ def inspect_coding_legacy_local_data_wheel(
     wheel: CodingLegacyLocalWheelCandidateV1,
 ) -> CodingLegacyLocalDataWheelInspectionV1:
     """Inspect inert reacquired bytes; Product migration still needs its own gate."""
-
-    if (
-        not isinstance(wheel, CodingLegacyLocalWheelCandidateV1)
-        or not isinstance(wheel.wheel_bytes, bytes)
-        or sha256(wheel.wheel_bytes).hexdigest() != wheel.artifact_digest
-    ):
+    if not isinstance(wheel, CodingLegacyLocalWheelCandidateV1):
         raise ValueError("Legacy data Wheel digest is invalid")
-    root = wheel.plugin_manifest_path.removesuffix("/plugin.json")
-    if (
-        re.fullmatch(r"loushang_legacy_[0-9a-f]{24}", root) is None
-        or wheel.filename != f"{root}-1-py3-none-any.whl"
-        or wheel.requested_package != f"{root.replace('_', '-')}==1"
-    ):
-        raise ValueError("Legacy Skill Wheel identity is unsupported")
-    dist_info = f"{root}-1.dist-info"
-    fixed = {
-        f"{root}/plugin.json",
-        f"{root}/declarations/resources.json",
-        f"{dist_info}/WHEEL",
-        f"{dist_info}/METADATA",
-        f"{dist_info}/RECORD",
-    }
-    with zipfile.ZipFile(BytesIO(wheel.wheel_bytes)) as archive:
-        names = archive.namelist()
-        if len(names) != len(set(names)) or len(names) != len(fixed) + 1:
-            raise ValueError("Legacy Skill Wheel members are unsupported")
-        [body_path] = tuple(name for name in names if name not in fixed)
-        if _SKILL_PATH.fullmatch(body_path) is not None:
-            resource_kind: Literal["skill", "prompt", "theme"] = "skill"
-        elif _PROMPT_PATH.fullmatch(body_path) is not None:
-            resource_kind = "prompt"
-        elif _THEME_PATH.fullmatch(body_path) is not None:
-            resource_kind = "theme"
-        else:
-            raise ValueError("Legacy data Wheel contains unsupported Resource members")
-        if (
-            not body_path.startswith(f"{root}/")
-            or set(names) != fixed | {body_path}
-            or any(archive.getinfo(name).external_attr >> 16 & 0o111 for name in names)
-        ):
-            raise ValueError("Legacy data Wheel contains unsupported members")
-        files = {name: archive.read(name) for name in names}
-    manifest = PluginManifestParser().parse_file_set(
-        files, manifest_logical_path=wheel.plugin_manifest_path
-    )
-    if (
-        manifest.name != wheel.plugin_id
-        or manifest.version != "1"
-        or len(manifest.contribution_index.items) != 1
-    ):
-        raise ValueError("Legacy Skill manifest is unsupported")
-    reservation = manifest.contribution_index.items[0]
-    if (
-        reservation.kind != "resource_item"
-        or reservation.owner != f"resources.{resource_kind}"
-        or reservation.contribution_execution_model != "data_only"
-        or reservation.declaration_source.kind != "document"
-        or reservation.declaration_source.relative_path.as_posix()
-        != "declarations/resources.json"
-        or reservation.requested_authorities
-        or reservation.configuration
-        or reservation.worker_configuration is not None
-    ):
-        raise ValueError("Legacy Skill contribution is unsupported")
-    document = PluginDeclarationDocumentCodec.decode_bytes(
-        files[f"{root}/declarations/resources.json"]
-    )
-    if len(document.declarations) != 1:
-        raise ValueError("Legacy data declaration is unsupported")
-    declaration = document.declarations[0]
-    payload = ResourceItemDeclarationPayload.from_dict(dict(declaration.payload))
-    if (
-        declaration.plugin_id != wheel.plugin_id
-        or declaration.contribution_id != reservation.contribution_id
-        or declaration.kind != reservation.kind
-        or declaration.owner != reservation.owner
-        or declaration.reservation_fingerprint != reservation.fingerprint
-        or declaration.source_descriptor_fingerprint
-        != reservation.source_descriptor_fingerprint
-        or declaration.source_kind != "document"
-        or declaration.contribution_execution_model not in (None, "data_only")
-        or declaration.worker_configuration is not None
-        or payload.resource_kind != resource_kind
-        or payload.locator_kind != ("directory" if resource_kind == "skill" else "file")
-        or payload.schema_id != f"loushang.resource.{resource_kind}"
-        or payload.schema_version != 1
-        or payload.owner_namespace != f"resources.{resource_kind}"
-        or payload.media_type
-        != ("application/json" if resource_kind == "theme" else "text/markdown")
-        or payload.locator
-        != (
-            body_path.removeprefix(f"{root}/").removesuffix("/SKILL.md")
-            if resource_kind == "skill"
-            else body_path.removeprefix(f"{root}/")
-        )
-    ):
-        raise ValueError("Legacy data Resource payload is unsupported")
-    logical_path = Path(body_path.removeprefix(f"{root}/"))
-    content = files[body_path].decode("utf-8").strip()
-    if not content:
-        raise ValueError("Legacy data Resource content is empty")
-    if resource_kind == "skill":
-        descriptor, diagnostics = _skill_descriptor_from_text(
-            parent_name=logical_path.parent.name,
-            source_path=logical_path,
-            content=content,
-            canonical_name=logical_path.parent.name,
-            source_kind="external_package",
-            source_scope="package",
-            source="legacy-local-reacquired",
-            source_root=Path(root),
-        )
-        if descriptor is None or diagnostics:
-            raise ValueError("Legacy Skill content is not Product admissible")
-        return CodingLegacyLocalDataWheelInspectionV1("skill", descriptor.name)
-    if resource_kind == "theme":
-        parse_theme_document_v1(files[body_path])
-        return CodingLegacyLocalDataWheelInspectionV1("theme", logical_path.name)
-    prompt, diagnostics = _prompt_descriptor_from_text(
-        name=logical_path.stem,
-        source_path=logical_path,
-        text=content,
-        canonical_name=logical_path.name,
-        source_kind="external_package",
-        source_scope="package",
-        source="legacy-local-reacquired",
-        source_root=Path(root),
-    )
-    if prompt is None or diagnostics or prompt.diagnostics:
-        raise ValueError("Legacy Prompt content is not Product admissible")
     return CodingLegacyLocalDataWheelInspectionV1(
-        "prompt", prompt.canonical_name or prompt.name
+        *_inspect_legacy_local_data_wheel(wheel)
     )
 
 

@@ -2,29 +2,17 @@
 
 from __future__ import annotations
 
-import os
-import stat
+import os as os
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
-    JournalCodecError,
-    JournalLoadPolicy,
-    decode_jsonl,
-    encode_jsonl_record,
-    journal_file_lock,
-    journal_file_read_lock,
 )
-from loushang.harness.journal._rooted_io import publish_private_bytes, read_private_text
-from loushang.harness.plugin_management.ledger import (
-    decode_plugin_desired_state_snapshot,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+from loushang.harness.package_product._legacy_local_migration import (
+    _FirstAcceptanceEnvelope,
+    _FirstAcceptanceJournal,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -38,11 +26,18 @@ from .package_legacy_disabled_review import (
 )
 
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
-_MAX_ACCEPTANCE_BYTES = 16 * 1024 * 1024
 
 
 class CodingLegacyDisabledOnlyAcceptanceError(RuntimeError):
     """The accepted review or its durable Product receipt is inconsistent."""
+
+
+_envelope = _FirstAcceptanceEnvelope(
+    invalid_message="Invalid Coding disabled-only acceptance",
+    invalid_code="coding_disabled_acceptance_invalid",
+    version_error="Unsupported acceptance version",
+    identity_error="Acceptance identity changed",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,9 +56,7 @@ class CodingLegacyDisabledOnlyAcceptanceV1:
             raise CodingLegacyDisabledOnlyAcceptanceError(
                 "Disabled-only adoption supports built-in Coding Plugins only"
             )
-        acceptance_id = sha256(
-            canonical_json_bytes({"acceptanceVersion": 1, "reviewId": review.review_id})
-        ).hexdigest()
+        acceptance_id = _envelope.identity(review.review_id)
         return cls(review=review, acceptance_id=acceptance_id)
 
     def to_dict(self) -> dict[str, object]:
@@ -75,37 +68,24 @@ class CodingLegacyDisabledOnlyAcceptanceV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyDisabledOnlyAcceptanceV1:
-        if type(value) is not dict or set(value) != {
-            "acceptanceId",
-            "acceptanceVersion",
-            "review",
-        }:
-            raise JournalCodecError(
-                "Invalid Coding disabled-only acceptance",
-                code="coding_disabled_acceptance_invalid",
-            )
-        try:
-            if (
-                type(value["acceptanceVersion"]) is not int
-                or value["acceptanceVersion"] != 1
-            ):
-                raise ValueError("Unsupported acceptance version")
-            record = cls.create(
-                CodingLegacyDisabledOnlyReviewV1.from_dict(value["review"])
-            )
-            if record.acceptance_id != value["acceptanceId"]:
-                raise ValueError("Acceptance identity changed")
-            return record
-        except (TypeError, ValueError) as exc:
-            raise JournalCodecError(
-                "Invalid Coding disabled-only acceptance",
-                code="coding_disabled_acceptance_invalid",
-            ) from exc
+        return _envelope.decode(
+            value, CodingLegacyDisabledOnlyReviewV1.from_dict, cls.create
+        )
 
 
 _CODEC = FunctionalJournalRecordCodec(
     encoder=CodingLegacyDisabledOnlyAcceptanceV1.to_dict,
     decoder=CodingLegacyDisabledOnlyAcceptanceV1.from_dict,
+)
+
+_acceptance_journal = _FirstAcceptanceJournal(
+    filename="legacy-disabled-acceptance.jsonl",
+    codec=_CODEC,
+    error_type=CodingLegacyDisabledOnlyAcceptanceError,
+    directory_label="Disabled-only Product state directory",
+    posix_read_error_type=CodingLegacyDisabledOnlyAcceptanceError,
+    posix_read_label="Disabled-only Product",
+    untouched_message="Disabled-only adoption requires an untouched Product Desired State",
 )
 
 
@@ -127,36 +107,11 @@ def accept_coding_first_b_disabled_only(
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     if epoch_runtime.registry.store_id != epoch.store_id:
         raise CodingLegacyDisabledOnlyAcceptanceError("Product Store changed")
-    path = (
-        epoch_runtime.prepare_product_state_root() / "legacy-disabled-acceptance.jsonl"
+    return _acceptance_journal.accept(
+        epoch_runtime,
+        proposed,
+        conflict_message="Disabled-only Product acceptance conflicts with prior review",
     )
-    with journal_file_lock(path, "exclusive"):
-        epoch_runtime.assert_current()
-        raw = _read_private_acceptance(path)
-        records = (
-            decode_jsonl(
-                raw,
-                target=path,
-                record_codec=_CODEC,
-                load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
-            ).records
-            if raw is not None
-            else ()
-        )
-        if records:
-            if len(records) != 1 or records[0] != proposed:
-                raise CodingLegacyDisabledOnlyAcceptanceError(
-                    "Disabled-only Product acceptance conflicts with prior review"
-                )
-            return records[0]
-        desired_path = path.parent / "desired-state.jsonl"
-        # The Product ledger takes this lock for every mutation. Hold it
-        # through the acceptance append to close the first-adoption race.
-        with journal_file_lock(desired_path, "exclusive"):
-            _require_empty_product_desired(desired_path)
-            _write_private_acceptance(path, proposed)
-        epoch_runtime.assert_current()
-        return proposed
 
 
 def read_coding_first_b_disabled_only_acceptance(
@@ -175,16 +130,9 @@ def read_coding_first_b_disabled_only_acceptance(
         / "product-state"
         / "legacy-disabled-acceptance.jsonl"
     )
-    with journal_file_read_lock(path, "shared", create_lock=False):
-        raw = _read_private_acceptance(path)
-        if raw is None:
-            return None
-        records = decode_jsonl(
-            raw,
-            target=path,
-            record_codec=_CODEC,
-            load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
-        ).records
+    records = _acceptance_journal.records(path)
+    if records is None:
+        return None
     review = review_coding_first_b_disabled_only(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
@@ -199,61 +147,13 @@ def read_coding_first_b_disabled_only_acceptance(
 
 
 def _read_private_acceptance(path: Path) -> str | None:
-    return read_private_text(
-        path,
-        max_bytes=_MAX_ACCEPTANCE_BYTES,
-        error_type=CodingLegacyDisabledOnlyAcceptanceError,
-        directory_label="Disabled-only Product state directory",
-        file_label="Disabled-only Product acceptance",
-    )
+    return _acceptance_journal.read_private(path)
 
 
 def _write_private_acceptance(
     path: Path, record: CodingLegacyDisabledOnlyAcceptanceV1
 ) -> None:
-    payload = encode_jsonl_record(
-        record, record_codec=_CODEC, format_profile=SORTED_UNICODE_JSONL_FORMAT
-    )
-    publish_private_bytes(
-        path,
-        payload,
-        error_type=CodingLegacyDisabledOnlyAcceptanceError,
-        directory_label="Disabled-only Product state directory",
-    )
-
-
-def _require_empty_product_desired(path: Path) -> None:
-    try:
-        descriptor = os.open(
-            path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
-        )
-    except FileNotFoundError:
-        return
-    try:
-        metadata = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_nlink != 1
-            or metadata.st_uid != os.geteuid()
-            or stat.S_IMODE(metadata.st_mode) & 0o077
-            or metadata.st_size > 32 * 1024 * 1024
-        ):
-            raise CodingLegacyDisabledOnlyAcceptanceError(
-                "Product Desired State journal is unsafe"
-            )
-        with os.fdopen(descriptor, "rb", closefd=False) as handle:
-            raw = handle.read(32 * 1024 * 1024 + 1)
-        if len(raw) > 32 * 1024 * 1024 or (raw and not raw.endswith(b"\n")):
-            raise CodingLegacyDisabledOnlyAcceptanceError(
-                "Product Desired State journal is incomplete"
-            )
-        snapshot = decode_plugin_desired_state_snapshot(raw.decode("utf-8"), path=path)
-        if snapshot.inventory_revision != 0:
-            raise CodingLegacyDisabledOnlyAcceptanceError(
-                "Disabled-only adoption requires an untouched Product Desired State"
-            )
-    finally:
-        os.close(descriptor)
+    _acceptance_journal.publish(path, record)
 
 
 __all__ = [
