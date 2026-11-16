@@ -123,33 +123,7 @@ class WindowsStageRetirement:
                 yield None
                 return
             self.require_remaining_subset(stage, review, intent, acl)
-            parts = review.entrypoint.split("/")
-            parent = self.open_parent(stage, parts[:-1], review, acl)
-            if parent is not None:
-                descriptor, opened = parent
-                try:
-                    self.delete_file_if_present(
-                        descriptor,
-                        parts[-1],
-                        review.executable_identity,
-                        review.executable_digest,
-                        acl,
-                    )
-                finally:
-                    close_opened(opened)
-            for depth in range(len(parts) - 1, 0, -1):
-                prefix = parts[: depth - 1]
-                parent = self.open_parent(stage, prefix, review, acl)
-                if parent is None:
-                    continue
-                descriptor, opened = parent
-                try:
-                    identity = review.directory_identities[depth - 1][1]
-                    self.delete_directory_if_empty(
-                        descriptor, parts[depth - 1], identity, acl
-                    )
-                finally:
-                    close_opened(opened)
+            self.delete_payload_path(stage, review, acl, parent_owner=self)
             self.delete_file_if_present(
                 stage,
                 "worker-payload.json",
@@ -162,6 +136,49 @@ class WindowsStageRetirement:
                 expected_payload_size=review.executable_identity[3],
             )
             yield stage
+
+    def delete_payload_path(
+        self,
+        stage: int,
+        review: PartialStageProof,
+        acl: WindowsPrivateDirectoryAcl,
+        *,
+        parent_owner: WindowsStageRetirement | PartialWindowsStageRetirement,
+    ) -> None:
+        """Delete the reviewed executable then prune its directory chain.
+
+        Complete proofs bind the same parent chain as their entrypoint. The
+        caller has verified the remaining subset; its parent owner retains
+        the original complete/partial directory-error identity.
+        """
+        if review.entrypoint is not None:
+            assert review.executable_identity is not None
+            assert review.executable_digest is not None
+            parts = review.entrypoint.split("/")
+            parent = parent_owner.open_parent(stage, parts[:-1], review, acl)
+            if parent is not None:
+                descriptor, opened = parent
+                try:
+                    self.delete_file_if_present(
+                        descriptor,
+                        parts[-1],
+                        review.executable_identity,
+                        review.executable_digest,
+                        acl,
+                    )
+                finally:
+                    close_opened(opened)
+        for index in range(len(review.directory_identities) - 1, -1, -1):
+            path, identity = review.directory_identities[index]
+            parts = path.split("/")
+            parent = parent_owner.open_parent(stage, parts[:-1], review, acl)
+            if parent is None:
+                continue
+            descriptor, opened = parent
+            try:
+                self.delete_directory_if_empty(descriptor, parts[-1], identity, acl)
+            finally:
+                close_opened(opened)
 
     def open_parent(
         self,
@@ -207,10 +224,31 @@ class WindowsStageRetirement:
                 or payload_size != review.executable_identity[3]
             ):
                 raise self.error_type(self.error_prefix + "_marker_changed")
+        self.require_remaining_path(
+            stage,
+            review,
+            acl,
+            error_type=self.error_type,
+            error_prefix=self.error_prefix,
+            file_changed_suffix="payload_changed",
+        )
+
+    def require_remaining_path(
+        self,
+        stage: int,
+        review: PartialStageProof,
+        acl: WindowsPrivateDirectoryAcl,
+        *,
+        error_type: type[Exception],
+        error_prefix: str,
+        file_changed_suffix: str,
+    ) -> None:
+        """Check the validated directory chain without weakening marker policy."""
         current = stage
         opened: list[int] = []
         try:
-            for index, name in enumerate(parts[:-1]):
+            for index, (path, identity) in enumerate(review.directory_identities):
+                name = path.split("/")[-1]
                 if name not in windows_listdir_at(current):
                     return
                 child = open_windows_directory(
@@ -219,23 +257,39 @@ class WindowsStageRetirement:
                 opened.append(child)
                 if (
                     self.inspection.require_direct(child, acl, directory=True)[:2]
-                    != review.directory_identities[index][1][:2]
+                    != identity[:2]
                 ):
-                    raise self.error_type(self.error_prefix + "_directory_changed")
-                if not set(windows_listdir_at(child)) <= {parts[index + 1]}:
-                    raise self.error_type(self.error_prefix + "_extra_member")
-                current = child
-            if parts[-1] in windows_listdir_at(current):
-                body, identity = self.inspection.read_checked_file(
-                    current, parts[-1], acl, maximum_bytes=16 * 1024 * 1024
+                    raise error_type(error_prefix + "_directory_changed")
+                next_name = (
+                    review.directory_identities[index + 1][0].split("/")[-1]
+                    if index + 1 < len(review.directory_identities)
+                    else (
+                        review.entrypoint.split("/")[-1]
+                        if review.entrypoint is not None
+                        else None
+                    )
                 )
-                if (
-                    identity != review.executable_identity
-                    or sha256(body).hexdigest() != review.executable_digest
+                child_names = set(windows_listdir_at(child))
+                if (next_name is None and child_names) or (
+                    next_name is not None and not child_names <= {next_name}
                 ):
-                    raise self.error_type(self.error_prefix + "_payload_changed")
-            elif windows_listdir_at(current):
-                raise self.error_type(self.error_prefix + "_extra_member")
+                    raise error_type(error_prefix + "_extra_member")
+                current = child
+            if review.entrypoint is not None:
+                assert review.executable_identity is not None
+                assert review.executable_digest is not None
+                name = review.entrypoint.split("/")[-1]
+                if name in windows_listdir_at(current):
+                    raw, identity = self.inspection.read_checked_file(
+                        current, name, acl, maximum_bytes=16 * 1024 * 1024
+                    )
+                    if (
+                        identity != review.executable_identity
+                        or sha256(raw).hexdigest() != review.executable_digest
+                    ):
+                        raise error_type(error_prefix + "_" + file_changed_suffix)
+                elif windows_listdir_at(current):
+                    raise error_type(error_prefix + "_extra_member")
         finally:
             close_opened(opened)
 
@@ -375,36 +429,7 @@ class PartialWindowsStageRetirement:
                 yield None
                 return
             self.require_remaining_subset(stage, review, acl)
-            if review.entrypoint is not None:
-                assert review.executable_identity is not None
-                assert review.executable_digest is not None
-                parts = review.entrypoint.split("/")
-                parent = self.open_parent(stage, parts[:-1], review, acl)
-                if parent is not None:
-                    descriptor, opened = parent
-                    try:
-                        self.deletion.delete_file_if_present(
-                            descriptor,
-                            parts[-1],
-                            review.executable_identity,
-                            review.executable_digest,
-                            acl,
-                        )
-                    finally:
-                        close_opened(opened)
-            for index in range(len(review.directory_identities) - 1, -1, -1):
-                path, identity = review.directory_identities[index]
-                parts = path.split("/")
-                parent = self.open_parent(stage, parts[:-1], review, acl)
-                if parent is None:
-                    continue
-                descriptor, opened = parent
-                try:
-                    self.deletion.delete_directory_if_empty(
-                        descriptor, parts[-1], identity, acl
-                    )
-                finally:
-                    close_opened(opened)
+            self.deletion.delete_payload_path(stage, review, acl, parent_owner=self)
             yield stage
 
     def open_parent(
@@ -446,53 +471,11 @@ class PartialWindowsStageRetirement:
             or (first_name is not None and not names <= {first_name.split("/")[0]})
         ):
             raise self.error_type(self.error_prefix + "_extra_member")
-        current = stage
-        opened: list[int] = []
-        try:
-            for index, (path, identity) in enumerate(review.directory_identities):
-                name = path.split("/")[-1]
-                if name not in windows_listdir_at(current):
-                    return
-                child = open_windows_directory(
-                    name, dir_fd=current, share_delete=False, read_control=True
-                )
-                opened.append(child)
-                if (
-                    self.deletion.inspection.require_direct(child, acl, directory=True)[
-                        :2
-                    ]
-                    != identity[:2]
-                ):
-                    raise self.error_type(self.error_prefix + "_directory_changed")
-                next_name = (
-                    review.directory_identities[index + 1][0].split("/")[-1]
-                    if index + 1 < len(review.directory_identities)
-                    else (
-                        review.entrypoint.split("/")[-1]
-                        if review.entrypoint is not None
-                        else None
-                    )
-                )
-                child_names = set(windows_listdir_at(child))
-                if (next_name is None and child_names) or (
-                    next_name is not None and not child_names <= {next_name}
-                ):
-                    raise self.error_type(self.error_prefix + "_extra_member")
-                current = child
-            if review.entrypoint is not None:
-                assert review.executable_identity is not None
-                assert review.executable_digest is not None
-                name = review.entrypoint.split("/")[-1]
-                if name in windows_listdir_at(current):
-                    raw, identity = self.deletion.inspection.read_checked_file(
-                        current, name, acl, maximum_bytes=16 * 1024 * 1024
-                    )
-                    if (
-                        identity != review.executable_identity
-                        or sha256(raw).hexdigest() != review.executable_digest
-                    ):
-                        raise self.error_type(self.error_prefix + "_file_changed")
-                elif windows_listdir_at(current):
-                    raise self.error_type(self.error_prefix + "_extra_member")
-        finally:
-            close_opened(opened)
+        self.deletion.require_remaining_path(
+            stage,
+            review,
+            acl,
+            error_type=self.error_type,
+            error_prefix=self.error_prefix,
+            file_changed_suffix="file_changed",
+        )
