@@ -14,7 +14,15 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, ThinkingPart, ToolCall, Usage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ThinkingPart,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 from loushang.apphost import (
     SessionBindingKeyV1,
     SessionCreateIntentV1,
@@ -1181,6 +1189,28 @@ def test_hosted_business_choice_finishes_turn_and_survives_until_next_input(tmp_
             assert prompt.question == "Choose a direction"
             assert [item.id for item in prompt.options] == ["a", "b"]
             assert (await hosted.snapshot_execution()).source.user_choice == prompt
+            path = binding.control.session_manager.session_file
+            assert path is not None
+            durable_bytes = path.read_bytes()
+            history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+            reopened = CodingHostedHistoryBindingV1(binding.identity, history)
+            assert reopened.control is None
+            assert reopened.project_snapshot().user_choice == prompt
+            result, = (entry.payload for entry in history.selected_records
+                       if isinstance(entry.payload, ToolResultMessage))
+            assert result.details == {"kind": "coding.user_choice/v1", "questionId": prompt.question_id}
+            assert result.terminate and not result.is_error
+            assert path.read_bytes() == durable_bytes and sent == ["user"]
+            original_input = next(entry for entry in history.selected_records
+                                  if isinstance(entry.payload, UserMessage))
+            earlier = read_coding_resume_snapshot(
+                path, max_bytes=1024 * 1024, selected_leaf_id=original_input.record_id,
+            )
+            assert result in [entry.payload for entry in earlier.records]
+            other_branch = CodingHostedHistoryBindingV1(binding.identity, earlier)
+            assert other_branch.project_snapshot().user_choice is None
+            await other_branch.close()
+            await reopened.close()
             isolated = tmp_path / "isolated"
             isolated.mkdir()
             other = CodingHostedExecutionSessionV1(await _binding(isolated))
@@ -1195,6 +1225,11 @@ def test_hosted_business_choice_finishes_turn_and_survives_until_next_input(tmp_
             assert snapshot.identity == binding.identity
             assert snapshot.user_choice is None
             assert any(row.text == "Choose b: Rewrite." for row in snapshot.records)
+            answered = CodingHostedHistoryBindingV1(
+                binding.identity, read_coding_resume_snapshot(path, max_bytes=1024 * 1024),
+            )
+            assert answered.project_snapshot().user_choice is None
+            await answered.close()
         finally:
             await hosted.close()
 
