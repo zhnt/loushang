@@ -31,6 +31,7 @@ from loushang.appserver.execution.model import (
     ExecutionStateV1,
     ExecutionStatusV1,
     ExecutionUpdateV1,
+    InteractiveGoalCommandV1,
     InteractiveGoalViewV1,
 )
 from loushang.appserver.protocol import (
@@ -62,12 +63,29 @@ def test_closed_execution_call_round_trip(operation):
         execution_id="execution" if operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS} else None,
         text="没有输出的命令" if operation is ExecutionOperationV1.SUBMIT else None,
         goal_target="目标" if operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE else None,
+        goal_command=InteractiveGoalCommandV1("goal", "command", "step")
+        if operation is ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND else None,
         resume_query=ResumeInputLookupQueryV1("input-1", "a" * 64)
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP else None,
     )
     assert decode_call(encode_call(call)) == call
     raw = json.loads(encode_call(call))
     raw["payload"]["unspecified"] = True
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("goalId", "../private"), ("commandId", "bad id"), ("action", "accept"),
+    ("workId", "arbitrary"), ("goalTarget", "unrelated"), ("script", "arbitrary"),
+])
+def test_interactive_goal_command_has_closed_identity_and_action(field, value):
+    call = ExecutionCallV1(
+        "1", ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND, CONTROL, "instance",
+        goal_command=InteractiveGoalCommandV1("goal", "command", "pause"),
+    )
+    raw = json.loads(encode_call(call))
+    raw["payload"][field] = value
     with pytest.raises(InvalidAppMessageError):
         decode_call(json.dumps(raw).encode())
 

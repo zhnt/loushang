@@ -40,6 +40,8 @@ from .model import (
     ExecutionSourceSnapshotV1,
     ExecutionStateV1,
     ExecutionUpdateV1,
+    InteractiveGoalCommandV1,
+    InteractiveGoalCommandViewV1,
     InteractiveGoalViewV1,
     _identifier,
 )
@@ -71,6 +73,8 @@ _FIELDS: dict[type, tuple[str, ...]] = {
         "execution_id", "presence", "goal_id", "status", "reason_code", "validity",
         "execution_unresolved", "advances", "model_calls", "batch_count", "batches",
     ),
+    InteractiveGoalCommandV1: ("goal_id", "command_id", "action"),
+    InteractiveGoalCommandViewV1: ("command_id", "action", "status"),
     InteractiveGoalViewV1: ("availability", "goal_id", "status", "revision", "epoch", "execution_unresolved"),
     ExecutionSessionViewV1: ("identity", "revision", "quiescent", "active", "latest_terminal"),
     ExecutionSessionSnapshotV1: ("service_instance_id", "source", "executions"),
@@ -79,7 +83,11 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ExecutionEventsV1: ("events",),
     ExecutionInterruptResultV1: ("record", "disposition"),
 }
-_GOAL_CAPABILITIES = ("supports_goal_progress", "supports_goal_start", "supports_interactive_goal")
+_GOAL_CAPABILITIES = (
+    "supports_goal_progress", "supports_goal_start", "supports_interactive_goal",
+    "supports_interactive_goal_commands",
+)
+_GOAL_COMMAND_KEYS = {"goalId", "commandId", "action"}
 
 _KINDS: dict[str, type] = {
     "resume_input_lookup": ResumeInputLookupResultV1,
@@ -117,6 +125,8 @@ def _encode(value: object) -> object:
         for flag in _GOAL_CAPABILITIES:
             if getattr(value, flag):
                 encoded[_camel(flag)] = True
+    if type(value) is InteractiveGoalViewV1 and value.command is not None:
+        encoded["command"] = _encode(value.command)
     return encoded
 
 
@@ -155,6 +165,8 @@ def _decode(expected: object, raw: object) -> object:
         wire_fields.update({"submissionMode", "userChoice"} & raw.keys())
     if expected is ExecutionSessionSnapshotV1 and type(raw) is dict:
         wire_fields.update(_camel(flag) for flag in _GOAL_CAPABILITIES if _camel(flag) in raw)
+    if expected is InteractiveGoalViewV1 and type(raw) is dict and "command" in raw:
+        wire_fields.add("command")
     value = _object(raw, wire_fields)
     annotations = get_type_hints(expected)
     values = {
@@ -178,6 +190,8 @@ def _decode(expected: object, raw: object) -> object:
                 if value[field] is not True:
                     raise InvalidAppMessageError()
                 values[flag] = True
+    if expected is InteractiveGoalViewV1 and "command" in value:
+        values["command"] = _decode(InteractiveGoalCommandViewV1, value["command"])
     return expected(**values)
 
 
@@ -197,6 +211,9 @@ def encode_call(call: ExecutionCallV1) -> bytes:
         body["executionId"] = call.execution_id
     if call.goal_target is not None:
         body["goalTarget"] = call.goal_target
+    if call.goal_command is not None:
+        body.update(goalId=call.goal_command.goal_id, commandId=call.goal_command.command_id,
+                    action=call.goal_command.action)
     if call.include_goal_batches:
         body["includeBatches"] = True
     if call.text is not None:
@@ -228,6 +245,8 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             fields.add("text")
         if operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE:
             fields.add("goalTarget")
+        if operation is ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND:
+            fields.update(_GOAL_COMMAND_KEYS)
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP:
             fields.add("resumeQuery")
         raw = root["payload"]
@@ -250,6 +269,9 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             if "resumeQuery" in fields else None,
             include_goal_batches=include_batches,
             goal_target=_string(body["goalTarget"]) if "goalTarget" in fields else None,
+            goal_command=cast(InteractiveGoalCommandV1, _decode(
+                InteractiveGoalCommandV1, {key: body[key] for key in _GOAL_COMMAND_KEYS},
+            )) if operation is ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND else None,
         )
     except (TypeError, ValueError, KeyError, RecursionError):
         raise InvalidAppMessageError() from None

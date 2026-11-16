@@ -47,6 +47,24 @@ pub struct LiveEventRound {
     pub sessions: Vec<serde_json::Value>,
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractiveGoalAction {
+    Run,
+    Step,
+    Pause,
+    Resume,
+    Cancel,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InteractiveGoalCommand {
+    pub goal_id: String,
+    pub command_id: String,
+    pub action: InteractiveGoalAction,
+}
+
 pub enum ControlCommand {
     CreateSession {
         source_session_id: Option<String>,
@@ -82,6 +100,11 @@ pub enum ControlCommand {
     },
     ReadInteractiveGoalStatus {
         session_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    ControlInteractiveGoal {
+        session_id: String,
+        command: InteractiveGoalCommand,
         reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
     },
     ObserveGoalProgress {
@@ -639,6 +662,17 @@ fn process_controls<R: Read, W: Write>(
             }
             ControlCommand::ReadInteractiveGoalStatus { session_id, reply } => {
                 let result = authority.interactive_goal(channel, &session_id, None, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ControlInteractiveGoal {
+                session_id,
+                command,
+                reply,
+            } => {
+                let result =
+                    authority.control_interactive_goal(channel, &session_id, command, &request_id);
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

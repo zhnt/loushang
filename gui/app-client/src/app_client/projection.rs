@@ -300,6 +300,12 @@ struct Snapshot {
         deserialize_with = "present"
     )]
     supports_interactive_goal: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    supports_interactive_goal_commands: Option<bool>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -357,6 +363,9 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
             || e.result.supports_goal_progress == Some(false)
             || e.result.supports_goal_start == Some(false)
             || e.result.supports_interactive_goal == Some(false)
+            || e.result.supports_interactive_goal_commands == Some(false)
+            || (e.result.supports_interactive_goal_commands == Some(true)
+                && e.result.supports_interactive_goal != Some(true))
             || !identifier(&e.result.service_instance_id, 128)
             || !s.identity.valid()
             || s.user_choice.as_ref().is_some_and(|choice| !choice.valid())
@@ -550,6 +559,28 @@ impl GoalProgress {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GoalCommandObservation {
+    command_id: String,
+    action: String,
+    status: String,
+}
+
+impl GoalCommandObservation {
+    fn valid(&self) -> bool {
+        identifier(&self.command_id, 128)
+            && match self.status.as_str() {
+                "running" => ["run", "step", "resume"].contains(&self.action.as_str()),
+                "settling" => ["pause", "cancel"].contains(&self.action.as_str()),
+                "finished" | "failed" | "unknown" => {
+                    ["run", "step", "resume", "pause", "cancel"].contains(&self.action.as_str())
+                }
+                _ => false,
+            }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InteractiveGoal {
     availability: String,
     goal_id: Box<RawValue>,
@@ -557,6 +588,12 @@ struct InteractiveGoal {
     revision: Box<RawValue>,
     epoch: Box<RawValue>,
     execution_unresolved: Box<RawValue>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    command: Option<GoalCommandObservation>,
 }
 
 impl InteractiveGoal {
@@ -585,6 +622,10 @@ impl InteractiveGoal {
                         count.is_some_and(|value| (1..=9_007_199_254_740_991).contains(&value))
                     })
                     && unresolved.is_some()
+                    && self
+                        .command
+                        .as_ref()
+                        .is_none_or(GoalCommandObservation::valid)
             }
             "ready" | "not_ready" | "creating" | "historical" | "cleanup_pending" => {
                 goal_id.is_none()
@@ -592,6 +633,7 @@ impl InteractiveGoal {
                     && revision.is_none()
                     && epoch.is_none()
                     && unresolved.is_none()
+                    && self.command.is_none()
             }
             _ => false,
         })

@@ -226,6 +226,12 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       const result = await invoke<unknown>("live_interactive_goal_create", { input });
       return result === null ? null : validateInteractiveGoal(result);
     },
+    async controlInteractiveGoal(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_command", { input });
+      return result === null ? null : validateInteractiveGoal(result);
+    },
     async interactiveGoalStatus(input) {
       const source = current;
       if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
@@ -341,9 +347,10 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
   const sessions = root.sessions.map((raw, index) => {
     const session = object(raw);
     if (identifier(session.serviceInstanceId) !== serviceInstanceId) throw new Error("instance");
-    for (const key of ["supportsGoalProgress", "supportsGoalStart", "supportsInteractiveGoal"]) {
+    for (const key of ["supportsGoalProgress", "supportsGoalStart", "supportsInteractiveGoal", "supportsInteractiveGoalCommands"]) {
       if (key in session && session[key] !== true) throw new Error("Goal capability");
     }
+    if (session.supportsInteractiveGoalCommands && !session.supportsInteractiveGoal) throw new Error("interactive Goal capability");
     const source = object(session.source);
     const sourceSnapshot = object(source.source);
     if ("submissionMode" in sourceSnapshot && sourceSnapshot.submissionMode !== "execution") {
@@ -581,6 +588,7 @@ function projectSession(
     supportsGoalProgress: snapshot.supportsGoalProgress,
     supportsGoalStart: snapshot.supportsGoalStart,
     supportsInteractiveGoal: snapshot.supportsInteractiveGoal,
+    supportsInteractiveGoalCommands: snapshot.supportsInteractiveGoalCommands,
     pendingApprovals: snapshot.pendingApprovals ?? [],
     userChoice: source.userChoice,
     documents: [],

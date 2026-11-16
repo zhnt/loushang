@@ -3,8 +3,8 @@ mod live_view;
 mod service;
 use crate::{
     definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlCommand,
-    ControlResult, CreateSessionResult, ModelControlResult, WorkspaceInfo, WorkspaceRequest,
-    WorkspaceResult,
+    ControlResult, CreateSessionResult, InteractiveGoalCommand, ModelControlResult, WorkspaceInfo,
+    WorkspaceRequest, WorkspaceResult,
 };
 use live_view::{Target, View};
 use rusqlite::{params, Connection};
@@ -636,6 +636,27 @@ fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
             }
             let result = view.control(Some(instance), |reply| {
                 ControlCommand::interactive_goal(session_id, target, reply)
+            })?;
+            Ok(json!(result))
+        }
+        "interactive-goal-command" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let epoch = field(input, "connectionEpoch")?;
+            if input.as_object().map(|object| object.len()) != Some(6) {
+                return Err("invalid_request".into());
+            }
+            let command = serde_json::from_value::<InteractiveGoalCommand>(json!({
+                "goalId": input["goalId"], "commandId": input["commandId"], "action": input["action"],
+            })).map_err(|_| "invalid_request")?;
+            if epoch != view.epoch.to_string() {
+                return Ok(Value::Null);
+            }
+            let result = view.control(Some(instance), |reply| {
+                ControlCommand::ControlInteractiveGoal {
+                    session_id,
+                    command,
+                    reply,
+                }
             })?;
             Ok(json!(result))
         }

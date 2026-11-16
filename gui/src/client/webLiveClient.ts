@@ -119,6 +119,12 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       const result = await call<unknown>("interactive-goal-create", input);
       return result === null ? null : validateInteractiveGoal(result);
     },
+    async controlInteractiveGoal(input) {
+      const source = current?.source.kind === "live" ? current.source : null;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await call<unknown>("interactive-goal-command", input);
+      return result === null ? null : validateInteractiveGoal(result);
+    },
     async interactiveGoalStatus(input) {
       const source = current?.source.kind === "live" ? current.source : null;
       if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;

@@ -1067,3 +1067,64 @@ describe("Interactive development goal", () => {
     expect(createInteractiveGoal).toHaveBeenCalledTimes(1);
   });
 });
+
+it("reconciles a Goal command by identity and distinguishes pause from cancellation settlement", async () => {
+  const seed = await createMockAppClient().snapshot();
+  const session = {
+    ...seed.sessions[0], status: "idle" as const, execution: null,
+    supportsInteractiveGoal: true as const, supportsInteractiveGoalCommands: true as const,
+  };
+  const initial: ClientSnapshot = {
+    ...seed, sessions: [session], selectedSessionId: session.id, connection: "connected",
+    source: { kind: "live", serviceInstanceId: "goal-host", muxSpaceId: "goal-mux", connectionEpoch: "1" },
+  };
+  type Status = NonNullable<HarnessClientUiPort["interactiveGoalStatus"]>;
+  type Control = NonNullable<HarnessClientUiPort["controlInteractiveGoal"]>;
+  let observed: Awaited<ReturnType<Status>> = {
+    availability: "present", goalId: "original-goal", status: "active", revision: 1, epoch: 1, executionUnresolved: false,
+  };
+  const interactiveGoalStatus = vi.fn<Status>().mockImplementation(async () => observed);
+  const controlInteractiveGoal = vi.fn<Control>().mockImplementation(async (input) => {
+    if (input.action === "run") {
+      observed = { ...observed!, command: { commandId: input.commandId, action: "run", status: "running" } };
+      throw new Error("Lost reply");
+    }
+    if (input.action === "pause") {
+      return observed = {
+        ...observed!, status: "paused", revision: 2,
+        command: { commandId: input.commandId, action: "pause", status: "settling" },
+      };
+    }
+    return observed = {
+      ...observed!, command: { commandId: input.commandId, action: "cancel", status: "settling" },
+    };
+  });
+  const client: HarnessClientUiPort = {
+    snapshot: async () => initial,
+    subscribe: () => () => {},
+    createInteractiveGoal: async () => null,
+    interactiveGoalStatus, controlInteractiveGoal,
+    submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+    interrupt: async () => ({ accepted: false }),
+  };
+  render(<HarnessGui client={client} />);
+  const goal = within(await screen.findByRole("region", { name: "Development goal" }));
+  const run = await goal.findByRole("button", { name: /^Run$/ });
+  act(() => { fireEvent.click(run); fireEvent.click(run); });
+  expect(await goal.findByText("Goal command running")).toBeVisible();
+  expect(controlInteractiveGoal).toHaveBeenCalledExactlyOnceWith({
+    goalId: "original-goal", commandId: expect.stringMatching(/^gui-/), action: "run",
+    sessionId: session.id, serviceInstanceId: "goal-host", connectionEpoch: "1",
+  });
+  expect(goal.queryByRole("button", { name: "Step" })).not.toBeInTheDocument();
+
+  fireEvent.click(goal.getByRole("button", { name: /^Pause$/ }));
+  expect(await goal.findByText("Paused. Waiting for current Work to settle.")).toBeVisible();
+  expect(goal.queryByRole("button", { name: "Resume" })).not.toBeInTheDocument();
+  fireEvent.click(goal.getByRole("button", { name: "Cancel execution" }));
+  expect(await goal.findByText("Cancellation requested. Waiting for current Work to settle.")).toBeVisible();
+  observed = { ...observed!, command: { ...observed!.command!, status: "finished" } };
+  fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
+  expect(await goal.findByRole("button", { name: "Resume" })).toBeEnabled();
+  expect(controlInteractiveGoal).toHaveBeenCalledTimes(3);
+});

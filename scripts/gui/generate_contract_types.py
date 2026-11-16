@@ -155,6 +155,12 @@ def generate() -> dict[str, str]:
                 '    #[serde(rename = "userChoice", skip_serializing_if = "Option::is_none")]',
                 "    pub user_choice: Option<UserChoicePromptV1>,",
             ])
+        if cls.__name__ == "InteractiveGoalViewV1":
+            ts.append("  readonly command?: InteractiveGoalCommandViewV1;")
+            rs.extend([
+                '    #[serde(skip_serializing_if = "Option::is_none")]',
+                "    pub command: Option<InteractiveGoalCommandViewV1>,",
+            ])
         if cls.__name__ == "ExecutionSessionSnapshotV1":
             for flag in execution._GOAL_CAPABILITIES:
                 field = execution._camel(flag)
