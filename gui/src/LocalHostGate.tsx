@@ -7,7 +7,7 @@ import { nativeLiveAvailable } from "./client/nativeLiveClient";
 import type { ConnectionState, HarnessClientUiPort } from "./client/model";
 import { useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
-import { createWebLiveClient } from "./client/webLiveClient";
+import { createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
 import { TEMPORARY_WORKSPACE, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
 import { TrayHostDialog } from "./TrayHostDialog";
@@ -46,7 +46,7 @@ export default function LocalHostGate() {
   const [workspacePending, setWorkspacePending] = useState(false);
   const [selection, setSelection] = useState<{ workspace: string; id: string } | null>(null);
   const workspaceEpoch = useRef(0);
-  const workspaceClients = useRef(new Map<string, HarnessClientUiPort>());
+  const workspaceClients = useRef(new Map<string, WebLiveClient>());
   const workspaceMutation = useRef(false);
   const folderPicker = useRef(false);
 
@@ -77,7 +77,12 @@ export default function LocalHostGate() {
     setWorkspacePending(true);
     setWorkspaceError(false);
     const epoch = ++workspaceEpoch.current;
+    let resume: (() => void) | undefined;
     try {
+      const destination = request.path ?? TEMPORARY_WORKSPACE;
+      if (request.action === "create-chat" && destination === workspace) {
+        resume = await workspaceClients.current.get(destination)?.suspend();
+      }
       const result = await webRequest<{ workspace: string; sessionId: string }>({ operation: "workspace", ...request }, connectionId.current);
       if (epoch !== workspaceEpoch.current) return false;
       if (request.action === "register") setFolderInput(false);
@@ -88,6 +93,7 @@ export default function LocalHostGate() {
       if (epoch === workspaceEpoch.current) setWorkspaceError(true);
       return false;
     } finally {
+      resume?.();
       workspaceMutation.current = false;
       setWorkspacePending(false);
     }

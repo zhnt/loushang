@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { ApprovalResponses } from "./approvalResponses";
 import { thinkingLevels, type ThinkingLevel } from "./model";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -13,6 +14,8 @@ import type {
   ClientEvent,
   ClientSnapshot,
   ConversationMessage,
+  ControlReceipt,
+  PendingApproval,
   ExecutionProjection,
   HarnessClientUiPort,
   SessionSnapshot,
@@ -23,7 +26,11 @@ interface NativeInitialSnapshot {
   readonly connectionEpoch: string;
   readonly serviceInstanceId: string;
   readonly muxSpace: MuxSpaceV1;
-  readonly sessions: readonly ExecutionSessionSnapshotV1[];
+  readonly sessions: readonly NativeSessionSnapshot[];
+}
+
+interface NativeSessionSnapshot extends ExecutionSessionSnapshotV1 {
+  readonly pendingApprovals?: readonly PendingApproval[];
 }
 
 interface NativeMemberEvents {
@@ -73,7 +80,14 @@ export function createNativeLiveClient(): HarnessClientUiPort {
   const snapshotListeners = new Set<(snapshot: ClientSnapshot) => void>();
   const connectionListeners = new Set<(state: "disconnected" | "resync-required") => void>();
 
+  const publish = (value: ClientSnapshot) => {
+    for (const listener of snapshotListeners) listener(value);
+  };
+  const approvals = new ApprovalResponses(publish);
+
   const notifyConnection = (state: "disconnected" | "resync-required") => {
+    approvals.disconnected();
+    current = null;
     for (const listener of connectionListeners) listener(state);
   };
 
@@ -90,8 +104,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       session.executions.revision,
     ]));
     if (deliveredInitial) {
-      const projected = projectSnapshot(next);
-      for (const listener of snapshotListeners) listener(projected);
+      publish(approvals.project(projectSnapshot(next)));
     } else {
       resolveInitial(next);
     }
@@ -114,8 +127,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       sequence = next.sequence;
       contentCursors = next.contentCursors;
       executionRevisions = next.executionRevisions;
-      const projected = projectSnapshot(next.snapshot);
-      for (const listener of snapshotListeners) listener(projected);
+      if (deliveredInitial) publish(approvals.project(projectSnapshot(next.snapshot)));
     } catch {
       notifyConnection("resync-required");
     }
@@ -167,7 +179,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       await ensureStarted();
       if (current) {
         deliveredInitial = true;
-        return projectSnapshot(current);
+        return approvals.project(projectSnapshot(current));
       }
       let timer = 0;
       const timeout = new Promise<never>((_resolve, reject) => {
@@ -177,11 +189,12 @@ export function createNativeLiveClient(): HarnessClientUiPort {
         );
       });
       try {
-        const snapshot = await Promise.race([initial, timeout]);
+        await Promise.race([initial, timeout]);
         deliveredInitial = true;
         // A round or reconnect can arrive between resolving the first snapshot
         // and this continuation. Never overwrite that newer accepted state.
-        return projectSnapshot(current ?? snapshot);
+        if (!current) throw new Error("The native live connection changed.");
+        return approvals.project(projectSnapshot(current));
       } finally {
         window.clearTimeout(timer);
       }
@@ -199,6 +212,8 @@ export function createNativeLiveClient(): HarnessClientUiPort {
     },
     async requestResync() {
       await ensureStarted();
+      approvals.disconnected();
+      current = null;
       await invoke("resync_live_connection");
     },
     async submitText(input) {
@@ -209,6 +224,13 @@ export function createNativeLiveClient(): HarnessClientUiPort {
         executionId: receipt.executionId ?? undefined,
         reason: receipt.reason ?? undefined,
       };
+    },
+    respondInteraction(sessionId, interactionId, outcome) {
+      return approvals.respond(sessionId, interactionId, (connectionEpoch) =>
+        invoke<ControlReceipt>("live_respond_interaction", {
+          input: { sessionId, interactionId, outcome, connectionEpoch },
+        }),
+      );
     },
     async interrupt(sessionId) {
       const executionId = current
@@ -317,7 +339,10 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
     const latestTerminal = executions.latestTerminal === null ? null : validateExecutionState(executions.latestTerminal);
     if (active && TERMINAL_EXECUTION_STATUSES.has(active.status)) throw new Error("active execution");
     if (latestTerminal && !TERMINAL_EXECUTION_STATUSES.has(latestTerminal.status)) throw new Error("terminal execution");
-    return raw as ExecutionSessionSnapshotV1;
+    return {
+      ...raw as ExecutionSessionSnapshotV1,
+      pendingApprovals: validatePendingApprovals(session.pendingApprovals, sourceIdentity.sessionId),
+    };
   });
   return {
     connectionEpoch,
@@ -402,6 +427,19 @@ function validateEventRound(
   return { snapshot, sequence, contentCursors, executionRevisions };
 }
 
+function validatePendingApprovals(value: unknown, sessionId: string): PendingApproval[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 16) throw new Error("pending approvals");
+  const ids = new Set<string>();
+  return value.map((raw) => {
+    const item = object(raw);
+    const interactionId = identifier(item.interactionId);
+    if (ids.has(interactionId)) throw new Error("duplicate approval");
+    ids.add(interactionId);
+    return { sessionId, interactionId, text: text(item.text, 262_144), status: "pending" };
+  });
+}
+
 function validateConnectionState(value: unknown): NativeConnectionState {
   const root = object(value);
   const state = root.state;
@@ -454,7 +492,7 @@ export function projectNativeEventRound(initial: unknown, round: unknown): Clien
 
 function projectSession(
   initial: NativeInitialSnapshot,
-  snapshot: ExecutionSessionSnapshotV1,
+  snapshot: NativeSessionSnapshot,
   memberId: string,
   memberIndex: number,
 ): SessionSnapshot {
@@ -501,6 +539,7 @@ function projectSession(
     },
     messages,
     execution: projectExecution(snapshot),
+    pendingApprovals: snapshot.pendingApprovals ?? [],
     documents: [],
     run: null,
     changeSet: null,

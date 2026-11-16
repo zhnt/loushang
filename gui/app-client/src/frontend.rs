@@ -1,13 +1,16 @@
 //! Browser and desktop requests use the same AppServer client.
+mod live_view;
 mod service;
 use crate::{
     AppClient, AppTarget, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
     ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
 };
+use live_view::{Target, View};
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     num::NonZeroU16,
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
@@ -24,6 +27,8 @@ pub struct Backend {
     root: PathBuf,
     tunnel: Option<(PathBuf, NonZeroU16)>,
     requests: Arc<Mutex<()>>,
+    views: Arc<Mutex<HashMap<String, View>>>,
+    next_view_epoch: Arc<Mutex<u64>>,
     manager: Option<PathBuf>,
     managed_record: Arc<Mutex<Option<PathBuf>>>,
 }
@@ -34,6 +39,8 @@ impl Backend {
             root,
             tunnel: None,
             requests: Arc::new(Mutex::new(())),
+            views: Arc::default(),
+            next_view_epoch: Arc::default(),
             manager: None,
             managed_record: Arc::new(Mutex::new(None)),
         }
@@ -49,6 +56,8 @@ impl Backend {
             tunnel: Some((root.clone(), port)),
             root,
             requests: self.requests.clone(),
+            views: self.views.clone(),
+            next_view_epoch: self.next_view_epoch.clone(),
             manager: None,
             managed_record: Arc::new(Mutex::new(None)),
         }
@@ -76,8 +85,15 @@ impl Backend {
     }
 
     fn host_request(&self, operation: &str, request: &Value) -> Result<Value> {
-        let configured_record = if self.tunnel.is_none() { self.record_root()? } else { None };
-        let manager = self.manager.as_deref().filter(|_| configured_record.is_none());
+        let configured_record = if self.tunnel.is_none() {
+            self.record_root()?
+        } else {
+            None
+        };
+        let manager = self
+            .manager
+            .as_deref()
+            .filter(|_| configured_record.is_none());
         if let (Some(manager), "manage") = (manager, operation) {
             return self.manage_service(manager, request);
         }
@@ -90,7 +106,11 @@ impl Backend {
         } else {
             record_root = match configured_record {
                 Some(path) => Some(path),
-                None => self.managed_record.lock().map_err(|_| "host_unavailable")?.clone(),
+                None => self
+                    .managed_record
+                    .lock()
+                    .map_err(|_| "host_unavailable")?
+                    .clone(),
             };
             record_root.as_deref().map(AppTarget::Local)
         };
@@ -101,11 +121,65 @@ impl Backend {
             })),
             "manage" => status(target, field(request, "action")?),
             "workspace" => self.workspace(target.ok_or("not_connected")?, request),
-            "live" => live_request(target.ok_or("not_connected")?, request),
+            "live" => self.live(target.ok_or("not_connected")?, request),
             _ => Err("unknown_operation".into()),
         }
     }
 
+    fn live(&self, target: AppTarget<'_>, request: &Value) -> Result<Value> {
+        let id = field(request, "viewId")?;
+        if id.len() != 36
+            || !id
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+        {
+            return Err("invalid_request".into());
+        }
+        let path = field(request, "workspace")?;
+        let action = field(request, "action")?;
+        let identity = Target::from(target);
+        let mut views = self.views.lock().map_err(|_| "host_unavailable")?;
+        views.retain(|_, view| view.active());
+        if views
+            .get(id)
+            .is_some_and(|view| view.target != identity || view.path != path)
+        {
+            return Err("invalid_request".into());
+        }
+        if action == "close" {
+            views.remove(id);
+            return Ok(json!({}));
+        }
+        if matches!(action, "snapshot" | "find-submission") && !views.contains_key(id) {
+            if views.len() >= 16 {
+                return Err("connection_failed".into());
+            }
+            let workspace = if path == TEMPORARY {
+                None
+            } else {
+                Some(open_workspace(target, path)?)
+            };
+            let mux = workspace
+                .as_ref()
+                .map_or_else(|| TEMPORARY_MUX.into(), |item| mux_name(&item.path));
+            let epoch = {
+                let mut counter = self
+                    .next_view_epoch
+                    .lock()
+                    .map_err(|_| "host_unavailable")?;
+                *counter = counter.checked_add(1).ok_or("host_unavailable")?;
+                *counter
+            };
+            let view = View::open(identity, path.to_owned(), workspace, mux, epoch)?;
+            views.insert(id.to_owned(), view);
+        }
+        let view = views.get(id).ok_or("connection_failed")?;
+        match action {
+            "snapshot" => view.snapshot(),
+            "create" => created(view.control(None, create_command(&request["input"])?)?),
+            _ => session_control(view, action, &request["input"]),
+        }
+    }
 
     fn manage_service(&self, manager: &std::path::Path, request: &Value) -> Result<Value> {
         let (action, instance) = match field(request, "action")? {
@@ -113,7 +187,11 @@ impl Backend {
             "start" => ("start", None),
             action @ ("stop" | "restart") => {
                 let instance = field(request, "instanceId")?;
-                if instance.len() != 32 || !instance.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+                if instance.len() != 32
+                    || !instance
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                {
                     return Err("invalid_request".into());
                 }
                 (action, Some(instance))
@@ -129,7 +207,10 @@ impl Backend {
             return Ok(error(&code));
         }
         if reply.state != "running" {
-            if !matches!(reply.state.as_str(), "not_running" | "starting" | "stopping" | "exited" | "unknown") {
+            if !matches!(
+                reply.state.as_str(),
+                "not_running" | "starting" | "stopping" | "exited" | "unknown"
+            ) {
                 return Ok(error("management_unconfirmed"));
             }
             *self.managed_record.lock().map_err(|_| "host_unavailable")? = None;
@@ -143,12 +224,17 @@ impl Backend {
             Ok(instance) => instance,
             Err(()) => return Ok(error(client.failure_code())),
         };
-        if reply.service_instance_id.is_some_and(|expected| expected != service_instance) {
+        if reply
+            .service_instance_id
+            .is_some_and(|expected| expected != service_instance)
+        {
             return Ok(error("instance_changed"));
         }
         *self.managed_record.lock().map_err(|_| "host_unavailable")? = Some(root);
-        Ok(json!({"state":"running", "errorCode":null, "manageable":true,
-                  "instanceId":reply.instance_id, "serviceInstanceId":service_instance}))
+        Ok(
+            json!({"state":"running", "errorCode":null, "manageable":true,
+                  "instanceId":reply.instance_id, "serviceInstanceId":service_instance}),
+        )
     }
 
     fn record_root(&self) -> Result<Option<PathBuf>> {
@@ -431,19 +517,32 @@ fn create(
     workspace: Option<&WorkspaceInfo>,
     input: &Value,
 ) -> Result<Value> {
+    created(control(
+        options(target, mux, workspace),
+        create_command(input)?,
+    )?)
+}
+
+fn create_command(
+    input: &Value,
+) -> Result<
+    impl FnOnce(mpsc::SyncSender<std::result::Result<CreateSessionResult, ()>>) -> ControlCommand,
+> {
     let title = field(input, "title")?.to_owned();
     let mut entropy = [0_u8; 16];
     getrandom::getrandom(&mut entropy).map_err(|_| "host_unavailable")?;
     let continuity_id = entropy.iter().map(|byte| format!("{byte:02x}")).collect();
     let source_session_id = input["sourceSessionId"].as_str().map(str::to_owned);
-    match control(options(target, mux, workspace), |reply| {
-        ControlCommand::CreateSession {
-            source_session_id,
-            continuity_id,
-            title,
-            reply,
-        }
-    })? {
+    Ok(move |reply| ControlCommand::CreateSession {
+        source_session_id,
+        continuity_id,
+        title,
+        reply,
+    })
+}
+
+fn created(result: CreateSessionResult) -> Result<Value> {
+    match result {
         CreateSessionResult::Accepted(session_id) => {
             Ok(json!({"sessionId":session_id, "accepted":true}))
         }
@@ -474,79 +573,46 @@ fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     Ok(json!({"workspace": path, "sessionId": result["sessionId"]}))
 }
 
-fn live_request(target: AppTarget<'_>, request: &Value) -> Result<Value> {
-    let path = field(request, "workspace")?;
-    let workspace = if path == TEMPORARY {
-        None
-    } else {
-        Some(open_workspace(target, path)?)
-    };
-    live(
-        target,
-        workspace.as_ref(),
-        field(request, "action")?,
-        &request["input"],
-    )
-}
-
-fn live(
-    target: AppTarget<'_>,
-    workspace: Option<&WorkspaceInfo>,
-    action: &str,
-    input: &Value,
-) -> Result<Value> {
-    let mux = workspace
-        .map(|item| mux_name(&item.path))
-        .unwrap_or_else(|| TEMPORARY_MUX.into());
-    let options = options(target, &mux, workspace);
-    match action {
-        "snapshot" => snapshot(options),
-        "create" => create(target, &mux, workspace, input),
-        _ => session_control(options, action, input),
-    }
-}
-
-fn snapshot(options: ConnectionOptions<'_>) -> Result<Value> {
-    let mut snapshot = None;
-    AppClient::default()
-        .run(options, &mut |value| {
-            snapshot = Some(value);
-            Ok(())
-        })
-        .map_err(|_| "connection_failed")?;
-    serde_json::to_value(snapshot.ok_or("connection_failed")?)
-        .map_err(|_| "invalid_host_reply".into())
-}
-
-fn session_control(options: ConnectionOptions<'_>, action: &str, input: &Value) -> Result<Value> {
+fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
     let session_id = field(input, "sessionId")?.to_owned();
     match action {
-        "submit" => submit(options, session_id, input),
-        "find-submission" => {
-            let submission_id = field(input, "submissionId")?;
-            let instance = field(input, "serviceInstanceId")?;
-            Ok(submission_receipt(
-                submission_id,
-                find_submission(options, &session_id, submission_id, instance),
-            ))
-        }
+        "submit" | "find-submission" => submission(view, action, session_id, input),
         "interrupt" => {
             let execution_id = field(input, "executionId")?.to_owned();
-            let result = control(options, |reply| ControlCommand::Interrupt {
+            let result = view.control(None, |reply| ControlCommand::Interrupt {
                 session_id,
                 execution_id,
                 reply,
             })?;
             Ok(json!({"accepted": matches!(result, ControlResult::Accepted)}))
         }
-        "models" => models(control(options, |reply| ControlCommand::ListModels {
+        "respond-interaction" => {
+            let interaction_id = field(input, "interactionId")?.to_owned();
+            let outcome =
+                serde_json::from_value(input["outcome"].clone()).map_err(|_| "invalid_request")?;
+            if field(input, "connectionEpoch")? != view.epoch.to_string() {
+                return Ok(json!({"accepted": false, "reason": "stale_attachment"}));
+            }
+            let result = view.control(None, |reply| ControlCommand::RespondInteraction {
+                session_id,
+                interaction_id,
+                outcome,
+                reply,
+            })?;
+            match result {
+                ControlResult::Accepted => Ok(json!({"accepted": true})),
+                ControlResult::Rejected(reason) => Ok(json!({"accepted": false, "reason": reason})),
+                _ => Err("invalid_host_reply".into()),
+            }
+        }
+        "models" => models(view.control(None, |reply| ControlCommand::ListModels {
             session_id,
             reply,
         })?),
         "select-model" => {
             let model_id = field(input, "modelId")?.to_owned();
             let thinking_level = input["thinkingLevel"].as_str().map(str::to_owned);
-            models(control(options, |reply| ControlCommand::SelectModel {
+            models(view.control(None, |reply| ControlCommand::SelectModel {
                 session_id,
                 model_id,
                 thinking_level,
@@ -557,38 +623,30 @@ fn session_control(options: ConnectionOptions<'_>, action: &str, input: &Value) 
     }
 }
 
-fn submit(options: ConnectionOptions<'_>, session_id: String, input: &Value) -> Result<Value> {
-    let submission_id = field(input, "submissionId")?.to_owned();
-    let text = field(input, "text")?.to_owned();
-    let expected_instance = input["serviceInstanceId"].as_str();
-    let mut instance = None;
-    let mut result = control_on(options.clone(), expected_instance, &mut instance, |reply| {
-        ControlCommand::Submit {
-            session_id: session_id.clone(),
-            submission_id: submission_id.clone(),
+fn submission(view: &View, action: &str, session_id: String, input: &Value) -> Result<Value> {
+    let id = field(input, "submissionId")?;
+    let instance = input["serviceInstanceId"].as_str();
+    let result = if action == "find-submission" {
+        view.control(Some(instance.ok_or("invalid_request")?), |reply| {
+            ControlCommand::FindSubmission {
+                session_id,
+                submission_id: id.to_owned(),
+                reply,
+            }
+        })
+    } else {
+        let text = field(input, "text")?.to_owned();
+        view.control(instance, |reply| ControlCommand::Submit {
+            session_id,
+            submission_id: id.to_owned(),
             text,
             reply,
-        }
-    });
-    if let (Err(_), Some(instance)) = (&result, instance) {
-        result = find_submission(options, &session_id, &submission_id, &instance);
+        })
+    };
+    if action == "submit" && result.is_err() {
+        return Err("connection_failed".into());
     }
-    Ok(submission_receipt(&submission_id, result))
-}
-
-fn find_submission(
-    options: ConnectionOptions<'_>,
-    session_id: &str,
-    submission_id: &str,
-    instance: &str,
-) -> Result<ControlResult> {
-    control_on(options, Some(instance), &mut None, |reply| {
-        ControlCommand::FindSubmission {
-            session_id: session_id.to_owned(),
-            submission_id: submission_id.to_owned(),
-            reply,
-        }
-    })
+    Ok(submission_receipt(id, result))
 }
 
 fn submission_receipt(submission_id: &str, result: Result<ControlResult>) -> Value {

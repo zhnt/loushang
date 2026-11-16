@@ -118,6 +118,14 @@ export default interface Resources {
     }
   },
   "session": {
+    "approval": {
+      "approve": "Allow once",
+      "cancel": "Cancel operation",
+      "deny": "Deny",
+      "submitting": "Sending decision…",
+      "title": "Tool approval",
+      "unavailable": "This request is unavailable."
+    },
     "bridge": {
       "locked": "Native bridge locked",
       "verified": "Rust invoke + event verified",

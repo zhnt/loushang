@@ -282,6 +282,33 @@ async def test_execution_reads_consume_covered_legacy_copies_without_eventual_fa
 
 
 @scenario
+async def test_snapshot_refresh_keeps_covered_approval_in_the_current_attachment():
+    service, _, first, _, _, control, product = await fixture()
+    client = first.execution_client
+    await client.snapshot_execution_session(control, "instance")
+    session = service._sessions[product.identity.session_id]
+
+    product.cursor += 1
+    request = SessionEventV1(
+        product.identity.session_id, product.cursor,
+        SessionEventKindV1.INTERACTION_REQUESTED, "Preview\nreview\n{}", "approval",
+    )
+    await session._on_event(request)
+    for listener in tuple(product.listeners):
+        listener(ExecutionContentEventV1(request))
+
+    snapshot = await client.snapshot_execution_session(control, "instance")
+    assert snapshot.source.source.cursor == request.cursor
+    events = await first.read_events(
+        attachment_id=control.attachment_id,
+        controller_generation=control.controller_generation,
+    )
+    assert tuple(item.event for item in events) == (request,)
+    assert not await client.read_execution_events(control, "instance")
+    await service.close()
+
+
+@scenario
 async def test_snapshot_revalidates_authority_after_product_await():
     service, owner, first, second, selector, control, product = await fixture()
     entered, release = asyncio.Event(), asyncio.Event()

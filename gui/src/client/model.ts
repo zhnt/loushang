@@ -134,6 +134,15 @@ export interface ChangeSetProjection {
   readonly files: readonly FileChangeProjection[];
 }
 
+export type InteractionOutcome = "approve" | "deny" | "cancel";
+
+export interface PendingApproval {
+  readonly sessionId: string;
+  readonly interactionId: string;
+  readonly text: string;
+  readonly status: "pending" | "submitting" | "unavailable";
+}
+
 export interface SessionSnapshot {
   readonly id: string;
   readonly workspaceId: string;
@@ -143,6 +152,7 @@ export interface SessionSnapshot {
   readonly context: ContextIdentity;
   readonly messages: readonly ConversationMessage[];
   readonly execution?: ExecutionProjection | null;
+  readonly pendingApprovals?: readonly PendingApproval[];
   readonly documents: readonly ReadonlyDocument[];
   readonly run: RunProjection | null;
   readonly changeSet: ChangeSetProjection | null;
@@ -293,6 +303,7 @@ export interface HarnessClientUiPort {
   requestResync?(): Promise<void>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
+  respondInteraction?(sessionId: string, interactionId: string, outcome: InteractionOutcome): Promise<ControlReceipt>;
   createSession?(input: CreateSessionInput): Promise<CreateSessionReceipt>;
   sessionModels?(sessionId: string): Promise<SessionModels>;
   selectModel?(sessionId: string, modelId: string, thinkingLevel?: ThinkingLevel): Promise<SessionModels>;

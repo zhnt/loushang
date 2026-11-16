@@ -6,6 +6,6 @@ pub mod read_stop;
 
 pub use app_client::{
     AppClient, AppTarget, ConnectionOptions, ControlAuthority, ControlCommand, ControlResult,
-    CreateSessionResult, LiveEventRound, LiveInitialSnapshot, MemberEvents, ModelControlResult,
-    WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
+    CreateSessionResult, InteractionOutcome, LiveEventRound, LiveInitialSnapshot, MemberEvents,
+    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
 };

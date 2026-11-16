@@ -15,6 +15,7 @@ from loushang.appserver.execution.model import (
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
+    SessionEventKindV1,
     SessionSnapshotRequestV1,
 )
 
@@ -186,7 +187,7 @@ class ScopedExecutionClientV1:
 
         try:
             snapshot = await capture_execution_snapshot(binding.port, read_view, buffer)
-            self._consume_legacy_copy(control, buffer)
+            self._consume_legacy_copy(control, buffer, preserve_interactions=True)
             view = snapshot.executions
             return ExecutionSessionSnapshotV1(
                 self.service_instance_id, snapshot.source,
@@ -215,13 +216,23 @@ class ScopedExecutionClientV1:
 
     def _consume_legacy_copy(
         self, control: SessionSnapshotRequestV1, buffer: ExecutionSnapshotBufferV1,
+        *, preserve_interactions: bool = False,
     ) -> None:
         # Both envelopes carry the same Product content. Consuming the optional
         # projection also consumes its covered legacy copy, preventing an unused
         # legacy queue from revoking an otherwise healthy execution attachment.
         _, attachment = self._scope._service._attachments[control.attachment_id]
         for event in attachment._drain_raw():
-            if event.member_id != control.member_id or event.event.cursor > buffer.content_cursor:
+            if (
+                event.member_id != control.member_id
+                or event.event.cursor > buffer.content_cursor
+                # The snapshot contains transcript and execution state only.
+                # Keep questions covered by this cut until the next event read.
+                or preserve_interactions and event.event.kind in {
+                    SessionEventKindV1.INTERACTION_REQUESTED,
+                    SessionEventKindV1.INTERACTION_DISMISSED,
+                }
+            ):
                 attachment._put(event)
 
     def detach(self, attachment_id: str | None = None) -> None:

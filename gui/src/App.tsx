@@ -6,6 +6,7 @@ import { SettingsDialog } from "./SettingsDialog";
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
+import { ToolApproval } from "./ToolApproval";
 import { ModelPicker } from "./ModelPicker";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
@@ -615,6 +616,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                       ? <MessageMarkdown text={message.content} />
                       : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
                   </article>
+                ))}
+                {selected.pendingApprovals?.map((approval) => (
+                  <ToolApproval key={approval.interactionId} approval={approval}
+                    enabled={connected && selectionReady && !syncing && Boolean(client.respondInteraction)}
+                    onRespond={(outcome) => {
+                      if (approval.sessionId === selected.id) {
+                        void client.respondInteraction?.(selected.id, approval.interactionId, outcome);
+                      }
+                    }} />
                 ))}
                 {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
                 {selected.run && tasksAvailable ? (

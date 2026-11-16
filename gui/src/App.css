@@ -457,3 +457,11 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
   .project-heading:is(:hover, :has(> :focus-visible)) > .project-action,
   .session-row:is(:hover, :has(> :focus-visible)) > .session-pin { opacity: 1; pointer-events: auto; }
 }
+
+.tool-approval { max-width: 760px; margin: 0 auto 16px; padding: 12px; border: 1px solid var(--warning-line); border-radius: 9px; background: var(--paper); }
+.tool-approval > strong { font-size: 13px; }
+.tool-approval > pre { max-height: 12rem; overflow: auto; margin: 8px 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.approval-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.approval-actions button { padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: var(--panel); }
+.approval-actions button:first-child { border-color: var(--warning-line); background: var(--warning-soft); }
+.approval-actions span { color: var(--muted); font-size: 12px; }
