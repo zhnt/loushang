@@ -12,6 +12,7 @@ from .errors import AppErrorCodeV1, AppFailureV1, InvalidAppMessageError
 from .model import (
     APP_PROTOCOL_VERSION,
     MAX_DISCOVERY_PAGE,
+    USER_CHOICE_MAX_OPTIONS,
     AckV1,
     AppOperationV1,
     AppRequestV1,
@@ -56,6 +57,8 @@ from .model import (
     TranscriptRecordV1,
     TurnInterruptV1,
     TurnTextV1,
+    UserChoiceOptionV1,
+    UserChoicePromptV1,
     WorkspaceInfoV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
@@ -798,13 +801,44 @@ def _encode_snapshot(value: SessionSnapshotV1) -> _Object:
     # unsafe for this exact binding.
     if value.submission_mode is SessionSubmissionModeV1.EXECUTION:
         encoded["submissionMode"] = value.submission_mode.value
+    if value.user_choice is not None:
+        encoded["userChoice"] = _encode_user_choice(value.user_choice)
     return encoded
+
+
+def _encode_user_choice(value: UserChoicePromptV1) -> _Object:
+    return {
+        "questionId": value.question_id,
+        "question": value.question,
+        "options": [
+            {"id": option.id, "label": option.label, "description": option.description}
+            for option in value.options
+        ],
+    }
+
+
+def _decode_user_choice(raw: object) -> UserChoicePromptV1:
+    value = _object(raw, {"questionId", "question", "options"})
+    options = value["options"]
+    if type(options) is not list or not 2 <= len(options) <= USER_CHOICE_MAX_OPTIONS:
+        raise InvalidAppMessageError()
+    decoded = []
+    for raw_option in options:
+        option = _object(raw_option, {"id", "label", "description"})
+        decoded.append(_construct(
+            UserChoiceOptionV1, id=option["id"], label=option["label"],
+            description=option["description"],
+        ))
+    return _construct(
+        UserChoicePromptV1, question_id=value["questionId"], question=value["question"],
+        options=tuple(decoded),
+    )
 
 
 def _decode_snapshot(raw: object) -> SessionSnapshotV1:
     fields = {"cursor", "identity", "records", "revision", "running", "title"}
-    if type(raw) is dict and "submissionMode" in raw:
-        fields.add("submissionMode")
+    if type(raw) is dict:
+        fields.update({"submissionMode", "userChoice"} & raw.keys())
     value = _object(raw, fields)
     records = value["records"]
     if type(records) is not list:
@@ -837,6 +871,7 @@ def _decode_snapshot(raw: object) -> SessionSnapshotV1:
         running=_boolean(value["running"]),
         records=tuple(decoded_records),
         submission_mode=submission_mode,
+        user_choice=_decode_user_choice(value["userChoice"]) if "userChoice" in value else None,
     )
 
 

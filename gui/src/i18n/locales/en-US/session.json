@@ -38,6 +38,16 @@
     "thinkingChanged": "Reasoning effort updated.",
     "thinkingRejected": "Could not change reasoning effort."
   },
+  "choice": {
+    "title": "Choose a direction",
+    "notes": "Additional notes (optional)",
+    "confirm": "Confirm choice",
+    "accepted": "Answer accepted. Waiting for the Session to update.",
+    "unknown": "The answer outcome is unknown. Your selection is preserved.",
+    "rejected": "The answer was not accepted. Your selection is preserved.",
+    "answer": "Question: {{question}}\nSelected option {{id}}: {{label}}",
+    "answerNotes": "Additional notes: {{notes}}"
+  },
   "composer": {
     "checkCreation": "Check creation status",
     "fixturePlaceholder": "Type a fixture prompt…",

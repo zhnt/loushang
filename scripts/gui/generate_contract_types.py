@@ -136,7 +136,7 @@ def generate() -> dict[str, str]:
                     f"    pub {name}: {annotation(hints[name], key, True)},",
                 ]
             )
-        # The codec adds this canonical optional field outside its static _FIELDS.
+        # The codec adds these canonical optional fields outside its static _FIELDS.
         if cls is app.SessionSnapshotV1:
             key = "SessionSnapshotV1.submission_mode"
             mode = annotation(Literal["execution"], key, True)
@@ -144,6 +144,11 @@ def generate() -> dict[str, str]:
             rs.extend([
                 '    #[serde(rename = "submissionMode", skip_serializing_if = "Option::is_none")]',
                 f"    pub submission_mode: Option<{mode}>,",
+            ])
+            ts.append("  readonly userChoice?: UserChoicePromptV1;")
+            rs.extend([
+                '    #[serde(rename = "userChoice", skip_serializing_if = "Option::is_none")]',
+                "    pub user_choice: Option<UserChoicePromptV1>,",
             ])
         ts.append("}")
         rs.append("}")

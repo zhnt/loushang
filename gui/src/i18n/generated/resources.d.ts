@@ -131,6 +131,16 @@ export default interface Resources {
       "verified": "Rust invoke + event verified",
       "web-mock": "Web Mock"
     },
+    "choice": {
+      "accepted": "Answer accepted. Waiting for the Session to update.",
+      "answer": "Question: {{question}}\nSelected option {{id}}: {{label}}",
+      "answerNotes": "Additional notes: {{notes}}",
+      "confirm": "Confirm choice",
+      "notes": "Additional notes (optional)",
+      "rejected": "The answer was not accepted. Your selection is preserved.",
+      "title": "Choose a direction",
+      "unknown": "The answer outcome is unknown. Your selection is preserved."
+    },
     "composer": {
       "attachHint": "Attachments are unavailable",
       "attachUnavailable": "Attach file unavailable",

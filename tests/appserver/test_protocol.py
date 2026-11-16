@@ -48,6 +48,8 @@ from loushang.appserver.protocol import (
     TranscriptRecordV1,
     TurnInterruptV1,
     TurnTextV1,
+    UserChoiceOptionV1,
+    UserChoicePromptV1,
     WorkspaceInfoV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
@@ -370,3 +372,18 @@ def test_workspace_request_rejects_unknown_authority_fields():
     wire['payload']['controlGeneration'] = 42
     with pytest.raises(InvalidAppMessageError):
         decode_request(json.dumps(wire).encode())
+
+
+
+def test_app_snapshot_round_trips_a_session_bound_business_choice():
+    choice = UserChoicePromptV1("q-1", "选择方案", (
+        UserChoiceOptionV1("A", "渐进"),
+        UserChoiceOptionV1("B", "重构", "保留兼容入口"),
+    ))
+    response = AppResponseV1("request-1", replace(_snapshot(), user_choice=choice))
+    encoded = encode_response(response)
+    assert decode_response(encoded) == response
+    wire = json.loads(encoded)
+    wire["result"]["userChoice"]["options"][1]["id"] = "A"
+    with pytest.raises(InvalidAppMessageError):
+        decode_response(json.dumps(wire).encode())

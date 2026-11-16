@@ -234,6 +234,7 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
                 revision=projection.revision,
                 running=observation.status is ExecutionStatusV1.RUNNING,
                 records=projection.records,
+                user_choice=projection.user_choice,
             ),
             observation=observation,
             draft=self._draft

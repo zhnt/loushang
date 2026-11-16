@@ -38,6 +38,16 @@
     "thinkingChanged": "已更新推理强度。",
     "thinkingRejected": "无法更改推理强度。"
   },
+  "choice": {
+    "title": "选择业务方向",
+    "notes": "补充说明（可选）",
+    "confirm": "确认选择",
+    "accepted": "回答已受理，正在等待会话更新。",
+    "unknown": "暂时无法确认回答的提交结果，已保留你的选择。",
+    "rejected": "回答未被接受，已保留你的选择。",
+    "answer": "问题：{{question}}\n已选选项 {{id}}：{{label}}",
+    "answerNotes": "补充说明：{{notes}}"
+  },
   "composer": {
     "checkCreation": "检查创建状态",
     "fixturePlaceholder": "输入测试提示词…",

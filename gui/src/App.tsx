@@ -8,6 +8,7 @@ import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
 import { ToolApproval } from "./ToolApproval";
+import { UserChoiceCard, type ChoiceAnswer } from "./UserChoiceCard";
 import { ModelPicker } from "./ModelPicker";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
@@ -157,13 +158,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     readonly source: ClientSnapshot["source"];
     readonly cursor: string;
     readonly executionId?: string;
-    readonly text: string;
+    readonly draftText?: string;
   }>>>({});
+  const [choiceAnswers, setChoiceAnswers] = useState<Readonly<Record<string, ChoiceAnswer>>>({});
   const draftCreation = useSessionCreation(({ session, snapshot }, text, receipt, select) => {
     if (select) dispatch({ type: "session.selected", sessionId: session.id });
     if (receipt.executionId) setPublications((current) => ({
       ...current,
-      [session.id]: { source: snapshot.source, cursor: session.cursor, executionId: receipt.executionId, text },
+      [session.id]: { source: snapshot.source, cursor: session.cursor, executionId: receipt.executionId, draftText: text },
     }));
     setNotice({ key: "notice.liveAccepted" });
   });
@@ -391,8 +393,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       const contentPublished = session.cursor !== receipt.cursor;
       const terminal = execution?.status === "succeeded" || execution?.status === "failed" || execution?.status === "interrupted";
       if (!contentPublished && !terminal) return false;
-      if (receipt.executionId && (contentPublished || execution?.status === "succeeded")) {
-        dispatch({ type: "draft.submitted", sessionId: id, expected: receipt.text });
+      if (receipt.draftText !== undefined && receipt.executionId && (contentPublished || execution?.status === "succeeded")) {
+        dispatch({ type: "draft.submitted", sessionId: id, expected: receipt.draftText });
       }
       return true;
     });
@@ -441,9 +443,22 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     (document) => document.id === state.local.quickLookDocumentId,
   );
 
-  async function submit(): Promise<void> {
+  const choiceKey = selected && state.remote.source.kind === "live"
+    ? JSON.stringify([state.remote.source.serviceInstanceId, selected.id]) : null;
+  const question = selected?.userChoice;
+  const storedAnswer = choiceKey ? choiceAnswers[choiceKey] : undefined;
+  const choiceAnswer = question && storedAnswer?.questionId === question.questionId ? storedAnswer : undefined;
+  const rejectedBeforeInput = choiceAnswer?.executionId && selected?.execution?.id === choiceAnswer.executionId
+    && (selected.execution.status === "failed" || selected.execution.status === "interrupted");
+
+  function updateAnswer(answer: ChoiceAnswer) {
+    if (choiceKey) setChoiceAnswers((current) => ({ ...current, [choiceKey]: answer }));
+  }
+
+  async function submit(text: string, answer?: ChoiceAnswer): Promise<void> {
     if (!selected || syncPendingRef.current || controlPendingRef.current || !submitAllowed || selected.status === "running") return;
-    const text = state.local.drafts[selected.id] ?? "";
+    if (answer && (question?.questionId !== answer.questionId
+      || ((choiceAnswer?.status === "unknown" || choiceAnswer?.status === "accepted") && !rejectedBeforeInput))) return;
     if (!text.trim()) {
       setNotice({ key: "notice.emptyPrompt" });
       return;
@@ -455,21 +470,28 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     setControlPending("submit");
     try {
       const receipt = await client.submitText({ sessionId: selected.id, submissionId, text });
+      if (receipt.submissionId !== submissionId) throw new Error("Mismatched submission receipt");
       if (!receipt.accepted) {
-        setNotice(receipt.reason === "submission_outcome_unknown"
-          ? { key: "notice.unknownSubmission" }
+        const unknown = receipt.reason === "submission_outcome_unknown";
+        if (answer) updateAnswer({ ...answer, status: unknown ? "unknown" : "rejected", executionId: undefined });
+        setNotice(unknown ? { key: "notice.unknownSubmission" }
           : { key: "notice.rejected", params: { reason: receipt.reason ?? "" } });
         return;
       }
-      if (!receipt.executionId) dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
+      if (answer) updateAnswer({ ...answer, status: "accepted", executionId: receipt.executionId });
+      else if (!receipt.executionId) dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
       if (!fixture) setPublications((current) => ({
-        ...current, [selected.id]: { source: state.remote.source, cursor: selected.cursor, executionId: receipt.executionId, text },
+        ...current, [selected.id]: {
+          source: state.remote.source, cursor: selected.cursor, executionId: receipt.executionId,
+          draftText: answer ? undefined : text,
+        },
       }));
       setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
       setNotice(fixture
         ? { key: "notice.fixtureAccepted" }
         : { key: "notice.liveAccepted" });
     } catch {
+      if (answer) updateAnswer({ ...answer, status: "unknown", executionId: undefined });
       setNotice({ key: "notice.submitFailed" });
     } finally {
       controlPendingRef.current = false;
@@ -701,6 +723,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                       }
                     }} />
                 ))}
+                {question && choiceKey ? <UserChoiceCard key={question.questionId} question={question}
+                  answer={rejectedBeforeInput && choiceAnswer ? { ...choiceAnswer, status: "rejected" } : choiceAnswer}
+                  enabled={Boolean(submitAllowed && selected.status !== "running")}
+                  onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
                 {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
                 {selected.run && tasksAvailable ? (
                   <RunActivity
@@ -757,7 +783,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                 <MessageComposer key={selected.id} title={displaySessionTitle(selected)}
                   text={state.local.drafts[selected.id] ?? ""}
                   onChange={(value) => dispatch({ type: "draft.changed", sessionId: selected.id, value })}
-                  onSubmit={() => void submit()} disabled={installedClient !== client || !selectionReady}
+                  onSubmit={() => void submit(state.local.drafts[selected.id] ?? "")} disabled={installedClient !== client || !selectionReady}
                   onInterrupt={selected.status === "running" ? () => void interrupt() : undefined}
                   buttonDisabled={selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
                   fixture={Boolean(fixture)}

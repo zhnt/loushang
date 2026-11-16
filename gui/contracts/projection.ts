@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { validateUserChoice } from "./userChoice.ts";
 
 function object(value: unknown, fields: string[]): Record<string, unknown> {
   assert(value !== null && typeof value === "object" && !Array.isArray(value));
@@ -61,9 +62,12 @@ export function validateProjection(kind: string, value: unknown) {
     const result = object(root.result, ["serviceInstanceId", "source", "executions"]);
     id(result.serviceInstanceId, 128);
     const source = object(result.source, ["source", "observation", "draft", "truncated"]);
-    const hasMode = source.source !== null && typeof source.source === "object" && "submissionMode" in source.source;
-    const s = object(source.source, ["identity", "title", "cursor", "revision", "running", "records", ...(hasMode ? ["submissionMode"] : [])]);
-    if (hasMode) assert.equal(s.submissionMode, "execution");
+    const optionalFields = ["submissionMode", "userChoice"].filter(
+      (field) => source.source !== null && typeof source.source === "object" && field in source.source,
+    );
+    const s = object(source.source, ["identity", "title", "cursor", "revision", "running", "records", ...optionalFields]);
+    if ("submissionMode" in s) assert.equal(s.submissionMode, "execution");
+    if ("userChoice" in s) validateUserChoice(s.userChoice);
     identity(s.identity); counter(s.cursor); counter(s.revision);
     assert(typeof s.title === "string" && s.title.trim() && [...s.title].length <= 256);
     assert(typeof s.running === "boolean" && typeof source.truncated === "boolean");

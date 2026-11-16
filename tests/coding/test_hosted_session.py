@@ -1138,3 +1138,64 @@ def test_G14_PRODUCT_real_approval_broker_round_trip_and_close(tmp_path: Path) -
             await asyncio.gather(decision, return_exceptions=True)
 
     asyncio.run(asyncio.wait_for(scenario(), 20))
+
+
+@pytest.mark.parametrize("case", ["standalone", "mixed", "duplicate"])
+def test_hosted_business_choice_finishes_turn_and_survives_until_next_input(tmp_path, case):
+    sent = []
+
+    @synthetic_model_transport
+    async def stream(model, context, options=None):
+        assert "ask_user" in {tool.name for tool in context.tools}
+        sent.append(context.messages[-1].role)
+        ordinary = await _stream(model, context, options)
+        if len(sent) != 1:
+            return ordinary
+        calls = [ToolCall(type="toolCall", id="ask-1", name="ask_user", arguments={
+            "question": "Choose a direction",
+            "options": [
+                {"id": "a", "label": "Gradual"},
+                {"id": "a" if case == "duplicate" else "b", "label": "Rewrite"},
+            ],
+        })]
+        if case == "mixed":
+            calls.append(ToolCall(type="toolCall", id="other", name="unused_tool", arguments={}))
+        turn = replace(await ordinary.result(), content=calls, stop_reason="toolUse")
+        result = AssistantMessageEventStream()
+        result.push({"type": "done", "reason": "toolUse", "message": turn})
+        return result
+
+    async def scenario():
+        binding = await _binding(tmp_path, stream_fn=stream)
+        hosted = CodingHostedExecutionSessionV1(binding)
+        try:
+            hosted.start_execution(ExecutionRequestV1("plan", "Let me choose a plan."))
+            assert (await hosted.wait_execution("plan")).status is ExecutionStatusV1.SUCCEEDED
+            snapshot = (await hosted.snapshot_execution()).source
+            prompt = snapshot.user_choice
+            if case != "standalone":
+                assert prompt is None and sent == ["user", "toolResult"]
+                return
+            assert sent == ["user"]
+            assert not snapshot.running
+            assert prompt.question == "Choose a direction"
+            assert [item.id for item in prompt.options] == ["a", "b"]
+            assert (await hosted.snapshot_execution()).source.user_choice == prompt
+            isolated = tmp_path / "isolated"
+            isolated.mkdir()
+            other = CodingHostedExecutionSessionV1(await _binding(isolated))
+            try:
+                assert (await other.snapshot_execution()).source.user_choice is None
+            finally:
+                await other.close()
+
+            hosted.start_execution(ExecutionRequestV1("answer", "Choose b: Rewrite."))
+            assert (await hosted.wait_execution("answer")).status is ExecutionStatusV1.SUCCEEDED
+            snapshot = (await hosted.snapshot_execution()).source
+            assert snapshot.identity == binding.identity
+            assert snapshot.user_choice is None
+            assert any(row.text == "Choose b: Rewrite." for row in snapshot.records)
+        finally:
+            await hosted.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=10))
