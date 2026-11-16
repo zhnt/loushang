@@ -42,6 +42,8 @@ from .model import (
     ExecutionUpdateV1,
     InteractiveGoalCommandV1,
     InteractiveGoalCommandViewV1,
+    InteractiveGoalReviewSubmissionV1,
+    InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
     _identifier,
 )
@@ -75,6 +77,9 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ),
     InteractiveGoalCommandV1: ("goal_id", "command_id", "action"),
     InteractiveGoalCommandViewV1: ("command_id", "action", "status"),
+    InteractiveGoalReviewSubmissionV1: ("goal_id", "review_token", "command_id", "decision", "reason"),
+    InteractiveGoalReviewV1: ("goal_id", "revision", "epoch", "review_token", "changed_files",
+                              "files_truncated", "check_count", "checks_satisfied"),
     InteractiveGoalViewV1: ("availability", "goal_id", "status", "revision", "epoch", "execution_unresolved"),
     ExecutionSessionViewV1: ("identity", "revision", "quiescent", "active", "latest_terminal"),
     ExecutionSessionSnapshotV1: ("service_instance_id", "source", "executions"),
@@ -87,12 +92,14 @@ _GOAL_CAPABILITIES = (
     "supports_goal_progress", "supports_goal_start", "supports_interactive_goal",
     "supports_interactive_goal_commands",
 )
+_REVIEW_SUBMISSION_KEYS = {"goalId", "reviewToken", "commandId", "decision", "reason"}
 _GOAL_COMMAND_KEYS = {"goalId", "commandId", "action"}
 
 _KINDS: dict[str, type] = {
     "resume_input_lookup": ResumeInputLookupResultV1,
     "goal_progress": ExecutionGoalProgressV1,
     "interactive_goal": InteractiveGoalViewV1,
+    "interactive_goal_review": InteractiveGoalReviewV1,
     "record": ExecutionRecordV1, "snapshot": ExecutionSessionSnapshotV1,
     "events": ExecutionEventsV1, "failure": ExecutionFailureV1,
     "app_failure": AppFailureV1,
@@ -125,8 +132,11 @@ def _encode(value: object) -> object:
         for flag in _GOAL_CAPABILITIES:
             if getattr(value, flag):
                 encoded[_camel(flag)] = True
-    if type(value) is InteractiveGoalViewV1 and value.command is not None:
-        encoded["command"] = _encode(value.command)
+    if type(value) is InteractiveGoalViewV1:
+        if value.command is not None:
+            encoded["command"] = _encode(value.command)
+        if value.review_available:
+            encoded["reviewAvailable"] = True
     return encoded
 
 
@@ -165,8 +175,8 @@ def _decode(expected: object, raw: object) -> object:
         wire_fields.update({"submissionMode", "userChoice"} & raw.keys())
     if expected is ExecutionSessionSnapshotV1 and type(raw) is dict:
         wire_fields.update(_camel(flag) for flag in _GOAL_CAPABILITIES if _camel(flag) in raw)
-    if expected is InteractiveGoalViewV1 and type(raw) is dict and "command" in raw:
-        wire_fields.add("command")
+    if expected is InteractiveGoalViewV1 and type(raw) is dict:
+        wire_fields.update({"command", "reviewAvailable"} & raw.keys())
     value = _object(raw, wire_fields)
     annotations = get_type_hints(expected)
     values = {
@@ -190,8 +200,13 @@ def _decode(expected: object, raw: object) -> object:
                 if value[field] is not True:
                     raise InvalidAppMessageError()
                 values[flag] = True
-    if expected is InteractiveGoalViewV1 and "command" in value:
-        values["command"] = _decode(InteractiveGoalCommandViewV1, value["command"])
+    if expected is InteractiveGoalViewV1:
+        if "command" in value:
+            values["command"] = _decode(InteractiveGoalCommandViewV1, value["command"])
+        if "reviewAvailable" in value:
+            if value["reviewAvailable"] is not True:
+                raise InvalidAppMessageError()
+            values["review_available"] = True
     return expected(**values)
 
 
@@ -214,6 +229,12 @@ def encode_call(call: ExecutionCallV1) -> bytes:
     if call.goal_command is not None:
         body.update(goalId=call.goal_command.goal_id, commandId=call.goal_command.command_id,
                     action=call.goal_command.action)
+    if call.review_goal_id is not None:
+        body["goalId"] = call.review_goal_id
+    if call.review_submission is not None:
+        review = _encode(call.review_submission)
+        assert isinstance(review, dict)
+        body.update(review)
     if call.include_goal_batches:
         body["includeBatches"] = True
     if call.text is not None:
@@ -249,6 +270,10 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             fields.update(_GOAL_COMMAND_KEYS)
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP:
             fields.add("resumeQuery")
+        if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW:
+            fields.add("goalId")
+        if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT:
+            fields.update(_REVIEW_SUBMISSION_KEYS)
         raw = root["payload"]
         include_batches = (
             operation is ExecutionOperationV1.GOAL_PROGRESS and type(raw) is dict and "includeBatches" in raw
@@ -272,6 +297,10 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             goal_command=cast(InteractiveGoalCommandV1, _decode(
                 InteractiveGoalCommandV1, {key: body[key] for key in _GOAL_COMMAND_KEYS},
             )) if operation is ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND else None,
+            review_goal_id=_string(body["goalId"]) if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW else None,
+            review_submission=cast(InteractiveGoalReviewSubmissionV1, _decode(
+                InteractiveGoalReviewSubmissionV1, {key: body[key] for key in _REVIEW_SUBMISSION_KEYS},
+            )) if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT else None,
         )
     except (TypeError, ValueError, KeyError, RecursionError):
         raise InvalidAppMessageError() from None

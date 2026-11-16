@@ -10,6 +10,7 @@ from .client import (
     ExecutionPortV1,
     InteractiveGoalClientPortV1,
     InteractiveGoalCommandClientPortV1,
+    InteractiveGoalReviewClientPortV1,
 )
 from .model import (
     ExecutionCallV1,
@@ -17,6 +18,7 @@ from .model import (
     ExecutionOperationV1,
     ExecutionResultV1,
     InteractiveGoalCommandV1,
+    InteractiveGoalReviewSubmissionV1,
 )
 
 
@@ -49,6 +51,12 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
         if not isinstance(client, InteractiveGoalCommandClientPortV1):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return await client.control_interactive_goal(*args, cast(InteractiveGoalCommandV1, call.goal_command))
+    if call.operation in {ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW, ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT}:
+        if not isinstance(client, InteractiveGoalReviewClientPortV1):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        if call.operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW:
+            return await client.interactive_goal_review(*args, cast(str, call.review_goal_id))
+        return await client.submit_interactive_goal_review(*args, cast(InteractiveGoalReviewSubmissionV1, call.review_submission))
     if not isinstance(client, ExecutionPortV1):
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     match call.operation:

@@ -569,11 +569,14 @@ impl GoalCommandObservation {
     fn valid(&self) -> bool {
         identifier(&self.command_id, 128)
             && match self.status.as_str() {
-                "running" => ["run", "step", "resume"].contains(&self.action.as_str()),
-                "settling" => ["pause", "cancel"].contains(&self.action.as_str()),
-                "finished" | "failed" | "unknown" => {
-                    ["run", "step", "resume", "pause", "cancel"].contains(&self.action.as_str())
+                "running" => {
+                    ["run", "step", "resume", "accept", "reject"].contains(&self.action.as_str())
                 }
+                "settling" => ["pause", "cancel"].contains(&self.action.as_str()),
+                "finished" | "failed" | "unknown" => [
+                    "run", "step", "resume", "pause", "cancel", "accept", "reject",
+                ]
+                .contains(&self.action.as_str()),
                 _ => false,
             }
     }
@@ -594,6 +597,12 @@ struct InteractiveGoal {
         deserialize_with = "present"
     )]
     command: Option<GoalCommandObservation>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    review_available: Option<bool>,
 }
 
 impl InteractiveGoal {
@@ -604,6 +613,18 @@ impl InteractiveGoal {
         let epoch: Option<u64> = serde_json::from_str(self.epoch.get()).map_err(|_| ())?;
         let unresolved: Option<bool> =
             serde_json::from_str(self.execution_unresolved.get()).map_err(|_| ())?;
+        if let Some(available) = self.review_available {
+            if !available
+                || self.availability != "present"
+                || status.as_deref() != Some("paused")
+                || unresolved != Some(false)
+                || self.command.as_ref().is_some_and(|value| {
+                    ["running", "settling", "unknown"].contains(&value.status.as_str())
+                })
+            {
+                return Ok(false);
+            }
+        }
         Ok(match self.availability.as_str() {
             "present" => {
                 goal_id.is_some_and(|id| identifier(&id, 128))
@@ -640,7 +661,59 @@ impl InteractiveGoal {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct InteractiveGoalReview {
+    goal_id: String,
+    revision: u64,
+    epoch: u64,
+    review_token: String,
+    changed_files: Vec<String>,
+    files_truncated: bool,
+    check_count: u8,
+    checks_satisfied: bool,
+}
+
+pub(super) fn review_token(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+
+fn review_path(value: &str) -> bool {
+    value.len() <= 1024
+        && value
+            .split('/')
+            .all(|part| !matches!(part, "" | "." | ".."))
+        && value
+            .bytes()
+            .all(|c| c >= 32 && !matches!(c, b'\\' | b':' | 127))
+}
+
+impl InteractiveGoalReview {
+    fn valid(&self) -> bool {
+        identifier(&self.goal_id, 128)
+            && review_token(&self.review_token)
+            && [self.revision, self.epoch]
+                .into_iter()
+                .all(|n| (1..=9_007_199_254_740_991).contains(&n))
+            && self.check_count <= 8
+            && (self.check_count != 0 || self.checks_satisfied)
+            && self.changed_files.len() <= 100
+            && self.changed_files.iter().all(|path| review_path(path))
+            && self.changed_files.iter().collect::<BTreeSet<_>>().len() == self.changed_files.len()
+    }
+}
+
 pub fn control_bridge(kind: &str, wire: &str) -> Result<Value, ()> {
+    if kind == "interactive_goal_review" {
+        let parsed: Envelope<InteractiveGoalReview> = serde_json::from_str(wire).map_err(|_| ())?;
+        if !envelope(&parsed, kind) || !parsed.result.valid() {
+            return Err(());
+        }
+        return serde_json::to_value(parsed).map_err(|_| ());
+    }
     if kind == "interactive_goal" {
         let parsed: Envelope<InteractiveGoal> = serde_json::from_str(wire).map_err(|_| ())?;
         if !envelope(&parsed, kind) || !parsed.result.valid()? {

@@ -1,5 +1,23 @@
 {
   "interactiveGoal": {
+    "review": {
+      "open": "审阅结果",
+      "loading": "正在读取当前候选…",
+      "unavailable": "无法取得当前候选。请重新读取后再决定。",
+      "fingerprint": "候选指纹",
+      "files": "自创建目标以来有变化的文件",
+      "noFiles": "未发现变化文件。",
+      "truncated": "此摘要省略了部分路径。",
+      "inspect": "请核实工作区中的实际改动后再决定。此摘要仅列出路径，不展示差异。",
+      "checksNone": "没有配置检查。",
+      "checksPassed": "当前证据覆盖全部 {{total}} 项已配置检查。",
+      "checksMissing": "{{total}} 项已配置检查中，至少一项缺少当前通过证据。",
+      "accept": "接受结果",
+      "reject": "拒绝并反馈",
+      "reason": "具体拒绝原因",
+      "feedbackRecorded": "反馈已记录，可以再次运行目标。",
+      "failed": "审阅决定尚未确认。请检查目标状态后再审阅最新候选。"
+    },
     "commands": {
       "run": "运行",
       "step": "单步执行",

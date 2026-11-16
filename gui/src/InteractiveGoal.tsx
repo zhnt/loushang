@@ -1,7 +1,9 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { InteractiveGoalCommandV1, InteractiveGoalViewV1 } from "../contracts/generated/bridge";
+import type { InteractiveGoalCommandV1, InteractiveGoalCommandViewV1, InteractiveGoalReviewSubmissionV1, InteractiveGoalViewV1 } from "../contracts/generated/bridge";
 import type { HarnessClientUiPort, InteractiveGoalScope, SessionSnapshot } from "./client/model";
+
+import { GoalReview } from "./GoalReview";
 
 interface Props {
   client: HarnessClientUiPort;
@@ -28,6 +30,7 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
     scope: InteractiveGoalScope; view: InteractiveGoalViewV1 | null; stale?: boolean;
   }>();
   const [unconfirmed, setUnconfirmed] = useState<string>();
+  const [readingReview, setReadingReview] = useState(false);
   const scope = useMemo(() => epoch === null ? null : {
     sessionId: session.id, serviceInstanceId: instanceId, connectionEpoch: epoch,
   }, [client, epoch, instanceId, session.id]);
@@ -62,7 +65,7 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
   const sendingCommand = Boolean(scope && commandPending.current === scope);
   const command = view?.command;
   const running = commandActive(view);
-  const busy = running || sendingCommand;
+  const busy = running || sendingCommand || readingReview;
   useLayoutEffect(() => {
     if (!scopeKey || !busy) return;
     setBusyScope(scopeKey);
@@ -96,13 +99,17 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
     if (!result) void readStatus();
   }
 
-  async function sendCommand(action: Action, goalId: string) {
+  async function sendGoalCommand(
+    action: InteractiveGoalCommandViewV1["action"],
+    goalId: string,
+    send: (scope: InteractiveGoalScope, commandId: string) => Promise<InteractiveGoalViewV1 | null> | undefined,
+  ) {
     if (!scope || scope !== current.current || commandPending.current === scope || unconfirmed) return;
     const commandId = `gui-${crypto.randomUUID()}`;
     commandPending.current = scope;
     ++sequence.current;
     setUnconfirmed(commandId);
-    const result = await client.controlInteractiveGoal?.({ ...scope, action, goalId, commandId }).catch(() => null);
+    const result = await send(scope, commandId)?.catch(() => null);
     if (commandPending.current === scope) commandPending.current = null;
     if (scope !== current.current) return;
     if (result?.goalId === goalId && result.command?.commandId === commandId && result.command.action === action) {
@@ -113,6 +120,12 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
     void readStatus();
   }
 
+  function submitReview(input: Omit<InteractiveGoalReviewSubmissionV1, "commandId">) {
+    void sendGoalCommand(input.decision, input.goalId, (address, commandId) =>
+      client.submitInteractiveGoalReview?.({ ...address, ...input, commandId }));
+  }
+
+  const controlsDisabled = !enabled || !scope || Boolean(unconfirmed) || observation?.stale === true;
   const created = attempt !== null && availability === "present"
     && view?.status === "active" && view.revision === 1 && !view.executionUnresolved && !command && !unconfirmed;
   const note = creating ? t("interactiveGoal.creating")
@@ -132,8 +145,18 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
       <dt>{t("goalProgress.unresolved")}</dt><dd>{t(view.executionUnresolved ? "goalProgress.yes" : "goalProgress.no")}</dd>
     </dl> : null}
     {view?.availability === "present" && view.goalId && session.supportsInteractiveGoalCommands && client.controlInteractiveGoal ? (
-      <GoalCommandControls view={view} disabled={!enabled || !scope || Boolean(unconfirmed) || observation?.stale === true}
-        send={(action) => void sendCommand(action, view.goalId!)} />
+      <GoalCommandControls view={view} disabled={controlsDisabled || readingReview}
+        send={(action) => void sendGoalCommand(action, view.goalId!, (address, commandId) =>
+          client.controlInteractiveGoal?.({ ...address, action, goalId: view.goalId!, commandId }))} />
+    ) : null}
+    {view?.reviewAvailable && view.goalId && scope && client.interactiveGoalReview && client.submitInteractiveGoalReview ? (
+      <GoalReview key={JSON.stringify([scope.connectionEpoch, view.goalId, view.revision, view.epoch])}
+        client={client} scope={scope} goalId={view.goalId} revision={view.revision} epoch={view.epoch}
+        disabled={controlsDisabled} setReading={setReadingReview} submit={submitReview} />
+    ) : null}
+    {command?.action === "reject" && command.status === "finished" ? <p role="status">{t("interactiveGoal.review.feedbackRecorded")}</p> : null}
+    {(command?.action === "accept" || command?.action === "reject") && command.status === "failed" ? (
+      <p role="status">{t("interactiveGoal.review.failed")}</p>
     ) : null}
     {sendingCommand ? <p role="status">{t("interactiveGoal.commands.sending")}</p>
       : unconfirmed ? <p role="status">{t("interactiveGoal.commands.unconfirmed", { id: unconfirmed })}</p> : null}
@@ -169,7 +192,8 @@ function GoalCommandControls({ view, disabled, send }: {
   const actions: Action[] = [];
   if (view.status === "active" && settled) actions.push("run", "step", "pause");
   if (view.status === "paused" && settled) actions.push("resume");
-  if (status === "running" && view.status === "active") actions.push("pause");
+  if (status === "running" && view.status === "active"
+    && view.command?.action !== "accept" && view.command?.action !== "reject") actions.push("pause");
   if (active && view.command?.action !== "cancel") actions.push("cancel");
   const message = status === "settling" ? (view.command?.action === "pause" ? "pausing" : "cancelling") : status;
   return <>

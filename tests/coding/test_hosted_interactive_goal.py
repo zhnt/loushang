@@ -635,3 +635,182 @@ def test_hosted_goal_admission_covers_command_gaps_and_close_retry(tmp_path, mon
             assert owner._closed and binding._interactive_goal_owner is None
 
     asyncio.run(asyncio.wait_for(scenario(), 40))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Managed-owned transcript fixture")
+def test_hosted_review_rechecks_candidate_and_records_decisions(tmp_path):
+    from loushang.appserver.execution.model import (
+        InteractiveGoalCommandV1,
+        InteractiveGoalReviewSubmissionV1,
+    )
+
+    async def scenario():
+        async with _managed(tmp_path) as (_, client, _, address, hosted, adapter, _):
+            await _activate(client, address, hosted, adapter)
+            port = client.execution_client
+            instance = port.service_instance_id
+            created = await port.create_interactive_goal(address, instance, "Write a greeting in note.txt")
+            gid = created.goal_id
+            owner = hosted._product_binding._interactive_goal_owner
+
+            async def terminal(command_id):
+                async with asyncio.timeout(10):
+                    while True:
+                        result = await port.interactive_goal_status(address, instance)
+                        assert result.command.command_id == command_id
+                        if result.command.status not in {"running", "settling"}:
+                            return result
+                        await asyncio.sleep(.01)
+
+            async def run(command_id):
+                await port.control_interactive_goal(
+                    address, instance, InteractiveGoalCommandV1(gid, command_id, "run"),
+                )
+                return await terminal(command_id)
+
+            async def decision(basis, command_id, action, reason=None):
+                command = InteractiveGoalReviewSubmissionV1(gid, basis.review_token, command_id, action, reason)
+                result = await port.submit_interactive_goal_review(address, instance, command)
+                assert result.command.command_id == command_id
+                return await terminal(command_id)
+
+            assert (await run("initial-run")).review_available
+            original = await port.interactive_goal_review(address, instance, gid)
+            assert original.changed_files == ("note.txt",) and original.check_count == 0
+            (adapter.workspace / "note.txt").write_text("changed after review\n")
+            assert (await decision(original, "stale-accept", "accept")).command.status == "failed"
+            def batches():
+                return tuple(b for b in owner.controller.history.batches if b.source["phase"] == "review")
+
+            assert not batches()
+            basis = await port.interactive_goal_review(address, instance, gid)
+            assert basis.review_token != original.review_token
+            reason = "Keep the greeting and include a sign-off."
+            rejected = await decision(basis, "reject", "reject", reason)
+            assert rejected.status == "active" and rejected.command.status == "finished"
+            review, = batches()
+            run_record = owner._work.get_run_for_operation(review.operation_id)
+            report = owner._policy.action_result(review, run_record)
+            assert report["approved"] is False and report["reason"] == reason
+
+            assert (await run("after-reject")).review_available
+            updated = await port.interactive_goal_review(address, instance, gid)
+            completed = await decision(updated, "accept", "accept")
+            assert completed.status == "completed" and completed.command.status == "finished"
+            assert (await decision(updated, "accept", "accept")).status == "completed"
+            assert len(batches()) == 2
+
+    asyncio.run(asyncio.wait_for(scenario(), 45))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Managed-owned transcript fixture")
+def test_hosted_review_checks_authority_and_required_evidence_then_joins_review_close(tmp_path, monkeypatch):
+    from loushang.appserver.execution.model import (
+        InteractiveGoalCommandV1,
+        InteractiveGoalReviewSubmissionV1,
+    )
+    from loushang.coding.adapters.interactive_goal import _ReportWork
+
+    async def scenario():
+        async with _managed(tmp_path) as (app, client, selector, address, hosted, adapter, _):
+            await _activate(client, address, hosted, adapter)
+            port = client.execution_client
+            instance = port.service_instance_id
+            create_task = InteractiveGoal.create_task
+
+            async def create_with_check(owner, task, **kwargs):
+                return await create_task(owner, replace(task, checks=("required evidence",)), **kwargs)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(InteractiveGoal, "create_task", create_with_check)
+                created = await port.create_interactive_goal(address, instance, "Write a greeting in note.txt")
+            gid = created.goal_id
+            binding = hosted._product_binding
+            owner = binding._interactive_goal_owner
+
+            async def terminal(command_id):
+                async with asyncio.timeout(12):
+                    while True:
+                        result = await port.interactive_goal_status(address, instance)
+                        assert result.command.command_id == command_id
+                        if result.command.status not in {"running", "settling"}:
+                            return result
+                        await asyncio.sleep(.01)
+
+            async def plan(command_id):
+                await port.control_interactive_goal(address, instance, InteractiveGoalCommandV1(gid, command_id, "run"))
+                return await terminal(command_id)
+
+            assert (await plan("initial-plan")).review_available
+            entered, proceed = asyncio.Event(), asyncio.Event()
+            original_basis = owner.review_basis
+
+            async def delay_basis(goal_id):
+                entered.set()
+                await proceed.wait()
+                return await original_basis(goal_id)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(owner, "review_basis", delay_basis)
+                pending = asyncio.create_task(port.interactive_goal_review(address, instance, gid))
+                await entered.wait()
+                try:
+                    await client.close()
+                    second = app.open_client_scope()
+                    attached = await second.attach_mux(MuxAttachV1(selector))
+                finally:
+                    proceed.set()
+                with pytest.raises(AppServiceError) as revoked:
+                    await pending
+                assert revoked.value.code in {AppErrorCodeV1.STALE_ATTACHMENT, AppErrorCodeV1.SERVICE_CLOSED}
+
+            address = replace(address, attachment_id=attached.attachment_id, controller_generation=attached.controller_generation)
+            port = second.execution_client
+            summary = await port.interactive_goal_review(address, instance, gid)
+            assert summary.check_count == 1 and not summary.checks_satisfied
+            accept = InteractiveGoalReviewSubmissionV1(gid, summary.review_token, "missing-check", "accept")
+            await port.submit_interactive_goal_review(address, instance, accept)
+            refused = await terminal("missing-check")
+            assert refused.command.status == "failed" and refused.status != "completed"
+            assert all(batch.source["phase"] != "review" for batch in owner.controller.history.batches)
+            assert (await plan("after-missing-evidence")).review_available
+            summary = await port.interactive_goal_review(address, instance, gid)
+            original_execute = _ReportWork.execute
+
+            async def fail_recording_work(executor, operation, context):
+                await original_execute(executor, operation, context)
+                if operation.kind == "ReviewGoalTask":
+                    raise GoalError("injected Review Work failure after producing its report")
+
+            with monkeypatch.context() as patch:
+                patch.setattr(_ReportWork, "execute", fail_recording_work)
+                failure = InteractiveGoalReviewSubmissionV1(
+                    gid, summary.review_token, "failed-work", "reject", "Fix the greeting",
+                )
+                await port.submit_interactive_goal_review(address, instance, failure)
+                assert (await terminal("failed-work")).command.status == "failed"
+            review, = (batch for batch in owner.controller.history.batches if batch.source["phase"] == "review")
+            assert owner._work.get_run_for_operation(review.operation_id).status == "failed"
+
+            assert (await plan("after-failed-review")).review_available
+            summary = await port.interactive_goal_review(address, instance, gid)
+            entered_work = asyncio.Event()
+
+            async def hold_review(executor, operation, context):
+                if operation.kind == "ReviewGoalTask":
+                    entered_work.set()
+                    await asyncio.Future()
+                await original_execute(executor, operation, context)
+
+            monkeypatch.setattr(_ReportWork, "execute", hold_review)
+            reject = InteractiveGoalReviewSubmissionV1(gid, summary.review_token, "close-review", "reject", "Fix the greeting")
+            receipt = await port.submit_interactive_goal_review(address, instance, reject)
+            assert receipt.command.status == "running"
+            await entered_work.wait()
+            assert owner.controller.facts().busy
+            with pytest.raises(AppServiceError):
+                await port.control_interactive_goal(address, instance, InteractiveGoalCommandV1(gid, "extra", "run"))
+            await hosted.close()
+            assert not binding._goal_commands.running and owner._closed and owner._scope.closed
+
+    asyncio.run(asyncio.wait_for(scenario(), 45))

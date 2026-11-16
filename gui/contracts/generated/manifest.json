@@ -27,15 +27,18 @@
     "ExecutionSessionViewV1.revision",
     "ExecutionStateV1.revision",
     "ExecutionUpdateV1.revision",
+    "InteractiveGoalReviewV1.check_count",
+    "InteractiveGoalReviewV1.epoch",
+    "InteractiveGoalReviewV1.revision",
     "InteractiveGoalViewV1.epoch",
     "InteractiveGoalViewV1.revision",
     "MuxAttachV1.mailbox_capacity"
   ],
   "scope": "execution nested values plus attachment model shapes; not complete envelopes or auth",
-  "sourceDigest": "de87d52d3edd6ca4dc724c60fa127932a9895d0f4cbc3b66a6edac39ade3731f",
+  "sourceDigest": "ad362ed8b7114d115af04a18bc5154c02640ea19e93b59f12fcb1511fd72f247",
   "sources": {
-    "src/loushang/appserver/execution/codec.py": "cb7dbab9cdf1e585819f77c0d35871e9d9b2d340374c77375a192a5803263050",
-    "src/loushang/appserver/execution/model.py": "90bf1896e7acabe648ae724792e5f62223c555dc7ad62741077e134400a5b487",
+    "src/loushang/appserver/execution/codec.py": "efc01ca4252631f46b4707ec3dda2598189fdb666506ecdb192c10231ec65c17",
+    "src/loushang/appserver/execution/model.py": "f9269ea0de8521b6808f89439d733673f443552bd87c87b19ecb92b39915fdff",
     "src/loushang/appserver/protocol/codec.py": "172d29b2d2a813bd64f1fa3982bf7c199582e86423b680a00a26e22453e0430e",
     "src/loushang/appserver/protocol/errors.py": "614abb6e0df0e9f29ff152de9d794e681f3cd3b9e1b334f961eda503959c25f9",
     "src/loushang/appserver/protocol/model.py": "f21314904c91710ad5b8c16764a540eb52ecbffab296c1e99979c8891a4b990f"

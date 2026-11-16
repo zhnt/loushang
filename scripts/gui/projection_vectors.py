@@ -98,6 +98,28 @@ def emit_projection_vectors() -> None:
     invalid = json.loads(encode_response(em.ExecutionResponseV1("ready", em.InteractiveGoalViewV1("ready"))))
     invalid["result"]["command"] = {"commandId": "gui-1", "action": "run", "status": "running"}
     add("interactive-command-nonpresent", "interactive_goal", invalid, False)
+    paused = replace(interactive, status="paused", review_available=True)
+    reviewable = json.loads(encode_response(em.ExecutionResponseV1("reviewable", paused)))
+    add("interactive-reviewable", "interactive_goal", reviewable)
+    for field, value in (("reviewAvailable", None), ("reviewAvailable", False), ("status", "active"), ("executionUnresolved", True)):
+        invalid = copy.deepcopy(reviewable)
+        invalid["result"][field] = value
+        add(f"reviewable-invalid-{field}-{value}", "interactive_goal", invalid, False)
+    decision = replace(interactive, command=em.InteractiveGoalCommandViewV1("accept-1", "accept", "running"))
+    add("interactive-accept-running", "interactive_goal", json.loads(encode_response(em.ExecutionResponseV1("accept", decision))))
+    review = em.InteractiveGoalReviewV1("dynamic-1", 2, 5, "a" * 64, ("hello.txt", "目录/说明.md"), False, 1, False)
+    summary = json.loads(encode_response(em.ExecutionResponseV1("review", review)))
+    add("interactive-review-summary", "interactive_goal_review", summary)
+    for field, value in (
+        ("goalId", "/other"), ("reviewToken", "x" * 64), ("revision", 0), ("epoch", 2**53),
+        ("changedFiles", ["../outside"]), ("changedFiles", ["/absolute"]),
+        ("changedFiles", ["C:/outside"]), ("changedFiles", ["a", "a"]),
+        ("changedFiles", [f"path-{n}" for n in range(101)]), ("changedFiles", ["界" * 350]),
+        ("checkCount", 9), ("filesTruncated", 0), ("checksSatisfied", 1), ("inventory", {}),
+    ):
+        invalid = copy.deepcopy(summary)
+        invalid["result"][field] = value
+        add(f"interactive-review-invalid-{field}", "interactive_goal_review", invalid, False)
     goal = em.ExecutionGoalProgressV1(
         "execution-1", "present", "goal-1", "paused", "advance_budget_exhausted",
         "not_checked", True, 3, 6, 2,

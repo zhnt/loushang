@@ -567,6 +567,17 @@ class InteractiveGoal(CodingGoal):
 
         return await self._observations.invoke(inspect)
 
+    def review_check_status(self, goal_id, snapshot) -> tuple[int, bool]:
+        """Observe exactly the required check evidence used by review admission."""
+        core = self.controller
+        basis = GoalBasis(core.header, core.query(goal_id), core.history.sequence)
+        count = len(self._policy.contract(basis)["checks"])
+        try:
+            self._policy.review_dependencies(basis, snapshot)
+        except GoalError:
+            return count, False
+        return count, True
+
     async def accept(self, goal_id, identity):
         return await self.review(
             goal_id, identity, approved=True, reason="user accepted current result"

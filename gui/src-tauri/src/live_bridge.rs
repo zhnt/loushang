@@ -3,7 +3,8 @@ use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use loushang_app_client::{
     definitive_create_rejection, AppClient, ConnectionOptions, ControlCommand, ControlResult,
     CreateSessionResult, InteractionOutcome, InteractiveGoalAction, InteractiveGoalCommand,
-    LiveEventRound, LiveInitialSnapshot, ModelControlResult,
+    InteractiveGoalReviewDecision, InteractiveGoalReviewSubmission, LiveEventRound,
+    LiveInitialSnapshot, ModelControlResult,
 };
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -112,6 +113,28 @@ pub(crate) struct LiveControlInteractiveGoalInput {
     goal_id: String,
     command_id: String,
     action: InteractiveGoalAction,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveInteractiveGoalReviewInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+    goal_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveInteractiveGoalReviewSubmissionInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+    goal_id: String,
+    review_token: String,
+    command_id: String,
+    decision: InteractiveGoalReviewDecision,
+    reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -597,6 +620,55 @@ pub(crate) async fn live_interactive_goal_command(
         |session_id, reply| ControlCommand::ControlInteractiveGoal {
             session_id,
             command,
+            reply,
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_review(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractiveGoalReviewInput,
+) -> Result<Option<serde_json::Value>, String> {
+    send_interactive_goal(
+        &state,
+        LiveInteractiveGoalInput {
+            session_id: input.session_id,
+            service_instance_id: input.service_instance_id,
+            connection_epoch: input.connection_epoch,
+        },
+        |session_id, reply| ControlCommand::ReadInteractiveGoalReview {
+            session_id,
+            goal_id: input.goal_id,
+            reply,
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_review_submit(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractiveGoalReviewSubmissionInput,
+) -> Result<Option<serde_json::Value>, String> {
+    let review = InteractiveGoalReviewSubmission {
+        goal_id: input.goal_id,
+        review_token: input.review_token,
+        command_id: input.command_id,
+        decision: input.decision,
+        reason: input.reason,
+    };
+    send_interactive_goal(
+        &state,
+        LiveInteractiveGoalInput {
+            session_id: input.session_id,
+            service_instance_id: input.service_instance_id,
+            connection_epoch: input.connection_epoch,
+        },
+        |session_id, reply| ControlCommand::SubmitInteractiveGoalReview {
+            session_id,
+            review,
             reply,
         },
     )
