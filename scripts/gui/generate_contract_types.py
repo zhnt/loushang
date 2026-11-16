@@ -13,7 +13,7 @@ from dataclasses import fields
 from enum import Enum
 from pathlib import Path
 from types import UnionType
-from typing import Literal, get_args, get_origin, get_type_hints
+from typing import Literal, Union, get_args, get_origin, get_type_hints
 
 from loushang.appserver.execution import codec as execution
 from loushang.appserver.protocol import model as app
@@ -40,6 +40,9 @@ DECIMAL = {
     "MuxDetachV1.controller_generation",
 }
 SAFE = {
+    "ExecutionGoalProgressV1.advances",
+    "ExecutionGoalProgressV1.model_calls",
+    "ExecutionGoalProgressV1.batch_count",
     "ExecutionStateV1.revision",
     "ExecutionObservationV1.final_cursor",
     "ExecutionSessionViewV1.revision",
@@ -92,7 +95,7 @@ def generate() -> dict[str, str]:
                 literals[name] = args
                 return name
             return " | ".join(json.dumps(item) for item in args)
-        if origin is UnionType:
+        if origin in (UnionType, Union):
             if type(None) in args:
                 members = tuple(item for item in args if item is not type(None))
                 if len(members) != 1:
@@ -149,6 +152,12 @@ def generate() -> dict[str, str]:
             rs.extend([
                 '    #[serde(rename = "userChoice", skip_serializing_if = "Option::is_none")]',
                 "    pub user_choice: Option<UserChoicePromptV1>,",
+            ])
+        if cls.__name__ == "ExecutionSessionSnapshotV1":
+            ts.append("  readonly supportsGoalProgress?: true;")
+            rs.extend([
+                '    #[serde(rename = "supportsGoalProgress", skip_serializing_if = "Option::is_none")]',
+                "    pub supports_goal_progress: Option<bool>,",
             ])
         ts.append("}")
         rs.append("}")

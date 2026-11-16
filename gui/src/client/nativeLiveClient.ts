@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { validateGoalProgress } from "../../contracts/goalProgress";
 import { validateUserChoice } from "../../contracts/userChoice";
 import { ApprovalResponses } from "./approvalResponses";
 import { thinkingLevels, type ThinkingLevel } from "./model";
@@ -217,6 +218,12 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       current = null;
       await invoke("resync_live_connection");
     },
+    async goalProgress(sessionId, executionId) {
+      const serviceInstanceId = current?.serviceInstanceId;
+      if (!serviceInstanceId) return null;
+      const result = await invoke<unknown>("live_goal_progress", { input: { sessionId, executionId, serviceInstanceId } });
+      return result === null ? null : validateGoalProgress(result, executionId);
+    },
     async submitText(input) {
       const receipt = await invoke<{ accepted: boolean; reason?: string | null; executionId?: string | null }>("live_submit_text", { input });
       return {
@@ -309,6 +316,7 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
   const sessions = root.sessions.map((raw, index) => {
     const session = object(raw);
     if (identifier(session.serviceInstanceId) !== serviceInstanceId) throw new Error("instance");
+    if ("supportsGoalProgress" in session && session.supportsGoalProgress !== true) throw new Error("Goal capability");
     const source = object(session.source);
     const sourceSnapshot = object(source.source);
     if ("submissionMode" in sourceSnapshot && sourceSnapshot.submissionMode !== "execution") {
@@ -543,6 +551,7 @@ function projectSession(
     },
     messages,
     execution: projectExecution(snapshot),
+    supportsGoalProgress: snapshot.supportsGoalProgress,
     pendingApprovals: snapshot.pendingApprovals ?? [],
     userChoice: source.userChoice,
     documents: [],

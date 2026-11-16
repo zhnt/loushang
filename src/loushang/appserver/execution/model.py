@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal
 
 from ..protocol import (
     AckV1,
@@ -17,6 +18,7 @@ from ..protocol import (
 )
 from ..resume_model import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
 
+_REASON_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~-]{0,127}\Z")
 
 
@@ -251,6 +253,7 @@ class ExecutionSessionSnapshotV1:
     service_instance_id: str
     source: ExecutionSourceSnapshotV1
     executions: ExecutionSessionViewV1
+    supports_goal_progress: bool = False
 
     def __post_init__(self) -> None:
         _identifier(self.service_instance_id)
@@ -258,11 +261,60 @@ class ExecutionSessionSnapshotV1:
             ExecutionSessionViewV1
         ) or self.source.source.identity != self.executions.identity:
             raise ValueError("invalid execution composite snapshot")
+        if type(self.supports_goal_progress) is not bool:
+            raise TypeError("invalid Goal progress capability")
+
+
+ExecutionGoalStatusV1 = Literal["active", "paused", "completed", "abandoned", "failed", "superseded"]
+ExecutionGoalValidityV1 = Literal["not_checked", "unknown"]
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionGoalProgressV1:
+    """Compact facts from a Product's existing read-only Goal observation."""
+
+    execution_id: str
+    presence: Literal["not_started", "initializing", "present", "unavailable"]
+    goal_id: str | None
+    status: ExecutionGoalStatusV1 | None
+    reason_code: str
+    validity: ExecutionGoalValidityV1
+    execution_unresolved: bool
+    advances: int
+    model_calls: int
+    batch_count: int
+
+    def __post_init__(self) -> None:
+        _identifier(self.execution_id)
+        if type(self.presence) is not str or self.presence not in {
+            "not_started", "initializing", "present", "unavailable",
+        }:
+            raise ValueError("invalid Goal presence")
+        self._validate_identity()
+        if type(self.reason_code) is not str or _REASON_CODE.fullmatch(self.reason_code) is None:
+            raise ValueError("invalid Goal reason code")
+        if type(self.validity) is not str or self.validity not in {"not_checked", "unknown"}:
+            raise ValueError("invalid Goal validity")
+        if type(self.execution_unresolved) is not bool:
+            raise TypeError("invalid Goal execution settlement")
+        for value in (self.advances, self.model_calls, self.batch_count):
+            _counter(value)
+
+    def _validate_identity(self) -> None:
+        if self.presence == "present":
+            if self.goal_id is None or self.status not in {
+                "active", "paused", "completed", "abandoned", "failed", "superseded",
+            }:
+                raise ValueError("invalid Goal identity or status")
+            _identifier(self.goal_id)
+        elif self.goal_id is not None or self.status is not None:
+            raise ValueError("unexpected Goal identity or status")
 
 
 class ExecutionOperationV1(str, Enum):
     SUBMIT = "execution/submit"
     GET = "execution/get"
+    GOAL_PROGRESS = "execution/goal_progress"
     FIND = "execution/find_submission"
     INTERRUPT = "execution/interrupt"
     SNAPSHOT = "execution/snapshot"
@@ -309,7 +361,9 @@ class ExecutionCallV1:
         ):
             raise TypeError("invalid execution call")
         submission = self.operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND}
-        execution = self.operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT}
+        execution = self.operation in {
+            ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
+        }
         text = self.operation is ExecutionOperationV1.SUBMIT
         if (self.resume_query is not None) != (self.operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP):
             raise ValueError("unexpected Resume lookup query")
@@ -350,7 +404,7 @@ class ExecutionFailureV1:
 ExecutionResultV1 = (
     ExecutionRecordV1 | ExecutionSessionSnapshotV1 | ExecutionEventsV1
     | ExecutionInterruptResultV1 | ExecutionFailureV1 | AppFailureV1 | None
-    | ResumeInputLookupResultV1
+    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1
 )
 
 
@@ -365,6 +419,6 @@ class ExecutionResponseV1:
             ExecutionRecordV1, ExecutionSessionSnapshotV1, ExecutionEventsV1,
             ExecutionFailureV1, AppFailureV1,
             ExecutionInterruptResultV1,
-            ResumeInputLookupResultV1,
+            ResumeInputLookupResultV1, ExecutionGoalProgressV1,
         ):
             raise TypeError("invalid execution response")

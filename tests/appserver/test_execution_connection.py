@@ -10,6 +10,7 @@ from loushang.appserver.connection import AppServerConnectionV1
 from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.execution.model import (
     ExecutionCallV1,
+    ExecutionGoalProgressV1,
     ExecutionOperationV1,
     ExecutionServiceErrorV1,
     ExecutionStatusV1,
@@ -184,6 +185,15 @@ async def test_optional_execution_connection_submit_snapshot_interrupt_and_old_o
         assert found.state.execution_id == record.state.execution_id
         snapshot = await client.snapshot_execution_session(control, "instance")
         assert snapshot.executions.active.status is ExecutionStatusV1.RUNNING
+        assert not snapshot.supports_goal_progress
+        with pytest.raises(AppServiceError) as unsupported:
+            await remote._send_execution(
+                lambda request_id: ExecutionCallV1(
+                    request_id, ExecutionOperationV1.GOAL_PROGRESS, control, "instance",
+                    execution_id=record.state.execution_id,
+                ), ExecutionGoalProgressV1, False, False,
+            )
+        assert unsupported.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
         result = await client.interrupt_execution(control, "instance", record.state.execution_id)
         assert result.record.state.interrupt_requested or result.record.state.status.terminal
         await service._execution_registry.wait(service._sessions[product.identity.session_id]._execution, record)

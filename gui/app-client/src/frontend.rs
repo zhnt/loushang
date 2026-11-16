@@ -618,6 +618,18 @@ fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
             })?;
             Ok(json!({"accepted": matches!(result, ControlResult::Accepted)}))
         }
+        "goal-progress" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let execution_id = field(input, "executionId")?.to_owned();
+            let result = view.control(Some(instance), |reply| {
+                ControlCommand::ObserveGoalProgress {
+                    session_id,
+                    execution_id,
+                    reply,
+                }
+            })?;
+            Ok(json!(result))
+        }
         "respond-interaction" => {
             let interaction_id = field(input, "interactionId")?.to_owned();
             let outcome =

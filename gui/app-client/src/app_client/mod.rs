@@ -70,6 +70,11 @@ pub enum ControlCommand {
         execution_id: String,
         reply: SyncSender<Result<ControlResult, ()>>,
     },
+    ObserveGoalProgress {
+        session_id: String,
+        execution_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
     RespondInteraction {
         session_id: String,
         interaction_id: String,
@@ -575,6 +580,17 @@ fn process_controls<R: Read, W: Write>(
                 reply,
             } => {
                 let result = authority.interrupt(channel, &session_id, &execution_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ObserveGoalProgress {
+                session_id,
+                execution_id,
+                reply,
+            } => {
+                let result =
+                    authority.goal_progress(channel, &session_id, &execution_id, &request_id);
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

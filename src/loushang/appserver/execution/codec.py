@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 from types import UnionType
-from typing import Literal, cast, get_args, get_origin, get_type_hints
+from typing import Literal, Union, cast, get_args, get_origin, get_type_hints
 
 from ..protocol import (
     AckV1,
@@ -26,6 +26,7 @@ from .model import (
     ExecutionContentEventV1,
     ExecutionEventsV1,
     ExecutionFailureV1,
+    ExecutionGoalProgressV1,
     ExecutionInterruptResultV1,
     ExecutionObservationV1,
     ExecutionOperationV1,
@@ -61,6 +62,10 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ExecutionObservationV1: ("execution_id", "status", "final_cursor"),
     ExecutionSourceSnapshotV1: ("source", "observation", "draft", "truncated"),
     ExecutionRecordV1: ("service_instance_id", "identity", "submission_id", "state"),
+    ExecutionGoalProgressV1: (
+        "execution_id", "presence", "goal_id", "status", "reason_code", "validity",
+        "execution_unresolved", "advances", "model_calls", "batch_count",
+    ),
     ExecutionSessionViewV1: ("identity", "revision", "quiescent", "active", "latest_terminal"),
     ExecutionSessionSnapshotV1: ("service_instance_id", "source", "executions"),
     ExecutionContentEventV1: ("source", "execution_id"),
@@ -70,6 +75,7 @@ _FIELDS: dict[type, tuple[str, ...]] = {
 }
 _KINDS: dict[str, type] = {
     "resume_input_lookup": ResumeInputLookupResultV1,
+    "goal_progress": ExecutionGoalProgressV1,
     "record": ExecutionRecordV1, "snapshot": ExecutionSessionSnapshotV1,
     "events": ExecutionEventsV1, "failure": ExecutionFailureV1,
     "app_failure": AppFailureV1,
@@ -98,6 +104,8 @@ def _encode(value: object) -> object:
             encoded["submissionMode"] = value.submission_mode.value
         if value.user_choice is not None:
             encoded["userChoice"] = _encode(value.user_choice)
+    if type(value) is ExecutionSessionSnapshotV1 and value.supports_goal_progress:
+        encoded["supportsGoalProgress"] = True
     return encoded
 
 
@@ -115,7 +123,7 @@ def _decode(expected: object, raw: object) -> object:
         if type(raw) is not str or raw not in args:
             raise InvalidAppMessageError()
         return raw
-    if origin is UnionType:
+    if origin in (UnionType, Union):
         for member in args:
             try:
                 return _decode(member, raw)
@@ -134,6 +142,8 @@ def _decode(expected: object, raw: object) -> object:
     wire_fields = {_camel(name) for name in fields}
     if expected is SessionSnapshotV1 and type(raw) is dict:
         wire_fields.update({"submissionMode", "userChoice"} & raw.keys())
+    if expected is ExecutionSessionSnapshotV1 and type(raw) is dict and "supportsGoalProgress" in raw:
+        wire_fields.add("supportsGoalProgress")
     value = _object(raw, wire_fields)
     annotations = get_type_hints(expected)
     values = {
@@ -150,6 +160,10 @@ def _decode(expected: object, raw: object) -> object:
         values["submission_mode"] = mode
         if "userChoice" in value:
             values["user_choice"] = _decode(UserChoicePromptV1, value["userChoice"])
+    if expected is ExecutionSessionSnapshotV1 and "supportsGoalProgress" in value:
+        if value["supportsGoalProgress"] is not True:
+            raise InvalidAppMessageError()
+        values["supports_goal_progress"] = True
     return expected(**values)
 
 
@@ -186,7 +200,9 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
         fields = {"control", "expectedInstanceId"}
         if operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND}:
             fields.add("submissionId")
-        if operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT}:
+        if operation in {
+            ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
+        }:
             fields.add("executionId")
         if operation is ExecutionOperationV1.SUBMIT:
             fields.add("text")

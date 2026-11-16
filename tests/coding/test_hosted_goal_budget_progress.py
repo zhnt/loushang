@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.appserver.goal import GoalServiceError
-from loushang.appserver.protocol import AppServiceError
+from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
 from loushang.coding._hosted_goal_config import CodingHostedGoalV1, HostedGoalSetup
 from loushang.coding._hosted_goal_work import GoalInvocation
@@ -211,7 +211,26 @@ def test_progress_optional_capability_and_revocation_during_delivery(tmp_path, m
                 return value
 
             monkeypatch.setattr(port, "progress_goal", delayed)
-            reading = asyncio.create_task(client.progress(control, submitted.handle))
+            reader = scope.goal_execution_observer
+
+            def read_progress():
+                return asyncio.create_task(reader.goal_progress(
+                    control, client.service_instance_id, submitted.handle.execution_id,
+                ))
+
+            reading = read_progress()
+            await entered.wait()
+            with monkeypatch.context() as patch:
+                patch.setattr(type(port), "goal_capability", property(lambda self:
+                              replace(capability, supports_progress=False)))
+                release.set()
+                with pytest.raises(AppServiceError) as rejected:
+                    await reading
+                assert rejected.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+
+            entered.clear()
+            release.clear()
+            reading = read_progress()
             await entered.wait()
             await scope.close()
             release.set()

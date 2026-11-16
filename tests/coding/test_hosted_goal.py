@@ -12,8 +12,15 @@ from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
+from loushang.appserver.execution.dispatch import dispatch_execution
+from loushang.appserver.execution.model import (
+    ExecutionCallV1,
+    ExecutionOperationV1,
+    ExecutionServiceErrorV1,
+)
 from loushang.appserver.goal import GoalServiceError
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
     AppServiceError,
     MuxAttachV1,
     MuxCreateV1,
@@ -156,6 +163,28 @@ def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_pa
                     raise error
             assert result.execution.state.status is ExecutionStatusV1.SUCCEEDED, asdict(result)
             view = result.observation
+            reader = scope.goal_execution_observer
+            instance = client.service_instance_id
+            execution_id = submitted.handle.execution_id
+            assert (await reader.snapshot_execution_session(control, instance)).supports_goal_progress
+            calls_before_observation = adapter.calls
+            observed = await reader.goal_progress(control, instance, execution_id)
+            assert adapter.calls == calls_before_observation
+            with pytest.raises(ExecutionServiceErrorV1, match="execution_not_retained"):
+                await reader.goal_progress(control, instance, "wrong-execution")
+            with pytest.raises(ExecutionServiceErrorV1, match="service_instance_changed"):
+                await reader.goal_progress(control, "other-instance", execution_id)
+            forbidden = ExecutionCallV1(
+                "request", ExecutionOperationV1.SUBMIT, control, instance,
+                submission_id="not-a-goal-authority", text="start",
+            )
+            with pytest.raises(AppServiceError) as denied:
+                await dispatch_execution(reader, forbidden)
+            assert denied.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+            assert observed.execution_id == submitted.handle.execution_id
+            assert observed.status == "completed" and observed.validity == "not_checked"
+            assert observed.model_calls == adapter.calls
+            assert observed.batch_count == len(view.batches)
             assert view.status == "completed" and view.validity == "current" and not view.execution_unresolved
             assert 1 < view.advances <= 8 and view.model_calls == adapter.calls <= 8
             runs = [b.work for b in view.batches]

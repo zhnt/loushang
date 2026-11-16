@@ -72,6 +72,14 @@ pub(crate) struct LiveInterruptInput {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveGoalProgressInput {
+    session_id: String,
+    execution_id: String,
+    service_instance_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LiveModelsInput {
     session_id: String,
 }
@@ -409,6 +417,34 @@ fn random_id() -> Result<String, String> {
     getrandom::getrandom(&mut bytes)
         .map_err(|_| "secure session identity unavailable".to_owned())?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+#[tauri::command]
+pub(crate) async fn live_goal_progress(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveGoalProgressInput,
+) -> Result<Option<serde_json::Value>, String> {
+    let control = current_control(&state)?;
+    if control.service_instance_id != input.service_instance_id {
+        return Ok(None);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::ObserveGoalProgress {
+                session_id: input.session_id,
+                execution_id: input.execution_id,
+                reply,
+            })
+            .map_err(|_| "live control connection changed".to_owned())?;
+        receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "Goal observation timed out".to_owned())?
+            .map_err(|_| "Goal observation connection failed".to_owned())
+    })
+    .await
+    .map_err(|_| "Goal observation worker failed".to_owned())?
 }
 
 #[tauri::command]

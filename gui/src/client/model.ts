@@ -1,4 +1,4 @@
-import type { UserChoicePromptV1 } from "../../contracts/generated/bridge";
+import type { ExecutionGoalProgressV1, UserChoicePromptV1 } from "../../contracts/generated/bridge";
 
 export type ConnectionState =
   | "fixture-offline"
@@ -155,6 +155,7 @@ export interface SessionSnapshot {
   readonly context: ContextIdentity;
   readonly messages: readonly ConversationMessage[];
   readonly execution?: ExecutionProjection | null;
+  readonly supportsGoalProgress?: true;
   readonly pendingApprovals?: readonly PendingApproval[];
   readonly userChoice?: UserChoicePromptV1;
   readonly documents: readonly ReadonlyDocument[];
@@ -317,6 +318,7 @@ export interface HarnessClientUiPort {
   interrupt(sessionId: string): Promise<ControlReceipt>;
   respondInteraction?(sessionId: string, interactionId: string, outcome: InteractionOutcome): Promise<ControlReceipt>;
   createSession?(input: CreateSessionInput): Promise<CreateSessionReceipt>;
+  goalProgress?(sessionId: string, executionId: string): Promise<ExecutionGoalProgressV1 | null>;
   sessionModels?(sessionId: string): Promise<SessionModels>;
   selectModel?(sessionId: string, modelId: string, thinkingLevel?: ThinkingLevel): Promise<SessionModels>;
 }

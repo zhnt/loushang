@@ -866,3 +866,57 @@ describe("Hosted business choices", () => {
     expect(screen.queryByRole("form", { name: "Choose a direction" })).not.toBeInTheDocument();
   });
 });
+
+describe("Hosted Goal observation", () => {
+  it("shows authoritative paused facts and discards observations after a Session or connection change", async () => {
+    const seed = await createMockAppClient().snapshot();
+    const [session, other] = seed.sessions;
+    const execution = {
+      id: "goal-execution", status: "running" as const, revision: 3,
+      interruptRequested: false, sourceStatus: null, finalCursor: null, truncated: false,
+    };
+    const initial: ClientSnapshot = {
+      ...seed, connection: "connected", selectedSessionId: session.id,
+      source: { kind: "live", serviceInstanceId: "goal-host", muxSpaceId: "goal-mux", connectionEpoch: "1" },
+      sessions: [{ ...session, execution, supportsGoalProgress: true }],
+    };
+    const observed = {
+      executionId: execution.id, presence: "present" as const, goalId: "real-goal",
+      status: "paused" as const, reasonCode: "advance_budget_exhausted", validity: "not_checked" as const,
+      executionUnresolved: true, advances: 2, modelCalls: 3, batchCount: 1,
+    };
+    let publish: (snapshot: ClientSnapshot) => void = () => {};
+    let disconnect: (state: "disconnected") => void = () => {};
+    let settle!: (value: typeof observed) => void;
+    const goalProgress = vi.fn<NonNullable<HarnessClientUiPort["goalProgress"]>>()
+      .mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }))
+      .mockResolvedValue(observed);
+    const client: HarnessClientUiPort = {
+      snapshot: async () => initial,
+      subscribe: () => () => {},
+      subscribeSnapshots(listener) { publish = listener; return () => {}; },
+      subscribeConnection(listener) { disconnect = listener; return () => {}; },
+      submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+      interrupt: async () => ({ accepted: false }),
+      goalProgress,
+    };
+    render(<HarnessGui client={client} />);
+    await waitFor(() => expect(goalProgress).toHaveBeenCalledWith(session.id, execution.id));
+    act(() => publish({ ...initial, selectedSessionId: other.id, sessions: [{ ...other, execution }] }));
+    await act(async () => settle(observed));
+    expect(screen.queryByRole("region", { name: "Goal progress" })).not.toBeInTheDocument();
+    expect(goalProgress).toHaveBeenCalledTimes(1);
+
+    act(() => publish(initial));
+    const panel = within(await screen.findByRole("region", { name: "Goal progress" }));
+    expect(panel.getByText("real-goal")).toBeVisible();
+    expect(panel.getByText("Paused")).toBeVisible();
+    expect(panel.getByText("advance_budget_exhausted")).toBeVisible();
+    expect(panel.getByText("Not checked")).toBeVisible();
+    const total = goalProgress.mock.calls.length;
+    act(() => disconnect("disconnected"));
+    expect(screen.queryByRole("region", { name: "Goal progress" })).not.toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 2100));
+    expect(goalProgress).toHaveBeenCalledTimes(total);
+  });
+});

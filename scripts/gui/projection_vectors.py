@@ -42,6 +42,25 @@ def emit_projection_vectors() -> None:
         cases.append((name, kind, json.dumps(value, ensure_ascii=False), valid))
 
     add("idle", "snapshot", base)
+    for flag in (True, False, None):
+        value = copy.deepcopy(base)
+        value["result"]["supportsGoalProgress"] = flag
+        add(f"goal-capability-{flag}", "snapshot", value, flag is True)
+    goal = em.ExecutionGoalProgressV1(
+        "execution-1", "present", "goal-1", "paused", "advance_budget_exhausted",
+        "not_checked", True, 3, 6, 2,
+    )
+    goal_wire = json.loads(encode_response(em.ExecutionResponseV1("goal-progress", goal)))
+    add("goal-progress-paused", "goal_progress", goal_wire)
+    for field, invalid in (
+        ("status", "waiting_input"), ("goalId", None), ("validity", "current"),
+        ("presence", "initializing"), ("reasonCode", "a file path /private"),
+        ("batchCount", 2**53), ("modelCalls", -1), ("advances", True),
+        ("goalPrivate", {}),
+    ):
+        value = copy.deepcopy(goal_wire)
+        value["result"][field] = invalid
+        add(f"goal-invalid-{field}", "goal_progress", value, False)
     choice = pm.UserChoicePromptV1("question-1", "选择设计", (
         pm.UserChoiceOptionV1("a", "渐进", "复用 API"),
         pm.UserChoiceOptionV1("B", "重构"),
@@ -188,7 +207,7 @@ def emit_projection_vectors() -> None:
                 source = expected["result"]["source"]["source"]
                 for field in ["cursor", "revision"]:
                     source[field] = str(source[field])
-            else:
+            elif kind == "events":
                 for event in expected["result"]["events"]:
                     if "source" in event:
                         event["source"]["cursor"] = str(event["source"]["cursor"])

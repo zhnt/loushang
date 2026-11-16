@@ -479,3 +479,4 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .choice-notes input { width: 100%; min-width: 0; }
 .user-choice button { justify-self: start; }
 .user-choice > p { margin-bottom: 0; color: var(--muted); }
+.goal-progress > strong { display: block; padding: 8px 12px 0; }

@@ -52,7 +52,7 @@ from ._operations import _observe, _OwnedAppOperations
 from ._scope_interactions import _ScopeInteractions
 from .execution_registry import ExecutionErrorCodeV1, ExecutionServiceErrorV1
 from .execution_service import ScopedExecutionClientV1
-from .goal import ScopedGoalClientV1
+from .goal import ScopedGoalClientV1, ScopedGoalExecutionObserverV1
 from .method_work import ScopedMethodWorkClientV1
 from .resume_ports import (
     _current_resume_subject,
@@ -270,6 +270,11 @@ class AppClientScopeV1:
             assert execution is not None
             self._goal_client = ScopedGoalClientV1(execution)
         return self._goal_client
+
+    @property
+    def goal_execution_observer(self) -> ScopedGoalExecutionObserverV1 | None:
+        goal = self.goal_client
+        return None if goal is None else ScopedGoalExecutionObserverV1(goal)
 
     @property
     def discovery_client(self) -> SessionDiscoveryViewV1 | None:

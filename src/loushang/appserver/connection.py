@@ -7,7 +7,7 @@ from dataclasses import replace
 
 from .client import AppServicePortV1, SessionDiscoveryPortV1
 from .dispatch import dispatch_request
-from .execution.client import ExecutionPortV1
+from .execution.client import ExecutionObservationPortV1
 from .execution.codec import EXECUTION_PROTOCOL_VERSION, decode_call
 from .execution.codec import encode_response as encode_execution_response
 from .execution.dispatch import dispatch_execution
@@ -81,7 +81,7 @@ class AppServerConnectionV1:
         phase_timeout: float = 10.0,
         profile: AppConnectionProfileV1 = AppConnectionProfileV1.STDIO,
         discovery: SessionDiscoveryPortV1 | None = None,
-        execution: ExecutionPortV1 | None = None,
+        execution: ExecutionObservationPortV1 | None = None,
         managed_mux: ManagedMuxCreationPortV1 | None = None,
         managed_mux_close: ManagedMuxClosePortV1 | None = None,
     ) -> None:

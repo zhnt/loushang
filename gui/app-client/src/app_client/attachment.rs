@@ -939,6 +939,22 @@ impl ControlAuthority {
         Ok(ControlResult::Accepted)
     }
 
+    pub(crate) fn goal_progress<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        execution_id: &str,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        if !identifier(execution_id, 128) {
+            return Err(());
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["executionId"] = Value::String(execution_id.to_owned());
+        let result = execution_request(channel, "execution/goal_progress", request_id, payload)?;
+        decode_goal_progress(result, execution_id)
+    }
+
     pub(crate) fn interrupt<R: Read, W: Write>(
         &self,
         channel: &mut Channel<R, W>,
@@ -1125,6 +1141,17 @@ fn rejected_result(value: &Value) -> Result<Option<String>, ()> {
     Ok(Some(
         checked["result"]["code"].as_str().ok_or(())?.to_owned(),
     ))
+}
+
+fn decode_goal_progress(result: Value, execution_id: &str) -> Result<Option<Value>, ()> {
+    if rejected_result(&result)?.is_some() {
+        return Ok(None);
+    }
+    let mut checked = projection::control_bridge("goal_progress", &result.to_string())?;
+    if checked["result"]["executionId"].as_str() != Some(execution_id) {
+        return Err(());
+    }
+    Ok(Some(checked["result"].take()))
 }
 
 fn successor(decimal: &str) -> String {
@@ -1317,6 +1344,37 @@ impl EventReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn goal_progress_reply_is_bound_to_the_requested_execution() {
+        let reply = json!({
+            "protocolVersion": "loushang.execution/v1",
+            "requestId": "3",
+            "resultType": "goal_progress",
+            "result": {
+                "executionId": "exec-1", "presence": "present", "goalId": "calculator",
+                "status": "paused", "reasonCode": "model_budget", "validity": "not_checked",
+                "executionUnresolved": false, "advances": 1, "modelCalls": 2, "batchCount": 3,
+            },
+        });
+        assert!(decode_goal_progress(reply.clone(), "exec-2").is_err());
+        assert_eq!(
+            decode_goal_progress(reply.clone(), "exec-1"),
+            Ok(Some(reply["result"].clone()))
+        );
+        assert_eq!(
+            decode_goal_progress(
+                json!({
+                    "protocolVersion": "loushang.execution/v1",
+                    "requestId": "3",
+                    "resultType": "app_failure",
+                    "result": {"code": "operation_unavailable"},
+                }),
+                "exec-1"
+            ),
+            Ok(None),
+        );
+    }
+
     #[test]
     fn model_capability_rejection_is_semantic_not_transport_failure() {
         let raw = RawValue::from_string(r#"{"code":"operation_unavailable"}"#.to_owned()).unwrap();
