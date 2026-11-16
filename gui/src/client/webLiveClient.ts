@@ -2,6 +2,7 @@ import { validateGoalProgress } from "../../contracts/goalProgress";
 import type { ClientSnapshot, ControlReceipt, HarnessClientUiPort, SubmitReceipt } from "./model";
 import { projectNativeInitialSnapshot, validateSessionModels } from "./nativeLiveClient";
 import { ApprovalResponses } from "./approvalResponses";
+import { validateInteractiveGoal } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { webRequest } from "./hostApi";
 
@@ -111,6 +112,18 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       return approvals.respond(sessionId, interactionId, (connectionEpoch) =>
         call<ControlReceipt>("respond-interaction", { sessionId, interactionId, outcome, connectionEpoch }),
       );
+    },
+    async createInteractiveGoal(input) {
+      const source = current?.source.kind === "live" ? current.source : null;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await call<unknown>("interactive-goal-create", input);
+      return result === null ? null : validateInteractiveGoal(result);
+    },
+    async interactiveGoalStatus(input) {
+      const source = current?.source.kind === "live" ? current.source : null;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await call<unknown>("interactive-goal-status", input);
+      return result === null ? null : validateInteractiveGoal(result);
     },
     async goalProgress(sessionId, executionId) {
       const serviceInstanceId = current?.source.kind === "live" ? current.source.serviceInstanceId : undefined;

@@ -42,7 +42,7 @@ def emit_projection_vectors() -> None:
         cases.append((name, kind, json.dumps(value, ensure_ascii=False), valid))
 
     add("idle", "snapshot", base)
-    for field in ("supportsGoalProgress", "supportsGoalStart"):
+    for field in ("supportsGoalProgress", "supportsGoalStart", "supportsInteractiveGoal"):
         for flag in (True, False, None):
             value = copy.deepcopy(base)
             value["result"][field] = flag
@@ -50,6 +50,22 @@ def emit_projection_vectors() -> None:
     goal_ready = replace(snapshot, supports_goal_start=True, supports_goal_progress=True)
     goal_ready_wire = json.loads(encode_response(em.ExecutionResponseV1("goal-ready", goal_ready)))
     add("goal-ready", "snapshot", goal_ready_wire)
+    interactive = em.InteractiveGoalViewV1("present", "dynamic-1", "active", 1, 1, False)
+    interactive_wire = json.loads(encode_response(em.ExecutionResponseV1("dynamic", interactive)))
+    add("interactive-present", "interactive_goal", interactive_wire)
+    for availability in ("ready", "not_ready", "creating", "historical", "cleanup_pending"):
+        response = em.ExecutionResponseV1("dynamic", em.InteractiveGoalViewV1(availability))
+        add(f"interactive-{availability}", "interactive_goal", json.loads(encode_response(response)))
+    for field, invalid in (
+        ("availability", "ready"), ("status", "running"), ("goalId", "/private/file"),
+        ("revision", 0), ("epoch", 2**53), ("executionUnresolved", 0), ("goalTarget", "private"),
+    ):
+        value = copy.deepcopy(interactive_wire)
+        value["result"][field] = invalid
+        add(f"interactive-invalid-{field}", "interactive_goal", value, False)
+    missing = copy.deepcopy(interactive_wire)
+    del missing["result"]["status"]
+    add("interactive-missing-status", "interactive_goal", missing, False)
     goal = em.ExecutionGoalProgressV1(
         "execution-1", "present", "goal-1", "paused", "advance_budget_exhausted",
         "not_checked", True, 3, 6, 2,

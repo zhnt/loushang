@@ -952,6 +952,31 @@ impl ControlAuthority {
         Ok(ControlResult::Accepted)
     }
 
+    pub(crate) fn interactive_goal<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        target: Option<&str>,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        let mut payload = self.payload(session_id)?;
+        let operation = if let Some(target) = target {
+            if target.trim().is_empty() || target.len() > 16_384 {
+                return Ok(None);
+            }
+            payload["goalTarget"] = Value::String(target.to_owned());
+            "session/interactive_goal_create"
+        } else {
+            "session/interactive_goal_status"
+        };
+        let result = execution_request(channel, operation, request_id, payload)?;
+        if rejected_result(&result)?.is_some() {
+            return Ok(None);
+        }
+        let mut checked = projection::control_bridge("interactive_goal", &result.to_string())?;
+        Ok(Some(checked["result"].take()))
+    }
+
     pub(crate) fn goal_progress<R: Read, W: Write>(
         &self,
         channel: &mut Channel<R, W>,

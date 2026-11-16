@@ -8,6 +8,7 @@ from .client import (
     ExecutionGoalControlPortV1,
     ExecutionObservationPortV1,
     ExecutionPortV1,
+    InteractiveGoalClientPortV1,
 )
 from .model import (
     ExecutionCallV1,
@@ -36,6 +37,12 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
                 return await client.goal_find(*args, cast(str, call.submission_id))
             case ExecutionOperationV1.INTERRUPT:
                 return await client.goal_interrupt(*args, cast(str, call.execution_id))
+    if call.operation in {ExecutionOperationV1.INTERACTIVE_GOAL_CREATE, ExecutionOperationV1.INTERACTIVE_GOAL_STATUS}:
+        if not isinstance(client, InteractiveGoalClientPortV1):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        if call.operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE:
+            return await client.create_interactive_goal(*args, cast(str, call.goal_target))
+        return await client.interactive_goal_status(*args)
     if not isinstance(client, ExecutionPortV1):
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     match call.operation:

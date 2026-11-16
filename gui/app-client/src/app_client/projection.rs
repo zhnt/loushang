@@ -294,6 +294,12 @@ struct Snapshot {
         deserialize_with = "present"
     )]
     supports_goal_start: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    supports_interactive_goal: Option<bool>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -350,6 +356,7 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
         if !envelope(&e, kind)
             || e.result.supports_goal_progress == Some(false)
             || e.result.supports_goal_start == Some(false)
+            || e.result.supports_interactive_goal == Some(false)
             || !identifier(&e.result.service_instance_id, 128)
             || !s.identity.valid()
             || s.user_choice.as_ref().is_some_and(|choice| !choice.valid())
@@ -541,7 +548,64 @@ impl GoalProgress {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct InteractiveGoal {
+    availability: String,
+    goal_id: Box<RawValue>,
+    status: Box<RawValue>,
+    revision: Box<RawValue>,
+    epoch: Box<RawValue>,
+    execution_unresolved: Box<RawValue>,
+}
+
+impl InteractiveGoal {
+    fn valid(&self) -> Result<bool, ()> {
+        let goal_id = optional_string(&self.goal_id)?;
+        let status = optional_string(&self.status)?;
+        let revision: Option<u64> = serde_json::from_str(self.revision.get()).map_err(|_| ())?;
+        let epoch: Option<u64> = serde_json::from_str(self.epoch.get()).map_err(|_| ())?;
+        let unresolved: Option<bool> =
+            serde_json::from_str(self.execution_unresolved.get()).map_err(|_| ())?;
+        Ok(match self.availability.as_str() {
+            "present" => {
+                goal_id.is_some_and(|id| identifier(&id, 128))
+                    && status.is_some_and(|value| {
+                        [
+                            "active",
+                            "paused",
+                            "completed",
+                            "abandoned",
+                            "failed",
+                            "superseded",
+                        ]
+                        .contains(&value.as_str())
+                    })
+                    && [revision, epoch].into_iter().all(|count| {
+                        count.is_some_and(|value| (1..=9_007_199_254_740_991).contains(&value))
+                    })
+                    && unresolved.is_some()
+            }
+            "ready" | "not_ready" | "creating" | "historical" | "cleanup_pending" => {
+                goal_id.is_none()
+                    && status.is_none()
+                    && revision.is_none()
+                    && epoch.is_none()
+                    && unresolved.is_none()
+            }
+            _ => false,
+        })
+    }
+}
+
 pub fn control_bridge(kind: &str, wire: &str) -> Result<Value, ()> {
+    if kind == "interactive_goal" {
+        let parsed: Envelope<InteractiveGoal> = serde_json::from_str(wire).map_err(|_| ())?;
+        if !envelope(&parsed, kind) || !parsed.result.valid()? {
+            return Err(());
+        }
+        return serde_json::to_value(parsed).map_err(|_| ());
+    }
     if kind == "goal_progress" {
         let parsed: Envelope<GoalProgress> = serde_json::from_str(wire).map_err(|_| ())?;
         if !envelope(&parsed, kind) || !parsed.result.valid()? {

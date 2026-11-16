@@ -488,3 +488,18 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .goal-work code { display: block; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
 .goal-work small { display: block; color: var(--muted); font-weight: 400; }
 .goal-work-note { margin: 8px 12px; color: var(--muted); font-size: 12px; }
+
+.interactive-goal p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.interactive-goal form { display: grid; justify-items: start; gap: 8px; margin-block: 8px; }
+.interactive-goal label { display: grid; gap: 4px; width: 100%; font-size: 13px; }
+.interactive-goal textarea {
+  min-height: 72px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+.interactive-goal > button + button { margin-inline-start: 8px; }

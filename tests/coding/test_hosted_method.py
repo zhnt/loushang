@@ -135,6 +135,7 @@ def test_scoped_submit_dedup_query_and_legacy_fences(tmp_path):
             client = scope.method_work_client
             assert client is not None
             instance = client.service_instance_id
+            assert not hosted.supports_interactive_goal
             capability = await client.capability(control, instance)
             submitted = await client.submit(control, instance, "S1", "run both")
             duplicate = await client.submit(control, instance, "S1", "run both")

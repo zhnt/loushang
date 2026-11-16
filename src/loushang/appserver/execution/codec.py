@@ -40,6 +40,7 @@ from .model import (
     ExecutionSourceSnapshotV1,
     ExecutionStateV1,
     ExecutionUpdateV1,
+    InteractiveGoalViewV1,
     _identifier,
 )
 
@@ -70,6 +71,7 @@ _FIELDS: dict[type, tuple[str, ...]] = {
         "execution_id", "presence", "goal_id", "status", "reason_code", "validity",
         "execution_unresolved", "advances", "model_calls", "batch_count", "batches",
     ),
+    InteractiveGoalViewV1: ("availability", "goal_id", "status", "revision", "epoch", "execution_unresolved"),
     ExecutionSessionViewV1: ("identity", "revision", "quiescent", "active", "latest_terminal"),
     ExecutionSessionSnapshotV1: ("service_instance_id", "source", "executions"),
     ExecutionContentEventV1: ("source", "execution_id"),
@@ -77,11 +79,12 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ExecutionEventsV1: ("events",),
     ExecutionInterruptResultV1: ("record", "disposition"),
 }
-_GOAL_CAPABILITIES = ("supports_goal_progress", "supports_goal_start")
+_GOAL_CAPABILITIES = ("supports_goal_progress", "supports_goal_start", "supports_interactive_goal")
 
 _KINDS: dict[str, type] = {
     "resume_input_lookup": ResumeInputLookupResultV1,
     "goal_progress": ExecutionGoalProgressV1,
+    "interactive_goal": InteractiveGoalViewV1,
     "record": ExecutionRecordV1, "snapshot": ExecutionSessionSnapshotV1,
     "events": ExecutionEventsV1, "failure": ExecutionFailureV1,
     "app_failure": AppFailureV1,
@@ -192,6 +195,8 @@ def encode_call(call: ExecutionCallV1) -> bytes:
         body["submissionId"] = call.submission_id
     if call.execution_id is not None:
         body["executionId"] = call.execution_id
+    if call.goal_target is not None:
+        body["goalTarget"] = call.goal_target
     if call.include_goal_batches:
         body["includeBatches"] = True
     if call.text is not None:
@@ -221,6 +226,8 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             fields.add("executionId")
         if operation is ExecutionOperationV1.SUBMIT:
             fields.add("text")
+        if operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE:
+            fields.add("goalTarget")
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP:
             fields.add("resumeQuery")
         raw = root["payload"]
@@ -242,6 +249,7 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             cast(ResumeInputLookupQueryV1, _decode(ResumeInputLookupQueryV1, body["resumeQuery"]))
             if "resumeQuery" in fields else None,
             include_goal_batches=include_batches,
+            goal_target=_string(body["goalTarget"]) if "goalTarget" in fields else None,
         )
     except (TypeError, ValueError, KeyError, RecursionError):
         raise InvalidAppMessageError() from None

@@ -1,4 +1,21 @@
 {
+  "interactiveGoal": {
+    "title": "Development goal",
+    "open": "Create development goal",
+    "target": "Goal target",
+    "create": "Create goal",
+    "check": "Check goal status",
+    "loading": "Checking goal status…",
+    "unknown": "Goal creation is not yet confirmed.",
+    "unavailable": "Goal status is unavailable.",
+    "created": "Goal created. Execution has not started.",
+    "not_ready": "Send an ordinary message to prepare the Coding tools before creating a goal.",
+    "creating": "Creating goal…",
+    "historical": "This session has a read-only goal history.",
+    "cleanup_pending": "Goal resources are still being cleaned up.",
+    "revision": "Revision",
+    "epoch": "Epoch"
+  },
   "goalStart": {
     "label": "Start Goal",
     "pending": "Starting Goal…",

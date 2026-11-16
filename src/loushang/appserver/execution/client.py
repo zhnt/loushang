@@ -11,6 +11,7 @@ from .model import (
     ExecutionRecordV1,
     ExecutionSessionSnapshotV1,
     ExecutionUpdateV1,
+    InteractiveGoalViewV1,
 )
 
 
@@ -67,6 +68,17 @@ class ExecutionGoalControlPortV1(Protocol):
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
         execution_id: str,
     ) -> ExecutionInterruptResultV1: ...
+
+
+@runtime_checkable
+class InteractiveGoalClientPortV1(Protocol):
+    async def create_interactive_goal(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str, target: str,
+    ) -> InteractiveGoalViewV1: ...
+
+    async def interactive_goal_status(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+    ) -> InteractiveGoalViewV1: ...
 
 
 ExecutionPortV1 = ExecutionClientV1

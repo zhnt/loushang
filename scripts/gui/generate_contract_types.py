@@ -43,6 +43,8 @@ SAFE = {
     "ExecutionGoalProgressV1.advances",
     "ExecutionGoalProgressV1.model_calls",
     "ExecutionGoalProgressV1.batch_count",
+    "InteractiveGoalViewV1.revision",
+    "InteractiveGoalViewV1.epoch",
     "ExecutionStateV1.revision",
     "ExecutionObservationV1.final_cursor",
     "ExecutionSessionViewV1.revision",

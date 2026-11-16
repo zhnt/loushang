@@ -153,6 +153,23 @@ export default interface Resources {
       "toggleDock": "Toggle right panel",
       "toggleEnvironment": "Toggle environment"
     },
+    "interactiveGoal": {
+      "check": "Check goal status",
+      "cleanup_pending": "Goal resources are still being cleaned up.",
+      "create": "Create goal",
+      "created": "Goal created. Execution has not started.",
+      "creating": "Creating goal…",
+      "epoch": "Epoch",
+      "historical": "This session has a read-only goal history.",
+      "loading": "Checking goal status…",
+      "not_ready": "Send an ordinary message to prepare the Coding tools before creating a goal.",
+      "open": "Create development goal",
+      "revision": "Revision",
+      "target": "Goal target",
+      "title": "Development goal",
+      "unavailable": "Goal status is unavailable.",
+      "unknown": "Goal creation is not yet confirmed."
+    },
     "layout": {
       "sidebarWidth": "Sidebar width",
       "workspace": "Session workspace"

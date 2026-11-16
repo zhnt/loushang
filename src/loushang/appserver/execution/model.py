@@ -256,6 +256,7 @@ class ExecutionSessionSnapshotV1:
     executions: ExecutionSessionViewV1
     supports_goal_progress: bool = False
     supports_goal_start: bool = False
+    supports_interactive_goal: bool = False
 
     def __post_init__(self) -> None:
         _identifier(self.service_instance_id)
@@ -263,7 +264,9 @@ class ExecutionSessionSnapshotV1:
             ExecutionSessionViewV1
         ) or self.source.source.identity != self.executions.identity:
             raise ValueError("invalid execution composite snapshot")
-        if any(type(flag) is not bool for flag in (self.supports_goal_progress, self.supports_goal_start)):
+        if any(type(flag) is not bool for flag in (
+            self.supports_goal_progress, self.supports_goal_start, self.supports_interactive_goal,
+        )):
             raise TypeError("invalid Goal capability")
 
 
@@ -353,11 +356,42 @@ class ExecutionGoalProgressV1:
             raise ValueError("unexpected Goal identity or status")
 
 
+@dataclass(frozen=True, slots=True)
+class InteractiveGoalViewV1:
+    availability: Literal["ready", "not_ready", "creating", "present", "historical", "cleanup_pending"]
+    goal_id: str | None = None
+    status: ExecutionGoalStatusV1 | None = None
+    revision: int | None = None
+    epoch: int | None = None
+    execution_unresolved: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.availability not in {"ready", "not_ready", "creating", "present", "historical", "cleanup_pending"}:
+            raise ValueError("invalid interactive Goal availability")
+        if self.availability != "present":
+            if any(value is not None for value in (
+                self.goal_id, self.status, self.revision, self.epoch, self.execution_unresolved,
+            )):
+                raise ValueError("unexpected interactive Goal facts")
+            return
+        if self.goal_id is None or self.status not in get_args(ExecutionGoalStatusV1):
+            raise ValueError("invalid interactive Goal identity or status")
+        _identifier(self.goal_id)
+        for counter in (self.revision, self.epoch):
+            _counter(counter)
+            if counter == 0:
+                raise ValueError("invalid interactive Goal revision or epoch")
+        if type(self.execution_unresolved) is not bool:
+            raise TypeError("invalid interactive Goal settlement")
+
+
 class ExecutionOperationV1(str, Enum):
     SUBMIT = "execution/submit"
     GET = "execution/get"
     GOAL_PROGRESS = "execution/goal_progress"
     GOAL_START = "execution/goal_start"
+    INTERACTIVE_GOAL_CREATE = "session/interactive_goal_create"
+    INTERACTIVE_GOAL_STATUS = "session/interactive_goal_status"
     FIND = "execution/find_submission"
     INTERRUPT = "execution/interrupt"
     SNAPSHOT = "execution/snapshot"
@@ -396,6 +430,7 @@ class ExecutionCallV1:
     text: str | None = None
     resume_query: ResumeInputLookupQueryV1 | None = None
     include_goal_batches: bool = False
+    goal_target: str | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -429,6 +464,17 @@ class ExecutionCallV1:
             _identifier(self.execution_id)
         if self.text is not None:
             ExecutionRequestV1("validation", self.text)
+        self._validate_goal_target()
+
+    def _validate_goal_target(self) -> None:
+        create = self.operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE
+        if (self.goal_target is not None) != create:
+            raise ValueError("unexpected interactive Goal target")
+        if self.goal_target is not None and (
+            type(self.goal_target) is not str or not self.goal_target.strip()
+            or len(self.goal_target.encode("utf-8")) > 16_384
+        ):
+            raise ValueError("invalid interactive Goal target")
 
 
 @dataclass(frozen=True, slots=True)
@@ -454,7 +500,7 @@ class ExecutionFailureV1:
 ExecutionResultV1 = (
     ExecutionRecordV1 | ExecutionSessionSnapshotV1 | ExecutionEventsV1
     | ExecutionInterruptResultV1 | ExecutionFailureV1 | AppFailureV1 | None
-    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1
+    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1
 )
 
 
@@ -469,6 +515,6 @@ class ExecutionResponseV1:
             ExecutionRecordV1, ExecutionSessionSnapshotV1, ExecutionEventsV1,
             ExecutionFailureV1, AppFailureV1,
             ExecutionInterruptResultV1,
-            ResumeInputLookupResultV1, ExecutionGoalProgressV1,
+            ResumeInputLookupResultV1, ExecutionGoalProgressV1, InteractiveGoalViewV1,
         ):
             raise TypeError("invalid execution response")

@@ -171,7 +171,7 @@ class AppServerConnectionV1:
             self._last_id = number
             control = request.operation in CONTROL_OPERATIONS or request.operation in {
                 ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GET, ExecutionOperationV1.FIND,
-                ExecutionOperationV1.RESUME_INPUT_LOOKUP,
+                ExecutionOperationV1.RESUME_INPUT_LOOKUP, ExecutionOperationV1.INTERACTIVE_GOAL_STATUS,
             } or isinstance(request, ManagedMuxCloseCallV1) and request.read_result
             maximum = MAX_CONTROL_REQUESTS if control else MAX_ORDINARY_REQUESTS
             if self._counts[control] >= maximum:
