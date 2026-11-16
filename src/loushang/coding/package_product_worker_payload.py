@@ -36,6 +36,7 @@ from loushang.harness.worker.journal import (
 )
 from loushang.harness.worker.payload._records import (
     PayloadValueTypes,
+    empty_fields,
     plan_fields,
     unmarked_fields,
 )
@@ -43,7 +44,6 @@ from loushang.harness.worker.payload._selected_payload import (
     bind_selected_payload_request,
     materialize_selected_payload,
     plan_selected_payload_launch,
-    worker_identity_from_receipt,
 )
 from loushang.harness.worker.payload._storage import (
     _COMPLETE_REPAIR_PREFIX as _COMPLETE_REPAIR_PREFIX,
@@ -187,16 +187,7 @@ class CodingWorkerEmptyPayloadDebtPlanV1:
 
     @property
     def fingerprint(self) -> str:
-        return sha256(
-            canonical_json_bytes(
-                {
-                    "attemptId": self.attempt_id,
-                    "stageDevice": self.stage_device,
-                    "stageInode": self.stage_inode,
-                    "version": 1,
-                }
-            )
-        ).hexdigest()
+        return sha256(canonical_json_bytes(empty_fields(self))).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -433,9 +424,6 @@ def bind_coding_product_worker_launch_request(
         stale_message="Coding Product Worker selection changed",
         error_prefix="coding_worker_payload",
     )
-
-
-_new_worker_identity = worker_identity_from_receipt
 
 
 _STORAGE = PayloadStorage(

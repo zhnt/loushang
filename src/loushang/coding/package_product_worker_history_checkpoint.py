@@ -15,7 +15,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.worker.history._checkpoint import _CheckpointMethods
 from loushang.harness.worker.history._checkpoint_commands import (
     CheckpointCommands,
-    CheckpointStoreIdentity,
 )
 from loushang.harness.worker.history._checkpoint_history import (
     _MAX_ACTIVE_RECORDS as _MAX_ACTIVE_RECORDS,
@@ -192,7 +191,7 @@ def publish_coding_product_worker_history_checkpoint(
                 return _checkpoint_commands().publish(
                     rooted,
                     access=_CodingHistoryAccess(product),
-                    captured_store=_CapturedStoreIdentity(registry),
+                    captured_store=registry,
                     attempt_id=attempt_id,
                     review=review,
                 )
@@ -228,7 +227,7 @@ def repair_coding_product_worker_history_checkpoint_append(
                 return _checkpoint_commands().repair(
                     rooted,
                     access=_CodingHistoryAccess(product),
-                    captured_store=_CapturedStoreIdentity(registry),
+                    captured_store=registry,
                     attempt_id=attempt_id,
                     review=review,
                 )
@@ -250,7 +249,7 @@ def rollback_coding_product_worker_history_checkpoint_tail(
                 return _checkpoint_commands().rollback(
                     rooted,
                     access=_CodingHistoryAccess(product),
-                    captured_store=_CapturedStoreIdentity(registry),
+                    captured_store=registry,
                 )
 
 
@@ -263,15 +262,6 @@ __all__ = [
     "repair_coding_product_worker_history_checkpoint_append",
     "rollback_coding_product_worker_history_checkpoint_tail",
 ]
-
-
-@dataclass(frozen=True, slots=True)
-class _CapturedStoreIdentity:
-    registry: CheckpointStoreIdentity
-
-    @property
-    def store_id(self) -> str:
-        return self.registry.store_id
 
 
 def _checkpoint_commands() -> CheckpointCommands[
