@@ -31,6 +31,7 @@ from loushang.appserver.protocol import (
     SessionSubmissionModeV1,
     SessionThinkingV1,
     TranscriptRecordV1,
+    UserChoicePromptV1,
 )
 from loushang.appservice import HostedSessionEventListenerV1
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
@@ -64,6 +65,8 @@ class _SnapshotProjection(Protocol):
     def running(self) -> bool: ...
     @property
     def records(self) -> tuple[TranscriptRecordV1, ...]: ...
+    @property
+    def user_choice(self) -> UserChoicePromptV1 | None: ...
 
 
 class _EventProjection(Protocol):
@@ -178,6 +181,7 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
             running=projection.running,
             records=projection.records,
             submission_mode=self._submission_mode,
+            user_choice=projection.user_choice,
         )
 
     def subscribe(

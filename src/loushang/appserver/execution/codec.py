@@ -16,6 +16,8 @@ from ..protocol import (
     SessionSnapshotV1,
     SessionSubmissionModeV1,
     TranscriptRecordV1,
+    UserChoiceOptionV1,
+    UserChoicePromptV1,
 )
 from ..protocol.codec import _dumps, _loads, _object, _string
 from ..resume_model import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
@@ -49,6 +51,8 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     AckV1: (), AppFailureV1: ("code",), ExecutionFailureV1: ("code",),
     SessionIdentityV1: ("product_id", "continuity_id", "session_id", "scope", "scope_fingerprint"),
     TranscriptRecordV1: ("kind", "text"),
+    UserChoiceOptionV1: ("id", "label", "description"),
+    UserChoicePromptV1: ("question_id", "question", "options"),
     SessionSnapshotV1: ("identity", "title", "cursor", "revision", "running", "records"),
     SessionSnapshotRequestV1: ("attachment_id", "controller_generation", "member_id"),
     SessionEventV1: ("session_id", "cursor", "kind", "text", "interaction_id"),
@@ -89,11 +93,11 @@ def _encode(value: object) -> object:
     if fields is None:
         raise InvalidAppMessageError()
     encoded = {_camel(name): _encode(getattr(value, name)) for name in fields}
-    if (
-        type(value) is SessionSnapshotV1
-        and value.submission_mode is SessionSubmissionModeV1.EXECUTION
-    ):
-        encoded["submissionMode"] = value.submission_mode.value
+    if type(value) is SessionSnapshotV1:
+        if value.submission_mode is SessionSubmissionModeV1.EXECUTION:
+            encoded["submissionMode"] = value.submission_mode.value
+        if value.user_choice is not None:
+            encoded["userChoice"] = _encode(value.user_choice)
     return encoded
 
 
@@ -128,8 +132,8 @@ def _decode(expected: object, raw: object) -> object:
         raise InvalidAppMessageError()
     fields = _FIELDS[expected]
     wire_fields = {_camel(name) for name in fields}
-    if expected is SessionSnapshotV1 and type(raw) is dict and "submissionMode" in raw:
-        wire_fields.add("submissionMode")
+    if expected is SessionSnapshotV1 and type(raw) is dict:
+        wire_fields.update({"submissionMode", "userChoice"} & raw.keys())
     value = _object(raw, wire_fields)
     annotations = get_type_hints(expected)
     values = {
@@ -144,6 +148,8 @@ def _decode(expected: object, raw: object) -> object:
         if "submissionMode" in value and mode is not SessionSubmissionModeV1.EXECUTION:
             raise InvalidAppMessageError()
         values["submission_mode"] = mode
+        if "userChoice" in value:
+            values["user_choice"] = _decode(UserChoicePromptV1, value["userChoice"])
     return expected(**values)
 
 

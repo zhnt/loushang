@@ -2,6 +2,7 @@
 use super::identifier;
 use serde::{Deserialize, Serialize};
 use serde_json::{value::RawValue, Value};
+use std::collections::BTreeSet;
 
 #[derive(Deserialize, Serialize)]
 #[serde(try_from = "Box<RawValue>")]
@@ -66,9 +67,16 @@ struct Source {
         default,
         rename = "submissionMode",
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "submission_mode"
+        deserialize_with = "present"
     )]
     submission_mode: Option<SubmissionMode>,
+    #[serde(
+        default,
+        rename = "userChoice",
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    user_choice: Option<UserChoicePrompt>,
     identity: Identity,
     title: String,
     cursor: Counter,
@@ -82,10 +90,46 @@ struct Source {
 enum SubmissionMode {
     Execution,
 }
-fn submission_mode<'de, D: serde::Deserializer<'de>>(
+fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
     deserializer: D,
-) -> Result<Option<SubmissionMode>, D::Error> {
-    SubmissionMode::deserialize(deserializer).map(Some)
+) -> Result<Option<T>, D::Error> {
+    T::deserialize(deserializer).map(Some)
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UserChoicePrompt {
+    question_id: String,
+    question: String,
+    options: Vec<UserChoiceOption>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct UserChoiceOption {
+    id: String,
+    label: String,
+    description: Box<RawValue>,
+}
+
+impl UserChoicePrompt {
+    fn valid(&self) -> bool {
+        let mut ids = BTreeSet::new();
+        identifier(&self.question_id, 512)
+            && choice_text(&self.question, 1024)
+            && (2..=5).contains(&self.options.len())
+            && self.options.iter().all(|option| {
+                identifier(&option.id, 64)
+                    && ids.insert(&option.id)
+                    && choice_text(&option.label, 160)
+                    && optional_string(&option.description)
+                        .is_ok_and(|value| value.is_none_or(|text| choice_text(&text, 512)))
+            })
+    }
+}
+
+fn choice_text(text: &str, limit: usize) -> bool {
+    !text.trim().is_empty() && text.chars().count() <= limit
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -294,6 +338,7 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
         if !envelope(&e, kind)
             || !identifier(&e.result.service_instance_id, 128)
             || !s.identity.valid()
+            || s.user_choice.as_ref().is_some_and(|choice| !choice.valid())
             || !view.identity.valid()
             || s.identity != view.identity
             || s.title.trim().is_empty()
@@ -460,6 +505,10 @@ pub fn control_bridge(kind: &str, wire: &str) -> Result<Value, ()> {
 pub fn source_value(wire: &str) -> Result<Value, ()> {
     let source: Source = serde_json::from_str(wire).map_err(|_| ())?;
     if !source.identity.valid()
+        || source
+            .user_choice
+            .as_ref()
+            .is_some_and(|choice| !choice.valid())
         || source.title.trim().is_empty()
         || source.title.chars().count() > 256
         || source.records.len() > 4096
@@ -511,6 +560,28 @@ mod submission_mode_tests {
         }
         source["submissionMode"] = json!("execution");
         source["unexpected"] = json!(true);
+        assert!(source_value(&source.to_string()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod user_choice_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn attachment_preserves_a_valid_choice_and_rejects_duplicate_ids() {
+        let mut source = json!({
+            "identity": {"productId":"coding", "continuityId":"continuity", "sessionId":"session", "scope":"cwd", "scopeFingerprint":"a".repeat(64)},
+            "title":"Plans", "cursor":2, "revision":2, "running":false, "records":[],
+            "userChoice": {"questionId":"question", "question":"Which plan?", "options":[
+                {"id":"a", "label":"Small steps", "description":null},
+                {"id":"b", "label":"Rewrite", "description":"In one phase"}
+            ]}
+        });
+        let projected = source_value(&source.to_string()).unwrap();
+        assert_eq!(projected["userChoice"], source["userChoice"]);
+        source["userChoice"]["options"][1]["id"] = json!("a");
         assert!(source_value(&source.to_string()).is_err());
     }
 }

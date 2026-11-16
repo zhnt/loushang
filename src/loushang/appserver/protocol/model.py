@@ -289,6 +289,51 @@ class TranscriptRecordV1:
         )
 
 
+USER_CHOICE_MAX_OPTIONS = 5
+USER_CHOICE_QUESTION_CHARS = 1024
+USER_CHOICE_ID_CHARS = 64
+USER_CHOICE_LABEL_CHARS = 160
+USER_CHOICE_DESCRIPTION_CHARS = 512
+
+
+@dataclass(frozen=True, slots=True)
+class UserChoiceOptionV1:
+    id: str
+    label: str
+    description: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_opaque_id(self.id, field="option ID")
+        if len(self.id) > USER_CHOICE_ID_CHARS:
+            raise ValueError("invalid option ID")
+        _require_text(self.label, field="option label", maximum=USER_CHOICE_LABEL_CHARS, empty=False)
+        if self.description is not None:
+            _require_text(
+                self.description, field="option description",
+                maximum=USER_CHOICE_DESCRIPTION_CHARS, empty=False,
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class UserChoicePromptV1:
+    """A business question bound to the Session identity of its snapshot."""
+
+    question_id: str
+    question: str
+    options: tuple[UserChoiceOptionV1, ...]
+
+    def __post_init__(self) -> None:
+        _require_opaque_id(self.question_id, field="question ID")
+        _require_text(self.question, field="question", maximum=USER_CHOICE_QUESTION_CHARS, empty=False)
+        if (
+            type(self.options) is not tuple
+            or not 2 <= len(self.options) <= USER_CHOICE_MAX_OPTIONS
+            or any(type(option) is not UserChoiceOptionV1 for option in self.options)
+            or len({option.id for option in self.options}) != len(self.options)
+        ):
+            raise ValueError("invalid choice options")
+
+
 @dataclass(frozen=True, slots=True)
 class SessionSnapshotV1:
     identity: SessionIdentityV1
@@ -298,6 +343,7 @@ class SessionSnapshotV1:
     running: bool
     records: tuple[TranscriptRecordV1, ...] = ()
     submission_mode: SessionSubmissionModeV1 = SessionSubmissionModeV1.LEGACY
+    user_choice: UserChoicePromptV1 | None = None
 
     def __post_init__(self) -> None:
         if type(self.identity) is not SessionIdentityV1:
@@ -313,6 +359,8 @@ class SessionSnapshotV1:
             raise TypeError("invalid session running state")
         if type(self.submission_mode) is not SessionSubmissionModeV1:
             raise TypeError("invalid session submission mode")
+        if self.user_choice is not None and type(self.user_choice) is not UserChoicePromptV1:
+            raise TypeError("invalid session user choice")
         if (
             not isinstance(self.records, tuple)
             or len(self.records) > MAX_SNAPSHOT_RECORDS
@@ -896,6 +944,8 @@ __all__ = [
     "SessionScopeV1",
     "SessionSnapshotRequestV1",
     "SessionSnapshotV1",
+    "UserChoiceOptionV1",
+    "UserChoicePromptV1",
     "SessionModelChoiceV1",
     "SessionModelSelectV1",
     "SessionModelsV1",

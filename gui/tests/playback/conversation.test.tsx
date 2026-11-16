@@ -813,3 +813,56 @@ it("keeps approvals in their own session and removes them on dismissal or discon
   act(() => disconnect("disconnected"));
   expect(screen.queryByRole("region", { name: "Tool approval" })).not.toBeInTheDocument();
 });
+
+describe("Hosted business choices", () => {
+  it("preserves an uncertain answer and waits for the authority to clear the question", async () => {
+    const seed = await createMockAppClient().snapshot();
+    const session = seed.sessions.find((item) => item.id === seed.selectedSessionId)!;
+    const initial: ClientSnapshot = {
+      ...seed, connection: "connected",
+      source: { kind: "live", muxSpaceId: "choice-mux", serviceInstanceId: "choice-host", connectionEpoch: "1" },
+      sessions: [{
+        ...session, status: "idle", execution: null, userChoice: {
+          questionId: "question-1", question: "Which plan?",
+          options: [
+            { id: "a", label: "Gradual", description: "Small steps" },
+            { id: "b", label: "Rewrite", description: null },
+          ],
+        },
+      }],
+    };
+    let publish: (snapshot: ClientSnapshot) => void = () => {};
+    let receipt!: (accepted: boolean) => void;
+    const submitText = vi.fn<HarnessClientUiPort["submitText"]>(async ({ submissionId }) => {
+      const accepted = await new Promise<boolean>((resolve) => { receipt = resolve; });
+      return { submissionId, accepted, reason: accepted ? undefined : "submission_outcome_unknown" };
+    });
+    const client: HarnessClientUiPort = {
+      snapshot: async () => initial,
+      subscribe: () => () => undefined,
+      subscribeSnapshots: (listener) => { publish = listener; return () => undefined; },
+      submitText, interrupt: async () => ({ accepted: false }),
+      sessionModels: async () => ({ currentId: liveModel.id, models: [liveModel] }),
+    };
+    render(<HarnessGui client={client} />);
+    const card = within(await screen.findByRole("form", { name: "Choose a direction" }));
+    expect(card.getByText("Which plan?")).toBeVisible();
+    fireEvent.click(card.getByRole("radio", { name: "Rewrite" }));
+    const note = card.getByRole("textbox", { name: "Additional notes (optional)" });
+    fireEvent.change(note, { target: { value: "Keep the public API" } });
+    const confirm = card.getByRole("button", { name: "Confirm choice" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(submitText).toHaveBeenCalledTimes(1);
+    expect(submitText).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: session.id, text: "Question: Which plan?\nSelected option b: Rewrite\nAdditional notes: Keep the public API",
+    }));
+    await act(async () => receipt(false));
+    expect(card.getByRole("radio", { name: "Rewrite" })).toBeChecked();
+    expect(note).toHaveValue("Keep the public API");
+    expect(confirm).toBeDisabled();
+    act(() => publish({ ...initial, sessions: [{ ...initial.sessions[0], userChoice: undefined }] }));
+    expect(screen.queryByRole("form", { name: "Choose a direction" })).not.toBeInTheDocument();
+  });
+});

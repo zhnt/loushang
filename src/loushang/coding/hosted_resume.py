@@ -127,6 +127,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         tools: list[ToolDefinition] | None,
         output_capture_factory: ExecCaptureFactory | None,
         product_owner_selection: CodingFencedProductApplicationSelection,
+        user_choice_enabled: bool = False,
     ) -> None:
         self._source = source
         self.identity = source.record.identity
@@ -134,6 +135,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
+        self._user_choice_enabled = user_choice_enabled
         self._output_capture_factory = output_capture_factory
         self._product_owner_selection = product_owner_selection
         self._approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
@@ -579,6 +581,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 real = CodingRealHostedSessionV1(
                     continuation.session, self.identity, self._approval
                 )
+                if self._user_choice_enabled:
+                    real.enable_user_choice()
                 self._control.activate(real.control)
                 self._active = real
                 # The input was durably committed while the real adapter did

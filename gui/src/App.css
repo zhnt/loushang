@@ -469,3 +469,13 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .approval-actions span { color: var(--muted); font-size: 12px; }
 
 .draft-notice { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+
+.user-choice { max-width: 760px; margin: 0 auto 16px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--paper); overflow-wrap: anywhere; }
+.user-choice fieldset { display: grid; gap: 8px; min-width: 0; padding: 0; border: 0; }
+.user-choice legend { font-weight: 600; margin-bottom: 8px; }
+.choice-option { display: flex; align-items: baseline; gap: 8px; }
+.choice-option small { display: block; color: var(--muted); }
+.choice-notes { display: grid; gap: 4px; color: var(--muted); }
+.choice-notes input { width: 100%; min-width: 0; }
+.user-choice button { justify-self: start; }
+.user-choice > p { margin-bottom: 0; color: var(--muted); }

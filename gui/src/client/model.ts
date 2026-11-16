@@ -1,3 +1,5 @@
+import type { UserChoicePromptV1 } from "../../contracts/generated/bridge";
+
 export type ConnectionState =
   | "fixture-offline"
   | "connected"
@@ -154,6 +156,7 @@ export interface SessionSnapshot {
   readonly messages: readonly ConversationMessage[];
   readonly execution?: ExecutionProjection | null;
   readonly pendingApprovals?: readonly PendingApproval[];
+  readonly userChoice?: UserChoicePromptV1;
   readonly documents: readonly ReadonlyDocument[];
   readonly run: RunProjection | null;
   readonly changeSet: ChangeSetProjection | null;

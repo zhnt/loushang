@@ -71,6 +71,7 @@ from .hosted_catalog import (
     CodingHostedCatalogError,
     CodingHostedHistoryCandidateBindingV1,
 )
+from .hosted_user_choice import ASK_USER, HostedUserChoice
 from .package_product_runtime import (
     CodingFencedProductApplicationSelection,
 )
@@ -204,6 +205,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         self._close_task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
         self._execution_claimed = False
+        self._user_choice = HostedUserChoice()
         session.set_approval_presenter(
             self._present_approval, dismisser=self._dismiss_approval
         )
@@ -211,6 +213,9 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
     @property
     def control(self) -> SessionControlPort:
         return self._session
+
+    def enable_user_choice(self) -> None:
+        self._user_choice.install(self._session)
 
     @property
     def current_model(self) -> Model:
@@ -274,6 +279,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
             running=self._session.is_streaming,
             records=tuple(records),
             truncated=omitted or truncated,
+            user_choice=self._user_choice.pending,
         )
 
     def project_event(
@@ -303,6 +309,9 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
                 and message.stop_reason == "aborted"
             ):
                 self._interrupted = True
+            if isinstance(message, UserMessage):
+                # Publish the consumed question with the next actual user message.
+                self._user_choice.clear()
             record = _message_record(message)
             if record is not None:
                 return CodingHostedEventProjectionV1(
@@ -356,6 +365,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         await asyncio.shield(task)
 
     async def _close_once(self) -> None:
+        self._user_choice.clear()
         self._approval.end_session()
         if self._title_task is not None:
             self._title_task.cancel()
@@ -428,6 +438,9 @@ class CodingRealHostedSessionFactoryV1:
         self._session_tool_policy = session_tool_policy
         self._session_active_tools = session_active_tools
         self._session_allowed_tools = session_allowed_tools
+        self._user_choice_enabled = (
+            session_active_tools is None or ASK_USER in session_active_tools
+        ) and (session_allowed_tools is None or ASK_USER in session_allowed_tools)
         self._session_system_prompt = session_system_prompt
         self._output_capture_factory = output_capture_factory
         self._package_product_runtime_factory_for_session = (
@@ -491,6 +504,7 @@ class CodingRealHostedSessionFactoryV1:
                     model=self._model,
                     stream_fn=self._stream_fn,
                     tools=self._tools,
+                    user_choice_enabled=self._user_choice_enabled,
                     output_capture_factory=self._output_capture_factory,
                     product_owner_selection=self._product_owner_selection,
                 )
@@ -546,6 +560,8 @@ class CodingRealHostedSessionFactoryV1:
                     selection.provider, selection.model_id, endpoint_id=selection.endpoint_id,
                 )
             real_binding = CodingRealHostedSessionV1(session, identity, approval)
+            if self._user_choice_enabled:
+                real_binding.enable_user_choice()
             opaque_session_binding.take_manager()
             return real_binding
         except BaseException:

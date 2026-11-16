@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { validateUserChoice } from "../../contracts/userChoice";
 import { ApprovalResponses } from "./approvalResponses";
 import { thinkingLevels, type ThinkingLevel } from "./model";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -313,6 +314,7 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
     if ("submissionMode" in sourceSnapshot && sourceSnapshot.submissionMode !== "execution") {
       throw new Error("submission mode");
     }
+    if ("userChoice" in sourceSnapshot) validateUserChoice(sourceSnapshot.userChoice);
     const sourceIdentity = identity(sourceSnapshot.identity);
     if (sourceIdentity.sessionId !== members[index].session.sessionId) throw new Error("identity");
     const cursor = decimal(sourceSnapshot.cursor);
@@ -542,6 +544,7 @@ function projectSession(
     messages,
     execution: projectExecution(snapshot),
     pendingApprovals: snapshot.pendingApprovals ?? [],
+    userChoice: source.userChoice,
     documents: [],
     run: null,
     changeSet: null,

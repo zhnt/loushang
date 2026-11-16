@@ -2,6 +2,7 @@
 
 import copy
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from loushang.appserver.execution import model as em
@@ -41,6 +42,36 @@ def emit_projection_vectors() -> None:
         cases.append((name, kind, json.dumps(value, ensure_ascii=False), valid))
 
     add("idle", "snapshot", base)
+    choice = pm.UserChoicePromptV1("question-1", "选择设计", (
+        pm.UserChoiceOptionV1("a", "渐进", "复用 API"),
+        pm.UserChoiceOptionV1("B", "重构"),
+    ))
+    chosen = replace(snapshot, source=replace(
+        snapshot.source, source=replace(snapshot.source.source, user_choice=choice),
+    ))
+    wire = json.loads(encode_response(em.ExecutionResponseV1("snapshot", chosen)))
+    add("pending-user-choice", "snapshot", wire)
+    for error in ("null", "duplicate", "missing-description", "too-few", "too-many", "long-text", "bad-id", "extra-field"):
+        value = copy.deepcopy(wire)
+        source = value["result"]["source"]["source"]
+        prompt = source["userChoice"]
+        if error == "null":
+            source["userChoice"] = None
+        elif error == "duplicate":
+            prompt["options"][1]["id"] = prompt["options"][0]["id"]
+        elif error == "missing-description":
+            del prompt["options"][0]["description"]
+        elif error == "too-few":
+            prompt["options"].pop()
+        elif error == "too-many":
+            prompt["options"] = [{"id": str(i), "label": "choice", "description": None} for i in range(6)]
+        elif error == "long-text":
+            prompt["question"] = "问" * 1025
+        elif error == "bad-id":
+            prompt["options"][0]["id"] = "a\n"
+        elif error == "extra-field":
+            prompt["approvalId"] = "unrelated"
+        add(f"invalid-user-choice-{error}", "snapshot", value, False)
     for mode in ["execution", "legacy", None, "unknown", 1, {}]:
         value = copy.deepcopy(base)
         value["result"]["source"]["source"]["submissionMode"] = mode
