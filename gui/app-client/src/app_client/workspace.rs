@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 pub enum WorkspaceRequest<'a> {
     List,
     Projects,
+    Create(&'a str),
     Register(&'a str),
     Open(&'a str),
     Unregister(&'a str),
@@ -21,6 +22,7 @@ impl<'a> WorkspaceRequest<'a> {
         match self {
             Self::List => ("list", None),
             Self::Projects => ("projects", None),
+            Self::Create(path) => ("create", Some(path)),
             Self::Register(path) => ("register", Some(path)),
             Self::Open(path) => ("open", Some(path)),
             Self::Unregister(path) => ("unregister", Some(path)),

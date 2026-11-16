@@ -55,6 +55,7 @@ function openHostSettings() {
 
 function installMock(implementation: (command: string, args?: any) => Promise<unknown>) {
   const pinned = new Set<string>();
+  const created: string[] = [];
   const chat = (id: string, title: string, scope: string) => ({ id, title, scope, pinned: pinned.has(id) });
   native.invoke.mockImplementation(async (command, args) => {
     if (command === "client_settings") {
@@ -73,8 +74,14 @@ function installMock(implementation: (command: string, args?: any) => Promise<un
         }
         if (args.request.request.operation === "workspace") {
           const request = args.request.request;
+          if (request.action === "create") {
+            const result = await implementation("workspace", request);
+            created.push(request.path);
+            return result;
+          }
           if (request.action !== "navigation") return implementation("workspace", request);
           return { projects: [
+            ...created.map((path) => ({ path, sessions: [] })),
             { path: "/workspace", sessions: [chat("a", "Project A chat", "mux:a")] },
             { path: "/previous", sessions: [chat("b", "Project B chat", "mux:b")] },
           ], temporarySessions: [chat("scratch", "Temporary chat", "mux:temp")] };
@@ -240,6 +247,45 @@ describe("local managed Host presentation", () => {
         request: { operation: "workspace", action: "register", path: "C:\\Work\\项目" } },
     }));
     expect(countActions("create-chat")).toBe(2);
+    expect(countActions("open")).toBe(0);
+  });
+
+  it("keeps the selected Session and preserves the path when creating a Workspace fails", async () => {
+    let finish: (result: unknown) => void = () => {};
+    installMock(async (command, args) => {
+      if (command === "environment") return { supported: true, workspace: "" };
+      if (command === "workspace" && args.action === "create") {
+        if (args.path === "/previous") throw "already_exists";
+        return new Promise((resolve) => { finish = resolve; });
+      }
+      return { state: "running", errorCode: null };
+    });
+    render(<LocalHostGate />);
+    const projects = within(screen.getByRole("region", { name: "Projects" }));
+    const current = await projects.findByRole("button", { name: "Project B chat" });
+    fireEvent.click(current);
+    const createWorkspace = projects.getByRole("button", { name: "New Workspace" });
+    await waitFor(() => expect(createWorkspace).toBeEnabled());
+    fireEvent.click(createWorkspace);
+    const path = projects.getByRole("textbox", { name: "Absolute path on the Host" });
+    const submit = projects.getByRole("button", { name: "Create" });
+    fireEvent.change(path, { target: { value: "/previous" } });
+    fireEvent.click(submit);
+    expect(await projects.findByRole("alert")).toHaveTextContent("That path already exists.");
+    expect(path).toHaveValue("/previous");
+
+    fireEvent.change(path, { target: { value: "/new-project" } });
+    const form = submit.closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(countActions("create")).toBe(2);
+    expect(submit).toBeDisabled();
+    await act(async () => finish({ workspaces: [{ path: "/new-project" }] }));
+    expect(await projects.findByRole("button", { name: "new-project" })).toBeInTheDocument();
+    expect(path).not.toBeInTheDocument();
+    expect(current).toHaveAttribute("aria-current", "true");
+    expect(native.create).toHaveBeenLastCalledWith("/previous", "local");
+    expect(countActions("create-chat")).toBe(0);
     expect(countActions("open")).toBe(0);
   });
 

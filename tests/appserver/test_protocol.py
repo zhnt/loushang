@@ -338,6 +338,7 @@ def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
     ('list', None), ('projects', None), ('allocate-temporary', None),
     ('register', '/project'), ('open', '/project'), ('unregister', '/project'),
     ('register', r'C:\Workspace A'), ('open', 'C:/Workspace A'),
+    ('create', '/new-project'), ('create', 'C:/New Project'),
 ])
 def test_workspace_requests_roundtrip(action, path):
     request = AppRequestV1('request-1', AppOperationV1.WORKSPACE, WorkspaceRequestV1(action, path))
@@ -357,9 +358,10 @@ def test_workspace_results_preserve_host_path_and_admitted_scope(path):
 
 
 @pytest.mark.parametrize('path', ['relative', '', '/bad\0path', 'C:relative', r'\relative', r'\\server\share'])
-def test_workspace_request_rejects_invalid_paths_at_protocol_boundary(path):
+@pytest.mark.parametrize("action", ["open", "create"])
+def test_workspace_request_rejects_invalid_paths_at_protocol_boundary(path, action):
     with pytest.raises(ValueError):
-        WorkspaceRequestV1('open', path)
+        WorkspaceRequestV1(action, path)
 
 
 def test_workspace_request_rejects_unknown_authority_fields():
