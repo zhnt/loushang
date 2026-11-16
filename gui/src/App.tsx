@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
+import { GoalProgress } from "./GoalProgress";
 import { ToolApproval } from "./ToolApproval";
 import { UserChoiceCard, type ChoiceAnswer } from "./UserChoiceCard";
 import { ModelPicker } from "./ModelPicker";
@@ -728,6 +729,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   enabled={Boolean(submitAllowed && selected.status !== "running")}
                   onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
                 {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
+                {connected && selected.execution && selected.supportsGoalProgress && client.goalProgress && state.remote.source.kind === "live" ? (
+                  <GoalProgress
+                    key={JSON.stringify([state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch,
+                      state.remote.source.muxSpaceId, selected.id, selected.execution.id])}
+                    client={client} sessionId={selected.id} execution={selected.execution} />
+                ) : null}
                 {selected.run && tasksAvailable ? (
                   <RunActivity
                     run={selected.run}

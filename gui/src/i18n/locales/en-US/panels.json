@@ -1,4 +1,30 @@
 {
+  "goalProgress": {
+    "title": "Goal progress",
+    "goal": "Goal ID",
+    "status": "Status",
+    "batches": "Recorded batches",
+    "models": "Model calls",
+    "advances": "Advances",
+    "reason": "Reason code",
+    "validity": "Validity",
+    "unresolved": "Unresolved execution",
+    "yes": "Yes",
+    "no": "No",
+    "notObserved": "Unavailable",
+    "states": {
+      "not_started": "Not started",
+      "initializing": "Initializing",
+      "active": "Active",
+      "paused": "Paused",
+      "completed": "Completed",
+      "abandoned": "Abandoned",
+      "failed": "Failed",
+      "superseded": "Superseded",
+      "not_checked": "Not checked",
+      "unknown": "Unknown"
+    }
+  },
   "execution": {
     "failureCode": "Failure code",
     "details": "Live execution details",

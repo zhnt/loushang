@@ -56,7 +56,7 @@ def test_closed_execution_call_round_trip(operation):
     call = ExecutionCallV1(
         "1", operation, CONTROL, "instance",
         submission_id="submission" if operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND} else None,
-        execution_id="execution" if operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT} else None,
+        execution_id="execution" if operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS} else None,
         text="没有输出的命令" if operation is ExecutionOperationV1.SUBMIT else None,
         resume_query=ResumeInputLookupQueryV1("input-1", "a" * 64)
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP else None,

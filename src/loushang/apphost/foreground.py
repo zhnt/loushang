@@ -11,7 +11,7 @@ from collections.abc import Callable, Coroutine
 
 from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
 from loushang.appserver.connection import AppServerConnectionV1
-from loushang.appserver.execution.client import ExecutionPortV1
+from loushang.appserver.execution.client import ExecutionObservationPortV1
 from loushang.appserver.framing import (
     AppByteTransportV1,
     AppFramedStreamV1,
@@ -53,13 +53,13 @@ class HostedForegroundRuntimeV1:
         self._scope: ScopedAppServicePortV1 | None = None
         service_port: AppServicePortV1
         discovery: SessionDiscoveryPortV1 | None
-        execution: ExecutionPortV1 | None
+        execution: ExecutionObservationPortV1 | None
         if session_execution:
             application.enable_client_scopes()
             self._scope = application.open_client_scope()
             service_port = self._scope
             discovery = self._scope.discovery_client if session_discovery else None
-            execution = self._scope.execution_client
+            execution = self._scope.execution_client or self._scope.goal_execution_observer
             if execution is None:
                 raise HostedApplicationError("hosted_execution_unavailable")
         else:

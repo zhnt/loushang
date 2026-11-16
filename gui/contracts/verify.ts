@@ -1,6 +1,7 @@
 // C1 candidate bridge-value validator, deliberately not wired into HarnessGUI.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { validateGoalProgress } from "./goalProgress.ts";
 import { validateProjection } from "./projection.ts";
 
 function object(value: unknown, fields: string[]): Record<string, unknown> {
@@ -44,6 +45,9 @@ function validate(kind: string, value: unknown, profile?: string) {
     const generation = control.controllerGeneration;
     assert(typeof generation === "string" && /^[1-9][0-9]*$/.test(generation));
     assert.equal(BigInt(generation).toString(), generation);
+  } else if (kind === "goal_progress") {
+    assert.equal(root.resultType, "goal_progress");
+    validateGoalProgress(root.result, (root.result as Record<string, unknown>).executionId as string);
   } else {
     assert.equal(kind, "failure");
     assert.equal(root.resultType, "failure");

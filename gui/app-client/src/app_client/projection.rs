@@ -282,6 +282,12 @@ struct Snapshot {
     service_instance_id: String,
     source: SourceSnapshot,
     executions: View,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    supports_goal_progress: Option<bool>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -336,6 +342,7 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
         let s = &e.result.source.source;
         let view = &e.result.executions;
         if !envelope(&e, kind)
+            || e.result.supports_goal_progress == Some(false)
             || !identifier(&e.result.service_instance_id, 128)
             || !s.identity.valid()
             || s.user_choice.as_ref().is_some_and(|choice| !choice.valid())
@@ -419,7 +426,66 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GoalProgress {
+    execution_id: String,
+    presence: String,
+    goal_id: Box<RawValue>,
+    status: Box<RawValue>,
+    reason_code: String,
+    validity: String,
+    execution_unresolved: bool,
+    advances: u64,
+    model_calls: u64,
+    batch_count: u64,
+}
+
+impl GoalProgress {
+    fn valid(&self) -> Result<bool, ()> {
+        let goal_id = optional_string(&self.goal_id)?;
+        let status = optional_string(&self.status)?;
+        let identity = match self.presence.as_str() {
+            "present" => {
+                goal_id.is_some_and(|id| identifier(&id, 128))
+                    && status.is_some_and(|value| {
+                        [
+                            "active",
+                            "paused",
+                            "completed",
+                            "abandoned",
+                            "failed",
+                            "superseded",
+                        ]
+                        .contains(&value.as_str())
+                    })
+            }
+            "not_started" | "initializing" | "unavailable" => goal_id.is_none() && status.is_none(),
+            _ => false,
+        };
+        let reason = self.reason_code.as_bytes();
+        Ok(identity
+            && identifier(&self.execution_id, 128)
+            && reason.len() <= 64
+            && reason.first().is_some_and(u8::is_ascii_lowercase)
+            && reason
+                .iter()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'_')
+            && ["not_checked", "unknown"].contains(&self.validity.as_str())
+            && [self.advances, self.model_calls, self.batch_count]
+                .iter()
+                .all(|count| *count <= 9_007_199_254_740_991))
+    }
+}
+
 pub fn control_bridge(kind: &str, wire: &str) -> Result<Value, ()> {
+    if kind == "goal_progress" {
+        let parsed: Envelope<GoalProgress> = serde_json::from_str(wire).map_err(|_| ())?;
+        if !envelope(&parsed, kind) || !parsed.result.valid()? {
+            return Err(());
+        }
+        return serde_json::to_value(parsed).map_err(|_| ());
+    }
     if kind == "record" {
         let parsed: Envelope<RecordEnvelope> = serde_json::from_str(wire).map_err(|_| ())?;
         let submission = optional_string(&parsed.result.submission_id)?;

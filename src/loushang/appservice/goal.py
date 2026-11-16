@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from dataclasses import replace
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loushang.appserver.execution.model import (
+    ExecutionContentEventV1,
+    ExecutionGoalProgressV1,
+    ExecutionGoalStatusV1,
+    ExecutionGoalValidityV1,
     ExecutionInterruptDispositionV1,
     ExecutionInterruptResultV1,
     ExecutionRecordV1,
+    ExecutionSessionSnapshotV1,
+    ExecutionUpdateV1,
 )
 from loushang.appserver.goal import (
     GoalCapabilityV1,
@@ -17,7 +24,11 @@ from loushang.appserver.goal import (
     GoalServiceError,
     GoalSubmissionV1,
 )
-from loushang.appserver.protocol import SessionSnapshotRequestV1
+from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
+    SessionSnapshotRequestV1,
+)
 
 from .execution_ports import HostedExecutionPortV1
 
@@ -138,7 +149,7 @@ class ScopedGoalClientV1:
             raise TypeError("invalid Goal progress port")
         observation = await port.progress_goal(handle.execution_id)
         _, _, current, record = await self._target(control, handle)
-        if current is not port:
+        if current is not port or not current.goal_capability.supports_progress:
             raise GoalServiceError("binding_changed")
         if type(observation) is not GoalObservationV1 or observation.validity not in {"not_checked", "unknown"}:
             raise TypeError("invalid Goal progress observation")
@@ -156,3 +167,48 @@ class ScopedGoalClientV1:
         _, binding, _, _ = await self._target(control, handle)
         await self._execution._registry.retry_settlement(binding, handle.execution_id)
         return await self.query(control, handle)
+
+
+class ScopedGoalExecutionObserverV1:
+    """Execution delivery plus Goal progress, borrowed from the existing scope."""
+
+    def __init__(self, goal: ScopedGoalClientV1) -> None:
+        self._goal = goal
+
+    @property
+    def service_instance_id(self) -> str:
+        return self._goal.service_instance_id
+
+    async def snapshot_execution_session(
+        self, control: SessionSnapshotRequestV1, instance: str,
+    ) -> ExecutionSessionSnapshotV1:
+        snapshot = await self._goal._execution.snapshot_execution_session(control, instance)
+        try:
+            capability = await self._goal.capability(control, instance)
+        except GoalServiceError:
+            return snapshot
+        return replace(snapshot, supports_goal_progress=capability.supports_progress)
+
+    async def read_execution_events(
+        self, control: SessionSnapshotRequestV1, instance: str,
+    ) -> tuple[ExecutionContentEventV1 | ExecutionUpdateV1, ...]:
+        return await self._goal._execution.read_execution_events(control, instance)
+
+    async def goal_progress(
+        self, control: SessionSnapshotRequestV1, instance: str, execution_id: str,
+    ) -> ExecutionGoalProgressV1:
+        try:
+            capability = await self._goal.capability(control, instance)
+            observed = await self._goal.progress(
+                control, GoalHandleV1(instance, capability.goal_binding, execution_id),
+            )
+        except GoalServiceError:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+        view = observed.observation
+        # Product strings are checked by the wire value before publication.
+        return ExecutionGoalProgressV1(
+            execution_id, view.presence, view.goal_id,
+            cast(ExecutionGoalStatusV1 | None, view.status),
+            view.reason_code, cast(ExecutionGoalValidityV1, view.validity),
+            view.execution_unresolved, view.advances, view.model_calls, len(view.batches),
+        )

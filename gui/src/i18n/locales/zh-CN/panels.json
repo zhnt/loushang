@@ -1,4 +1,30 @@
 {
+  "goalProgress": {
+    "title": "Goal 进度",
+    "goal": "Goal ID",
+    "status": "状态",
+    "batches": "已记录批次",
+    "models": "模型调用次数",
+    "advances": "推进次数",
+    "reason": "原因代码",
+    "validity": "有效性",
+    "unresolved": "尚未收敛的执行",
+    "yes": "是",
+    "no": "否",
+    "notObserved": "不可用",
+    "states": {
+      "not_started": "尚未开始",
+      "initializing": "初始化中",
+      "active": "进行中",
+      "paused": "已暂停",
+      "completed": "已完成",
+      "abandoned": "已放弃",
+      "failed": "失败",
+      "superseded": "已被替代",
+      "not_checked": "未检查",
+      "unknown": "未知"
+    }
+  },
   "execution": {
     "failureCode": "失败代码",
     "details": "在线执行详情",

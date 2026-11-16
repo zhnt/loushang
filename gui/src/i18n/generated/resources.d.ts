@@ -79,6 +79,32 @@ export default interface Resources {
       "transcript": "Transcript",
       "truncated": "truncated"
     },
+    "goalProgress": {
+      "advances": "Advances",
+      "batches": "Recorded batches",
+      "goal": "Goal ID",
+      "models": "Model calls",
+      "no": "No",
+      "notObserved": "Unavailable",
+      "reason": "Reason code",
+      "states": {
+        "abandoned": "Abandoned",
+        "active": "Active",
+        "completed": "Completed",
+        "failed": "Failed",
+        "initializing": "Initializing",
+        "not_checked": "Not checked",
+        "not_started": "Not started",
+        "paused": "Paused",
+        "superseded": "Superseded",
+        "unknown": "Unknown"
+      },
+      "status": "Status",
+      "title": "Goal progress",
+      "unresolved": "Unresolved execution",
+      "validity": "Validity",
+      "yes": "Yes"
+    },
     "header": {
       "actions": "Session actions",
       "bottomHint": "Bottom panel unavailable in this fixture",

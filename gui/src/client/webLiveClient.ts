@@ -1,3 +1,4 @@
+import { validateGoalProgress } from "../../contracts/goalProgress";
 import type { ClientSnapshot, ControlReceipt, HarnessClientUiPort, SubmitReceipt } from "./model";
 import { projectNativeInitialSnapshot, validateSessionModels } from "./nativeLiveClient";
 import { ApprovalResponses } from "./approvalResponses";
@@ -109,6 +110,12 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       return approvals.respond(sessionId, interactionId, (connectionEpoch) =>
         call<ControlReceipt>("respond-interaction", { sessionId, interactionId, outcome, connectionEpoch }),
       );
+    },
+    async goalProgress(sessionId, executionId) {
+      const serviceInstanceId = current?.source.kind === "live" ? current.source.serviceInstanceId : undefined;
+      if (!serviceInstanceId) return null;
+      const result = await call<unknown>("goal-progress", { sessionId, executionId, serviceInstanceId });
+      return result === null ? null : validateGoalProgress(result, executionId);
     },
     async submitText(input) {
       const serviceInstanceId = current?.source.kind === "live" ? current.source.serviceInstanceId : undefined;

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from ..protocol import SessionSnapshotRequestV1
 from .model import (
@@ -14,10 +14,20 @@ from .model import (
 )
 
 
-class ExecutionClientV1(Protocol):
+class ExecutionObservationPortV1(Protocol):
     @property
     def service_instance_id(self) -> str: ...
 
+    async def snapshot_execution_session(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+    ) -> ExecutionSessionSnapshotV1: ...
+
+    async def read_execution_events(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+    ) -> tuple[ExecutionContentEventV1 | ExecutionUpdateV1, ...]: ...
+
+@runtime_checkable
+class ExecutionClientV1(ExecutionObservationPortV1, Protocol):
     async def submit_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
         submission_id: str, text: str,
@@ -38,12 +48,5 @@ class ExecutionClientV1(Protocol):
         execution_id: str,
     ) -> ExecutionInterruptResultV1: ...
 
-    async def snapshot_execution_session(
-        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
-    ) -> ExecutionSessionSnapshotV1: ...
-
-    async def read_execution_events(
-        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
-    ) -> tuple[ExecutionContentEventV1 | ExecutionUpdateV1, ...]: ...
 
 ExecutionPortV1 = ExecutionClientV1
