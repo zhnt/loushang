@@ -465,3 +465,5 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .approval-actions button { padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: var(--panel); }
 .approval-actions button:first-child { border-color: var(--warning-line); background: var(--warning-soft); }
 .approval-actions span { color: var(--muted); font-size: 12px; }
+
+.draft-notice { margin: 0 0 8px; color: var(--muted); font-size: 13px; }

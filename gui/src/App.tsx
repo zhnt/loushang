@@ -6,18 +6,19 @@ import { SettingsDialog } from "./SettingsDialog";
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
+import { MessageComposer } from "./MessageComposer";
 import { ToolApproval } from "./ToolApproval";
 import { ModelPicker } from "./ModelPicker";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
 import { ProjectNavigation } from "./ProjectNavigation";
-import type { ProjectNavigationProps } from "./client/projectDirectory";
+import type { ManagedProjectNavigation, ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
-import { useSessionCreation } from "./useSessionCreation";
+import { canSubmitDraft, useSessionCreation } from "./useSessionCreation";
 import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
 import { createNativeLiveClient } from "./client/nativeLiveClient";
@@ -63,7 +64,7 @@ interface HarnessGuiProps {
   readonly account?: OfflineAccount | null;
   readonly hostSettings?: ReactNode;
   readonly startLocalHost?: ReactNode;
-  readonly projectNavigation?: ProjectNavigationProps;
+  readonly projectNavigation?: ManagedProjectNavigation;
   readonly hostSettingsRequest?: number;
   readonly onConnectionChange?: (connection: ConnectionState | "connecting") => void;
 }
@@ -151,7 +152,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const [modelResult, setModelResult] = useState<{ scope: string; query: string; models: SessionModels | null } | null>(null);
   const modelRequest = useRef(0);
   const [modelPending, setModelPending] = useState(false);
-  const { create, confirm, pending: createPending } = useSessionCreation(client, setNotice);
   const controlPendingRef = useRef(false);
   const [publications, setPublications] = useState<Readonly<Record<string, {
     readonly source: ClientSnapshot["source"];
@@ -159,6 +159,25 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     readonly executionId?: string;
     readonly text: string;
   }>>>({});
+  const draftCreation = useSessionCreation(({ session, snapshot }, text, receipt, select) => {
+    if (select) dispatch({ type: "session.selected", sessionId: session.id });
+    if (receipt.executionId) setPublications((current) => ({
+      ...current,
+      [session.id]: { source: snapshot.source, cursor: session.cursor, executionId: receipt.executionId, text },
+    }));
+    setNotice({ key: "notice.liveAccepted" });
+  });
+  const observeDraft = draftCreation.observe;
+  const draftHost = projectNavigation?.hostKey ?? "native";
+  const hideDraft = draftCreation.hide;
+  useEffect(() => { hideDraft(); }, [draftHost, hideDraft]);
+  const draft = draftCreation.draft?.visible && draftCreation.draft.target.hostKey === draftHost
+    ? draftCreation.draft : null;
+  const [draftFocus, setDraftFocus] = useState(0);
+  const draftId = draft?.id;
+  useLayoutEffect(() => {
+    if (draftId) document.getElementById("message-input")?.focus();
+  }, [draftId, draftFocus]);
   const [bridgeProbe, setBridgeProbe] = useState<BridgeProbe>({
     status: "web-mock",
     label: "Web Mock",
@@ -177,9 +196,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     function install(snapshot: ClientSnapshot, fallbackNotice: Notice) {
       dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
       setInstalledClient(client);
-      const createdSessionId = confirm(client, snapshot);
-      if (createdSessionId) dispatch({ type: "session.selected", sessionId: createdSessionId });
-      setNotice(createdSessionId ? { key: "notice.created" } : fallbackNotice);
+      observeDraft(client, snapshot);
+      setNotice(fallbackNotice);
     }
     async function refresh(): Promise<void> {
       if (!active || pending) return;
@@ -236,6 +254,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     }) ?? (() => undefined);
     const unsubscribeConnection = client.subscribeConnection?.((connection) => {
       if (!active) return;
+      observeDraft(client, null);
       dispatch({
         type: "connection.changed",
         connection,
@@ -251,12 +270,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     });
     return () => {
       active = false;
+      observeDraft(client, null);
       refreshRef.current = null;
       unsubscribe();
       unsubscribeSnapshots();
       unsubscribeConnection();
     };
-  }, [client, confirm, fixture]);
+  }, [client, observeDraft, fixture]);
 
   const resyncRequestedRef = useRef(false);
   useEffect(() => {
@@ -312,17 +332,21 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   useEffect(() => {
     if (connected && selectionKey && selectedId) rememberSessionSelection(selectionKey, selectedId);
   }, [connected, selectionKey, selectedId]);
-  const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, (sessionId) => dispatch({ type: "session.selected", sessionId }));
+  function selectSession(sessionId: string) {
+    draftCreation.hide();
+    dispatch({ type: "session.selected", sessionId });
+  }
+  const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, selectSession);
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
-  const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
+  const selected = !draft && selectedId ? state.remote.sessions[selectedId] : undefined;
   const rightVisible = Boolean(selected) && (environmentOpen || panelOpen);
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
   const tasksAvailable = hasCapability(state, "tasks");
   const changesAvailable = hasCapability(state, "changes");
-  const modelScope = connected && selectedId && state.remote.source.kind === "live"
+  const modelScope = connected && selected && selectedId && state.remote.source.kind === "live"
     ? JSON.stringify([selectionKey, state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch, selectedId])
     : null;
   const modelQuery = JSON.stringify([modelScope, selected?.execution?.id, selected?.execution?.status]);
@@ -522,12 +546,49 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     dispatch({ type: "quick-look.closed" });
   }
 
-  const newSessionEnabled = projectNavigation
+  const draftPending = draft?.status === "creating" || draft?.status === "sending";
+  const draftTitle = t("workspace:sidebar.newSession");
+  const newSessionEnabled = !draftPending && (projectNavigation
     ? projectNavigation.available && !projectNavigation.pending
-    : Boolean(client.createSession) && connected && !createPending;
-  const newSession = projectNavigation ? () => projectNavigation.create(null) : () => {
-    if (connected) void create(selected?.id, i18n.t("workspace:sidebar.newSession"));
-  };
+    : Boolean(client.createSession) && connected);
+
+  function openDraft(path: string | null) {
+    if (!newSessionEnabled) return;
+    const sourceSessionId = state.local.selectedSessionId ?? undefined;
+    draftCreation.open({
+      key: JSON.stringify([draftHost, path]),
+      hostKey: draftHost,
+      create: async (continuityId) => {
+        if (projectNavigation) return projectNavigation.createChat(path, continuityId, draftTitle);
+        let sessionId: string | undefined;
+        try {
+          const receipt = await client.createSession!({ sourceSessionId, title: draftTitle, continuityId });
+          if ("rejected" in receipt) return null;
+          sessionId = receipt.sessionId;
+        } catch {
+          // Reconcile only by the exact Continuity ID in this launched Mux.
+        }
+        return { client, sessionId, show: () => true, refresh: client.requestResync };
+      },
+    });
+    setDraftFocus((focus) => focus + 1);
+  }
+
+  const navigation: ProjectNavigationProps | undefined = projectNavigation ? {
+    ...projectNavigation,
+    selection: draft ? null : projectNavigation.selection,
+    pending: projectNavigation.pending || draftPending,
+    create: openDraft,
+    select: (workspace, id) => {
+      draftCreation.hide();
+      projectNavigation.select(workspace, id);
+    },
+  } : undefined;
+  const draftEnabled = projectNavigation ? projectNavigation.available && !projectNavigation.pending
+    : connected || Boolean(draft?.binding);
+  function submitDraft() {
+    if (draftEnabled && !draftPending && draft) void draftCreation.submit();
+  }
 
   return (
     <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
@@ -536,9 +597,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
         {...history}
         onSettings={openSettings}
-        onNewSession={newSessionEnabled ? newSession : undefined}
+        onNewSession={newSessionEnabled ? () => openDraft(null) : undefined}
         onOpenFolder={projectNavigation?.available && !projectNavigation.pending ? projectNavigation.openFolder : undefined}
-        onFocusComposer={selected ? () => document.getElementById("message-input")?.focus() : undefined}
+        onFocusComposer={selected || draft ? () => document.getElementById("message-input")?.focus() : undefined}
         environmentOpen={environmentOpen}
         onToggleEnvironment={selected ? () => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); } : undefined}
         dockOpen={panelOpen}
@@ -555,12 +616,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           state={state}
           account={account}
           managedLocal={Boolean(hostSettings)}
-          onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
+          onSelect={selectSession}
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
-          onNewSession={newSession}
+          onNewSession={() => openDraft(null)}
           newSessionEnabled={newSessionEnabled}
-          newSessionPending={projectNavigation?.pending ?? createPending}
-          projectNavigation={projectNavigation}
+          newSessionPending={Boolean(projectNavigation?.pending || draftPending)}
+          projectNavigation={navigation}
           projectTitles={knownTitles}
         />
         <div className="sidebar-resizer" role="separator" aria-label={t("panels:layout.sidebarWidth")} aria-orientation="vertical" tabIndex={0}
@@ -593,7 +654,21 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>{t("session:sync.retry")}</button> : null}
             </div>
           ) : null}
-          {selected ? (
+          {draft ? (
+            <>
+              <div className="transcript empty-state"><h2>{draftTitle}</h2></div>
+              <div className="composer-stack">
+                {draft.status !== "ready" ? <p className="draft-notice" role="status">
+                  <NoticeText notice={{ key: `notice.${draft.status}` }} />
+                </p> : null}
+                <MessageComposer key={draft.id} title={draftTitle} text={draft.text}
+                  onChange={draftCreation.change} onSubmit={submitDraft}
+                  submitLabel={draft.status === "createUnknown" ? t("session:composer.checkCreation") : undefined}
+                  disabled={draftPending || draft.status === "firstSubmissionUnknown"}
+                  buttonDisabled={!draftEnabled || draftPending || !canSubmitDraft(draft)} />
+              </div>
+            </>
+          ) : selected ? (
             <>
 
               <div key={selected.id} className="transcript markdown-reading"
@@ -679,66 +754,23 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     onSelect={(taskId) => dispatch({ type: "task.selected", taskId })}
                   />
                 ) : null}
-                <form
-                  className="composer"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void submit();
-                  }}
-                >
-                  <label className="visually-hidden" htmlFor="message-input">{t("session:composer.messageFor", { title: displaySessionTitle(selected) })}</label>
-                  <textarea
-                    key={selected.id}
-                    id="message-input"
-                    disabled={installedClient !== client || !selectionReady}
-                    aria-describedby="message-keyboard-hint"
-                    rows={2}
-                    value={state.local.drafts[selected.id] ?? ""}
-                    placeholder={state.remote.source.kind === "fixture" ? t("session:composer.fixturePlaceholder") : t("session:composer.livePlaceholder")}
-                    onChange={(event) =>
-                      dispatch({ type: "draft.changed", sessionId: selected.id, value: event.currentTarget.value })
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
-                      if (event.ctrlKey && !event.altKey && !event.metaKey) {
-                        event.preventDefault();
-                        const input = event.currentTarget;
-                        input.setRangeText("\n", input.selectionStart, input.selectionEnd, "end");
-                        dispatch({ type: "draft.changed", sessionId: selected.id, value: input.value });
-                      } else if (!event.shiftKey && !event.altKey && !event.metaKey) {
-                        event.preventDefault();
-                        if (!event.repeat) void submit();
-                      }
-                    }}
-                  />
-                  <span id="message-keyboard-hint" className="visually-hidden">{t("session:composer.keyboardHint")}</span>
-                  <div className="composer-actions">
-                    <div className="composer-permissions">
-                      <button type="button" className="icon-button" aria-label={t("session:composer.attachUnavailable")} title={t("session:composer.attachHint")} disabled>＋</button>
-                      {fixture ? <span className="permission-label">◉ {t("session:composer.fixtureAccess")}</span> : null}
-                    </div>
-                    <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>
-                    <ModelPicker
-                      key={modelScope ?? selected.id}
-                      models={sessionModels}
-                      emptyLabel={modelLabel}
-                      disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
-                      busy={modelPending}
-                      onSelect={selectModel}
-                    />
-                    <button
-                      className="composer-submit"
-                      type={selected.status === "running" ? "button" : "submit"}
-                      aria-label={selected.status === "running" ? t("session:composer.interrupt") : t("session:composer.send")}
-                      title={selected.status === "running" ? t("session:composer.stopHint") : t("session:composer.sendHint")}
-                      disabled={selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
-                      onClick={selected.status === "running" ? () => void interrupt() : undefined}
-                    >
-                      {selected.status === "running" ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>
-                        : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 18V6m-5 5 5-5 5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-                    </button>
-                  </div>
-                </form>
+                <MessageComposer key={selected.id} title={displaySessionTitle(selected)}
+                  text={state.local.drafts[selected.id] ?? ""}
+                  onChange={(value) => dispatch({ type: "draft.changed", sessionId: selected.id, value })}
+                  onSubmit={() => void submit()} disabled={installedClient !== client || !selectionReady}
+                  onInterrupt={selected.status === "running" ? () => void interrupt() : undefined}
+                  buttonDisabled={selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
+                  fixture={Boolean(fixture)}
+                  notice={<p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>}
+                  model={<ModelPicker
+                    key={modelScope ?? selected.id}
+                    models={sessionModels}
+                    emptyLabel={modelLabel}
+                    disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
+                    busy={modelPending}
+                    onSelect={selectModel}
+                  />}
+                />
               </div>
             </>
           ) : !liveConnecting ? (

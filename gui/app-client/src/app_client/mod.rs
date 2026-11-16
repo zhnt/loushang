@@ -10,8 +10,8 @@ mod request_deadline;
 mod transport_auth;
 mod workspace;
 pub use attachment::{
-    ControlAuthority, ControlResult, CreateSessionResult, InteractionOutcome, MemberEvents,
-    ModelControlResult,
+    definitive_create_rejection, ControlAuthority, ControlResult, CreateSessionResult,
+    InteractionOutcome, MemberEvents, ModelControlResult,
 };
 pub use workspace::{WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope};
 

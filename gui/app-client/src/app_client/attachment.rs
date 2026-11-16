@@ -1038,6 +1038,18 @@ fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelCont
     Ok(ModelControlResult::Accepted(value))
 }
 
+pub fn definitive_create_rejection(code: &str) -> bool {
+    matches!(
+        code,
+        "workspace_not_selected"
+            | "invalid_request"
+            | "not_found"
+            | "product_mismatch"
+            | "already_attached"
+            | "session_unavailable"
+    )
+}
+
 fn decode_create_result(
     result_type: &str,
     result: &RawValue,
@@ -1313,6 +1325,13 @@ mod tests {
             ModelControlResult::Accepted(_) => panic!("error response was accepted"),
         }
         assert!(decode_model_result("unexpected", &raw).is_err());
+    }
+
+    #[test]
+    fn member_creation_distinguishes_rejection_from_uncertain_cleanup() {
+        assert!(definitive_create_rejection("session_unavailable"));
+        assert!(!definitive_create_rejection("cleanup_incomplete"));
+        assert!(!definitive_create_rejection("operation_unavailable"));
     }
 
     #[test]

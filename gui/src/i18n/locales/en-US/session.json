@@ -11,7 +11,6 @@
     "loading": "Loading snapshot…",
     "fixtureReady": "Fixture snapshot installed. No backend is running.",
     "liveReady": "Live AppHost connection installed.",
-    "created": "New Session created and attached.",
     "liveUpdated": "Live AppHost event round installed.",
     "modelsUnavailable": "The AppHost model catalog is unavailable.",
     "emptyPrompt": "Enter a message before sending.",
@@ -25,7 +24,11 @@
     "interruptRejected": "Interrupt was not accepted.",
     "interruptFailed": "Interrupt failed. Resynchronize before retrying.",
     "modelRejected": "Model change was rejected. The Session kept its previous model.",
-    "creating": "New Session created. Reattaching to the updated workspace…",
+    "creating": "Creating Session…",
+    "sending": "Sending first message…",
+    "createUnknown": "Session creation is unconfirmed. Your draft is saved.",
+    "firstSubmissionUnknown": "The first message outcome is unknown. Your draft is saved.",
+    "firstSubmitRejected": "The first message was rejected. Your draft is saved.",
     "createFailed": "New Session could not be created.",
     "createSyncFailed": "New Session was created, but it could not be shown yet.",
     "rejected": "Submission rejected.",
@@ -36,6 +39,7 @@
     "thinkingRejected": "Could not change reasoning effort."
   },
   "composer": {
+    "checkCreation": "Check creation status",
     "fixturePlaceholder": "Type a fixture prompt…",
     "livePlaceholder": "Message the live Agent…",
     "attachUnavailable": "Attach file unavailable",

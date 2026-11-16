@@ -11,7 +11,6 @@
     "loading": "正在加载快照…",
     "fixtureReady": "测试快照已加载，未运行后端。",
     "liveReady": "已连接到 AppHost。",
-    "created": "已创建并连接新会话。",
     "liveUpdated": "AppHost 事件已更新。",
     "modelsUnavailable": "无法获取 AppHost 模型列表。",
     "emptyPrompt": "发送前请输入消息。",
@@ -25,7 +24,11 @@
     "interruptRejected": "中断请求未被接受。",
     "interruptFailed": "中断失败，请重新同步后重试。",
     "modelRejected": "模型切换被拒绝，会话仍使用原模型。",
-    "creating": "已创建新会话，正在重新连接更新后的工作区…",
+    "creating": "正在创建会话…",
+    "sending": "正在发送首条消息…",
+    "createUnknown": "会话创建结果待确认，草稿已保留。",
+    "firstSubmissionUnknown": "首条消息的提交结果待确认，草稿已保留。",
+    "firstSubmitRejected": "首条消息被拒绝，草稿已保留。",
     "createFailed": "无法创建新会话。",
     "createSyncFailed": "新会话已创建，暂时无法显示。",
     "rejected": "提交被拒绝。",
@@ -36,6 +39,7 @@
     "thinkingRejected": "无法更改推理强度。"
   },
   "composer": {
+    "checkCreation": "检查创建状态",
     "fixturePlaceholder": "输入测试提示词…",
     "livePlaceholder": "向在线智能体发送消息…",
     "attachUnavailable": "无法添加附件",

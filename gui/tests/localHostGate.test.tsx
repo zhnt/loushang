@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, type ReactNode } from "react";
+import { StrictMode, useEffect, useRef, useState, type ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OfflineAccount } from "../src/client/offlineAccount";
@@ -7,10 +7,10 @@ import { SettingsDialog } from "../src/SettingsDialog";
 import { readMarkdownPreferences } from "../src/markdown/preferences";
 import LocalHostGate from "../src/LocalHostGate";
 import { ProjectNavigation } from "../src/ProjectNavigation";
-import type { ProjectNavigationProps } from "../src/client/projectDirectory";
+import type { ManagedProjectNavigation } from "../src/client/projectDirectory";
 
 const native = vi.hoisted(() => ({
-  invoke: vi.fn(), create: vi.fn(() => ({})), listeners: new Map<string, (value: any) => void>(),
+  invoke: vi.fn(), create: vi.fn(() => ({ suspend: async () => () => {} })), listeners: new Map<string, (value: any) => void>(),
   available: vi.fn(async () => false),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: native.invoke }));
@@ -23,12 +23,16 @@ vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.crea
 vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header> }));
 vi.mock("../src/App", () => ({
   default: () => <p>Fixture</p>,
-  HarnessGui: ({ client, account, hostSettings, hostSettingsRequest = 0, projectNavigation }: { projectNavigation: ProjectNavigationProps; client: unknown; account: OfflineAccount | null; hostSettings: ReactNode; hostSettingsRequest?: number }) => {
+  HarnessGui: ({ client, account, hostSettings, hostSettingsRequest = 0, projectNavigation }: { projectNavigation: ManagedProjectNavigation; client: unknown; account: OfflineAccount | null; hostSettings: ReactNode; hostSettingsRequest?: number }) => {
     const dialog = useRef<HTMLDialogElement>(null);
+    const [draft, setDraft] = useState<{ path: string | null } | null>(null);
     useEffect(() => { if (hostSettingsRequest) dialog.current?.showModal(); }, [hostSettingsRequest]);
     return <>
-      <button disabled={!projectNavigation.available} onClick={() => projectNavigation.create(null)}>New Session</button>
-      <ProjectNavigation navigation={projectNavigation} selectedId={projectNavigation.selection?.id ?? null} titles={{}} />
+      <button disabled={!projectNavigation.available} onClick={() => setDraft({ path: null })}>New Session</button>
+      <ProjectNavigation navigation={{ ...projectNavigation, create: (path) => setDraft({ path }) }}
+        selectedId={projectNavigation.selection?.id ?? null} titles={{}} />
+      {draft && <button onClick={() => void projectNavigation.createChat(draft.path, "continuity-test", "New Session")
+        .then((binding) => binding?.show(binding.sessionId))}>Send first message</button>}
       {client ? <textarea aria-label="Draft" /> : <p>Disconnected workspace</p>}
       <AccountMenu account={account} onSettings={() => dialog.current?.showModal()} />
       <SettingsDialog dialogRef={dialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
@@ -220,9 +224,13 @@ describe("local managed Host presentation", () => {
     expect(projects.queryByRole("button", { name: "Project A chat" })).toBeNull();
     expect(projects.getByRole("button", { name: "Project B chat" })).toBeVisible();
     fireEvent.click(projects.getByRole("button", { name: "New chat in workspace" }));
+    expect(countActions("create-chat")).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Send first message" }));
     await waitFor(() => expect(native.create).toHaveBeenCalledWith("/workspace", "local"));
     expect(projects.getByRole("button", { name: "Project A chat" })).toHaveAttribute("aria-current", "true");
     fireEvent.click(screen.getByRole("button", { name: "New Session" }));
+    expect(countActions("create-chat")).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Send first message" }));
     await waitFor(() => expect(native.create).toHaveBeenCalledWith("@temporary", "local"));
     expect(chats.getByRole("button", { name: "Temporary chat" })).toHaveAttribute("aria-current", "true");
 

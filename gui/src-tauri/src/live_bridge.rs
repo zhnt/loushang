@@ -1,8 +1,9 @@
 //! Tauri handoff for reconnecting snapshots, validated event rounds and bounded control.
 use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use loushang_app_client::{
-    AppClient, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
-    InteractionOutcome, LiveEventRound, LiveInitialSnapshot, ModelControlResult,
+    definitive_create_rejection, AppClient, ConnectionOptions, ControlCommand, ControlResult,
+    CreateSessionResult, InteractionOutcome, LiveEventRound, LiveInitialSnapshot,
+    ModelControlResult,
 };
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -86,14 +87,16 @@ pub(crate) struct LiveSelectModelInput {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LiveCreateSessionInput {
+    continuity_id: Option<String>,
     source_session_id: Option<String>,
     title: String,
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct LiveCreateSessionReceipt {
-    session_id: String,
+#[serde(untagged, rename_all_fields = "camelCase")]
+pub(crate) enum LiveCreateSessionReceipt {
+    Created { session_id: String },
+    Rejected { rejected: bool },
 }
 
 #[derive(Serialize)]
@@ -366,7 +369,10 @@ pub(crate) async fn live_create_session(
     input: LiveCreateSessionInput,
 ) -> Result<LiveCreateSessionReceipt, String> {
     let control = current_control(&state)?;
-    let continuity_id = format!("gui-new-{}", random_id()?);
+    let continuity_id = match input.continuity_id {
+        Some(id) => id,
+        None => format!("gui-new-{}", random_id()?),
+    };
     tauri::async_runtime::spawn_blocking(move || {
         let (reply, receive) = mpsc::sync_channel(1);
         control
@@ -384,10 +390,13 @@ pub(crate) async fn live_create_session(
             .map_err(|_| "session creation connection failed".to_owned())?
         {
             CreateSessionResult::Accepted(session_id) => {
-                Ok(LiveCreateSessionReceipt { session_id })
+                Ok(LiveCreateSessionReceipt::Created { session_id })
+            }
+            CreateSessionResult::Rejected(code) if definitive_create_rejection(&code) => {
+                Ok(LiveCreateSessionReceipt::Rejected { rejected: true })
             }
             CreateSessionResult::Rejected(code) => {
-                Err(format!("session creation rejected: {code}"))
+                Err(format!("session creation outcome unknown: {code}"))
             }
         }
     })
