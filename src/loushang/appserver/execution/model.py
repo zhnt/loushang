@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
+from typing import Literal, get_args
 
 from ..protocol import (
     AckV1,
@@ -20,6 +20,7 @@ from ..resume_model import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
 
 _REASON_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~-]{0,127}\Z")
+MAX_GOAL_BATCHES = 16
 
 
 def _identifier(value: str) -> None:
@@ -270,6 +271,36 @@ ExecutionGoalStatusV1 = Literal["active", "paused", "completed", "abandoned", "f
 ExecutionGoalValidityV1 = Literal["not_checked", "unknown"]
 
 
+ExecutionGoalWorkStatusV1 = Literal[
+    "accepted", "running", "cancelling", "completed", "failed", "cancelled", "orphaned",
+]
+ExecutionGoalCancellationStatusV1 = Literal[
+    "not_requested", "pending", "settled", "unsupported", "failed", "unknown",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionGoalBatchV1:
+    """An observed Work batch with only bounded public facts."""
+
+    batch_id: str
+    work_status: ExecutionGoalWorkStatusV1 | None
+    recording_available: bool
+    cancellation_status: ExecutionGoalCancellationStatusV1 | None
+    observation_unavailable: bool
+
+    def __post_init__(self) -> None:
+        _identifier(self.batch_id)
+        if self.work_status is not None and self.work_status not in get_args(ExecutionGoalWorkStatusV1):
+            raise ValueError("invalid Goal batch Work status")
+        if self.cancellation_status is not None and self.cancellation_status not in get_args(
+            ExecutionGoalCancellationStatusV1
+        ):
+            raise ValueError("invalid Goal batch cancellation status")
+        if type(self.recording_available) is not bool or type(self.observation_unavailable) is not bool:
+            raise TypeError("invalid Goal batch availability")
+
+
 @dataclass(frozen=True, slots=True)
 class ExecutionGoalProgressV1:
     """Compact facts from a Product's existing read-only Goal observation."""
@@ -284,6 +315,7 @@ class ExecutionGoalProgressV1:
     advances: int
     model_calls: int
     batch_count: int
+    batches: tuple[ExecutionGoalBatchV1, ...]
 
     def __post_init__(self) -> None:
         _identifier(self.execution_id)
@@ -300,6 +332,15 @@ class ExecutionGoalProgressV1:
             raise TypeError("invalid Goal execution settlement")
         for value in (self.advances, self.model_calls, self.batch_count):
             _counter(value)
+        self._validate_batches()
+
+    def _validate_batches(self) -> None:
+        if type(self.batches) is not tuple or len(self.batches) != min(self.batch_count, MAX_GOAL_BATCHES):
+            raise ValueError("invalid Goal batch count")
+        if any(type(batch) is not ExecutionGoalBatchV1 for batch in self.batches):
+            raise TypeError("invalid Goal batch summary")
+        if len({batch.batch_id for batch in self.batches}) != len(self.batches):
+            raise ValueError("duplicate Goal batch ID")
 
     def _validate_identity(self) -> None:
         if self.presence == "present":
@@ -354,6 +395,7 @@ class ExecutionCallV1:
     execution_id: str | None = None
     text: str | None = None
     resume_query: ResumeInputLookupQueryV1 | None = None
+    include_goal_batches: bool = False
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -369,6 +411,10 @@ class ExecutionCallV1:
             ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
         }
         text = self.operation is ExecutionOperationV1.SUBMIT
+        if type(self.include_goal_batches) is not bool or (
+            self.include_goal_batches and self.operation is not ExecutionOperationV1.GOAL_PROGRESS
+        ):
+            raise ValueError("unexpected Goal batch opt-in")
         if (self.resume_query is not None) != (self.operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP):
             raise ValueError("unexpected Resume lookup query")
         if self.resume_query is not None and type(self.resume_query) is not ResumeInputLookupQueryV1:

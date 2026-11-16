@@ -433,6 +433,47 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
     }
 }
 
+const MAX_GOAL_BATCHES: u64 = 16;
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GoalBatch {
+    batch_id: String,
+    work_status: Box<RawValue>,
+    recording_available: bool,
+    cancellation_status: Box<RawValue>,
+    observation_unavailable: bool,
+}
+
+impl GoalBatch {
+    fn valid(&self) -> Result<bool, ()> {
+        Ok(identifier(&self.batch_id, 128)
+            && optional_string(&self.work_status)?.is_none_or(|status| {
+                [
+                    "accepted",
+                    "running",
+                    "cancelling",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "orphaned",
+                ]
+                .contains(&status.as_str())
+            })
+            && optional_string(&self.cancellation_status)?.is_none_or(|status| {
+                [
+                    "not_requested",
+                    "pending",
+                    "settled",
+                    "unsupported",
+                    "failed",
+                    "unknown",
+                ]
+                .contains(&status.as_str())
+            }))
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct GoalProgress {
@@ -446,6 +487,7 @@ struct GoalProgress {
     advances: u64,
     model_calls: u64,
     batch_count: u64,
+    batches: Vec<GoalBatch>,
 }
 
 impl GoalProgress {
@@ -481,7 +523,21 @@ impl GoalProgress {
             && ["not_checked", "unknown"].contains(&self.validity.as_str())
             && [self.advances, self.model_calls, self.batch_count]
                 .iter()
-                .all(|count| *count <= 9_007_199_254_740_991))
+                .all(|count| *count <= 9_007_199_254_740_991)
+            && self.valid_batches()?)
+    }
+
+    fn valid_batches(&self) -> Result<bool, ()> {
+        if self.batches.len() as u64 != self.batch_count.min(MAX_GOAL_BATCHES) {
+            return Ok(false);
+        }
+        let mut ids = BTreeSet::new();
+        for batch in &self.batches {
+            if !batch.valid()? || !ids.insert(&batch.batch_id) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 }
 

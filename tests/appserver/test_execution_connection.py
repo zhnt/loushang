@@ -8,8 +8,13 @@ import pytest
 from loushang.appserver.client import AppClientV1
 from loushang.appserver.connection import AppServerConnectionV1
 from loushang.appserver.execution.client import ExecutionClientV1
+from loushang.appserver.execution.codec import (
+    decode_response as decode_execution_response,
+)
+from loushang.appserver.execution.codec import encode_call
 from loushang.appserver.execution.model import (
     ExecutionCallV1,
+    ExecutionGoalBatchV1,
     ExecutionGoalProgressV1,
     ExecutionOperationV1,
     ExecutionRecordV1,
@@ -90,6 +95,49 @@ def test_session_thinking_uses_an_opt_in_execution_hello(request_thinking):
             else:
                 assert updated == AppFailureV1(AppErrorCodeV1.OPERATION_UNAVAILABLE)
                 client.select_session_model.assert_not_awaited()
+        finally:
+            await frames.close()
+            await serving
+
+    asyncio.run(run())
+
+
+def test_goal_batch_details_are_opt_in_on_the_existing_progress_operation():
+    async def run():
+        left, right = _pair()
+        frames = AppFramedStreamV1(left)
+        app = create_autospec(AppClientV1, instance=True)
+        execution = create_autospec(ExecutionClientV1, instance=True)
+        execution.service_instance_id = "instance"
+        control = SessionSnapshotRequestV1("attachment", 1, "member")
+        expected = ExecutionGoalProgressV1(
+            "exec", "present", "goal", "paused", "model_budget", "not_checked", False, 1, 2, 1,
+            (ExecutionGoalBatchV1("batch-1", None, False, None, True),),
+        )
+
+        async def goal_progress(address, instance, execution_id):
+            assert (address, instance, execution_id) == (control, "instance", "exec")
+            return expected
+
+        execution.goal_progress = goal_progress
+        server = AppServerConnectionV1(
+            app, AppFramedStreamV1(right),
+            profile=AppConnectionProfileV1.LOCAL_EXECUTION, execution=execution,
+        )
+        serving = asyncio.create_task(server.serve())
+        try:
+            await frames.send(await frames.receive())
+            responses = []
+            for number, include in enumerate((False, True), 1):
+                await frames.send(encode_call(ExecutionCallV1(
+                    str(number), ExecutionOperationV1.GOAL_PROGRESS, control, "instance",
+                    execution_id="exec", include_goal_batches=include,
+                )))
+                responses.append(await frames.receive())
+            assert decode_execution_response(responses[1]).result == expected
+            legacy, current = (_loads(reply)["result"] for reply in responses)
+            assert "batches" not in legacy
+            assert legacy == {key: value for key, value in current.items() if key != "batches"}
         finally:
             await frames.close()
             await serving

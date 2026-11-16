@@ -7,6 +7,37 @@
     "rejected": "Goal 启动被拒绝。"
   },
   "goalProgress": {
+    "lastConfirmed": "当前进度不可用，显示最近一次已确认的观察结果。",
+    "work": {
+      "title": "Work 执行详情",
+      "batch": "批次",
+      "status": "Work 状态",
+      "recording": "记录",
+      "cancellation": "取消",
+      "observable": "可观测",
+      "notObserved": "未观测",
+      "recordingUnavailable": "不可用",
+      "unavailable": "部分信息不可用",
+      "empty": "暂无已记录的 Work 批次。",
+      "partial": "共 {{total}} 批，显示最近 {{shown}} 批。",
+      "states": {
+        "accepted": "已受理",
+        "running": "运行中",
+        "cancelling": "取消中",
+        "completed": "已完成",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "orphaned": "失去执行归属"
+      },
+      "cancellationStates": {
+        "not_requested": "未请求",
+        "pending": "待处理",
+        "settled": "已收尾",
+        "unsupported": "不支持",
+        "failed": "失败",
+        "unknown": "未知"
+      }
+    },
     "title": "Goal 进度",
     "goal": "Goal ID",
     "status": "状态",

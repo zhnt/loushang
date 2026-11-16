@@ -7,6 +7,37 @@
     "rejected": "Goal start rejected."
   },
   "goalProgress": {
+    "lastConfirmed": "Last confirmed observation. The latest progress is unavailable.",
+    "work": {
+      "title": "Work execution details",
+      "batch": "Batch",
+      "status": "Work status",
+      "recording": "Recording",
+      "cancellation": "Cancellation",
+      "observable": "Observable",
+      "notObserved": "Not observed",
+      "recordingUnavailable": "Unavailable",
+      "unavailable": "Some information is unavailable",
+      "empty": "No Work batches recorded.",
+      "partial": "Showing the latest {{shown}} of {{total}} batches.",
+      "states": {
+        "accepted": "Accepted",
+        "running": "Running",
+        "cancelling": "Cancelling",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "orphaned": "Orphaned"
+      },
+      "cancellationStates": {
+        "not_requested": "Not requested",
+        "pending": "Pending",
+        "settled": "Settled",
+        "unsupported": "Unsupported",
+        "failed": "Failed",
+        "unknown": "Unknown"
+      }
+    },
     "title": "Goal progress",
     "goal": "Goal ID",
     "status": "Status",

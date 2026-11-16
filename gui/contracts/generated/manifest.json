@@ -30,10 +30,10 @@
     "MuxAttachV1.mailbox_capacity"
   ],
   "scope": "execution nested values plus attachment model shapes; not complete envelopes or auth",
-  "sourceDigest": "2dc6f61a28bc1babc3c1f235c28c9364fa0ad380d1ceae3de131ab745c670e25",
+  "sourceDigest": "5c17ac8107feb21e502ab9f3665091f54e1f5d2d0e054e5b427feb521f0f2d3f",
   "sources": {
-    "src/loushang/appserver/execution/codec.py": "8edbbc39aa661c5d35c63446b607e37529f240abf07d48d5595846c7bff961c4",
-    "src/loushang/appserver/execution/model.py": "cdb55612d07d5c719b1714b03c43203f3cf09a56e87e0e4fa3b92049156c1c4e",
+    "src/loushang/appserver/execution/codec.py": "e7dfec8fb8020429cb99db46298fb689a5e95bbaa8781aa18099d53f10913292",
+    "src/loushang/appserver/execution/model.py": "529cf7e4adfeee725fba49131ba6a7bb784f918dd678f88245cad9f820792870",
     "src/loushang/appserver/protocol/codec.py": "172d29b2d2a813bd64f1fa3982bf7c199582e86423b680a00a26e22453e0430e",
     "src/loushang/appserver/protocol/errors.py": "614abb6e0df0e9f29ff152de9d794e681f3cd3b9e1b334f961eda503959c25f9",
     "src/loushang/appserver/protocol/model.py": "f21314904c91710ad5b8c16764a540eb52ecbffab296c1e99979c8891a4b990f"

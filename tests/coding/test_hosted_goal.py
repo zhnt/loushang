@@ -187,6 +187,7 @@ def test_execution_goal_start_is_one_shot_even_if_interrupted_before_product_ent
             settled = await scope2.goal_client.wait(control2, (await scope2.goal_client.find(control2, instance, "original")).handle)
             assert settled.execution.state.status is ExecutionStatusV1.INTERRUPTED
             assert adapter.calls == 0
+            assert (await reader.goal_progress(control2, instance, execution_id)).batches == ()
             assert not (await reader.snapshot_execution_session(control2, instance)).supports_goal_start
             assert (await start("original", address=control2)).state.execution_id == execution_id
             with pytest.raises(AppServiceError) as unavailable:
@@ -198,7 +199,7 @@ def test_execution_goal_start_is_one_shot_even_if_interrupted_before_product_ent
     asyncio.run(scenario())
 
 
-def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_path):
+def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_path, monkeypatch):
     async def scenario():
         launch, config = task(tmp_path)
         protected = {p.relative_to(config.workspace): p.read_bytes() for p in config.workspace.rglob("*") if p.is_file() and p.name != "calculator.py"}
@@ -239,6 +240,24 @@ def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_pa
             assert observed.status == "completed" and observed.validity == "not_checked"
             assert observed.model_calls == adapter.calls
             assert observed.batch_count == len(view.batches)
+            assert [batch.batch_id for batch in observed.batches] == [batch.batch_id for batch in view.batches]
+            assert [batch.work_status for batch in observed.batches] == [batch.work.status for batch in view.batches]
+            assert all(batch.recording_available and batch.cancellation_status == "not_requested"
+                       and not batch.observation_unavailable for batch in observed.batches)
+            _, binding = await client._execution._resolve(control, instance)
+            progress = await binding.port.progress_goal(execution_id)
+            batches = tuple(replace(progress.batches[-1], batch_id=f"batch-{i}") for i in range(18))
+
+            async def many_batches(execution):
+                assert execution == execution_id
+                return replace(progress, batches=batches)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(binding.port, "progress_goal", many_batches)
+                limited = await reader.goal_progress(control, instance, execution_id)
+                assert limited.batch_count == 18
+                assert [batch.batch_id for batch in limited.batches] == [f"batch-{i}" for i in range(2, 18)]
+            assert adapter.calls == calls_before_observation
             assert view.status == "completed" and view.validity == "current" and not view.execution_unresolved
             assert 1 < view.advances <= 8 and view.model_calls == adapter.calls <= 8
             runs = [b.work for b in view.batches]

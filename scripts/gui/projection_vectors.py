@@ -53,6 +53,10 @@ def emit_projection_vectors() -> None:
     goal = em.ExecutionGoalProgressV1(
         "execution-1", "present", "goal-1", "paused", "advance_budget_exhausted",
         "not_checked", True, 3, 6, 2,
+        (
+            em.ExecutionGoalBatchV1("batch-1", "completed", True, "not_requested", False),
+            em.ExecutionGoalBatchV1("batch-2", None, False, None, True),
+        ),
     )
     goal_wire = json.loads(encode_response(em.ExecutionResponseV1("goal-progress", goal)))
     add("goal-progress-paused", "goal_progress", goal_wire)
@@ -65,6 +69,32 @@ def emit_projection_vectors() -> None:
         value = copy.deepcopy(goal_wire)
         value["result"][field] = invalid
         add(f"goal-invalid-{field}", "goal_progress", value, False)
+    empty = replace(goal, batch_count=0, batches=())
+    add("goal-progress-empty", "goal_progress", json.loads(encode_response(em.ExecutionResponseV1("empty", empty))))
+    limited = replace(goal, batch_count=19, batches=tuple(
+        replace(goal.batches[0], batch_id=f"batch-{number}") for number in range(4, 20)
+    ))
+    add("goal-progress-limited", "goal_progress", json.loads(encode_response(em.ExecutionResponseV1("limited", limited))))
+    for field, invalid in (
+        ("batchId", "/private/batch"), ("workStatus", "invented"), ("recordingAvailable", 1),
+        ("cancellationStatus", "cancelled"), ("observationUnavailable", "error"), ("planId", "private"),
+    ):
+        value = copy.deepcopy(goal_wire)
+        value["result"]["batches"][0][field] = invalid
+        add(f"batch-invalid-{field}", "goal_progress", value, False)
+    for name in ("missing-state", "duplicate", "too-many", "truncated-too-early"):
+        value = copy.deepcopy(goal_wire)
+        result = value["result"]
+        if name == "missing-state":
+            del result["batches"][1]["cancellationStatus"]
+        elif name == "duplicate":
+            result["batches"][1]["batchId"] = result["batches"][0]["batchId"]
+        elif name == "too-many":
+            result["batchCount"] = 17
+            result["batches"] = [dict(result["batches"][0], batchId=f"batch-{i}") for i in range(17)]
+        else:
+            result["batchCount"] = 17
+        add(f"batch-{name}", "goal_progress", value, False)
     choice = pm.UserChoicePromptV1("question-1", "选择设计", (
         pm.UserChoiceOptionV1("a", "渐进", "复用 API"),
         pm.UserChoiceOptionV1("B", "重构"),
