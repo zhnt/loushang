@@ -481,3 +481,10 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .user-choice > p { margin-bottom: 0; color: var(--muted); }
 .goal-start p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
 .goal-progress > strong { display: block; padding: 8px 12px 0; }
+.goal-work { margin: 12px 12px 0; font-size: 12px; }
+.goal-work > summary { display: list-item; padding-block: 6px; font-weight: 680; }
+.goal-work table { width: 100%; border-collapse: collapse; text-align: start; }
+.goal-work :is(th, td) { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; text-align: start; }
+.goal-work code { display: block; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
+.goal-work small { display: block; color: var(--muted); font-weight: 400; }
+.goal-work-note { margin: 8px 12px; color: var(--muted); font-size: 12px; }

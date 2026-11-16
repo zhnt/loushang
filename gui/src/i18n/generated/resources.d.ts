@@ -83,6 +83,7 @@ export default interface Resources {
       "advances": "Advances",
       "batches": "Recorded batches",
       "goal": "Goal ID",
+      "lastConfirmed": "Last confirmed observation. The latest progress is unavailable.",
       "models": "Model calls",
       "no": "No",
       "notObserved": "Unavailable",
@@ -103,6 +104,36 @@ export default interface Resources {
       "title": "Goal progress",
       "unresolved": "Unresolved execution",
       "validity": "Validity",
+      "work": {
+        "batch": "Batch",
+        "cancellation": "Cancellation",
+        "cancellationStates": {
+          "failed": "Failed",
+          "not_requested": "Not requested",
+          "pending": "Pending",
+          "settled": "Settled",
+          "unknown": "Unknown",
+          "unsupported": "Unsupported"
+        },
+        "empty": "No Work batches recorded.",
+        "notObserved": "Not observed",
+        "observable": "Observable",
+        "partial": "Showing the latest {{shown}} of {{total}} batches.",
+        "recording": "Recording",
+        "recordingUnavailable": "Unavailable",
+        "states": {
+          "accepted": "Accepted",
+          "cancelled": "Cancelled",
+          "cancelling": "Cancelling",
+          "completed": "Completed",
+          "failed": "Failed",
+          "orphaned": "Orphaned",
+          "running": "Running"
+        },
+        "status": "Work status",
+        "title": "Work execution details",
+        "unavailable": "Some information is unavailable"
+      },
       "yes": "Yes"
     },
     "goalStart": {

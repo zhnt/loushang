@@ -6,10 +6,14 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loushang.appserver.execution.model import (
+    MAX_GOAL_BATCHES,
     ExecutionContentEventV1,
+    ExecutionGoalBatchV1,
+    ExecutionGoalCancellationStatusV1,
     ExecutionGoalProgressV1,
     ExecutionGoalStatusV1,
     ExecutionGoalValidityV1,
+    ExecutionGoalWorkStatusV1,
     ExecutionInterruptDispositionV1,
     ExecutionInterruptResultV1,
     ExecutionRecordV1,
@@ -17,6 +21,7 @@ from loushang.appserver.execution.model import (
     ExecutionUpdateV1,
 )
 from loushang.appserver.goal import (
+    GoalBatchObservationV1,
     GoalCapabilityV1,
     GoalHandleV1,
     GoalObservationV1,
@@ -243,4 +248,16 @@ class ScopedGoalExecutionObserverV1:
             cast(ExecutionGoalStatusV1 | None, view.status),
             view.reason_code, cast(ExecutionGoalValidityV1, view.validity),
             view.execution_unresolved, view.advances, view.model_calls, len(view.batches),
+            tuple(_batch_summary(batch) for batch in view.batches[-MAX_GOAL_BATCHES:]),
         )
+
+
+def _batch_summary(batch: GoalBatchObservationV1) -> ExecutionGoalBatchV1:
+    return ExecutionGoalBatchV1(
+        batch_id=batch.batch_id,
+        work_status=cast(ExecutionGoalWorkStatusV1, batch.work.status) if batch.work else None,
+        recording_available=batch.recording is not None,
+        cancellation_status=cast(ExecutionGoalCancellationStatusV1, batch.cancellation.status)
+        if batch.cancellation else None,
+        observation_unavailable=bool(batch.errors),
+    )

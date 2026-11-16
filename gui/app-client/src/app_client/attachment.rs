@@ -964,6 +964,7 @@ impl ControlAuthority {
         }
         let mut payload = self.payload(session_id)?;
         payload["executionId"] = Value::String(execution_id.to_owned());
+        payload["includeBatches"] = Value::Bool(true);
         let result = execution_request(channel, "execution/goal_progress", request_id, payload)?;
         decode_goal_progress(result, execution_id)
     }
@@ -1410,7 +1411,7 @@ mod tests {
             "result": {
                 "executionId": "exec-1", "presence": "present", "goalId": "calculator",
                 "status": "paused", "reasonCode": "model_budget", "validity": "not_checked",
-                "executionUnresolved": false, "advances": 1, "modelCalls": 2, "batchCount": 3,
+                "executionUnresolved": false, "advances": 1, "modelCalls": 2, "batchCount": 0, "batches": [],
             },
         });
         assert!(decode_goal_progress(reply.clone(), "exec-2").is_err());

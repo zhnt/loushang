@@ -70,6 +70,23 @@ def test_closed_execution_call_round_trip(operation):
         decode_call(json.dumps(raw).encode())
 
 
+@pytest.mark.parametrize("flag", [False, 1, None, "true"])
+def test_goal_batch_details_opt_in_is_closed(flag):
+    call = ExecutionCallV1(
+        "1", ExecutionOperationV1.GOAL_PROGRESS, CONTROL, "instance",
+        execution_id="execution", include_goal_batches=True,
+    )
+    assert decode_call(encode_call(call)) == call
+    raw = json.loads(encode_call(call))
+    raw["payload"]["includeBatches"] = flag
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+    raw["operation"] = ExecutionOperationV1.GET.value
+    raw["payload"]["includeBatches"] = True
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+
+
 def test_record_snapshot_and_event_round_trip():
     outcome = ExecutionOutcomeV1(ExecutionStatusV1.SUCCEEDED)
     state = ExecutionStateV1("execution", outcome.status, 3, outcome=outcome)

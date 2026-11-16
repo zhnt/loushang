@@ -883,7 +883,12 @@ describe("Hosted Goal observation", () => {
     const observed = {
       executionId: execution.id, presence: "present" as const, goalId: "real-goal",
       status: "paused" as const, reasonCode: "advance_budget_exhausted", validity: "not_checked" as const,
-      executionUnresolved: true, advances: 2, modelCalls: 3, batchCount: 1,
+      executionUnresolved: true, advances: 2, modelCalls: 3, batchCount: 17,
+      batches: Array.from({ length: 16 }, (_, index) => ({
+        batchId: `batch-${index + 2}`, workStatus: index ? "completed" as const : null,
+        recordingAvailable: index > 0, cancellationStatus: index ? "not_requested" as const : null,
+        observationUnavailable: index === 0,
+      })),
     };
     let publish: (snapshot: ClientSnapshot) => void = () => {};
     let disconnect: (state: "disconnected") => void = () => {};
@@ -913,6 +918,28 @@ describe("Hosted Goal observation", () => {
     expect(panel.getByText("Paused")).toBeVisible();
     expect(panel.getByText("advance_budget_exhausted")).toBeVisible();
     expect(panel.getByText("Not checked")).toBeVisible();
+    const work = panel.getByText("Work execution details");
+    expect(work.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(work);
+    const table = within(panel.getByRole("table", { name: "Work execution details" }));
+    const [, first, second, ...remaining] = table.getAllByRole("row");
+    expect(within(first).getByText("batch-2")).toBeVisible();
+    expect(within(first).getAllByText("Not observed")).toHaveLength(2);
+    expect(within(first).getByText("Unavailable")).toBeVisible();
+    expect(within(first).getByText("Some information is unavailable")).toBeVisible();
+    expect(within(second).getByText("Completed")).toBeVisible();
+    expect(within(second).getByText("Observable")).toBeVisible();
+    expect(within(second).getByText("Not requested")).toBeVisible();
+    expect(within(remaining[remaining.length - 1]).getByText("batch-17")).toBeVisible();
+    expect(panel.getByText("Showing the latest 16 of 17 batches.")).toBeVisible();
+    expect(panel.getByText("Paused")).toBeVisible();
+
+    goalProgress.mockResolvedValueOnce(null);
+    act(() => publish({ ...initial, sessions: [{
+      ...initial.sessions[0], execution: { ...execution, status: "succeeded" },
+    }] }));
+    expect(await panel.findByText(/Last confirmed observation/)).toBeVisible();
+    expect(within(first).getByText("batch-2")).toBeVisible();
     const total = goalProgress.mock.calls.length;
     act(() => disconnect("disconnected"));
     expect(screen.queryByRole("region", { name: "Goal progress" })).not.toBeInTheDocument();

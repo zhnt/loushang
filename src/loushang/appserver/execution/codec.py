@@ -26,6 +26,7 @@ from .model import (
     ExecutionContentEventV1,
     ExecutionEventsV1,
     ExecutionFailureV1,
+    ExecutionGoalBatchV1,
     ExecutionGoalProgressV1,
     ExecutionInterruptResultV1,
     ExecutionObservationV1,
@@ -62,9 +63,12 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ExecutionObservationV1: ("execution_id", "status", "final_cursor"),
     ExecutionSourceSnapshotV1: ("source", "observation", "draft", "truncated"),
     ExecutionRecordV1: ("service_instance_id", "identity", "submission_id", "state"),
+    ExecutionGoalBatchV1: (
+        "batch_id", "work_status", "recording_available", "cancellation_status", "observation_unavailable",
+    ),
     ExecutionGoalProgressV1: (
         "execution_id", "presence", "goal_id", "status", "reason_code", "validity",
-        "execution_unresolved", "advances", "model_calls", "batch_count",
+        "execution_unresolved", "advances", "model_calls", "batch_count", "batches",
     ),
     ExecutionSessionViewV1: ("identity", "revision", "quiescent", "active", "latest_terminal"),
     ExecutionSessionSnapshotV1: ("service_instance_id", "source", "executions"),
@@ -188,6 +192,8 @@ def encode_call(call: ExecutionCallV1) -> bytes:
         body["submissionId"] = call.submission_id
     if call.execution_id is not None:
         body["executionId"] = call.execution_id
+    if call.include_goal_batches:
+        body["includeBatches"] = True
     if call.text is not None:
         body["text"] = call.text
     if call.resume_query is not None:
@@ -217,7 +223,15 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             fields.add("text")
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP:
             fields.add("resumeQuery")
-        body = _object(root["payload"], fields)
+        raw = root["payload"]
+        include_batches = (
+            operation is ExecutionOperationV1.GOAL_PROGRESS and type(raw) is dict and "includeBatches" in raw
+        )
+        if include_batches:
+            fields.add("includeBatches")
+        body = _object(raw, fields)
+        if include_batches and body["includeBatches"] is not True:
+            raise InvalidAppMessageError()
         return ExecutionCallV1(
             _string(root["requestId"]), operation,
             cast(SessionSnapshotRequestV1, _decode(SessionSnapshotRequestV1, body["control"])),
@@ -227,20 +241,26 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             _string(body["text"]) if "text" in fields else None,
             cast(ResumeInputLookupQueryV1, _decode(ResumeInputLookupQueryV1, body["resumeQuery"]))
             if "resumeQuery" in fields else None,
+            include_goal_batches=include_batches,
         )
     except (TypeError, ValueError, KeyError, RecursionError):
         raise InvalidAppMessageError() from None
 
 
-def encode_response(response: ExecutionResponseV1) -> bytes:
+def encode_response(response: ExecutionResponseV1, *, include_goal_batches: bool = True) -> bytes:
     if type(response) is not ExecutionResponseV1:
         raise TypeError("invalid execution response")
     kind = "not_found" if response.result is None else next(
         key for key, value in _KINDS.items() if value is type(response.result)
     )
+    result = _encode(response.result)
+    if type(response.result) is ExecutionGoalProgressV1 and not include_goal_batches:
+        # Retain the closed legacy shape for callers that did not request details.
+        assert isinstance(result, dict)
+        del result["batches"]
     return _dumps({
         "protocolVersion": EXECUTION_PROTOCOL_VERSION, "requestId": response.request_id,
-        "resultType": kind, "result": _encode(response.result),
+        "resultType": kind, "result": result,
     })
 
 

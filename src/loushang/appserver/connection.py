@@ -276,7 +276,9 @@ class AppServerConnectionV1:
             result = AppFailureV1(error.code)
         except Exception:
             result = AppFailureV1(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        await self._stream.send(encode_execution_response(ExecutionResponseV1(request.request_id, result)))
+        await self._stream.send(encode_execution_response(
+            ExecutionResponseV1(request.request_id, result), include_goal_batches=request.include_goal_batches,
+        ))
 
     async def close(self) -> None:
         async with self._close_lock:
