@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -475,13 +476,17 @@ class InteractiveGoal(CodingGoal):
         owner._policy._facts = owner.controller.facts
         return owner
 
-    async def create_task(self, task: GoalTask):
+    async def create_task(
+        self, task: GoalTask, *, check_current: Callable[[], None] | None = None,
+    ) -> str:
         async def create():
             admission = self._session.runtime.execution_admission
             reservation = admission.reserve_candidate()
             try:
                 await self._policy.refresh()
                 admission.validate_reservation(reservation, require_operation=False)
+                if check_current is not None:
+                    check_current()
                 return self._create_task(task)
             finally:
                 reservation.release()
