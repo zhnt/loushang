@@ -1,4 +1,4 @@
-"""Original legacy Product startup registration and inactivity observation."""
+"""Legacy Product runtime registration and authenticated old-state observation."""
 
 from __future__ import annotations
 
@@ -16,6 +16,121 @@ from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
 from loushang.harness.resources.packages._private_directory import (
     prepare_private_directory_tree,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
+    PackageLegacyStateEvidenceV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
+    PackagePosixEpochSnapshotEvidenceStore,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PackageOfflineRestoreSnapshotEvidenceV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_snapshot import (
+    PackageWindowsEpochSnapshotEvidenceStore,
+)
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
+)
+from loushang.harness.resources.packages.product_windows_epoch_guard import (
+    PackageProductWindowsFencedRuntimeOwner,
+)
+
+_FencedRuntime = (
+    PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
+)
+_SnapshotStore = (
+    PackagePosixEpochSnapshotEvidenceStore | PackageWindowsEpochSnapshotEvidenceStore
+)
+
+
+@dataclass(frozen=True)
+class _LegacyFirstSnapshot:
+    """Borrow one fenced runtime to read its authenticated, immutable first snapshot."""
+
+    runtime: _FencedRuntime
+    snapshots: _SnapshotStore
+    receipt_id: str
+    evidence: PackageOfflineRestoreSnapshotEvidenceV1
+    error_type: type[Exception]
+    label: str
+
+    @classmethod
+    def open(
+        cls,
+        runtime: _FencedRuntime,
+        *,
+        store_id: str,
+        control_root: Path,
+        snapshot_root: Path,
+        error_type: type[Exception],
+        label: str,
+    ) -> _LegacyFirstSnapshot:
+        runtime.assert_current()
+        fence = runtime.cutover_result.fence
+        if (
+            runtime.registry.store_id != store_id
+            or runtime.control_root != control_root
+            or fence is None
+            or fence.store_id != store_id
+            or fence.epoch != 1
+            or fence.request.prior_epoch != 0
+        ):
+            raise error_type(f"{label} first fence is unsupported")
+        snapshot_owner = (
+            PackageWindowsEpochSnapshotEvidenceStore
+            if isinstance(runtime, PackageProductWindowsFencedRuntimeOwner)
+            else PackagePosixEpochSnapshotEvidenceStore
+        )
+        snapshots = snapshot_owner(snapshot_root, store_id=store_id)
+        receipt_id = fence.request.snapshot_receipt_id
+        evidence = snapshots.snapshot(receipt_id)
+        if (
+            evidence is None
+            or evidence.snapshot.receipt_id != receipt_id
+            or evidence.snapshot.legacy_root_identity
+            != fence.request.legacy_root_identity
+        ):
+            raise error_type(f"{label} snapshot is unavailable")
+        return cls(runtime, snapshots, receipt_id, evidence, error_type, label)
+
+    def read_member(
+        self, *, domain: str, member_name: str, maximum_bytes: int
+    ) -> bytes | None:
+        raw = self.snapshots.read_regular_member(
+            self.receipt_id,
+            domain=domain,
+            member_name=member_name,
+            maximum_bytes=maximum_bytes,
+        )
+        self.runtime.assert_current()
+        return raw
+
+    def list_members(self, *, domain: str) -> tuple[str, ...]:
+        members = self.snapshots.list_domain_members(self.receipt_id, domain=domain)
+        if members is None:
+            raise self.error_type(f"{self.label} snapshot disappeared")
+        self.runtime.assert_current()
+        return members
+
+    def observe(
+        self, *, store_id: str, legacy_root_identity: str
+    ) -> PackageLegacyStateEvidenceV1:
+        fence = self.runtime.cutover_result.fence
+        if (
+            fence is None
+            or store_id != fence.store_id
+            or legacy_root_identity != fence.request.legacy_root_identity
+            or self.evidence.snapshot.store_id != store_id
+        ):
+            raise self.error_type(f"{self.label} observation authority changed")
+        self.runtime.assert_current()
+        return PackageLegacyStateEvidenceV1.create(
+            store_id=store_id,
+            legacy_root_identity=legacy_root_identity,
+            state_digest=self.evidence.snapshot_tree_digest,
+            entry_count=self.evidence.snapshot.entry_count,
+            byte_count=self.evidence.snapshot.byte_count,
+        )
 
 
 class _LegacyStateRoots(Protocol):

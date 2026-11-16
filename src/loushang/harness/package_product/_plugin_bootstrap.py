@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -32,6 +33,30 @@ from .product_runtime import (
 _ProductOwner = (
     PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
 )
+
+
+@contextmanager
+def _product_plugin_runtime(
+    product: _ProductOwner, *, product_id: str, session_id: str
+) -> Iterator[PackageProductRuntimeBindingV1]:
+    """Activate one Product runtime and settle its original factory on all exits."""
+    factory = product.factory_for_session(
+        session_id=session_id, cwd=product.workspace, runtime_id=session_id
+    )
+    binding: PackageProductRuntimeBindingV1 | None = None
+    try:
+        binding = factory.create(
+            PackageProductRuntimeRequestV1(
+                product_id=product_id, session_id=session_id, cwd=str(product.workspace)
+            )
+        )
+        binding.activate()
+        yield binding
+    finally:
+        if binding is None:
+            factory.dispose_unbound_runtime()
+        else:
+            binding.dispose_runtime()
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,21 +166,9 @@ def bootstrap_product_plugin(
     ):
         raise RuntimeError(f"{policy.error_prefix} was removed")
     bootstrap_id = f"{policy.operation_id_prefix}{secrets.token_hex(16)}"
-    factory = product.factory_for_session(
-        session_id=bootstrap_id,
-        cwd=product.workspace,
-        runtime_id=bootstrap_id,
-    )
-    binding: PackageProductRuntimeBindingV1 | None = None
-    try:
-        binding = factory.create(
-            PackageProductRuntimeRequestV1(
-                product_id=policy.product_id,
-                session_id=bootstrap_id,
-                cwd=str(product.workspace),
-            )
-        )
-        binding.activate()
+    with _product_plugin_runtime(
+        product, product_id=policy.product_id, session_id=bootstrap_id
+    ) as binding:
         if current == "absent":
             source = next(
                 item.source_identity
@@ -189,11 +202,6 @@ def bootstrap_product_plugin(
         )
         if expected_command_id is None:
             raise RuntimeError(f"{policy.error_prefix} handoff is missing")
-    finally:
-        if binding is None:
-            factory.dispose_unbound_runtime()
-        else:
-            binding.dispose_runtime()
 
     snapshot = desired.snapshot()
     selected = snapshot.installation(key)

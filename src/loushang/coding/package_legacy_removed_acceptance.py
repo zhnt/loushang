@@ -8,16 +8,12 @@ from pathlib import Path
 
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
     JournalCodecError,
-    JournalLoadPolicy,
-    decode_jsonl,
-    encode_jsonl_record,
-    journal_file_lock,
-    journal_file_read_lock,
 )
-from loushang.harness.journal._rooted_io import publish_private_bytes
+from loushang.harness.package_product._legacy_local_migration import (
+    _FirstAcceptanceJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -28,8 +24,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .package_epoch_layout import resolve_coding_package_epoch_layout
 from .package_legacy_disabled_acceptance import (
-    _read_private_acceptance,
-    _require_empty_product_desired,
+    CodingLegacyDisabledOnlyAcceptanceError,
 )
 from .package_legacy_removed_review import (
     CodingLegacyRemovedReviewV1,
@@ -97,7 +92,17 @@ _CODEC = FunctionalJournalRecordCodec(
     encoder=CodingLegacyRemovedAcceptanceV1.to_dict,
     decoder=CodingLegacyRemovedAcceptanceV1.from_dict,
 )
-_FILENAME = "legacy-removed-acceptance.jsonl"
+
+_acceptance_journal = _FirstAcceptanceJournal(
+    filename="legacy-removed-acceptance.jsonl",
+    codec=_CODEC,
+    error_type=CodingLegacyRemovedAcceptanceError,
+    directory_label="Old removal Product state directory",
+    posix_read_error_type=CodingLegacyDisabledOnlyAcceptanceError,
+    posix_read_label="Disabled-only Product",
+    untouched_message="Disabled-only adoption requires an untouched Product Desired State",
+    postcheck="combined",
+)
 
 
 def accept_coding_first_b_removed_local(
@@ -118,22 +123,11 @@ def accept_coding_first_b_removed_local(
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     if epoch_runtime.registry.store_id != epoch.store_id:
         raise CodingLegacyRemovedAcceptanceError("Product Store changed")
-    path = epoch_runtime.prepare_product_state_root() / _FILENAME
-    with journal_file_lock(path, "exclusive"):
-        epoch_runtime.assert_current()
-        records = _decode(_read_private_acceptance(path), path=path)
-        if records:
-            if len(records) != 1 or records[0] != proposed:
-                raise CodingLegacyRemovedAcceptanceError(
-                    "Old removal acceptance conflicts with prior review"
-                )
-            return records[0]
-        desired_path = path.parent / "desired-state.jsonl"
-        with journal_file_lock(desired_path, "exclusive"):
-            _require_empty_product_desired(desired_path)
-            _write_private_acceptance(path, proposed)
-        epoch_runtime.assert_current()
-        return proposed
+    return _acceptance_journal.accept(
+        epoch_runtime,
+        proposed,
+        conflict_message="Old removal acceptance conflicts with prior review",
+    )
 
 
 def read_coding_first_b_removed_local_acceptance(
@@ -147,9 +141,8 @@ def read_coding_first_b_removed_local_acceptance(
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     if epoch_runtime.registry.store_id != epoch.store_id:
         raise CodingLegacyRemovedAcceptanceError("Product Store changed")
-    path = epoch_runtime.control_root / "product-state" / _FILENAME
-    with journal_file_read_lock(path, "shared", create_lock=False):
-        records = _decode(_read_private_acceptance(path), path=path)
+    path = epoch_runtime.control_root / "product-state" / _acceptance_journal.filename
+    records = _acceptance_journal.records(path)
     if not records:
         return None
     review = review_coding_first_b_removed_local(
@@ -165,31 +158,10 @@ def read_coding_first_b_removed_local_acceptance(
     return records[0]
 
 
-def _decode(
-    raw: str | None, *, path: Path
-) -> tuple[CodingLegacyRemovedAcceptanceV1, ...]:
-    if raw is None:
-        return ()
-    return decode_jsonl(
-        raw,
-        target=path,
-        record_codec=_CODEC,
-        load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
-    ).records
-
-
 def _write_private_acceptance(
     path: Path, record: CodingLegacyRemovedAcceptanceV1
 ) -> None:
-    payload = encode_jsonl_record(
-        record, record_codec=_CODEC, format_profile=SORTED_UNICODE_JSONL_FORMAT
-    )
-    publish_private_bytes(
-        path, payload,
-        error_type=CodingLegacyRemovedAcceptanceError,
-        directory_label="Old removal Product state directory",
-        postcheck="combined",
-    )
+    _acceptance_journal.publish(path, record)
 
 
 __all__ = [

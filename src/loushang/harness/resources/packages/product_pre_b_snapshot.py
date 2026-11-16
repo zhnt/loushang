@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,6 +50,37 @@ class PackageProductPosixCutoverAttemptV1:
     result: PackagePosixEpochCutoverResultV1
 
 
+def inspect_legacy_product_member_names(
+    root: Path,
+    *,
+    allowed_members: Collection[str],
+    directory_members: Collection[str],
+    label: str,
+) -> set[str]:
+    """Inventory old root members using the Product's exact historical shape.
+
+    This is a read-only observation, not snapshot or publication authority.
+    Preserve legacy lstat/no-hardlink checks without imposing new admission.
+    """
+    try:
+        metadata = root.lstat()
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(f"{label} root is not a directory")
+        names = set(os.listdir(root))
+        if names - set(allowed_members):
+            raise ValueError(f"{label} root has unmapped members")
+        for name in names:
+            member = (root / name).lstat()
+            expected = stat.S_ISDIR if name in directory_members else stat.S_ISREG
+            if not expected(member.st_mode) or (
+                stat.S_ISREG(member.st_mode) and member.st_nlink != 1
+            ):
+                raise ValueError(f"{label} member is unsafe")
+    except OSError as exc:
+        raise ValueError(f"{label} source is unavailable") from exc
+    return names
+
+
 def read_posix_product_pre_b_snapshot(
     *,
     snapshot_root: Path,
@@ -74,9 +105,7 @@ def reopen_posix_product_cutover(
     """Reopen the fenced Product root using durable evidence, without old Source."""
 
     if any(
-        not isinstance(path, Path)
-        or not path.is_absolute()
-        or ".." in path.parts
+        not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts
         for path in (authority_root, control_root)
     ):
         raise ValueError("Package Product epoch roots must be absolute")
@@ -179,9 +208,7 @@ class PackageProductPreBSnapshotOwner:
     ) -> tuple[str, ...] | None:
         """List one verified domain before the Product decides to fence."""
 
-        return self._owner.list_domain_members(
-            snapshot_receipt_id, domain=domain
-        )
+        return self._owner.list_domain_members(snapshot_receipt_id, domain=domain)
 
     def cutover_from_legacy(
         self,
@@ -203,9 +230,7 @@ class PackageProductPreBSnapshotOwner:
         ):
             raise RuntimeError("POSIX Package Product cutover is required")
         if any(
-            not isinstance(path, Path)
-            or not path.is_absolute()
-            or ".." in path.parts
+            not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts
             for path in (authority_root, control_root)
         ):
             raise ValueError("Package Product cutover roots must be absolute")

@@ -2,25 +2,21 @@
 
 from __future__ import annotations
 
-import secrets
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeBindingV1,
-    PackageProductRuntimeRequestV1,
+from loushang.harness.package_product._legacy_local_migration import (
+    _LegacyLocalInstallation,
 )
-from loushang.harness.plugin_management.operations import PluginManagementCommandV1
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PosixLocalWheelProductSessionOwner,
+    WindowsLocalWheelProductSessionOwner,
+)
 from loushang.harness.plugin_management.records import (
-    PluginDesiredStateMutationV1,
-    PluginDesiredStateTransitionV1,
     PluginInstallationKeyV1,
     PluginPackageRevisionRefV1,
-)
-from loushang.harness.resources.packages.product_contract import (
-    PackageProductLifecycleIntentV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -148,110 +144,21 @@ def enable_coding_accepted_legacy_local_data_plugin(
         install_id = _install_operation_id(
             accepted.review.store_id, accepted.acceptance_id
         )
-        install_command_id = product.settled_install_command_id(
-            operation_id=install_id, plugin_id=plugin_id
-        )
-        if install_command_id is None:
-            raise CodingLegacyLocalInstallationError(
-                "Legacy local Product install handoff is not settled"
-            )
         key = PluginInstallationKeyV1(
             product_id="coding",
             installation_scope="workspace",
             scope_id=lifecycle.scope_id,
             plugin_id=plugin_id,
         )
-        snapshot = product.desired_state.snapshot()
-        selected = snapshot.installation(key)
-        revision = selected.selection.package_revision
-        if (
-            revision is None
-            or revision.package_source_identity != source.source_identity
-            or selected.selection.desired_state
-            not in {"installed_disabled", "installed_enabled"}
-        ):
-            raise CodingLegacyLocalInstallationError(
-                "Legacy local Product Installation selection changed"
-            )
-        enable_id = _enable_operation_id(
-            accepted.review.store_id, accepted.acceptance_id
+        installation = _installation(
+            product,
+            key,
+            source.source_identity,
+            accepted,
+            install_operation_id=install_id,
         )
-        transitions = tuple(
-            transition
-            for transition in product.desired_state.transitions()
-            if transition.mutation.installation_key == key
-        )
-        if (
-            not transitions
-            or not isinstance(transitions[0], PluginDesiredStateTransitionV1)
-            or transitions[0].mutation.operation_id != install_command_id
-            or transitions[0].mutation.actor_id != product.actor_id
-            or transitions[0].committed_state.selection.desired_state
-            != "installed_disabled"
-            or transitions[0].committed_state.selection.package_revision != revision
-        ):
-            raise CodingLegacyLocalInstallationError(
-                "Legacy local Product install was superseded"
-            )
-        if selected.selection.desired_state == "installed_enabled":
-            if (
-                len(transitions) != 2
-                or not isinstance(transitions[1], PluginDesiredStateTransitionV1)
-                or transitions[1].mutation.operation_id != enable_id
-                or transitions[1].mutation.actor_id != product.actor_id
-                or transitions[1].committed_state != selected
-            ):
-                raise CodingLegacyLocalInstallationError(
-                    "Legacy local Product enablement was independently changed"
-                )
-        else:
-            if len(transitions) != 1 or transitions[0].committed_state != selected:
-                raise CodingLegacyLocalInstallationError(
-                    "Legacy local Product disablement was independently changed"
-                )
-            enabled = product.management.submit(
-                PluginManagementCommandV1(
-                    action="enable",
-                    mutation=PluginDesiredStateMutationV1(
-                        operation_id=enable_id,
-                        idempotency_key=enable_id,
-                        expected_inventory_revision=snapshot.inventory_revision,
-                        installation_key=key,
-                        desired_state="installed_enabled",
-                        package_revision=None,
-                        actor_id=product.actor_id,
-                        policy_revision=product.desired_policy_revision,
-                    ),
-                )
-            )
-            if enabled.result is None or enabled.result.disposition != "succeeded":
-                raise CodingLegacyLocalInstallationError(
-                    "Legacy local Product enablement refused"
-                )
-            selected = product.desired_state.snapshot().installation(key)
-            if (
-                selected.selection.desired_state != "installed_enabled"
-                or selected.selection.package_revision != revision
-            ):
-                raise CodingLegacyLocalInstallationError(
-                    "Legacy local Product enablement handoff changed"
-                )
-        final_transitions = tuple(
-            transition
-            for transition in product.desired_state.transitions()
-            if transition.mutation.installation_key == key
-        )
-        if (
-            len(final_transitions) != 2
-            or not isinstance(final_transitions[1], PluginDesiredStateTransitionV1)
-            or final_transitions[1].mutation.operation_id != enable_id
-            or final_transitions[1].mutation.actor_id != product.actor_id
-            or final_transitions[1].committed_state != selected
-            or product.desired_state.snapshot().installation(key) != selected
-        ):
-            raise CodingLegacyLocalInstallationError(
-                "Legacy local Product enablement was superseded"
-            )
+        install_command_id, revision = installation.enable()
+        enable_id = installation.enable_operation_id
         owner.epoch_runtime.assert_current()
         return CodingLegacyLocalEnablementReceiptV1(
             acceptance_id=accepted.acceptance_id,
@@ -296,79 +203,23 @@ def _install(
         scope_id=lifecycle.scope_id,
         plugin_id=plugin_id,
     )
-    initial = product.desired_state.snapshot()
-    prior_state = next(
-        (item for item in initial.installations if item.installation_key == key), None
+    installation = _installation(
+        product,
+        key,
+        source.source_identity,
+        accepted,
+        install_operation_id=operation_id,
     )
-    if prior_state is not None and prior_state.selection.desired_state not in {
-        "installed_disabled",
-        "installed_enabled",
-    }:
-        raise CodingLegacyLocalInstallationError(
-            "Legacy local Product Desired State was independently changed"
-        )
-    if prior_state is None:
-        _route_install(owner, operation_id=operation_id, source=source.source_identity)
-    command_id = product.settled_install_command_id(
-        operation_id=operation_id, plugin_id=plugin_id
+    command_id, revision = installation.install(
+        allow_enabled=accepted.review.desired_state == "installed_enabled"
     )
-    if command_id is None:
-        raise CodingLegacyLocalInstallationError(
-            "Legacy local Product install handoff is not settled"
-        )
-    selected = product.desired_state.snapshot().installation(key)
-    if (
-        selected.selection.desired_state
-        not in {"installed_disabled", "installed_enabled"}
-        or selected.selection.package_revision is None
-        or selected.selection.package_revision.package_source_identity
-        != source.source_identity
-    ):
-        raise CodingLegacyLocalInstallationError(
-            "Legacy local Product Installation selection changed"
-        )
-    transitions = tuple(
-        transition
-        for transition in product.desired_state.transitions()
-        if transition.mutation.installation_key == key
-    )
-    if (
-        not transitions
-        or not isinstance(transitions[0], PluginDesiredStateTransitionV1)
-        or transitions[0].mutation.operation_id != command_id
-        or transitions[0].mutation.actor_id != product.actor_id
-        or transitions[0].committed_state.selection.desired_state
-        != "installed_disabled"
-        or transitions[0].committed_state.selection.package_revision
-        != selected.selection.package_revision
-    ):
-        raise CodingLegacyLocalInstallationError(
-            "Legacy local Product install was superseded"
-        )
-    if selected.selection.desired_state == "installed_disabled":
-        if len(transitions) != 1 or transitions[0].committed_state != selected:
-            raise CodingLegacyLocalInstallationError(
-                "Legacy local Product disablement was independently changed"
-            )
-    elif (
-        accepted.review.desired_state != "installed_enabled"
-        or len(transitions) != 2
-        or not isinstance(transitions[1], PluginDesiredStateTransitionV1)
-        or transitions[1].mutation.operation_id
-        != _enable_operation_id(accepted.review.store_id, accepted.acceptance_id)
-        or transitions[1].mutation.actor_id != product.actor_id
-        or transitions[1].committed_state != selected
-    ):
-        raise CodingLegacyLocalInstallationError(
-            "Legacy local Product enablement was independently changed"
-        )
     owner.epoch_runtime.assert_current()
     return CodingLegacyLocalInstallReceiptV1(
         acceptance_id=accepted.acceptance_id,
         operation_id=operation_id,
         desired_command_id=command_id,
         plugin_id=plugin_id,
-        package_revision=selected.selection.package_revision,
+        package_revision=revision,
     )
 
 
@@ -407,51 +258,25 @@ def _enable_operation_id(store_id: str, acceptance_id: str) -> str:
     )
 
 
-def _route_install(
-    owner: CodingFencedProductApplicationOwner,
+def _installation(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    key: PluginInstallationKeyV1,
+    source_identity: str,
+    accepted: CodingLegacyLocalAcceptanceV1,
     *,
-    operation_id: str,
-    source: str,
-) -> None:
-    product = owner.runtime_owner.product_owner
-    session_id = "coding-legacy-local:" + secrets.token_hex(16)
-    factory = product.factory_for_session(
-        session_id=session_id,
-        cwd=product.workspace,
-        runtime_id=session_id,
+    install_operation_id: str,
+) -> _LegacyLocalInstallation:
+    return _LegacyLocalInstallation(
+        product=product,
+        key=key,
+        source_identity=source_identity,
+        install_operation_id=install_operation_id,
+        enable_operation_id=_enable_operation_id(
+            accepted.review.store_id, accepted.acceptance_id
+        ),
+        error_type=CodingLegacyLocalInstallationError,
+        session_id_prefix="coding-legacy-local:",
     )
-    binding: PackageProductRuntimeBindingV1 | None = None
-    try:
-        binding = factory.create(
-            PackageProductRuntimeRequestV1(
-                product_id="coding", session_id=session_id, cwd=str(product.workspace)
-            )
-        )
-        binding.activate()
-        outcome = binding.lifecycle.route(
-            PackageProductLifecycleIntentV1(
-                operation_id=operation_id,
-                action="install",
-                source=source,
-                scope="project",
-            ),
-            entrypoint="operations",
-        )
-        if (
-            not outcome.handled
-            or outcome.record is None
-            or outcome.record.lifecycle != "installed"
-            or outcome.evidence is None
-            or outcome.evidence.operation_id != operation_id
-        ):
-            raise CodingLegacyLocalInstallationError(
-                "Legacy local Product Package install refused"
-            )
-    finally:
-        if binding is None:
-            factory.dispose_unbound_runtime()
-        else:
-            binding.dispose_runtime()
 
 
 __all__ = [
