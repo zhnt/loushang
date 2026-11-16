@@ -247,6 +247,11 @@ def test_failed_goal_construction_keeps_cleanup_owner(tmp_path, monkeypatch, fai
                 assert binding._interactive_goal_owner is owner
                 with pytest.raises(GoalError, match="cleanup is pending"):
                     binding.interactive_goal_status()
+                execution = client.execution_client
+                instance = execution.service_instance_id
+                pending = await execution.interactive_goal_status(address, instance)
+                assert pending.availability == "cleanup_pending" and pending.goal_id is None
+                assert await execution.create_interactive_goal(address, instance, "Retry") == pending
                 with pytest.raises(GoalError, match="already"):
                     await binding.create_interactive_goal("Second attempt")
                 with pytest.raises(CleanupIncompleteError) as incomplete:
@@ -344,3 +349,73 @@ def test_interactive_goal_requires_the_real_persistent_binding(tmp_path):
     asyncio.run(scenario())
     assert not hasattr(CodingDeferredHostedSessionV1, "create_interactive_goal")
     assert not hasattr(CodingHostedHistoryBindingV1, "create_interactive_goal")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Managed-owned transcript fixture")
+def test_scoped_goal_create_rechecks_controller_at_journal_publication(tmp_path, monkeypatch):
+    from loushang.appserver.execution.dispatch import dispatch_execution
+    from loushang.appserver.execution.model import ExecutionCallV1, ExecutionOperationV1
+    from loushang.coding.adapters.interactive_goal import _Domain
+
+    async def scenario():
+        async with _managed(tmp_path) as (app, client, selector, address, hosted, adapter, session_id):
+            execution = client.execution_client
+            instance = execution.service_instance_id
+
+            async def status(port=execution, control=address):
+                return await dispatch_execution(port, ExecutionCallV1(
+                    "1", ExecutionOperationV1.INTERACTIVE_GOAL_STATUS, control, instance,
+                ))
+
+            async def create(port=execution, control=address, target="Write a small greeting"):
+                return await dispatch_execution(port, ExecutionCallV1(
+                    "2", ExecutionOperationV1.INTERACTIVE_GOAL_CREATE, control, instance, goal_target=target,
+                ))
+
+            assert (await execution.snapshot_execution_session(address, instance)).supports_interactive_goal
+            assert (await status()).availability == "not_ready"
+            await _activate(client, address, hosted, adapter)
+            assert (await status()).availability == "ready"
+            entered, release = asyncio.Event(), asyncio.Event()
+            original = _Domain.refresh
+
+            async def blocked_refresh(policy):
+                entered.set()
+                await release.wait()
+                await original(policy)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(_Domain, "refresh", blocked_refresh)
+                pending = asyncio.create_task(create())
+                try:
+                    await asyncio.wait_for(entered.wait(), 10)
+                    assert (await status()).availability == "creating"
+                    assert (await create()).availability == "creating"
+                    old_owner = hosted._product_binding._interactive_goal_owner
+                    await client.close()
+                    second = app.open_client_scope()
+                    attached = await second.attach_mux(MuxAttachV1(selector))
+                    address2 = replace(address, attachment_id=attached.attachment_id,
+                                       controller_generation=attached.controller_generation)
+                finally:
+                    release.set()
+                with pytest.raises(AppServiceError) as revoked:
+                    await pending
+                assert revoked.value.code in {AppErrorCodeV1.STALE_ATTACHMENT, AppErrorCodeV1.SERVICE_CLOSED}
+                assert not old_owner.controller.history.goals
+            assert (await status(second.execution_client, address2)).availability == "ready"
+            created = await create(second.execution_client, address2)
+            owner = hosted._product_binding._interactive_goal_owner
+            assert created.availability == "present"
+            assert owner.session_id == session_id
+            state = owner.controller.query(created.goal_id)
+            assert (created.status, created.revision, created.epoch) == (state.status, state.revision, state.epoch)
+            assert (await status(second.execution_client, address2)) == created
+            assert not owner.controller.history.batches and adapter.calls == 0
+            assert await create(second.execution_client, address2, "Other target") == created
+            assert len(owner.controller.history.goals) == 1
+
+            await hosted._product_binding.close_interactive_goal()
+            assert (await status(second.execution_client, address2)).availability == "historical"
+
+    asyncio.run(asyncio.wait_for(scenario(), 45))

@@ -1,4 +1,21 @@
 {
+  "interactiveGoal": {
+    "title": "开发目标",
+    "open": "创建开发目标",
+    "target": "目标内容",
+    "create": "创建目标",
+    "check": "查询目标状态",
+    "loading": "正在查询目标状态…",
+    "unknown": "创建结果尚未确认",
+    "unavailable": "暂时无法查询目标状态。",
+    "created": "目标已创建，尚未开始执行",
+    "not_ready": "请先完成一次普通对话，准备 Coding 工具后再创建目标。",
+    "creating": "正在创建目标…",
+    "historical": "此会话的目标历史仅供查看。",
+    "cleanup_pending": "目标资源尚未清理完毕。",
+    "revision": "修订版本",
+    "epoch": "周期"
+  },
   "goalStart": {
     "label": "启动 Goal",
     "pending": "正在启动 Goal…",

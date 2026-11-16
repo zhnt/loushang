@@ -126,6 +126,16 @@ def _validate_goal_session(session, workspace, model_planning, *, ordinary=False
             )
 
 
+def _ordinary_goal_transport(session):
+    from loushang.agent.model_transport import is_prepared_request_conformant
+    from loushang.ai.api import stream
+
+    delegate = session.runtime.agent.stream_fn
+    if delegate is not stream and not is_prepared_request_conformant(delegate):
+        raise GoalError("current Session planning requires a prepared-request transport")
+    return delegate
+
+
 class CodingGoal(_SessionGoalLifetime):
     """A retained profile owner. Use open() or attach(); retain failed cleanup owners."""
 
@@ -189,9 +199,6 @@ class CodingGoal(_SessionGoalLifetime):
 
     @classmethod
     async def _attach(cls, *, session, max_model_calls=None, max_output_tokens=None, profile=None):
-        from loushang.agent.model_transport import is_prepared_request_conformant
-        from loushang.ai.api import stream
-
         from ._goal_planning_limits import PlanningCallAllowance
         from ._goal_planning_work import PlanningToolPolicy
         from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
@@ -200,9 +207,7 @@ class CodingGoal(_SessionGoalLifetime):
         if manager.get_session_file() is None:
             raise GoalError("current Session Goal requires a persistent Transcript")
         directory = Path(manager.get_session_dir()).resolve()
-        delegate = session.runtime.agent.stream_fn
-        if delegate is not stream and not is_prepared_request_conformant(delegate):
-            raise GoalError("current Session planning requires a prepared-request transport")
+        delegate = _ordinary_goal_transport(session)
         owner = cls(Path(manager.get_cwd()).resolve(), resolve_session_blob_data_root(directory))
         owner._journal_directory, owner._ordinary_session = directory, True
         owner._session, owner.session_id = session, session.session_id

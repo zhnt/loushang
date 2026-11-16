@@ -71,7 +71,7 @@ fn bridge(kind: &str, wire: &str, profile: Option<&str>) -> Result<Value, ()> {
     }
     if kind == "snapshot" || kind == "events" {
         projection::bridge(kind, wire)
-    } else if kind == "goal_progress" {
+    } else if kind == "goal_progress" || kind == "interactive_goal" {
         projection::control_bridge(kind, wire)
     } else if kind == "hello" {
         let hello: Hello = serde_json::from_str(wire).map_err(|_| ())?;

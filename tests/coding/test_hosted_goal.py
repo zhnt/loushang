@@ -221,7 +221,8 @@ def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_pa
             reader = scope.goal_execution_observer
             instance = client.service_instance_id
             execution_id = submitted.handle.execution_id
-            assert (await reader.snapshot_execution_session(control, instance)).supports_goal_progress
+            snapshot = await reader.snapshot_execution_session(control, instance)
+            assert snapshot.supports_goal_progress and not snapshot.supports_interactive_goal
             calls_before_observation = adapter.calls
             observed = await reader.goal_progress(control, instance, execution_id)
             assert adapter.calls == calls_before_observation

@@ -618,6 +618,27 @@ fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
             })?;
             Ok(json!({"accepted": matches!(result, ControlResult::Accepted)}))
         }
+        "interactive-goal-create" | "interactive-goal-status" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let epoch = field(input, "connectionEpoch")?;
+            let target = if action == "interactive-goal-create" {
+                Some(field(input, "goalTarget")?.to_owned())
+            } else {
+                None
+            };
+            if input.as_object().map(|object| object.len())
+                != Some(3 + usize::from(target.is_some()))
+            {
+                return Err("invalid_request".into());
+            }
+            if epoch != view.epoch.to_string() {
+                return Ok(Value::Null);
+            }
+            let result = view.control(Some(instance), |reply| {
+                ControlCommand::interactive_goal(session_id, target, reply)
+            })?;
+            Ok(json!(result))
+        }
         "goal-progress" => {
             let instance = field(input, "serviceInstanceId")?;
             let execution_id = field(input, "executionId")?.to_owned();

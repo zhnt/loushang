@@ -75,6 +75,15 @@ pub enum ControlCommand {
         execution_id: String,
         reply: SyncSender<Result<ControlResult, ()>>,
     },
+    CreateInteractiveGoal {
+        session_id: String,
+        target: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    ReadInteractiveGoalStatus {
+        session_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
     ObserveGoalProgress {
         session_id: String,
         execution_id: String,
@@ -96,6 +105,23 @@ pub enum ControlCommand {
         thinking_level: Option<String>,
         reply: SyncSender<Result<ModelControlResult, ()>>,
     },
+}
+
+impl ControlCommand {
+    pub fn interactive_goal(
+        session_id: String,
+        target: Option<String>,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    ) -> Self {
+        match target {
+            Some(target) => Self::CreateInteractiveGoal {
+                session_id,
+                target,
+                reply,
+            },
+            None => Self::ReadInteractiveGoalStatus { session_id, reply },
+        }
+    }
 }
 
 struct DeadlineStream {
@@ -596,6 +622,23 @@ fn process_controls<R: Read, W: Write>(
                 reply,
             } => {
                 let result = authority.interrupt(channel, &session_id, &execution_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::CreateInteractiveGoal {
+                session_id,
+                target,
+                reply,
+            } => {
+                let result =
+                    authority.interactive_goal(channel, &session_id, Some(&target), &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ReadInteractiveGoalStatus { session_id, reply } => {
+                let result = authority.interactive_goal(channel, &session_id, None, &request_id);
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

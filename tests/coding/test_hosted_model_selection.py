@@ -180,6 +180,14 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
         # Existing selections outrank project and global settings on reopen.
         async with host() as client:
             first, _ = await open_session(client, "first", session_id=session_a)
+            if not managed:
+                execution = client.execution_client
+                instance = execution.service_instance_id
+                snapshot = await execution.snapshot_execution_session(first, instance)
+                assert not snapshot.supports_interactive_goal
+                with pytest.raises(AppServiceError) as rejected:
+                    await execution.create_interactive_goal(first, instance, "Deferred target")
+                assert rejected.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
             await require_current(client, first, first_id)
             second, _ = await open_session(client, "second", session_id=session_b)
             await require_current(client, second, second_id)

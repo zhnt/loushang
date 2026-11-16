@@ -11,6 +11,7 @@ from loushang.appserver.execution.model import (
     ExecutionInterruptResultV1,
     ExecutionSessionSnapshotV1,
     ExecutionSessionViewV1,
+    InteractiveGoalViewV1,
 )
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -20,7 +21,7 @@ from loushang.appserver.protocol import (
 )
 
 from .execution_contract import _identifier
-from .execution_ports import HostedExecutionPortV1
+from .execution_ports import HostedExecutionPortV1, HostedInteractiveGoalPortV1
 from .execution_registry import (
     ExecutionBindingV1,
     ExecutionLimitsV1,
@@ -79,6 +80,12 @@ class _Stream:
             self.unsubscribe_content()
         finally:
             self.unsubscribe_metadata()
+
+
+def _interactive_goal_port(port: HostedExecutionPortV1) -> HostedInteractiveGoalPortV1 | None:
+    if isinstance(port, HostedInteractiveGoalPortV1) and port.supports_interactive_goal is True:
+        return port
+    return None
 
 
 class ScopedExecutionClientV1:
@@ -159,6 +166,39 @@ class ScopedExecutionClientV1:
             else ExecutionInterruptDispositionV1.REQUESTED,
         )
 
+    async def _resolve_interactive_goal(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+    ) -> tuple[HostedInteractiveGoalPortV1, Callable[[], None]]:
+        session, binding = await self._resolve(control, expected_instance_id)
+        port = _interactive_goal_port(binding.port)
+        if port is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
+        def check_current() -> None:
+            self._check(control, session)
+            self._registry.require_instance(expected_instance_id)
+            if session._execution is not binding or binding.closing:
+                raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
+
+        check_current()
+        return port, check_current
+
+    async def create_interactive_goal(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str, target: str,
+    ) -> InteractiveGoalViewV1:
+        port, check_current = await self._resolve_interactive_goal(control, expected_instance_id)
+        result = await port.create_interactive_goal(target, check_current=check_current)
+        check_current()
+        return result
+
+    async def interactive_goal_status(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+    ) -> InteractiveGoalViewV1:
+        port, check_current = await self._resolve_interactive_goal(control, expected_instance_id)
+        result = await port.interactive_goal_status()
+        check_current()
+        return result
+
     async def snapshot_execution_session(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
     ) -> ExecutionSessionSnapshotV1:
@@ -194,6 +234,7 @@ class ScopedExecutionClientV1:
                 ExecutionSessionViewV1(
                     view.identity, view.revision, view.quiescent, view.active, view.latest_terminal
                 ),
+                supports_interactive_goal=_interactive_goal_port(binding.port) is not None,
             )
         except BaseException:
             if self._streams.get(key) is stream:

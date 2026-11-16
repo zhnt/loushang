@@ -8,6 +8,7 @@ import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
 import { GoalProgress } from "./GoalProgress";
+import { InteractiveGoal } from "./InteractiveGoal";
 import { GoalStart, useGoalStart } from "./GoalStart";
 import { ToolApproval } from "./ToolApproval";
 import { UserChoiceCard, type ChoiceAnswer } from "./UserChoiceCard";
@@ -732,6 +733,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   enabled={Boolean(submitAllowed && selected.status !== "running")}
                   onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
                 <GoalStart {...goalStart} />
+                {selected.supportsInteractiveGoal && client.createInteractiveGoal && client.interactiveGoalStatus && state.remote.source.kind === "live" ? (
+                  <InteractiveGoal
+                    key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
+                      state.remote.source.muxSpaceId, selected.id])}
+                    client={client} session={selected} instanceId={state.remote.source.serviceInstanceId}
+                    epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null}
+                    enabled={mutationsAllowed} />
+                ) : null}
                 {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
                 {connected && selected.execution && selected.supportsGoalProgress && client.goalProgress && state.remote.source.kind === "live" ? (
                   <GoalProgress

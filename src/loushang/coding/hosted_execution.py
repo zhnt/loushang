@@ -12,6 +12,7 @@ from uuid import uuid4
 from loushang.ai.model import normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
+from loushang.appserver.execution.model import InteractiveGoalViewV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -168,6 +169,45 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     @property
     def execution_state(self) -> ExecutionStateV1 | None:
         return self._guard.state
+
+    @property
+    def supports_interactive_goal(self) -> bool:
+        return type(self) is CodingHostedExecutionSessionV1 and type(self._product_binding) is CodingRealHostedSessionV1
+
+    def _interactive_goal_binding(self) -> CodingRealHostedSessionV1:
+        self._require_execution_open()
+        binding = self._product_binding
+        if not self.supports_interactive_goal or not isinstance(binding, CodingRealHostedSessionV1):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return binding
+
+    async def interactive_goal_status(self) -> InteractiveGoalViewV1:
+        return await self._interactive_goal_binding().interactive_goal_view()
+
+    async def create_interactive_goal(
+        self, target: str, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalViewV1:
+        from loushang.harness.session.execution_admission import (
+            SessionExecutionUnavailable,
+        )
+        from loushang.harnesswork.goal import GoalError
+
+        from .adapters.goal import GoalConstructionError
+
+        binding = self._interactive_goal_binding()
+        view = await binding.interactive_goal_view()
+        check_current()
+        if view.availability != "ready":
+            return view
+        try:
+            await binding.create_interactive_goal(target, check_current=check_current)
+        except (GoalError, GoalConstructionError, SessionExecutionUnavailable):
+            check_current()
+            view = await binding.interactive_goal_view()
+            if view.availability == "ready":
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+            return view
+        return await binding.interactive_goal_view()
 
     def _idle_for_interactive_goal(self) -> bool:
         if type(self) is not CodingHostedExecutionSessionV1 or self._closing or self._model_lock.locked():

@@ -49,7 +49,7 @@ from ._goal_planning_shared import BatchPlanningPolicy
 from ._goal_planning_work import PlanningToolPolicy, ScopedSessionWork, publish_report
 from ._goal_proposal import Action, ProposalRejected, parse_proposal
 from ._verification_work import inspect_verification
-from .goal import CodingGoal
+from .goal import CodingGoal, _ordinary_goal_transport, _validate_goal_session
 from .harnesswork import CODING_WORK_PROFILE, project_coding_runtime_event
 
 ACTION_EVIDENCE = {
@@ -469,6 +469,11 @@ class InteractiveGoal(CodingGoal):
 
     _allowances: dict[str, _TaskAllowance]
 
+    @staticmethod
+    def require_session_tools(session, workspace: Path) -> None:
+        _ordinary_goal_transport(session)
+        _validate_goal_session(session, workspace, True, ordinary=True)
+
     @classmethod
     async def attach(cls, *, session, **limits):
         owner = await cls._attach(session=session, profile=_PROFILE, **limits)
@@ -605,7 +610,7 @@ class InteractiveGoal(CodingGoal):
             self._policy.pending_review = None
 
 
-def read_task_history(session):
+def read_task_history(session, *, missing_ok: bool = False):
     """Read the original store without obtaining a new execution owner."""
     from loushang.harnesswork.goal import GoalHeader
     from loushang.harnesswork.goal.records import replay
@@ -617,7 +622,12 @@ def read_task_history(session):
         Path(session.session_manager.get_session_dir()), header, read_only=True
     )
     try:
-        store.open()
+        try:
+            store.open()
+        except GoalError as error:
+            if missing_ok and str(error) == "unknown Goal: Session has no Goal journal":
+                return None
+            raise
         actual, records = store.load()
         return replay(actual, records)
     finally:

@@ -1004,3 +1004,66 @@ describe("Hosted Goal start", () => {
     expect(startGoal).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Interactive development goal", () => {
+  it("waits for capability and readiness, then reconciles a lost receipt by Goal status", async () => {
+    const seed = await createMockAppClient().snapshot();
+    const session = { ...seed.sessions[0], status: "idle" as const, execution: null };
+    const source = { kind: "live" as const, serviceInstanceId: "goal-host", muxSpaceId: "goal-mux", connectionEpoch: "1" };
+    const initial: ClientSnapshot = { ...seed, source, connection: "connected", sessions: [session], selectedSessionId: session.id };
+    const supported: ClientSnapshot = { ...initial, sessions: [{ ...session, supportsInteractiveGoal: true }] };
+    const absent = { goalId: null, status: null, revision: null, epoch: null, executionUnresolved: null };
+    const interactiveGoalStatus = vi.fn<NonNullable<HarnessClientUiPort["interactiveGoalStatus"]>>()
+      .mockResolvedValueOnce({ ...absent, availability: "not_ready" })
+      .mockResolvedValueOnce({ ...absent, availability: "ready" })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
+        availability: "present", goalId: "goal-original", status: "active", revision: 1, epoch: 1,
+        executionUnresolved: false,
+      });
+    let loseReceipt!: () => void;
+    const createInteractiveGoal = vi.fn<NonNullable<HarnessClientUiPort["createInteractiveGoal"]>>(
+      () => new Promise((_, reject) => { loseReceipt = () => reject(new Error("connection lost")); }),
+    );
+    let publish: (snapshot: ClientSnapshot) => void = () => {};
+    const client: HarnessClientUiPort = {
+      snapshot: async () => initial,
+      subscribe: () => () => {},
+      subscribeSnapshots(listener) { publish = listener; return () => {}; },
+      interactiveGoalStatus,
+      createInteractiveGoal,
+      submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+      interrupt: async () => ({ accepted: false }),
+    };
+    render(<HarnessGui client={client} />);
+    await screen.findByRole("textbox", { name: /message/i });
+    expect(screen.queryByRole("region", { name: "Development goal" })).not.toBeInTheDocument();
+    expect(interactiveGoalStatus).not.toHaveBeenCalled();
+
+    act(() => publish(supported));
+    const goal = within(await screen.findByRole("region", { name: "Development goal" }));
+    expect(await goal.findByText(/Send an ordinary message/)).toBeVisible();
+    expect(goal.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
+    fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
+    fireEvent.click(await goal.findByRole("button", { name: "Create development goal" }));
+    const target = goal.getByRole("textbox", { name: "Goal target" });
+    fireEvent.change(target, { target: { value: "Preserve this target" } });
+    const create = goal.getByRole("button", { name: "Create goal" });
+    act(() => { fireEvent.click(create); fireEvent.click(create); });
+    expect(create).toBeDisabled();
+    expect(createInteractiveGoal).toHaveBeenCalledExactlyOnceWith({
+      serviceInstanceId: "goal-host", connectionEpoch: "1", sessionId: session.id,
+      goalTarget: "Preserve this target",
+    });
+    await act(async () => loseReceipt());
+    expect(goal.getByText("Goal creation is not yet confirmed.")).toBeVisible();
+    expect(target).toHaveValue("Preserve this target");
+    expect(create).toBeDisabled();
+
+    fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
+    expect(await goal.findByText("goal-original")).toBeVisible();
+    expect(goal.getByText("Goal created. Execution has not started.")).toBeVisible();
+    expect(goal.queryByRole("button", { name: "Create goal" })).not.toBeInTheDocument();
+    expect(createInteractiveGoal).toHaveBeenCalledTimes(1);
+  });
+});

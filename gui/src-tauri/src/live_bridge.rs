@@ -88,6 +88,23 @@ pub(crate) struct LiveGoalProgressInput {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveInteractiveGoalInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveCreateInteractiveGoalInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+    goal_target: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LiveModelsInput {
     session_id: String,
 }
@@ -522,6 +539,61 @@ pub(crate) async fn live_goal_progress(
     })
     .await
     .map_err(|_| "Goal observation worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_create(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveCreateInteractiveGoalInput,
+) -> Result<Option<serde_json::Value>, String> {
+    interactive_goal(
+        &state,
+        LiveInteractiveGoalInput {
+            session_id: input.session_id,
+            service_instance_id: input.service_instance_id,
+            connection_epoch: input.connection_epoch,
+        },
+        Some(input.goal_target),
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_status(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractiveGoalInput,
+) -> Result<Option<serde_json::Value>, String> {
+    interactive_goal(&state, input, None).await
+}
+
+async fn interactive_goal(
+    state: &LiveLaunchState,
+    input: LiveInteractiveGoalInput,
+    target: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    let control = current_control(state)?;
+    if control.service_instance_id != input.service_instance_id
+        || input.connection_epoch != control.connection_epoch.to_string()
+    {
+        return Ok(None);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::interactive_goal(
+                input.session_id,
+                target,
+                reply,
+            ))
+            .map_err(|_| "live control connection changed".to_owned())?;
+        receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "Interactive Goal request timed out".to_owned())?
+            .map_err(|_| "Interactive Goal connection failed".to_owned())
+    })
+    .await
+    .map_err(|_| "Interactive Goal worker failed".to_owned())?
 }
 
 #[tauri::command]
