@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import os
 import re
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
 from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    inspect_legacy_product_member_names,
+)
 
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _LIFECYCLE_JOURNAL_DOMAINS = {
@@ -26,10 +27,7 @@ _LIFECYCLE_JOURNAL_DOMAINS = {
 }
 _LIFECYCLE_MEMBER_DOMAINS = {
     **_LIFECYCLE_JOURNAL_DOMAINS,
-    **{
-        f"{name}.lock": domain
-        for name, domain in _LIFECYCLE_JOURNAL_DOMAINS.items()
-    },
+    **{f"{name}.lock": domain for name, domain in _LIFECYCLE_JOURNAL_DOMAINS.items()},
     "enablement-migration.jsonl.migration.lock": "enablement_state",
     "lifecycle-coordination.lock": "desired_state",
     "process-startups": "instance_state",
@@ -57,9 +55,7 @@ class CodingPackageEpochLayoutV1:
     def __post_init__(self) -> None:
         roots = (self.authority_root, self.control_root, self.snapshot_root)
         if any(
-            not isinstance(root, Path)
-            or not root.is_absolute()
-            or ".." in root.parts
+            not isinstance(root, Path) or not root.is_absolute() or ".." in root.parts
             for root in roots
         ):
             raise ValueError("Coding Package epoch roots must be absolute")
@@ -204,36 +200,34 @@ def resolve_coding_lifecycle_pre_b_members(
     )
     if any(path != root / name for path, name in expected_journals):
         raise ValueError("Coding pre-B lifecycle paths are not canonical")
-    try:
-        metadata = root.lstat()
-        if not stat.S_ISDIR(metadata.st_mode):
-            raise ValueError("Coding pre-B lifecycle root is not a directory")
-        names = set(os.listdir(root))
-        if names - _LIFECYCLE_MEMBER_DOMAINS.keys():
-            raise ValueError("Coding pre-B lifecycle root has unmapped members")
-        for name in names:
-            member = (root / name).lstat()
-            expected = (
-                stat.S_ISDIR
-                if name in _LIFECYCLE_DIRECTORY_MEMBERS
-                else stat.S_ISREG
-            )
-            if not expected(member.st_mode) or (
-                stat.S_ISREG(member.st_mode) and member.st_nlink != 1
-            ):
-                raise ValueError("Coding pre-B lifecycle member is unsafe")
-    except OSError as exc:
-        raise ValueError("Coding pre-B lifecycle source is unavailable") from exc
+    names = inspect_legacy_product_member_names(
+        root,
+        allowed_members=_LIFECYCLE_MEMBER_DOMAINS,
+        directory_members=_LIFECYCLE_DIRECTORY_MEMBERS,
+        label="Coding pre-B lifecycle",
+    )
     return CodingLifecyclePreBMembersV1(
         source_root=root,
         desired_state=tuple(
-            sorted(name for name in names if _LIFECYCLE_MEMBER_DOMAINS[name] == "desired_state")
+            sorted(
+                name
+                for name in names
+                if _LIFECYCLE_MEMBER_DOMAINS[name] == "desired_state"
+            )
         ),
         enablement_state=tuple(
-            sorted(name for name in names if _LIFECYCLE_MEMBER_DOMAINS[name] == "enablement_state")
+            sorted(
+                name
+                for name in names
+                if _LIFECYCLE_MEMBER_DOMAINS[name] == "enablement_state"
+            )
         ),
         instance_state=tuple(
-            sorted(name for name in names if _LIFECYCLE_MEMBER_DOMAINS[name] == "instance_state")
+            sorted(
+                name
+                for name in names
+                if _LIFECYCLE_MEMBER_DOMAINS[name] == "instance_state"
+            )
         ),
     )
 
@@ -245,34 +239,23 @@ def resolve_coding_package_pre_b_store_members(
 
     resolve_coding_package_epoch_layout(lifecycle)
     root = lifecycle.package_root
-    try:
-        metadata = root.lstat()
-        if not stat.S_ISDIR(metadata.st_mode):
-            raise ValueError("Coding pre-B Package root is not a directory")
-        names = set(os.listdir(root))
-        if names - {
+    names = inspect_legacy_product_member_names(
+        root,
+        allowed_members={
             "installed",
             "plugin-revisions",
             "package-lock.json",
             "package-lock.json.lock",
-        }:
-            raise ValueError("Coding pre-B Package root has unmapped members")
-        for name in names:
-            member = (root / name).lstat()
-            expected = (
-                stat.S_ISDIR if name in {"installed", "plugin-revisions"}
-                else stat.S_ISREG
-            )
-            if not expected(member.st_mode) or (
-                stat.S_ISREG(member.st_mode) and member.st_nlink != 1
-            ):
-                raise ValueError("Coding pre-B Package member is unsafe")
-    except OSError as exc:
-        raise ValueError("Coding pre-B Package source is unavailable") from exc
+        },
+        directory_members={"installed", "plugin-revisions"},
+        label="Coding pre-B Package",
+    )
     return CodingPackagePreBStoreMembersV1(
         source_root=root,
         store_bytes=tuple(sorted(names & {"installed", "plugin-revisions"})),
-        binding_history=(("package-lock.json",) if "package-lock.json" in names else ()),
+        binding_history=(
+            ("package-lock.json",) if "package-lock.json" in names else ()
+        ),
         lock_history=tuple(
             name
             for name in ("package-lock.json", "package-lock.json.lock")
@@ -289,9 +272,8 @@ def resolve_coding_package_epoch_layout(
     if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
     scope = lifecycle.scope_id.removeprefix("workspace:")
-    if (
-        len(scope) != 64
-        or any(character not in "0123456789abcdef" for character in scope)
+    if len(scope) != 64 or any(
+        character not in "0123456789abcdef" for character in scope
     ):
         raise ValueError("Coding workspace identity is invalid")
     legacy_root = lifecycle.package_root

@@ -5,11 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.harness.plugin_management.records import (
-    PluginDesiredStateTransitionV1,
-)
-from loushang.harness.plugin_management.updates import (
-    PluginDesiredStateUpdateTransitionV2,
+from loushang.harness.plugin_management.retirement import (
+    inspect_removed_installation_epoch,
 )
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
@@ -417,70 +414,18 @@ def classify_coding_legacy_removed_local_installations(
             for item in desired.transitions
             if item.mutation.installation_key.plugin_id == plugin_id
         )
-        if len(history) < 2 or any(
-            not isinstance(
-                item,
-                (PluginDesiredStateTransitionV1, PluginDesiredStateUpdateTransitionV2),
-            )
-            for item in history
-        ):
-            raise CodingLegacyInventoryError(
-                "Coding old local removal history is incomplete"
-            )
-        last = history[-1]
-        installs = tuple(
-            item
-            for item in history[:-1]
-            if item.transition_kind == "install"
-            and isinstance(item, PluginDesiredStateTransitionV1)
+        proof = inspect_removed_installation_epoch(
+            history,
+            error_type=CodingLegacyInventoryError,
+            label="Coding old local removal",
+            mismatch_message="Coding old local removal does not match its lock head",
         )
-        if not installs:
-            raise CodingLegacyInventoryError(
-                "Coding old local removal has no final install epoch"
-            )
-        head_install = installs[-1]
-        head_index = history.index(head_install)
-        installed = head_install.committed_state.selection.package_revision
+        installed = proof.package_revision
         if (
-            head_install.previous_state.selection.desired_state != "absent"
-            or head_install.committed_state.selection.desired_state
-            not in {"installed_disabled", "installed_enabled"}
-            or installed is None
-            or not isinstance(last, PluginDesiredStateTransitionV1)
-            or last.transition_kind != "remove"
-            or last.committed_state.selection.desired_state != "absent"
-        ):
-            raise CodingLegacyInventoryError(
-                "Coding old local removal does not match its lock head"
-            )
-        head: PluginDesiredStateTransitionV1 | PluginDesiredStateUpdateTransitionV2 = (
-            head_install
-        )
-        for item in history[head_index + 1 : -1]:
-            if item.previous_state.selection.package_revision != installed:
-                raise CodingLegacyInventoryError(
-                    "Coding old local removal revision chain changed"
-                )
-            if isinstance(item, PluginDesiredStateUpdateTransitionV2):
-                installed = item.committed_state.selection.package_revision
-                head = item
-            elif (
-                isinstance(item, PluginDesiredStateTransitionV1)
-                and item.transition_kind in {"enable", "disable"}
-                and item.committed_state.selection.package_revision == installed
-            ):
-                continue
-            else:
-                raise CodingLegacyInventoryError(
-                    "Coding old local removal history is unsupported"
-                )
-        if (
-            installed is None
-            or installed.plugin_id != plugin_id
+            installed.plugin_id != plugin_id
             or installed.package_source_identity != binding.source_identity
             or installed.package_content_digest != binding.content_digest
             or installed.dependency_lock_digest != binding.dependency_lock.digest
-            or last.previous_state.selection.package_revision != installed
         ):
             raise CodingLegacyInventoryError(
                 "Coding old local removal does not match its lock head"
@@ -488,14 +433,10 @@ def classify_coding_legacy_removed_local_installations(
         removed.append(
             CodingLegacyRemovedLocalInstallationV1(
                 binding=binding,
-                install_operation_id=head_install.mutation.operation_id,
-                remove_operation_id=last.mutation.operation_id,
-                head_operation_id=head.mutation.operation_id,
-                head_transition_kind=(
-                    "update"
-                    if isinstance(head, PluginDesiredStateUpdateTransitionV2)
-                    else "install"
-                ),
+                install_operation_id=proof.install.mutation.operation_id,
+                remove_operation_id=proof.removal.mutation.operation_id,
+                head_operation_id=proof.head.mutation.operation_id,
+                head_transition_kind=proof.head_transition_kind,
             )
         )
     return tuple(removed)

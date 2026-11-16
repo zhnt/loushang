@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.private_directory import create_private_directory_chain
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
 )
@@ -35,6 +38,16 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_regist
 from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
     PackageOfflineRestoreSnapshotEvidenceV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
+    _hold_windows_private_cutover_directory,
+    _PinnedWindowsAuthority,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_regular_file_at,
+)
+from loushang.harness.resources.packages.product_windows_epoch_guard import (
+    prepare_windows_product_control_root,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +61,37 @@ class PackageProductPreBSnapshotSharedMemberV1:
 class PackageProductPosixCutoverAttemptV1:
     request: PackagePosixEpochCutoverRequestV1
     result: PackagePosixEpochCutoverResultV1
+
+
+def inspect_legacy_product_member_names(
+    root: Path,
+    *,
+    allowed_members: Collection[str],
+    directory_members: Collection[str],
+    label: str,
+) -> set[str]:
+    """Inventory old root members using the Product's exact historical shape.
+
+    This is a read-only observation, not snapshot or publication authority.
+    Preserve legacy lstat/no-hardlink checks without imposing new admission.
+    """
+    try:
+        metadata = root.lstat()
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(f"{label} root is not a directory")
+        names = set(os.listdir(root))
+        if names - set(allowed_members):
+            raise ValueError(f"{label} root has unmapped members")
+        for name in names:
+            member = (root / name).lstat()
+            expected = stat.S_ISDIR if name in directory_members else stat.S_ISREG
+            if not expected(member.st_mode) or (
+                stat.S_ISREG(member.st_mode) and member.st_nlink != 1
+            ):
+                raise ValueError(f"{label} member is unsafe")
+    except OSError as exc:
+        raise ValueError(f"{label} source is unavailable") from exc
+    return names
 
 
 def read_posix_product_pre_b_snapshot(
@@ -74,9 +118,7 @@ def reopen_posix_product_cutover(
     """Reopen the fenced Product root using durable evidence, without old Source."""
 
     if any(
-        not isinstance(path, Path)
-        or not path.is_absolute()
-        or ".." in path.parts
+        not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts
         for path in (authority_root, control_root)
     ):
         raise ValueError("Package Product epoch roots must be absolute")
@@ -179,9 +221,7 @@ class PackageProductPreBSnapshotOwner:
     ) -> tuple[str, ...] | None:
         """List one verified domain before the Product decides to fence."""
 
-        return self._owner.list_domain_members(
-            snapshot_receipt_id, domain=domain
-        )
+        return self._owner.list_domain_members(snapshot_receipt_id, domain=domain)
 
     def cutover_from_legacy(
         self,
@@ -203,9 +243,7 @@ class PackageProductPreBSnapshotOwner:
         ):
             raise RuntimeError("POSIX Package Product cutover is required")
         if any(
-            not isinstance(path, Path)
-            or not path.is_absolute()
-            or ".." in path.parts
+            not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts
             for path in (authority_root, control_root)
         ):
             raise ValueError("Package Product cutover roots must be absolute")
@@ -271,3 +309,96 @@ __all__ = [
     "read_posix_product_pre_b_snapshot",
     "reopen_posix_product_cutover",
 ]
+
+
+def write_legacy_product_projection(
+    root: Path, *, projection_name: str, contents: bytes
+) -> None:
+    """Publish one exclusive projection in an already-private temporary root."""
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        descriptor = os.open(
+            projection_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=root_fd,
+        )
+        try:
+            with os.fdopen(descriptor, "wb", closefd=False) as handle:
+                handle.write(contents)
+                handle.flush()
+            os.fchmod(descriptor, 0o600)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.fsync(root_fd)
+    finally:
+        os.close(root_fd)
+
+
+def prepare_legacy_product_cutover_root(
+    root: Path, *, private_base: Path, windows: bool, label: str
+) -> None:
+    """Prepare missing roots without chmod-repairing existing unsafe levels."""
+    if not private_base.is_absolute() or not root.is_absolute():
+        raise ValueError(f"{label} cutover roots must be absolute")
+    try:
+        relative = root.relative_to(private_base)
+    except ValueError:
+        raise ValueError(f"{label} cutover root is outside its private base") from None
+    if windows:
+        create_private_directory_chain(root.parent)
+        prepare_windows_product_control_root(root)
+        return
+    create_private_directory_chain(private_base)
+    current = private_base
+    _require_legacy_cutover_directory(current, label=label)
+    for part in relative.parts:
+        current /= part
+        create_private_directory_chain(current)
+        _require_legacy_cutover_directory(current, label=label)
+
+
+def _require_legacy_cutover_directory(path: Path, *, label: str) -> None:
+    metadata = path.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+        or metadata.st_uid != os.geteuid()
+    ):
+        raise ValueError(f"{label} cutover directory is not private")
+
+
+@contextmanager
+def hold_legacy_product_projection_root(
+    parent: Path, *, prefix: str, projection_name: str, projection_label: str
+) -> Iterator[Path]:
+    """Borrow the original native temporary root through exact exit cleanup."""
+    if os.name == "nt":
+        with _hold_windows_private_cutover_directory(
+            parent,
+            prefix=prefix,
+            projection_name=projection_name,
+            projection_label=projection_label,
+        ) as root:
+            yield root
+    else:
+        with TemporaryDirectory(prefix=prefix, dir=parent) as raw:
+            yield Path(raw)
+
+
+def read_legacy_product_projection(source_root: Path, *, name: str) -> bytes:
+    if os.name != "nt":
+        return (source_root / name).read_bytes()
+    pinned = _PinnedWindowsAuthority.open(source_root, read_control=True)
+    try:
+        descriptor = open_windows_regular_file_at(
+            pinned.descriptor,
+            name,
+            create_new=False,
+            write=False,
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            return stream.read()
+    finally:
+        pinned.close()
