@@ -210,9 +210,7 @@ class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
                 self._assert_visible_root(directory_fd)
                 return replay
             previous = self._latest(events, plugin_id)
-            generation, kill = mutation.next_generation(
-                previous, failure=failure
-            )
+            generation, kill = mutation.next_generation(previous, failure=failure)
             if len(events) >= self._max_events():
                 raise self._failure("capacity")
             decision = self._record_type.create(
@@ -227,6 +225,33 @@ class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
             )
             self._append_bound_record(directory_fd, bound, decision)
             return decision
+
+    def current(self, plugin_id: str, *, directory_fd: int) -> _D | None:
+        self._require_plugin_id(plugin_id)
+        events = self.history_read_only(directory_fd=directory_fd)
+        return self._latest(events, plugin_id)
+
+    def history_read_only(self, *, directory_fd: int) -> tuple[_D, ...]:
+        return self._read_records(directory_fd=directory_fd)
+
+    def change(
+        self,
+        *,
+        directory_fd: int,
+        plugin_id: str,
+        operation_id: str,
+        expected_generation: int,
+        action: Literal["allow", "revoke"],
+        opt_in: _P | None,
+    ) -> _D:
+        return self._change(
+            directory_fd=directory_fd,
+            plugin_id=plugin_id,
+            operation_id=operation_id,
+            expected_generation=expected_generation,
+            action=action,
+            opt_in=opt_in,
+        )
 
 
 class WindowsReceiptRecords(_WindowsRecords[_T], Generic[_T]):
@@ -273,6 +298,22 @@ class WindowsReceiptRecords(_WindowsRecords[_T], Generic[_T]):
             )
             self._append_bound_record(directory_fd, bound, record)
             return receipt
+
+    def records(self, *, directory_fd: int) -> tuple[_T, ...]:
+        return self._read_records(directory_fd=directory_fd)
+
+    def issue(
+        self,
+        *,
+        directory_fd: int,
+        policy: ProductWorkerActivationPolicyV1,
+        opt_in_decision_digest: str,
+    ) -> ProductWorkerActivationReceiptV1:
+        return self._issue(
+            directory_fd=directory_fd,
+            policy=policy,
+            opt_in_decision_digest=opt_in_decision_digest,
+        )
 
 
 class WindowsNativeApprovalRecords(_WindowsRecords[_N], Generic[_A, _N]):

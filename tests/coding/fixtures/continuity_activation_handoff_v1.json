@@ -1,0 +1,683 @@
+{
+  "abort-cancel-retry": {
+    "aborts": 1,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "abort",
+        1
+      ]
+    ],
+    "failures": [
+      {
+        "args": [],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "CancelledError"
+      },
+      {
+        "args": [
+          "abort cancelled"
+        ],
+        "cause": null,
+        "context": {
+          "args": [],
+          "cause": null,
+          "context": null,
+          "id": 1,
+          "notes": [],
+          "suppress": false,
+          "type": "CancelledError"
+        },
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "CancelledError"
+      }
+    ],
+    "value": null
+  },
+  "abort-fail-retry": {
+    "aborts": 2,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "abort",
+        1
+      ],
+      [
+        "abort",
+        2
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "abort failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      }
+    ],
+    "value": null
+  },
+  "consume-cancel": {
+    "aborts": 1,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "consume"
+      ],
+      [
+        "abort",
+        1
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "consume cancelled"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "CancelledError"
+      }
+    ],
+    "value": null
+  },
+  "consume-cancel-abort-fail": {
+    "aborts": 2,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "consume"
+      ],
+      [
+        "abort",
+        1
+      ],
+      [
+        "abort",
+        2
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "consume cancelled"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [
+          "Coding prepared Session abort also failed: RuntimeError"
+        ],
+        "suppress": false,
+        "type": "CancelledError"
+      }
+    ],
+    "value": null
+  },
+  "consume-fail": {
+    "aborts": 1,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "consume"
+      ],
+      [
+        "abort",
+        1
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "consume failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "LookupError"
+      }
+    ],
+    "value": null
+  },
+  "consume-fail-abort-cancel": {
+    "aborts": 2,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "consume"
+      ],
+      [
+        "abort",
+        1
+      ],
+      [
+        "abort",
+        2
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "consume failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [
+          "Coding prepared Session abort also failed: CancelledError"
+        ],
+        "suppress": false,
+        "type": "LookupError"
+      }
+    ],
+    "value": null
+  },
+  "consume-fail-abort-fail": {
+    "aborts": 2,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "consume"
+      ],
+      [
+        "abort",
+        1
+      ],
+      [
+        "abort",
+        2
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "consume failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [
+          "Coding prepared Session abort also failed: RuntimeError"
+        ],
+        "suppress": false,
+        "type": "LookupError"
+      }
+    ],
+    "value": null
+  },
+  "prepare-cancel": {
+    "aborts": 0,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "prepare cancelled"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "CancelledError"
+      }
+    ],
+    "value": null
+  },
+  "prepare-cancel-remove-fail": {
+    "aborts": 0,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "prepare cancelled"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [
+          "Coding continuity temporary cleanup also failed: OSError('remove failure')"
+        ],
+        "suppress": false,
+        "type": "CancelledError"
+      }
+    ],
+    "value": null
+  },
+  "prepare-fail": {
+    "aborts": 0,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "prepare failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      }
+    ],
+    "value": null
+  },
+  "prepare-fail-remove-fail": {
+    "aborts": 0,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "prepare failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [
+          "Coding continuity temporary cleanup also failed: OSError('remove failure')"
+        ],
+        "suppress": false,
+        "type": "ValueError"
+      }
+    ],
+    "value": null
+  },
+  "remove-fail": {
+    "aborts": 1,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "abort",
+        1
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "remove failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      }
+    ],
+    "value": null
+  },
+  "remove-fail-abort-cancel": {
+    "aborts": 1,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "abort",
+        1
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "remove failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [
+          "Coding continuity prepared-operation abort also failed: CancelledError('abort cancelled')"
+        ],
+        "suppress": false,
+        "type": "OSError"
+      }
+    ],
+    "value": null
+  },
+  "remove-fail-abort-fail": {
+    "aborts": 1,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "abort",
+        1
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "remove failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [
+          "Coding continuity prepared-operation abort also failed: RuntimeError('abort failure')"
+        ],
+        "suppress": false,
+        "type": "OSError"
+      }
+    ],
+    "value": null
+  },
+  "success": {
+    "aborts": 0,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      [
+        "prepare",
+        "/private-input/transcript.jsonl",
+        {
+          "fallback_cwd": "/trusted-cwd",
+          "missing_cwd": "fallback"
+        }
+      ],
+      [
+        "remove",
+        "/private-input/transcript.jsonl"
+      ],
+      [
+        "consume"
+      ]
+    ],
+    "failures": [],
+    "value": "restored-session"
+  },
+  "write-cancel": {
+    "aborts": 0,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "write cancelled"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "CancelledError"
+      }
+    ],
+    "value": null
+  },
+  "write-fail": {
+    "aborts": 0,
+    "events": [
+      [
+        "write",
+        "/private-input",
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ]
+    ],
+    "failures": [
+      {
+        "args": [
+          "write failure"
+        ],
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      }
+    ],
+    "value": null
+  }
+}

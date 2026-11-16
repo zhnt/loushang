@@ -7,24 +7,17 @@ Source publication, mutate Desired State, or run a Package transaction.
 from __future__ import annotations
 
 import json
-import os
-import stat
+import os as os
 from dataclasses import dataclass
 from hashlib import sha256
-from pathlib import Path
 from typing import Literal
 
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
     JournalCodecError,
-    JournalLoadPolicy,
-    decode_jsonl,
-    encode_jsonl_record,
 )
-from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
-from loushang.harness.plugin_management.ledger import (
-    decode_plugin_desired_state_snapshot,
+from loushang.harness.package_product._legacy_local_migration import (
+    _LocalAcceptanceProtocol,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -196,72 +189,35 @@ def accept_coding_legacy_installed_local_review(
             "Coding legacy local Product epoch changed"
         )
     proposed = CodingLegacyLocalAcceptanceV1.create(review, resource_kind=resource_kind)
-    state_root = epoch_runtime.prepare_product_state_root()
-    path = _acceptance_path(state_root, review.plugin_id)
-    descriptor = os.open(
-        state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+    def require_current_review() -> None:
+        _require_live_resource_kind(
+            lifecycle, epoch_runtime, plugin_id=plugin_id, resource_kind=resource_kind
+        )
+        if (
+            review_coding_legacy_installed_local_source(
+                lifecycle,
+                epoch_runtime,
+                plugin_id=plugin_id,
+                policy_revision=policy_revision,
+            )
+            != review
+        ):
+            raise CodingLegacyLocalAcceptanceError(
+                "Coding legacy local review changed before acceptance"
+            )
+
+    return _acceptance_protocol(epoch_runtime).accept(
+        proposed,
+        plugin_id=review.plugin_id,
+        installation_key=lambda: PluginInstallationKeyV1(
+            product_id="coding",
+            installation_scope="workspace",
+            scope_id=review.scope_id,
+            plugin_id=review.plugin_id,
+        ),
+        require_current_review=require_current_review,
     )
-    try:
-        before = os.fstat(descriptor)
-        _require_private_parent(state_root, before)
-        with RootedFileIO(state_root, descriptor) as file_io:
-            with file_io.bind(path) as target:
-                target.acquire_lock(exclusive=True, suffix=".lock")
-                epoch_runtime.assert_current()
-                try:
-                    raw = target.read_bytes(max_bytes=_MAX_ACCEPTANCE_BYTES)
-                except FileNotFoundError:
-                    raw = None
-                if raw is not None:
-                    records = decode_jsonl(
-                        raw.decode("utf-8"),
-                        target=path,
-                        record_codec=_CODEC,
-                        load_policy=JournalLoadPolicy(
-                            partial_tail="raise", create_lock=False
-                        ),
-                    ).records
-                    if len(records) != 1 or records[0] != proposed:
-                        raise CodingLegacyLocalAcceptanceError(
-                            "Coding legacy local acceptance conflicts with prior review"
-                        )
-                else:
-                    desired = target.sibling("desired-state.jsonl")
-                    desired.acquire_lock(exclusive=True, suffix=".lock")
-                    _require_unseen_installation(
-                        desired, state_root / "desired-state.jsonl", review
-                    )
-                    _require_live_resource_kind(
-                        lifecycle,
-                        epoch_runtime,
-                        plugin_id=plugin_id,
-                        resource_kind=resource_kind,
-                    )
-                    # Reacquire under the locks so accepted Source and first-B
-                    # evidence still match the operator's reviewed identity.
-                    if (
-                        review_coding_legacy_installed_local_source(
-                            lifecycle,
-                            epoch_runtime,
-                            plugin_id=plugin_id,
-                            policy_revision=policy_revision,
-                        )
-                        != review
-                    ):
-                        raise CodingLegacyLocalAcceptanceError(
-                            "Coding legacy local review changed before acceptance"
-                        )
-                    payload = encode_jsonl_record(
-                        proposed,
-                        record_codec=_CODEC,
-                        format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    )
-                    target.atomic_write(payload, exclusive=True)
-                    epoch_runtime.assert_current()
-            _require_private_parent_after(state_root, descriptor, before)
-            return proposed
-    finally:
-        os.close(descriptor)
 
 
 def reopen_coding_legacy_installed_local_acceptance(
@@ -283,49 +239,18 @@ def reopen_coding_legacy_installed_local_acceptance(
         raise CodingLegacyLocalAcceptanceError(
             "Coding legacy local Product epoch changed"
         )
-    state_root = epoch_runtime.control_root / "product-state"
-    path = _acceptance_path(state_root, plugin_id)
-    try:
-        descriptor = os.open(
-            state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        )
-    except FileNotFoundError:
-        epoch_runtime.assert_current()
+    record = _acceptance_protocol(epoch_runtime).reopen(plugin_id)
+    if record is None:
         return None
-    try:
-        before = os.fstat(descriptor)
-        _require_private_parent(state_root, before)
-        with RootedFileIO(state_root, descriptor) as file_io:
-            with file_io.bind(path) as target:
-                try:
-                    raw = target.read_bytes(max_bytes=_MAX_ACCEPTANCE_BYTES)
-                except FileNotFoundError:
-                    raw = None
-            _require_private_parent_after(state_root, descriptor, before)
-    finally:
-        os.close(descriptor)
-    if raw is None:
-        epoch_runtime.assert_current()
-        return None
-    records = decode_jsonl(
-        raw.decode("utf-8"),
-        target=path,
-        record_codec=_CODEC,
-        load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
-    ).records
-    if len(records) != 1:
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local acceptance has multiple records"
-        )
     _require_frozen_review(
         lifecycle,
         epoch_runtime,
-        records[0].review,
+        record.review,
         plugin_id=plugin_id,
         policy_revision=policy_revision,
     )
     epoch_runtime.assert_current()
-    return records[0]
+    return record
 
 
 def read_coding_legacy_installed_local_acceptance(
@@ -480,57 +405,17 @@ def _require_frozen_review(
         )
 
 
-def _acceptance_path(state_root: Path, plugin_id: str) -> Path:
-    name_digest = sha256(plugin_id.encode()).hexdigest()[:24]
-    return state_root / f"legacy-local-acceptance-{name_digest}.jsonl"
-
-
-def _require_unseen_installation(
-    desired: RootedFile,
-    path: Path,
-    review: CodingLegacyLocalAdoptionReviewV1,
-) -> None:
-    try:
-        raw = desired.read_bytes(max_bytes=_MAX_DESIRED_BYTES)
-    except FileNotFoundError:
-        return
-    if raw and not raw.endswith(b"\n"):
-        raise CodingLegacyLocalAcceptanceError("Product Desired State is incomplete")
-    snapshot = decode_plugin_desired_state_snapshot(raw.decode("utf-8"), path=path)
-    key = PluginInstallationKeyV1(
-        product_id="coding",
-        installation_scope="workspace",
-        scope_id=review.scope_id,
-        plugin_id=review.plugin_id,
+def _acceptance_protocol(
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+) -> _LocalAcceptanceProtocol[CodingLegacyLocalAcceptanceV1]:
+    return _LocalAcceptanceProtocol(
+        epoch_runtime,
+        _CODEC,
+        CodingLegacyLocalAcceptanceError,
+        "Coding legacy local",
+        _MAX_ACCEPTANCE_BYTES,
+        _MAX_DESIRED_BYTES,
     )
-    if any(item.installation_key == key for item in snapshot.installations):
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local Installation already has Product Desired history"
-        )
-
-
-def _require_private_parent(path: Path, opened: os.stat_result) -> None:
-    visible = path.lstat()
-    if (
-        not stat.S_ISDIR(opened.st_mode)
-        or opened.st_uid != os.geteuid()
-        or stat.S_IMODE(opened.st_mode) & 0o077
-        or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
-    ):
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local Product state directory is unsafe"
-        )
-
-
-def _require_private_parent_after(
-    path: Path, descriptor: int, before: os.stat_result
-) -> None:
-    after = os.fstat(descriptor)
-    if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local Product state directory changed"
-        )
-    _require_private_parent(path, after)
 
 
 __all__ = [

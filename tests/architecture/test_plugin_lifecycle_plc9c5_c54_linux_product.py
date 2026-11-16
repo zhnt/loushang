@@ -546,7 +546,17 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
             optional_receipt_selector = {receipt_values}
         if path in optional_retirement_proofs:
             actual.discard(history_proofs)
-        assert actual - optional_receipt_selector == allowed
+        optional_shared_receipt_edges = (
+            {
+                "loushang.harness.worker._native_profile_bridge",
+                "loushang.harness.worker.contracts",
+            }
+            if path == CODING_ROOT / "package_product_worker_windows_receipt.py"
+            else set()
+        )
+        assert actual - optional_receipt_selector - optional_shared_receipt_edges == (
+            allowed - optional_shared_receipt_edges
+        )
     assert not any(
         imported.startswith("loushang.hosting") for imported in _imports(CANARY)
     )

@@ -18,7 +18,12 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    ProductWorkerNativeClosureFacts,
+    ProductWorkerOptInFacts,
     verify_product_selected_worker_candidate,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -56,7 +61,7 @@ class CodingWorkerNativeClosureReadError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerOptInV1:
+class CodingWorkerOptInV1(ProductWorkerOptInFacts):
     """An exact per-install decision input; this record grants no authority."""
 
     plugin_id: str
@@ -98,45 +103,24 @@ class CodingWorkerOptInV1:
             )
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "artifactDigest": self.artifact_digest,
-            "contributionId": self.contribution_id,
-            "killSwitchGeneration": self.kill_switch_generation,
-            "nativePlatform": self.native_platform,
-            "ownerId": self.owner_id,
-            "ownerSelectionGeneration": self.owner_selection_generation,
-            "pluginId": self.plugin_id,
-            "requireWorker": self.require_worker,
-        }
+        return _OPT_IN_ENCODE_SCHEMA.encode(self)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingWorkerOptInV1:
-        fields = {
-            "artifactDigest",
-            "contributionId",
-            "killSwitchGeneration",
-            "nativePlatform",
-            "ownerId",
-            "ownerSelectionGeneration",
-            "pluginId",
-            "requireWorker",
-        }
-        if type(value) is not dict or set(value) != fields:
+        if type(value) is not dict or set(value) != _OPT_IN_SCHEMA.keys:
             raise ValueError("Coding Worker opt-in record is invalid")
-        return cls(
-            plugin_id=value["pluginId"],
-            contribution_id=value["contributionId"],
-            owner_id=value["ownerId"],
-            artifact_digest=value["artifactDigest"],
-            native_platform=value["nativePlatform"],
-            owner_selection_generation=value["ownerSelectionGeneration"],
-            kill_switch_generation=value["killSwitchGeneration"],
-            require_worker=value["requireWorker"],
-        )
+        return _OPT_IN_SCHEMA.decode(cls, value)
+
+
+_OPT_IN_SCHEMA = RecordSchema.for_dataclass(CodingWorkerOptInV1, lambda value: value)
+_OPT_IN_ENCODE_SCHEMA = RecordSchema(
+    _OPT_IN_SCHEMA.text_decoder,
+    tuple(sorted(_OPT_IN_SCHEMA.fields, key=lambda item: item.wire_key)),
+)
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerNativeClosureV1:
+class CodingWorkerNativeClosureV1(ProductWorkerNativeClosureFacts):
     """Authority-free native facts supplied by a separate Product owner."""
 
     native_platform: str
@@ -161,12 +145,12 @@ class CodingWorkerNativeClosureV1:
                 raise ValueError("Coding Worker native closure digest is invalid")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "nativePlatform": self.native_platform,
-            "nativeProfileCatalogRevision": self.native_profile_catalog_revision,
-            "containmentLauncherDigest": self.containment_launcher_digest,
-            "containmentProfileDigest": self.containment_profile_digest,
-        }
+        return _NATIVE_CLOSURE_SCHEMA.encode(self)
+
+
+_NATIVE_CLOSURE_SCHEMA = RecordSchema.for_dataclass(
+    CodingWorkerNativeClosureV1, lambda value: value
+)
 
 
 def coding_worker_session_scope_id(session_id: str) -> str:

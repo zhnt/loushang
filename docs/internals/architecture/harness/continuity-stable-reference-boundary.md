@@ -41,7 +41,11 @@ CLA7d requires a process-owned typed stable lease/reference and an explicit
 shutdown order before a Session Consumer can observe continuity. The Session
 Graph never owns the concrete `ContinuityHub`.
 
-## Current Source-Backed State
+## Historical Source-Backed Baseline Before CLA7d
+
+This table records the original problem state. The close-then-record contract
+below superseded its mark-before-close behavior; A174 current implementation
+ownership is recorded after the table.
 
 | Fact | Site | Evidence |
 | --- | --- | --- |
@@ -55,6 +59,36 @@ Graph never owns the concrete `ContinuityHub`.
 | Existing lease-like concept | `src/loushang/harness/continuity/provider.py::PreparedActivationLease` | an activation handle returned by `ContinuityHub.prepare`; consumption (`activation.py::consume_prepared_activation`) invokes the provider callback directly without re-entering the hub, so an issued-but-unconsumed lease currently outlives hub-level guards |
 | Existing activation abort semantics | `src/loushang/harness/continuity/activation.py::CallbackPreparedActivationLease` | idempotent close/abort and `ActivationLeaseStateError` already exist and are reused by the close contract below |
 | Graph contract reservation | `src/loushang/harness/capabilities/contracts.py::CapabilityRequirementBinding` | `stable_reference` is reserved; planning skips the scope-inversion check for it, and binding fails closed with `stable_reference_binding_not_implemented` (`graph_binding.py`) |
+
+
+## Current Binding Lifetime Ownership (A174)
+
+The public `CodingContinuityComposition` and private failed-construction data
+record retain their Coding data fields, constructors and nominal identities.
+Their complete methods now inherit the existing Continuity scope's private
+`_ContinuityCompositionLifetime` and `_ContinuityBindingReservationLifetime`.
+The ordinary bases add no second state or instance dictionary to the original
+non-slotted data records. The concrete Hub, Publication, Profile binder/binding,
+generation and pending-cleanup objects are the existing Core owners.
+
+`harness.continuity._binding_lifetime.shutdown_bound_continuity` owns the full
+bound-slot shutdown, retained reservation retry, original owned Task join and
+identity-checked deletion. Coding's entrypoint binds its original slot name,
+actual Coding composition/reservation classes and error policy. Unknown or
+foreign bindings stay outside that nominal admission. An existing optional
+owned-cleanup callback remains at its original final point; it is not claimed
+to be pure or newly migrated IO.
+
+The three flag and failure contracts remain separate: Hub/Publication and
+binder success precede `_core_shutdown`; owned cleanup success precedes its
+completion flag and final shutdown. Reservation cleanup catches each
+`BaseException`, records its original code, continues later owners, and clears
+only successful references. Caller cancellation removes a binding only if the
+owned operation actually succeeded (and reservation codes are empty) and the
+slot still holds that exact object. Task-creation rejection behavior is not
+changed in this migration. These implementation placements preserve CLA7d's
+reference authority and shutdown order; no graph binding, payload format or
+storage capability is added.
 
 ## Decision Summary
 

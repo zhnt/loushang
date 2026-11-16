@@ -8,11 +8,12 @@ This module neither approves nor executes a Plugin Definition.
 from __future__ import annotations
 
 import io
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
-from typing import BinaryIO, ClassVar, Literal, Protocol
+from types import TracebackType
+from typing import BinaryIO, ClassVar, Generic, Literal, Protocol, TypeVar
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
@@ -426,3 +427,96 @@ def _host_distribution_lock(
             ),
         ),
     )
+
+
+def validate_preparation_lineage(
+    runtime: PluginRuntimeResolution,
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+    *,
+    label: str,
+) -> None:
+    if len(runtime.packages) != len(selected):
+        raise ValueError(f"{label} selection is incomplete")
+    for package, binding, item in zip(
+        runtime.packages, runtime.bindings, selected, strict=True
+    ):
+        verified = item.verified_manifest()
+        if (
+            package.manifest.name != verified.name
+            or package.manifest.version != verified.version
+            or package.manifest.metadata != verified.metadata
+            or (package.manifest_digest != verified.manifest_digest)
+            or (package.contribution_index != verified.contribution_index)
+            or (not package.manifest.enabled)
+            or (not package.source.enabled)
+            or (package.content_digest != item.snapshot.root_ref.artifact_digest)
+            or (
+                binding.source_identity
+                != item.snapshot.package_revision.package_source_identity
+            )
+            or (item.source_trust_snapshot is None)
+        ):
+            raise ValueError(f"{label} revision changed")
+        package.revision_handle.verify()
+
+
+_SelectionItemT = TypeVar("_SelectionItemT")
+
+
+@dataclass(slots=True)
+class SelectedProductPreparationScope(Generic[_SelectionItemT]):
+    """Retain the original runtime across second capture and domain preparation.
+
+    Successful work transfers the runtime to its nominal result. Any failure
+    after a completed open closes it, with the original close-error priority.
+    A class context also preserves StopIteration from acquisition/validation.
+    """
+
+    product_runtime: PackageProductRuntimeBindingV1
+    open_runtime: Callable[[], PluginRuntimeResolution]
+    selection_items: Callable[[PluginRuntimeResolution], Iterable[_SelectionItemT]]
+    selection_id: Callable[[_SelectionItemT], str]
+    maximum_files: Callable[[], int]
+    maximum_bytes: Callable[[], int]
+    label: str
+    _runtime: PluginRuntimeResolution = field(init=False, repr=False)
+
+    def __enter__(
+        self,
+    ) -> tuple[
+        PluginRuntimeResolution, tuple[PackageProductSelectedPluginManifestV1, ...]
+    ]:
+        self._runtime = self.open_runtime()
+        try:
+            selected = tuple(
+                self.product_runtime.capture_selected_plugin_manifest_for(
+                    self.selection_id(item),
+                    max_files=self.maximum_files(),
+                    max_total_bytes=self.maximum_bytes(),
+                )
+                for item in self.selection_items(self._runtime)
+            )
+            validate_preparation_lineage(self._runtime, selected, label=self.label)
+        except BaseException:
+            self._runtime.close()
+            raise
+        return self._runtime, selected
+
+    def __exit__(
+        self,
+        error_type: type[BaseException] | None,
+        error: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if error_type is not None:
+            self._runtime.close()
+
+
+def selected_runtime_recheck(runtime: PluginRuntimeResolution) -> Callable[[], None]:
+    """Keep only this runtime and read its current packages on every recheck."""
+
+    def recheck_selected_revisions() -> None:
+        for package in runtime.packages:
+            package.revision_handle.verify()
+
+    return recheck_selected_revisions

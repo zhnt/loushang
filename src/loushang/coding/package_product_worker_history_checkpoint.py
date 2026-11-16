@@ -63,22 +63,7 @@ class CodingWorkerHistoryCheckpointError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class CodingWorkerHistoryCheckpointV1(_CheckpointMethods):
-    journal_revision: int
-    scope_id: str
-    store_id: str
-    attempt_id: str
-    receipt_fingerprint: str
-    previous_digest: str
-    gc_reservation_revision: int
-    backup_topology_revision: str
     stream_snapshots: tuple[CodingWorkerHistoryStreamSnapshotV1, ...]
-    new_opt_in_operation_ids: tuple[str, ...]
-    new_attempt_ids: tuple[str, ...]
-    new_receipt_fingerprints: tuple[str, ...]
-    opt_in_generation_high_water: tuple[tuple[str, int, int, str, str], ...]
-    supervisor_epoch_high_water: tuple[tuple[str, int], ...]
-    record_digest: str
-    record_version: int = 1
 
     _snapshot_type = CodingWorkerHistoryStreamSnapshotV1
 

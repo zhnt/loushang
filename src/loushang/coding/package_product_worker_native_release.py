@@ -64,12 +64,6 @@ def _release_verifier() -> _LinuxNativeReleaseVerifier[CodingWorkerNativeClosure
     )
 
 
-def _verify_release_bytes(
-    catalog_bytes: bytes, launcher: bytes
-) -> CodingWorkerNativeClosureV1:
-    return _release_verifier().verify_release_bytes(catalog_bytes, launcher)
-
-
 def _read_member(
     root: int,
     name: str,

@@ -47,6 +47,9 @@ from .package_legacy_windows_receipt import (
 from .package_private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
 )
+from .package_private_data_deletion_journal import (
+    _tombstone_name as _tombstone_name,
+)
 from .package_private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .package_private_data_windows_confirmation import (
     CodingWindowsArchPrivateDataConfirmationOwner,
@@ -290,16 +293,6 @@ def _require_staged_start_target_unchanged(
         != target
     ):
         raise ValueError("Windows Coding Arch deletion target changed")
-
-
-def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:
-    digest = sha256(
-        b"loushang.coding-arch-private-data-tombstone/v1\0"
-        + started.plan.fingerprint.encode("ascii")
-        + b"\0"
-        + started.confirmation.confirmation_id.encode("utf-8")
-    ).hexdigest()
-    return ".deleting-" + digest
 
 
 def _require_windows_tombstone(

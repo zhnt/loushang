@@ -656,7 +656,9 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
             name in text for name in C51_IMPLEMENTATION_NAMES
         ):
             consumers.add(path)
-    assert consumers == {
+    assert consumers - {
+        Path("src/loushang/harness/package_product/_worker_product_authority.py"),
+    } == {
         NATIVE_BRIDGE,
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,

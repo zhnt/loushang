@@ -88,3 +88,33 @@ cwd, fork, diagnostics, extension, import, and index behavior after binding
 the adapter. Architecture tests require Coding to import
 `ProductSessionRuntime`/`ProductSessionRuntimePorts` and prohibit the old
 direct-base ownership assertion.
+
+## Bound Application Shutdown (A174)
+
+`AgentProductSessionRuntime._dispose_session_runtime_dependencies` owns the
+complete application shutdown program for an explicitly bound Product profile.
+It uses the existing preparation ledger, history-read settlement, planning
+owner, actual `AgentTranscriptSessionFactory`, and fenced Product selection.
+It introduces no task, mirror state, close registry, or lifecycle grammar.
+The default public Core `dispose_session_runtime` path and constructor remain
+unchanged; the protected program requires the profile's existing owner fields.
+Coding keeps the public method, lazy Continuity entry binding, and error prefix.
+
+The original barriers remain distinct. Loop admission, selection fence,
+transcript loop check and preparation drain can stop immediately. A factory
+fence failure is retained, but a preparation failure can replace it. Failed
+Session retirement stops all dependent factory/Continuity/selection release.
+After successful Session retirement, planning, history, transcript factory,
+Continuity and Product selection are attempted in their original order; the
+first failure retains identity and later failures add the original notes.
+Cancellation keeps those same barriers rather than entering a new close group.
+
+Continuity shutdown is an existing dependency close call. Its complete binding
+lifetime is now implemented by the original Continuity scope's private
+`_binding_lifetime.py`; Coding supplies the slot, actual nominal data types and
+error policy. The Root coordinator does not borrow a Coding Task/slot algorithm.
+A174 did not relocate the separate Session profile retirement program. A176 now
+places its complete deferred-child, registration, publication/evidence and
+Sandbox coordination in the original AgentProductSession owner; see the
+[Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md#bound-product-profile-retirement-a176).
+The original underlying component close operations retain their own authority.

@@ -5,12 +5,18 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
 
+from loushang.harness.continuity._payload_staging import _ContinuityPayloadStaging
+from loushang.harness.continuity.import_provider import ContinuityActivationPayload
 from loushang.harness.continuity.provider import PreparedActivationLease
 from loushang.harness.continuity.types import (
     ActivationDisposition,
     ContinuityTarget,
 )
+from loushang.harness.runtime import await_owned_task
 
 ActivationFactory = Callable[[], object | Awaitable[object]]
 CleanupCallback = Callable[[], None | Awaitable[None]]
@@ -18,6 +24,48 @@ CleanupCallback = Callable[[], None | Awaitable[None]]
 
 class ActivationLeaseStateError(RuntimeError):
     """Raised when a prepared activation lease is consumed more than once."""
+
+
+class _PreparedActivationOperation(Protocol):
+    async def consume(self) -> object: ...
+
+    async def abort(self) -> None: ...
+
+
+@dataclass(slots=True)
+class _PreparedOperationSettlement:
+    prepared: _PreparedActivationOperation
+    error_label: str
+    _abort_complete: bool = False
+
+    async def consume(self) -> object:
+        try:
+            return await self.prepared.consume()
+        except BaseException as operation_error:
+            try:
+                await self.abort()
+            except BaseException as abort_error:
+                operation_error.add_note(
+                    f"{self.error_label} abort also failed: "
+                    f"{type(abort_error).__name__}"
+                )
+            raise
+
+    async def abort(self) -> None:
+        if self._abort_complete:
+            return
+        abort_task = asyncio.create_task(self.prepared.abort())
+        try:
+            await await_owned_task(abort_task)
+        except BaseException:
+            if _task_completed_successfully(abort_task):
+                self._abort_complete = True
+            raise
+        self._abort_complete = True
+
+
+def _task_completed_successfully(task: asyncio.Task[object]) -> bool:
+    return task.done() and not task.cancelled() and task.exception() is None
 
 
 class CallbackPreparedActivationLease:
@@ -40,6 +88,48 @@ class CallbackPreparedActivationLease:
         self._consume = consume
         self._abort = abort
         self._initialize_lifecycle()
+
+    @classmethod
+    async def _from_staged_payload(
+        cls,
+        *,
+        target: ContinuityTarget,
+        payload: ContinuityActivationPayload,
+        staging: _ContinuityPayloadStaging,
+        root: Path,
+        prepare: Callable[[Path], Awaitable[_PreparedActivationOperation]],
+        settlement_error_label: str,
+    ) -> CallbackPreparedActivationLease:
+        staged = await staging.write_atomic(root, payload)
+        try:
+            prepared = await prepare(staged.path)
+        except BaseException as operation_error:
+            try:
+                await staging.remove_atomic(staged)
+            except BaseException as cleanup_error:
+                operation_error.add_note(
+                    f"{staging.label} temporary cleanup also failed: {cleanup_error!r}"
+                )
+            raise
+        try:
+            await staging.remove_atomic(staged)
+        except BaseException as cleanup_error:
+            try:
+                abort_task = asyncio.create_task(prepared.abort())
+                await await_owned_task(abort_task)
+            except BaseException as abort_error:
+                cleanup_error.add_note(
+                    f"{staging.label} prepared-operation abort also failed: "
+                    f"{abort_error!r}"
+                )
+            raise
+        settlement = _PreparedOperationSettlement(prepared, settlement_error_label)
+        return cls(
+            target=target,
+            disposition="in_place",
+            consume=settlement.consume,
+            abort=settlement.abort,
+        )
 
     def _initialize_lifecycle(self) -> None:
         self._consumed = False

@@ -1,7 +1,8 @@
-"""Transport-neutral request and read port for installed-composition preview.
+"""Installed-composition queries and typed Catalog evidence projection.
 
-The Product owns selection and Catalog projection. This seam grants no
-installation, activation, repair, or live Session authority.
+Product owns source selection, compilation and Catalog construction. This module
+projects their exact evidence; its query port grants no installation, activation,
+repair or live Session authority.
 """
 
 from __future__ import annotations
@@ -9,13 +10,23 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+
+if TYPE_CHECKING:
+    from loushang.harness.capabilities.contribution_admission import (
+        OwnerContributionAdmissionRecord,
+    )
+    from loushang.harness.plugin_management.package_product import (
+        PackageProductSelectedRootSnapshotV1,
+    )
+    from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
+    from loushang.harness.resources.types import ResourceBundle
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +282,121 @@ def project_plugin_current_preview(
     return {"correlationId": request.correlation_id, **document}
 
 
+class _CurrentSelectedManifest(Protocol):
+    @property
+    def snapshot(self) -> PackageProductSelectedRootSnapshotV1: ...
+
+
+class _CurrentProductResourceInput(Protocol):
+    @property
+    def admission(self) -> OwnerContributionAdmissionRecord: ...
+
+    @property
+    def selected_manifest(self) -> _CurrentSelectedManifest: ...
+
+
+def project_current_product_resource_selections(
+    catalog: ResourceCatalogSnapshot,
+    product_inputs: tuple[_CurrentProductResourceInput, ...],
+) -> list[PluginCurrentResourceSelectionV1]:
+    """Project exact Catalog Product selections without acquiring live authority."""
+    from loushang.harness.resources._catalog_records import VerifiedPluginResourceOrigin
+
+    selected_candidates = {
+        entry.primary_candidate_fingerprint for entry in catalog.effective_entries
+    }
+    candidates = {
+        item.candidate_fingerprint: item for item in catalog.candidate_summaries
+    }
+    inputs_by_admission = {item.admission.fingerprint: item for item in product_inputs}
+    selections: list[PluginCurrentResourceSelectionV1] = []
+    for fingerprint in sorted(selected_candidates):
+        candidate = candidates[fingerprint]
+        origin = candidate.content_origin
+        if not isinstance(origin, VerifiedPluginResourceOrigin):
+            continue
+        product_input = inputs_by_admission.get(origin.resource_admission_fingerprint)
+        if product_input is None:
+            continue  # Legacy or built-in package Resources have no Product input.
+        admission = product_input.admission
+        snapshot = product_input.selected_manifest.snapshot
+        instance = admission.candidate.instance_revision_ref
+        if (
+            admission.contribution_id != origin.resource_contribution_id
+            or admission.candidate.package_content_digest
+            != origin.package_content_digest
+            or f"{instance.instance_id}:{instance.plugin_id}@{instance.revision}"
+            != origin.plugin_instance_revision_ref
+        ):
+            raise ValueError("Product preview Catalog selection changed owner identity")
+        selections.append(
+            PluginCurrentResourceSelectionV1(
+                installation_key=snapshot.installation_key,
+                package_revision=snapshot.package_revision,
+                instance_revision_ref=instance,
+                contribution_id=admission.contribution_id,
+                resource_kind=candidate.identity.resource_kind,
+                admission_fingerprint=admission.fingerprint,
+                candidate_fingerprint=fingerprint,
+                catalog_generation=catalog.catalog_generation,
+                catalog_snapshot_fingerprint=catalog.snapshot_fingerprint,
+            )
+        )
+    return selections
+
+
+def project_current_product_resource_facts(
+    resource_admissions: tuple[OwnerContributionAdmissionRecord, ...],
+    bundle: ResourceBundle,
+) -> tuple[
+    tuple[PluginCurrentResourceAdmissionV1, ...],
+    tuple[tuple[str, str, str], ...],
+]:
+    """Project admitted and enabled Catalog facts in their original order."""
+    from loushang.harness.capabilities.contribution_admission import (
+        ResourceContributionSpec,
+    )
+
+    admissions = tuple(
+        sorted(
+            (
+                PluginCurrentResourceAdmissionV1(
+                    plugin_id=item.plugin_id,
+                    contribution_id=item.contribution_id,
+                    resource_kind=item.candidate.contribution.resource_kind,
+                    owner_id=item.owner_id,
+                    admission_fingerprint=item.fingerprint,
+                )
+                for item in (resource_admissions)
+                if isinstance(item.candidate.contribution, ResourceContributionSpec)
+            ),
+            key=lambda item: (item.plugin_id, item.contribution_id),
+        )
+    )
+    catalog_resources = tuple(
+        sorted(
+            (
+                *(
+                    ("skill", item.name, item.source_kind)
+                    for item in bundle.skills
+                    if item.enabled
+                ),
+                *(
+                    ("prompt", item.name, item.source_kind)
+                    for item in bundle.prompts
+                    if item.enabled
+                ),
+                *(
+                    ("theme", item.name, item.source_kind)
+                    for item in bundle.themes
+                    if item.enabled
+                ),
+            )
+        )
+    )
+    return admissions, catalog_resources
+
+
 __all__ = [
     "PluginCurrentPreviewQueryPort",
     "PluginCurrentPreviewRequestV1",
@@ -279,4 +405,6 @@ __all__ = [
     "PluginCurrentResourceSelectionV1",
     "plugin_package_revision_fingerprint",
     "project_plugin_current_preview",
+    "project_current_product_resource_selections",
+    "project_current_product_resource_facts",
 ]

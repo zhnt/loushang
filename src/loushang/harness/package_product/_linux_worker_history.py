@@ -40,6 +40,7 @@ from loushang.harness.worker.history._no_effect import (
     _NoEffectProofMethods,
     is_no_effect_closure,
 )
+from loushang.harness.worker.history._opt_in import CurrentOptIn as CurrentOptIn
 from loushang.harness.worker.history._opt_in import _OptInDecisionMethods
 from loushang.harness.worker.history._opt_in_store import OptInJournal
 from loushang.harness.worker.history._preparation import PreparationHistory
@@ -87,10 +88,6 @@ class GatedReview(Protocol):
     def attempt_record(self) -> WorkerAttemptRecordV1 | None: ...
     @property
     def group_status(self) -> GroupStatus: ...
-
-
-class CurrentOptIn(Protocol):
-    def current(self, plugin_id: str) -> _OptInDecisionMethods | None: ...
 
 
 ReviewT = TypeVar("ReviewT")

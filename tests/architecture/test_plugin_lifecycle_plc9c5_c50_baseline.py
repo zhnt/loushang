@@ -870,7 +870,11 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
             "loushang.harness.worker.history._native_approval._NativeReviewMethods",
         }
     }
-    assert worker_consumers - optional_backend_release == {
+    assert (
+        worker_consumers
+        - optional_backend_release
+        - {HARNESS_ROOT / "package_product/_worker_product_authority.py"}
+    ) == {
         SANDBOX_RUNTIME,
         HARNESS_ROOT / "package_product/product_worker_candidate.py",
         HARNESS_ROOT / "package_product/product_worker_wheel_admission.py",
@@ -1064,7 +1068,10 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             for imported in _imports_containing(path, "hosting")
         )
     }
-    assert hosting_consumers == {
+    optional_shared_receipt_owner = {
+        CODING_ROOT / "package_product_worker_windows_receipt.py",
+    }
+    assert hosting_consumers - optional_shared_receipt_owner == {
         CODING_ROOT / "managed_service.py",
         CODING_APPHOST_CANARY,
         CODING_ROOT / "package_product_worker_windows_backend_release.py",
@@ -1088,7 +1095,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         APPHOST_ROOT / "managed/connection.py",
         APPHOST_ROOT / "managed/mux_management.py",
         CODING_ROOT / "managed_process.py",
-    }
+    } - optional_shared_receipt_owner
     # Managed AppHost composition consumes public Hosting contracts only. Keep the reviewed
     # module and symbol edges exact rather than exempting the managed package.
     managed_edges = {

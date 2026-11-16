@@ -12,7 +12,7 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, cast
 
 from loushang.agent import AbortController
 from loushang.agent.types import AgentToolResult, TextPart
@@ -28,6 +28,59 @@ ContextRefresher = Callable[[], None]
 CommandDefinitionProvider = Callable[[], ToolDefinition | None]
 CommandCallIdFactory = Callable[[], str]
 CommandParametersBuilder = Callable[[str, str], Mapping[str, object]]
+
+
+class _BashResultSession(Protocol):
+    async def execute_bash(self, command: str, **options: object) -> dict[str, object]: ...
+
+
+async def _execute_bash_with_complete_error(
+    session: _BashResultSession, command: str, options: Mapping[str, object]
+) -> dict[str, object]:
+    """Recover a nonzero result whose preview matches reported complete byte counts."""
+    preview = ""
+
+    def observe(chunk):
+        nonlocal preview
+        # The original SDK forwards cumulative tool previews, not raw
+        # byte deltas. Never concatenate them or parse exception text.
+        preview = chunk.text
+
+    try:
+        result = await session.execute_bash(
+            command,
+            **dict(options),
+            **({"on_output": observe} if options else {}),
+        )
+    except RuntimeError as error:
+        details = getattr(error, "tool_result_details", None)
+        if not options or not isinstance(details, Mapping):
+            raise
+        counts = [
+            details.get("stdout_total_bytes"),
+            details.get("stderr_total_bytes"),
+        ]
+        if (
+            type(details.get("exit_code")) is not int
+            or details["exit_code"] == 0
+            or details.get("timed_out") is not False
+            or details.get("cancelled") is not False
+            or details.get("truncated") is not False
+            or details.get("stdio_complete") is not True
+            or details.get("stdio_drain_reason") is not None
+            or details.get("artifact_retention_error") is not None
+            or any(type(n) is not int or n < 0 for n in counts)
+            or sum(cast(list[int], counts)) != len(preview.encode("utf-8"))
+        ):
+            raise
+        result = bash_result_from_tool_result(
+            AgentToolResult(
+                content=[TextPart(type="text", text=preview)],
+                details=dict(details),
+            )
+        )
+    return result
+
 
 
 class CommandToolExecutor(Protocol):

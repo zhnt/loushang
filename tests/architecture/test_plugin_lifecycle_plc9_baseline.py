@@ -991,20 +991,88 @@ def test_plc9_freezes_the_current_management_and_enablement_split() -> None:
     assert "The enablement migration is one-way" in _source(BASELINE)
 
 
+# Optional moved sites: old passing inventories remain passing; no new required owner.
+_MANAGED_MANIFEST_OPTIONAL_FILES = {
+    Path("src/loushang/coding/_base_plugin.py"),
+    Path("src/loushang/coding/_capability_plugin_composition.py"),
+    Path("src/loushang/harness/plugin_management/assembly.py"),
+}
+_MANAGED_MANIFEST_OPTIONAL_SCOPES = Counter(
+    {
+        (
+            Path("src/loushang/coding/_base_plugin.py"),
+            "prepare_managed_coding_base_plugin_assembly",
+        ): 1,
+        (
+            Path("src/loushang/coding/_capability_plugin_composition.py"),
+            "_resolve_managed_capability_plugins",
+        ): 1,
+        (
+            Path("src/loushang/harness/plugin_management/assembly.py"),
+            "_prepare_managed_plugin_runtime",
+        ): 1,
+        (
+            Path("src/loushang/harness/plugin_management/assembly.py"),
+            "_resolve_managed_plugin_runtimes",
+        ): 1,
+    }
+)
+
+
+# Retired/moved lineage sites are optional; no new required sink or route.
+_PREPARATION_LINEAGE_OPTIONAL_MANIFEST_FILES = {
+    Path("src/loushang/coding/_product_capability_plugin_composition.py"),
+}
+_PREPARATION_LINEAGE_OPTIONAL_SOURCE_FILES = {
+    Path("src/loushang/coding/_product_capability_plugin_composition.py"),
+    Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
+}
+_PREPARATION_LINEAGE_OPTIONAL_SCOPES = Counter(
+    {
+        (
+            Path("src/loushang/coding/_product_capability_plugin_composition.py"),
+            "_validate_product_lineage",
+        ): 1,
+        (
+            Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
+            "validate_preparation_lineage",
+        ): 1,
+    }
+)
+
+
 def test_plc9_inventories_every_legacy_plugin_enablement_token_file() -> None:
     inventory = _source(INVENTORY)
 
     assert _python_files_containing("disabled_plugins") == LEGACY_DISABLED_PLUGIN_FILES
-    assert _python_files_containing("manifest.enabled") == MANIFEST_ENABLED_FILES
-    assert _python_files_containing("source.enabled") == SOURCE_ENABLED_FILES
+    assert (
+        _python_files_containing("manifest.enabled")
+        - _MANAGED_MANIFEST_OPTIONAL_FILES
+        - _PREPARATION_LINEAGE_OPTIONAL_MANIFEST_FILES
+        == MANIFEST_ENABLED_FILES
+        - _MANAGED_MANIFEST_OPTIONAL_FILES
+        - _PREPARATION_LINEAGE_OPTIONAL_MANIFEST_FILES
+    )
+    assert (
+        _python_files_containing("source.enabled")
+        - _PREPARATION_LINEAGE_OPTIONAL_SOURCE_FILES
+        == SOURCE_ENABLED_FILES - _PREPARATION_LINEAGE_OPTIONAL_SOURCE_FILES
+    )
     assert _semantic_token_scope_counts("disabled_plugins") == (
         LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS
     )
-    assert _semantic_token_scope_counts("manifest.enabled") == (
-        MANIFEST_ENABLED_SCOPE_COUNTS
+    assert (
+        _semantic_token_scope_counts("manifest.enabled")
+        - _MANAGED_MANIFEST_OPTIONAL_SCOPES
+        - _PREPARATION_LINEAGE_OPTIONAL_SCOPES
+        == MANIFEST_ENABLED_SCOPE_COUNTS
+        - _MANAGED_MANIFEST_OPTIONAL_SCOPES
+        - _PREPARATION_LINEAGE_OPTIONAL_SCOPES
     )
-    assert _semantic_token_scope_counts("source.enabled") == (
-        SOURCE_ENABLED_SCOPE_COUNTS
+    assert (
+        _semantic_token_scope_counts("source.enabled")
+        - _PREPARATION_LINEAGE_OPTIONAL_SCOPES
+        == SOURCE_ENABLED_SCOPE_COUNTS - _PREPARATION_LINEAGE_OPTIONAL_SCOPES
     )
     assert _semantic_token_scope_counts("PluginManager") == Counter()
     for path in LEGACY_DISABLED_PLUGIN_FILES | SOURCE_ENABLED_FILES:

@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import re
-import subprocess
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -17,6 +14,7 @@ from uuid import uuid4
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.policy import ToolPolicySubject
 from loushang.harness.session.call_allowance import ModelCallAllowance
+from loushang.harness.workspace.git import observe_workspace_inventory
 from loushang.harnesswork import WorkOperation, WorkRunSpec, WorkStepSpec
 from loushang.harnesswork.goal import (
     GoalBasis,
@@ -64,68 +62,17 @@ ACTION_EVIDENCE = {
 
 def workspace_snapshot(root: Path):
     """Bounded identity, including dirty and new files; never used by progress."""
-    query = subprocess.run(
-        [
-            "git",
-            "-c",
-            "core.fsmonitor=false",
-            "ls-files",
-            "-z",
-            "--stage",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-        ],
-        cwd=root,
-        capture_output=True,
-        timeout=2,
+    return observe_workspace_inventory(
+        root,
+        max_files=10000,
+        max_bytes=128 * 1024 * 1024,
+        ignored_directories=frozenset({".git", ".venv", "node_modules", "__pycache__"}),
+        error_type=GoalError,
+        submodule_error="interactive Goal snapshot does not support Git submodules",
+        file_limit_error="workspace snapshot exceeds 10000 files",
+        external_link_error="workspace snapshot contains an external link",
+        byte_limit_error="workspace snapshot exceeds 128 MiB",
     )
-    names: list[str]
-    if query.returncode == 0:
-        selected_names: set[str] = set()
-        for entry in query.stdout.split(b"\0"):
-            if not entry:
-                continue
-            header, separator, raw_name = entry.partition(b"\t")
-            if separator and re.fullmatch(rb"[0-7]{6} [0-9a-f]{40,64} [0-3]", header):
-                if header.startswith(b"160000 "):
-                    raise GoalError(
-                        "interactive Goal snapshot does not support Git submodules"
-                    )
-                selected_names.add(os.fsdecode(raw_name))
-            else:
-                selected_names.add(os.fsdecode(entry))
-        names = sorted(selected_names)
-    else:
-        names = []
-        for parent, dirs, files in os.walk(root, followlinks=False):
-            dirs[:] = [
-                d
-                for d in dirs
-                if d not in {".git", ".venv", "node_modules", "__pycache__"}
-            ]
-            names.extend(
-                (Path(parent) / name).relative_to(root).as_posix() for name in files
-            )
-            if len(names) > 10000:
-                raise GoalError("workspace snapshot exceeds 10000 files")
-    if len(names) > 10000:
-        raise GoalError("workspace snapshot exceeds 10000 files")
-    result, size = {}, 0
-    for name in names:
-        path = root / name
-        if not path.resolve().is_relative_to(root):
-            raise GoalError("workspace snapshot contains an external link")
-        if path.is_symlink():
-            result[name] = "symlink:" + os.readlink(path)
-        elif path.is_file():
-            size += path.stat().st_size
-            if size > 128 * 1024 * 1024:
-                raise GoalError("workspace snapshot exceeds 128 MiB")
-            result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-        else:
-            result[name] = "missing"
-    return result
 
 
 class _TaskAllowance(PlanningCallAllowance):

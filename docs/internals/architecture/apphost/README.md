@@ -256,6 +256,19 @@ The accepted target adds, by separately reviewed slices:
 4. orthogonal embedded delivery-profile composition; and
 5. optional hosted and serialized-launch adapters.
 
+A203 places complete shared client connection configuration in the existing
+optional `client_preferences` owner, reusing the original Harness Config atomic
+writer. The preference SQLite table and connection JSON/serialization lock keep
+their separate existing protocols. Code retains request/platform policy and
+public reexports; this adds no core facade or runtime construction. See the
+[accepted connection-state design](../harness/key-designs/client-connection-state-convergence.md).
+
+A205 adds complete same-object managed command run/close/probe/native retirement
+within the optional integration family. Existing managed owners retain actual IO;
+Code keeps qualification, selection, presentation and UI/Runner bindings. No new
+core facade, command instance or Task engine is introduced. See the
+[managed lifetime design](../harness/key-designs/managed-command-lifecycle-convergence.md).
+
 ## Owns
 
 - AppHost Product/profile contract vocabulary;
@@ -431,6 +444,11 @@ after Product/OEM admission, never through a derived module name.
   discovery values on the same original Product catalog instance; this adds no
   hosted binder, service, transport or default entrypoint. See the
   [accepted custody design](../harness/key-designs/canonical-transcript-catalog-custody-convergence.md);
+  A202 extends that same optional owner with complete workspace collection
+  routing and retirement. Existing WorkspaceRegistry and child Transcript owners
+  retain native IO; Code keeps the actual catalog class, old-store/Windows
+  construction, candidate-open policy and thin workspace response adapter.
+  There is no additional AppHost, registry, Session owner or core-facade edge.
 - `tests/coding/test_apphost_product.py` and
   `tests/architecture/test_hosted_product_runtime_g8_join.py` prove the exact
   G8 receipt, recovery, ownership, multi-profile/Session, fault, cleanup, and

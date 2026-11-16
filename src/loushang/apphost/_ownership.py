@@ -5,9 +5,13 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from .errors import CleanupIncompleteError
+
+if TYPE_CHECKING:
+    from .catalog import AppHostCatalogV1
+    from .runtime import AppHostRuntimeV1
 
 AsyncClose = Callable[[], Awaitable[None]]
 AsyncCall = Callable[..., Awaitable[Any]]
@@ -220,6 +224,42 @@ def read_static_property(value: object, name: str) -> object:
     if inspect.getattr_static(value, name, None) is not descriptor:
         raise TypeError("instance property shadow is forbidden")
     return descriptor.__get__(value, type(value))
+
+
+class _ConstructionCloseOwner(Protocol):
+    async def close(self) -> None: ...
+
+
+async def _settle_failed_product_construction(
+    runtime: AppHostRuntimeV1 | None,
+    catalog: AppHostCatalogV1 | None,
+    product_factory: _ConstructionCloseOwner,
+    *,
+    error_code: str,
+    join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
+) -> None:
+
+    async def settle() -> None:
+        failures: list[BaseException] = []
+        if runtime is not None:
+            try:
+                await runtime.close()
+            except BaseException as error:
+                failures.append(error)
+        elif catalog is not None:
+            try:
+                await catalog.close()
+            except BaseException as error:
+                failures.append(error)
+        try:
+            await product_factory.close()
+        except BaseException as error:
+            failures.append(error)
+        if failures:
+            raise RuntimeError(error_code) from None
+
+    task = asyncio.create_task(settle())
+    await join_owned(task)
 
 
 __all__: list[str] = []

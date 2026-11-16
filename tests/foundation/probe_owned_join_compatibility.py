@@ -48,6 +48,12 @@ FIXTURE = Path(__file__).with_name("fixtures") / "owned_join_v1.json"
 
 
 def load_join(module_name, function):
+    if (module_name, function) == (
+        "loushang.coding.hosted_continuity",
+        "_join_runtime",
+    ):
+        # The complete attempt program now executes at the existing AppHost owner.
+        module_name = "loushang.apphost.continuity"
     if module_name == "loushang.harness.extensions.runner":
         # Use the existing canonical facade's import order. Importing its
         # implementation first exposes an unrelated, pre-existing cycle.

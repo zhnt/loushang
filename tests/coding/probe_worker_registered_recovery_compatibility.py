@@ -650,7 +650,7 @@ def observe(name, base, patch):
         )
         fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
         try:
-            repair._publish_intent(fd, intent)
+            repair._repair_journal().publish(fd, intent.attempt_id, intent)
         finally:
             os.close(fd)
     else:
@@ -697,7 +697,7 @@ def observe(name, base, patch):
             intent = dataclasses.replace(intent, lease_id="f" * 64)
         fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
         try:
-            repair._publish_intent(fd, intent)
+            repair._repair_journal().publish(fd, intent.attempt_id, intent)
             if case == "stage-absent" or program == "registered-verify":
                 sf = os.open(stage, os.O_RDONLY | os.O_DIRECTORY)
                 try:
