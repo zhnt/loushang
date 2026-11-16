@@ -71,7 +71,11 @@ from .hosted_catalog import (
     CodingHostedCatalogError,
     CodingHostedHistoryCandidateBindingV1,
 )
-from .hosted_user_choice import ASK_USER, HostedUserChoice
+from .hosted_user_choice import (
+    ASK_USER,
+    HostedUserChoice,
+    pending_choice_from_transcript,
+)
 from .package_product_runtime import (
     CodingFencedProductApplicationSelection,
 )
@@ -139,6 +143,7 @@ class CodingHostedHistoryBindingV1:
             title=_session_title(title, (entry.payload for entry in history.records)),
             revision=0, running=False, records=tuple(records),
             truncated=omitted,
+            user_choice=pending_choice_from_transcript(history.selected_records, identity.session_id),
         )
 
     @property
