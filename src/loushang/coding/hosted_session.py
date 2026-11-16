@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import sys
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from secrets import token_hex
@@ -56,6 +56,8 @@ from loushang.harness.transcript.session_catalog import (
 )
 from loushang.harness.transcript.types import AgentTranscriptContext
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
+from loushang.harnesswork.goal import GoalError
+from loushang.harnesswork.goal.tasks import GoalTask
 
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
@@ -94,6 +96,7 @@ CodingHostedProductRuntimeFactoryForSession = Callable[
 ]
 
 if TYPE_CHECKING:
+    from .adapters.goal import CodingGoal
     from .hosted_resume import CodingDeferredHostedSessionV1
 
 
@@ -185,6 +188,15 @@ class CodingHostedHistoryBindingV1:
         self._closed = True
 
 
+@dataclass(frozen=True, slots=True)
+class _InteractiveGoalStatus:
+    goal_id: str
+    status: str
+    revision: int
+    epoch: int
+    execution_unresolved: bool
+
+
 class CodingRealHostedSessionV1(_HostedApprovalPresentation):
     _approval_action = "Tool approval"
     _approval_limit = staticmethod(lambda: _MAX_INTERACTIONS)
@@ -200,6 +212,8 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         session: AgentSession,
         identity: SessionIdentityV1,
         approval: InteractiveApprovalResolver,
+        *,
+        workspace: Path | None = None,
     ) -> None:
         self._session = session
         self.identity = identity
@@ -209,7 +223,11 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         self._revision = 0
         self._close_task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
-        self._execution_claimed = False
+        self._execution_idle_for_goal: Callable[[], bool] | None = None
+        self._workspace = workspace if workspace is not None else Path(session.session_manager.get_cwd()).resolve()
+        self._interactive_goal_owner: CodingGoal | None = None
+        self._interactive_goal_id: str | None = None
+        self._interactive_goal_lock = asyncio.Lock()
         self._user_choice = HostedUserChoice()
         session.set_approval_presenter(
             self._present_approval, dismisser=self._dismiss_approval
@@ -228,15 +246,91 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
 
     @property
     def execution_claimed(self) -> bool:
-        return self._execution_claimed
+        return self._execution_idle_for_goal is not None
 
-    def claim_execution(self) -> None:
-        if self._execution_claimed or self._close_task is not None:
+    def claim_execution(self, idle_for_goal: Callable[[], bool]) -> None:
+        if self.execution_claimed or self._close_task is not None:
             raise ValueError("Coding Session already has an execution owner")
-        self._execution_claimed = True
+        self._execution_idle_for_goal = idle_for_goal
 
     def release_failed_execution_claim(self) -> None:
-        self._execution_claimed = False
+        self._execution_idle_for_goal = None
+
+    def _require_interactive_goal_admission(self) -> None:
+        session = self._session
+        if self._close_task is not None or not session.execution_available:
+            raise GoalError("Hosted Session is unavailable for an interactive Goal")
+        if self._execution_idle_for_goal is not None and not self._execution_idle_for_goal():
+            raise GoalError("Hosted execution is busy, closing, or reserved for a fixed profile")
+        if self._title_task is not None and not self._title_task.done():
+            raise GoalError("Hosted Session is finishing title generation")
+        if not is_usable_model_selection(normalize_model_selection(session.agent.model)):
+            raise GoalError("Interactive Goal requires the current Hosted model")
+        manager = session.session_manager
+        if not manager.is_persisted():
+            raise GoalError("Interactive Goal requires a persistent Transcript")
+        if Path(manager.get_cwd()).resolve() != self._workspace or session.session_id != self.identity.session_id:
+            raise GoalError("Interactive Goal requires the original Hosted Session and Workspace")
+
+    async def create_interactive_goal(self, target: str) -> _InteractiveGoalStatus:
+        """Bind the current Product Session and record one user target."""
+        from .adapters.goal import GoalConstructionError
+        from .adapters.interactive_goal import InteractiveGoal
+
+        task = GoalTask(target)
+        if self._interactive_goal_lock.locked():
+            raise GoalError("Interactive Goal ownership is already changing")
+        async with self._interactive_goal_lock:
+            self._require_interactive_goal_admission()
+            if self._interactive_goal_owner is not None:
+                raise GoalError("Hosted Session already owns an interactive Goal")
+            try:
+                owner = await InteractiveGoal.attach(session=self._session)
+            except GoalConstructionError as error:
+                self._interactive_goal_owner = error.owner
+                raise
+            self._interactive_goal_owner = owner
+            try:
+                goal_id = await owner.create_task(task, check_current=self._require_interactive_goal_admission)
+            except BaseException as error:
+                try:
+                    await self._close_interactive_goal_locked()
+                except BaseException as cleanup:
+                    raise GoalConstructionError(owner, error) from cleanup
+                raise
+            self._interactive_goal_id = goal_id
+            return self._interactive_goal_status(owner, goal_id)
+
+    def interactive_goal_status(self) -> _InteractiveGoalStatus | None:
+        if self._close_task is not None or self._interactive_goal_lock.locked():
+            raise GoalError("Hosted interactive Goal is changing ownership or closing")
+        owner, goal_id = self._interactive_goal_owner, self._interactive_goal_id
+        if owner is None:
+            return None
+        if goal_id is None:
+            raise GoalError("Interactive Goal construction cleanup is pending")
+        return self._interactive_goal_status(owner, goal_id)
+
+    @staticmethod
+    def _interactive_goal_status(owner: CodingGoal, goal_id: str) -> _InteractiveGoalStatus:
+        core = owner.controller
+        state = core.query(goal_id)
+        return _InteractiveGoalStatus(
+            state.id, state.status, state.revision, state.epoch,
+            core.fenced or core.facts().unresolved,
+        )
+
+    async def close_interactive_goal(self) -> None:
+        """Retire the borrowed Goal scope before releasing the original Session."""
+        async with self._interactive_goal_lock:
+            await self._close_interactive_goal_locked()
+
+    async def _close_interactive_goal_locked(self) -> None:
+        owner = self._interactive_goal_owner
+        if owner is not None:
+            await owner.close()
+            self._interactive_goal_owner = None
+            self._interactive_goal_id = None
 
     async def lookup_resume_input(
         self, query: CodingResumeInputLookupQueryV1,
@@ -370,6 +464,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         await asyncio.shield(task)
 
     async def _close_once(self) -> None:
+        await self.close_interactive_goal()
         self._user_choice.clear()
         self._approval.end_session()
         if self._title_task is not None:
@@ -380,7 +475,9 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
 
     @property
     def execution_available(self) -> bool:
-        return self._session.execution_available
+        return self._session.execution_available and (
+            self._interactive_goal_owner is None or not self._session.runtime.execution_admission.execution_reserved
+        )
 
     def create_execution_work(
         self, text: str, cancel_requested: Callable[[], bool],
@@ -564,7 +661,9 @@ class CodingRealHostedSessionFactoryV1:
                 await manager.append_model_change(
                     selection.provider, selection.model_id, endpoint_id=selection.endpoint_id,
                 )
-            real_binding = CodingRealHostedSessionV1(session, identity, approval)
+            real_binding = CodingRealHostedSessionV1(
+                session, identity, approval, workspace=opaque_session_binding.record.scope.cwd,
+            )
             if self._user_choice_enabled:
                 real_binding.enable_user_choice()
             opaque_session_binding.take_manager()

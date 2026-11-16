@@ -195,6 +195,11 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
             await require_submission_rejected(client, first)
             before = transcript(session_a)
             if not managed:
+                owner = await client._session(first.attachment_id, first.controller_generation, first.member_id)
+                product = owner._port._product_binding
+                assert type(product) is CodingDeferredHostedSessionV1
+                assert product._active is None
+                assert not hasattr(product, "create_interactive_goal")
                 entered, release = asyncio.Event(), asyncio.Event()
                 current_plan = CodingDeferredHostedSessionV1._current_plan
 

@@ -213,6 +213,8 @@ def test_tool_only_rounds_stay_in_history_without_empty_hosted_messages(tmp_path
             for entry in history.records
         )
         restored = CodingHostedHistoryBindingV1(binding.identity, history)
+        assert restored.control is None
+        assert not hasattr(restored, "create_interactive_goal")
         assert [row.text for row in restored.project_snapshot().records[:-1]] == expected
 
     asyncio.run(scenario())

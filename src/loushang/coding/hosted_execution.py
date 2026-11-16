@@ -155,7 +155,7 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
         self._closing = False
         self._execution_close_task: asyncio.Task[None] | None = None
         if type(binding) is CodingRealHostedSessionV1:
-            binding.claim_execution()
+            binding.claim_execution(self._idle_for_interactive_goal)
         try:
             super().__init__(binding if owner is None else owner, execution_submission=type(binding) is CodingDeferredHostedSessionV1)
         except BaseException:
@@ -168,6 +168,12 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     @property
     def execution_state(self) -> ExecutionStateV1 | None:
         return self._guard.state
+
+    def _idle_for_interactive_goal(self) -> bool:
+        if type(self) is not CodingHostedExecutionSessionV1 or self._closing or self._model_lock.locked():
+            return False
+        state = self._guard.state
+        return state is None or state.status.terminal
 
     def require_submission_ready(self) -> None:
         self._require_execution_open()
