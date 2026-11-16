@@ -1,8 +1,8 @@
 # C07 Worker 职责收敛与删减
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — native cleanup and mutation scope accepted by implementation owner; remaining chains under review
-- Implementation status: partial; first native/retirement slice locally checked, full C07 not delivered
+- Design status: partial acceptance — native cleanup, retirement reuse and Linux history publication accepted by implementation owner; remaining chains under review
+- Implementation status: partial; three slices locally checked, full C07 not delivered
 - Owner: Coding / Harness Worker / Package Product / Hosting
 - 执行基线：`cb54b4b6d13e82d7cb9043862ab67c20293e7b9f`；开始时 fetch 后 main 与 lane/harness 相同。
 - 方法查阅：本机 archmethod clean `master`，`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`；不声称与方法上游同步。
@@ -22,7 +22,7 @@
 | 完整链路归已有 owner，旧实现退出 | 实际调用路径、替代实现、差分与失败路径验证 | 尚未完成 |
 | 先复用、再删除，核实动态与兼容消费者 | 基线对照、公开/名义契约及原测试 | 尚未完成 |
 | 无平行框架或大量回调搬运 | 原 owner 接入与新增成本复核 | 候选设计中 |
-| 系统成本与纯去重分别报告 | Coding/Harness/Hosting/其他/总量，测试和文档单列 | 已记录迁移/去重成本，累计生产 +16 |
+| 系统成本与纯去重分别报告 | Coding/Harness/Hosting/其他/总量，测试和文档单列 | 已记录迁移/去重成本，累计生产 +127 |
 | 正常、失败、恢复、退休兼容 | 现有适用本地检查及远端平台实际结果 | 局部回归/差分已过，完整验证尚未完成 |
 | PR→lane/harness→main、同步、清理、暂停 | 已合并 PR、提交树、分支和 Goal 返回状态 | 尚未交付 |
 
@@ -40,7 +40,7 @@
 Windows payload 的直接函数搬迁尚未采用：该模块目前 498 行，主要三条流程为 pending 规划、物化和请求绑定。若通过库存、Supervisor、marker、错误及值构造的多组回调照搬，会产生额外接口成本，不能据迁出行数宣称删减。
 后续候选须先比较现有 owner 的直接复用、同域去重与迁移方案，再选择最低必要复杂度。未经源码和实际接线验证，不把候选写成已完成。
 
-当前生产变化：Coding −88、Harness +104、Hosting 0、其他 0、系统总量 +16。测试 +2 行，仅将现有故障注入接缝移至真实共享 owner；无新增 case、断言或 PR 门禁。文档净变化在最终交付单列，当前尚在更新。
+当前生产变化：Coding −182、Harness +309、Hosting 0、其他 0、系统总量 +127。测试 +2 行，仅将现有故障注入接缝移至真实共享 owner；无新增 case、断言或 PR 门禁。文档净变化在最终交付单列，当前尚在更新。尚未实现系统净删减，不将 Coding 迁出量计为系统收益。
 
 ## 兼容与验证义务
 
@@ -86,36 +86,50 @@ Windows payload 的直接函数搬迁尚未采用：该模块目前 498 行，�
 
 尝试将 Windows payload 的 ACL/root/inventory/create scope 再包入 `_worker_windows_attempt`，原型 27 组差分相同（17 组触发故障），但 Coding 仅 −21、Harness +59、系统 +38，并增加单消费者的参数/回调装配。实际 native stage 创建原本就直接复用 `_windows_stage_io`，该额外包装的成本不足以由复用收益支持，已完整撤回，生产收益记 0。此原型结果不是当前候选的验证凭据，Windows 物化职责仍待完整链路复核。
 
+## 第三批：Linux 历史发布整链归既有 Product owner
+
+本批由 Codex 实现 owner 在 C07 授权范围内接受。六项操作（preflight、stage、rollback、commit、retire、seal）的 runtime/GC、固定根及发布协调转入原 `_linux_worker_history`，直接调用原 `HistoryProofBindings`、实际 `PreparationHistory`、`HistoryPublication` 和 reader，不新增绑定记录、账本、恢复器或物理 I/O 回调。Coding 保留名义 DTO/错误、公开及必要 under-guard 入口、Product/平台准入和实时配额。
+
+这是一条完整发布生命周期的职责归位，而非六份算法去重：原 preparation/publication 引擎本已共享。四段相同的固定根绑定程序现共用一个上下文；其他旧协调体随接线删除。保留各操作真实差异：stage/preflight 将活跃租约交证据 owner 拒绝；rollback 不新增拒绝；已存在 owner 的 commit 重试跳过 V1 重证，可在活跃租约下继续；retire/seal 在 GC 之前拒绝。保持两次 index 配额读取的原时点、发布后的 authority 复核，以及锁/绑定退出异常的优先级。
+
+本批 Coding −94、Harness +205、系统 +111；累计 +127。成本主要来自显式名义类型/错误/配额适配和六项独立操作入口，避免用布尔分派或统一活跃租约规则压缩差异。接受理由是同一既有 Product owner 现在持有整条发布链的锁与根寿命，Coding 不再协调物理发布；不是为了行数下降。对单消费者 scope 包装的拒绝仍有效，不把此次归位宣称为系统精简。
+
+- 现有五组历史发布回归：31 passed，覆盖真实 Product、五流发布、部分写入、回滚、重试和退休。
+- 现有 publication compatibility 与 import boundaries：173 passed。两组结果有覆盖重叠，不相加声称独立用例总数。
+- 仓库外对照精确基线原程序：114 组比较一致，其中 72 组实际注入故障。六操作的事件/异常链、真实 rooted fixture 文件字节、两次重试及剩余文件一致；覆盖 runtime/GC/root/bind/写入/删除/退出故障、活跃租约、非法 cutoff、已提交 owner 重试和中途配额改变。锁及 review 事实使用现有合成模型，不替代原生平台验证。
+- 112 个模块的公开函数签名、公开类完整 AST 和显式 `__all__` 保持基线。两个改动测试文件的 46 条既有 assert、14 个测试函数的签名/参数化完全未变，只调整故障注入目标及 fake 的 bindings 参数。
+- 六个生产源 scoped mypy、八文件 Ruff 通过；最终适用完整回归和远端平台检查尚未完成。
+
 ## 逐文件初始清点
 
-下表记录基线实物，所属链仅用于复核排序。全部文件已静态清点，下表列出已完成源码复核的具体保留或残留结论，其余明确标记待复核。保留结论依据实际委托、名义/格式/产品职责及消费者；不因为文件短而保留，也不据静态无引用删除。最终相关回归尚未完成。
+下表记录基线实物，所属链仅用于复核排序。全部文件已静态清点，53 个已完成源码职责复核，59 个待复核；其中两项仍混合，需要继续评估。保留结论依据实际委托、名义/格式/产品职责及消费者；不因为文件短而保留，也不据静态无引用删除。源码职责复核不等于最终平台/兼容验收，相关完整回归尚未完成。
 
 | 文件（相对 Coding） | 基线行 | 源码引用文件 | 测试引用文件 | 复核链 | 当前语义处置 |
 | --- | ---: | ---: | ---: | --- | --- |
 | `package_product_worker_activation_base_v2.py` | 32 | 3 | 5 | 历史/状态/证据 | 保留公开 C5 replay/base 名义类、字段和原类型绑定；重放及 wire schema 用现有 _activation_base。 |
 | `package_product_worker_activation_history.py` | 53 | 15 | 10 | 历史/状态/证据 | 保留公开 retained-attempt 名义字段及 decode/validate 兼容名；fold/project 均用原 _activation，私有 alias 退出候选另审。 |
-| `package_product_worker_activation_state.py` | 113 | 5 | 12 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_activation_state_journal.py` | 88 | 3 | 9 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_activation_state.py` | 113 | 5 | 12 | 历史/状态/证据 | 保留候选信任类/Product 准入、名义 Store 和公开 typed 入口；POSIX CAS 用原 ProductActivationStateStore，Windows 用原 Journal，无第二 CAS 实现。 |
+| `package_product_worker_activation_state_journal.py` | 88 | 3 | 9 | 历史/状态/证据 | 保留名义 Journal、动态配额/record codec/Profile、Coding retained type 与 stream_index=2 的 checkpoint 来源绑定；物理存储/重放用原 SegmentedActivationJournal。 |
 | `package_product_worker_capability.py` | 151 | 4 | 4 | Session/Provider 消费者 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_cleanup_evidence.py` | 113 | 3 | 3 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_crash_c5_settlement.py` | 102 | 3 | 6 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_discovery.py` | 95 | 2 | 3 | Session/Provider 消费者 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_cleanup_evidence.py` | 113 | 3 | 3 | 恢复/退休/清理 | 保留 Coding authority ID/fingerprint、名义继承关系与 typed 兼容方法；实际重开/树结算/跨 boot absence/注册租约证明用原 CleanupEvidenceAuthority。 |
+| `package_product_worker_crash_c5_settlement.py` | 102 | 3 | 6 | 恢复/退休/清理 | 保留名义错误、typed evidence authority 继承/构造和公开及必要 under-guard 兼容入口；crash C5 事务用原 _linux_worker_recovery，私有 alias 另审。 |
+| `package_product_worker_discovery.py` | 95 | 2 | 3 | Session/Provider 消费者 | 保留 Coding SessionManager 实例、持久化 Session/路径一致性准入、Profile codec 与选择错误；发现/附着读取算法在原 _AttachedDiscoveryMethods，无 activation 权限。 |
 | `package_product_worker_gc_references.py` | 45 | 1 | 2 | 历史/状态/证据 | 保留带 Coding 名称的只读 GC 查询入口与签名；匹配算法用原 _retention，不新增账本或删除授权。 |
 | `package_product_worker_history_checkpoint.py` | 288 | 9 | 23 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_history_checkpoint_anchor.py` | 66 | 4 | 14 | 历史/状态/证据 | 保留 checkpoint anchor 名义记录/错误类型；原 _anchor 完成读写与固定根操作。 |
-| `package_product_worker_history_commit_v2.py` | 138 | 0 | 13 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_history_cutover_v2.py` | 99 | 2 | 9 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_history_commit_v2.py` | 138 | 0 | 13 | 历史/状态/证据 | 保留公开 API、名义错误、cutoff/Product 准入和原 HistoryPublication 实例/配额；完整持锁提交与 owner 重试转入原 _linux_worker_history，旧协调体删除。 |
+| `package_product_worker_history_cutover_v2.py` | 99 | 2 | 9 | 历史/状态/证据 | 保留 stream-cutover/index 名义字段、实际 Coding 类型绑定与历史 wire；解析/共同校验用原 _StreamCutoverMethods/_IndexMethods。 |
 | `package_product_worker_history_deletion_v2.py` | 34 | 1 | 13 | 历史/状态/证据 | 保留 V2 deletion-ledger 字段及实际 Coding prepared 类型绑定；解析/债务关联用原 _DeletionLedgerMethods。 |
-| `package_product_worker_history_preflight_v2.py` | 93 | 2 | 4 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_history_prepared_v2.py` | 112 | 5 | 9 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_history_read_v2.py` | 98 | 9 | 19 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_history_preflight_v2.py` | 93 | 2 | 4 | 历史/状态/证据 | 保留公开/必要私有签名及名义 preflight 错误、Product 准入；cutoff 机制和 runtime/GC 下证据准备由原 _linux_worker_history 唯一执行。 |
+| `package_product_worker_history_prepared_v2.py` | 112 | 5 | 9 | 历史/状态/证据 | 保留 prepared 名义字段及五种实际 Coding base 类型绑定；两个证明入口委托原 _PreparedMethods/retained reference closure，不新增证明引擎。 |
+| `package_product_worker_history_read_v2.py` | 98 | 9 | 19 | 历史/状态/证据 | 保留五种 replay union、retained-history 名义字段、错误及实际 preparation/checkpoint/ledger 类型绑定；读/预提交证明唯一由原 RetainedHistoryReader 执行。 |
 | `package_product_worker_history_retention.py` | 364 | 8 | 6 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_history_retire_v2.py` | 88 | 0 | 6 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_history_retire_v2.py` | 88 | 0 | 6 | 恢复/退休/清理 | 保留 Linux/Product 准入、名义错误、原 publication 与实时配额 Profile；退休锁/根文件寿命转入原 _linux_worker_history，旧协调体删除。 |
 | `package_product_worker_history_retirement_preview.py` | 71 | 2 | 10 | 恢复/退休/清理 | 保留 anchor/checkpoint/snapshot/错误类型 Profile 和公开 preview；结构校验/投影用原 _PreviewMethods，默认不授予删除。 |
-| `package_product_worker_history_rotate_v2.py` | 75 | 0 | 5 | 历史/状态/证据 | 仍混合：Linux/Product 准入与空 Supervisor checkpoint 选择保留；quiescence/GC 与封口协调继续评估，实际封口已用 HistoryPublication。 |
+| `package_product_worker_history_rotate_v2.py` | 75 | 0 | 5 | 历史/状态/证据 | 保留 Linux/Product 准入、名义错误、封存配额和公开入口；空 Supervisor checkpoint 证明及完整封存协调转入原 _linux_worker_history，实际封存仍用原 HistoryPublication。 |
 | `package_product_worker_history_segments.py` | 18 | 7 | 37 | 历史/状态/证据 | 保留既有历史存储兼容命名空间、公开及必要私有转发；实际存储只在原 _segmented_history，无第二实现。 |
-| `package_product_worker_history_stage_v2.py` | 178 | 5 | 23 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_history_stream_snapshot.py` | 120 | 5 | 24 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_history_stage_v2.py` | 178 | 5 | 23 | 历史/状态/证据 | 保留 preparation intent 名义字段/schema、公开 under-guard 入口、Product 准入与配额；完整 stage/rollback 由原 _linux_worker_history 调用实际 PreparationHistory。 |
+| `package_product_worker_history_stream_snapshot.py` | 120 | 5 | 24 | 历史/状态/证据 | 保留 snapshot 名义字段、准确 Product/五流顺序准入、配额与 V2 reader 绑定；物理读/捕获/prefix extension 用原 SnapshotHistory。 |
 | `package_product_worker_history_v2_names.py` | 4 | 4 | 17 | 历史/状态/证据 | 保留固定 V2 格式兼容导出；名称事实源仅为原 _v2_names。 |
 | `package_product_worker_installed_native.py` | 154 | 7 | 6 | 载荷/原生材料/待启动 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_native_approval.py` | 242 | 8 | 10 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
@@ -138,7 +152,7 @@ Windows payload 的直接函数搬迁尚未采用：该模块目前 498 行，�
 | `package_product_worker_query_consumer.py` | 159 | 9 | 5 | Session/Provider 消费者 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_receipt.py` | 602 | 26 | 20 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_receipt_base_v2.py` | 44 | 3 | 3 | 回执/意图/批准 | 保留公开 receipt replay/base 字段、名义 replay 与原 segment codec 绑定；共同行为用 _ReceiptBaseMethods。 |
-| `package_product_worker_registered_c5_settlement.py` | 102 | 1 | 3 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_registered_c5_settlement.py` | 102 | 1 | 3 | 恢复/退休/清理 | 保留名义错误及 registered evidence authority 继承、实际 Code review/bindings 和兼容签名；witness/重开/结算均用原 _linux_worker_recovery。 |
 | `package_product_worker_registered_payload_repair.py` | 273 | 2 | 7 | 载荷/原生材料/待启动 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_registered_recovery.py` | 199 | 5 | 6 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_resume.py` | 196 | 5 | 5 | Session/Provider 消费者 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
@@ -153,7 +167,7 @@ Windows payload 的直接函数搬迁尚未采用：该模块目前 498 行，�
 | `package_product_worker_windows_activation_state_journal.py` | 59 | 8 | 6 | 历史/状态/证据 | 保留 Windows/准确 Product 准入、配额、retained 名义类型及公开方法签名；原 WindowsActivationStateJournal 控制 IO/CAS。 |
 | `package_product_worker_windows_backend_release.py` | 129 | 3 | 5 | 载荷/原生材料/待启动 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_base_files.py` | 25 | 5 | 0 | 历史/状态/证据 | 保留磁盘存量对应的固定 v1 base/cutover 文件名及支持中的导出；纯布局 Profile，不是第二个存储。 |
-| `package_product_worker_windows_c5_base.py` | 91 | 2 | 4 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_windows_c5_base.py` | 91 | 2 | 4 | 历史/状态/证据 | 保留 C5 base/replay 名义字段、实际 StateRecord decoder、配额及 preparation 类型/semantic 准入；重放用原 _WindowsC5BaseMethods。 |
 | `package_product_worker_windows_checkpoint.py` | 466 | 3 | 6 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_cleanup_evidence.py` | 387 | 3 | 5 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_crash_c5_settlement.py` | 180 | 1 | 4 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
@@ -169,37 +183,37 @@ Windows payload 的直接函数搬迁尚未采用：该模块目前 498 行，�
 | `package_product_worker_windows_history_bases.py` | 184 | 0 | 1 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_history_cutover_preflight.py` | 76 | 0 | 1 | 历史/状态/证据 | 仍混合：准确 Product、marker 缺席及 source/checkpoint 一致性准入保留；离线捕获/复读协调继续评估，不冒称已下沉。 |
 | `package_product_worker_windows_history_cutover_record.py` | 148 | 2 | 5 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_history_join.py` | 93 | 3 | 6 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_windows_history_join.py` | 93 | 3 | 6 | 历史/状态/证据 | 保留六种实际 base 类型、join 名义字段与 preparation 准入/组合；跨账本关系证明由原 _WindowsHistoryJoinMethods 唯一实现。 |
 | `package_product_worker_windows_history_preparation.py` | 267 | 10 | 17 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_history_sources.py` | 498 | 11 | 17 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_installed_backend.py` | 148 | 5 | 4 | 载荷/原生材料/待启动 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_launch_intent.py` | 315 | 14 | 15 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_launch_intent_base.py` | 113 | 2 | 4 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_native_approval_journal.py` | 92 | 2 | 4 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_native_approval_owner.py` | 94 | 2 | 3 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_opt_in_base.py` | 98 | 2 | 4 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_opt_in_journal.py` | 97 | 3 | 3 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_windows_launch_intent_base.py` | 113 | 2 | 4 | 回执/意图/批准 | 保留 intent base/replay/retained-intent 名义字段与实际历史 decoder；preparation 类型及 semantic match 后，共同行为用原 _WindowsLaunchIntentBaseMethods。 |
+| `package_product_worker_windows_native_approval_journal.py` | 92 | 2 | 4 | 回执/意图/批准 | 保留 approval/decision 名义类型、历史 decoder、错误/配额/文件名 Profile 及 typed 入口；锁/追加/回放由原 WindowsNativeApprovalRecords 唯一实现。 |
+| `package_product_worker_windows_native_approval_owner.py` | 94 | 2 | 3 | 回执/意图/批准 | 保留真实批准/撤销决策、review ID 一致性、可丢失 backend 后撤销的语义；current 已复用 owner，approve/revoke 的相同 GC/root 写入寿命仍待成本评估。 |
+| `package_product_worker_windows_opt_in_base.py` | 98 | 2 | 4 | 回执/意图/批准 | 保留 decision/replay/error Profile、名义字段与 preparation 准入；共同重放/schema 用原 _WindowsOptInBaseMethods。 |
+| `package_product_worker_windows_opt_in_journal.py` | 97 | 3 | 3 | 回执/意图/批准 | 保留实际 opt-in/decision、插件 ID 产品约束、历史 decoder、配额/错误 Profile 与 typed 入口；读写/CAS/重放用原 WindowsOptInRecords。 |
 | `package_product_worker_windows_opt_in_owner.py` | 126 | 2 | 2 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_orphan_review.py` | 191 | 10 | 5 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_package_references.py` | 333 | 2 | 5 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_partial_stage_retirement.py` | 255 | 1 | 5 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_partial_stage_review.py` | 257 | 1 | 7 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_payload.py` | 498 | 5 | 8 | 载荷/原生材料/待启动 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_payload_inventory.py` | 86 | 2 | 5 | 载荷/原生材料/待启动 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_windows_payload_inventory.py` | 86 | 2 | 5 | 载荷/原生材料/待启动 | 保留只读 Product/平台/固定根准入、名义库存记录、错误及名称/配额 Profile；库存由原 stage IO 执行，Product root 由原 attempt owner 持有，不授予启动或删除。 |
 | `package_product_worker_windows_pending_host.py` | 256 | 1 | 5 | 载荷/原生材料/待启动 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_persisted_bases.py` | 257 | 2 | 4 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_provisioning.py` | 318 | 14 | 11 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_provisioning_base.py` | 106 | 2 | 4 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_windows_provisioning_base.py` | 106 | 2 | 4 | 历史/状态/证据 | 保留 retained-attempt/base/replay 名义字段、实际类型工厂与 preparation 准入；from_dict/重放用原 _WindowsProvisioningBaseMethods。 |
 | `package_product_worker_windows_provisioning_journal.py` | 37 | 7 | 7 | 历史/状态/证据 | 保留公开 provisioning 名称及已接受私有转发；所有实际 Journal/错误/attempt 类型均直接来自原 Worker owner。 |
 | `package_product_worker_windows_receipt.py` | 252 | 16 | 10 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_receipt_base.py` | 93 | 3 | 5 | 回执/意图/批准 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_windows_receipt_base.py` | 93 | 3 | 5 | 回执/意图/批准 | 保留 receipt/opt-in/native Profile、Coding Session scope 派生及 preparation 准入；共同基线/回执重放用原 _WindowsReceiptBaseMethods。 |
 | `package_product_worker_windows_receipt_journal.py` | 69 | 4 | 4 | 回执/意图/批准 | 保留 receipt 字段家族、错误标签、配额、历史 decoder 和公开 typed 方法；原 WindowsReceiptRecords 唯一持有锁/追加/读回。 |
 | `package_product_worker_windows_recovery_inventory.py` | 571 | 17 | 23 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_reserved_review.py` | 338 | 2 | 9 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_reserved_settlement.py` | 147 | 0 | 2 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_stage_retirement.py` | 446 | 8 | 10 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `package_product_worker_windows_stage_review.py` | 345 | 9 | 9 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
-| `package_product_worker_windows_supervisor_base.py` | 95 | 2 | 4 | 历史/状态/证据 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
+| `package_product_worker_windows_supervisor_base.py` | 95 | 2 | 4 | 历史/状态/证据 | 保留 replay/base 名义字段、实际 WorkerAttemptRecord 和 preparation 准入；重放用原 _WindowsSupervisorBaseMethods。 |
 | `package_product_worker_windows_supervisor_journal.py` | 50 | 4 | 3 | 历史/状态/证据 | 保留 Windows/准确 Product 准入、固定名称和动态配额 Profile；唯一 Supervisor IO/重放为原 WindowsSupervisorJournal。 |
 | `package_product_worker_windows_unlaunched_stage_retirement.py` | 315 | 1 | 5 | 恢复/退休/清理 | 待完整方法体、动态/格式与实际消费者复核；不据先前处置直接计为完成。 |
 | `_worker_history_access.py` | 54 | 9 | 2 | 历史/状态/证据 | 保留实际 Product 到既有 history access port 的最小适配：scope/store/root、GC guard 和 borrowed root；没有第二套存储或清理算法。 |
