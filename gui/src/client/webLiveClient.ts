@@ -2,7 +2,7 @@ import { validateGoalProgress } from "../../contracts/goalProgress";
 import type { ClientSnapshot, ControlReceipt, HarnessClientUiPort, SubmitReceipt } from "./model";
 import { projectNativeInitialSnapshot, validateSessionModels } from "./nativeLiveClient";
 import { ApprovalResponses } from "./approvalResponses";
-import { validateInteractiveGoal } from "../../contracts/interactiveGoal";
+import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { webRequest } from "./hostApi";
 
@@ -123,6 +123,18 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       const source = current?.source.kind === "live" ? current.source : null;
       if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
       const result = await call<unknown>("interactive-goal-command", input);
+      return result === null ? null : validateInteractiveGoal(result);
+    },
+    async interactiveGoalReview(input) {
+      const source = current?.source.kind === "live" ? current.source : null;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await call<unknown>("interactive-goal-review", input);
+      return result === null ? null : validateInteractiveGoalReview(result);
+    },
+    async submitInteractiveGoalReview(input) {
+      const source = current?.source.kind === "live" ? current.source : null;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await call<unknown>("interactive-goal-review-submit", input);
       return result === null ? null : validateInteractiveGoal(result);
     },
     async interactiveGoalStatus(input) {

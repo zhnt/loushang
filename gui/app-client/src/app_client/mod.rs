@@ -65,6 +65,23 @@ pub struct InteractiveGoalCommand {
     pub action: InteractiveGoalAction,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InteractiveGoalReviewSubmission {
+    pub goal_id: String,
+    pub review_token: String,
+    pub command_id: String,
+    pub decision: InteractiveGoalReviewDecision,
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractiveGoalReviewDecision {
+    Accept,
+    Reject,
+}
+
 pub enum ControlCommand {
     CreateSession {
         source_session_id: Option<String>,
@@ -105,6 +122,16 @@ pub enum ControlCommand {
     ControlInteractiveGoal {
         session_id: String,
         command: InteractiveGoalCommand,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    ReadInteractiveGoalReview {
+        session_id: String,
+        goal_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    SubmitInteractiveGoalReview {
+        session_id: String,
+        review: InteractiveGoalReviewSubmission,
         reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
     },
     ObserveGoalProgress {
@@ -673,6 +700,32 @@ fn process_controls<R: Read, W: Write>(
             } => {
                 let result =
                     authority.control_interactive_goal(channel, &session_id, command, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ReadInteractiveGoalReview {
+                session_id,
+                goal_id,
+                reply,
+            } => {
+                let result =
+                    authority.interactive_goal_review(channel, &session_id, &goal_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::SubmitInteractiveGoalReview {
+                session_id,
+                review,
+                reply,
+            } => {
+                let result = authority.submit_interactive_goal_review(
+                    channel,
+                    &session_id,
+                    review,
+                    &request_id,
+                );
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

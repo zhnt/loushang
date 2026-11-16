@@ -14,6 +14,8 @@ from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
 from loushang.appserver.execution.model import (
     InteractiveGoalCommandV1,
+    InteractiveGoalReviewSubmissionV1,
+    InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
 )
 from loushang.appserver.protocol import (
@@ -213,7 +215,7 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
         return await binding.interactive_goal_view()
 
     def control_interactive_goal(
-        self, command: InteractiveGoalCommandV1, *, check_current: Callable[[], None],
+        self, command: InteractiveGoalCommandV1 | InteractiveGoalReviewSubmissionV1, *, check_current: Callable[[], None],
     ) -> InteractiveGoalViewV1:
         from loushang.harness.session.execution_admission import (
             SessionExecutionUnavailable,
@@ -222,6 +224,19 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
 
         try:
             return self._interactive_goal_binding().control_interactive_goal(command, check_current=check_current)
+        except (GoalError, SessionExecutionUnavailable):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+
+    async def interactive_goal_review(
+        self, goal_id: str, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalReviewV1:
+        from loushang.harness.session.execution_admission import (
+            SessionExecutionUnavailable,
+        )
+        from loushang.harnesswork.goal import GoalError
+
+        try:
+            return await self._interactive_goal_binding().interactive_goal_review(goal_id, check_current=check_current)
         except (GoalError, SessionExecutionUnavailable):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
 

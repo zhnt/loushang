@@ -1,7 +1,7 @@
 // C1 candidate bridge-value validator, deliberately not wired into HarnessGUI.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { validateInteractiveGoal } from "./interactiveGoal.ts";
+import { validateInteractiveGoal, validateInteractiveGoalReview } from "./interactiveGoal.ts";
 import { validateGoalProgress } from "./goalProgress.ts";
 import { validateProjection } from "./projection.ts";
 
@@ -46,6 +46,9 @@ function validate(kind: string, value: unknown, profile?: string) {
     const generation = control.controllerGeneration;
     assert(typeof generation === "string" && /^[1-9][0-9]*$/.test(generation));
     assert.equal(BigInt(generation).toString(), generation);
+  } else if (kind === "interactive_goal_review") {
+    assert.equal(root.resultType, kind);
+    validateInteractiveGoalReview(root.result);
   } else if (kind === "interactive_goal") {
     assert.equal(root.resultType, kind);
     validateInteractiveGoal(root.result);

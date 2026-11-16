@@ -1128,3 +1128,66 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
   expect(await goal.findByRole("button", { name: "Resume" })).toBeEnabled();
   expect(controlInteractiveGoal).toHaveBeenCalledTimes(3);
 });
+
+it("offers Goal review only for a current candidate and gates acceptance on check evidence", async () => {
+  const seed = await createMockAppClient().snapshot();
+  const session = {
+    ...seed.sessions[0], status: "idle" as const, execution: null,
+    supportsInteractiveGoal: true as const, supportsInteractiveGoalCommands: true as const,
+  };
+  type Status = NonNullable<HarnessClientUiPort["interactiveGoalStatus"]>;
+  type Review = NonNullable<HarnessClientUiPort["interactiveGoalReview"]>;
+  type Submit = NonNullable<HarnessClientUiPort["submitInteractiveGoalReview"]>;
+  const paused: Awaited<ReturnType<Status>> = {
+    availability: "present", goalId: "development", status: "paused", revision: 1, epoch: 3,
+    executionUnresolved: false, reviewAvailable: true,
+  };
+  let view = paused;
+  const summary = vi.fn<Review>()
+    .mockResolvedValueOnce(null)
+    .mockResolvedValue({
+      goalId: "development", revision: 1, epoch: 3, reviewToken: "a".repeat(64),
+      changedFiles: ["note.txt"], checkCount: 1, checksSatisfied: false, filesTruncated: false,
+    });
+  const submitReview = vi.fn<Submit>().mockImplementation(async (input) => {
+    view = {
+      ...paused, status: "active", epoch: 4, reviewAvailable: undefined,
+      command: { commandId: input.commandId, action: "reject", status: "finished" },
+    };
+    throw new Error("Reply lost");
+  });
+  const client: HarnessClientUiPort = {
+    snapshot: async () => ({
+      ...seed, sessions: [session], selectedSessionId: session.id, connection: "connected",
+      source: { kind: "live", serviceInstanceId: "goal-host", muxSpaceId: "goal-mux", connectionEpoch: "1" },
+    }),
+    subscribe: () => () => {},
+    createInteractiveGoal: async () => null,
+    interactiveGoalStatus: async () => view,
+    interactiveGoalReview: summary,
+    submitInteractiveGoalReview: submitReview,
+    submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+    interrupt: async () => ({ accepted: false }),
+  };
+  render(<HarnessGui client={client} />);
+  const goal = within(await screen.findByRole("region", { name: "Development goal" }));
+  const review = await goal.findByRole("button", { name: "Review result" });
+  fireEvent.click(review);
+  expect(await goal.findByText(/Current candidate unavailable/)).toBeVisible();
+  expect(goal.queryByRole("button", { name: "Accept result" })).not.toBeInTheDocument();
+  fireEvent.click(review);
+  expect(await goal.findByText("note.txt")).toBeVisible();
+  expect(goal.getByText(/Verify the actual changes/)).toBeVisible();
+  expect(goal.getByRole("button", { name: "Accept result" })).toBeDisabled();
+  const reject = goal.getByRole("button", { name: "Reject with feedback" });
+  expect(reject).toBeDisabled();
+  fireEvent.change(goal.getByRole("textbox", { name: "Specific rejection feedback" }), { target: { value: "Add a sign-off" } });
+  act(() => { fireEvent.click(reject); fireEvent.click(reject); });
+  expect(await goal.findByText("Feedback recorded. You can run the Goal again.")).toBeVisible();
+  expect(submitReview).toHaveBeenCalledExactlyOnceWith({
+    sessionId: session.id, serviceInstanceId: "goal-host", connectionEpoch: "1",
+    goalId: "development", reviewToken: "a".repeat(64), commandId: expect.stringMatching(/^gui-/),
+    decision: "reject", reason: "Add a sign-off",
+  });
+  expect(goal.queryByText("Completed")).not.toBeInTheDocument();
+});

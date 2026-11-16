@@ -12,6 +12,8 @@ from loushang.appserver.execution.model import (
     ExecutionSessionSnapshotV1,
     ExecutionSessionViewV1,
     InteractiveGoalCommandV1,
+    InteractiveGoalReviewSubmissionV1,
+    InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
 )
 from loushang.appserver.protocol import (
@@ -26,6 +28,7 @@ from .execution_ports import (
     HostedExecutionPortV1,
     HostedInteractiveGoalCommandPortV1,
     HostedInteractiveGoalPortV1,
+    HostedInteractiveGoalReviewPortV1,
 )
 from .execution_registry import (
     ExecutionBindingV1,
@@ -215,6 +218,26 @@ class ScopedExecutionClientV1:
             control, expected_instance_id, starts_work=command.action in {"run", "step", "resume"},
         )
         if not isinstance(port, HostedInteractiveGoalCommandPortV1):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return port.control_interactive_goal(command, check_current=check_current)
+
+    async def interactive_goal_review(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str, goal_id: str,
+    ) -> InteractiveGoalReviewV1:
+        port, check_current = await self._resolve_interactive_goal(control, expected_instance_id, starts_work=True)
+        if not isinstance(port, HostedInteractiveGoalReviewPortV1):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        result = await port.interactive_goal_review(goal_id, check_current=check_current)
+        check_current()
+        return result
+
+    async def submit_interactive_goal_review(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str, command: InteractiveGoalReviewSubmissionV1,
+    ) -> InteractiveGoalViewV1:
+        if type(command) is not InteractiveGoalReviewSubmissionV1:
+            raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST)
+        port, check_current = await self._resolve_interactive_goal(control, expected_instance_id, starts_work=True)
+        if not isinstance(port, HostedInteractiveGoalReviewPortV1):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return port.control_interactive_goal(command, check_current=check_current)
 

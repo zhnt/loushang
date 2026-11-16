@@ -1,4 +1,4 @@
-import type { ExecutionGoalProgressV1, InteractiveGoalCommandV1, InteractiveGoalViewV1, UserChoicePromptV1 } from "../../contracts/generated/bridge";
+import type { ExecutionGoalProgressV1, InteractiveGoalCommandV1, InteractiveGoalReviewSubmissionV1, InteractiveGoalReviewV1, InteractiveGoalViewV1, UserChoicePromptV1 } from "../../contracts/generated/bridge";
 
 export type ConnectionState =
   | "fixture-offline"
@@ -330,6 +330,8 @@ export interface HarnessClientUiPort {
   startGoal?(input: Omit<SubmitTextInput, "text">, expectedInstanceId?: string): Promise<SubmitReceipt>;
   createInteractiveGoal?(input: InteractiveGoalScope & { readonly goalTarget: string }): Promise<InteractiveGoalViewV1 | null>;
   controlInteractiveGoal?(input: InteractiveGoalScope & InteractiveGoalCommandV1): Promise<InteractiveGoalViewV1 | null>;
+  interactiveGoalReview?(input: InteractiveGoalScope & { readonly goalId: string }): Promise<InteractiveGoalReviewV1 | null>;
+  submitInteractiveGoalReview?(input: InteractiveGoalScope & InteractiveGoalReviewSubmissionV1): Promise<InteractiveGoalViewV1 | null>;
   interactiveGoalStatus?(input: InteractiveGoalScope): Promise<InteractiveGoalViewV1 | null>;
   goalProgress?(sessionId: string, executionId: string): Promise<ExecutionGoalProgressV1 | null>;
   sessionModels?(sessionId: string): Promise<SessionModels>;

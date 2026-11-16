@@ -1,5 +1,23 @@
 {
   "interactiveGoal": {
+    "review": {
+      "open": "Review result",
+      "loading": "Reading current candidate…",
+      "unavailable": "Current candidate unavailable. Read it again before deciding.",
+      "fingerprint": "Candidate fingerprint",
+      "files": "Changed files since Goal creation",
+      "noFiles": "No changed files reported.",
+      "truncated": "Some paths are omitted from this summary.",
+      "inspect": "Verify the actual changes in the workspace before deciding. This summary lists paths and does not show a diff.",
+      "checksNone": "No configured checks.",
+      "checksPassed": "Current evidence covers {{total}} configured checks.",
+      "checksMissing": "Current passing evidence is missing for one or more of the {{total}} configured checks.",
+      "accept": "Accept result",
+      "reject": "Reject with feedback",
+      "reason": "Specific rejection feedback",
+      "feedbackRecorded": "Feedback recorded. You can run the Goal again.",
+      "failed": "The review was not confirmed. Check the Goal status before reviewing a fresh candidate."
+    },
     "commands": {
       "run": "Run",
       "step": "Step",

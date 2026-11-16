@@ -32,6 +32,7 @@ from loushang.appserver.execution.model import (
     ExecutionStatusV1,
     ExecutionUpdateV1,
     InteractiveGoalCommandV1,
+    InteractiveGoalReviewSubmissionV1,
     InteractiveGoalViewV1,
 )
 from loushang.appserver.protocol import (
@@ -65,6 +66,9 @@ def test_closed_execution_call_round_trip(operation):
         goal_target="目标" if operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE else None,
         goal_command=InteractiveGoalCommandV1("goal", "command", "step")
         if operation is ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND else None,
+        review_goal_id="goal" if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW else None,
+        review_submission=InteractiveGoalReviewSubmissionV1("goal", "a" * 64, "command", "reject", "Keep tests")
+        if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT else None,
         resume_query=ResumeInputLookupQueryV1("input-1", "a" * 64)
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP else None,
     )
@@ -83,6 +87,22 @@ def test_interactive_goal_command_has_closed_identity_and_action(field, value):
     call = ExecutionCallV1(
         "1", ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND, CONTROL, "instance",
         goal_command=InteractiveGoalCommandV1("goal", "command", "pause"),
+    )
+    raw = json.loads(encode_call(call))
+    raw["payload"][field] = value
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("reviewToken", "abbreviated"), ("goalId", "/other"), ("commandId", "broken id"),
+    ("decision", "allow_once"), ("reason", " "), ("reason", "界" * 1400),
+    ("checksSatisfied", True), ("workId", "chosen"), ("basis", {}),
+])
+def test_review_requires_closed_candidate_and_decision(field, value):
+    call = ExecutionCallV1(
+        "1", ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT, CONTROL, "instance",
+        review_submission=InteractiveGoalReviewSubmissionV1("goal", "a" * 64, "review", "reject", "Specific feedback"),
     )
     raw = json.loads(encode_call(call))
     raw["payload"][field] = value

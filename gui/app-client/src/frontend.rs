@@ -3,8 +3,8 @@ mod live_view;
 mod service;
 use crate::{
     definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlCommand,
-    ControlResult, CreateSessionResult, InteractiveGoalCommand, ModelControlResult, WorkspaceInfo,
-    WorkspaceRequest, WorkspaceResult,
+    ControlResult, CreateSessionResult, InteractiveGoalCommand, InteractiveGoalReviewSubmission,
+    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
 };
 use live_view::{Target, View};
 use rusqlite::{params, Connection};
@@ -657,6 +657,40 @@ fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
                     command,
                     reply,
                 }
+            })?;
+            Ok(json!(result))
+        }
+        "interactive-goal-review" | "interactive-goal-review-submit" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let epoch = field(input, "connectionEpoch")?;
+            let goal_id = field(input, "goalId")?.to_owned();
+            let submit = action == "interactive-goal-review-submit";
+            if input.as_object().map(|object| object.len()) != Some(if submit { 8 } else { 4 }) {
+                return Err("invalid_request".into());
+            }
+            if epoch != view.epoch.to_string() {
+                return Ok(Value::Null);
+            }
+            let review = if submit {
+                let reason = input.get("reason").ok_or("invalid_request")?;
+                Some(serde_json::from_value::<InteractiveGoalReviewSubmission>(json!({
+                    "goalId": goal_id, "commandId": input["commandId"], "reviewToken": input["reviewToken"],
+                    "decision": input["decision"], "reason": reason,
+                })).map_err(|_| "invalid_request")?)
+            } else {
+                None
+            };
+            let result = view.control(Some(instance), |reply| match review {
+                Some(review) => ControlCommand::SubmitInteractiveGoalReview {
+                    session_id,
+                    review,
+                    reply,
+                },
+                None => ControlCommand::ReadInteractiveGoalReview {
+                    session_id,
+                    goal_id,
+                    reply,
+                },
             })?;
             Ok(json!(result))
         }

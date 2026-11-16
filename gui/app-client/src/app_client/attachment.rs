@@ -1,5 +1,8 @@
 //! Sequential read-only attachment and membership-barrier implementation.
-use super::{transport_auth::Channel, InteractiveGoalCommand};
+use super::{
+    transport_auth::Channel, InteractiveGoalCommand, InteractiveGoalReviewDecision,
+    InteractiveGoalReviewSubmission,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
 use sha2::{Digest, Sha256};
@@ -996,6 +999,77 @@ impl ControlAuthority {
         decode_interactive_goal(result, Some(&command))
     }
 
+    pub(crate) fn interactive_goal_review<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        goal_id: &str,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        if !identifier(goal_id, 128) {
+            return Ok(None);
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["goalId"] = json!(goal_id);
+        let result = execution_request(
+            channel,
+            "session/interactive_goal_review",
+            request_id,
+            payload,
+        )?;
+        if rejected_result(&result)?.is_some() {
+            return Ok(None);
+        }
+        let mut checked =
+            projection::control_bridge("interactive_goal_review", &result.to_string())?;
+        if checked["result"]["goalId"] != goal_id {
+            return Err(());
+        }
+        Ok(Some(checked["result"].take()))
+    }
+
+    pub(crate) fn submit_interactive_goal_review<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        review: InteractiveGoalReviewSubmission,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        let valid_reason = match (review.decision, &review.reason) {
+            (InteractiveGoalReviewDecision::Accept, None) => true,
+            (InteractiveGoalReviewDecision::Reject, Some(value)) => {
+                !value.trim().is_empty() && value.len() <= 4096
+            }
+            _ => false,
+        };
+        if !valid_reason
+            || !identifier(&review.goal_id, 128)
+            || !identifier(&review.command_id, 128)
+            || !projection::review_token(&review.review_token)
+        {
+            return Ok(None);
+        }
+        let mut payload = self.payload(session_id)?;
+        let wire = serde_json::to_value(&review).map_err(|_| ())?;
+        payload
+            .as_object_mut()
+            .ok_or(())?
+            .extend(wire.as_object().ok_or(())?.clone());
+        let result = execution_request(
+            channel,
+            "session/interactive_goal_review_submit",
+            request_id,
+            payload,
+        )?;
+        let view = decode_interactive_goal(result, None)?;
+        check_goal_receipt(
+            view,
+            &review.goal_id,
+            &review.command_id,
+            json!(review.decision),
+        )
+    }
+
     pub(crate) fn goal_progress<R: Read, W: Write>(
         &self,
         channel: &mut Channel<R, W>,
@@ -1211,14 +1285,30 @@ fn decode_interactive_goal(
     let mut checked = projection::control_bridge("interactive_goal", &result.to_string())?;
     let view = checked["result"].take();
     if let Some(command) = expected {
-        if view["goalId"] != command.goal_id
-            || view["command"]["commandId"] != command.command_id
-            || view["command"]["action"] != json!(command.action)
-        {
-            return Err(());
-        }
+        return check_goal_receipt(
+            Some(view),
+            &command.goal_id,
+            &command.command_id,
+            json!(command.action),
+        );
     }
     Ok(Some(view))
+}
+
+fn check_goal_receipt(
+    view: Option<Value>,
+    goal_id: &str,
+    command_id: &str,
+    action: Value,
+) -> Result<Option<Value>, ()> {
+    if view.as_ref().is_some_and(|value| {
+        value["goalId"] != goal_id
+            || value["command"]["commandId"] != command_id
+            || value["command"]["action"] != action
+    }) {
+        return Err(());
+    }
+    Ok(view)
 }
 
 fn decode_goal_progress(result: Value, execution_id: &str) -> Result<Option<Value>, ()> {

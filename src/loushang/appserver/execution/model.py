@@ -361,6 +361,8 @@ class ExecutionGoalProgressV1:
 
 
 InteractiveGoalActionV1 = Literal["run", "step", "pause", "resume", "cancel"]
+InteractiveGoalReviewDecisionV1 = Literal["accept", "reject"]
+InteractiveGoalObservedActionV1 = Literal["run", "step", "pause", "resume", "cancel", "accept", "reject"]
 InteractiveGoalCommandStatusV1 = Literal["running", "settling", "finished", "failed", "unknown"]
 
 
@@ -377,15 +379,79 @@ class InteractiveGoalCommandV1:
             raise ValueError("invalid interactive Goal action")
 
 
+def _review_token(value: str) -> None:
+    if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise ValueError("invalid review token")
+
+
+def is_review_path(value: str) -> bool:
+    try:
+        return (type(value) is str and len(value.encode("utf-8")) <= 1024
+                and all(part not in {"", ".", ".."} for part in value.split("/"))
+                and all(ch not in "\\:" and 32 <= ord(ch) != 127 for ch in value))
+    except UnicodeError:
+        return False
+
+
+@dataclass(frozen=True, slots=True)
+class InteractiveGoalReviewSubmissionV1:
+    goal_id: str
+    review_token: str
+    command_id: str
+    decision: InteractiveGoalReviewDecisionV1
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        _identifier(self.goal_id)
+        _identifier(self.command_id)
+        _review_token(self.review_token)
+        if self.decision == "reject":
+            if type(self.reason) is not str or not self.reason.strip() or len(self.reason.encode("utf-8")) > 4096:
+                raise ValueError("rejection requires specific feedback")
+        elif self.decision != "accept" or self.reason is not None:
+            raise ValueError("invalid review decision")
+
+    @property
+    def action(self) -> InteractiveGoalReviewDecisionV1:
+        return self.decision
+
+
+@dataclass(frozen=True, slots=True)
+class InteractiveGoalReviewV1:
+    goal_id: str
+    revision: int
+    epoch: int
+    review_token: str
+    changed_files: tuple[str, ...]
+    files_truncated: bool
+    check_count: int
+    checks_satisfied: bool
+
+    def __post_init__(self) -> None:
+        _identifier(self.goal_id)
+        _review_token(self.review_token)
+        for counter in (self.revision, self.epoch, self.check_count):
+            _counter(counter)
+        if not self.revision or not self.epoch or self.check_count > 8:
+            raise ValueError("invalid review counters")
+        if (type(self.files_truncated) is not bool or type(self.checks_satisfied) is not bool
+                or not self.check_count and not self.checks_satisfied):
+            raise ValueError("invalid review observations")
+        if (type(self.changed_files) is not tuple or len(self.changed_files) > 100
+                or any(not is_review_path(path) for path in self.changed_files)
+                or len(set(self.changed_files)) != len(self.changed_files)):
+            raise ValueError("invalid review paths")
+
+
 @dataclass(frozen=True, slots=True)
 class InteractiveGoalCommandViewV1:
     command_id: str
-    action: InteractiveGoalActionV1
+    action: InteractiveGoalObservedActionV1
     status: InteractiveGoalCommandStatusV1
 
     def __post_init__(self) -> None:
         _identifier(self.command_id)
-        if self.action not in get_args(InteractiveGoalActionV1) or self.status not in get_args(
+        if self.action not in get_args(InteractiveGoalObservedActionV1) or self.status not in get_args(
             InteractiveGoalCommandStatusV1
         ):
             raise ValueError("invalid interactive Goal command observation")
@@ -404,10 +470,16 @@ class InteractiveGoalViewV1:
     epoch: int | None = None
     execution_unresolved: bool | None = None
     command: InteractiveGoalCommandViewV1 | None = None
+    review_available: bool = False
 
     def __post_init__(self) -> None:
         if self.availability not in {"ready", "not_ready", "creating", "present", "historical", "cleanup_pending"}:
             raise ValueError("invalid interactive Goal availability")
+        if type(self.review_available) is not bool or (self.review_available and (
+            self.availability != "present" or self.status != "paused" or self.execution_unresolved
+            or self.command is not None and self.command.status in {"running", "settling", "unknown"}
+        )):
+            raise ValueError("invalid review availability")
         if self.availability != "present":
             if any(value is not None for value in (
                 self.goal_id, self.status, self.revision, self.epoch, self.execution_unresolved, self.command,
@@ -435,6 +507,8 @@ class ExecutionOperationV1(str, Enum):
     INTERACTIVE_GOAL_CREATE = "session/interactive_goal_create"
     INTERACTIVE_GOAL_STATUS = "session/interactive_goal_status"
     INTERACTIVE_GOAL_COMMAND = "session/interactive_goal_command"
+    INTERACTIVE_GOAL_REVIEW = "session/interactive_goal_review"
+    INTERACTIVE_GOAL_REVIEW_SUBMIT = "session/interactive_goal_review_submit"
     FIND = "execution/find_submission"
     INTERRUPT = "execution/interrupt"
     SNAPSHOT = "execution/snapshot"
@@ -475,6 +549,8 @@ class ExecutionCallV1:
     include_goal_batches: bool = False
     goal_target: str | None = None
     goal_command: InteractiveGoalCommandV1 | None = None
+    review_goal_id: str | None = None
+    review_submission: InteractiveGoalReviewSubmissionV1 | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -514,6 +590,14 @@ class ExecutionCallV1:
             command and type(self.goal_command) is not InteractiveGoalCommandV1
         ):
             raise ValueError("unexpected interactive Goal command")
+        if (self.review_goal_id is not None) != (self.operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW):
+            raise ValueError("unexpected review identity")
+        if self.review_goal_id is not None:
+            _identifier(self.review_goal_id)
+        if (self.review_submission is not None) != (self.operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT):
+            raise ValueError("unexpected review submission")
+        if self.review_submission is not None and type(self.review_submission) is not InteractiveGoalReviewSubmissionV1:
+            raise TypeError("invalid review submission")
 
     def _validate_goal_target(self) -> None:
         create = self.operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE
@@ -549,7 +633,7 @@ class ExecutionFailureV1:
 ExecutionResultV1 = (
     ExecutionRecordV1 | ExecutionSessionSnapshotV1 | ExecutionEventsV1
     | ExecutionInterruptResultV1 | ExecutionFailureV1 | AppFailureV1 | None
-    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1
+    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1 | InteractiveGoalReviewV1
 )
 
 
@@ -564,6 +648,6 @@ class ExecutionResponseV1:
             ExecutionRecordV1, ExecutionSessionSnapshotV1, ExecutionEventsV1,
             ExecutionFailureV1, AppFailureV1,
             ExecutionInterruptResultV1,
-            ResumeInputLookupResultV1, ExecutionGoalProgressV1, InteractiveGoalViewV1,
+            ResumeInputLookupResultV1, ExecutionGoalProgressV1, InteractiveGoalViewV1, InteractiveGoalReviewV1,
         ):
             raise TypeError("invalid execution response")

@@ -2,7 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { validateGoalProgress } from "../../contracts/goalProgress";
 import { validateUserChoice } from "../../contracts/userChoice";
 import { ApprovalResponses } from "./approvalResponses";
-import { validateInteractiveGoal } from "../../contracts/interactiveGoal";
+import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { thinkingLevels, type ThinkingLevel } from "./model";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -230,6 +230,18 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       const source = current;
       if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
       const result = await invoke<unknown>("live_interactive_goal_command", { input });
+      return result === null ? null : validateInteractiveGoal(result);
+    },
+    async interactiveGoalReview(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_review", { input });
+      return result === null ? null : validateInteractiveGoalReview(result);
+    },
+    async submitInteractiveGoalReview(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_review_submit", { input });
       return result === null ? null : validateInteractiveGoal(result);
     },
     async interactiveGoalStatus(input) {

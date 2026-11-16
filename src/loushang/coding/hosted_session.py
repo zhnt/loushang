@@ -21,6 +21,8 @@ from loushang.apphost.integrations.session_control import _HostedApprovalPresent
 from loushang.appserver.execution.model import (
     ExecutionGoalStatusV1,
     InteractiveGoalCommandV1,
+    InteractiveGoalReviewSubmissionV1,
+    InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
 )
 from loushang.appserver.protocol import (
@@ -81,6 +83,7 @@ from .hosted_catalog import (
     CodingHostedHistoryCandidateBindingV1,
 )
 from .hosted_goal_commands import HostedGoalCommands
+from .hosted_goal_review import summarize_review
 from .hosted_user_choice import (
     ASK_USER,
     HostedUserChoice,
@@ -330,7 +333,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         owner, goal_id = self._interactive_goal_owner, self._interactive_goal_id
         if owner is not None and owner._closing:
             return InteractiveGoalViewV1("cleanup_pending")
-        if self._interactive_goal_lock.locked():
+        if self._interactive_goal_lock.locked() and goal_id is None:
             return InteractiveGoalViewV1("creating")
         if owner is None:
             return None
@@ -340,22 +343,61 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         return InteractiveGoalViewV1(
             "present", view.goal_id, cast(ExecutionGoalStatusV1, view.status),
             view.revision, view.epoch, view.execution_unresolved, self._goal_commands.latest,
+            review_available=self._review_available(owner, goal_id),
         )
 
-    def control_interactive_goal(
-        self, command: InteractiveGoalCommandV1, *, check_current: Callable[[], None],
-    ) -> InteractiveGoalViewV1:
+    def _review_available(self, owner: CodingGoal, goal_id: str) -> bool:
+        state = owner.controller.query(goal_id)
+        if (state.status != "paused" or state.reason != "review_required"
+                or not self._goal_commands.settled or owner.controller.fenced):
+            return False
+        facts = owner.controller.facts()
+        return not facts.busy and not facts.unresolved
+
+    def _current_goal_owner(self, goal_id: str) -> CodingGoal:
         owner = self._interactive_goal_owner
-        if (self._close_task is not None or self._interactive_goal_lock.locked()
-                or owner is None or owner._closing or command.goal_id != self._interactive_goal_id):
+        if (self._close_task is not None or owner is None or owner._closing
+                or goal_id != self._interactive_goal_id):
             raise GoalError("current hosted Goal unavailable")
+        return owner
+
+    def _require_goal_idle(self) -> None:
+        self._require_interactive_goal_admission()
+        admission = self._session.runtime.execution_admission
+        admission.require_current()
+        if admission.execution_reserved:
+            raise GoalError("Session already reserved")
+
+    async def interactive_goal_review(
+        self, goal_id: str, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalReviewV1:
+        from .adapters.interactive_goal import InteractiveGoal
+
+        if self._interactive_goal_lock.locked():
+            raise GoalError("current hosted Goal busy")
+        async with self._interactive_goal_lock:
+            owner = self._current_goal_owner(goal_id)
+            self._require_goal_idle()
+            if not isinstance(owner, InteractiveGoal) or not self._review_available(owner, goal_id):
+                raise GoalError("current hosted Goal is not ready for review")
+            check_current()
+            result = await summarize_review(owner, goal_id)
+            self._current_goal_owner(goal_id)
+            check_current()
+            return result
+
+    def control_interactive_goal(
+        self, command: InteractiveGoalCommandV1 | InteractiveGoalReviewSubmissionV1,
+        *, check_current: Callable[[], None],
+    ) -> InteractiveGoalViewV1:
+        if self._interactive_goal_lock.locked():
+            raise GoalError("current hosted Goal busy")
+        owner = self._current_goal_owner(command.goal_id)
 
         def require_idle() -> None:
-            self._require_interactive_goal_admission()
-            admission = self._session.runtime.execution_admission
-            admission.require_current()
-            if admission.execution_reserved:
-                raise GoalError("Session already reserved")
+            self._require_goal_idle()
+            if isinstance(command, InteractiveGoalReviewSubmissionV1) and not self._review_available(owner, command.goal_id):
+                raise GoalError("current hosted Goal is not ready for review")
 
         outcome = self._goal_commands.submit(owner, command, check_current=check_current, require_idle=require_idle)
         view = self._attached_interactive_goal_view()
@@ -570,7 +612,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
 
     @property
     def execution_available(self) -> bool:
-        return not self.goal_command_running and self._session.execution_available and (
+        return not self.goal_command_running and not self._interactive_goal_lock.locked() and self._session.execution_available and (
             self._interactive_goal_owner is None or not self._session.runtime.execution_admission.execution_reserved
         )
 

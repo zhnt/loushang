@@ -45,6 +45,9 @@ SAFE = {
     "ExecutionGoalProgressV1.batch_count",
     "InteractiveGoalViewV1.revision",
     "InteractiveGoalViewV1.epoch",
+    "InteractiveGoalReviewV1.revision",
+    "InteractiveGoalReviewV1.epoch",
+    "InteractiveGoalReviewV1.check_count",
     "ExecutionStateV1.revision",
     "ExecutionObservationV1.final_cursor",
     "ExecutionSessionViewV1.revision",
@@ -157,6 +160,11 @@ def generate() -> dict[str, str]:
             ])
         if cls.__name__ == "InteractiveGoalViewV1":
             ts.append("  readonly command?: InteractiveGoalCommandViewV1;")
+            ts.append("  readonly reviewAvailable?: true;")
+            rs.extend([
+                '    #[serde(rename = "reviewAvailable", skip_serializing_if = "Option::is_none")]',
+                "    pub review_available: Option<bool>,",
+            ])
             rs.extend([
                 '    #[serde(skip_serializing_if = "Option::is_none")]',
                 "    pub command: Option<InteractiveGoalCommandViewV1>,",
