@@ -244,6 +244,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
     },
     async createSession(input) {
       const value = object(await invoke("live_create_session", { input }));
+      if (value.rejected === true) return { rejected: true };
       return { sessionId: identifier(value.sessionId) };
     },
     async sessionModels(sessionId) {
@@ -534,6 +535,7 @@ function projectSession(
       applicationId: initial.serviceInstanceId,
       muxId: initial.muxSpace.muxSpaceId,
       memberId,
+      continuityId: source.identity.continuityId,
       sessionId: source.identity.sessionId,
       source: "live",
     },

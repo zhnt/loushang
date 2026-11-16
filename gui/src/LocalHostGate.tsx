@@ -9,7 +9,7 @@ import { useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
 import { createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
-import { TEMPORARY_WORKSPACE, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
+import { TEMPORARY_WORKSPACE, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
 import { TrayHostDialog } from "./TrayHostDialog";
 import "./LocalHostGate.css";
 
@@ -50,14 +50,19 @@ export default function LocalHostGate() {
   const workspaceMutation = useRef(false);
   const folderPicker = useRef(false);
 
-  function openConversation(path: string, id?: string) {
-    setWorkspace(path);
-    setSelection(id ? { workspace: path, id } : null);
+  function workspaceClient(path: string) {
     let selected = workspaceClients.current.get(path);
     if (!selected) {
       selected = createWebLiveClient(path, connectionId.current);
       workspaceClients.current.set(path, selected);
     }
+    return selected;
+  }
+
+  function openConversation(path: string, id?: string) {
+    setWorkspace(path);
+    setSelection(id ? { workspace: path, id } : null);
+    const selected = workspaceClient(path);
     clientRef.current = selected;
     setClient(selected);
     void webRequest({ operation: "remember-workspace", workspace: path }, connectionId.current).catch(() => {});
@@ -71,33 +76,61 @@ export default function LocalHostGate() {
     return result;
   }
 
-  async function changeDirectory(request: { action: "register" | "create-chat"; path?: string }) {
+  async function registerWorkspace(path: string) {
     if (workspaceMutation.current || pending.current || host.state !== "running" || host.errorCode) return false;
     workspaceMutation.current = true;
     setWorkspacePending(true);
     setWorkspaceError(false);
     const epoch = ++workspaceEpoch.current;
-    let resume: (() => void) | undefined;
     try {
-      const destination = request.path ?? TEMPORARY_WORKSPACE;
-      if (request.action === "create-chat" && destination === workspace) {
-        resume = await workspaceClients.current.get(destination)?.suspend();
-      }
-      const result = await webRequest<{ workspace: string; sessionId: string }>({ operation: "workspace", ...request }, connectionId.current);
+      await webRequest({ operation: "workspace", action: "register", path }, connectionId.current);
       if (epoch !== workspaceEpoch.current) return false;
-      if (request.action === "register") setFolderInput(false);
-      else openConversation(result.workspace, result.sessionId);
+      setFolderInput(false);
       await refreshDirectory();
       return true;
     } catch {
       if (epoch === workspaceEpoch.current) setWorkspaceError(true);
       return false;
     } finally {
-      resume?.();
       workspaceMutation.current = false;
       setWorkspacePending(false);
     }
   }
+
+  const createChat: ManagedProjectNavigation["createChat"] = async (path, continuityId, title) => {
+    const origin = connectionId.current;
+    const destination = path ?? TEMPORARY_WORKSPACE;
+    const previous = workspaceClients.current.get(destination);
+    const bound = workspaceClient(destination);
+    let sessionId: string | undefined;
+    // Creation acquires the Mux controller. Release just the view it will use.
+    const resume = await previous?.suspend();
+    try {
+      if (origin !== connectionId.current) return null;
+      const result = await webRequest<{ accepted: false } | { workspace: string; sessionId: string }>({
+        operation: "workspace", action: "create-chat", path, continuityId, title,
+      }, origin);
+      if ("accepted" in result && result.accepted === false) return null;
+      if ("sessionId" in result && typeof result.sessionId === "string" && result.workspace === destination) {
+        sessionId = result.sessionId;
+      }
+    } catch {
+      // Only a matching continuation in the target Mux proves an unknown create.
+    } finally {
+      resume?.();
+    }
+    if (origin === connectionId.current) void refreshDirectory().catch(() => {});
+    return {
+      client: bound,
+      sessionId,
+      show(id) {
+        if (origin !== connectionId.current) return false;
+        workspaceClients.current.set(destination, bound);
+        openConversation(destination, id);
+        return true;
+      },
+    };
+  };
 
   async function togglePin(chat: ProjectChat) {
     try {
@@ -120,7 +153,7 @@ export default function LocalHostGate() {
       const path = await invoke<string | null>("pick_project_folder", {
         title: t("sidebar.addProject"), accept: t("sidebar.addProject"), cancel: t("localHost.cancel"),
       });
-      if (path && epoch === workspaceEpoch.current) await changeDirectory({ action: "register", path });
+      if (path && epoch === workspaceEpoch.current) await registerWorkspace(path);
     } catch {
       if (epoch === workspaceEpoch.current) setWorkspaceError(true);
     } finally {
@@ -327,8 +360,9 @@ export default function LocalHostGate() {
       pending: workspacePending, error: workspaceError, folderInput, selection,
       openFolder: () => { void openFolder(); },
       closeFolder: () => setFolderInput(false),
-      register: (path) => changeDirectory({ action: "register", path }),
-      create: (path) => { void changeDirectory({ action: "create-chat", ...(path ? { path } : {}) }); },
+      register: (path) => registerWorkspace(path),
+      hostKey: selectedId,
+      createChat,
       togglePin: (chat) => { void togglePin(chat); },
       select: openConversation,
     }} />

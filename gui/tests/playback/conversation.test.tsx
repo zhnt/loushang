@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
 import { createMockAppClient } from "../support/mockAppClient";
-import type { ClientSnapshot, FixturePlaybackPort, HarnessClientUiPort, SessionModels, ThinkingLevel } from "../../src/client/model";
+import type { ClientSnapshot, CreateSessionReceipt, FixturePlaybackPort, HarnessClientUiPort, SessionModels, ThinkingLevel } from "../../src/client/model";
 
 const liveModel = {
   id: "test:primary:model",
@@ -555,101 +555,130 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(within(context).getByText("Workspace details unavailable")).toBeVisible();
   });
 
-  it.each([
-    { empty: false, refresh: "none" },
-    { empty: true, refresh: "none" },
-    { empty: false, refresh: "reject" },
-    { empty: false, refresh: "timeout" },
-  ])("selects a created Session after the replacement snapshot ($empty, $refresh)", async ({ empty, refresh }) => {
-    const user = userEvent.setup();
-    const fixture = createMockAppClient();
-    const fixtureSnapshot = await fixture.snapshot();
-    const snapshot: ClientSnapshot = {
-      ...fixtureSnapshot,
-      connection: "connected",
-      source: {
-        kind: "live",
-        serviceInstanceId: "service-live",
-        muxSpaceId: "mux-live",
-        connectionEpoch: "1",
-      },
-      sessions: fixtureSnapshot.sessions.map((session) => ({
-        ...session,
-        status: "idle" as const,
-        context: { ...session.context, source: "live" as const },
-      })),
-    };
-    let publishSnapshot: ((value: ClientSnapshot) => void) | undefined;
-    const createSession = vi.fn(async () => ({ sessionId: "session-new" }));
-    if (empty) createSession.mockRejectedValueOnce(new Error("creation unavailable"));
+  it("opens and focuses a blank draft without creating a Session", async () => {
+    const initial = await createMockAppClient().snapshot();
+    const createSession = vi.fn(async () => ({ sessionId: "new-session" }));
     render(<HarnessGui client={{
-      snapshot: async () => empty ? { ...snapshot, sessions: [], selectedSessionId: "", recentSessionIds: [] } : snapshot,
-      subscribe: () => () => undefined,
-      subscribeSnapshots: (listener) => {
-        publishSnapshot = listener;
-        return () => { publishSnapshot = undefined; };
-      },
-      submitText: async (input) => ({ submissionId: input.submissionId, accepted: true }),
-      interrupt: async () => ({ accepted: false }),
+      snapshot: async () => ({
+        ...initial, connection: "connected",
+        source: { kind: "live", serviceInstanceId: "draft-host", muxSpaceId: "draft-mux", connectionEpoch: "1" },
+      }),
       createSession,
-      requestResync: refresh === "reject" ? async () => { throw new Error("refresh unavailable"); }
-        : refresh === "timeout" ? () => new Promise<void>(() => undefined)
-        : undefined,
+      subscribe: () => () => {},
+      submitText: async ({ submissionId }) => ({ accepted: true, submissionId }),
+      interrupt: async () => ({ accepted: false }),
     }} />);
-
-    if (empty) await screen.findByText("No Session is available.");
-    else await screen.findByRole("heading", { name: "GUI development" });
-    if (refresh === "timeout") {
-      vi.useFakeTimers();
-      try {
-        await act(async () => { fireEvent.click(screen.getByRole("button", { name: "New Session" })); });
-        expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
-        await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
-      } finally {
-        vi.useRealTimers();
-      }
-    } else {
-      await user.click(screen.getByRole("button", { name: "New Session" }));
-    }
-    if (empty) {
-      expect(await screen.findByText("New Session could not be created.")).toBeVisible();
-      await user.click(screen.getByRole("button", { name: "New Session" }));
-    }
-    expect(createSession).toHaveBeenCalledWith({
-      sourceSessionId: empty ? undefined : "session-gui",
-      title: "New Session",
-    });
-    if (refresh !== "none") {
-      expect(await screen.findByText("New Session was created, but it could not be shown yet.")).toBeVisible();
-      expect(screen.getByRole("button", { name: "New Session" })).toBeEnabled();
-      expect(createSession).toHaveBeenCalledTimes(1);
-    } else {
-      expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
-    }
-
-    const source = snapshot.sessions[0];
-    const created = {
-      ...source,
-      id: "session-new",
-      title: "New Session",
-      context: {
-        ...source.context,
-        memberId: "member-new",
-        sessionId: "session-new",
-      },
-    };
-    await act(async () => {
-      publishSnapshot?.({
-        ...snapshot,
-        generation: "2",
-        sessions: [...snapshot.sessions, created],
-        recentSessionIds: ["session-new", ...snapshot.recentSessionIds],
-        selectedSessionId: "session-new",
-      });
-    });
-    expect(screen.getByRole("heading", { name: "New Session" })).toBeVisible();
-    expect(screen.getByText("New Session created and attached.")).toBeVisible();
+    const start = await screen.findByRole("button", { name: "New Session" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    expect(createSession).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep this draft" } });
+    fireEvent.click(start);
+    expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
+    fireEvent.click(screen.getByRole("button", { name: /^GUI development ·/ }));
+    expect(createSession).not.toHaveBeenCalled();
+    fireEvent.click(start);
+    expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
   });
+
+  it.each(["rejected", "lost-create", "unconfirmed-create", "rejected-submit", "lost-submit"] as const)(
+    "binds first send to the confirmed Session and preserves the draft on %s",
+    async (failure) => {
+      const seed = await createMockAppClient().snapshot();
+      let snapshot: ClientSnapshot = {
+        ...seed, connection: "connected",
+        source: { kind: "live", serviceInstanceId: "draft-host", muxSpaceId: "draft-mux", connectionEpoch: "1" },
+        sessions: [],
+        selectedSessionId: "",
+        recentSessionIds: [],
+      };
+      let feed: ((value: ClientSnapshot) => void) | undefined;
+      const createSession = vi.fn(async (input: { continuityId?: string }): Promise<CreateSessionReceipt> => {
+        if (failure === "rejected" && createSession.mock.calls.length === 1) return { rejected: true };
+        const created = {
+          ...seed.sessions[0], id: "session-new", title: "New Session", messages: [],
+          context: {
+            ...seed.sessions[0].context, sessionId: "session-new",
+            continuityId: failure === "unconfirmed-create" ? "some-other-create" : input.continuityId,
+          },
+        };
+        snapshot = { ...snapshot, sessions: [created], selectedSessionId: created.id };
+        if (failure === "lost-create" || failure === "unconfirmed-create") {
+          throw new Error("disconnected during create");
+        }
+        return { sessionId: created.id };
+      });
+      const submitText = vi.fn<HarnessClientUiPort["submitText"]>(async ({ submissionId }) => {
+        if (failure === "lost-submit") throw new Error("response lost");
+        if (failure === "rejected-submit" && submitText.mock.calls.length === 1) {
+          return { accepted: false, submissionId, reason: "operation_unavailable" };
+        }
+        return { accepted: true, submissionId, executionId: "execution-new" };
+      });
+      render(<HarnessGui client={{
+        snapshot: async () => snapshot,
+        subscribe: () => () => {},
+        subscribeSnapshots: (listener) => { feed = listener; return () => {}; },
+        submitText, createSession,
+        requestResync: async () => { feed?.(snapshot); },
+        interrupt: async () => ({ accepted: false }),
+      }} />);
+      const start = await screen.findByRole("button", { name: "New Session" });
+      await waitFor(() => expect(start).toBeEnabled());
+      fireEvent.click(start);
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, { target: { value: "First message" } });
+      const send = screen.getByRole("button", { name: "Send" });
+      if (failure === "unconfirmed-create") {
+        vi.useFakeTimers();
+        try {
+          await act(async () => { fireEvent.click(send); });
+          await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+          expect(screen.getByText("Session creation is unconfirmed. Your draft is saved.")).toBeVisible();
+          expect(input).toHaveValue("First message");
+          await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Check creation status" })); });
+          await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+          expect(createSession).toHaveBeenCalledTimes(1);
+          expect(submitText).not.toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
+        }
+        return;
+      }
+      fireEvent.click(send);
+      fireEvent.submit(input.closest("form")!);
+      expect(createSession).toHaveBeenCalledTimes(1);
+      if (failure === "rejected") {
+        expect(await screen.findByText("New Session could not be created.")).toBeVisible();
+        expect(input).toHaveValue("First message");
+        expect(submitText).not.toHaveBeenCalled();
+        fireEvent.click(send);
+      }
+      await waitFor(() => expect(submitText).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+        sessionId: "session-new", text: "First message",
+      })));
+      if (failure === "rejected-submit") {
+        expect(await screen.findByText("The first message was rejected. Your draft is saved.")).toBeVisible();
+        expect(input).toHaveValue("First message");
+        fireEvent.click(send);
+        await waitFor(() => expect(submitText).toHaveBeenCalledTimes(2));
+        expect(submitText.mock.calls[1][0].sessionId).toBe("session-new");
+        expect(createSession).toHaveBeenCalledTimes(1);
+      }
+      if (failure === "lost-submit") {
+        expect(await screen.findByText("The first message outcome is unknown. Your draft is saved.")).toBeVisible();
+        expect(input).toHaveValue("First message");
+        expect(send).toBeDisabled();
+        fireEvent.submit(input.closest("form")!);
+        expect(submitText).toHaveBeenCalledTimes(1);
+        expect(createSession).toHaveBeenCalledTimes(1);
+      } else {
+        await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+        expect(screen.getByRole("heading", { name: "New Session" })).toBeVisible();
+      }
+    },
+  );
 
   it("navigates three Workspace kinds and preserves per-Session drafts", async () => {
     const user = userEvent.setup();
@@ -703,7 +732,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
 
     while (client.remainingFixtureSteps() > 0) await user.click(advance);
     expect(screen.getByRole("button", { name: "4 / 4 complete" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "GUI development · Idle" })).toBeVisible();
+    expect(screen.getByRole("button", { name: /^GUI development ·/ })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
     const dock = screen.getByLabelText("Work Dock");
     await user.click(within(dock).getByRole("button", { name: "Subagents" }));

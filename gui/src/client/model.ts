@@ -37,6 +37,7 @@ export interface WorkspaceSummary {
 }
 
 export interface ContextIdentity {
+  readonly continuityId?: string;
   readonly project: string;
   readonly rootLabel: string;
   readonly scope?: "cwd" | "user_home";
@@ -283,11 +284,19 @@ export interface SessionModels {
 
 export interface CreateSessionInput {
   readonly sourceSessionId?: string;
+  readonly continuityId?: string;
   readonly title: string;
 }
 
-export interface CreateSessionReceipt {
-  readonly sessionId: string;
+export type CreateSessionReceipt =
+  | { readonly sessionId: string }
+  | { readonly rejected: true };
+
+export interface DraftBinding {
+  readonly client: HarnessClientUiPort;
+  readonly sessionId?: string;
+  readonly show: (sessionId?: string) => boolean;
+  readonly refresh?: () => Promise<void>;
 }
 
 export interface PlaybackStep {

@@ -2,8 +2,9 @@
 mod live_view;
 mod service;
 use crate::{
-    AppClient, AppTarget, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
-    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
+    definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlCommand,
+    ControlResult, CreateSessionResult, ModelControlResult, WorkspaceInfo, WorkspaceRequest,
+    WorkspaceResult,
 };
 use live_view::{Target, View};
 use rusqlite::{params, Connection};
@@ -511,27 +512,31 @@ fn control_on<T>(
         .map_err(|_| "connection_failed".into())
 }
 
-fn create(
-    target: AppTarget<'_>,
-    mux: &str,
-    workspace: Option<&WorkspaceInfo>,
-    input: &Value,
-) -> Result<Value> {
-    created(control(
-        options(target, mux, workspace),
-        create_command(input)?,
-    )?)
-}
-
 fn create_command(
     input: &Value,
 ) -> Result<
     impl FnOnce(mpsc::SyncSender<std::result::Result<CreateSessionResult, ()>>) -> ControlCommand,
 > {
     let title = field(input, "title")?.to_owned();
-    let mut entropy = [0_u8; 16];
-    getrandom::getrandom(&mut entropy).map_err(|_| "host_unavailable")?;
-    let continuity_id = entropy.iter().map(|byte| format!("{byte:02x}")).collect();
+    let continuity_id = match input.get("continuityId") {
+        Some(value) if !value.is_null() => {
+            let id = value.as_str().ok_or("invalid_request")?;
+            if id.len() > 512
+                || !id.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._~-".contains(&byte))
+            {
+                return Err("invalid_request".into());
+            }
+            id.to_owned()
+        }
+        _ => {
+            let mut entropy = [0_u8; 16];
+            getrandom::getrandom(&mut entropy).map_err(|_| "host_unavailable")?;
+            entropy.iter().map(|byte| format!("{byte:02x}")).collect()
+        }
+    };
     let source_session_id = input["sourceSessionId"].as_str().map(str::to_owned);
     Ok(move |reply| ControlCommand::CreateSession {
         source_session_id,
@@ -559,18 +564,34 @@ fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     if title.trim().is_empty() || title.chars().count() > 256 {
         return Err("invalid_request".into());
     }
-    let (path, mux, scope) = match request.get("path").filter(|path| !path.is_null()) {
-        Some(path) => {
-            let workspace = open_workspace(target, path.as_str().ok_or("invalid_request")?)?;
-            (workspace.path.clone(), mux_name(&workspace.path), workspace)
-        }
-        None => {
-            let scope = single(workspaces(target, WorkspaceRequest::AllocateTemporary)?)?;
-            (TEMPORARY.into(), TEMPORARY_MUX.into(), scope)
-        }
+    let command = create_command(&json!({
+        "title": title, "continuityId": request["continuityId"],
+    }))?;
+    let workspace_path = request
+        .get("path")
+        .filter(|path| !path.is_null())
+        .map(|path| path.as_str().ok_or("invalid_request"))
+        .transpose()?;
+    let scope = match workspace_path {
+        Some(path) => open_workspace(target, path),
+        None => workspaces(target, WorkspaceRequest::AllocateTemporary).and_then(single),
     };
-    let result = create(target, &mux, Some(&scope), &json!({"title": title}))?;
-    Ok(json!({"workspace": path, "sessionId": result["sessionId"]}))
+    let Ok(scope) = scope else {
+        return Ok(json!({"accepted": false}));
+    };
+    let (path, mux) = match workspace_path {
+        Some(_) => (scope.path.as_str(), mux_name(&scope.path)),
+        None => (TEMPORARY, TEMPORARY_MUX.into()),
+    };
+    match control(options(target, &mux, Some(&scope)), command)? {
+        CreateSessionResult::Accepted(session_id) => {
+            Ok(json!({"workspace": path, "sessionId": session_id}))
+        }
+        CreateSessionResult::Rejected(code) if definitive_create_rejection(&code) => {
+            Ok(json!({"accepted": false}))
+        }
+        CreateSessionResult::Rejected(code) => Err(code),
+    }
 }
 
 fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
@@ -685,7 +706,7 @@ mod tests {
         }
         assert_eq!(
             create_chat(target, &json!({"title": "a".repeat(256)})),
-            Err("connection_failed".into())
+            Ok(json!({"accepted": false}))
         );
     }
 }
