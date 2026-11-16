@@ -97,6 +97,21 @@ fn application_root(app: &AppHandle) -> Result<PathBuf> {
     std::path::absolute(path).map_err(|_| SETTINGS_ERROR)
 }
 
+fn workspace_error(creating: bool, code: &str) -> &'static str {
+    if !creating {
+        return "connection_failed";
+    }
+    match code {
+        "invalid_request" => "invalid_request",
+        "not_found" => "not_found",
+        "already_exists" => "already_exists",
+        "permission_denied" => "permission_denied",
+        "workspace_registration_failed" => "workspace_registration_failed",
+        "operation_unavailable" => "operation_unavailable",
+        _ => "connection_failed",
+    }
+}
+
 async fn dispatch(routed: Routed) -> Result<Value> {
     match routed {
         Routed::Settings(value) => Ok(value),
@@ -115,10 +130,11 @@ async fn dispatch(routed: Routed) -> Result<Value> {
             } else {
                 backend.clone()
             };
+            let creating_workspace = body["operation"] == "workspace" && body["action"] == "create";
             let mut value = tauri::async_runtime::spawn_blocking(move || backend.call(body))
                 .await
                 .map_err(|_| SETTINGS_ERROR)?
-                .map_err(|_| "connection_failed")?;
+                .map_err(|code| workspace_error(creating_workspace, &code))?;
             if environment {
                 value
                     .as_object_mut()

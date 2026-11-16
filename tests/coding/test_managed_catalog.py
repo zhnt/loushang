@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import hashlib
 import os
 import sys
@@ -13,8 +14,13 @@ import pytest
 
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
-from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
+from loushang.apphost.workspace_registry import (
+    HostWorkspaceRegistryPort,
+    WorkspaceRegistrationError,
+)
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
     SessionAvailabilityV1,
     SessionCompatibilityV1,
     WorkspaceRequestV1,
@@ -558,6 +564,9 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
     registry.register.return_value = project
     registry.select.return_value = project
     registry.allocate_temporary.return_value = temporary
+    new_project = tmp_path / "new"
+    new_project.mkdir()
+    registry.create.return_value = new_project
     registry.is_temporary.side_effect = lambda path: path == temporary
     closed = []
     registry.close.side_effect = lambda: closed.append("registry")
@@ -573,6 +582,11 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
             assert [item.path for item in allocated.workspaces] == [str(temporary)]
             projects = await catalog.workspace(WorkspaceRequestV1("projects"))
             assert [item.path for item in projects.workspaces] == [str(project)]
+            created = await catalog.workspace(WorkspaceRequestV1("create", str(new_project)))
+            assert [item.path for item in created.workspaces] == [str(new_project)]
+            projects = await catalog.workspace(WorkspaceRequestV1("projects"))
+            assert {item.path for item in projects.workspaces} == {str(new_project), str(project)}
+            assert catalog.pending_sessions == ()
 
             close_project = catalog._catalogs[project].close
 
@@ -593,6 +607,34 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
     registry.register.assert_called_once_with(str(project))
     registry.select.assert_called_once_with(str(project))
     registry.allocate_temporary.assert_called_once_with()
+    registry.create.assert_called_once_with(str(new_project))
+
+
+@pytest.mark.parametrize("failure,code", [
+    (ValueError("invalid_workspace"), AppErrorCodeV1.INVALID_REQUEST),
+    (FileNotFoundError(errno.ENOENT, "parent"), AppErrorCodeV1.NOT_FOUND),
+    (FileExistsError(errno.EEXIST, "leaf"), AppErrorCodeV1.ALREADY_EXISTS),
+    (PermissionError(errno.EACCES, "parent"), AppErrorCodeV1.PERMISSION_DENIED),
+    (OSError(errno.ENOSPC, "disk"), AppErrorCodeV1.OPERATION_UNAVAILABLE),
+    (WorkspaceRegistrationError(), AppErrorCodeV1.WORKSPACE_REGISTRATION_FAILED),
+])
+def test_workspace_catalog_exposes_safe_create_errors(tmp_path, failure, code):
+    registry = Mock(spec=HostWorkspaceRegistryPort)
+    registry.list.return_value = ()
+    registry.create.side_effect = failure
+
+    async def scenario():
+        catalog = CodingWorkspaceCatalog(registry, tmp_path / "sessions", tmp_path / "stores")
+        try:
+            await catalog.load()
+            with pytest.raises(AppServiceError) as error:
+                await catalog.workspace(WorkspaceRequestV1("create", str(tmp_path / "new")))
+            assert error.value.code is code
+            assert catalog.scopes == ()
+        finally:
+            await catalog.close()
+
+    asyncio.run(scenario())
 
 
 def test_workspace_catalog_reopens_previous_project_store(tmp_path):

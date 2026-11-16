@@ -195,6 +195,8 @@ impl State {
                 "attachment_lagged",
                 "session_unavailable",
                 "operation_unavailable",
+                "permission_denied",
+                "workspace_registration_failed",
                 "cleanup_incomplete",
                 "service_closed",
             ]
@@ -439,6 +441,8 @@ pub fn control_bridge(kind: &str, wire: &str) -> Result<Value, ()> {
                 "attachment_lagged",
                 "session_unavailable",
                 "operation_unavailable",
+                "permission_denied",
+                "workspace_registration_failed",
                 "cleanup_incomplete",
                 "service_closed",
             ]

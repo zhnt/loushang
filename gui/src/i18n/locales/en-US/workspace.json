@@ -15,6 +15,7 @@
     "fixtureBanner": "Fixture data · no backend",
     "liveBanner": "Live AppHost · controlled",
     "projects": "Projects",
+    "createWorkspace": "New Workspace",
     "addProject": "Add project",
     "newProjectChat": "New chat in {{project}}",
     "chats": "Chats",
@@ -28,6 +29,20 @@
     "unread": "Unread updates",
     "stale": "Stale · was {{status}}",
     "sessionLabel": "{{title}} · {{status}}"
+  },
+  "createWorkspace": {
+    "path": "Absolute path on the Host",
+    "submit": "Create",
+    "errors": {
+      "invalid_request": "Enter a valid absolute directory path on the Host.",
+      "not_found": "The parent directory does not exist on the Host.",
+      "already_exists": "That path already exists. Use Add project to register an existing directory.",
+      "permission_denied": "The Host does not have permission to create this directory.",
+      "workspace_registration_failed": "The directory was created. Registration could not be confirmed. Use Add project to recover it.",
+      "operation_unavailable": "The Host could not create the directory.",
+      "unknown": "The result is unknown. Check the project list or use Add project if the directory exists.",
+      "refresh_failed": "The Workspace was created. Refresh the Host status to update the project list."
+    }
   },
   "environment": {
     "summary": "Environment summary",

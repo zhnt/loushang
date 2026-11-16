@@ -262,6 +262,7 @@ impl Backend {
             "create-chat" => return create_chat(target, request),
             "open" => return self.open(target, field(request, "path")?),
             "list" => WorkspaceRequest::List,
+            "create" => WorkspaceRequest::Create(workspace_creation_path(request)?),
             "register" => WorkspaceRequest::Register(field(request, "path")?),
             "unregister" => WorkspaceRequest::Unregister(field(request, "path")?),
             _ => return Err("unknown_operation".into()),
@@ -400,6 +401,16 @@ fn mux_name(path: &str) -> String {
         "ws-{:.60}",
         format!("{:x}", Sha256::digest(path.as_bytes()))
     )
+}
+
+fn workspace_creation_path(request: &Value) -> Result<&str> {
+    let path = request["path"].as_str().ok_or("invalid_request")?;
+    let absolute = path.starts_with('/')
+        || matches!(path.as_bytes(), [drive, b':', b'/' | b'\\', ..] if drive.is_ascii_alphabetic());
+    if !absolute || path.contains('\0') || path.chars().count() > 4096 {
+        return Err("invalid_request".into());
+    }
+    Ok(path)
 }
 
 fn workspaces(target: AppTarget<'_>, request: WorkspaceRequest<'_>) -> Result<Vec<WorkspaceInfo>> {
@@ -694,6 +705,22 @@ fn models(result: ModelControlResult) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_creation_checks_the_wire_shape_without_interpreting_host_paths() {
+        for path in ["/home/project", r"C:\Work Space"] {
+            assert_eq!(
+                workspace_creation_path(&json!({"path": path})).unwrap(),
+                path
+            );
+        }
+        for path in ["relative", "C:relative", "/bad\0path", ""] {
+            assert_eq!(
+                workspace_creation_path(&json!({"path": path})).unwrap_err(),
+                "invalid_request"
+            );
+        }
+    }
 
     #[test]
     fn invalid_chat_titles_are_rejected_before_workspace_allocation() {

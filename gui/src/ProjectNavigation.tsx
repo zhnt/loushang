@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
-import { TEMPORARY_WORKSPACE, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
+import { TEMPORARY_WORKSPACE, type ProjectChat, type ProjectNavigationProps, type WorkspaceCreationError } from "./client/projectDirectory";
 
 export function ProjectNavigation({ navigation, selectedId, titles }: {
   navigation: ProjectNavigationProps;
@@ -11,6 +11,8 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
   const { t } = useTranslation("workspace");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [path, setPath] = useState("");
+  const [creatingOn, setCreatingOn] = useState<string | null>(null);
+  const showCreation = creatingOn === navigation.hostKey && !navigation.folderInput;
   const editable = navigation.available && !navigation.pending;
   const { projects, temporarySessions } = navigation.directory;
   const pinned = [
@@ -63,9 +65,20 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
     <section className="project-navigation" aria-label={t("sidebar.projects")}>
       <div className="project-heading">
         <h2 className="section-label">{t("sidebar.projects")}</h2>
+        <button type="button" className="project-create-workspace" disabled={!editable || showCreation}
+          aria-expanded={showCreation} onClick={() => {
+            navigation.closeFolder();
+            setCreatingOn(navigation.hostKey);
+          }}>{t("sidebar.createWorkspace")}</button>
         <button type="button" className="project-action" aria-label={t("sidebar.addProject")}
-          title={t("sidebar.addProject")} disabled={!editable} onClick={navigation.openFolder}><span className="sidebar-add-mark" aria-hidden="true" /></button>
+          title={t("sidebar.addProject")} disabled={!editable} onClick={() => {
+            setCreatingOn(null);
+            navigation.openFolder();
+          }}><span className="sidebar-add-mark" aria-hidden="true" /></button>
       </div>
+      {showCreation ? <WorkspaceCreationForm key={navigation.hostKey} editable={editable}
+        createWorkspace={navigation.createWorkspace} close={() => setCreatingOn((current) =>
+          current === navigation.hostKey ? null : current)} /> : null}
       {navigation.folderInput ? <form className="project-path" onSubmit={(event) => {
         event.preventDefault();
         if (path.trim() && editable) void navigation.register(path.trim()).then((accepted) => { if (accepted) setPath(""); });
@@ -103,4 +116,37 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
       {temporarySessions.filter((session) => !session.pinned).map((session) => chat(TEMPORARY_WORKSPACE, session))}
     </section>
   </div>;
+}
+
+
+function WorkspaceCreationForm({ editable, createWorkspace, close }: {
+  editable: boolean;
+  createWorkspace: ProjectNavigationProps["createWorkspace"];
+  close: () => void;
+}) {
+  const { t } = useTranslation("workspace");
+  const [path, setPath] = useState("");
+  const [failure, setFailure] = useState<WorkspaceCreationError | null>(null);
+  const submitting = useRef(false);
+
+  async function submit() {
+    if (!editable || !path.trim() || submitting.current || failure === "refresh_failed") return;
+    submitting.current = true;
+    setFailure(null);
+    try {
+      const error = await createWorkspace(path);
+      if (error) setFailure(error);
+      else close();
+    } finally {
+      submitting.current = false;
+    }
+  }
+
+  return <form className="project-path" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+    <input autoFocus aria-label={t("createWorkspace.path")} placeholder={t("createWorkspace.path")}
+      disabled={!editable} value={path} onChange={(event) => { setPath(event.target.value); setFailure(null); }} />
+    <button type="submit" disabled={!editable || !path.trim() || failure === "refresh_failed"}>{t("createWorkspace.submit")}</button>
+    <button type="button" disabled={submitting.current} onClick={close}>{t("localHost.cancel")}</button>
+    {failure ? <p className="project-error" role="alert">{t(`createWorkspace.errors.${failure}`)}</p> : null}
+  </form>;
 }
