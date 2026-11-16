@@ -20,6 +20,7 @@ from loushang.apphost.managed.contracts import (
 )
 from loushang.apphost.managed.registry import ManagedMuxReservationV1, ManagedRegistryV1
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
+from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux managed registry")
 
@@ -555,7 +556,7 @@ def test_registry_is_host_owned_persistent_and_does_not_change_cwd(tmp_path):
     alias = tmp_path / "alias"
     alias.symlink_to(a, target_is_directory=True)
     before = Path.cwd()
-    owner = WorkspaceRegistry(tmp_path / "registry")
+    owner: HostWorkspaceRegistryPort = WorkspaceRegistry(tmp_path / "registry")
     try:
         owner.open()
         assert owner.list() == ()
@@ -566,6 +567,10 @@ def test_registry_is_host_owned_persistent_and_does_not_change_cwd(tmp_path):
         assert owner.select(str(alias)) == a
         with pytest.raises(ValueError):
             owner.register("relative")
+        temporary = owner.allocate_temporary()
+        assert temporary.is_dir() and owner.is_temporary(temporary)
+        assert not owner.is_temporary(a)
+        assert owner.select(str(temporary)) == temporary
         assert not list(a.iterdir()), "registration must not create Session or Runtime files"
         assert Path.cwd() == before
     finally:
@@ -573,10 +578,10 @@ def test_registry_is_host_owned_persistent_and_does_not_change_cwd(tmp_path):
     reopened = WorkspaceRegistry(tmp_path / "registry")
     try:
         reopened.open()
-        assert reopened.list() == (a, b)
+        assert reopened.list() == (a, b, temporary)
         reopened.unregister(str(a))
         reopened.unregister(str(a))
-        assert reopened.list() == (b,)
+        assert reopened.list() == (b, temporary)
         with pytest.raises(ValueError, match="workspace_not_registered"):
             reopened.select(str(a))
     finally:
