@@ -7,6 +7,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    _LegacyLocalWheelFields,
+)
 from loushang.harness.resources.plugins.dependencies import PluginDependencyClosureLock
 
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
@@ -14,7 +17,7 @@ _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 @dataclass(frozen=True, slots=True)
-class CodingLegacyLocalWheelCandidateV1:
+class CodingLegacyLocalWheelCandidateV1(_LegacyLocalWheelFields):
     """Inert bytes; only a later Product policy can authorize publication."""
 
     plugin_id: str

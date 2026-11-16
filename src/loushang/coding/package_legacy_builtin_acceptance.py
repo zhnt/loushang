@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
 )
 from loushang.harness.package_product._legacy_local_migration import (
+    _FirstAcceptanceEnvelope,
     _FirstAcceptanceJournal,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -43,6 +39,14 @@ class CodingLegacyBuiltinOnlyAcceptanceError(RuntimeError):
     """The reviewed builtin-only Product acceptance is inconsistent."""
 
 
+_envelope = _FirstAcceptanceEnvelope(
+    invalid_message="Invalid Coding builtin-only acceptance",
+    invalid_code="coding_builtin_acceptance_invalid",
+    version_error="Unsupported builtin-only acceptance version",
+    identity_error="Builtin-only acceptance identity changed",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class CodingLegacyBuiltinOnlyAcceptanceV1:
     review: CodingLegacyBuiltinOnlyReviewV1
@@ -55,9 +59,7 @@ class CodingLegacyBuiltinOnlyAcceptanceV1:
     ) -> CodingLegacyBuiltinOnlyAcceptanceV1:
         if not isinstance(review, CodingLegacyBuiltinOnlyReviewV1):
             raise TypeError("Coding builtin-only review is required")
-        acceptance_id = sha256(
-            canonical_json_bytes({"acceptanceVersion": 1, "reviewId": review.review_id})
-        ).hexdigest()
+        acceptance_id = _envelope.identity(review.review_id)
         return cls(review=review, acceptance_id=acceptance_id)
 
     def to_dict(self) -> dict[str, object]:
@@ -69,32 +71,9 @@ class CodingLegacyBuiltinOnlyAcceptanceV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyBuiltinOnlyAcceptanceV1:
-        if type(value) is not dict or set(value) != {
-            "acceptanceId",
-            "acceptanceVersion",
-            "review",
-        }:
-            raise JournalCodecError(
-                "Invalid Coding builtin-only acceptance",
-                code="coding_builtin_acceptance_invalid",
-            )
-        try:
-            if (
-                type(value["acceptanceVersion"]) is not int
-                or value["acceptanceVersion"] != 1
-            ):
-                raise ValueError("Unsupported builtin-only acceptance version")
-            record = cls.create(
-                CodingLegacyBuiltinOnlyReviewV1.from_dict(value["review"])
-            )
-            if record.acceptance_id != value["acceptanceId"]:
-                raise ValueError("Builtin-only acceptance identity changed")
-            return record
-        except (TypeError, ValueError) as exc:
-            raise JournalCodecError(
-                "Invalid Coding builtin-only acceptance",
-                code="coding_builtin_acceptance_invalid",
-            ) from exc
+        return _envelope.decode(
+            value, CodingLegacyBuiltinOnlyReviewV1.from_dict, cls.create
+        )
 
 
 _CODEC = FunctionalJournalRecordCodec(

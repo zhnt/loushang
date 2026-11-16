@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
 )
 from loushang.harness.package_product._legacy_local_migration import (
+    _FirstAcceptanceEnvelope,
     _FirstAcceptanceJournal,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -36,6 +32,14 @@ class CodingLegacyRemovedAcceptanceError(RuntimeError):
     """The accepted old removal does not match the frozen Product input."""
 
 
+_envelope = _FirstAcceptanceEnvelope(
+    invalid_message="Invalid Coding old removal acceptance",
+    invalid_code="coding_removed_acceptance_invalid",
+    version_error="Unsupported old removal acceptance version",
+    identity_error="Old removal acceptance identity changed",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class CodingLegacyRemovedAcceptanceV1:
     review: CodingLegacyRemovedReviewV1
@@ -48,9 +52,7 @@ class CodingLegacyRemovedAcceptanceV1:
     ) -> CodingLegacyRemovedAcceptanceV1:
         if not isinstance(review, CodingLegacyRemovedReviewV1):
             raise TypeError("Old local removal review is required")
-        acceptance_id = sha256(
-            canonical_json_bytes({"acceptanceVersion": 1, "reviewId": review.review_id})
-        ).hexdigest()
+        acceptance_id = _envelope.identity(review.review_id)
         return cls(review=review, acceptance_id=acceptance_id)
 
     def to_dict(self) -> dict[str, object]:
@@ -62,30 +64,9 @@ class CodingLegacyRemovedAcceptanceV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyRemovedAcceptanceV1:
-        if type(value) is not dict or set(value) != {
-            "acceptanceId",
-            "acceptanceVersion",
-            "review",
-        }:
-            raise JournalCodecError(
-                "Invalid Coding old removal acceptance",
-                code="coding_removed_acceptance_invalid",
-            )
-        try:
-            if (
-                type(value["acceptanceVersion"]) is not int
-                or value["acceptanceVersion"] != 1
-            ):
-                raise ValueError("Unsupported old removal acceptance version")
-            record = cls.create(CodingLegacyRemovedReviewV1.from_dict(value["review"]))
-            if record.acceptance_id != value["acceptanceId"]:
-                raise ValueError("Old removal acceptance identity changed")
-            return record
-        except (TypeError, ValueError) as exc:
-            raise JournalCodecError(
-                "Invalid Coding old removal acceptance",
-                code="coding_removed_acceptance_invalid",
-            ) from exc
+        return _envelope.decode(
+            value, CodingLegacyRemovedReviewV1.from_dict, cls.create
+        )
 
 
 _CODEC = FunctionalJournalRecordCodec(

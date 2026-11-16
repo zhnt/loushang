@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import Iterator, Sequence
+from collections.abc import Collection, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -294,3 +294,104 @@ def preserve_removed_product_plugin(
     result = product.management.submit(command)
     if result.result is None or result.result.disposition != "succeeded":
         raise RuntimeError(f"{error_prefix} tombstone refused")
+
+
+def _require_reviewed_bootstrap_history(
+    product: _ProductOwner,
+    plugin_id: str,
+    history: tuple[object, ...],
+    *,
+    store_id: str,
+    policy: _PluginBootstrapPolicy,
+    history_label: str,
+) -> None:
+    operation_id = policy.operation_id(store_id, plugin_id)
+    command_id = product.settled_install_command_id(
+        operation_id=operation_id, plugin_id=plugin_id
+    )
+    first = history[0]
+    mutation = getattr(first, "mutation", None)
+    committed = getattr(first, "committed_state", None)
+    selection = getattr(committed, "selection", None)
+    if (
+        command_id is None
+        or not isinstance(mutation, PluginDesiredStateMutationV1)
+        or mutation.operation_id != command_id
+        or mutation.actor_id != product.actor_id
+        or getattr(selection, "desired_state", None) != "installed_disabled"
+        or getattr(selection, "package_revision", None) is None
+    ):
+        raise RuntimeError(f"{history_label} bootstrap history changed")
+    if len(history) > 1:
+        second = history[1]
+        second_mutation = getattr(second, "mutation", None)
+        second_selection = getattr(
+            getattr(second, "committed_state", None), "selection", None
+        )
+        if getattr(second_mutation, "actor_id", None) == product.actor_id and (
+            not isinstance(second_mutation, PluginDesiredStateMutationV1)
+            or not second_mutation.operation_id.startswith(policy.enable_id_prefix)
+            or getattr(second_selection, "desired_state", None) != "installed_enabled"
+            or getattr(second_selection, "package_revision", None)
+            != getattr(selection, "package_revision", None)
+        ):
+            raise RuntimeError(f"{history_label} enable history changed")
+
+
+def bootstrap_reviewed_product_plugins(
+    product: _ProductOwner,
+    plugin_ids: tuple[str, ...],
+    *,
+    disabled_ids: Collection[str],
+    removed_ids: Collection[str],
+    policy: _PluginBootstrapPolicy,
+    strict_history: bool,
+    history_label: str = "Product",
+) -> None:
+    """Replay reviewed builtin choices through the original bootstrap owner.
+
+    Strict first-adoption paths validate exact scoped history. Active-local
+    continuation retains its older plugin-only history selection and yields
+    to subsequent operator choices. Products choose the supported mode.
+    """
+    for plugin_id in plugin_ids:
+        if plugin_id in removed_ids:
+            continue
+        key = (
+            PluginInstallationKeyV1(
+                product_id=policy.product_id,
+                installation_scope="workspace",
+                scope_id=product.policy.project_scope_id,
+                plugin_id=plugin_id,
+            )
+            if strict_history
+            else None
+        )
+        history = tuple(
+            item
+            for item in product.desired_state.transitions()
+            if (
+                item.mutation.installation_key == key
+                if strict_history
+                else item.mutation.installation_key.plugin_id == plugin_id
+            )
+        )
+        if history:
+            if strict_history:
+                _require_reviewed_bootstrap_history(
+                    product,
+                    plugin_id,
+                    history,
+                    store_id=product.epoch_runtime.registry.store_id,
+                    policy=policy,
+                    history_label=history_label,
+                )
+            if getattr(history[-1].mutation, "actor_id", None) != product.actor_id:
+                continue
+        bootstrap_product_plugin(
+            product,
+            plugin_id,
+            store_id=product.epoch_runtime.registry.store_id,
+            policy=policy,
+            enable=plugin_id not in disabled_ids,
+        )

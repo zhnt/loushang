@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._legacy_local_migration import (
+    _LegacyAdoptionSelection,
+)
 from loushang.harness.plugin_management.records import (
-    PluginDesiredStateTransitionV1,
     PluginInstallationKeyV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
@@ -28,6 +29,10 @@ from .package_legacy_data_trust import trust_class_for_legacy_data_resource
 from .package_legacy_local_acceptance import (
     reopen_coding_legacy_installed_local_acceptance,
 )
+from .package_legacy_local_installation import (
+    _enable_operation_id,
+    _install_operation_id,
+)
 from .package_legacy_skill_cutover_admission import (
     require_coding_fenced_single_legacy_skill_snapshot,
 )
@@ -35,7 +40,10 @@ from .package_legacy_source_consumption import (
     coding_accepted_legacy_local_source_consumed,
 )
 from .package_product_preview import CodingFencedProductReadOnlyPreviewOwner
-from .package_product_runtime import CODING_PACKAGE_PRODUCT_POLICY_REVISION
+from .package_product_runtime import (
+    _CODING_BUILTIN_BOOTSTRAP_POLICY,
+    CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+)
 
 _BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
 
@@ -119,64 +127,6 @@ def coding_legacy_local_data_adoption_settled(
             epoch.control_root / "product-state" / "handoff.jsonl"
         )
         desired = preview.selected_manifests.root_reader.desired_state
-        before, history = desired.capture_read_only()
-
-        def transitions_for(selected_plugin: str):
-            key = PluginInstallationKeyV1(
-                product_id="coding",
-                installation_scope="workspace",
-                scope_id=lifecycle.scope_id,
-                plugin_id=selected_plugin,
-            )
-            return tuple(
-                item for item in history if item.mutation.installation_key == key
-            )
-
-        old_install_id = (
-            "coding-legacy-local-install:"
-            + sha256(
-                f"{accepted.review.store_id}\0{accepted.acceptance_id}".encode()
-            ).hexdigest()
-        )
-        command_id = _settled_command(
-            handoffs,
-            operation_id=old_install_id,
-            plugin_id=plugin_id,
-            scope_id=lifecycle.scope_id,
-        )
-        old_events = transitions_for(plugin_id)
-        if (
-            command_id is None
-            or not old_events
-            or not isinstance(old_events[0], PluginDesiredStateTransitionV1)
-            or old_events[0].mutation.operation_id != command_id
-            or old_events[0].committed_state.selection.desired_state
-            != "installed_disabled"
-            or old_events[0].committed_state.selection.package_revision is None
-            or old_events[
-                0
-            ].committed_state.selection.package_revision.package_source_identity
-            != matches[0].source_identity
-        ):
-            return False
-        if accepted.review.desired_state == "installed_enabled":
-            enable_id = (
-                "coding-legacy-local-enable:"
-                + sha256(
-                    f"{accepted.review.store_id}\0{accepted.acceptance_id}".encode()
-                ).hexdigest()
-            )
-            if (
-                len(old_events) < 2
-                or not isinstance(old_events[1], PluginDesiredStateTransitionV1)
-                or old_events[1].mutation.operation_id != enable_id
-                or old_events[1].committed_state.selection.desired_state
-                != "installed_enabled"
-                or old_events[1].committed_state.selection.package_revision
-                != old_events[0].committed_state.selection.package_revision
-            ):
-                return False
-
         disabled_builtins = {
             item.plugin_id for item in accepted.review.disabled_plugins
         }
@@ -185,96 +135,39 @@ def coding_legacy_local_data_adoption_settled(
             for item in accepted.review.builtin_intent
             if item.desired_state == "installed_disabled"
         )
-        for builtin_id in _BUILTINS:
-            events = transitions_for(builtin_id)
-            if builtin_id in accepted.review.removed_builtin_ids:
-                if (
-                    not events
-                    or events[0].mutation.operation_id
-                    != accepted.review.removed_builtin_operation_id(builtin_id)
-                    or events[0].committed_state.selection.desired_state != "absent"
-                    or any(
-                        event.mutation.operation_id.startswith(
-                            "coding-builtin-bootstrap:"
-                        )
-                        for event in events[1:]
-                    )
-                ):
-                    return False
-                continue
-            operation_id = (
-                "coding-builtin-bootstrap:"
-                + sha256(f"{epoch.store_id}:{builtin_id}".encode()).hexdigest()
-            )
-            command_id = _settled_command(
-                handoffs,
-                operation_id=operation_id,
-                plugin_id=builtin_id,
+        selection = _LegacyAdoptionSelection(
+            key=PluginInstallationKeyV1(
+                product_id="coding",
+                installation_scope="workspace",
                 scope_id=lifecycle.scope_id,
-            )
-            builtin_source = tuple(
-                item.source_identity
-                for item in preview.policy.bindings
-                if item.plugin_id == builtin_id
-            )
-            if (
-                command_id is None
-                or len(builtin_source) != 1
-                or not events
-                or not isinstance(events[0], PluginDesiredStateTransitionV1)
-                or events[0].mutation.operation_id != command_id
-                or events[0].committed_state.selection.desired_state
-                != "installed_disabled"
-                or events[0].committed_state.selection.package_revision is None
-                or events[
-                    0
-                ].committed_state.selection.package_revision.package_source_identity
-                != builtin_source[0]
-            ):
-                return False
-            if builtin_id in disabled_builtins:
-                if any(
-                    event.mutation.operation_id.startswith(
-                        "coding-builtin-bootstrap-enable:"
-                    )
-                    for event in events[1:]
-                ):
-                    return False
-            elif (
-                len(events) < 2
-                or not isinstance(events[1], PluginDesiredStateTransitionV1)
-                or events[1].committed_state.selection.desired_state
-                != "installed_enabled"
-                or events[1].committed_state.selection.package_revision
-                != events[0].committed_state.selection.package_revision
-            ):
-                return False
-        after, later_history = desired.capture_read_only()
-        preview.epoch_runtime.assert_current()
-        return before == after and history == later_history
-
-
-def _settled_command(
-    handoffs: PackageRetentionHandoffJournal,
-    *,
-    operation_id: str,
-    plugin_id: str,
-    scope_id: str,
-) -> str | None:
-    receipt = handoffs.read_operation(operation_id)
-    if receipt is None or receipt.state != "settled":
-        return None
-    request = receipt.request.desired_request
-    if (
-        receipt.desired_receipt is None
-        or receipt.desired_receipt.request != request
-        or request.operation_id != operation_id
-        or request.plugin_id != plugin_id
-        or request.product_id != "coding"
-        or request.scope_id != scope_id
-    ):
-        raise ValueError("Coding legacy adoption handoff changed")
-    return request.command_id
+                plugin_id=plugin_id,
+            ),
+            source_identity=matches[0].source_identity,
+            install_operation_id=_install_operation_id(
+                accepted.review.store_id, accepted.acceptance_id
+            ),
+            enable_operation_id=(
+                _enable_operation_id(accepted.review.store_id, accepted.acceptance_id)
+                if accepted.review.desired_state == "installed_enabled"
+                else None
+            ),
+            builtin_ids=_BUILTINS,
+            disabled_builtin_ids=frozenset(disabled_builtins),
+            removed_builtin_operations={
+                name: accepted.review.removed_builtin_operation_id(name)
+                for name in _BUILTINS
+                if name in accepted.review.removed_builtin_ids
+            },
+        )
+        return selection.settled(
+            desired,
+            preview.epoch_runtime,
+            handoffs,
+            preview.policy.bindings,
+            store_id=epoch.store_id,
+            bootstrap_policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+            handoff_error="Coding legacy adoption handoff changed",
+        )
 
 
 __all__ = [

@@ -6,18 +6,24 @@ rooted IO. Products retain nominal codecs and authenticated legacy admission.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import stat
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Generic, Literal, Protocol, TypeVar
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.config.agent import SettingsManager
+from loushang.harness.config.store import _read_stable_json_patch
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
+    JournalCodecError,
     JournalLoadPolicy,
     JournalRecordCodec,
     decode_jsonl,
@@ -36,6 +42,7 @@ from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
 from loushang.harness.plugin_management.ledger import (
+    PluginDesiredStateLedger,
     decode_plugin_desired_state_snapshot,
 )
 from loushang.harness.plugin_management.operations import PluginManagementCommandV1
@@ -48,19 +55,83 @@ from loushang.harness.plugin_management.records import (
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+    PackageRetentionHandoffJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
+    _hold_windows_private_cutover_directory,
+    _PinnedWindowsAuthority,
+)
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWheelBindingV1,
+)
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    write_legacy_product_projection,
+)
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from ._plugin_bootstrap import _product_plugin_runtime, _ProductOwner
+from ._plugin_bootstrap import (
+    _PluginBootstrapPolicy,
+    _product_plugin_runtime,
+    _ProductOwner,
+)
 
 RecordT = TypeVar("RecordT")
+ReviewT = TypeVar("ReviewT")
+
+
+@dataclass(frozen=True)
+class _FirstAcceptanceEnvelope:
+    """The common V1 acceptance envelope; review admission stays with its Product."""
+
+    invalid_message: str
+    invalid_code: str
+    version_error: str
+    identity_error: str
+
+    @staticmethod
+    def identity(review_id: str) -> str:
+        return sha256(
+            canonical_json_bytes({"acceptanceVersion": 1, "reviewId": review_id})
+        ).hexdigest()
+
+    def decode(
+        self,
+        value: object,
+        review_decoder: Callable[[object], ReviewT],
+        create: Callable[[ReviewT], RecordT],
+    ) -> RecordT:
+        if type(value) is not dict or set(value) != {
+            "acceptanceId",
+            "acceptanceVersion",
+            "review",
+        }:
+            raise JournalCodecError(self.invalid_message, code=self.invalid_code)
+        try:
+            if (
+                type(value["acceptanceVersion"]) is not int
+                or value["acceptanceVersion"] != 1
+            ):
+                raise ValueError(self.version_error)
+            record = create(review_decoder(value["review"]))
+            if getattr(record, "acceptance_id") != value["acceptanceId"]:
+                raise ValueError(self.identity_error)
+            return record
+        except (TypeError, ValueError) as exc:
+            raise JournalCodecError(
+                self.invalid_message, code=self.invalid_code
+            ) from exc
 
 
 @dataclass(frozen=True)
@@ -881,3 +952,325 @@ class _LegacyLocalInstallation:
                 or outcome.evidence.operation_id != self.install_operation_id
             ):
                 raise self.error_type("Legacy local Product Package install refused")
+
+
+@dataclass(frozen=True)
+class _LegacySourceProjection:
+    """Keep the original Settings transaction and native projection alive together.
+
+    Policy is data: recognized keys, scope markers and historical wire names.
+    Config owns stable reads; native Resources owners create and settle roots.
+    """
+
+    product_id: str
+    label: str
+    source_keys: frozenset[str]
+    key_markers: tuple[str, ...]
+    projection_name: str
+    prefix: str
+    maximum_bytes: int
+
+    @contextmanager
+    def hold(
+        self,
+        settings_manager: SettingsManager,
+        *,
+        global_settings_path: Path,
+        project_settings_path: Path,
+        projection_parent: Path,
+    ) -> Iterator[Path]:
+        if os.name not in {"posix", "nt"} or (
+            os.name == "posix"
+            and not all(
+                hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_CLOEXEC")
+            )
+        ):
+            raise RuntimeError("Rooted Source projection is unavailable")
+        if not isinstance(settings_manager, SettingsManager):
+            raise TypeError(f"{self.label} settings manager is required")
+        expected_paths = (
+            self.require_path(global_settings_path, name="global settings"),
+            self.require_path(project_settings_path, name="project settings"),
+        )
+        if expected_paths[0] == expected_paths[1]:
+            raise ValueError(f"{self.label} Source settings scopes overlap")
+        parent = self.require_private_parent(projection_parent)
+        with settings_manager.transaction():
+            observed_paths = (
+                settings_manager.global_settings_path,
+                settings_manager.project_settings_path,
+            )
+            if observed_paths != expected_paths:
+                raise ValueError(f"{self.label} Source settings paths changed")
+            session = settings_manager.get_session_settings()
+            if any(self.looks_like_source_key(key) for key in session):
+                raise ValueError(
+                    f"{self.label} session Source overrides cannot be backed up"
+                )
+            layers = {}
+            for scope, path, patch in (
+                ("global", expected_paths[0], settings_manager.get_global_settings()),
+                ("project", expected_paths[1], settings_manager.get_project_settings()),
+            ):
+                present, raw_digest = self.verify_loaded_settings(path, patch)
+                if any(
+                    self.looks_like_source_key(key) and key not in self.source_keys
+                    for key in patch
+                ):
+                    raise ValueError(
+                        f"{self.label} Source settings include an unmapped key"
+                    )
+                layers[scope] = {
+                    "present": present,
+                    "rawSha256": raw_digest,
+                    "settingsPath": str(path),
+                    "sourcePatch": {
+                        key: patch[key]
+                        for key in sorted(self.source_keys & patch.keys())
+                    },
+                }
+            contents = self.projection_bytes(
+                {"productId": self.product_id, "projectionVersion": 1, "scopes": layers}
+            )
+            if os.name == "nt":
+                with _hold_windows_private_cutover_directory(
+                    parent,
+                    prefix=self.prefix,
+                    projection_name=self.projection_name,
+                    projection_label=f"{self.label} Source projection",
+                    projection_contents=contents,
+                ) as source_root:
+                    yield source_root
+            else:
+                with TemporaryDirectory(prefix=self.prefix, dir=parent) as raw:
+                    source_root = Path(raw)
+                    write_legacy_product_projection(
+                        source_root,
+                        projection_name=self.projection_name,
+                        contents=contents,
+                    )
+                    yield source_root
+
+    def require_path(self, path: Path, *, name: str) -> Path:
+        if not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"{self.label} {name} path is invalid")
+        return path
+
+    def require_private_parent(self, path: Path) -> Path:
+        parent = self.require_path(path, name="Source projection parent")
+        if os.name == "nt":
+            with WindowsPrivateDirectoryAcl() as acl:
+                root = _PinnedWindowsAuthority.open(parent, read_control=True)
+                try:
+                    acl.validate(root.descriptor)
+                    root.assert_visible()
+                finally:
+                    root.close()
+            return parent
+        metadata = parent.lstat()
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or (callable(getuid) and metadata.st_uid != getuid())
+        ):
+            raise ValueError(f"{self.label} Source projection parent is not private")
+        return parent
+
+    def verify_loaded_settings(
+        self, path: Path, loaded_patch: Mapping[str, object]
+    ) -> tuple[bool, str | None]:
+        present, digest, decoded = self.read_patch(path)
+        if decoded != loaded_patch:
+            raise ValueError(f"{self.label} Source settings changed after reload")
+        return present, digest
+
+    def read_patch(self, path: Path) -> tuple[bool, str | None, dict[str, object]]:
+        """Read a settings patch before a Product owner creates its first lock."""
+
+        self.require_path(path, name="settings")
+        return _read_stable_json_patch(
+            path,
+            maximum_bytes=lambda: self.maximum_bytes,
+            label=f"{self.label} Source settings",
+        )
+
+    def looks_like_source_key(self, key: str) -> bool:
+        return key in self.source_keys or any(
+            marker in key for marker in self.key_markers
+        )
+
+    @staticmethod
+    def projection_bytes(value: object) -> bytes:
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+
+
+@dataclass(frozen=True)
+class _LegacyAdoptionSelection:
+    """Read-only adoption provenance over the original handoff and Desired owners.
+
+    Product choices and historical IDs are supplied as data. Later operator
+    mutations do not erase initial adoption; partial evidence cannot prove it.
+    """
+
+    key: PluginInstallationKeyV1
+    source_identity: str
+    install_operation_id: str
+    enable_operation_id: str | None
+    builtin_ids: tuple[str, ...]
+    disabled_builtin_ids: frozenset[str]
+    removed_builtin_operations: Mapping[str, str]
+
+    def settled(
+        self,
+        desired: PluginDesiredStateLedger,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+        handoffs: PackageRetentionHandoffJournal,
+        bindings: Sequence[PackageProductLocalWheelBindingV1],
+        *,
+        store_id: str,
+        bootstrap_policy: _PluginBootstrapPolicy,
+        handoff_error: str,
+    ) -> bool:
+        before, history = desired.capture_read_only()
+
+        def transitions_for(
+            selected_plugin: str,
+        ) -> tuple[PluginDesiredStateJournalTransition, ...]:
+            key = PluginInstallationKeyV1(
+                product_id=self.key.product_id,
+                installation_scope="workspace",
+                scope_id=self.key.scope_id,
+                plugin_id=selected_plugin,
+            )
+            return tuple(
+                item for item in history if item.mutation.installation_key == key
+            )
+
+        old_install_id = self.install_operation_id
+        command_id = self._settled_command(
+            handoffs,
+            error_message=handoff_error,
+            operation_id=old_install_id,
+            plugin_id=self.key.plugin_id,
+        )
+        old_events = transitions_for(self.key.plugin_id)
+        if not self._initial_install_matches(
+            old_events, command_id, self.source_identity
+        ):
+            return False
+        if self.enable_operation_id is not None:
+            enable_id = self.enable_operation_id
+            if (
+                len(old_events) < 2
+                or not isinstance(old_events[1], PluginDesiredStateTransitionV1)
+                or old_events[1].mutation.operation_id != enable_id
+                or old_events[1].committed_state.selection.desired_state
+                != "installed_enabled"
+                or old_events[1].committed_state.selection.package_revision
+                != old_events[0].committed_state.selection.package_revision
+            ):
+                return False
+
+        for builtin_id in self.builtin_ids:
+            events = transitions_for(builtin_id)
+            if builtin_id in self.removed_builtin_operations:
+                if (
+                    not events
+                    or events[0].mutation.operation_id
+                    != self.removed_builtin_operations[builtin_id]
+                    or events[0].committed_state.selection.desired_state != "absent"
+                    or any(
+                        event.mutation.operation_id.startswith(
+                            bootstrap_policy.operation_id_prefix
+                        )
+                        for event in events[1:]
+                    )
+                ):
+                    return False
+                continue
+            operation_id = bootstrap_policy.operation_id(store_id, builtin_id)
+            command_id = self._settled_command(
+                handoffs,
+                error_message=handoff_error,
+                operation_id=operation_id,
+                plugin_id=builtin_id,
+            )
+            builtin_source = tuple(
+                item.source_identity
+                for item in bindings
+                if item.plugin_id == builtin_id
+            )
+            if len(builtin_source) != 1 or not self._initial_install_matches(
+                events, command_id, builtin_source[0]
+            ):
+                return False
+            if builtin_id in self.disabled_builtin_ids:
+                if any(
+                    event.mutation.operation_id.startswith(
+                        bootstrap_policy.enable_id_prefix
+                    )
+                    for event in events[1:]
+                ):
+                    return False
+            elif (
+                len(events) < 2
+                or not isinstance(events[1], PluginDesiredStateTransitionV1)
+                or events[1].committed_state.selection.desired_state
+                != "installed_enabled"
+                or events[1].committed_state.selection.package_revision
+                != events[0].committed_state.selection.package_revision
+            ):
+                return False
+        after, later_history = desired.capture_read_only()
+        epoch_runtime.assert_current()
+        return before == after and history == later_history
+
+    @staticmethod
+    def _initial_install_matches(
+        events: tuple[PluginDesiredStateJournalTransition, ...],
+        command_id: str | None,
+        source_identity: str,
+    ) -> bool:
+        return (
+            command_id is not None
+            and bool(events)
+            and isinstance(events[0], PluginDesiredStateTransitionV1)
+            and events[0].mutation.operation_id == command_id
+            and events[0].committed_state.selection.desired_state
+            == "installed_disabled"
+            and events[0].committed_state.selection.package_revision is not None
+            and events[
+                0
+            ].committed_state.selection.package_revision.package_source_identity
+            == source_identity
+        )
+
+    def _settled_command(
+        self,
+        handoffs: PackageRetentionHandoffJournal,
+        *,
+        operation_id: str,
+        plugin_id: str,
+        error_message: str,
+    ) -> str | None:
+        receipt = handoffs.read_operation(operation_id)
+        if receipt is None or receipt.state != "settled":
+            return None
+        request = receipt.request.desired_request
+        if (
+            receipt.desired_receipt is None
+            or receipt.desired_receipt.request != request
+            or request.operation_id != operation_id
+            or request.plugin_id != plugin_id
+            or request.product_id != self.key.product_id
+            or request.scope_id != self.key.scope_id
+        ):
+            raise ValueError(error_message)
+        return request.command_id
