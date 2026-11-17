@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from typing import cast
 
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendInstalledMethods,
 )
 from loushang.harness.package_product._worker_product_authority import (
+    _capture_selected_worker_session_file,
     _WindowsWorkerProductReceiptAuthority,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -182,19 +183,13 @@ def open_coding_windows_product_selected_worker_receipt_owner(
         raise TypeError("Windows Worker requires a Transcript directory owner")
     if not isinstance(session_manager, SessionManager):
         raise TypeError("Windows Worker requires a Coding Session owner")
-    selected_session_file = session_manager.get_session_file()
-    if (
-        not session_manager.is_persisted()
-        or selected_session_file is None
-        or session_manager.get_header().conversation_id != runtime.session_id
-        or Path(session_manager.get_cwd()).resolve(strict=True)
-        != product_owner.workspace
-        or not (
-            transcript_directory.is_authority_session_file(selected_session_file)
-            or transcript_directory.is_discovery_session_file(selected_session_file)
-        )
-    ):
-        raise ValueError("Windows Worker selected Session owner changed")
+    selected_session_file = _capture_selected_worker_session_file(
+        session_manager=session_manager,
+        transcript_directory=transcript_directory,
+        runtime=runtime,
+        product_owner=product_owner,
+        invalid_owner="Windows Worker selected Session owner changed",
+    )
     product_owner.assert_session_runtime_current(runtime)
     selected = runtime.capture_selected_plugin_manifest_for(
         plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
@@ -202,7 +197,7 @@ def open_coding_windows_product_selected_worker_receipt_owner(
     discovery = CodingWorkerTranscriptDiscoveryReader(
         directory=transcript_directory,
         gc_gate=product_owner.gc_gate,
-        session_id=runtime.session_id,
+        session_id=cast(str, runtime.session_id),
         selected_session_file=selected_session_file,
         attached_session=session_manager if active_session else None,
     )

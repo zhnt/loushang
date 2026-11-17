@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery, Provider candidate/Host-input, opt-in, selected-policy and Session-input slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
+- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery, Provider candidate/Host-input, opt-in, selected-policy, Session-input and discovery-binding slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -266,6 +266,18 @@ Coding 保留原 closed nominal 输入 guard、错误身份和查询 definition�
 本批 Coding −15、Harness −13、Hosting／其他生产 0，系统生产净 −28 行；累计 Coding −5,652、Harness +8,629，系统仍净 +2,977 行。测试仍 +70 行，文档单列。这里的 Coding 删减包括三个退出的转发、一个退出的 Protocol 及一个随之消失的 import 及相应分隔；保留的两个 re-export 也计入成本；Harness 删减是重复类型声明扣除8项 identity cast 的净额。没有新增完整机制迁移，不能靠这批胶水／类型整理宣称过半目标达成。C07 剩余14,614行，距至少10,134行退出仍差4,482行。
 
 原固定值／载荷修复／完整恢复、owner commit、receipt base 和 prepared consumers 为224 passed；84源 mypy、Ruff、54份 Coding 公开契约／字段及原测试／用户改动检查通过。八个完整载荷方法在仅消除 identity cast／局部同对象别名后 AST 与原样一致；其余 codec／fact interface、Code 剩余函数／类及模块级绑定完整 AST 不变。与冻结基线对照9个载荷／intent／lease 值和3个 registered 值，24份原始 protocol4／5 pickle 字节、字段／slots／元数据／公开签名、16项错误／配额及57项原值观察一致。初次 scoped mypy 发现方法基类的旧 factory 注解仍假定完整事实字段，已以既有事实接口纠正；不新增接口或改变数据验证。原生 Windows／H6、全部112文件处置和整组交付验证仍未完成。
+
+## Discovery 构造与选中 Session 归属证明
+
+实现 owner 接受完整发现读取器构造归已有 Transcript _AttachedDiscoveryMethods：原 directory／GC 类型准入、Session／路径验证、原借用 owner／缓存字段初始化、标准 record codec 创建及 attached-owner 准入／capture 按原顺序执行。Coding 保留原构造签名，以固定 GC／Session 名义类型接入，并保留原错误身份、公开 getter 和动态读取配额。没有新增 Reader、注册器、继承层、记录或寿命管理器；此前已共享的实际 discovery／固定／复读程序保持原样，不重计迁移收益。
+
+两个回执工厂中完全相同的选中 Session 证明也归现有 Package Product authority：读取当前文件→persisted→Header／runtime Session→cwd resolve／workspace→authority／discovery membership。复用现有 attached read port，仅补充实际 owner 已有的 persisted／cwd 只读方法。helper 接收原 Session、directory、runtime 和 Product 对象，在原位置读取其属性，避免把字段提前求值或拆成 suppliers。POSIX 随后的 bound-root 证明和 Windows 的更强 runtime currentness 检查保持原位置；没有统一两平台准入强度。Windows discovery 的 nullable Session 注解以 identity cast 在原参数读取点衔接，没有提前加校验或缓存该值。
+
+本批 Coding −44、Harness +96、Hosting／其他生产 0，系统生产 +52 行；累计 Coding −5,696、Harness +8,725、系统生产 +3,029 行。测试仍 +70 行，文档单列。新增成本来自原构造入口兼容、明确名义政策参数和通用事实类型边界；完整构造迁移与一份重复 Session 证明删除分别计，不把此前共享读取程序算作新收益。C07 剩余14,570行，距过半退出仍差4,438行，系统尚未净精简。
+
+原真实 discovery／attached append、native reader 与两平台 receipt golden、candidate／CLI、import／C50／C51／C54 回归509 passed、63 skipped、1 deselected；测试、参数、fixture、断言和门禁未改。原完整构造体经两项固定名义政策绑定后 AST 一致；两个工厂宏展开 shared proof 后完整执行体一致，余下 Code／Transcript／authority 程序未变。216组原构造／完整 Session 证明与当前实现对照比较部分实例字典、原对象引用、codec、效果顺序及错误图，含14组成功；使用真实 Code 名义 envelope 和受控整项 discovery／capture／Profile 口，Session 证明使用受控读取口和真实 Path.resolve，不代替 native 或 Product 准入。两原名义 gate／Session type 是固定参数，实例字段不能替换政策。
+
+Scoped mypy 初次发现公共 Windows ctor 原有的 optional Session 值不再由本地条件流窄化，已在原读取点以 identity cast 解决；未改变该值的读取时刻或错误优先级。87源 mypy、Ruff 和56份 Coding 公开契约／字段、原测试／用户改动检查通过。共享 owner 冷导入禁止 Coding。原生 Windows／H6、全部112文件最终处置及正确 PR 基线全量交付检查仍未完成。
 
 ## 当前验证与限制
 

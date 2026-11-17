@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
-from typing import ClassVar, Generic, Literal, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, Generic, Literal, Protocol, TypeVar, cast
 
 from loushang.harness.capabilities.contracts import CapabilityDefinition
 from loushang.harness.capabilities.provider_admission import (
@@ -54,6 +54,7 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
 from loushang.harness.resources.plugins.declarations import (
     PluginLocalWorkerConfiguration,
 )
+from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker._native_profile_bridge import (
     _plan_windows_lpac_product_worker_profile,
@@ -92,6 +93,12 @@ from loushang.hosting.windows_backend_material import (
 
 from ._windows_worker_backend_release import _WindowsBackendInstalledMethods
 
+if TYPE_CHECKING:
+    from loushang.harness.transcript._attached_discovery import (
+        _AttachedTranscriptReadPort,
+    )
+
+
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 R = TypeVar("R", bound=_ReceiptRecordMethods)
 D = TypeVar("D", bound=_OptInDecisionMethods)
@@ -101,6 +108,35 @@ MaterialT = TypeVar("MaterialT", bound=ProductWorkerNativeLaunchMaterialFacts)
 MaterialCo = TypeVar(
     "MaterialCo", bound=ProductWorkerNativeLaunchMaterialFacts, covariant=True
 )
+
+
+def _capture_selected_worker_session_file(
+    *,
+    session_manager: _AttachedTranscriptReadPort,
+    transcript_directory: AgentTranscriptDirectoryRuntime,
+    runtime: PackageProductRuntimeBindingV1,
+    product_owner: PosixLocalWheelProductSessionOwner
+    | WindowsLocalWheelProductSessionOwner,
+    invalid_owner: str,
+) -> Path:
+    selected_session_file = session_manager.get_session_file()
+    if (
+        not session_manager.is_persisted()
+        or selected_session_file is None
+        or session_manager.get_header().conversation_id != runtime.session_id
+        or (
+            Path(session_manager.get_cwd()).resolve(strict=True)
+            != product_owner.workspace
+        )
+        or (
+            not (
+                transcript_directory.is_authority_session_file(selected_session_file)
+                or transcript_directory.is_discovery_session_file(selected_session_file)
+            )
+        )
+    ):
+        raise ValueError(invalid_owner)
+    return selected_session_file
 
 
 def _derive_product_selected_worker_policy(

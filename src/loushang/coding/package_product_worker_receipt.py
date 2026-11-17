@@ -22,6 +22,7 @@ from loushang.harness.journal._rooted_io import (
     RootedFile,
 )
 from loushang.harness.package_product._worker_product_authority import (
+    _capture_selected_worker_session_file,
     _PosixWorkerProductReceiptAuthority,
     _ProductWorkerReceiptAuthority,
 )
@@ -494,19 +495,13 @@ def open_coding_selected_worker_receipt_owner(
         raise TypeError("Coding Worker requires a Transcript directory owner")
     if not isinstance(session_manager, SessionManager):
         raise TypeError("Coding Worker requires a Coding Session owner")
-    selected_session_file = session_manager.get_session_file()
-    if (
-        not session_manager.is_persisted()
-        or selected_session_file is None
-        or session_manager.get_header().conversation_id != runtime.session_id
-        or Path(session_manager.get_cwd()).resolve(strict=True)
-        != product_owner.workspace
-        or not (
-            transcript_directory.is_authority_session_file(selected_session_file)
-            or transcript_directory.is_discovery_session_file(selected_session_file)
-        )
-    ):
-        raise ValueError("Coding Worker selected Session owner changed")
+    selected_session_file = _capture_selected_worker_session_file(
+        session_manager=session_manager,
+        transcript_directory=transcript_directory,
+        runtime=runtime,
+        product_owner=product_owner,
+        invalid_owner="Coding Worker selected Session owner changed",
+    )
     root_reader = runtime._selected_root_reader
     manifest_reader = runtime._selected_manifest_reader
     if not isinstance(root_reader, PackageProductSelectedRootReader):

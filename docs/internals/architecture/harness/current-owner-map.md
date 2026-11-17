@@ -114,6 +114,15 @@ and their original MRO. Canonical owner-byte and payload repair/marker encoders
 are called directly by their existing owners; retired Code forwards and an unused
 opt-in reader Protocol have exited. Active decoder, quota and fault seams remain.
 
+The existing Transcript attached-discovery component also owns complete reader
+construction, original state/codec initialization and attached-owner capture.
+Coding binds its fixed nominal gate/Session types, error and live read limit over
+the original public constructor. Package Product owns the shared selected-Session
+file/header/workspace/catalog proof over the same borrowed owners; each platform
+retains its original later runtime checks. Read-only port methods reuse actual
+Session operations. No additional reader, record, lifecycle or repair permission
+is introduced.
+
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
 including POSIX/Windows file custody and strict decoding after cleanup. It directly
 uses Resources' existing file consumer. Coding retains Source policy, original
