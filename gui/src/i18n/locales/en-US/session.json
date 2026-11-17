@@ -50,6 +50,8 @@
     "answerNotes": "Additional notes: {{notes}}"
   },
   "composer": {
+    "checkConversation": "Check conversation",
+    "dismissNotice": "Dismiss",
     "checkCreation": "Check creation status",
     "fixturePlaceholder": "Type a fixture prompt…",
     "livePlaceholder": "Message the live Agent…",
@@ -86,6 +88,7 @@
   },
   "transcript": {
     "label": "Session transcript",
+    "resumesRuntime": "Sending a message resumes the session.",
     "you": "You",
     "harness": "Harness",
     "waiting": "Waiting for output…",

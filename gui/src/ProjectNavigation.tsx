@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
-import { TEMPORARY_WORKSPACE, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
+import { TEMPORARY_WORKSPACE, workspaceName, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
 
 export function ProjectNavigation({ navigation, selectedId, titles }: {
   navigation: ProjectNavigationProps;
@@ -33,14 +33,24 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
     }
   }, [navigation.directory]);
 
-  function chat(workspace: string, session: ProjectChat) {
+  const sessionTitle = (session: ProjectChat) => titles[session.id] ?? session.title;
+
+  function chat(workspace: string, session: ProjectChat, showWorkspace = false) {
     const selected = selectedId === session.id;
-    const name = titles[session.id] ?? session.title;
+    const name = sessionTitle(session);
+    const siblings = workspace === TEMPORARY_WORKSPACE ? temporarySessions : projects.find((project) => project.path === workspace)?.sessions ?? [];
+    const duplicates = siblings.filter((item) => sessionTitle(item) === name);
+    const duplicateNumber = duplicates.length > 1 ? duplicates.findIndex((item) => item.id === session.id) + 1 : 0;
     const title = name === "New Session" ? t("sidebar.newSession") : name;
     return <div className={selected ? "session-row selected" : "session-row"} key={session.id}>
       <button type="button" className="project-chat"
         aria-current={selected ? "true" : undefined} disabled={!navigation.available}
-        onClick={() => navigation.select(workspace, session.id)}>{title}</button>
+        onClick={() => navigation.select(workspace, session.id)}>
+        <span className="project-chat-title">{title}{duplicateNumber ? ` · ${duplicateNumber}` : ""}</span>
+        {showWorkspace ? <small className="project-chat-scope" aria-hidden="true" title={workspace === TEMPORARY_WORKSPACE ? undefined : workspace}>
+          {workspace === TEMPORARY_WORKSPACE ? t("sidebar.temporaryChats") : workspaceName(workspace)}
+        </small> : null}
+      </button>
       <button type="button" className="session-pin" data-pinned={session.pinned} data-pin-session={session.id}
         aria-pressed={session.pinned} disabled={!editable}
         aria-label={t(session.pinned ? "sidebar.unpinChat" : "sidebar.pinChat", { title })}
@@ -58,7 +68,7 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
   return <div ref={sidebar}>
     {pinned.length ? <section className="project-navigation" aria-label={t("sidebar.pinned")}>
       <h2 className="section-label">{t("sidebar.pinned")}</h2>
-      {pinned.map(({ workspace, session }) => chat(workspace, session))}
+      {pinned.map(({ workspace, session }) => chat(workspace, session, true))}
     </section> : null}
     <section className="project-navigation" aria-label={t("sidebar.projects")}>
       <div className="project-heading">
@@ -78,7 +88,7 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
       </form> : null}
       {navigation.error ? <p className="project-error" role="alert">{t("localHost.workspaceUnavailable")}</p> : null}
       {projects.map((project) => {
-        const label = project.path.split(/[\\/]/).filter(Boolean).pop() ?? project.path;
+        const label = workspaceName(project.path);
         const expanded = !collapsed.has(project.path);
         return <div key={project.path}>
           <div className="project-heading project-row">
@@ -100,7 +110,7 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
       })}
     </section>
     <section className="project-navigation" aria-label={t("sidebar.chats")}>
-      <h2 className="section-label">{t("sidebar.chats")}</h2>
+      <h2 className="section-label">{t("sidebar.temporaryChats")}</h2>
       {temporarySessions.filter((session) => !session.pinned).map((session) => chat(TEMPORARY_WORKSPACE, session))}
     </section>
   </div>;

@@ -4,6 +4,7 @@ import type { ClientSnapshot, DraftBinding, HarnessClientUiPort, SessionModels, 
 export interface DraftTarget {
   readonly key: string;
   readonly hostKey: string;
+  readonly workspace: string | null;
   readonly loadModels?: () => Promise<SessionModels>;
   readonly create: (continuityId: string) => Promise<DraftBinding | null>;
 }
@@ -15,9 +16,11 @@ interface Draft {
   readonly id: string;
   readonly target: DraftTarget;
   readonly text: string;
+  readonly modelId?: string;
   readonly visible: boolean;
   readonly status: DraftStatus;
   readonly binding?: DraftBinding;
+  readonly unconfirmed?: { id: string; instanceId?: string };
 }
 
 type Observation = { client: HarnessClientUiPort; snapshot: ClientSnapshot };
@@ -39,6 +42,7 @@ export function canSubmitDraft(draft: Draft | null): draft is Draft {
 
 class SessionCreation {
   private current: Draft | null = null;
+  private readonly drafts = new Map<string, Draft>();
   private observed: Observation | null = null;
   private waiter: ((observation: Observation | null) => void) | null = null;
   private inFlight = false;
@@ -46,12 +50,15 @@ class SessionCreation {
   constructor(private readonly setDraft: (draft: Draft | null) => void) {}
 
   private save(next: Draft | null) {
+    if (next) this.drafts.set(next.target.key, next);
+    else if (this.current) this.drafts.delete(this.current.target.key);
     this.current = next;
     this.setDraft(next);
   }
 
   dispose() {
     this.current = null;
+    this.drafts.clear();
     this.waiter?.(null);
   }
 
@@ -81,11 +88,11 @@ class SessionCreation {
   }
 
   open(target: DraftTarget) {
-    if (this.current?.target.key === target.key) {
-      this.save({ ...this.current, visible: true });
-    } else if (!this.inFlight) {
-      this.save({ id: `gui-draft-${crypto.randomUUID()}`, target, text: "", visible: true, status: "ready" });
-    }
+    if (this.inFlight) return;
+    const previous = this.drafts.get(target.key);
+    this.save(previous ? { ...previous, target, visible: true } : {
+      id: `gui-draft-${crypto.randomUUID()}`, target, text: "", visible: true, status: "ready",
+    });
   }
 
   hide = () => {
@@ -95,6 +102,10 @@ class SessionCreation {
 
   change(text: string) {
     if (this.current?.visible && !this.inFlight) this.save({ ...this.current, text });
+  }
+
+  selectModel(id: string) {
+    if (this.current?.visible && !this.inFlight) this.save({ ...this.current, modelId: id });
   }
 
   private update(id: string, patch: Partial<Draft>) {
@@ -143,13 +154,36 @@ class SessionCreation {
     if (modelId && !await this.applyFirstModel(binding, published.session.id, input.id, modelId)) return;
     const receipt = await sendDraft(binding.client, published.session.id, input.text);
     if (!receipt.accepted) {
-      this.update(input.id, { status: receipt.reason === "submission_outcome_unknown" ? "firstSubmissionUnknown" : "firstSubmitRejected" });
+      const unknown = receipt.reason === "submission_outcome_unknown";
+      const instanceId = published.snapshot.source.kind === "live" ? published.snapshot.source.serviceInstanceId : undefined;
+      this.update(input.id, {
+        status: unknown ? "firstSubmissionUnknown" : "firstSubmitRejected",
+        unconfirmed: unknown ? { id: receipt.submissionId, instanceId } : undefined,
+      });
       return;
     }
     if (this.current?.id === input.id) {
       onAccepted(published, input.text, receipt, this.current.visible);
       this.save(null);
     }
+  }
+
+  async check(onAccepted: Accepted) {
+    const draft = this.current;
+    const pending = draft?.unconfirmed;
+    const binding = draft?.binding;
+    if (!draft?.visible || !binding || !pending) return;
+    const published = publishedSession(this.observed, binding, draft.id);
+    const id = binding.sessionId;
+    if (published && id && pending.instanceId && binding.client.findSubmission) {
+      const receipt = await binding.client.findSubmission(id, pending.id, pending.instanceId).catch(() => null);
+      if (receipt?.accepted && receipt.submissionId === pending.id && this.current?.id === draft.id) {
+        onAccepted(published, draft.text, receipt, this.current.visible);
+        this.save(null);
+        return;
+      }
+    }
+    await binding.client.requestResync?.().catch(() => {});
   }
 
   private async applyFirstModel(binding: DraftBinding, sessionId: string, draftId: string, modelId: string) {
@@ -171,6 +205,8 @@ export function useSessionCreation(onAccepted: Accepted) {
     draft, observe: creation.observe, hide: creation.hide,
     open: (target: DraftTarget) => creation.open(target),
     change: (text: string) => creation.change(text),
+    selectModel: (id: string) => creation.selectModel(id),
+    check: () => creation.check(onAccepted),
     submit: (modelId?: string) => creation.submit(onAccepted, modelId),
   };
 }

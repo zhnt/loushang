@@ -17,7 +17,7 @@ import { ModelPicker } from "./ModelPicker";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
 import { ProjectNavigation } from "./ProjectNavigation";
-import type { ManagedProjectNavigation, ProjectNavigationProps } from "./client/projectDirectory";
+import { TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
@@ -149,6 +149,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }, []);
   const [state, dispatch] = useReducer(guiReducer, undefined, emptyGuiState);
   const [notice, setNotice] = useState<Notice>({ key: "notice.loading" });
+  const [operationFailures, setOperationFailures] = useState<Record<string, {
+    notice: Notice; pending?: { id: string; text: string; instanceId?: string };
+  }>>({});
   const [syncing, setSyncing] = useState(true);
   const [installedClient, setInstalledClient] = useState<HarnessClientUiPort | null>(null);
   const refreshRef = useRef<(() => void) | null>(null);
@@ -349,6 +352,26 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
   const selected = !draft && selectedId ? state.remote.sessions[selectedId] : undefined;
   const conversationOpen = Boolean(selected || draft);
+  const operationScope = selected ? JSON.stringify([selectionKey, selected.id]) : null;
+  const failure = operationScope ? operationFailures[operationScope] : undefined;
+  function reportFailure(notice: Notice, pending?: { id: string; text: string; instanceId?: string }) {
+    if (operationScope) setOperationFailures((current) => current[operationScope]?.pending && !pending
+      ? current : { ...current, [operationScope]: { notice, pending } });
+  }
+  function clearFailure() {
+    if (operationScope) setOperationFailures(({ [operationScope]: _, ...rest }) => rest);
+  }
+  async function checkConversation() {
+    const pending = failure?.pending;
+    if (selected && pending?.instanceId && client.findSubmission) {
+      const result = await client.findSubmission(selected.id, pending.id, pending.instanceId).catch(() => null);
+      if (result?.accepted && result.submissionId === pending.id) {
+        dispatch({ type: "draft.submitted", sessionId: selected.id, expected: pending.text });
+        clearFailure();
+      }
+    }
+    refreshRef.current?.();
+  }
   const [openGoalScope, setOpenGoalScope] = useState<string | null>(null);
   const goalPanelId = useId();
   const goalSource = state.remote.source.kind === "live" ? state.remote.source : null;
@@ -428,7 +451,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const goalStart = useGoalStart(client, selected, connected && state.remote.source.kind === "live"
     ? state.remote.source : null, controlsAllowed);
   const mutationsAllowed = controlsAllowed && !awaitingPublication && !modelPending;
-  const submitAllowed = mutationsAllowed && !goalBusy && (
+  const submitAllowed = mutationsAllowed && !goalBusy && !failure?.pending && (
     state.remote.source.kind === "fixture"
     || sessionModels?.models.some((model) => model.id === sessionModels.currentId)
   );
@@ -485,6 +508,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     const submissionId = fixture
       ? `gui-fixture-submission-${submissionCounter.current++}`
       : `gui-${crypto.randomUUID()}`;
+    const instanceId = state.remote.source.kind === "live" ? state.remote.source.serviceInstanceId : undefined;
+    const pending = { id: submissionId, text, instanceId };
     controlPendingRef.current = true;
     setControlPending("submit");
     try {
@@ -493,10 +518,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       if (!receipt.accepted) {
         const unknown = receipt.reason === "submission_outcome_unknown";
         if (answer) updateAnswer({ ...answer, status: unknown ? "unknown" : "rejected", executionId: undefined });
-        setNotice(unknown ? { key: "notice.unknownSubmission" }
-          : { key: "notice.rejected", params: { reason: receipt.reason ?? "" } });
+        reportFailure(unknown ? { key: "notice.unknownSubmission" }
+          : { key: "notice.rejected", params: { reason: receipt.reason ?? "" } }, unknown ? pending : undefined);
         return;
       }
+      clearFailure();
       if (answer) updateAnswer({ ...answer, status: "accepted", executionId: receipt.executionId });
       else if (!receipt.executionId) dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
       if (!fixture) setPublications((current) => ({
@@ -511,7 +537,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
         : { key: "notice.liveAccepted" });
     } catch {
       if (answer) updateAnswer({ ...answer, status: "unknown", executionId: undefined });
-      setNotice({ key: "notice.submitFailed" });
+      reportFailure({ key: "notice.submitFailed" }, pending);
     } finally {
       controlPendingRef.current = false;
       setControlPending(null);
@@ -536,11 +562,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     try {
       const receipt = await client.interrupt(selected.id);
       setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
-      setNotice(receipt.accepted
-        ? (fixture ? { key: "notice.fixtureInterrupted" } : { key: "notice.interruptRequested" })
-        : { key: "notice.interruptReason", params: { reason: receipt.reason ?? "" } });
+      if (receipt.accepted) setNotice(fixture ? { key: "notice.fixtureInterrupted" } : { key: "notice.interruptRequested" });
+      else reportFailure({ key: "notice.interruptReason", params: { reason: receipt.reason ?? "" } });
     } catch {
-      setNotice({ key: "notice.interruptFailed" });
+      reportFailure({ key: "notice.interruptFailed" });
     } finally {
       controlPendingRef.current = false;
       setControlPending(null);
@@ -559,6 +584,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       const choice = models.models.find((model) => model.id === models.currentId);
       if (!choice || choice.id !== modelId) throw new Error("Unconfirmed model selection");
       setModelResult({ scope: modelScope, query: modelQuery, models });
+      if (!failure?.pending) clearFailure();
       setNotice(level === undefined ? { key: "notice.modelChanged", params: { model: choice.label } } : { key: "notice.thinkingChanged" });
       return models;
     } catch {
@@ -566,7 +592,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       if (level === undefined && sessionModels) {
         setModelResult({ scope: modelScope, query: modelQuery, models: { currentId: null, models: sessionModels.models } });
       }
-      setNotice({ key: level === undefined ? "notice.modelRejected" : "notice.thinkingRejected" });
+      if (!failure?.pending) reportFailure({ key: level === undefined ? "notice.modelRejected" : "notice.thinkingRejected" });
       return null;
     } finally {
       setModelPending(false);
@@ -589,7 +615,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
   const draftPending = draft?.status === "creating" || draft?.status === "sending";
   const draftTitle = t("workspace:sidebar.newSession");
-  const conversationTitle = selected ? displaySessionTitle(selected) : draftTitle;
+  const workspaceContext = draft && projectNavigation ? draft.target.workspace
+    : projectNavigation?.selection?.workspace;
+  const projectContext = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE
+    ? workspaceName(workspaceContext) : undefined;
+  const conversationTitle = selected
+    ? displaySessionTitle(selected) : projectContext ? `${projectContext} / ${draftTitle}` : draftTitle;
   const newSessionEnabled = !draftPending && (projectNavigation
     ? projectNavigation.available && !projectNavigation.pending
     : Boolean(client.createSession) && connected);
@@ -603,6 +634,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     draftCreation.open({
       key: JSON.stringify([draftHost, path]),
       hostKey: draftHost,
+      workspace: path,
       loadModels: loadModels ? () => loadModels(path) : undefined,
       create: async (continuityId) => {
         if (projectNavigation) return projectNavigation.createChat(path, continuityId, draftTitle);
@@ -633,7 +665,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const draftEnabled = projectNavigation ? projectNavigation.available && !projectNavigation.pending
     : connected || Boolean(draft?.binding);
   const draftModelTarget = draftCreation.draft?.target;
-  const draftModels = useDraftModels(draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled);
+  const draftModels = useDraftModels(
+    draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled, draftCreation.draft?.modelId,
+  );
+  async function selectDraftModel(id: string) {
+    if (!draftModels.models?.models.some((model) => model.id === id)) return null;
+    draftCreation.selectModel(id);
+    return { ...draftModels.models, currentId: id };
+  }
   const draftModelId = draftModels.models?.currentId ?? undefined;
   const canSendDraft = draftEnabled && !draftPending && canSubmitDraft(draft)
     && (!draftModels.required || Boolean(draftModelId));
@@ -739,9 +778,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   const following = !fixture && scrollHeight - clientHeight - scrollTop <= 32;
                   dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: following ? null : scrollTop });
                 } : undefined}>
+                {draft && projectNavigation ? <p className="draft-context">
+                  {projectContext ? t("workspace:sidebar.projectDraft", { project: projectContext })
+                    : t("workspace:sidebar.temporaryDraft")}
+                </p> : null}
                 {selected ? <Fragment key={selected.id}>
                   {selected.messages.map((message) => message.role === "status" ? (
-                    <p className="message transcript-status" role="status" key={message.id}>{message.content}</p>
+                    <p className="message transcript-status" role="status" key={message.id}>{message.systemNotice ? t("session:transcript.resumesRuntime") : message.content}</p>
                   ) : (
                     <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
                       <div className="message-meta">
@@ -839,9 +882,18 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     onSelect={(taskId) => dispatch({ type: "task.selected", taskId })}
                   />
                 ) : null}
-                {draft && draft.status !== "ready" ? <p className="draft-notice" role="status">
+                {draft && draft.status !== "ready" ? <div className={draft.unconfirmed ? "draft-notice operation-notice uncertain" : "draft-notice"} role="status">
                   <NoticeText notice={{ key: `notice.${draft.status}` }} />
-                </p> : null}
+                  {draft.unconfirmed ? <button type="button" className="secondary-button"
+                    onClick={() => void draftCreation.check()}>{t("session:composer.checkConversation")}</button> : null}
+                </div> : null}
+                {selected && failure ? <div className={failure.pending ? "operation-notice uncertain" : "operation-notice"} role={failure.pending ? "status" : "alert"}>
+                  <span><NoticeText notice={failure.notice} /></span>
+                  {failure.pending ? <button type="button" className="secondary-button"
+                    onClick={() => void checkConversation()}>{t("session:composer.checkConversation")}</button> : null}
+                  {!failure.pending ? <button type="button" className="secondary-button"
+                    onClick={clearFailure}>{t("session:composer.dismissNotice")}</button> : null}
+                </div> : null}
                 <MessageComposer {...composer} title={conversationTitle} fixture={Boolean(fixture)}
                   model={<ModelPicker
                     models={draft ? draftModels.models : sessionModels}
@@ -851,7 +903,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                         || !draftModels.models?.models.some((model) => model.id !== draftModelId)
                       : !canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
                     busy={Boolean(selected) && modelPending}
-                    onSelect={draft ? draftModels.select : selectModel}
+                    onSelect={draft ? selectDraftModel : selectModel}
                   />}
                 />
               </div>

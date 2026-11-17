@@ -565,6 +565,8 @@ function projectSession(
     id: `live-${source.identity.sessionId}-${index}`,
     role: record.kind === "user" || record.kind === "status" ? record.kind : "assistant",
     content: record.text,
+    systemNotice: record.kind === "status" && record.text === "Sending a message resumes the session runtime."
+      ? "resumesRuntime" : undefined,
     phase: record.kind === "error" ? "failed" as const : "complete" as const,
   }));
   if (snapshot.source.draft) {

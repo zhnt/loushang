@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 interface ComposerProps {
@@ -18,14 +18,32 @@ interface ComposerProps {
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
   buttonDisabled, fixture, model, notice, submitLabel }: ComposerProps) {
   const { t } = useTranslation("session");
+  const editor = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
+  useLayoutEffect(() => {
+    const input = editor.current;
+    if (!input) return;
+    const resize = () => {
+      input.style.height = "auto";
+      input.style.height = `${input.scrollHeight}px`;
+    };
+    resize();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(resize);
+    if (input.parentElement) observer.observe(input.parentElement);
+    return () => observer.disconnect();
+  }, [text]);
   return (
     <form className="composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
       <label className="visually-hidden" htmlFor="message-input">{t("composer.messageFor", { title })}</label>
-      <textarea id="message-input" disabled={disabled} aria-describedby="message-keyboard-hint" rows={2}
+      <textarea ref={editor} id="message-input" disabled={disabled} aria-describedby="message-keyboard-hint" rows={2}
         value={text} placeholder={t(fixture ? "composer.fixturePlaceholder" : "composer.livePlaceholder")}
         onChange={(event) => onChange(event.currentTarget.value)}
+        onCompositionStart={() => { composing.current = true; }}
+        onCompositionEnd={() => { composing.current = false; }}
+        onBlur={() => { composing.current = false; }}
         onKeyDown={(event) => {
-          if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (event.key !== "Enter" || composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
           if (event.ctrlKey && !event.altKey && !event.metaKey) {
             event.preventDefault();
             const input = event.currentTarget;
@@ -33,7 +51,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
             onChange(input.value);
           } else if (!event.shiftKey && !event.altKey && !event.metaKey) {
             event.preventDefault();
-            if (!event.repeat) onSubmit();
+            if (!event.repeat && !buttonDisabled && !onInterrupt) onSubmit();
           }
         }} />
       <span id="message-keyboard-hint" className="visually-hidden">{t("composer.keyboardHint")}</span>

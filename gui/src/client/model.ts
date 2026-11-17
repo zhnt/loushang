@@ -56,6 +56,7 @@ export interface ConversationMessage {
   readonly role: "user" | "assistant" | "status";
   readonly content: string;
   readonly phase: MessagePhase;
+  readonly systemNotice?: "resumesRuntime";
 }
 
 export interface ExecutionProjection {
@@ -325,6 +326,7 @@ export interface HarnessClientUiPort {
   subscribeConnection?(listener: (connection: "disconnected" | "resync-required") => void): () => void;
   requestResync?(): Promise<void>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
+  findSubmission?(sessionId: string, submissionId: string, serviceInstanceId: string): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
   respondInteraction?(sessionId: string, interactionId: string, outcome: InteractionOutcome): Promise<ControlReceipt>;
   createSession?(input: CreateSessionInput): Promise<CreateSessionReceipt>;

@@ -50,6 +50,8 @@
     "answerNotes": "补充说明：{{notes}}"
   },
   "composer": {
+    "checkConversation": "核对会话",
+    "dismissNotice": "关闭提示",
     "checkCreation": "检查创建状态",
     "fixturePlaceholder": "输入测试提示词…",
     "livePlaceholder": "向在线智能体发送消息…",
@@ -86,6 +88,7 @@
   },
   "transcript": {
     "label": "会话记录",
+    "resumesRuntime": "发送消息后将恢复此会话。",
     "you": "你",
     "harness": "Harness",
     "waiting": "正在等待输出…",

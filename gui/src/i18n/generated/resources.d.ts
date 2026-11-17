@@ -272,7 +272,9 @@ export default interface Resources {
     "composer": {
       "attachHint": "Attachments are unavailable",
       "attachUnavailable": "Attach file unavailable",
+      "checkConversation": "Check conversation",
       "checkCreation": "Check creation status",
+      "dismissNotice": "Dismiss",
       "fixtureAccess": "Fixture access",
       "fixturePlaceholder": "Type a fixture prompt…",
       "interrupt": "Interrupt",
@@ -364,6 +366,7 @@ export default interface Resources {
       "message": "{{role}} message",
       "noText": "No text output was recorded.",
       "plainTextCode": "Plain text",
+      "resumesRuntime": "Sending a message resumes the session.",
       "waiting": "Waiting for output…",
       "you": "You"
     }
@@ -587,6 +590,7 @@ export default interface Resources {
       "plugins": "Plugins",
       "pluginsHint": "Plugins are unavailable in the offline fixture",
       "prHint": "Pull requests are unavailable in the offline fixture",
+      "projectDraft": "Project draft · {{project}}",
       "projects": "Projects",
       "pullRequests": "Pull requests",
       "scheduleHint": "Scheduling is unavailable in the offline fixture",
@@ -596,6 +600,8 @@ export default interface Resources {
       "sessionLabel": "{{title}} · {{status}}",
       "shortcuts": "Application shortcuts",
       "stale": "Stale · was {{status}}",
+      "temporaryChats": "Temporary chats",
+      "temporaryDraft": "Temporary chat draft",
       "unassigned": "Without a workspace",
       "unpinChat": "Unpin {{title}}",
       "unread": "Unread updates"

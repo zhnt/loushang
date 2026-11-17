@@ -508,3 +508,11 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .goal-review-summary { display: grid; justify-items: start; gap: 8px; margin-block-start: 8px; }
 .goal-review-summary code { overflow-wrap: anywhere; }
 .goal-review-summary ul { margin: 0; max-width: 100%; }
+
+.composer textarea { max-height: min(36vh, 260px); overflow-y: auto; }
+.composer:focus-within { border-color: var(--accent); }
+.draft-context { margin: 12px 0; color: var(--ink-secondary); font-size: 13px; }
+.operation-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-inline-start: 3px solid var(--red); color: var(--ink); background: var(--panel); }
+.operation-notice.uncertain { border-inline-start-color: var(--warning); }
+.project-chat-title, .project-chat-scope { display: block; overflow: hidden; text-overflow: ellipsis; }
+.project-chat-scope { margin-top: 2px; color: var(--ink-secondary); font-size: 11px; }

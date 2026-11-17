@@ -594,6 +594,51 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
   });
 
+  it("keeps unsent text separate by Host and project without creating a Session", async () => {
+    const seed = await createMockAppClient().snapshot();
+    const snapshot: ClientSnapshot = {
+      ...seed, connection: "connected", sessions: [], selectedSessionId: "",
+      source: { kind: "live", serviceInstanceId: "drafts", muxSpaceId: "drafts", connectionEpoch: "1" },
+    };
+    const client: HarnessClientUiPort = {
+      snapshot: async () => snapshot, subscribe: () => () => {},
+      submitText: async ({ submissionId }) => ({ accepted: true, submissionId }),
+      interrupt: async () => ({ accepted: false }),
+    };
+    const createChat = vi.fn(async () => null);
+    const props = (hostKey: string) => ({
+      client,
+      projectNavigation: {
+        hostKey, directory: { projects: [{ path: "/work/alpha", sessions: [] },
+          { path: "/work/beta", sessions: [] }], temporarySessions: [] },
+        available: true, pending: false, error: false, folderInput: false, selection: null,
+        openFolder: () => {}, closeFolder: () => {}, register: async () => false,
+        createChat, togglePin: () => {}, select: () => {},
+      },
+    });
+    const { rerender } = render(<HarnessGui {...props("host-a")} />);
+    const open = (project: string) => fireEvent.click(screen.getByRole("button", { name: `New chat in ${project}` }));
+    open("alpha");
+    expect(screen.getByRole("heading", { name: "alpha / New Session" })).toBeVisible();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Alpha draft" } });
+    open("beta");
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Beta draft" } });
+    rerender(<HarnessGui {...props("host-b")} />);
+    open("alpha");
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    rerender(<HarnessGui {...props("host-a")} />);
+    open("alpha");
+    expect(screen.getByRole("textbox")).toHaveValue("Alpha draft");
+    open("beta");
+    expect(screen.getByRole("textbox")).toHaveValue("Beta draft");
+    const input = screen.getByRole("textbox");
+    fireEvent.compositionStart(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.compositionEnd(input);
+    expect(createChat).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])("sends only with the model selected before creation (selection fails first: %s)", async (rejectFirstModel) => {
     const inputSnapshot = await createMockAppClient().snapshot();
     const second = { ...liveModel, id: "test:primary:second", modelId: "second" };

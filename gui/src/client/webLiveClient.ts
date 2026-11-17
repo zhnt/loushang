@@ -173,6 +173,12 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
         return unknown;
       }
     },
+    async findSubmission(sessionId, submissionId, serviceInstanceId) {
+      if (current?.source.kind !== "live" || current.source.serviceInstanceId !== serviceInstanceId) {
+        return { accepted: false, submissionId, reason: "submission_outcome_unknown" };
+      }
+      return call("find-submission", { sessionId, submissionId, serviceInstanceId });
+    },
     async submitText(input) {
       const serviceInstanceId = current?.source.kind === "live" ? current.source.serviceInstanceId : undefined;
       try {

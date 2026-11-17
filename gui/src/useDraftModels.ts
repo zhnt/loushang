@@ -9,7 +9,7 @@ function draftModelLabel(load: DraftTarget["loadModels"], loaded: boolean, model
   return models.models.length === 0 ? "empty" : "choose";
 }
 
-export function useDraftModels(target: DraftTarget | undefined, available: boolean) {
+export function useDraftModels(target: DraftTarget | undefined, available: boolean, preferredId?: string) {
   const [result, setResult] = useState<{ target: DraftTarget; models: SessionModels | null }>();
   const load = target?.loadModels;
   useEffect(() => {
@@ -28,16 +28,12 @@ export function useDraftModels(target: DraftTarget | undefined, available: boole
   }, [target, load, available]);
 
   const current = available && result?.target === target ? result : undefined;
-  const models = current?.models ?? null;
+  const catalog = current?.models ?? null;
+  const models = preferredId && catalog?.models.some((model) => model.id === preferredId)
+    ? { ...catalog, currentId: preferredId } : catalog;
   return {
     models,
     required: Boolean(load),
     label: draftModelLabel(load, Boolean(current), models),
-    async select(id: string) {
-      if (!current || !models?.models.some((model) => model.id === id)) return null;
-      const next = { ...models, currentId: id };
-      setResult({ ...current, models: next });
-      return next;
-    },
   } as const;
 }

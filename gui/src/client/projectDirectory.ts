@@ -2,6 +2,10 @@ import type { DraftBinding, SessionModels } from "./model";
 
 export const TEMPORARY_WORKSPACE = "@temporary";
 
+export function workspaceName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
 export interface ProjectChat {
   readonly id: string;
   readonly title: string;
