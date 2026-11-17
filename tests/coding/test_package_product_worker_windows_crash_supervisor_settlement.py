@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding.package_product_worker_windows_crash_supervisor_settlement as supervisor_settlement
+import loushang.harness.package_product._windows_worker_recovery as recovery
 from loushang.coding.package_product_worker_windows_crash_cleanup_review import (
     CodingWindowsWorkerCrashCleanupReviewV1,
 )
@@ -173,7 +174,7 @@ def test_windows_crash_supervisor_product_keeps_transitions_inside_locks(
         supervisor_settlement, "_review_under_gc_guard", lambda *_a, **_k: orphan
     )
     monkeypatch.setattr(
-        supervisor_settlement, "_crash_cleanup_history_matches", lambda _r: True
+        recovery, "_crash_cleanup_history_matches", lambda _r: True
     )
     monkeypatch.setattr(
         supervisor_settlement, "_read_intent_under_gc_guard", lambda *_a: intent
@@ -189,7 +190,7 @@ def test_windows_crash_supervisor_product_keeps_transitions_inside_locks(
         refreshed,
     )
     monkeypatch.setattr(
-        supervisor_settlement,
+        recovery,
         "observe_windows_worker_job_absent",
         lambda _job: events.append("job.absent") or True,
     )

@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 import loushang.coding.package_product_worker_windows_crash_native_settlement as settlement
+import loushang.harness.package_product._windows_worker_recovery as recovery
 import loushang.harness.package_product._worker_windows_attempt as native_cleanup
 from loushang.coding.package_product_worker_windows_crash_cleanup_review import (
     CodingWindowsWorkerCrashCleanupReviewV1,
@@ -146,7 +147,7 @@ def test_windows_crash_native_effect_requires_package_then_product_guards(
     )
     monkeypatch.setattr(native_cleanup, "os", settlement.os)
     monkeypatch.setattr(settlement, "_review_under_gc_guard", lambda *_a, **_k: state["review"])
-    monkeypatch.setattr(settlement, "_crash_cleanup_history_matches", lambda _r: True)
+    monkeypatch.setattr(recovery, "_crash_cleanup_history_matches", lambda _r: True)
     monkeypatch.setattr(
         settlement,
         "inspect_coding_windows_product_worker_provisioning_attempts",

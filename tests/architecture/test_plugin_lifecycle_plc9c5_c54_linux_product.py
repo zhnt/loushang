@@ -14,6 +14,9 @@ CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
 PRODUCT_WORKER_BOUNDED_IMPORTS = {
+    CODING_ROOT / "package_product_worker_windows_reserved_settlement.py": {
+        "loushang.harness.worker.history._windows_stage_review_wire",
+    },
     CODING_ROOT / "package_product_worker_windows_base_files.py": {
         "loushang.harness.worker.history._windows_sources",
     },
@@ -96,11 +99,8 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._windows_c5_base",
     },
     CODING_ROOT / "package_product_worker_windows_cleanup_evidence.py": {
-        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.history._windows_recovery",
         "loushang.harness.worker.contracts",
-        "loushang.harness.worker.product_activation",
-    },
-    CODING_ROOT / "package_product_worker_windows_crash_c5_settlement.py": {
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_crash_c5_settlement.py": {
@@ -245,14 +245,12 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_windows_crash_cleanup_review.py": {
         'loushang.harness.worker.history._windows_recovery',
     },
-    CODING_ROOT / "package_product_worker_windows_crash_lease_repair.py": {
-        "loushang.harness.worker._native_profile_bridge",
-    },
     CODING_ROOT / "package_product_worker_windows_crash_stage_review.py": {
         'loushang.harness.worker.history._windows_recovery',
         'loushang.harness.worker.history._windows_stage_review_wire',
     },
     CODING_ROOT / "package_product_worker_windows_crash_supervisor_settlement.py": {
+        "loushang.harness.worker.history._windows_product_journals",
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_history_checkpoint.py": {

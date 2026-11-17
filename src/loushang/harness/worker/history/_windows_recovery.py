@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Generic, TypeVar, cast
+from typing import Generic, Protocol, TypeVar, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeLeaseV1,
@@ -20,7 +21,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry
     PackageWindowsRuntimeQuiescenceV1,
 )
 
+from .._native_profile_bridge import _WindowsNativeContainmentSettlementWitness
+from .._windows_provisioning_journal import WindowsWorkerProvisioningAttemptV1
 from ..journal import WorkerAttemptPhase, WorkerAttemptRecordV1
+from ..product_activation import ProductWorkerActivationReceiptV1
 from ._activation import _RetainedAttemptFields
 from ._base_codec import _BaseWireMethods
 from ._opt_in import _OptInDecisionMethods
@@ -845,3 +849,219 @@ class _WindowsStageRetirementReceiptMethods(_BaseWireMethods):
 
 
 _WINDOWS_RETIREMENT_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
+
+
+class WindowsLiveCleanupReview(Protocol):
+    @property
+    def runtime(self) -> _WindowsOrphanRuntimeReviewMethods: ...
+    @property
+    def native(self) -> WindowsWorkerProvisioningAttemptV1 | None: ...
+    @property
+    def activation(self) -> _RetainedAttemptFields | None: ...
+
+
+_LiveReviewT = TypeVar("_LiveReviewT", bound=WindowsLiveCleanupReview)
+
+
+class WindowsWorkerCleanupEvidence(ABC, Generic[_LiveReviewT]):
+    """Exact read-only receipt/native/Supervisor/C5 join; no repair authority."""
+
+    __slots__ = ()
+    _review_type: type[_LiveReviewT]
+    _receipt: ProductWorkerActivationReceiptV1
+    _attempt_id: str
+    _owner_generation: int
+    _request_fingerprint: str
+    _identity_fingerprint: str
+    _mode: str
+    authority_id: str
+    authority_fingerprint: str
+
+    @property
+    @abstractmethod
+    def host_identity(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def boot_identity(self) -> str: ...
+
+    @abstractmethod
+    def current_tree_witness(self, *, attempt_id: str) -> _LiveReviewT: ...
+
+    def _current_review_matches(
+        self, *, witness: object, attempt_id: str
+    ) -> _LiveReviewT | None:
+        if type(witness) is not self._review_type:
+            return None
+        try:
+            fresh = self.current_tree_witness(attempt_id=attempt_id)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if fresh != witness:
+            return None
+        return fresh if self._review_matches(fresh) else None
+
+    def _review_matches(self, fresh: _LiveReviewT) -> bool:
+        runtime = fresh.runtime
+        attempt = runtime.attempt
+        record = runtime.receipt_record
+        native = fresh.native
+        activation = fresh.activation
+        if (
+            attempt is None
+            or record is None
+            or native is None
+            or (activation is None)
+            or runtime.orphan_leases
+            or (runtime.native_job_absent is not True)
+            or (
+                not (
+                    attempt.clean_exit_settled or attempt.fenced_exit_settled
+                    if self._mode == "normal"
+                    else attempt.supervisor_process_settled is True
+                    and attempt.supervisor_phase == "process_settled"
+                    and (attempt.payload_directory_identity is None)
+                    and (
+                        attempt.observed_debts
+                        == ("payload_missing", "launch_intent_retained")
+                    )
+                    and _valid_crash_effect_history(attempt, settled=True)
+                )
+            )
+            or (attempt.attempt_id != self._attempt_id)
+            or (attempt.launch_request_fingerprint != self._request_fingerprint)
+            or (attempt.launch_identity_fingerprint != self._identity_fingerprint)
+            or (attempt.supervisor_identity_fingerprint != self._identity_fingerprint)
+            or (attempt.launch_receipt_fingerprint != self._receipt.fingerprint)
+            or (attempt.native_worker_request_fingerprint != self._request_fingerprint)
+            or (attempt.native_receipt_fingerprint != self._receipt.fingerprint)
+            or (record.receipt != self._receipt)
+            or (native.phase != "settled")
+            or (native.last_witness_state != "SETTLED")
+            or (native.settlement_fingerprint is None)
+            or (native.phase_history != attempt.native_phase_history)
+            or (
+                native.witness_present_history != attempt.native_witness_present_history
+            )
+            or (native.state_revision != attempt.native_revision)
+            or (native.identity.get("receiptFingerprint") != self._receipt.fingerprint)
+            or (
+                native.identity.get("workerRequestFingerprint")
+                != self._request_fingerprint
+            )
+            or (native.identity.get("ownerGeneration") != self._owner_generation)
+            or (native.identity.get("jobObjectName") != attempt.native_job_name)
+            or (activation.phase != "retired")
+            or (activation.cleanup_contract_version != 2)
+            or (activation.receipt_fingerprint != self._receipt.fingerprint)
+            or (activation.policy_fingerprint != self._receipt.policy.fingerprint)
+            or (activation.owner_generation != self._owner_generation)
+            or (activation.host_identity != self.host_identity)
+            or (activation.boot_identity != self.boot_identity)
+        ):
+            return False
+        return True
+
+    def verify_tree_settlement(
+        self,
+        *,
+        receipt_fingerprint: str,
+        attempt_id: str,
+        owner_generation: int,
+        host_identity: str,
+        boot_identity: str,
+        witness: object,
+        evidence_authority_id: str,
+        evidence_authority_fingerprint: str,
+    ) -> bool:
+        if not self._identity_matches(
+            receipt_fingerprint=receipt_fingerprint,
+            attempt_id=attempt_id,
+            owner_generation=owner_generation,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            evidence_authority_id=evidence_authority_id,
+            evidence_authority_fingerprint=evidence_authority_fingerprint,
+        ):
+            return False
+        return (
+            self._current_review_matches(witness=witness, attempt_id=attempt_id)
+            is not None
+        )
+
+    def verify_native_containment_settlement(
+        self,
+        *,
+        receipt_fingerprint: str,
+        attempt_id: str,
+        owner_generation: int,
+        host_identity: str,
+        boot_identity: str,
+        witness: object,
+        evidence_authority_id: str,
+        evidence_authority_fingerprint: str,
+    ) -> bool:
+        if (
+            not self._identity_matches(
+                receipt_fingerprint=receipt_fingerprint,
+                attempt_id=attempt_id,
+                owner_generation=owner_generation,
+                host_identity=host_identity,
+                boot_identity=boot_identity,
+                evidence_authority_id=evidence_authority_id,
+                evidence_authority_fingerprint=evidence_authority_fingerprint,
+            )
+            or type(witness) is not _WindowsNativeContainmentSettlementWitness
+        ):
+            return False
+        try:
+            fresh = self.current_tree_witness(attempt_id=attempt_id)
+        except (OSError, RuntimeError, ValueError):
+            return False
+        native = fresh.native
+        native_witness = cast(_WindowsNativeContainmentSettlementWitness, witness)
+        return bool(
+            native is not None
+            and self._review_matches(fresh)
+            and (native_witness.receipt_fingerprint == self._receipt.fingerprint)
+            and (native_witness.worker_request_fingerprint == self._request_fingerprint)
+            and (native_witness.attempt_id == attempt_id)
+            and (native_witness.owner_generation == owner_generation)
+            and (native_witness.journal_fingerprint == native.settlement_fingerprint)
+        )
+
+    def current_native_witness(self) -> _WindowsNativeContainmentSettlementWitness:
+        """Derive the exact native witness from settled, rechecked Product bytes."""
+        review = self.current_tree_witness(attempt_id=self._attempt_id)
+        if not self._review_matches(review) or review.native is None:
+            raise ValueError("Windows C5 native settlement is unproven")
+        fingerprint = review.native.settlement_fingerprint
+        assert fingerprint is not None
+        return _WindowsNativeContainmentSettlementWitness(
+            receipt_fingerprint=self._receipt.fingerprint,
+            worker_request_fingerprint=self._request_fingerprint,
+            attempt_id=self._attempt_id,
+            owner_generation=self._owner_generation,
+            journal_fingerprint=fingerprint,
+        )
+
+    def _identity_matches(
+        self,
+        *,
+        receipt_fingerprint: str,
+        attempt_id: str,
+        owner_generation: int,
+        host_identity: str,
+        boot_identity: str,
+        evidence_authority_id: str,
+        evidence_authority_fingerprint: str,
+    ) -> bool:
+        return (
+            receipt_fingerprint == self._receipt.fingerprint
+            and attempt_id == self._attempt_id
+            and (owner_generation == self._owner_generation)
+            and (host_identity == self.host_identity)
+            and (boot_identity == self.boot_identity)
+            and (evidence_authority_id == self.authority_id)
+            and (evidence_authority_fingerprint == self.authority_fingerprint)
+        )

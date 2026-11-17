@@ -8,7 +8,7 @@ public errors. No method acquires Product or native mutation authority.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
@@ -450,3 +450,22 @@ _SETTLED_DEBTS = (
     "launch_intent_retained",
     "supervisor_history_missing",
 )
+
+
+def windows_worker_reserved_settled_document(
+    current: Mapping[str, object],
+    *,
+    expected_review: _WindowsReservedStageReviewMethods,
+    error_type: type[RuntimeError],
+    history_error: str,
+) -> dict[str, object]:
+    if (
+        type(current) is not dict
+        or current.get("attemptId") != expected_review.attempt_id
+        or current.get("phase") != "reserved"
+        or (type(current.get("stateRevision")) is not int)
+        or (current["stateRevision"] != expected_review.native_revision)
+        or (current.get("witness") is not None)
+    ):
+        raise error_type(history_error)
+    return {**current, "phase": "settled", "stateRevision": 2, "witness": None}

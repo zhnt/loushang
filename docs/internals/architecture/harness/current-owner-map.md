@@ -67,8 +67,11 @@ read coordination, plus crash identity/spec rechecks and guarded orphan repair.
 Its four fixed stage-retirement commands use the original record IO and
 physical deletion owners through history proof, intent/replay/publication and
 completed-history validation, with Code nominal Profile and Product admission.
-PackageProduct also owns the six-base read/publication transaction. Recovery
-settlement and cleanup evidence remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
+PackageProduct also owns the six-base read/publication transaction, crash
+Supervisor/native/C5 settlement, no-effect reservation settlement and pinned-stage
+lease repair. Worker owns the read-only cleanup evidence join. Coding keeps trust
+identities, Product admission and nominal records. Recovery orchestration and
+payload/start chains remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
 this slice does not complete that chain or its majority-exit target.
 
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,

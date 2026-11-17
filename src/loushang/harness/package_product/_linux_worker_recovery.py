@@ -10,8 +10,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -45,9 +44,7 @@ from loushang.harness.worker.payload._records import PayloadPlan
 from loushang.harness.worker.payload._repair import RepairJournal
 from loushang.harness.worker.payload._storage import _DIR_FLAGS
 from loushang.harness.worker.product_activation import (
-    ActivationWitness,
     ProductWorkerActivationCoordinator,
-    ProductWorkerActivationReceiptV1,
     WorkerCleanupDebtV1,
     WorkerCleanupSettlementV1,
     _CleanupDebtReason,
@@ -63,13 +60,13 @@ from ._linux_worker_history import (
     review_history,
     review_history_under_guard,
 )
+from ._worker_product_authority import ClosedProductWorkerCrashRecoveryAuthority
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
 HistoryReview = RetentionReviewMethods[AttemptReference]
 HistoryT = TypeVar("HistoryT")
 _ATTEMPT = re.compile("[0-9a-f]{32}\\Z")
-_STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
 
 class RegisteredReview(Protocol):
@@ -405,26 +402,15 @@ class CleanupEvidenceAuthority(Generic[HistoryT]):
         return False
 
 
-class ClosedLinuxCrashRecoveryAuthority:
-    """Serialize C5 changes while refusing any fresh Worker admission."""
+class ClosedLinuxCrashRecoveryAuthority(
+    ClosedProductWorkerCrashRecoveryAuthority[PosixLocalWheelProductSessionOwner]
+):
+    """Original Linux nominal authority; shared closed-admission program."""
+
+    _admission_error = "Linux crash recovery cannot change Worker admission"
 
     def __init__(self, product: PosixLocalWheelProductSessionOwner) -> None:
-        self._product = product
-
-    @contextmanager
-    def serialized_admission(self) -> Iterator[None]:
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            yield
-            self._product.assert_root_gc_authority_current()
-
-    def current_witness(
-        self, _receipt: ProductWorkerActivationReceiptV1
-    ) -> ActivationWitness:
-        return _STALE_WITNESS
-
-    def latch_kill_switch(self, *, expected_generation: int) -> int:
-        raise ValueError("Linux crash recovery cannot change Worker admission")
+        super().__init__(product)
 
 
 class UnderGuardCleanupEvidenceAuthority(CleanupEvidenceAuthority[HistoryT]):

@@ -868,3 +868,34 @@ class _WindowsWorkerProductOptInAuthority(Generic[D, P]):
                 )
             self._product.assert_root_gc_authority_current()
             return decision
+
+
+_CrashProductT = TypeVar(
+    "_CrashProductT",
+    PosixLocalWheelProductSessionOwner,
+    WindowsLocalWheelProductSessionOwner,
+)
+
+
+class ClosedProductWorkerCrashRecoveryAuthority(Generic[_CrashProductT]):
+    """Provide Product serialization while refusing fresh activation authority."""
+
+    _admission_error: str
+
+    def __init__(self, product: _CrashProductT) -> None:
+        self._product: _CrashProductT = product
+
+    @contextmanager
+    def serialized_admission(self) -> Iterator[None]:
+        with self._product.gc_gate.guard(require_write=True):
+            self._product.assert_root_gc_authority_current()
+            yield
+            self._product.assert_root_gc_authority_current()
+
+    def current_witness(
+        self, _receipt: ProductWorkerActivationReceiptV1
+    ) -> ActivationWitness:
+        return _STALE_WITNESS
+
+    def latch_kill_switch(self, *, expected_generation: int) -> int:
+        raise ValueError(self._admission_error)
