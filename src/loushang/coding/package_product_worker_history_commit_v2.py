@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from typing import cast
 
-from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
+from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.package_product._linux_worker_history import (
+    commit_product_history_owner,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -22,7 +25,7 @@ from .package_product_worker_history_cutover_v2 import (
     CodingWorkerProductCutoverIndexV2,
 )
 from .package_product_worker_history_preflight_v2 import (
-    _prepare_coding_product_worker_history_cutover_under_guard,
+    CodingWorkerCutoverPreflightError,
 )
 from .package_product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
@@ -30,14 +33,9 @@ from .package_product_worker_history_prepared_v2 import (
 from .package_product_worker_history_read_v2 import (
     _HISTORY_READER,
 )
-from .package_product_worker_history_stage_v2 import (
-    read_coding_worker_v2_preparation,
-)
+from .package_product_worker_history_retention import _history_proof_bindings
 from .package_product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
-)
-from .package_product_worker_history_v2_names import (
-    PREPARATION_INTENT_NAME,
 )
 
 _HISTORY_PUBLICATION = HistoryPublication(_HISTORY_READER)
@@ -89,46 +87,19 @@ def commit_coding_product_worker_v2_owner(
         raise ValueError(
             "Coding Worker V2 owner commit requires its Product and cutoffs"
         )
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with product.pinned_state_root_gc_read() as root_fd:
-                with RootedFileIO(product.state_root, root_fd) as file_io:
-                    with file_io.bind(
-                        product.state_root / PREPARATION_INTENT_NAME, durable=True
-                    ) as rooted:
-                        prepared = read_coding_worker_v2_preparation(rooted)
-                        if prepared is None:
-                            raise CodingWorkerV2OwnerCommitError(
-                                "coding_worker_v2_preparation_absent"
-                            )
-                        cutoffs = tuple(
-                            stream.first_retained_generation
-                            for stream in prepared.streams
-                        )
-                        if cutoffs != first_retained_generations:
-                            raise CodingWorkerV2OwnerCommitError(
-                                "coding_worker_v2_cutoffs_changed"
-                            )
-                        if _owner_bytes(rooted) is None:
-                            current = _prepare_coding_product_worker_history_cutover_under_guard(
-                                product,
-                                first_retained_generations=first_retained_generations,
-                                active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
-                                gc_snapshot=product.gc_gate.snapshot(),
-                            )
-                            if current != prepared:
-                                raise CodingWorkerV2OwnerCommitError(
-                                    "coding_worker_v2_preparation_stale"
-                                )
-                        result = commit_coding_worker_v2_owner_under_guard(
-                            rooted, prepared=prepared
-                        )
-            product.assert_root_gc_authority_current()
-            return result
+    return cast(
+        CodingWorkerProductCutoverIndexV2,
+        commit_product_history_owner(
+            _history_proof_bindings(),
+            product,
+            publication=_HISTORY_PUBLICATION,
+            prepared_type=CodingWorkerPreparedProductCutoverV2,
+            preflight_error_type=CodingWorkerCutoverPreflightError,
+            commit_error_type=CodingWorkerV2OwnerCommitError,
+            first_retained_generations=first_retained_generations,
+            index_limit=lambda: _MAX_INDEX_BYTES,
+        ),
+    )
 
 
 __all__ = [
