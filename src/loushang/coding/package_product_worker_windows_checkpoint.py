@@ -7,10 +7,12 @@ Publication and an eventual owner switch must provide separate authority.
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
-from hashlib import sha256
 
+from loushang.harness.package_product._windows_worker_history import (
+    publish_windows_product_worker_checkpoint,
+    read_windows_product_worker_checkpoint,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -21,17 +23,17 @@ from loushang.harness.resources.packages.plugin_lifecycle._record_schema import 
     RecordField,
     RecordSchema,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
-from loushang.harness.worker.history._base_codec import _BaseWireMethods, _unchanged
+from loushang.harness.worker.history._base_codec import _unchanged
+from loushang.harness.worker.history._windows_checkpoint import (
+    _WindowsHistoryCheckpointMethods,
+)
 
 from .package_legacy_windows_receipt import (
+    _receipt_io,
     read_windows_private_receipt,
-    write_windows_private_receipt,
 )
 from .package_product_worker_native_approval import (
     CodingWorkerNativeApprovalDecisionV1,
@@ -54,8 +56,6 @@ from .package_product_worker_windows_package_references import (
     _review_coding_windows_worker_package_references_under_guard,
 )
 
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _MAX_BYTES = 8 * 1024 * 1024
 _CHECKPOINT_NAME = "worker-history-checkpoint-v1.json"
 _PREPARATION_NAME = "worker-history-preparation-v1.json"
@@ -70,9 +70,14 @@ _BASE_NAMES = (
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerHistoryCheckpointV1(_BaseWireMethods):
+class CodingWindowsWorkerHistoryCheckpointV1(_WindowsHistoryCheckpointMethods):
     """An exact pre-cutover commitment to six source-bound semantic bases."""
 
+    _source_snapshot_type = CodingWindowsWorkerHistorySourceSnapshotV1
+    _package_reference_type = CodingWindowsWorkerPackageReferenceReviewV1
+    _native_approval_type = CodingWorkerNativeApprovalDecisionV1
+    _backup_topology_prefix = "coding-product-backup-types:"
+    _base_names = _BASE_NAMES
     _wire_label = "Windows Worker history checkpoint"
     _wire_lists = ()
     _wire_invalid_bytes = _wire_invalid_fields = _wire_invalid_encoding = "is invalid"
@@ -99,105 +104,6 @@ class CodingWindowsWorkerHistoryCheckpointV1(_BaseWireMethods):
     record_digest: str
     record_version: int = 1
 
-    def __post_init__(self) -> None:
-        if (
-            type(self.source_snapshot) is not CodingWindowsWorkerHistorySourceSnapshotV1
-            or any(
-                type(value) is not str or _DIGEST.fullmatch(value) is None
-                for value in (
-                    self.preparation_digest,
-                    self.package_reference_digest,
-                    self.desired_history_digest,
-                    self.record_digest,
-                )
-            )
-            or type(self.backup_topology_revision) is not str
-            or not self.backup_topology_revision.startswith(
-                "coding-product-backup-types:"
-            )
-            or _DIGEST.fullmatch(
-                self.backup_topology_revision.removeprefix(
-                    "coding-product-backup-types:"
-                )
-            )
-            is None
-            or type(self.gc_reservation_revision) is not int
-            or self.gc_reservation_revision < 0
-            or type(self.base_digests) is not tuple
-            or tuple(name for name, _ in self.base_digests) != _BASE_NAMES
-            or any(_DIGEST.fullmatch(digest) is None for _, digest in self.base_digests)
-            or type(self.native_approval_record_digests) is not tuple
-            or any(
-                type(value) is not str or _DIGEST.fullmatch(value) is None
-                for value in self.native_approval_record_digests
-            )
-            or type(self.native_approval_operation_ids) is not tuple
-            or self.native_approval_operation_ids
-            != tuple(sorted(set(self.native_approval_operation_ids)))
-            or len(self.native_approval_operation_ids)
-            != len(self.native_approval_record_digests)
-            or any(
-                type(value) is not str or not value or len(value) > 128
-                for value in self.native_approval_operation_ids
-            )
-            or type(self.native_approval_generation) is not int
-            or self.native_approval_generation
-            != len(self.native_approval_record_digests)
-            or self.opt_in_operation_ids
-            != tuple(sorted(set(self.opt_in_operation_ids)))
-            or any(
-                type(value) is not str or not value or len(value) > 128
-                for value in self.opt_in_operation_ids
-            )
-            or self.receipt_fingerprints
-            != tuple(sorted(set(self.receipt_fingerprints)))
-            or any(
-                type(value) is not str or _DIGEST.fullmatch(value) is None
-                for value in self.receipt_fingerprints
-            )
-            or self.attempt_ids != tuple(sorted(set(self.attempt_ids)))
-            or any(
-                type(value) is not str or _ATTEMPT.fullmatch(value) is None
-                for value in self.attempt_ids
-            )
-            or self.native_provisioning_attempt_ids
-            != tuple(sorted(set(self.native_provisioning_attempt_ids)))
-            or not set(self.native_provisioning_attempt_ids).issubset(self.attempt_ids)
-            or type(self.record_version) is not int
-            or self.record_version != 1
-            or self.record_digest
-            != sha256(canonical_json_bytes(self._unsigned_dict())).hexdigest()
-        ):
-            raise ValueError("Windows Worker history checkpoint is invalid")
-
-    def _unsigned_dict(self) -> dict[str, object]:
-        return {
-            "attemptIds": list(self.attempt_ids),
-            "backupTopologyRevision": self.backup_topology_revision,
-            "baseDigests": [list(item) for item in self.base_digests],
-            "desiredHistoryDigest": self.desired_history_digest,
-            "gcReservationRevision": self.gc_reservation_revision,
-            "nativeProvisioningAttemptIds": list(self.native_provisioning_attempt_ids),
-            "nativeApprovalGeneration": self.native_approval_generation,
-            "nativeApprovalOperationIds": list(self.native_approval_operation_ids),
-            "nativeApprovalRecordDigests": list(self.native_approval_record_digests),
-            "optInOperationIds": list(self.opt_in_operation_ids),
-            "packageReferenceDigest": self.package_reference_digest,
-            "preparationDigest": self.preparation_digest,
-            "receiptFingerprints": list(self.receipt_fingerprints),
-            "recordVersion": self.record_version,
-            "sourceSnapshot": self.source_snapshot.to_dict(),
-        }
-
-    def to_dict(self) -> dict[str, object]:
-        return {**self._unsigned_dict(), "recordDigest": self.record_digest}
-
-    def to_bytes(self) -> bytes:
-        raw = canonical_json_bytes(self.to_dict())
-        if len(raw) > _MAX_BYTES:
-            raise ValueError("Windows Worker history checkpoint exceeds bound")
-        return raw
-
     @classmethod
     def from_guarded_read(
         cls,
@@ -212,99 +118,8 @@ class CodingWindowsWorkerHistoryCheckpointV1(_BaseWireMethods):
         joined = CodingWindowsWorkerHistorySemanticJoinV1.from_semantic_read(
             prepared, semantic
         )
-        source = semantic.source_snapshot
-        recovery = semantic.offline_recovery
-        if (
-            type(package_review) is not CodingWindowsWorkerPackageReferenceReviewV1
-            or package_review.source_snapshot_digest != source.snapshot_digest
-            or package_review.semantic_digest != prepared.semantic_digest
-            or package_review.history_join_digest != joined.review_digest
-            or package_review.lease_owner_revision != source.lease_owner_revision
-            or package_review.store_id != source.store_id
-            or package_review.scope_id != source.scope_id
-            or semantic.desired_history_digest is None
-            or type(native_approvals) is not tuple
-            or any(
-                type(item) is not CodingWorkerNativeApprovalDecisionV1
-                or item.scope_id != source.scope_id
-                or item.journal_revision != index
-                or item.generation != index
-                for index, item in enumerate(native_approvals, start=1)
-            )
-            or len({item.operation_id for item in native_approvals})
-            != len(native_approvals)
-        ):
-            raise ValueError("Windows Worker checkpoint references changed")
-        raw_approvals = b"".join(
-            canonical_json_bytes(item.to_dict()) + b"\n" for item in native_approvals
-        )
-        approval_source = next(
-            (
-                item
-                for item in source.files
-                if item.name == "worker-native-release-approvals.jsonl"
-            ),
-            None,
-        )
-        if (approval_source is None) != (not native_approvals) or (
-            approval_source is not None
-            and (
-                approval_source.size != len(raw_approvals)
-                or approval_source.sha256_digest != sha256(raw_approvals).hexdigest()
-            )
-        ):
-            raise ValueError("Windows Worker native approval history changed")
-        bases = (
-            ("optIn", joined.opt_in.record_digest),
-            ("receipt", joined.receipt.record_digest),
-            ("supervisor", joined.supervisor.record_digest),
-            ("c5", joined.c5.record_digest),
-            ("launchIntent", joined.launch_intent.record_digest),
-            ("nativeProvisioning", joined.native_provisioning.record_digest),
-        )
-        unsigned = {
-            "attemptIds": list(joined.observed_attempt_ids),
-            "backupTopologyRevision": package_review.backup_topology_revision,
-            "baseDigests": [list(item) for item in bases],
-            "desiredHistoryDigest": semantic.desired_history_digest,
-            "gcReservationRevision": recovery.gc_reservation_revision,
-            "nativeProvisioningAttemptIds": list(
-                joined.native_provisioning.attempt_ids
-            ),
-            "nativeApprovalGeneration": len(native_approvals),
-            "nativeApprovalOperationIds": sorted(
-                item.operation_id for item in native_approvals
-            ),
-            "nativeApprovalRecordDigests": [
-                item.record_digest for item in native_approvals
-            ],
-            "optInOperationIds": list(recovery.retained_opt_in_operation_ids),
-            "packageReferenceDigest": package_review.review_digest,
-            "preparationDigest": prepared.record_digest,
-            "receiptFingerprints": list(recovery.retained_receipt_fingerprints),
-            "recordVersion": 1,
-            "sourceSnapshot": source.to_dict(),
-        }
-        return cls(
-            source_snapshot=source,
-            preparation_digest=prepared.record_digest,
-            package_reference_digest=package_review.review_digest,
-            desired_history_digest=semantic.desired_history_digest,
-            backup_topology_revision=package_review.backup_topology_revision,
-            gc_reservation_revision=recovery.gc_reservation_revision,
-            base_digests=bases,
-            native_approval_record_digests=tuple(
-                item.record_digest for item in native_approvals
-            ),
-            native_approval_operation_ids=tuple(
-                sorted(item.operation_id for item in native_approvals)
-            ),
-            native_approval_generation=len(native_approvals),
-            opt_in_operation_ids=recovery.retained_opt_in_operation_ids,
-            receipt_fingerprints=recovery.retained_receipt_fingerprints,
-            attempt_ids=joined.observed_attempt_ids,
-            native_provisioning_attempt_ids=joined.native_provisioning.attempt_ids,
-            record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
+        return cls._from_guarded_bases(
+            prepared, semantic, package_review, native_approvals, joined
         )
 
 
@@ -373,37 +188,13 @@ def read_coding_windows_worker_history_checkpoint(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Windows Worker checkpoint requires its Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker checkpoint runtime remains active")
-        product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            published = read_windows_private_receipt(
-                product.state_root / _CHECKPOINT_NAME,
-                maximum_bytes=_MAX_BYTES,
-            )
-            if published is None:
-                raise ValueError("Windows Worker checkpoint is absent")
-            checkpoint = CodingWindowsWorkerHistoryCheckpointV1.from_bytes(published)
-            current = _current_checkpoint_under_guard(
-                product,
-                quiescence=quiescence,
-                gc_snapshot=product.gc_gate.snapshot(),
-                allow_checkpoint_stage=False,
-            )
-            if checkpoint != current:
-                raise ValueError("Windows Worker checkpoint source changed")
-            retained = read_windows_private_receipt(
-                product.state_root / _CHECKPOINT_NAME,
-                maximum_bytes=_MAX_BYTES,
-            )
-            if retained != published:
-                raise ValueError("Windows Worker checkpoint publication changed")
-            product.assert_root_gc_authority_current()
-            return checkpoint
+    return read_windows_product_worker_checkpoint(
+        product,
+        record_type=CodingWindowsWorkerHistoryCheckpointV1,
+        review_checkpoint=_current_checkpoint_under_guard,
+        io=_receipt_io,
+        name=_CHECKPOINT_NAME,
+    )
 
 
 def publish_coding_windows_worker_history_checkpoint(
@@ -421,42 +212,13 @@ def publish_coding_windows_worker_history_checkpoint(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Windows Worker checkpoint requires its Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker checkpoint runtime remains active")
-        product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            gc_snapshot = product.gc_gate.snapshot()
-            path = product.state_root / _CHECKPOINT_NAME
-            published = read_windows_private_receipt(
-                path, maximum_bytes=_MAX_BYTES, allow_unpublished_stage=True
-            )
-            staged = read_windows_private_receipt(
-                path.with_name(_CHECKPOINT_NAME + ".stage"),
-                maximum_bytes=_MAX_BYTES,
-            )
-            for raw in (published, staged):
-                if raw is not None:
-                    CodingWindowsWorkerHistoryCheckpointV1.from_bytes(raw)
-            checkpoint = _current_checkpoint_under_guard(
-                product,
-                quiescence=quiescence,
-                gc_snapshot=gc_snapshot,
-                allow_checkpoint_stage=staged is not None,
-            )
-            candidate = checkpoint.to_bytes()
-            if any(raw is not None and raw != candidate for raw in (published, staged)):
-                raise ValueError("Windows Worker checkpoint source changed")
-            if published is None:
-                write_windows_private_receipt(path, candidate, maximum_bytes=_MAX_BYTES)
-            retained = read_windows_private_receipt(path, maximum_bytes=_MAX_BYTES)
-            if retained != candidate:
-                raise ValueError("Windows Worker checkpoint publication changed")
-            product.assert_root_gc_authority_current()
-            return checkpoint
+    return publish_windows_product_worker_checkpoint(
+        product,
+        record_type=CodingWindowsWorkerHistoryCheckpointV1,
+        review_checkpoint=_current_checkpoint_under_guard,
+        io=_receipt_io,
+        name=_CHECKPOINT_NAME,
+    )
 
 
 __all__ = [

@@ -55,6 +55,13 @@ ReceiptIO and history-name rules; Coding retains concrete value/semantic codecs,
 entry admission and quiescence/GC acquisition. The result is read evidence,
 without cutover or deletion authority. See [A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct).
 
+For Windows pre-cutover preparation/checkpoints, PackageProduct now coordinates
+the original quiescence/GC guards, exact staged retry and read-back over the existing
+private ReceiptIO. Worker History owns their canonical record proofs; Coding keeps
+Product admission and nominal wire facades. Source capture and reference read models
+remain an explicit unfinished part of the [C07 bulk migration](c07-worker-bulk-migration.md);
+this slice does not complete that chain or its majority-exit target.
+
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
 including POSIX/Windows file custody and strict decoding after cleanup. It directly
 uses Resources' existing file consumer. Coding retains Source policy, original

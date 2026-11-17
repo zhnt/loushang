@@ -210,10 +210,14 @@ def test_windows_worker_preparation_rechecks_before_staged_publication() -> None
     with (
         patch.object(preparation, "os", SimpleNamespace(name="nt")),
         patch.object(preparation, "WindowsLocalWheelProductSessionOwner", FakeProduct),
-        patch.object(preparation, "read_windows_private_receipt", read_receipt),
         patch.object(
-            preparation,
-            "write_windows_private_receipt",
+            type(preparation._receipt_io),
+            "read_private_receipt",
+            side_effect=read_receipt,
+        ),
+        patch.object(
+            type(preparation._receipt_io),
+            "write_private_receipt",
             side_effect=lambda _path, raw, **_kw: writes.append(raw),
         ),
         patch.object(

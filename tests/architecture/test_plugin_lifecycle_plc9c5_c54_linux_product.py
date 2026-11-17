@@ -316,12 +316,14 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / 'package_product_worker_windows_checkpoint.py': {
         'loushang.harness.worker.history._base_codec',
+        'loushang.harness.worker.history._windows_checkpoint',
     },
     CODING_ROOT / 'package_product_worker_windows_history_cutover_record.py': {
         'loushang.harness.worker.history._base_codec',
     },
     CODING_ROOT / 'package_product_worker_windows_history_preparation.py': {
         'loushang.harness.worker.history._base_codec',
+        'loushang.harness.worker.history._windows_checkpoint',
     },
     CODING_ROOT / 'package_product_worker_windows_partial_stage_review.py': {
         'loushang.harness.worker.history._windows_stage_review_wire',
