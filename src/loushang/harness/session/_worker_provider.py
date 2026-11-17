@@ -5,8 +5,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
 from hashlib import sha256
-from typing import Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol, TypeVar
 
+from loushang.harness.capabilities import MODEL_INPUT_CAPABILITY_DEFINITION
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionAuthorityContext,
+    ProductCompositionCompiler,
+)
+from loushang.harness.capabilities.contracts import CapabilityRequirement
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderCandidateEnvelope,
     CapabilityProviderOwnerAuthority,
@@ -23,6 +29,11 @@ from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProvider,
     ResolvedCapabilityProviderSet,
 )
+from loushang.harness.session.capability_composition_inputs import (
+    PreparedSessionWorkerCapabilityComponent,
+    SessionCapabilityCompositionInputs,
+    SessionCapabilityWorkerComponentRequest,
+)
 from loushang.harness.worker._ordinary_prepare import _NativeWorkerAttempt
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
@@ -35,6 +46,11 @@ from loushang.harness.worker.capability_query import (
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.facet_proxy import CapabilityWorkerReadOnlyFacetProxy
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
 
 
 class _FacetGrantAuthority(Protocol):
@@ -430,3 +446,140 @@ def _read_worker_provider_inputs(
         raise error_type(error_prefix + "_host_mismatch")
     adapter.assert_admitted_current(worker_admission)
     return (candidate, binding)
+
+
+class _SelectedWorkerManifestOwner(Protocol):
+    def current_selected_manifest(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> PackageProductSelectedPluginManifestV1: ...
+
+
+def _prepare_worker_session_inputs(
+    *,
+    resolved_providers: ResolvedCapabilityProviderSet,
+    provider_owner: CapabilityProviderOwnerAuthority,
+    receipt_owner: _SelectedWorkerManifestOwner,
+    receipt: ProductWorkerActivationReceiptV1,
+    capability_authority: _QueryAuthority | None,
+    adapter: CapabilityQueryWorkerAdapter | None,
+    worker_admission: CapabilityWorkerAdmissionV1,
+    evaluated_at: int,
+    clock: Callable[[], int],
+    release_attempt: Callable[[], Awaitable[None]] | None,
+    base_policy_binding: _BasePolicyGuard | None = None,
+    deferred_prepare: Callable[
+        [int], Awaitable[PreparedSessionWorkerCapabilityComponent]
+    ]
+    | None = None,
+    read_candidate: Callable[..., CapabilityProviderCandidateEnvelope],
+    prepare_binding: Callable[..., PreparedSessionWorkerCapabilityComponent],
+    consumer_requirements: Callable[
+        [ResolvedCapabilityProvider, CapabilityProviderOwnerAuthority],
+        tuple[CapabilityRequirement, ...],
+    ],
+    error_type: type[RuntimeError],
+    error_prefix: str,
+) -> SessionCapabilityCompositionInputs:
+    """Rejoin exact Worker facts and compile the existing Session request."""
+    if (
+        len(resolved_providers.entries) != 1
+        or resolved_providers.roots != (resolved_providers.entries[0].capability_id,)
+        or resolved_providers.prebound_providers
+        or resolved_providers.optional_decisions
+    ):
+        raise error_type(error_prefix + "_session_provider_closure_invalid")
+    resolved = resolved_providers.entries[0]
+    spec = resolved.binding_spec
+    if not isinstance(spec, CapabilityWorkerProviderBindingSpec):
+        raise error_type(error_prefix + "_session_provider_not_worker")
+    candidate = read_candidate(
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+        definition=resolved.definition,
+        provider=resolved.provider,
+        base_policy_binding=base_policy_binding,
+    )
+    owner_snapshot = provider_owner.snapshot()
+    selected = receipt_owner.current_selected_manifest(receipt)
+    trust = selected.source_trust_snapshot
+    if (
+        candidate != resolved.admission.candidate
+        or candidate.binding_spec != spec
+        or owner_snapshot.capability_id != resolved.capability_id
+        or (owner_snapshot.policy_revision != resolved.admission.owner_policy_revision)
+        or (owner_snapshot.revocation_epoch != resolved.admission.revocation_epoch)
+        or (trust is None)
+        or (not trust.trusted)
+        or (trust.plugin_id != spec.plugin_id)
+        or (trust.package_source_identity != candidate.package_source_identity)
+        or (trust.source_trust_class != candidate.source_trust_class)
+        or (
+            trust.source_trust_policy_revision != candidate.source_trust_policy_revision
+        )
+        or (
+            not resolved.admission.issued_at
+            <= evaluated_at
+            < resolved.admission.expires_at
+        )
+        or (adapter is not None and adapter.admission != worker_admission)
+        or (resolved_providers.product_id != receipt.policy.product_id)
+        or (
+            resolved_providers.product_policy_revision
+            != candidate.product_policy_revision
+        )
+        or (resolved_providers.evaluated_at != evaluated_at)
+    ):
+        raise error_type(error_prefix + "_session_selection_stale")
+    host_consumer_requirements = consumer_requirements(resolved, provider_owner)
+    composition = ProductCompositionCompiler().compile(
+        authority_context=ProductCompositionAuthorityContext(
+            product_id=receipt.policy.product_id,
+            scope_id=candidate.scope_id,
+            product_policy_revision=candidate.product_policy_revision,
+            evaluated_at=evaluated_at,
+            owner_snapshots=(),
+            trust_snapshots=(trust,),
+        ),
+        mandatory_roots=(
+            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+            resolved.capability_id,
+        ),
+        admissions=(),
+        definitions=(MODEL_INPUT_CAPABILITY_DEFINITION, resolved.definition),
+        optional_choices=(),
+    )
+
+    async def prepare(graph_generation: int):
+        if deferred_prepare is not None:
+            return await deferred_prepare(graph_generation)
+        assert capability_authority is not None
+        assert adapter is not None
+        assert release_attempt is not None
+        return prepare_binding(
+            resolved=resolved,
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            capability_authority=capability_authority,
+            adapter=adapter,
+            worker_admission=worker_admission,
+            graph_generation=graph_generation,
+            clock=clock,
+            release_attempt=release_attempt,
+            base_policy_binding=base_policy_binding,
+        )
+
+    return SessionCapabilityCompositionInputs(
+        product_composition=composition,
+        resolved_providers=resolved_providers,
+        host_consumer_requirements=host_consumer_requirements,
+        component_requests=(
+            SessionCapabilityWorkerComponentRequest(
+                resolved=resolved,
+                owner_snapshot=owner_snapshot,
+                trust_snapshot=trust,
+                receipt_fingerprint=receipt.fingerprint,
+                worker_admission_fingerprint=worker_admission.fingerprint,
+                prepare=prepare,
+            ),
+        ),
+    )

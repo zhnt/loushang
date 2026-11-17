@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery, Provider candidate/Host-input, opt-in and selected-policy slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
+- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery, Provider candidate/Host-input, opt-in, selected-policy and Session-input slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -244,6 +244,18 @@ Coding 保留 Product identity、信任类别、原名义 opt-in／native 类型
 首轮既有回归326 passed、63 skipped、1 deselected、1 failed；唯一失败为 C51 精确 consumer 清单，候选模块新增了 activation policy 依赖。完整机制已调整到原本持有该依赖的 receipt／activation authority，继续复用原 candidate verifier；未扩大白名单或修改测试。移动调用点时曾误删 partial 的函数实参，fresh-import 对照立即失败，已补回并加强绑定检查，最终672组对照复验通过。原候选 owner 的通用程序保持原样，不保留两份机制。
 
 最终 owner 调整后的真实 Product 事务、Windows receipt base 与 import／C50／C51／C54 为212 passed；与首轮覆盖有交叠，不累加。累计81源 mypy 通过，最终调整的3个源复核通过；Ruff、51份 Coding 公开契约／字段及原测试入口／断言／用户改动哈希检查通过。9项文档不变量和生成依赖事实通过。已重新生成全部112文件当前行数／类基类／静态引用事实；它不是112份职责已验收的证明，策略文件剩余通用 DTO 校验也明确列为未完成项。完整正确 PR 基线的 check-changed 仍须在交付前执行，当前只核对了适用检查计划。
+
+## 完整 Session 输入组装批次
+
+实现 owner 接受原 selected-Worker Session 输入的完整通用组装体归已有 Session _worker_provider 组件。它按原顺序执行 Provider 闭合／Worker spec→实际候选政策读取→owner snapshot→receipt owner 的完整 selected-manifest 读取→候选／trust／时效／admission／Product revision 关联→真实产品 Consumer 决策→原 Compiler→原 Worker request 构造。原嵌套异步 prepare 随操作归位，立即路径仍调用原 Host 完整命令，延迟路径仍 await 原 callback；没有提前启动、发布或另建清理寿命。
+
+Coding 保留原 closed nominal 输入 guard、错误身份和查询 definition／owner policy 批准块；批准块仍在 stale 检查之后、Compiler 之前运行。三个真实入口（两平台 pending Host 和显式 operator query）仍调用同一个公开 Coding 函数，其通用协调体已退出。共享实现复用原 _QueryAuthority、PreparedSessionWorkerCapabilityComponent、Compiler 和 request 类型，仅新增一个完整 manifest 读取事实口；候选／Host 的粗粒度命令与真正的产品 Consumer 政策是固定绑定，没有阶段或字段 supplier。既有 _WorkerSessionComposition 的 select／compose／validate 保持原样，不重计为新共享收益。
+
+本批 Coding −77、Harness +153、Hosting／其他生产 0，系统生产 +76 行；累计 Coding −5,637、Harness +8,642、系统生产 +3,005 行。测试仍 +70 行，文档单列。C07 剩余14,629行，距过半退出仍差4,497行；新增显式类型／事实读取口及必要公开转发成本仍高于迁出量，没有系统净删减收益。剩余 ordinary binding 的纯关联校验等仍须复核，不因名义 DTO 或此批通过就宣布整份文件或整 C07 完成。
+
+既有两平台候选／CLI、原 composition golden、共享 Provider handoff／graph inputs 与 import／C50／C51／C54 为293 passed、63 skipped、1 deselected；测试、参数、fixtures、断言及门禁均未修改。82源 mypy、Ruff、52份 Coding 公开契约／字段及原测试／用户改动检查通过。原 Code 名义 guard、真实查询政策块、完整组装体（含嵌套 prepare）经固定政策绑定后 AST 一致；其余 Code 及原 Session 程序 AST 未变。
+
+1,472组原公开函数与当前入口对照中，1,446组错误、418组实际到达注入失败点、26组成功请求；两平台×查询／非查询×立即／延迟的8条正常路线均明确成功。真实 resolver／admission／Compiler／request 值的 composition fingerprints、效果顺序、连续两次 callback generation、错误及取消异常图一致；候选／manifest／native prepare 和纯产品政策是受控完整口，故不替代真实 Product/native 准入。独立冷导入禁止 Coding，亦确认 type-only Product runtime 未加载；局部 callback 原本即为不可 pickle 的本地闭包，持久记录和公开 DTO 字段不变。Windows／H6 原生路线及整组交付检查仍未执行。
 
 ## 当前验证与限制
 

@@ -97,6 +97,16 @@ and fingerprint rules, and explicit enabled/owner/no-fallback constructor policy
 Both platform receipt authorities continue through the same public Coding entry.
 No activation, native preparation or cleanup authority is added by this value.
 
+The existing Session Worker Provider component owns the complete selected-Worker
+input join, exact candidate/trust/admission/time proof, original compiler and
+request construction, and immediate/deferred prepare closure. It reuses the
+actual receipt owner's complete manifest reader and existing Query/Prepared
+contracts. Coding retains the original nominal guard and query Consumer policy,
+invoked after staleness validation and before compilation. Both pending Hosts and
+the operator query use the same public entry. Existing select/compose/validate
+and Provider cleanup programs remain their sole mechanisms; no second runtime
+or callback lifecycle exists.
+
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
 including POSIX/Windows file custody and strict decoding after cleanup. It directly
 uses Resources' existing file consumer. Coding retains Source policy, original
