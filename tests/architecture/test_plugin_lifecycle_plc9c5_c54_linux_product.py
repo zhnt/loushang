@@ -50,9 +50,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         'loushang.harness.worker.history._base_codec',
         'loushang.harness.worker.history._windows_recovery',
     },
-    CODING_ROOT / "package_product_worker_windows_partial_stage_retirement.py": {
-        "loushang.harness.worker.payload._windows_stage_retirement"
-    },
     CODING_ROOT / "package_product_worker_windows_stage_review.py": {
         'loushang.harness.worker.history._windows_stage_review_wire',
         'loushang.harness.worker.payload._windows_stage_io',

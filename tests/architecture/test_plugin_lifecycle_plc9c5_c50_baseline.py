@@ -1028,7 +1028,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_windows_launch_intent_base.py",
         CODING_ROOT / "package_product_worker_windows_provisioning_base.py",
         CODING_ROOT / "package_product_worker_windows_stage_retirement.py",
-        CODING_ROOT / "package_product_worker_windows_partial_stage_retirement.py",
         CODING_ROOT / "package_product_worker_windows_stage_review.py",
         CODING_ROOT / "package_product_worker_windows_receipt.py",
         CODING_ROOT / "package_product_worker_windows_receipt_journal.py",

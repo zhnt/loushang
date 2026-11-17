@@ -51,6 +51,7 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
     _WorkerBackupObservationFacts,
 )
 from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_BASE_FILES,
     _WindowsHistorySourceSnapshotMethods,
 )
 
@@ -93,6 +94,7 @@ class ReviewWindowsCheckpoint(Protocol[_CheckpointT_co]):
         quiescence: PackageWindowsRuntimeQuiescenceV1,
         gc_snapshot: PluginPackageGcReservationSnapshotV1,
         allow_checkpoint_stage: bool,
+        allow_base_stage: bool = False,
     ) -> _CheckpointT_co: ...
 
 
@@ -698,3 +700,122 @@ def review_windows_product_worker_history_cutover_candidate(
                 raise ValueError("Windows Worker cutover bases changed")
             product.assert_root_gc_authority_current()
             return record_type._from_persisted_bases(persisted)
+
+
+class _WindowsSemanticBase(Protocol):
+    @property
+    def record_digest(self) -> str: ...
+    def to_bytes(self) -> bytes: ...
+
+
+def guard_windows_product_worker_history_bases(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    publish: bool,
+    record_type: type[_CheckpointT],
+    review_checkpoint: ReviewWindowsCheckpoint[_CheckpointT],
+    review_references: ReviewWindowsReferences[_WindowsPackageReferenceMethods],
+    io: WindowsPrivateReceiptIO,
+    checkpoint_name: str,
+    limits: Callable[[], tuple[int, int]],
+) -> _CheckpointT:
+    """Reprove all six bases, then read or publish exactly matching retained bytes.
+
+    The old sources remain authoritative. This operation owns guard/retry/IO
+    custody, and grants neither a history cutover nor source retirement.
+    """
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as quiescence:
+        if quiescence.active_runtime_lease_ids:
+            raise ValueError("Windows Worker bases runtime remains active")
+        product.assert_root_gc_authority_current()
+        with product.gc_gate.guard(require_write=True):
+            checkpoint_path = product.state_root / checkpoint_name
+            published_checkpoint = io.read_private_receipt(
+                checkpoint_path, maximum_bytes=limits()[0]
+            )
+            if published_checkpoint is None:
+                raise ValueError("Windows Worker bases checkpoint is absent")
+            checkpoint = record_type.from_bytes(published_checkpoint)
+            gc_snapshot = product.gc_gate.snapshot()
+            current = review_checkpoint(
+                product,
+                quiescence=quiescence,
+                gc_snapshot=gc_snapshot,
+                allow_checkpoint_stage=False,
+                allow_base_stage=publish,
+            )
+            if checkpoint != current:
+                raise ValueError("Windows Worker bases checkpoint changed")
+            review, prepared, semantic = review_references(
+                product,
+                quiescence=quiescence,
+                gc_snapshot=gc_snapshot,
+                allow_base_stage=publish,
+            )
+            if (
+                semantic.source_snapshot != checkpoint.source_snapshot
+                or prepared.record_digest != checkpoint.preparation_digest
+                or review.review_digest != checkpoint.package_reference_digest
+            ):
+                raise ValueError("Windows Worker bases checkpoint changed")
+            joined = record_type._join_type._from_prepared_history(prepared, semantic)
+            bases: tuple[_WindowsSemanticBase, ...] = (
+                joined.opt_in,
+                joined.receipt,
+                joined.supervisor,
+                joined.c5,
+                joined.launch_intent,
+                joined.native_provisioning,
+            )
+            if checkpoint.base_digests != tuple(
+                (key, base.record_digest)
+                for (key, _), base in zip(WINDOWS_WORKER_BASE_FILES, bases, strict=True)
+            ):
+                raise ValueError("Windows Worker bases checkpoint changed")
+            expected = tuple(
+                (product.state_root / name, base.to_bytes())
+                for (_, name), base in zip(
+                    WINDOWS_WORKER_BASE_FILES, bases, strict=True
+                )
+            )
+            retained_bases: list[bytes | None] = []
+            for path, raw in expected:
+                retained = io.read_private_receipt(
+                    path,
+                    maximum_bytes=limits()[1],
+                    allow_unpublished_stage=publish,
+                )
+                staged = (
+                    io.read_private_receipt(
+                        path.with_name(path.name + ".stage"),
+                        maximum_bytes=limits()[1],
+                    )
+                    if publish
+                    else None
+                )
+                if (retained is not None and retained != raw) or (
+                    staged is not None and staged != raw
+                ):
+                    raise ValueError("Windows Worker base source changed")
+                retained_bases.append(retained)
+            if not publish and any(raw is None for raw in retained_bases):
+                raise ValueError("Windows Worker base is absent")
+            if publish:
+                for (path, raw), retained in zip(expected, retained_bases, strict=True):
+                    if retained is None:
+                        io.write_private_receipt(path, raw, maximum_bytes=limits()[1])
+            if any(
+                io.read_private_receipt(path, maximum_bytes=limits()[1]) != raw
+                for path, raw in expected
+            ):
+                raise ValueError("Windows Worker base publication changed")
+            if (
+                io.read_private_receipt(checkpoint_path, maximum_bytes=limits()[0])
+                != published_checkpoint
+            ):
+                raise ValueError("Windows Worker bases checkpoint changed")
+            product.assert_root_gc_authority_current()
+            return checkpoint

@@ -64,10 +64,11 @@ rechecks over original readers. Worker owns the shared six-stream reconstruction
 and persisted/cutover proofs. PackageProduct now also owns GC settlement/offline
 history capture, attempt reference/GC observations and full/partial/no-effect stage
 read coordination, plus crash identity/spec rechecks and guarded orphan repair.
-Its fixed complete-stage retirement command uses the original record IO and
-physical deletion owners through intent/replay/publication, with Code nominal
-Profile and Product admission. Partial/unlaunched/crash retirement transactions
-and their completed-history validators remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
+Its four fixed stage-retirement commands use the original record IO and
+physical deletion owners through history proof, intent/replay/publication and
+completed-history validation, with Code nominal Profile and Product admission.
+PackageProduct also owns the six-base read/publication transaction. Recovery
+settlement and cleanup evidence remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
 this slice does not complete that chain or its majority-exit target.
 
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
@@ -217,8 +218,8 @@ The existing canonical record reader also serves checkpoint, preparation,
 cutover, launch-intent and stage-retirement values. Coding keeps each original
 concrete class, fields and wire Profile; Resources supplies schema traversal,
 and Worker owns the migrated preparation/checkpoint/cutover proofs and encoders.
-Launch-intent and three retirement variants still have Coding implementations
-tracked by C07; the complete-stage receipt proof and transaction are shared. Original errors, bounds and shapes remain compatible; the same reader's
+Launch-intent still has a Coding implementation tracked by C07; stage-retirement
+receipt proof and all four retirement transactions are shared. Original errors, bounds and shapes remain compatible; the same reader's
 15 existing families retain their default contracts. See [A45](key-designs/windows-worker-semantic-convergence.md#21-a45其余五类canonical记录复用既有reader).
 
 The same Worker history owner now supplies complete Windows Supervisor and C5

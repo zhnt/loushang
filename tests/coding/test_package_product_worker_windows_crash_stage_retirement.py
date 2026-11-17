@@ -10,7 +10,7 @@ import pytest
 
 import loushang.coding.package_product_worker_windows_crash_stage_retirement as retirement
 import loushang.coding.package_product_worker_windows_stage_retirement as stage_retirement
-import loushang.coding.package_product_worker_windows_stage_review as stage_review
+import loushang.harness.package_product._windows_worker_retirement as retirement_owner
 import loushang.harness.package_product._worker_windows_attempt as worker_attempt
 from loushang.coding.package_product_worker_windows_crash_stage_review import (
     CodingWindowsWorkerCrashStageReviewV1,
@@ -101,20 +101,18 @@ def test_windows_crash_retirement_rechecks_history_before_and_after_delete(
         identity=identity,
     )
     state = {"attempt": attempt, "missing": ("orphan_lease_absent",), "native": native}
-    monkeypatch.setattr(
-        retirement,
-        "_review_under_gc_guard",
-        lambda *_a, **_k: SimpleNamespace(
+    configured = replace(
+        retirement._operations,
+        review_runtime=lambda *_a, **_k: SimpleNamespace(
             attempt=state["attempt"],
             receipt_record=receipt,
             missing_proofs=state["missing"],
         ),
+        read_intent=lambda *_a: intent,
+        inspect_native=lambda _p: (state["native"],),
     )
-    monkeypatch.setattr(retirement, "_read_intent_under_gc_guard", lambda *_a: intent)
     monkeypatch.setattr(
-        retirement,
-        "inspect_coding_windows_product_worker_provisioning_attempts",
-        lambda _p: (state["native"],),
+        retirement, "_require_crash_history", configured.require_history
     )
     product = SimpleNamespace(assert_root_gc_authority_current=lambda: None)
     retirement._require_crash_history(product, review, stage_present=True)  # type: ignore[arg-type]
@@ -243,30 +241,39 @@ def test_windows_crash_stage_retirement_resumes_after_root_delete(
     monkeypatch.setattr(worker_attempt, "os", os_port)
     monkeypatch.setattr(worker_attempt, "WindowsPrivateDirectoryAcl", acl_guard)
     monkeypatch.setattr(
-        stage_review,
-        "_inspection",
-        lambda: SimpleNamespace(require_direct=lambda *_a, **_k: None),
-    )
-    monkeypatch.setattr(retirement, "_require_no_other_retirement", lambda *_a: None)
-    monkeypatch.setattr(
-        retirement,
-        "_review_crash_stage_under_gc_guard",
-        lambda *_a, **_k: state["current"],
+        type(retirement._operations), "require_no_other", lambda *_a: None
     )
     monkeypatch.setattr(
-        retirement,
-        "_require_crash_history",
+        type(retirement._operations),
+        "require_history",
         lambda *_a, stage_present, **_k: events.append("history." + str(stage_present)),
     )
-    monkeypatch.setattr(retirement, "_stage_exists", lambda *_a: state["stage_present"])
-    monkeypatch.setattr(retirement, "_read_intent_under_gc_guard", lambda *_a: object())
-    monkeypatch.setattr(retirement, "_remove_remaining_stage", delete_stage)
+    monkeypatch.setattr(
+        retirement_owner,
+        "windows_worker_stage_exists",
+        lambda *_a: state["stage_present"],
+    )
+    monkeypatch.setattr(
+        retirement,
+        "_operations",
+        replace(
+            retirement._operations,
+            inspection=lambda: SimpleNamespace(require_direct=lambda *_a, **_k: None),
+            review_stage=lambda *_a, **_k: state["current"],
+            read_intent=lambda *_a: object(),
+            remove_complete=delete_stage,
+        ),
+    )
     monkeypatch.setattr(
         stage_retirement,
         "read_windows_private_receipt",
         lambda path, **_k: stored.get(path),
     )
-    monkeypatch.setattr(retirement, "write_windows_private_receipt", write_receipt)
+    monkeypatch.setattr(
+        type(retirement._receipt_io),
+        "write_private_receipt",
+        lambda _io, *args, **kwargs: write_receipt(*args, **kwargs),
+    )
 
     product = Product()
     state["current"] = replace(review, native_revision=9)

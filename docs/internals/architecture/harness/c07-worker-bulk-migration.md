@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — history/recovery/crash read and complete-stage retirement slices reviewed by implementation owner; whole-chain closure pending
+- Design status: partial acceptance — history/recovery/crash read and four stage-retirement slices reviewed by implementation owner; whole-chain closure pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -17,7 +17,7 @@
 | 优先链 | 初始文件 | 初始物理行 | 当前状态 |
 | --- | ---: | ---: | --- |
 | Windows 历史、检查点、引用闭合与六流 bases | 18 | 3,379 | 实施中 |
-| Windows 恢复、审阅、退休与失败清理 | 18 | 4,865 | 待迁移 |
+| Windows 恢复、审阅、退休与失败清理 | 18 | 4,865 | 实施中 |
 | 两平台载荷、启动绑定及其直接入口 | 7 | 2,552 | 待迁移 |
 | 其他 C07 回执、批准、Provisioning 与消费者 | 69 | 9,470 | 待重新审查 |
 
@@ -93,6 +93,18 @@ Package Product 的现有 recovery owner 接管完整 crash cleanup/stage 原生
 
 仍未完成：partial、settled-unlaunched 和 crash 三条退休事务及其 completed-history validators，以及后续两平台载荷/启动与其他 C07 文件。不能把完整 stage 退休接通当作整个恢复/退休链已完成。
 
+## 三类退休事务与六流发布批次
+
+实现 owner 接受 partial、settled-unlaunched 与 crash 三个固定退休 command 归原 Package Product retirement owner。原完整 command 的物理删除能力被未启动与崩溃链直接复用；partial 继续使用原 PartialWindowsStageRetirement。三条链的 history/currentness、root intent、删除、回执发布和 completed-history 校验同步迁移，Coding 保留原类型、Product/type/platform/revision 准入、错误与 Profile。旧协调体、债务常量和校验体退出；有实际消费者的私有名称绑定共享方法。没有新增账本、生命周期状态机或阶段 supplier。
+
+六流 bases 的 guarded read/publication 也由现有 Package Product history owner 接管：quiescence→GC→checkpoint→reference join→六摘要→暂存校验→缺失发布→bases/checkpoint 复读。仍使用原 IO、记录、配额和故障注入路径，未增加 cutover 或历史删除权限。
+
+本批 Coding −650、Harness +807、系统生产 +157行；累计 Coding −3,176、Harness +4,903、Hosting/其他生产 0、系统生产 +1,727行。测试累计 +59行，文档单列。C07 剩余17,090行，仍需至少6,958行退出；系统净删减与过半目标均未实现。
+
+最终现有退休/物理 IO golden/value 用例187 passed，架构181 passed，历史消费者66 passed、1 skipped，各组覆盖有交叠不累加。48源 scoped mypy 通过。现有测试入口、参数、断言和 golden 不扩展，只将旧 mock 改绑真实记录、IO、固定 command 和物理 owner。27实际记录、54原始 protocol4/5 pickle、20错误及字段/slots/全部 dataclass 元数据和公开方法对照一致。
+
+17个原退休/history/deletion 函数体在明确绑定替换后 AST 一致。三个退休 command 与基线174组逐事件对照、144组实际故障；六流 read/publication 另144组、126组实际故障，均包含两次调用。使用真实 codec 及受控 guard/IO、删除与重试效果，不代替原生 Windows。剩余恢复、清理证据和结算协调仍在 Coding，整链未完成；载荷/启动和其余文件尚待推进。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
@@ -103,7 +115,7 @@ Windows 原生 LPAC/Job、真实崩溃路线尚未执行；合成事实和跨进
 
 ## 剩余工作
 
-继续迁移 partial、settled-unlaunched、crash 退休事务及其 completed-history validators，闭合 GC/recovery 依赖，再推进两平台载荷/启动与其余文件。
+继续迁移崩溃恢复、清理证据及结算协调，闭合 GC/recovery 依赖，再推进两平台载荷/启动与其余文件。
 全部112文件均须更新职责与处置，区分产品政策、必要名义入口、迁移、复用删除；重新审查旧轮次保留理由，Coding 类型或固定名称不单独构成保留整个实现的理由。
 每批计入 Coding/Harness/Hosting/其他生产代码及系统总量，测试和文档单列；系统成本与实际重复删除、职责迁移分别报告。
 本轮尚未达到多数退出目标，未提交 PR 或交付，不修改原轮次已完成的历史证据。
