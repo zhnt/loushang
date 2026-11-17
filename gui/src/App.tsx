@@ -1472,9 +1472,10 @@ function WorkDock(props: WorkDockProps) {
           {showTasks && session.execution ? <ExecutionDetail execution={session.execution} stale={stale} /> : null}
         </div>
         {tab === "tasks" ? null : tab === "environment" && state.remote.source.kind === "live" ? <>
-          <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} openPath={props.openWorkspacePath} />
-          {open && props.inspectWorkspace && <WorkspaceInspection load={props.inspectWorkspace} review={false}
-            revision={session.execution?.status ?? ""} />}
+          <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} openPath={props.openWorkspacePath}>
+            {open && props.inspectWorkspace && <WorkspaceInspection load={props.inspectWorkspace} review={false} workspacePath={props.workspacePath}
+              revision={session.execution?.status ?? ""} />}
+          </LiveContextPanel>
         </> : tab === "review" && state.remote.source.kind === "live" && open && props.inspectWorkspace
           ? <WorkspaceInspection load={props.inspectWorkspace} review revision={session.execution?.status ?? ""} />
           : !available ? <UnavailablePanel label={facet === "workspace" ? t("workspace:capability.workspace") : t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>
@@ -1523,7 +1524,8 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
   );
 }
 
-function LiveContextPanel({ state, session, workspacePath, openPath }: {
+function LiveContextPanel({ state, session, workspacePath, openPath, children }: {
+  readonly children?: ReactNode;
   readonly openPath?: (file?: string) => Promise<void>;
   readonly state: GuiState;
   readonly session: SessionSnapshot;
@@ -1546,12 +1548,15 @@ function LiveContextPanel({ state, session, workspacePath, openPath }: {
   ] as const;
   return (
     <section className="panel-stack" aria-label={t("workspace:live.context")}>
-      <dl className="detail-list">
-        <div><dt>{t("workspace:environment.workspace")}</dt>
-          <dd>{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)} {openPath && <OpenWorkspacePath open={openPath} />}</dd></div>
-        <div><dt>{t("workspace:environment.root")}</dt><dd>{root == null ? unavailable : <code>{root}</code>}</dd></div>
-      </dl>
+      <div className="workspace-location">
+        <div className="workspace-location-label">
+          <strong>{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}</strong>
+          {root && <code title={root}>{root}</code>}
+        </div>
+        {openPath && <OpenWorkspacePath open={openPath} />}
+      </div>
       {!workspace && !path && !temporary ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}
+      {children}
       <details className="environment-technical">
         <summary>{t("workspace:environment.technical")}</summary>
         <dl className="detail-list">

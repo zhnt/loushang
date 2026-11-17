@@ -131,6 +131,8 @@ async fn dispatch(routed: Routed) -> Result<Value> {
                 backend.clone()
             };
             let creating_workspace = body["operation"] == "workspace" && body["action"] == "create";
+            let inspecting_workspace =
+                body["operation"] == "workspace" && body["action"] == "inspect";
             if body["operation"] == "open-project-path" {
                 if tunnel.is_some() || id != "local" {
                     return Err("operation_unavailable");
@@ -144,7 +146,13 @@ async fn dispatch(routed: Routed) -> Result<Value> {
             let mut value = tauri::async_runtime::spawn_blocking(move || backend.call(body))
                 .await
                 .map_err(|_| SETTINGS_ERROR)?
-                .map_err(|code| workspace_error(creating_workspace, &code))?;
+                .map_err(|code| {
+                    if inspecting_workspace && code == "workspace_inspection_unavailable" {
+                        "workspace_inspection_unavailable"
+                    } else {
+                        workspace_error(creating_workspace, &code)
+                    }
+                })?;
             if environment {
                 value
                     .as_object_mut()
@@ -174,7 +182,7 @@ fn open_project_path(backend: &Backend, body: &Value) -> Result<Value> {
     }
     let relative = match body.get("file") {
         Some(Value::String(file)) => Some(file.as_str()),
-        None => None,
+        None | Some(Value::Null) => None,
         _ => return Err("invalid_request"),
     };
     let path = resolve_project_path(Path::new(workspace), relative)?;

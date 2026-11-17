@@ -123,6 +123,10 @@
   "inspection": {
     "openFolder": "打开文件夹",
     "openFailed": "无法打开该工作区路径，请确认它仍存在且可在本机访问。",
+    "repositoryRoot": "Git 仓库根目录",
+    "missingPath": "该工作区路径已不存在。",
+    "workspaceMismatch": "该路径与当前会话的工作区登记不一致。",
+    "updateHost": "当前 AppHost 无法提供工作区检查。若刚更新 GUI，请在设置 → Host 中重启本地 AppHost，再刷新。",
     "refresh": "刷新",
     "failed": "无法读取工作区信息。",
     "loading": "正在读取工作区…",

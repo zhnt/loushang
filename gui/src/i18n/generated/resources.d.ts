@@ -552,18 +552,22 @@ export default interface Resources {
       "failed": "Workspace information is unavailable.",
       "limited": "Only part of the changes could be loaded.",
       "loading": "Reading workspace…",
+      "missingPath": "This workspace path no longer exists.",
       "modified": "Modified",
       "noBaseline": "This workspace has no available Git baseline for comparison.",
       "openFailed": "Could not open the workspace path. Check that it still exists and is available on this device.",
       "openFolder": "Open folder",
       "refresh": "Refresh",
+      "repositoryRoot": "Git repository root",
       "sessionBasis": "Recorded write and edit operations in this session.",
       "sessionChanges": "Session file changes",
       "showDiff": "Show diff",
       "staged": "Staged",
       "unstaged": "Unstaged",
       "untracked": "Untracked",
-      "virtualEnv": "Virtual environment"
+      "updateHost": "This AppHost could not provide workspace inspection. Restart the local AppHost after an update, then refresh.",
+      "virtualEnv": "Virtual environment",
+      "workspaceMismatch": "This path is no longer registered for the selected session."
     },
     "live": {
       "context": "AppHost session context",

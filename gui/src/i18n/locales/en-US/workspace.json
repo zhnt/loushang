@@ -123,6 +123,10 @@
   "inspection": {
     "openFolder": "Open folder",
     "openFailed": "Could not open the workspace path. Check that it still exists and is available on this device.",
+    "repositoryRoot": "Git repository root",
+    "missingPath": "This workspace path no longer exists.",
+    "workspaceMismatch": "This path is no longer registered for the selected session.",
+    "updateHost": "This AppHost could not provide workspace inspection. Restart the local AppHost after an update, then refresh.",
     "refresh": "Refresh",
     "failed": "Workspace information is unavailable.",
     "loading": "Reading workspace…",

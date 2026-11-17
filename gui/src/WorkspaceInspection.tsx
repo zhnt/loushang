@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { UiIcon } from "./UiIcon";
 
 export interface Inspection {
   git: { root: string; branch: string; commit: string; worktree: string } | null;
@@ -17,48 +18,59 @@ export function OpenWorkspacePath({ file, open }: {
   readonly open: (file?: string) => Promise<void>;
 }) {
   const { t } = useTranslation("workspace");
-  const [status, setStatus] = useState<"idle" | "opening" | "failed">("idle");
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState<"missingPath" | "workspaceMismatch" | "openFailed" | null>(null);
   async function activate() {
-    setStatus("opening");
+    setOpening(true);
+    setError(null);
     try {
       await open(file);
-      setStatus("idle");
-    } catch {
-      setStatus("failed");
+    } catch (reason) {
+      const code = reason instanceof Error ? reason.message : reason;
+      setError(code === "not_found" ? "missingPath"
+        : code === "workspace_unavailable" ? "workspaceMismatch" : "openFailed");
+    } finally {
+      setOpening(false);
     }
   }
-  return <span className="workspace-open">
-    <button type="button" disabled={status === "opening"} onClick={() => void activate()}>
-      {file ? <code>{file}</code> : t("inspection.openFolder")}
+  const label = t("inspection.openFolder");
+  return <span className={file ? "workspace-open" : "workspace-open-folder"}>
+    <button type="button" className={file ? undefined : "workspace-folder-action"} disabled={opening}
+      aria-label={file ? undefined : label} title={file ? undefined : label} onClick={() => void activate()}>
+      {file ? <code>{file}</code> : <UiIcon name="folder" />}
     </button>
-    {status === "failed" && <span role="status">{t("inspection.openFailed")}</span>}
+    {error && <span className="workspace-open-error" role="status">{t(`inspection.${error}`)}</span>}
   </span>;
 }
 
-export function WorkspaceInspection({ load, review, revision }: {
+export function WorkspaceInspection({ load, review, revision, workspacePath }: {
   readonly load: (review: boolean) => Promise<Inspection>;
   readonly review: boolean;
   readonly revision: string;
+  readonly workspacePath?: string;
 }) {
   const { t } = useTranslation("workspace");
   const [report, setReport] = useState<Inspection | null>(null);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<"updateHost" | "failed" | null>(null);
   const [refresh, setRefresh] = useState(0);
   const request = useEffectEvent(() => load(review));
   useEffect(() => {
     let current = true;
-    setError(false);
+    setError(null);
     setReport(null);
     void request().then(
       (next) => { if (current) setReport(next); },
-      () => { if (current) setError(true); },
+      (reason: unknown) => {
+        const code = reason instanceof Error ? reason.message : reason;
+        if (current) setError(code === "workspace_inspection_unavailable" ? "updateHost" : "failed");
+      },
     );
     return () => { current = false; };
   }, [refresh, revision, review]);
 
   return <section className="panel-stack workspace-inspection">
     <button type="button" className="inspection-refresh" onClick={() => setRefresh((value) => value + 1)}>{t("inspection.refresh")}</button>
-    {error ? <p role="status">{t("inspection.failed")}</p> : !report ? <p role="status">{t("inspection.loading")}</p>
+    {error ? <p role="status">{t(`inspection.${error}`)}</p> : !report ? <p role="status">{t("inspection.loading")}</p>
       : review ? <>
         {!report.git ? report.sessionChanges?.length ? <section>
           <h2>{t("inspection.sessionChanges")}</h2>
@@ -100,7 +112,8 @@ export function WorkspaceInspection({ load, review, revision }: {
           <dl className="detail-list">
             <div><dt>{t("inspection.branch")}</dt><dd>{report.git.branch || t("inspection.detached")}</dd></div>
             {report.git.commit && <div><dt>Commit</dt><dd><code title={report.git.commit}>{report.git.commit.slice(0, 12)}</code></dd></div>}
-            <div><dt>{t("environment.root")}</dt><dd><code>{report.git.root}</code></dd></div>
+            {report.git.root !== workspacePath &&
+              <div><dt>{t("inspection.repositoryRoot")}</dt><dd><code>{report.git.root}</code></dd></div>}
             {report.git.worktree && <div><dt>Worktree</dt><dd>{report.git.worktree}</dd></div>}
           </dl>
         </section>}

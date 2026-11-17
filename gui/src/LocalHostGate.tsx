@@ -417,7 +417,7 @@ export default function LocalHostGate() {
         return workspace.inspection;
       },
       openProjectPath: isTauri() && selectedId === "local" ? async (workspace, fingerprint, file) => {
-        await webRequest({ operation: "open-project-path", workspace, fingerprint, file }, selectedId);
+        await webRequest({ operation: "open-project-path", workspace, fingerprint, ...(file ? { file } : {}) }, selectedId);
       } : undefined,
       draftModels: async (path) => validateSessionModels(
         await webRequest({ operation: "workspace", action: "models", path }, connectionId.current),
