@@ -13,8 +13,8 @@
   --md-syntax-number: light-dark(#985328, #eab88c);
   --md-syntax-symbol: light-dark(#275c91, #a4c8ed);
 
-  --md-font: Inter, "Noto Sans CJK SC", "Microsoft YaHei UI", system-ui, sans-serif;
-  --md-code-font: "JetBrains Mono", "Cascadia Code", "Noto Sans Mono", monospace;
+  --md-font: var(--font-ui);
+  --md-code-font: var(--font-mono);
   --md-font-size: 15px;
   --md-line-height: 1.75;
   --md-paragraph-gap: 12px;

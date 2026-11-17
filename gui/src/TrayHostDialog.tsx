@@ -20,10 +20,10 @@ export function TrayHostDialog({ details, error, onClose, onConfirm }: {
     {details ? <dl className="detail-list">
       <div><dt>{t("shell:tray.service")}</dt><dd>{state?.state === "exited" ? t("localHost.states.exited")
         : t(`shell:tray.${state?.state === "not_running" ? "stopped" : state?.state ?? "unknown"}`)}</dd></div>
-      {state?.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd>{state.pid}</dd></div> : null}
-      {state?.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd>{state.instanceId}</dd></div> : null}
-      {state?.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd>{state.serviceInstanceId}</dd></div> : null}
-      {details.entry.webUrl ? <div><dt>{t("shell:tray.webAddress")}</dt><dd>{details.entry.webUrl}</dd></div> : null}
+      {state?.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd><code>{state.pid}</code></dd></div> : null}
+      {state?.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd><code>{state.instanceId}</code></dd></div> : null}
+      {state?.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd><code>{state.serviceInstanceId}</code></dd></div> : null}
+      {details.entry.webUrl ? <div><dt>{t("shell:tray.webAddress")}</dt><dd><code>{details.entry.webUrl}</code></dd></div> : null}
     </dl> : null}
     {error || state?.errorCode ? <p role="alert">{t("localHost.errors.unknown")} <code>{error ?? state?.errorCode}</code></p> : null}
     <footer>

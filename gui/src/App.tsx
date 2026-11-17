@@ -1475,16 +1475,16 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
       <p className="fixture-panel-label">{t("workspace:environment.fixture")}</p>
       <dl className="detail-list">
         <div><dt>{t("workspace:environment.workspace")}</dt><dd>{workspace?.title ?? t("workspace:environment.unavailable")}</dd></div>
-        <div><dt>{t("workspace:environment.root")}</dt><dd>{workspace?.rootLabel ?? session.context.rootLabel}</dd></div>
+        <div><dt>{t("workspace:environment.root")}</dt><dd><code>{workspace?.rootLabel ?? session.context.rootLabel}</code></dd></div>
         <div><dt>{t("workspace:environment.vcs")}</dt><dd>{workspace?.vcs ? `${workspace.vcs.kind} · ${workspace.vcs.label}` : t("workspace:environment.none")}</dd></div>
       </dl>
       <details className="environment-technical">
         <summary>{t("workspace:environment.technical")}</summary>
         <dl className="detail-list">
-          <div><dt>{t("workspace:environment.application")}</dt><dd>{session.context.applicationId}</dd></div>
-          <div><dt>{t("workspace:environment.member")}</dt><dd>{session.context.muxId} / {session.context.memberId}</dd></div>
-          <div><dt>{t("workspace:environment.session")}</dt><dd>{session.context.sessionId}</dd></div>
-          <div><dt>{t("workspace:environment.generation")}</dt><dd>{state.remote.generation}</dd></div>
+          <div><dt>{t("workspace:environment.application")}</dt><dd><code>{session.context.applicationId}</code></dd></div>
+          <div><dt>{t("workspace:environment.member")}</dt><dd><code>{session.context.muxId} / {session.context.memberId}</code></dd></div>
+          <div><dt>{t("workspace:environment.session")}</dt><dd><code>{session.context.sessionId}</code></dd></div>
+          <div><dt>{t("workspace:environment.generation")}</dt><dd><code>{state.remote.generation}</code></dd></div>
         </dl>
       </details>
       <h2>{t("workspace:environment.capabilities")}</h2>
@@ -1511,6 +1511,7 @@ function LiveContextPanel({ state, session, workspacePath }: {
   const path = temporary ? undefined : workspacePath;
   const unavailable = t("workspace:environment.unavailable");
   const workspace = state.remote.workspaces[session.workspaceId];
+  const root = workspace?.rootLabel ?? path;
   const identities = [
     [t("workspace:live.fingerprint"), session.context.scopeFingerprint],
     [t("workspace:live.mux"), source.muxName ?? source.muxSpaceId],
@@ -1523,7 +1524,7 @@ function LiveContextPanel({ state, session, workspacePath }: {
       <dl className="detail-list">
         <div><dt>{t("workspace:environment.workspace")}</dt>
           <dd>{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}</dd></div>
-        <div><dt>{t("workspace:environment.root")}</dt><dd>{workspace?.rootLabel ?? path ?? unavailable}</dd></div>
+        <div><dt>{t("workspace:environment.root")}</dt><dd>{root == null ? unavailable : <code>{root}</code>}</dd></div>
         <div><dt>{t("workspace:environment.vcs")}</dt><dd>{workspace?.vcs?.label ?? unavailable}</dd></div>
       </dl>
       {!workspace && !path && !temporary ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}

@@ -339,9 +339,9 @@ export default function LocalHostGate() {
       <section className="local-host-card local-host-info" aria-labelledby="local-host-info-title">
         <h4 id="local-host-info-title">{t("localHost.identity")}</h4>
         {host.instanceId || host.serviceInstanceId || host.pid != null ? <dl className="detail-list">
-          {host.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd>{host.pid}</dd></div> : null}
-          {host.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd>{host.instanceId}</dd></div> : null}
-          {host.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd>{host.serviceInstanceId}</dd></div> : null}
+          {host.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd><code>{host.pid}</code></dd></div> : null}
+          {host.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd><code>{host.instanceId}</code></dd></div> : null}
+          {host.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd><code>{host.serviceInstanceId}</code></dd></div> : null}
         </dl> : <p>{t("localHost.identityUnavailable")}</p>}
       </section>
     </section>
