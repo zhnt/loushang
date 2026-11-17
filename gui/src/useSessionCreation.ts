@@ -35,6 +35,10 @@ function publishedSession(observation: Observation | null, binding: DraftBinding
   return session ? { snapshot, session } : null;
 }
 
+export function isSendingDraft(draft: Draft | null): draft is Draft & { status: "creating" | "sending" } {
+  return draft?.status === "creating" || draft?.status === "sending";
+}
+
 export function canSubmitDraft(draft: Draft | null): draft is Draft {
   return Boolean(draft?.visible && draft.text.trim() && draft.status !== "firstSubmissionUnknown"
     && (draft.status !== "createUnknown" || draft.binding));

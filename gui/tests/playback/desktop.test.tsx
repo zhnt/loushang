@@ -83,7 +83,7 @@ describe("desktop frame", () => {
 
   const originalWidth = window.innerWidth;
   afterEach(() => { vi.unstubAllGlobals(); Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth }); });
-  it("shares measured content margins including a native scrollbar", async () => {
+  it("reserves space for the native scrollbar beside the composer", async () => {
     let resize = () => {};
     vi.stubGlobal("ResizeObserver", class {
       constructor(callback: () => void) { resize = callback; }
@@ -94,11 +94,9 @@ describe("desktop frame", () => {
     await screen.findByRole("heading", { name: "GUI development" });
     const pane = screen.getByLabelText("Session workspace");
     const transcript = screen.getByLabelText("Session transcript");
-    Object.defineProperty(pane, "clientWidth", { configurable: true, value: 1140 });
     Object.defineProperty(transcript, "offsetWidth", { configurable: true, value: 1140 });
     Object.defineProperty(transcript, "clientWidth", { configurable: true, value: 1125 });
     act(() => resize());
-    expect(pane.style.getPropertyValue("--content-gutter")).toBe("182.5px");
     expect(pane.style.getPropertyValue("--scrollbar-width")).toBe("15px");
   });
   it("reserves right space and changes layout based on remaining width", async () => {

@@ -24,7 +24,7 @@ import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
-import { canSubmitDraft, useSessionCreation } from "./useSessionCreation";
+import { canSubmitDraft, isSendingDraft, useSessionCreation } from "./useSessionCreation";
 import { useDraftModels } from "./useDraftModels";
 import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
@@ -147,8 +147,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }, [sidebarOpen]);
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
-  const [contentMetrics, setContentMetrics] = useState({ gutter: 24, scrollbar: 0 });
-  const conversationRef = useRef<HTMLElement | null>(null);
+  const [transcriptScrollbar, setTranscriptScrollbar] = useState(0);
   const transcriptPosition = useRef<number | null>(null);
   useEffect(() => {
     const resize = () => setViewportWidth(window.innerWidth);
@@ -339,13 +338,21 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const appliedSelection = useRef<typeof requestedSelection>(null);
   const [knownTitles, setKnownTitles] = useState<Readonly<Record<string, string>>>({});
   const directoryHost = state.remote.source.kind === "live" ? state.remote.source.connectionId : undefined;
+  const liveTitles = useMemo(() => {
+    if (state.remote.source.kind !== "live") return {};
+    return Object.fromEntries(Object.values(state.remote.sessions).map((session) => {
+      const preview = firstMessages[session.id];
+      const title = session.title === "New Session" && preview?.continuityId === session.context.continuityId && preview
+        ? firstPromptTitle(preview.text) : session.title;
+      return [session.id, title];
+    }));
+  }, [state.remote.source.kind, state.remote.sessions, firstMessages]);
   useEffect(() => { setKnownTitles({}); }, [directoryHost]);
   useEffect(() => {
-    if (!projectNavigation || state.remote.source.kind !== "live") return;
-    const titles = Object.fromEntries(Object.values(state.remote.sessions).map((session) => [session.id, session.title]));
-    setKnownTitles((previous) => Object.entries(titles).every(([id, title]) => previous[id] === title)
-      ? previous : { ...previous, ...titles });
-  }, [Boolean(projectNavigation), state.remote.source.kind, state.remote.sessions]);
+    if (!projectNavigation) return;
+    setKnownTitles((previous) => Object.entries(liveTitles).every(([id, title]) => previous[id] === title)
+      ? previous : { ...previous, ...liveTitles });
+  }, [Boolean(projectNavigation), liveTitles]);
   useLayoutEffect(() => {
     if (!requestedSelection || appliedSelection.current === requestedSelection || installedClient !== client
       || !state.remote.sessions[requestedSelection.id]) return;
@@ -514,18 +521,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     transcriptPosition.current = state.local.transcriptScrollTop;
   }, [state.local.transcriptScrollTop]);
   useLayoutEffect(() => {
-    const pane = conversationRef.current;
     const transcript = transcriptRef.current;
-    if (!pane || !transcript || typeof ResizeObserver === "undefined") return;
+    if (!transcript || typeof ResizeObserver === "undefined") return;
     const measure = () => {
-      const scrollbar = Math.max(0, transcript.offsetWidth - transcript.clientWidth);
-      const gutter = Math.max(24, (pane.clientWidth - scrollbar - 760) / 2);
-      setContentMetrics((old) => old.gutter === gutter && old.scrollbar === scrollbar ? old : { gutter, scrollbar });
+      setTranscriptScrollbar(transcript.offsetWidth - transcript.clientWidth);
       if (transcriptPosition.current === null) transcript.scrollTop = transcript.scrollHeight;
     };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(pane);
     observer.observe(transcript);
     return () => observer.disconnect();
   }, [conversationOpen]);
@@ -674,7 +677,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     dispatch({ type: "quick-look.closed" });
   }
 
-  const draftPending = draft?.status === "creating" || draft?.status === "sending";
+  const draftPending = isSendingDraft(draft);
   const firstMessageText = draftPending ? draft.text
     : preview && selected && !selected.messages.some((message) => message.role === "user") ? preview.text : null;
   const firstMessageStatus = draftPending ? { key: `notice.${draft.status}` } as const
@@ -688,8 +691,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     : projectNavigation?.selection?.id === selected?.id ? projectNavigation?.selection?.workspace : undefined;
   const projectContext = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE
     ? workspaceName(workspaceContext) : undefined;
-  const conversationTitle = selected
-    ? displaySessionTitle(selected) : projectContext ? `${projectContext} / ${draftTitle}` : draftTitle;
+  const conversationTitle = selected ? displaySessionTitle(selected, liveTitles[selected.id])
+    : draftPending ? firstPromptTitle(draft.text)
+      : projectContext ? `${projectContext} / ${draftTitle}` : draftTitle;
   const newSessionEnabled = !draftPending && (projectNavigation
     ? projectNavigation.available && !projectNavigation.pending
     : Boolean(client.createSession) && connected);
@@ -722,7 +726,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const sidebarDrafts: SidebarDraft[] = draftCreation.drafts.filter((item) => item.target.hostKey === draftHost)
     .map((item) => ({
       id: item.id, workspace: item.target.workspace, sessionId: item.binding?.sessionId,
-      title: draftTitle, selected: draftId === item.id, onSelect: () => openDraft(item.target.workspace),
+      title: isSendingDraft(item) ? firstPromptTitle(item.text) : draftTitle, selected: draftId === item.id, onSelect: () => openDraft(item.target.workspace),
     }));
   // The connected Session can arrive before the background directory refresh.
   if (projectNavigation && workspaceContext && selected?.context.continuityId?.startsWith("gui-draft-")) {
@@ -731,7 +735,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       : directory.projects.find((project) => project.path === workspaceContext)?.sessions;
     if (!chats?.some((chat) => chat.id === selected.id)) sidebarDrafts.unshift({
       id: selected.id, workspace: workspaceContext === TEMPORARY_WORKSPACE ? null : workspaceContext,
-      title: displaySessionTitle(selected), selected: true, onSelect: () => selectSession(selected.id),
+      title: conversationTitle, selected: true, onSelect: () => selectSession(selected.id),
     });
   }
 
@@ -813,7 +817,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           activeSessionId={selected?.id ?? null}
           drafts={sidebarDrafts}
           projectNavigation={navigation}
-          projectTitles={knownTitles}
+          projectTitles={{ ...knownTitles, ...liveTitles }}
         />
         <div className="sidebar-resizer" role="separator" aria-label={t("panels:layout.sidebarWidth")} aria-orientation="vertical" tabIndex={0}
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
@@ -844,7 +848,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           onOpenDock={toggleDock}
         /> : null}
 
-        <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
+        <section style={{ "--scrollbar-width": `${transcriptScrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
           {startLocalHost ? <div className="diagnostic">{startLocalHost}</div> : null}
           {attachedClient && !liveConnecting && (syncing || state.diagnostic || state.remote.connection === "disconnected") ? (
             <div className="diagnostic" role="status">
@@ -863,73 +867,75 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   const following = !fixture && scrollHeight - clientHeight - scrollTop <= 32;
                   dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: following ? null : scrollTop });
                 } : undefined}>
-                {draft && projectNavigation && !draftPending ? <p className="draft-context">
-                  {projectContext ? t("workspace:sidebar.projectDraft", { project: projectContext })
-                    : t("workspace:sidebar.temporaryDraft")}
-                </p> : null}
-                {firstMessageText !== null ? <article className="message user" aria-label={t("session:transcript.message", { role: valueLabel("user") })}>
-                  <p>{firstMessageText}</p>
-                </article> : null}
-                {selected ? <Fragment key={selected.id}>
-                  {selected.messages.map((message) => message.role === "status" ? (
-                    <p className="message transcript-status" role="status" key={message.id}>{message.systemNotice ? t("session:transcript.resumesRuntime") : message.content}</p>
-                  ) : (
-                    <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
-                      <div className="message-meta">
-                        <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
-                        <span>{valueLabel(message.phase)}</span>
-                      </div>
-                      {message.role === "assistant" && message.content
-                        ? <MessageMarkdown text={message.content} />
-                        : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
-                    </article>
-                  ))}
-                  {selected.pendingApprovals?.map((approval) => (
-                    <ToolApproval key={approval.interactionId} approval={approval}
-                      scope={projectContext ?? (workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats") : undefined)}
-                      enabled={connected && selectionReady && !syncing && Boolean(client.respondInteraction)}
-                      onRespond={(outcome) => {
-                        if (approval.sessionId === selected.id) {
-                          void client.respondInteraction?.(selected.id, approval.interactionId, outcome);
-                        }
-                      }} />
-                  ))}
-                  {question && choiceKey ? <UserChoiceCard key={question.questionId} question={question}
-                    answer={rejectedBeforeInput && choiceAnswer ? { ...choiceAnswer, status: "rejected" } : choiceAnswer}
-                    enabled={Boolean(submitAllowed && selected.status !== "running")}
-                    onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
-                  {selected.execution || (tasksAvailable && selected.run) || goalStart.start || goalStart.attempt ? <button
-                    className="execution-summary" type="button" onClick={openTasks}>
-                    {selected.execution ? t(!fixture && !connected ? "panels:execution.lastKnownStatus" : "panels:execution.status",
-                      { status: valueLabel(selected.execution.status) })
-                      : runSummary ?? t("panels:dock.tasks")}
-                    <span aria-hidden="true">›</span>
-                  </button> : null}
-                  {selected.changeSet && changesAvailable ? (
-                    <ChangeSetCard
-                      changeSet={selected.changeSet}
-                      onOpenFile={(documentId, trigger) => {
-                        quickLookTriggerRef.current = trigger;
-                        dispatch({ type: "quick-look.opened", documentId });
-                      }}
-                      onOpenReview={() => {
-                        const first = selected.changeSet?.files[0];
-                        if (first) openReview(first.documentId);
-                      }}
-                    />
-                  ) : null}
-                </Fragment> : null}
-                {firstMessageStatus ? <p className="message first-turn-status" role="status">
-                  <span className="first-turn-spinner" aria-hidden="true" />
-                  <NoticeText notice={firstMessageStatus} />
-                </p> : null}
-                {draft && draft.status !== "ready" && !draftPending ? <div
-                  className={draft.unconfirmed ? "operation-notice uncertain" : "operation-notice"}
-                  role={draft.unconfirmed || draft.status === "createUnknown" ? "status" : "alert"}>
-                  <NoticeText notice={{ key: `notice.${draft.status}` }} />
-                  {draft.unconfirmed ? <button type="button" className="secondary-button"
-                    onClick={() => void draftCreation.check()}>{t("session:composer.checkConversation")}</button> : null}
-                </div> : null}
+                <div className="transcript-content">
+                  {draft && projectNavigation && !draftPending ? <p className="draft-context">
+                    {projectContext ? t("workspace:sidebar.projectDraft", { project: projectContext })
+                      : t("workspace:sidebar.temporaryDraft")}
+                  </p> : null}
+                  {firstMessageText !== null ? <article className="message user" aria-label={t("session:transcript.message", { role: valueLabel("user") })}>
+                    <p>{firstMessageText}</p>
+                  </article> : null}
+                  {selected ? <Fragment key={selected.id}>
+                    {selected.messages.map((message) => message.role === "status" ? (
+                      <p className="message transcript-status" role="status" key={message.id}>{message.systemNotice ? t("session:transcript.resumesRuntime") : message.content}</p>
+                    ) : (
+                      <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
+                        <div className="message-meta">
+                          <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
+                          <span>{valueLabel(message.phase)}</span>
+                        </div>
+                        {message.role === "assistant" && message.content
+                          ? <MessageMarkdown text={message.content} />
+                          : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
+                      </article>
+                    ))}
+                    {selected.pendingApprovals?.map((approval) => (
+                      <ToolApproval key={approval.interactionId} approval={approval}
+                        scope={projectContext ?? (workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats") : undefined)}
+                        enabled={connected && selectionReady && !syncing && Boolean(client.respondInteraction)}
+                        onRespond={(outcome) => {
+                          if (approval.sessionId === selected.id) {
+                            void client.respondInteraction?.(selected.id, approval.interactionId, outcome);
+                          }
+                        }} />
+                    ))}
+                    {question && choiceKey ? <UserChoiceCard key={question.questionId} question={question}
+                      answer={rejectedBeforeInput && choiceAnswer ? { ...choiceAnswer, status: "rejected" } : choiceAnswer}
+                      enabled={Boolean(submitAllowed && selected.status !== "running")}
+                      onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
+                    {selected.execution || (tasksAvailable && selected.run) || goalStart.start || goalStart.attempt ? <button
+                      className="execution-summary" type="button" onClick={openTasks}>
+                      {selected.execution ? t(!fixture && !connected ? "panels:execution.lastKnownStatus" : "panels:execution.status",
+                        { status: valueLabel(selected.execution.status) })
+                        : runSummary ?? t("panels:dock.tasks")}
+                      <span aria-hidden="true">›</span>
+                    </button> : null}
+                    {selected.changeSet && changesAvailable ? (
+                      <ChangeSetCard
+                        changeSet={selected.changeSet}
+                        onOpenFile={(documentId, trigger) => {
+                          quickLookTriggerRef.current = trigger;
+                          dispatch({ type: "quick-look.opened", documentId });
+                        }}
+                        onOpenReview={() => {
+                          const first = selected.changeSet?.files[0];
+                          if (first) openReview(first.documentId);
+                        }}
+                      />
+                    ) : null}
+                  </Fragment> : null}
+                  {firstMessageStatus ? <p className="message first-turn-status" role="status">
+                    <span className="first-turn-spinner" aria-hidden="true" />
+                    <NoticeText notice={firstMessageStatus} />
+                  </p> : null}
+                  {draft && draft.status !== "ready" && !draftPending ? <div
+                    className={draft.unconfirmed ? "operation-notice uncertain" : "operation-notice"}
+                    role={draft.unconfirmed || draft.status === "createUnknown" ? "status" : "alert"}>
+                    <NoticeText notice={{ key: `notice.${draft.status}` }} />
+                    {draft.unconfirmed ? <button type="button" className="secondary-button"
+                      onClick={() => void draftCreation.check()}>{t("session:composer.checkConversation")}</button> : null}
+                  </div> : null}
+                </div>
               </div>
 
               {quickLookDocument && changesAvailable ? (
@@ -1065,7 +1071,7 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
       {projectNavigation
         ? <ProjectNavigation navigation={projectNavigation} selectedId={activeSessionId} titles={projectTitles} drafts={drafts} />
         : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state} activeSessionId={activeSessionId} drafts={drafts}
-            onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />}
+            projectTitles={projectTitles} onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />}
 
       </div>
       <AccountMenu account={account} onSettings={onSettings} />
@@ -1073,8 +1079,8 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
   );
 }
 
-function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace, activeSessionId, drafts }: Pick<SidebarProps,
-  "state" | "onSelect" | "onToggleWorkspace" | "activeSessionId" | "drafts"> & { readonly preferencesKey: string }) {
+function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace, activeSessionId, drafts, projectTitles }: Pick<SidebarProps,
+  "state" | "onSelect" | "onToggleWorkspace" | "activeSessionId" | "drafts" | "projectTitles"> & { readonly preferencesKey: string }) {
   const { t } = useTranslation("workspace");
   const [preferences, setPreferences] = useState(() => readSidebarPreferences(preferencesKey));
   const list = useRef<HTMLElement>(null);
@@ -1142,7 +1148,7 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace,
   }
 
   function renderSession(session: SessionSnapshot, isPinned = false) {
-    return <SessionButton key={session.id} session={session} stale={stale}
+    return <SessionButton key={session.id} session={session} title={displaySessionTitle(session, projectTitles[session.id])} stale={stale}
       selected={session.id === activeSessionId} unread={Boolean(state.local.unread[session.id])}
       pinned={isPinned} onSelect={() => onSelect(session.id)} onTogglePin={() => {
         restorePinFocus.current = session.id;
@@ -1198,8 +1204,9 @@ function VcsBadge({ workspace }: { readonly workspace: WorkspaceSummary }) {
   return <span className={`vcs-badge ${workspace.vcs.kind}`}>{workspace.vcs.kind} · {workspace.vcs.label}</span>;
 }
 
-function SessionButton({ session, selected, unread, stale, pinned, onSelect, onTogglePin }: {
+function SessionButton({ session, title, selected, unread, stale, pinned, onSelect, onTogglePin }: {
   readonly session: SessionSnapshot;
+  readonly title: string;
   readonly selected: boolean;
   readonly unread: boolean;
   readonly stale: boolean;
@@ -1209,7 +1216,6 @@ function SessionButton({ session, selected, unread, stale, pinned, onSelect, onT
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const label = stale ? t("workspace:sidebar.stale", { status: valueLabel(session.status) }) : valueLabel(session.status);
-  const title = displaySessionTitle(session);
   const pinLabel = t(pinned ? "workspace:sidebar.unpinChat" : "workspace:sidebar.pinChat", { title });
   return (
     <div className={`session-row${selected ? " selected" : ""}`}>
@@ -1715,9 +1721,16 @@ const valueLabels = {
   "complete": "common:status.complete",
   "accepted": "common:status.accepted"
 } as const;
-function displaySessionTitle(session: SessionSnapshot): string {
-  return session.context.source === "live" && session.title === "New Session"
-    ? i18n.t("workspace:sidebar.newSession") : session.title;
+function firstPromptTitle(text: string): string {
+  const characters = [...text.trim().replace(/\s+/g, " ")];
+  if (characters.length <= 48) return characters.join("");
+  const wordBoundary = characters.lastIndexOf(" ", 46);
+  return `${characters.slice(0, wordBoundary >= 30 ? wordBoundary : 47).join("").trimEnd()}…`;
+}
+
+function displaySessionTitle(session: SessionSnapshot, title = session.title): string {
+  return session.context.source === "live" && title === "New Session"
+    ? i18n.t("workspace:sidebar.newSession") : title;
 }
 
 function valueLabel(value: keyof typeof valueLabels): string { return i18n.t(valueLabels[value]); }

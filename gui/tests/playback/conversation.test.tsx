@@ -581,7 +581,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(createSession).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "New Session" })).toBe(heading);
     expect(screen.getByLabelText("Session transcript")).toBe(transcript);
-    expect(transcript).toBeEmptyDOMElement();
+    expect(transcript).toHaveTextContent(/^$/);
     expect(screen.getByRole("button", { name: "Session model" })).toBe(model);
     expect(model).toBeDisabled();
     expect(screen.getByText("Default model")).toBeVisible();
@@ -683,12 +683,15 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       };
     });
     const previousChats = ["earlier", "later"].map((id) => ({ id, title: "Repeated title", scope: "temporary", pinned: false }));
-    render(<HarnessGui client={client} managedHostConnection={{ status: "running", serviceInstanceId: "host" }} projectNavigation={{
+    const projectNavigation = {
       hostKey: "local", directory: { projects: [], temporarySessions: previousChats }, available: true,
       pending: false, error: false, folderInput: false, selection: null,
       openFolder: () => {}, closeFolder: () => {}, register: async () => false,
       createChat, draftModels: defaultModels, togglePin: () => {}, select: () => {},
-    }} />);
+    };
+    const managedHostConnection = { status: "running", serviceInstanceId: "host" } as const;
+    const { rerender } = render(<HarnessGui client={client} managedHostConnection={managedHostConnection}
+      projectNavigation={projectNavigation} />);
     const chats = within(screen.getByRole("region", { name: "Chats" }));
     expect(chats.getAllByRole("button", { name: "Repeated title" })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "New Session" }));
@@ -704,13 +707,15 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(selectModel).not.toHaveBeenCalled();
     expect(submitText).not.toHaveBeenCalled();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Use the selected model" } });
+    expect(screen.getByRole("heading", { name: "New Session" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     const transcript = within(screen.getByLabelText("Session transcript"));
     expect(transcript.getByText("Use the selected model")).toBeVisible();
     expect(transcript.getByText("Creating Session…")).toBeVisible();
     expect(screen.getByText("Connected", { exact: true })).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveValue("");
-    expect(chats.getByRole("button", { name: "New Session" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("heading", { name: "Use the selected model" })).toBeVisible();
+    expect(chats.getByRole("button", { name: "Use the selected model" })).toHaveAttribute("aria-current", "page");
     if (rejectFirstModel) {
       expect(await screen.findByText("The selected model could not be applied. Your draft is saved.")).toBeVisible();
       expect(submitText).not.toHaveBeenCalled();
@@ -722,14 +727,28 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(transcript.getAllByText("Use the selected model")).toHaveLength(1);
 
     const session = snapshot.sessions[0];
+    const entry = { id: session.id, title: "New Session", scope: "temporary", pinned: false };
+    rerender(<HarnessGui client={client} managedHostConnection={managedHostConnection} projectNavigation={{
+      ...projectNavigation, directory: { projects: [], temporarySessions: [entry, ...previousChats] },
+      selection: { workspace: "@temporary", id: session.id },
+    }} />);
+    expect(screen.getByRole("heading", { name: "Use the selected model" })).toBeVisible();
+    expect(chats.getByRole("button", { name: "Use the selected model" })).toBeVisible();
     const message = { id: "first-user", role: "user", phase: "sent", content: "Use the selected model" } as const;
-    act(() => publish?.({ ...snapshot, sessions: [{ ...session, cursor: "first-user", messages: [message] }] }));
+    const titled = { ...session, title: message.content };
+    act(() => publish?.({ ...snapshot, sessions: [{ ...titled, cursor: "first-user", messages: [message] }] }));
     expect(transcript.getAllByText("Use the selected model")).toHaveLength(1);
     expect(transcript.getByText("Waiting for a reply…")).toBeVisible();
     const reply = { id: "first-assistant", role: "assistant", phase: "streaming", content: "First reply" } as const;
-    act(() => publish?.({ ...snapshot, sessions: [{ ...session, cursor: "first-assistant", messages: [message, reply] }] }));
+    const replied = { ...titled, cursor: "first-assistant", messages: [message, reply] };
+    act(() => publish?.({ ...snapshot, sessions: [replied] }));
     expect(transcript.getByText("First reply")).toBeVisible();
     expect(transcript.queryByText("Waiting for a reply…")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: message.content })).toBeVisible();
+    act(() => publish?.({ ...snapshot, sessions: [{ ...replied, title: "Model selection summary" }] }));
+    expect(screen.getByRole("heading", { name: "Model selection summary" })).toBeVisible();
+    expect(chats.getByRole("button", { name: "Model selection summary" })).toBeVisible();
+    expect(transcript.getByText(message.content)).toBeVisible();
     expect(createChat).toHaveBeenCalledExactlyOnceWith(null, expect.any(String), "New Session");
     expect(selectModel.mock.calls).toEqual(rejectFirstModel
       ? [["first-model", second.id], ["first-model", second.id]]
@@ -834,7 +853,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         await waitFor(() => expect(input).toHaveValue(""));
         expect(screen.getByRole("textbox")).toBe(input);
         expect(screen.getByLabelText("Session transcript")).toBe(transcript);
-        expect(screen.getByRole("heading", { name: "New Session" })).toBe(heading);
+        expect(screen.getByRole("heading", { name: "First message" })).toBe(heading);
         expect(screen.getByRole("button", { name: "Session model" })).toBe(model);
       }
     },

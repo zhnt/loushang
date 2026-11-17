@@ -53,6 +53,10 @@ async function showSample(page: Page) {
               status: "idle",
               run: null,
               changeSet: null,
+              execution: {
+                id: "preview-execution", status: "succeeded", revision: 1, interruptRequested: false,
+                sourceStatus: "succeeded", finalCursor: null, truncated: false,
+              },
               messages: [
                 { id: "preview-short", role: "user", content: "介绍北京天气", phase: "complete" },
                 { id: "preview-long", role: "user", content: ${JSON.stringify(longPrompt)}, phase: "complete" },
@@ -78,7 +82,7 @@ async function openSettings(page: Page) {
 }
 
 test("app appearance includes the shell, settings, and Markdown while preserving the reading layout", async ({ page }, info) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 2300, height: 900 });
   await page.emulateMedia({ colorScheme: "light" });
   await showSample(page);
   await page.getByRole("button", { name: "Toggle sidebar" }).click();
@@ -106,7 +110,13 @@ test("app appearance includes the shell, settings, and Markdown while preserving
     has: page.getByText("介绍北京天气", { exact: true }),
   });
   const longBubble = page.getByRole("article", { name: "user message" }).filter({ hasText: longPrompt });
-  const [shortBox, longBox, composerBox] = await Promise.all([shortBubble.boundingBox(), longBubble.boundingBox(), composer.boundingBox()]);
+  const status = reading.locator(".execution-summary");
+  await expect(status).toHaveAccessibleName("Execution succeeded");
+  const [shortBox, longBox, composerBox, replyBox, statusBox] = await Promise.all([
+    shortBubble.boundingBox(), longBubble.boundingBox(), composer.boundingBox(), body.boundingBox(), status.boundingBox(),
+  ]);
+  expect(Math.abs(statusBox!.x - replyBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(composerBox!.x - replyBox!.x)).toBeLessThanOrEqual(1);
   expect(shortBox!.width).toBeLessThan(200);
   expect(longBox!.width).toBeLessThanOrEqual(composerBox!.width * 0.74 + 1);
   expect(longBox!.height).toBeGreaterThan(shortBox!.height);
