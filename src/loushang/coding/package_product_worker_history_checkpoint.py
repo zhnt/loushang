@@ -6,9 +6,15 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import cast
 
 from loushang.coding._worker_history_access import _CodingHistoryAccess
 from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.package_product._linux_worker_history import (
+    publish_product_worker_history_checkpoint,
+    repair_product_worker_history_checkpoint_append,
+    rollback_product_worker_history_checkpoint_tail,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -39,7 +45,7 @@ from .package_product_worker_history_checkpoint_anchor import (
     CodingWorkerCheckpointAnchorV1,
 )
 from .package_product_worker_history_retention import (
-    _review_coding_product_worker_history_under_guard,
+    _history_proof_bindings,
 )
 from .package_product_worker_history_segments import (
     CodingWorkerSegmentedHistoryV1,
@@ -154,33 +160,17 @@ def publish_coding_product_worker_history_checkpoint(
         or (_ATTEMPT.fullmatch(attempt_id) is None)
     ):
         raise ValueError("Coding Worker checkpoint requires one exact attempt")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        with product.gc_gate.guard(require_write=True):
-            review = _review_coding_product_worker_history_under_guard(
-                product,
-                attempt_id=attempt_id,
-                active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
-                gc_snapshot=product.gc_gate.snapshot(),
-            )
-            if (
-                review.missing_proofs
-                or review.receipt_record is None
-                or review.worker_backup_references is None
-            ):
-                raise CodingWorkerHistoryCheckpointError(
-                    "coding_worker_checkpoint_closure_unproven"
-                )
-            with _bound_checkpoint(product) as rooted:
-                return _checkpoint_commands().publish(
-                    rooted,
-                    access=_CodingHistoryAccess(product),
-                    captured_store=registry,
-                    attempt_id=attempt_id,
-                    review=review,
-                )
+    return cast(
+        "CodingWorkerHistoryCheckpointV1",
+        publish_product_worker_history_checkpoint(
+            _history_proof_bindings(),
+            product,
+            attempt_id=attempt_id,
+            closure_error=lambda: CodingWorkerHistoryCheckpointError(
+                "coding_worker_checkpoint_closure_unproven"
+            ),
+        ),
+    )
 
 
 def repair_coding_product_worker_history_checkpoint_append(
@@ -194,29 +184,17 @@ def repair_coding_product_worker_history_checkpoint_append(
         or (_ATTEMPT.fullmatch(attempt_id) is None)
     ):
         raise ValueError("Coding Worker checkpoint repair requires one exact attempt")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        with product.gc_gate.guard(require_write=True):
-            review = _review_coding_product_worker_history_under_guard(
-                product,
-                attempt_id=attempt_id,
-                active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
-                gc_snapshot=product.gc_gate.snapshot(),
-            )
-            if review.missing_proofs:
-                raise CodingWorkerHistoryCheckpointError(
-                    "coding_worker_checkpoint_closure_unproven"
-                )
-            with _bound_checkpoint(product) as rooted:
-                return _checkpoint_commands().repair(
-                    rooted,
-                    access=_CodingHistoryAccess(product),
-                    captured_store=registry,
-                    attempt_id=attempt_id,
-                    review=review,
-                )
+    return cast(
+        "CodingWorkerHistoryCheckpointV1",
+        repair_product_worker_history_checkpoint_append(
+            _history_proof_bindings(),
+            product,
+            attempt_id=attempt_id,
+            closure_error=lambda: CodingWorkerHistoryCheckpointError(
+                "coding_worker_checkpoint_closure_unproven"
+            ),
+        ),
+    )
 
 
 def rollback_coding_product_worker_history_checkpoint_tail(
@@ -228,15 +206,12 @@ def rollback_coding_product_worker_history_checkpoint_tail(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Coding Worker checkpoint rollback requires its Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id):
-        with product.gc_gate.guard(require_write=True):
-            with _bound_checkpoint(product) as rooted:
-                return _checkpoint_commands().rollback(
-                    rooted,
-                    access=_CodingHistoryAccess(product),
-                    captured_store=registry,
-                )
+    return cast(
+        "tuple[CodingWorkerHistoryCheckpointV1, ...]",
+        rollback_product_worker_history_checkpoint_tail(
+            _history_proof_bindings(), product
+        ),
+    )
 
 
 __all__ = [

@@ -446,6 +446,16 @@ POSIX／Windows opt-in owner 不再各声明 current／allow／revoke 的同参�
 
 本批 Coding −111、Harness／Hosting／其他生产0，系统生产净 −111行；测试因真实 owner 的显式参数接线 +16行，文档另列。累计 Coding −6,376、Harness +9,344，系统生产仍 +2,968行；C07 余13,890行，距离过半退出仍差3,758行。收益为重复适配删除，不计为新完整事务迁移，整个 Goal 仍未完成。
 
+## Linux 检查点完整写事务接入现有 owner
+
+发布、修复和回滚的外层事务由现有 Package Product Linux history owner 持有：原 runtime quiescence、GC writer、历史复读、闭合判断、检查点根绑定及原 CheckpointCommands 的 publish／repair／rollback 调用完整迁入。实际 Journal、锚点、五流 snapshot、重试和尾部修复继续由原组件执行；未新增协调器、状态、Protocol、账本或阶段回调。Code 公开入口保留原精确 Product／attempt 准入、具体签名／结果类型及错误身份，原 dataclass／字段／slots／wire／pickle 路径不变。只读入口不因迁移获得写入或修复权限。
+
+沿用原 HistoryProofBindings，纯 Profile 装配提前到兼容入口：仅创建原内部函数、lambda 和字符串／正则常量并构造原无自定义方法的 dataclass，不读 Product 或历史。其实际组件、配额读取、锁内事实复核和 IO 仍在原位置；closure-error factory 保留错误类型的延迟读取。不宣称与私有模块 Profile 常量在调用途中被重绑定的行为完全相同。当前执行代理在已授权职责内接受该有限装配时机变化和三个完整事务的 owner 归属。现有 BackupObservation 补齐真实记录已有的 owner_revision 类型事实，未增加数据字段；五源 mypy 通过。
+
+原检查点／snapshot／commit／backup 与 IO golden 的五条测试路径102 passed；原断言和 fixtures 未变，仅把 review 故障口移到实际共享 owner。494组原执行体对照一致，其中482组实际注入 OSError 或取消，每组两次调用，覆盖 Product／registry／锁／review／闭合／命令／确认及退出顺序，包含 cause／context 和错误优先级。该探针使用受控事实和命令口，真实文件结果由原 golden 单独覆盖；不替代 Windows 原生或全候选验证。限定 AST 证明三个迁移执行体及原公开准入／签名保持，原 H 已有程序不变；原架构门禁、断言和 Worker import 清单保持。
+
+本批 Coding −25、Harness +89、Hosting／其他生产0，系统生产 +64行，测试 −1行、文档单列。新增成本来自完整通用入口的参数／返回约束和必要适配，而非平行机制；Code 的泛型结果适配占用行数，同步计入。累计 Coding −6,401、Harness +9,433、系统生产仍 +3,032行；C07 余13,865行，距过半退出还差3,733行。仅验收这三条写事务，不宣称全部112文件、整组链路或多数退出完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
