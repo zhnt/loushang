@@ -8,7 +8,6 @@ proof; unknown, partial, or changed history fails closed.
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Mapping
 from typing import cast
 
@@ -18,7 +17,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     windows_listdir_at,
 )
-from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
+from loushang.harness.worker.history._windows_sources import (
+    WindowsHistoryNames,
+    windows_worker_history_names,
+)
 
 from .package_product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
@@ -27,7 +29,6 @@ from .package_product_worker_windows_activation_state_journal import (
     CodingWindowsWorkerActivationStateJournal,
 )
 from .package_product_worker_windows_base_files import (
-    WINDOWS_WORKER_BASE_NAMES,
     WINDOWS_WORKER_BASE_STAGE_NAMES,
 )
 from .package_product_worker_windows_opt_in_journal import (
@@ -41,34 +42,6 @@ from .package_product_worker_windows_recovery_inventory import (
     _current_after_verified_retirements_under_gc_guard,
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
     _observe_native_job_absence,
-)
-from .package_product_worker_windows_stage_retirement import _RETIREMENT_NAME
-
-_INTENT = re.compile(r"worker-launch-intent-[0-9a-f]{32}\.json\Z")
-_NATIVE = re.compile(r"worker-native-provisioning-[0-9a-f]{32}\.jsonl(?:\.lock)?\Z")
-_C5_HEAD = re.compile(r"worker-activation-state\.h[0-9]{8}\.json\Z")
-_EXACT = (
-    frozenset(
-        {
-            "worker-activation-state.jsonl",
-            "worker-activation-state.jsonl.lock",
-            "worker-supervisor.jsonl",
-            "worker-supervisor.jsonl.lock",
-            "worker-activation-receipts.jsonl",
-            "worker-activation-receipts.jsonl.lock",
-            "worker-opt-in.jsonl",
-            "worker-opt-in.jsonl.lock",
-            "worker-native-release-approvals.jsonl",
-            "worker-native-release-approvals.jsonl.lock",
-            "worker-native-backend-release-v1.whl",
-            "worker-history-preparation-v1.json",
-            "worker-history-preparation-v1.json.stage",
-            "worker-history-checkpoint-v1.json",
-            "worker-history-checkpoint-v1.json.stage",
-        }
-    )
-    | WINDOWS_WORKER_BASE_NAMES
-    | WINDOWS_WORKER_BASE_STAGE_NAMES
 )
 
 
@@ -236,4 +209,4 @@ __all__ = ["CodingWindowsWorkerGcHistoryAuthority"]
 
 
 def _history_names() -> WindowsHistoryNames:
-    return WindowsHistoryNames(_EXACT, (_INTENT, _NATIVE, _C5_HEAD, _RETIREMENT_NAME))
+    return windows_worker_history_names()

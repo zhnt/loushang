@@ -58,8 +58,9 @@ without cutover or deletion authority. See [A122](key-designs/worker-history-res
 For Windows pre-cutover preparation/checkpoints, PackageProduct now coordinates
 the original quiescence/GC guards, exact staged retry and read-back over the existing
 private ReceiptIO. Worker History owns their canonical record proofs; Coding keeps
-Product admission and nominal wire facades. Source capture and reference read models
-remain an explicit unfinished part of the [C07 bulk migration](c07-worker-bulk-migration.md);
+Product admission and nominal wire facades. PackageProduct also owns source custody,
+Desired capture and reference proofs over original readers. GC/recovery dependencies
+and checkpoint input assembly remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
 this slice does not complete that chain or its majority-exit target.
 
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,

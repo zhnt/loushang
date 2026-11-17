@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — preparation/checkpoint proof and publication slice reviewed by implementation owner; whole-chain closure pending
+- Design status: partial acceptance — preparation/checkpoint, source custody and reference proof slices reviewed by implementation owner; whole-chain closure pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -35,7 +35,15 @@ Codex implementation owner 在本任务授权内复核 Coding 名义兼容、Har
 
 这是固定记录证明与已有 Product 操作的归位，不是以字段搬运为主线。不会把全部通用流程塞进既有 `_worker_windows_attempt`，也不另建 Worker 生命周期框架。
 
-首批当前成本：Coding −359、Harness +631、Hosting/其他生产 0、系统生产 +272行；测试 +7、文档另计。C07 当前19,907行，尚需至少9,775行退出 Coding。增加主要来自显式共享事实类型、名义字段适配和新的固定事务接线；这属于整链收敛中间成本，后续继续复用和合并，不把 Coding 下降报告为系统精简。
+首批成本（本地提交 `1ec465967`）：Coding −359、Harness +631、Hosting/其他生产 0、系统生产 +272行；测试 +7、文档另计。C07 当前19,907行，尚需至少9,775行退出 Coding。增加主要来自显式共享事实类型、名义字段适配和新的固定事务接线；这属于整链收敛中间成本，后续继续复用和合并，不把 Coding 下降报告为系统精简。
+
+## 来源与引用批次
+
+实现 owner 继续接受来源捕获与只读引用证明的归位：Worker History 复用原 WindowsHistorySourceCapture，持有来源记录方法及固定存储名称；Package Product 持有原 root/ACL/GC/quiescence 寿命、source→recovery→Desired→source 复核顺序和 Desired/Package 引用闭合证明。Coding 保留原名义记录、动态配额和真实 Product 准入。没有增加写入或删除权限；无法观察的原生状态仍然不等于已确认不存在。
+
+累计 Coding −958、Harness +1,655、Hosting/其他生产 0，系统生产 +697行；测试 +16、文档单列。C07 剩余19,308行，仍需至少9,176行退出。新增共享事实接口和兼容字段适配的成本仍然较高，尚无系统净删减收益。GC settled proof、恢复读取与检查点输入组装仍有 Coding 实现，故不声明整链完成。
+
+本批历史/退休既有用例81 passed、1 skipped；修复既有探针消费者的固定名称别名后，来源 golden 单独31 passed，golden 数据不变；不是将原失败的合并运行宣称为全通过。架构边界181 passed，13源 scoped mypy 通过。9个实际记录、18份原始 pickle 字节、14个错误及公开签名/字段/slots 与精确基线一致；三个语义捕获入口57组逐事件对照，其中33组故障，结果一致。模型与模拟均不代替原生 Windows。
 
 ## 当前验证与限制
 
@@ -47,7 +55,7 @@ Windows 原生 LPAC/Job、真实崩溃路线尚未执行；合成事实和跨进
 
 ## 剩余工作
 
-完成来源捕获、Desired/Package 引用闭合、六流 reconstruction、持久化与 preflight 的共同 owner 接线并删除旧机制，再依赖推进恢复/退休及载荷/启动。
+继续完成 GC/恢复依赖、检查点输入组装、六流 reconstruction、持久化与 preflight 的共同 owner 接线并删除旧机制，再依赖推进恢复/退休及载荷/启动。
 全部112文件均须更新职责与处置，区分产品政策、必要名义入口、迁移、复用删除；重新审查旧轮次保留理由，Coding 类型或固定名称不单独构成保留整个实现的理由。
 每批计入 Coding/Harness/Hosting/其他生产代码及系统总量，测试和文档单列；系统成本与实际重复删除、职责迁移分别报告。
 本轮尚未达到多数退出目标，未提交 PR 或交付，不修改原轮次已完成的历史证据。

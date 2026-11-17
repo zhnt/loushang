@@ -14,6 +14,9 @@ CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
 PRODUCT_WORKER_BOUNDED_IMPORTS = {
+    CODING_ROOT / "package_product_worker_windows_base_files.py": {
+        "loushang.harness.worker.history._windows_sources",
+    },
     CODING_ROOT / "package_product_worker_windows_payload_inventory.py": {
         "loushang.harness.worker.payload._windows_stage_io",
     },
@@ -44,6 +47,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package_product_worker_windows_stage_retirement.py": {
         'loushang.harness.worker.history._base_codec',
+        'loushang.harness.worker.history._windows_sources',
         'loushang.harness.worker.payload._windows_stage_retirement',
     },
     CODING_ROOT / "package_product_worker_windows_partial_stage_retirement.py": {

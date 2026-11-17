@@ -37,6 +37,15 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
     launch_matches_intent,
     native_matches_intent,
 )
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_RETIREMENT_NAME as _RETIREMENT_NAME,
+)
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_RETIREMENT_NAME_PREFIXES as _RETIREMENT_NAME_PREFIXES,
+)
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_RETIREMENT_STEMS as _RETIREMENT_STEMS,
+)
 from loushang.harness.worker.payload._windows_stage_retirement import (
     CompleteStageProof as _CompleteStageProof,
 )
@@ -65,17 +74,6 @@ from .package_product_worker_windows_stage_review import (
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_RETIREMENT_STEMS = (
-    "worker-stage",
-    "worker-partial-stage",
-    "worker-unlaunched-stage",
-    "worker-crash-stage",
-)
-_RETIREMENT_NAME = re.compile(
-    r"(?:worker-stage|worker-partial-stage|worker-unlaunched-stage|worker-crash-stage)-(?:retire|root-delete|retired)-"
-    r"([0-9a-f]{32})\.json(?:\.stage)?\Z"
-)
-_RETIREMENT_NAME_PREFIXES = tuple(stem + "-" for stem in _RETIREMENT_STEMS)
 _MAX_REVIEW_BYTES = 32768
 _MAX_RECEIPT_BYTES = 1024
 _READ_CHUNK = 1024 * 1024
@@ -154,7 +152,7 @@ def retire_coding_windows_product_worker_complete_stage(
     with windows_product_worker_offline_write(
         product,
         active_error=CodingWindowsWorkerStageRetirementError,
-        active_message='coding_worker_stage_retirement_runtime_active',
+        active_message="coding_worker_stage_retirement_runtime_active",
     ) as quiescence:
         with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
             _require_retirement_root(
@@ -210,10 +208,7 @@ def retire_coding_windows_product_worker_complete_stage(
                         "coding_worker_stage_retirement_completed_changed"
                     )
                 return completed
-            if (
-                not _stage_exists(root, start.attempt_id)
-                and root_delete_intent is None
-            ):
+            if not _stage_exists(root, start.attempt_id) and root_delete_intent is None:
                 raise CodingWindowsWorkerStageRetirementError(
                     "coding_worker_stage_retirement_stage_disappeared"
                 )
