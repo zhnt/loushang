@@ -1569,6 +1569,7 @@ class PosixProductWorkerPayloadCustody(
     def preview_complete(
         self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> _PayloadPlanT:
+        """Read a complete abandoned stage only while Product Sessions are absent."""
         return cast(
             "_PayloadPlanT",
             self._under_payload_root(
@@ -1579,6 +1580,7 @@ class PosixProductWorkerPayloadCustody(
     def preview_empty(
         self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> _EmptyPlanT:
+        """Review only an empty stage with no durable Supervisor claim."""
         return cast(
             "_EmptyPlanT",
             self._under_payload_root(
@@ -1592,6 +1594,7 @@ class PosixProductWorkerPayloadCustody(
     def review_unmarked(
         self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> _UnmarkedReviewT:
+        """Inspect a nonempty pre-marker stage without granting cleanup authority."""
         return cast(
             "_UnmarkedReviewT",
             self._under_payload_root(
@@ -1622,6 +1625,7 @@ class PosixProductWorkerPayloadCustody(
     def reopen_unmarked(
         self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> _UnmarkedReviewT | None:
+        """Reopen a published, completed pre-marker cleanup after a process crash."""
         return cast(
             "_UnmarkedReviewT | None",
             self._under_payload_root(
@@ -1635,6 +1639,7 @@ class PosixProductWorkerPayloadCustody(
     def read_unmarked_intent(
         self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> _UnmarkedReviewT | None:
+        """Read a durable cleanup intent even when its exact stage remains."""
         return cast(
             "_UnmarkedReviewT | None",
             self._under_payload_root(
@@ -1648,6 +1653,7 @@ class PosixProductWorkerPayloadCustody(
     def reopen_empty(
         self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> _EmptyPlanT | None:
+        """Read a durable repair result only after its exact stage disappeared."""
         return cast(
             "_EmptyPlanT | None",
             self._under_payload_root(
@@ -1661,6 +1667,11 @@ class PosixProductWorkerPayloadCustody(
     def list_complete(
         self, product: PosixLocalWheelProductSessionOwner
     ) -> tuple[_PayloadPlanT, ...]:
+        """Enumerate every complete attempt stage under offline Product authority.
+
+        A malformed stage name or body makes the whole inventory unavailable. GC
+        and recovery callers must not infer that an unreadable attempt is absent.
+        """
         return cast(
             "tuple[_PayloadPlanT, ...]",
             self._under_payload_root(product, _recovery.list_complete),
@@ -1686,6 +1697,7 @@ class PosixProductWorkerPayloadCustody(
     def reopen_complete(
         self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> _PayloadPlanT | None:
+        """Read one completed, exact payload repair without accepting stage debt."""
         return cast(
             "_PayloadPlanT | None",
             self._under_payload_root(
@@ -1699,6 +1711,7 @@ class PosixProductWorkerPayloadCustody(
     def read_complete_intent(
         self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> _PayloadPlanT | None:
+        """Read a durable settled cleanup intent while its stage may remain."""
         return cast(
             "_PayloadPlanT | None",
             self._under_payload_root(

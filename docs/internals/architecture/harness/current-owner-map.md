@@ -440,6 +440,14 @@ frozen Code binding keeps its fields, slots and pickle path over an empty-slot
 method base. [C07 proof evidence](c07-worker-bulk-migration.md#base-当前性与完整启动版本关联归原-product-owner)
 records complete-program equivalence, bounded runtime models and costs.
 
+Ten internal Code payload recovery names bind directly to methods of the same
+existing Product custody instance. Their duplicate function layer has exited;
+nominal admission, materialization and repair guards remain. No read route gains
+write options. The stable root Coding SDK and data record contracts remain;
+internal callable reflection follows the Harness method. [C07 direct reuse evidence](c07-worker-bulk-migration.md#载荷内部入口直接复用已有方法)
+records the explicit metadata delta, historical global pickle lookups and actual
+system net reduction; pre-existing payload mechanisms are not counted again.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding

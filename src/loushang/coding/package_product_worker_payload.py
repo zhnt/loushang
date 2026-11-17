@@ -192,17 +192,6 @@ class CodingWorkerPayloadRecoveryReviewV1:
         return self.attempt_record is not None and self.attempt_record.process_settled
 
 
-def review_coding_product_worker_payload_recovery(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerPayloadRecoveryReviewV1:
-    """Correlate an exact Product stage with its canonical Supervisor journal.
-
-    An absent or failed/fenced attempt does not establish process settlement.
-    This review does not authorize deleting the payload or restarting a Worker.
-    """
-    return _PAYLOAD_CUSTODY.review_complete(product, attempt_id=attempt_id)
-
-
 @contextmanager
 def materialize_coding_product_worker_payload(
     *,
@@ -282,27 +271,6 @@ _write_payload = _STORAGE._write_payload
 _write_marker = _STORAGE._write_marker
 
 
-def preview_coding_product_worker_payload_debt(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerPayloadDebtPlanV1:
-    """Read a complete abandoned stage only while Product Sessions are absent."""
-    return _PAYLOAD_CUSTODY.preview_complete(product, attempt_id=attempt_id)
-
-
-def preview_coding_product_worker_empty_payload_debt(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerEmptyPayloadDebtPlanV1:
-    """Review only an empty stage with no durable Supervisor claim."""
-    return _PAYLOAD_CUSTODY.preview_empty(product, attempt_id=attempt_id)
-
-
-def review_coding_product_worker_unmarked_payload_debt(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerUnmarkedPayloadDebtReviewV1:
-    """Inspect a nonempty pre-marker stage without granting cleanup authority."""
-    return _PAYLOAD_CUSTODY.review_unmarked(product, attempt_id=attempt_id)
-
-
 def repair_coding_product_worker_unmarked_payload_debt(
     product: PosixLocalWheelProductSessionOwner,
     *,
@@ -314,38 +282,6 @@ def repair_coding_product_worker_unmarked_payload_debt(
     return _PAYLOAD_CUSTODY.repair_unmarked(product, expected_review=expected_review)
 
 
-def reopen_coding_product_worker_unmarked_payload_repair(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerUnmarkedPayloadDebtReviewV1 | None:
-    """Reopen a published, completed pre-marker cleanup after a process crash."""
-    return _PAYLOAD_CUSTODY.reopen_unmarked(product, attempt_id=attempt_id)
-
-
-def read_coding_product_worker_unmarked_payload_repair_intent(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerUnmarkedPayloadDebtReviewV1 | None:
-    """Read a durable cleanup intent even when its exact stage remains."""
-    return _PAYLOAD_CUSTODY.read_unmarked_intent(product, attempt_id=attempt_id)
-
-
-def reopen_coding_product_worker_empty_payload_repair(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerEmptyPayloadDebtPlanV1 | None:
-    """Read a durable repair result only after its exact stage disappeared."""
-    return _PAYLOAD_CUSTODY.reopen_empty(product, attempt_id=attempt_id)
-
-
-def list_coding_product_worker_payload_debts(
-    product: PosixLocalWheelProductSessionOwner,
-) -> tuple[CodingWorkerPayloadDebtPlanV1, ...]:
-    """Enumerate every complete attempt stage under offline Product authority.
-
-    A malformed stage name or body makes the whole inventory unavailable. GC
-    and recovery callers must not infer that an unreadable attempt is absent.
-    """
-    return _PAYLOAD_CUSTODY.list_complete(product)
-
-
 def repair_coding_product_worker_payload_debt(
     product: PosixLocalWheelProductSessionOwner,
     *,
@@ -355,20 +291,6 @@ def repair_coding_product_worker_payload_debt(
     if not isinstance(expected_plan, CodingWorkerPayloadDebtPlanV1):
         raise TypeError("Coding Worker payload debt plan is required")
     return _PAYLOAD_CUSTODY.repair_complete(product, expected_plan=expected_plan)
-
-
-def reopen_coding_product_worker_payload_repair(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerPayloadDebtPlanV1 | None:
-    """Read one completed, exact payload repair without accepting stage debt."""
-    return _PAYLOAD_CUSTODY.reopen_complete(product, attempt_id=attempt_id)
-
-
-def read_coding_product_worker_payload_repair_intent(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerPayloadDebtPlanV1 | None:
-    """Read a durable settled cleanup intent while its stage may remain."""
-    return _PAYLOAD_CUSTODY.read_complete_intent(product, attempt_id=attempt_id)
 
 
 def repair_coding_product_worker_empty_payload_debt(
@@ -468,3 +390,17 @@ _require_private_visible_root = _STORAGE._require_private_visible_root
 
 
 _require_visible_stage = _STORAGE._require_visible_stage
+
+
+review_coding_product_worker_payload_recovery = _PAYLOAD_CUSTODY.review_complete
+preview_coding_product_worker_payload_debt = _PAYLOAD_CUSTODY.preview_complete
+preview_coding_product_worker_empty_payload_debt = _PAYLOAD_CUSTODY.preview_empty
+review_coding_product_worker_unmarked_payload_debt = _PAYLOAD_CUSTODY.review_unmarked
+reopen_coding_product_worker_unmarked_payload_repair = _PAYLOAD_CUSTODY.reopen_unmarked
+read_coding_product_worker_unmarked_payload_repair_intent = (
+    _PAYLOAD_CUSTODY.read_unmarked_intent
+)
+reopen_coding_product_worker_empty_payload_repair = _PAYLOAD_CUSTODY.reopen_empty
+list_coding_product_worker_payload_debts = _PAYLOAD_CUSTODY.list_complete
+reopen_coding_product_worker_payload_repair = _PAYLOAD_CUSTODY.reopen_complete
+read_coding_product_worker_payload_repair_intent = _PAYLOAD_CUSTODY.read_complete_intent

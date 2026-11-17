@@ -335,6 +335,18 @@ Scoped mypy 初次发现公共 Windows ctor 原有的 optional Session 值不再
 
 本批 Coding −56、Harness +122、Hosting／其他生产0，系统生产 +66 行；累计 Coding −5,911、Harness +9,047、系统生产仍 +3,136 行。测试仍 +70，文档单列。新增成本包含强类型事实边界、原名义记录适配、完整入口及原文件格式归一的增长；没有删注释或压行取得收益。两个完整证明归位，未迁出的 bootstrap 产品接线和其余 C07 处置仍须核实，不能据此宣布整链／整组完成。C07 剩余14,355行，距过半退出还差4,223行；全部112文件最终处置和整组交付验证未完成。
 
+## 载荷内部入口直接复用已有方法
+
+按 Coding SDK 接口约定，顶层 loushang.coding.__all__ 是稳定 Python SDK 边界；本批十个 C07 内部载荷名称不在该边界。当前实现代理在受委托的 Coding／Harness 重构职责内，接受下述精确十项内部 callable 变化；接受范围不扩大到 SDK、数据契约或其他入口。它们原本只有相同参数的一次 _PAYLOAD_CUSTODY 方法调用，现保留原模块名称，直接绑定同一既有 Product custody 实例的方法。删除的是十个重复函数层；原 Code 类型准入、materialize contextmanager、repair 的名义 guard 和全部其他 Code 执行体不变。真实旧入口名称继续可调用，参数位置／关键字／默认值形状不变，静态类型仍由配置了 Code 记录类型的原泛型实例推导。未新增适配器、运行时对象或转发层，也未移动字段来凑迁移比例。此前完整载荷机制已经属于 Harness，本批不重计为新机制迁移。
+
+这是明确的内部 callable 元数据变化：名称现在指向绑定方法，__module__／__qualname__、运行时泛型 hints 及 Python 参数绑定错误前缀随 Harness 方法；不宣称这些信息或新绑定方法的 pickle 编码与旧函数相同。原全局函数 pickle 的模块／名称 lookup 仍解析到同一实际方法，二十条 protocol4／5 路径验证通过；必要 Code 数据类型、slots、wire／pickle 类路径未变。私有 _PAYLOAD_CUSTODY 为一次构造、固定寿命的模块 profile，原 _offline 也已经是该实例的方法；未发现替换该私有实例的配置或故障入口，原 lower IO／quota／Supervisor 故障口保持 live。只读 review／preview／list／reopen 直接使用原只读方法，未增加写参数或修复／删除权限。
+
+原恢复故障轨迹、完整候选及冻结 SDK 身份／导出／签名／类型／pickle／smoke 为128 passed、7 skipped；四个真实 Code 消费源 mypy 和 Ruff 通过。原操作说明保留到九个实际 owner 方法，另一个 owner 已有同样说明；规范化文档文本保持，初次外部探针把函数和方法的原始 docstring 缩进一律视作字节契约而失败，已改为比较规范化文本，未修改 Product 处理该探针错误。十个实际 bound self／function、参数形状、旧 global pickle lookup 和无效 Product 域错误一致。
+
+显式 alias 清单的源码审计确认：除指定十个函数声明退出及对应别名外，原 Code 模块 AST 不变；除操作说明外，全部原 Harness 执行体 AST 不变。其余60份 Code 声明／字段、原测试入口／断言与用户改动哈希保留。原 audit_public_contracts 工具仍保留，其“所有内部模块函数声明必须不变”的假设不适用于这十项已记录变化；新审计仅允许精确十项别名，稳定 SDK 用既有独立冻结测试核实，不修改测试或门禁。
+
+本批 Coding −64、Harness +13、Hosting／其他生产0，系统生产净 −51 行；累计 Coding −5,975、Harness +9,060、系统生产仍 +3,085 行。Harness 增长仅是保留操作说明，测试仍 +70，文档单列；不是靠删说明取得净收益。C07 剩余14,291行，距过半退出还差4,159行。本批属于真实复用后的重复胶水删除，未完成的完整链、全部112文件处置和整组交付验证仍保留。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
