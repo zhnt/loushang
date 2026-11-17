@@ -30,7 +30,9 @@ Transport and Coding inventories count each file exactly once. AppService
 keeps its base service and optional handler separately bounded. The existing
 G11 protocol and core owners also account for the unrelated GUI business
 choice, Workspace model query and history deletion delta: 126 protocol/client
-lines and 48 scoped AppService lines relative to main. Cold Goal recovery
+lines and 48 scoped AppService lines relative to main. Read-only Workspace
+inspection adds another 20 lines to the existing protocol model and codec,
+covered by the workspace inspection review below. Cold Goal recovery
 continues to project persisted facts without obtaining authority to resume.
 Linux contract probes cover Python, Rust and TypeScript. Windows native
 observer evidence remains a separate platform check.
@@ -1041,3 +1043,30 @@ Implementation review for the GUI/AppHost boundary was performed by the
 implementing Codex agent on `feature/gui-mux-service`. The reviewed scope is
 local lifecycle delegation and authenticated record discovery. Workspace and
 Session operations stay on the existing AppServer protocol.
+
+## Read-only desktop workspace inspection
+
+Codex, acting as the implementation reviewer for the HarnessGUI, AppServer,
+and Coding boundary, reviewed the workspace inspection change on
+`feature/gui-session-inspection` against `lane/gui` revision `ea580afcd`.
+The accepted design keeps Git inspection and project toolchain discovery in
+Coding. The existing workspace operation accepts an explicit `inspect`
+action and returns a bounded report for a registered project. Ordinary
+workspace listings keep their existing response shape. The GUI verifies the
+returned workspace fingerprint against the selected Session before displaying
+the report. Protocol round trips and inspection of a linked worktree cover
+these boundaries.
+
+Git review compares the index with HEAD and the working tree with the index.
+The display identifies those comparisons and lists untracked files separately.
+For projects without Git, a request that names a Session can read the
+successful write and edit receipts from its selected transcript in that
+workspace. The panel identifies these as recorded Session operations.
+Recorded edit patches provide line counts. A write without a comparison
+baseline provides a file status. Missing evidence produces an empty state.
+
+The native desktop opens a workspace folder or a supported relative document
+only after the user clicks. The desktop verifies a local registered workspace,
+the Session scope fingerprint, and the canonical target before handing the
+path to the operating system. A tunneled connection has no local file-open
+action. The GUI displays diff and Markdown content as text.

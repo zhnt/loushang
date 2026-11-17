@@ -12,7 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from loushang.ai.types import ImagePart, UserMessage
+from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
 from loushang.apphost.workspace_registry import (
     HostWorkspaceRegistryPort,
@@ -555,6 +555,11 @@ def test_two_workspaces_route_real_transcripts_without_runtime_or_cwd_switch(tmp
             for scope in (sa, sb):
                 intent = _intent(scope)
                 candidate = await catalog.create_candidate(intent)
+                if scope == sa:
+                    await candidate._binding.manager_for_construction().append_message(
+                        ToolResultMessage("toolResult", "call", "write", [], False, 1.0,
+                                          {"path": str(a / "index.html"), "operation": "create"}),
+                    )
                 await candidate.close()
             headers = [load_agent_transcript_file(p, read_only=True)[0]
                        for p in (tmp_path / 'sessions').rglob('*.jsonl')]
@@ -563,6 +568,13 @@ def test_two_workspaces_route_real_transcripts_without_runtime_or_cwd_switch(tmp
             assert len(rows) == 2
             a_rows = await catalog.workspace_identities(sa.fingerprint, sa.discovery_scope, limit=1)
             assert len(a_rows) == 1 and a_rows[0].reference.source_id == sa.source_id
+            session = a_rows[0].envelope.session_id
+            inspected = await catalog.workspace(WorkspaceRequestV1("inspect", str(a), session))
+            assert inspected.workspaces[0].inspection["sessionChanges"] == [
+                {"path": "index.html", "created": True, "added": None, "removed": None},
+            ]
+            unrelated = await catalog.workspace(WorkspaceRequestV1("inspect", str(b), session))
+            assert "sessionChanges" not in unrelated.workspaces[0].inspection
             assert len({r.reference.source_id for r in rows}) == 2
             for row in rows:
                 candidate = await catalog.open_candidate(row.reference)

@@ -14,8 +14,9 @@ import { InteractiveGoalRecovery } from "./InteractiveGoalRecovery";
 import { InteractiveGoal } from "./InteractiveGoal";
 import { GoalStart, useGoalStart } from "./GoalStart";
 import { ToolApproval } from "./ToolApproval";
-import { UserChoiceCard, type ChoiceAnswer } from "./UserChoiceCard";
+import { ChoiceReceipt, submittedChoiceLabel, UserChoiceCard, type ChoiceAnswer } from "./UserChoiceCard";
 import { ModelPicker } from "./ModelPicker";
+import { OpenWorkspacePath, WorkspaceInspection, type Inspection } from "./WorkspaceInspection";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
 import { DraftChatRow, ProjectNavigation, type SidebarDraft } from "./ProjectNavigation";
@@ -693,6 +694,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const draftTitle = t("workspace:sidebar.newSession");
   const workspaceContext = draft && projectNavigation ? draft.target.workspace
     : projectNavigation?.selection?.id === selected?.id ? projectNavigation?.selection?.workspace : undefined;
+  const workspaceFingerprint = selected?.context.scopeFingerprint;
+  const workspaceSessionId = selected?.context.sessionId;
+  const workspacePath = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE ? workspaceContext : undefined;
+  const inspectWorkspace = connected && workspacePath && workspaceFingerprint && projectNavigation?.inspectWorkspace
+    ? (review: boolean) => projectNavigation.inspectWorkspace!(
+      workspacePath, workspaceFingerprint, review ? workspaceSessionId : undefined,
+    ) : undefined;
+  const openWorkspacePath = connected && workspacePath && workspaceFingerprint && projectNavigation?.openProjectPath
+    ? (file?: string) => projectNavigation.openProjectPath!(workspacePath, workspaceFingerprint, file) : undefined;
   const projectContext = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE
     ? workspaceName(workspaceContext) : undefined;
   const conversationTitle = selected ? displaySessionTitle(selected, liveTitles[selected.id])
@@ -877,7 +887,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     <p>{firstMessageText}</p>
                   </article> : null}
                   {selected ? <Fragment key={selected.id}>
-                    {selected.messages.map((message) => message.role === "status" ? (
+                    {selected.messages.map((message) => {
+                      const choice = message.role === "user" ? submittedChoiceLabel(message.content) : undefined;
+                      if (choice) return <ChoiceReceipt key={message.id} label={choice} text={message.content} />;
+                      return message.role === "status" ? (
                       <p className="message transcript-status" role="status" key={message.id}>{message.systemNotice ? t("session:transcript.resumesRuntime") : message.content}</p>
                     ) : (
                       <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
@@ -886,10 +899,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                           <span>{valueLabel(message.phase)}</span>
                         </div>
                         {message.role === "assistant" && message.content
-                          ? <MessageMarkdown text={message.content} />
+                          ? <MessageMarkdown text={message.content} openFile={openWorkspacePath} />
                           : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
                       </article>
-                    ))}
+                    ); })}
                     {selected.pendingApprovals?.map((approval) => (
                       <ToolApproval key={approval.interactionId} approval={approval}
                         scope={projectContext ?? (workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats") : undefined)}
@@ -993,6 +1006,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           <WorkDock key={JSON.stringify([selectionKey, selected.id])}
             open={rightVisible} stale={!fixture && !connected} tab={state.local.dockTab}
             state={state} session={selected} workspacePath={workspaceContext ?? undefined} selectedDocument={selectedDocument}
+            inspectWorkspace={inspectWorkspace} openWorkspacePath={openWorkspacePath}
             goalControls={<>
               <GoalStart {...goalStart} />
               {goalPanelScope && goalSource ? <div id={goalPanelId} hidden={!goalPanelOpen}>
@@ -1398,6 +1412,8 @@ interface WorkDockProps {
   readonly open: boolean;
   readonly stale: boolean;
   readonly workspacePath?: string;
+  readonly inspectWorkspace?: (review: boolean) => Promise<Inspection>;
+  readonly openWorkspacePath?: (file?: string) => Promise<void>;
   readonly goalControls: ReactNode;
   readonly goalProgress: ReactNode;
   readonly tab: DockTab;
@@ -1455,9 +1471,14 @@ function WorkDock(props: WorkDockProps) {
           {goalProgress}
           {showTasks && session.execution ? <ExecutionDetail execution={session.execution} stale={stale} /> : null}
         </div>
-        {tab === "tasks" ? null : !available ? tab === "environment" && state.remote.source.kind === "live"
-          ? <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} />
-          : <UnavailablePanel label={facet === "workspace" ? t("workspace:capability.workspace") : t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>
+        {tab === "tasks" ? null : tab === "environment" && state.remote.source.kind === "live" ? <>
+          <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} openPath={props.openWorkspacePath}>
+            {open && props.inspectWorkspace && <WorkspaceInspection load={props.inspectWorkspace} review={false} workspacePath={props.workspacePath}
+              revision={session.execution?.status ?? ""} />}
+          </LiveContextPanel>
+        </> : tab === "review" && state.remote.source.kind === "live" && open && props.inspectWorkspace
+          ? <WorkspaceInspection load={props.inspectWorkspace} review revision={session.execution?.status ?? ""} />
+          : !available ? <UnavailablePanel label={facet === "workspace" ? t("workspace:capability.workspace") : t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>
         {tab === "environment" ? <EnvironmentPanel state={state} session={session} /> : null}
         {tab === "agents" ? (
           <AgentsPanel run={visibleRun} selectedAgentRunId={state.local.selectedAgentRunId} onSelectAgent={onSelectAgent} onSelectTask={onSelectTask} />
@@ -1503,7 +1524,9 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
   );
 }
 
-function LiveContextPanel({ state, session, workspacePath }: {
+function LiveContextPanel({ state, session, workspacePath, openPath, children }: {
+  readonly children?: ReactNode;
+  readonly openPath?: (file?: string) => Promise<void>;
   readonly state: GuiState;
   readonly session: SessionSnapshot;
   readonly workspacePath?: string;
@@ -1525,13 +1548,15 @@ function LiveContextPanel({ state, session, workspacePath }: {
   ] as const;
   return (
     <section className="panel-stack" aria-label={t("workspace:live.context")}>
-      <dl className="detail-list">
-        <div><dt>{t("workspace:environment.workspace")}</dt>
-          <dd>{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}</dd></div>
-        <div><dt>{t("workspace:environment.root")}</dt><dd>{root == null ? unavailable : <code>{root}</code>}</dd></div>
-        <div><dt>{t("workspace:environment.vcs")}</dt><dd>{workspace?.vcs?.label ?? unavailable}</dd></div>
-      </dl>
+      <div className="workspace-location">
+        <div className="workspace-location-label">
+          <strong>{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}</strong>
+          {root && <code title={root}>{root}</code>}
+        </div>
+        {openPath && <OpenWorkspacePath open={openPath} />}
+      </div>
       {!workspace && !path && !temporary ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}
+      {children}
       <details className="environment-technical">
         <summary>{t("workspace:environment.technical")}</summary>
         <dl className="detail-list">

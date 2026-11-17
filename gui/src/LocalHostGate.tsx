@@ -408,6 +408,17 @@ export default function LocalHostGate() {
       closeFolder: () => setFolderInput(false),
       register: registerWorkspace,
       hostKey: selectedId,
+      inspectWorkspace: async (path, fingerprint, sessionId) => {
+        const result = await webRequest<{ workspaces: { scopeFingerprint: string; inspection?: import("./WorkspaceInspection").Inspection }[] }>(
+          { operation: "workspace", action: "inspect", path, sessionId }, selectedId,
+        );
+        const workspace = result.workspaces[0];
+        if (workspace?.scopeFingerprint !== fingerprint || !workspace.inspection) throw new Error("workspace_unavailable");
+        return workspace.inspection;
+      },
+      openProjectPath: isTauri() && selectedId === "local" ? async (workspace, fingerprint, file) => {
+        await webRequest({ operation: "open-project-path", workspace, fingerprint, ...(file ? { file } : {}) }, selectedId);
+      } : undefined,
       draftModels: async (path) => validateSessionModels(
         await webRequest({ operation: "workspace", action: "models", path }, connectionId.current),
       ),
@@ -417,6 +428,6 @@ export default function LocalHostGate() {
       select: openConversation,
     }} />
     <TrayHostDialog details={trayHosts.details} error={trayHosts.error}
-      onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmStop} />
+      onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmAction} />
   </>;
 }

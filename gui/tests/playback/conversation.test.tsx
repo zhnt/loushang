@@ -1044,8 +1044,17 @@ describe("Hosted business choices", () => {
     expect(card.getByRole("radio", { name: "Rewrite" })).toBeChecked();
     expect(note).toHaveValue("Keep the public API");
     expect(confirm).toBeDisabled();
-    act(() => publish({ ...initial, sessions: [{ ...initial.sessions[0], userChoice: undefined }] }));
+    act(() => publish({ ...initial, sessions: [{
+      ...initial.sessions[0], userChoice: undefined,
+      messages: [...initial.sessions[0].messages, {
+        id: "published-choice", role: "user", phase: "complete",
+        content: "Question: Which plan?\nSelected option b: Rewrite\nAdditional notes: Keep the public API",
+      }],
+    }] }));
     expect(screen.queryByRole("form", { name: "Choose a direction" })).not.toBeInTheDocument();
+    const summary = await screen.findByText("Selected · Rewrite");
+    expect(summary.closest("details")).not.toHaveAttribute("open");
+    expect(summary.closest("article.user")).toBeNull();
   });
 });
 

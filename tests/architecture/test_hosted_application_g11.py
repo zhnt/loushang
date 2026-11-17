@@ -321,7 +321,9 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # Host First adds the managed Workspace operation and profile validation.
         # GUI adds 126 net lines for business choices, Workspace model queries,
         # and history deletion on these same v1 owners (main: 2,360).
-        "appserver": 2_360 + 126,
+        # Read-only Workspace inspection extends the existing response and
+        # codec by 20 lines (12 model, 8 codec). See the delivery review.
+        "appserver": 2_360 + 126 + 20,
         # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity

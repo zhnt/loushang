@@ -21,7 +21,11 @@ export function UserChoiceCard({ question, answer, enabled, onChange, onConfirm 
   const group = useId();
   const { optionId = "", notes = "", status } = answer ?? {};
   const selected = question.options.find((option) => option.id === optionId);
-  const editable = enabled && status !== "unknown" && status !== "accepted";
+  const editable = enabled && status !== "unknown";
+
+  if (status === "accepted" && selected) {
+    return <ChoiceReceipt label={selected.label} text={[question.question, notes.trim()].filter(Boolean).join("\n")} />;
+  }
 
   return <form className="user-choice" aria-label={t("choice.title")} onSubmit={(event) => {
     event.preventDefault();
@@ -45,4 +49,19 @@ export function UserChoiceCard({ question, answer, enabled, onChange, onConfirm 
     </fieldset>
     {status && <p role="status">{t(`choice.${status}`)}</p>}
   </form>;
+}
+
+export function ChoiceReceipt({ label, text }: { readonly label: string; readonly text: string }) {
+  const { t } = useTranslation("session");
+  return <details className="choice-receipt">
+    <summary>{t("choice.selected")} · {label}</summary>
+    <p>{text}</p>
+  </details>;
+}
+
+export function submittedChoiceLabel(text: string): string | undefined {
+  // Existing sessions store the localized answer as ordinary user input.
+  const english = /^Question: [\s\S]+?\nSelected option [\w.~\-]+: ([^\n]+)(?:\nAdditional notes: [\s\S]+)?$/u;
+  const chinese = /^问题：[\s\S]+?\n已选选项 [\w.~\-]+：([^\n]+)(?:\n补充说明：[\s\S]+)?$/u;
+  return (english.exec(text) ?? chinese.exec(text))?.[1];
 }

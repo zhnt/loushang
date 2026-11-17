@@ -26,11 +26,13 @@ from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 
 from .hosted_catalog import (
     _MAX_TRANSCRIPT_BYTES,
+    CodingHostedCatalogError,
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
 )
 from .hosted_models import preview_workspace_models
 from .managed_catalog import CodingManagedSessionCatalogV1
+from .workspace_inspection import inspect_session_changes, inspect_workspace
 
 
 class CodingWorkspaceCatalog(
@@ -101,6 +103,30 @@ class CodingWorkspaceCatalog(
 
     async def workspace(self, request):
         from loushang.appserver.protocol import WorkspaceInfoV1, WorkspaceResultV1
+
+        if request.action == "inspect":
+            if self._closed:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            try:
+                path = await settled_io(self.registry.select, request.path)
+            except (OSError, ValueError):
+                raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+            catalog = self._catalogs.get(path)
+            if catalog is None or self.registry.is_temporary(path):
+                raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
+            scope = catalog.scopes[0]
+            report = await settled_io(inspect_workspace, path)
+            if report["git"] is None and request.session_id:
+                try:
+                    candidates = await catalog.list_identities((scope.discovery_scope,), limit=128)
+                    matches = [item.reference for item in candidates
+                               if item.envelope is not None and item.envelope.session_id == request.session_id]
+                    if len(matches) == 1:
+                        history = await catalog.preview_history_snapshot(matches[0], max_bytes=_MAX_TRANSCRIPT_BYTES)
+                        report.update(inspect_session_changes(path, (entry.payload for entry in history.selected_records)))
+                except (CodingHostedCatalogError, OSError, ValueError):
+                    report["limited"] = True
+            return WorkspaceResultV1((WorkspaceInfoV1(str(path), scope.scope, scope.fingerprint, report),))
 
         entries = await self._workspace_entries(request)
         return WorkspaceResultV1(

@@ -1,11 +1,13 @@
 import enShell from "../i18n/locales/en-US/shell.json";
 import zhShell from "../i18n/locales/zh-CN/shell.json";
+import enWorkspace from "../i18n/locales/en-US/workspace.json";
+import zhWorkspace from "../i18n/locales/zh-CN/workspace.json";
 import { appName } from "../branding";
 import { useEffect, useRef } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-export type TrayAction = "enable" | "info" | "reconnect" | "start" | "stop";
+export type TrayAction = "enable" | "info" | "reconnect" | "start" | "stop" | "restart";
 export type TrayConnection = "connected" | "connecting" | "disconnected" | "unknown";
 export interface TrayHost {
   id: string;
@@ -43,6 +45,7 @@ export function trayProjection(model: TrayModel, revision: number) {
     showLabel: text.showLabel, webLabel: text.webLabel, manageLabel: text.manageLabel,
     quitLabel: shell.quitApp.replace("{{appName}}", () => appName), enableLabel: text.enableLabel, infoLabel: text.infoLabel,
     reconnectLabel: text.reconnectLabel, stopLabel: text.stopLabel,
+    restartLabel: (chinese ? zhWorkspace : enWorkspace).localHost.restart,
     webUrl: current?.webUrl ?? null,
     hosts: model.hosts.map((host) => ({
       id: host.id, label: `${host.name}${host.selected ? " ✓" : ""} · ${text[host.connection]}`,
@@ -50,6 +53,7 @@ export function trayProjection(model: TrayModel, revision: number) {
       startLabel: host.configureStart ? `${text.startLabel}…` : text.startLabel,
       enable: availableTrayAction(host, "enable"), reconnect: availableTrayAction(host, "reconnect"),
       start: availableTrayAction(host, "start"), stop: availableTrayAction(host, "stop"),
+      restart: availableTrayAction(host, "restart"),
     })),
   };
 }
@@ -67,7 +71,7 @@ export function useSystemTray(model: TrayModel, action: (hostId: string, action:
     const release = listen<{ revision: number; hostId: string; action: TrayAction }>("gui://tray-host-action", ({ payload }) => {
       if (!active || payload.revision !== revision.current) return;
       const host = latest.current.model.hosts.find((item) => item.id === payload.hostId);
-      if (host && ["enable", "info", "reconnect", "start", "stop"].includes(payload.action) && availableTrayAction(host, payload.action)) {
+      if (host && ["enable", "info", "reconnect", "start", "stop", "restart"].includes(payload.action) && availableTrayAction(host, payload.action)) {
         latest.current.action(payload.hostId, payload.action);
       }
     });

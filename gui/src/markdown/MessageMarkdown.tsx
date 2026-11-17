@@ -1,10 +1,11 @@
-import { memo, type ReactNode } from "react";
+import { createContext, memo, useContext, type ComponentProps, type ReactNode } from "react";
 import type { ElementContent } from "hast";
 import { CopyButton } from "../CopyButton";
 import { useTranslation } from "react-i18next";
 import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { OpenWorkspacePath } from "../WorkspaceInspection";
 import "./markdown.css";
 
 const languagePrefix = "language-";
@@ -41,10 +42,46 @@ const components: Components = {
   },
 };
 
-export const MessageMarkdown = memo(function MessageMarkdown({ text }: { readonly text: string }) {
+function workspaceFile(value: string): string | undefined {
+  const path = value.replace(/^\.\//, "");
+  if (/^(?:[\p{L}\p{N}_. -]+\/)*[\p{L}\p{N}_. -]+\.(?:html?|pdf|png|jpe?g|webp|txt|md)$/iu.test(path)
+    && !path.split("/").some((part) => part === ".." || part === ".")) return path;
+  return undefined;
+}
+
+const InsideLink = createContext(false);
+
+function FileCode({ file, openFile, ...props }: ComponentProps<"code"> & {
+  file: string;
+  openFile: (file?: string) => Promise<void>;
+}) {
+  return useContext(InsideLink) ? <code {...props} /> : <OpenWorkspacePath file={file} open={openFile} />;
+}
+
+export const MessageMarkdown = memo(function MessageMarkdown({ text, openFile }: {
+  readonly text: string;
+  readonly openFile?: (file?: string) => Promise<void>;
+}) {
+  const fileComponents: Components = openFile ? {
+    ...components,
+    code: ({ node, children, ...props }) => {
+      const path = typeof children === "string" && node?.position?.start.line === node?.position?.end.line
+        ? workspaceFile(children) : undefined;
+      return path
+        ? <FileCode file={path} openFile={openFile} {...props}>{children}</FileCode>
+        : <code {...props}>{children}</code>;
+    },
+    a: ({ href, children }) => {
+      const path = href ? workspaceFile(href) : undefined;
+      if (path) return <OpenWorkspacePath file={path} open={openFile} />;
+      return href ? <a href={href} target="_blank" rel="noopener noreferrer">
+        <InsideLink.Provider value={true}>{children}</InsideLink.Provider>
+      </a> : <span>{children}</span>;
+    },
+  } : components;
   return <div className="markdown-body">
     <Markdown skipHtml remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} urlTransform={(url, attribute) =>
-      attribute === "href" && /^https?:\/\//i.test(url) ? url : undefined
-    } components={components}>{text}</Markdown>
+      attribute === "href" && (/^https?:\/\//i.test(url) || (openFile && workspaceFile(url))) ? url : undefined
+    } components={fileComponents}>{text}</Markdown>
   </div>;
 });

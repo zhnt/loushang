@@ -46,6 +46,7 @@
     "title": "Choose a direction",
     "notes": "Additional notes (optional)",
     "confirm": "Confirm choice",
+    "selected": "Selected",
     "accepted": "Answer accepted. Waiting for the Session to update.",
     "unknown": "The answer outcome is unknown. Your selection is preserved.",
     "rejected": "The answer was not accepted. Your selection is preserved.",

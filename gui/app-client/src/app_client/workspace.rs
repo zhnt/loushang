@@ -13,6 +13,10 @@ pub enum WorkspaceRequest<'a> {
     Create(&'a str),
     Register(&'a str),
     Open(&'a str),
+    Inspect {
+        path: &'a str,
+        session: Option<&'a str>,
+    },
     Unregister(&'a str),
     AllocateTemporary,
 }
@@ -24,6 +28,7 @@ impl<'a> WorkspaceRequest<'a> {
             Self::Projects => ("projects", None),
             Self::Create(path) => ("create", Some(path)),
             Self::Register(path) => ("register", Some(path)),
+            Self::Inspect { path, .. } => ("inspect", Some(path)),
             Self::Open(path) => ("open", Some(path)),
             Self::Unregister(path) => ("unregister", Some(path)),
             Self::AllocateTemporary => ("allocate-temporary", None),
@@ -44,6 +49,71 @@ pub struct WorkspaceInfo {
     pub path: String,
     pub scope: WorkspaceScope,
     pub scope_fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection: Option<WorkspaceInspection>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceInspection {
+    git: Option<GitInspection>,
+    changes: Vec<GitChange>,
+    toolchains: Vec<Toolchain>,
+    limited: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    staged_diff: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unstaged_diff: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    session_changes: Option<Vec<SessionChange>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    session_diff: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct GitInspection {
+    root: String,
+    branch: String,
+    commit: String,
+    worktree: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct GitChange {
+    path: String,
+    kind: ChangeKind,
+    added: Option<u32>,
+    removed: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ChangeKind {
+    Staged,
+    Unstaged,
+    Untracked,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SessionChange {
+    path: String,
+    created: bool,
+    added: Option<u32>,
+    removed: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Toolchain {
+    name: String,
+    declared: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    detected: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    environment: Option<String>,
 }
 
 pub enum WorkspaceResult {
@@ -68,13 +138,17 @@ pub(super) fn workspace_request<R: Read, W: Write>(
     channel: &mut Channel<R, W>,
     operation: WorkspaceRequest<'_>,
 ) -> Result<WorkspaceResult, ()> {
+    let mut fields = match &operation {
+        WorkspaceRequest::Inspect {
+            session: Some(session),
+            ..
+        } => json!({"sessionId": session}),
+        _ => json!({}),
+    };
     let (action, path) = operation.wire_fields();
-    let response = request(
-        channel,
-        "workspace/request",
-        "1",
-        json!({"action": action, "path": path}),
-    )?;
+    fields["action"] = json!(action);
+    fields["path"] = json!(path);
+    let response = request(channel, "workspace/request", "1", fields)?;
     if let Some(code) = decode_app_error(&response.result_type, &response.result)? {
         return Ok(WorkspaceResult::Rejected(code));
     }

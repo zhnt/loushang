@@ -270,8 +270,26 @@ impl Backend {
                         .map_err(|_| client.failure_code())?,
                 );
             }
+            "inspect" => {
+                let path = field(request, "path")?;
+                let inspect = WorkspaceRequest::Inspect {
+                    path,
+                    session: request.get("sessionId").and_then(Value::as_str),
+                };
+                return match workspaces(target, inspect) {
+                    Ok(items) => Ok(json!({"workspaces": items})),
+                    Err(code) if matches!(code.as_str(), "connection_failed" | "invalid_request" | "operation_unavailable") => {
+                        match workspaces(target, WorkspaceRequest::Projects) {
+                            Ok(items) if items.iter().any(|item| item.path == path) => Err("workspace_inspection_unavailable".into()),
+                            _ => Err(code),
+                        }
+                    }
+                    Err(code) => Err(code),
+                };
+            }
             "open" => return self.open(target, field(request, "path")?),
             "list" => WorkspaceRequest::List,
+            "projects" => WorkspaceRequest::Projects,
             "create" => WorkspaceRequest::Create(workspace_creation_path(request)?),
             "register" => WorkspaceRequest::Register(field(request, "path")?),
             "unregister" => WorkspaceRequest::Unregister(field(request, "path")?),

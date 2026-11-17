@@ -195,7 +195,8 @@ def encode_response(response: AppResponseV1) -> bytes:
     value: _Object
     if type(result) is WorkspaceResultV1:
         result_type, value = "workspaces", {"workspaces": [
-            {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint}
+            {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint,
+             **({"inspection": item.inspection} if item.inspection is not None else {})}
             for item in result.workspaces]}
     elif type(result) is AckV1:
         result_type, value = "ack", {}
@@ -268,10 +269,13 @@ def decode_response(payload: bytes) -> AppResponseV1:
             raise InvalidAppMessageError()
         workspaces = []
         for row in rows:
-            item = _object(row, {"path", "scope", "scopeFingerprint"})
+            fields = {"path", "scope", "scopeFingerprint"}
+            if isinstance(row, dict) and "inspection" in row:
+                fields.add("inspection")
+            item = _object(row, fields)
             workspaces.append(_construct(WorkspaceInfoV1, path=_string(item["path"]),
                 scope=_enum(SessionScopeV1, item["scope"]),
-                scope_fingerprint=_string(item["scopeFingerprint"])))
+                scope_fingerprint=_string(item["scopeFingerprint"]), inspection=item.get("inspection")))
         result = _construct(WorkspaceResultV1, workspaces=tuple(workspaces))
     elif result_type == "ack":
         _object(raw, set())
@@ -411,7 +415,8 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
     operation = request.operation
     if operation is AppOperationV1.WORKSPACE:
         workspace = cast(WorkspaceRequestV1, payload)
-        return {"action": workspace.action, "path": workspace.path}
+        return {"action": workspace.action, "path": workspace.path,
+                **({"sessionId": workspace.session_id} if workspace.session_id is not None else {})}
     if operation is AppOperationV1.WORKSPACE_MODELS:
         return {"path": cast(WorkspaceModelsRequestV1, payload).path}
     if operation is AppOperationV1.MUX_CREATE:
@@ -493,9 +498,12 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
 
 def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
     if operation is AppOperationV1.WORKSPACE:
-        value = _object(raw, {"action", "path"})
+        fields = {"action", "path"}
+        if isinstance(raw, dict) and "sessionId" in raw:
+            fields.add("sessionId")
+        value = _object(raw, fields)
         return _construct(WorkspaceRequestV1, action=_string(value["action"]),
-                          path=_optional_string(value["path"]))
+                          path=_optional_string(value["path"]), session_id=_optional_string(value.get("sessionId")))
     if operation is AppOperationV1.WORKSPACE_MODELS:
         value = _object(raw, {"path"})
         return _construct(WorkspaceModelsRequestV1, path=_optional_string(value["path"]))

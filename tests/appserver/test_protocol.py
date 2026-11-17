@@ -345,7 +345,7 @@ def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
     ('list', None), ('projects', None), ('allocate-temporary', None),
     ('register', '/project'), ('open', '/project'), ('unregister', '/project'),
     ('register', r'C:\Workspace A'), ('open', 'C:/Workspace A'),
-    ('create', '/new-project'), ('create', 'C:/New Project'),
+    ('inspect', '/project'), ('create', '/new-project'), ('create', 'C:/New Project'),
 ])
 def test_workspace_requests_roundtrip(action, path):
     request = AppRequestV1('request-1', AppOperationV1.WORKSPACE, WorkspaceRequestV1(action, path))
@@ -374,6 +374,19 @@ def test_workspace_request_rejects_client_paths_for_host_owned_actions(action):
 def test_workspace_results_preserve_host_path_and_admitted_scope(path):
     response = AppResponseV1('request-1', WorkspaceResultV1((WorkspaceInfoV1(path, SessionScopeV1.CWD, 'a' * 64),)))
     assert decode_response(encode_response(response)) == response
+
+
+def test_workspace_inspection_roundtrips_without_changing_directory_entries():
+    request = AppRequestV1("request-1", AppOperationV1.WORKSPACE,
+                           WorkspaceRequestV1("inspect", "/project", "session-1"))
+    assert decode_request(encode_request(request)) == request
+    scope = SessionScopeV1.CWD
+    ordinary = WorkspaceInfoV1("/project", scope, "a" * 64)
+    report = {"git": None, "changes": [], "toolchains": [], "limited": False}
+    inspected = WorkspaceInfoV1("/project", scope, "a" * 64, report)
+    response = AppResponseV1("request-1", WorkspaceResultV1((inspected,)))
+    assert decode_response(encode_response(response)) == response
+    assert b'"inspection"' not in encode_response(AppResponseV1("request-1", WorkspaceResultV1((ordinary,))))
 
 
 @pytest.mark.parametrize('path', ['relative', '', '/bad\0path', 'C:relative', r'\relative', r'\\server\share'])
