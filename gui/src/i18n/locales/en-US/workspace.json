@@ -119,5 +119,30 @@
     "selectWorkspace": "Select a workspace",
     "addWorkspace": "Register and open",
     "workspaceUnavailable": "Unable to open this workspace."
+  },
+  "inspection": {
+    "openFolder": "Open folder",
+    "openFailed": "Could not open the workspace path. Check that it still exists and is available on this device.",
+    "refresh": "Refresh",
+    "failed": "Workspace information is unavailable.",
+    "loading": "Reading workspace…",
+    "sessionChanges": "Session file changes",
+    "sessionBasis": "Recorded write and edit operations in this session.",
+    "created": "Created",
+    "modified": "Modified",
+    "noBaseline": "This workspace has no available Git baseline for comparison.",
+    "changedFiles_one": "1 changed file",
+    "changedFiles_other": "{{count}} changed files",
+    "clean": "No pending changes",
+    "limited": "Only part of the changes could be loaded.",
+    "staged": "Staged",
+    "unstaged": "Unstaged",
+    "untracked": "Untracked",
+    "showDiff": "Show diff",
+    "branch": "Branch",
+    "detached": "Detached HEAD",
+    "declared": "Project requirement",
+    "detected": "Detected version",
+    "virtualEnv": "Virtual environment"
   }
 }

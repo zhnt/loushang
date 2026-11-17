@@ -131,6 +131,16 @@ async fn dispatch(routed: Routed) -> Result<Value> {
                 backend.clone()
             };
             let creating_workspace = body["operation"] == "workspace" && body["action"] == "create";
+            if body["operation"] == "open-project-path" {
+                if tunnel.is_some() || id != "local" {
+                    return Err("operation_unavailable");
+                }
+                return tauri::async_runtime::spawn_blocking(move || {
+                    open_project_path(&backend, &body)
+                })
+                .await
+                .map_err(|_| SETTINGS_ERROR)?;
+            }
             let mut value = tauri::async_runtime::spawn_blocking(move || backend.call(body))
                 .await
                 .map_err(|_| SETTINGS_ERROR)?
@@ -146,6 +156,118 @@ async fn dispatch(routed: Routed) -> Result<Value> {
     }
 }
 
+fn open_project_path(backend: &Backend, body: &Value) -> Result<Value> {
+    let workspace = body["workspace"].as_str().ok_or("invalid_request")?;
+    let fingerprint = body["fingerprint"].as_str().ok_or("invalid_request")?;
+    let projects = backend
+        .call(json!({"operation":"workspace","action":"projects"}))
+        .map_err(|_| "connection_failed")?;
+    let admitted = projects["workspaces"].as_array().is_some_and(|rows| {
+        rows.iter().any(|row| {
+            row["path"] == workspace
+                && row["scope"] == "cwd"
+                && row["scopeFingerprint"] == fingerprint
+        })
+    });
+    if !admitted {
+        return Err("workspace_unavailable");
+    }
+    let relative = match body.get("file") {
+        Some(Value::String(file)) => Some(file.as_str()),
+        None => None,
+        _ => return Err("invalid_request"),
+    };
+    let path = resolve_project_path(Path::new(workspace), relative)?;
+    open_in_desktop(&path)?;
+    Ok(json!({}))
+}
+
+fn resolve_project_path(workspace: &Path, relative: Option<&str>) -> Result<PathBuf> {
+    let root = workspace.canonicalize().map_err(|_| "not_found")?;
+    if !root.is_dir() {
+        return Err("not_found");
+    }
+    if let Some(relative) = relative {
+        use std::path::Component;
+        let relative = Path::new(relative);
+        if !relative
+            .components()
+            .all(|part| matches!(part, Component::Normal(_)))
+        {
+            return Err("invalid_request");
+        }
+        let file = root
+            .join(relative)
+            .canonicalize()
+            .map_err(|_| "not_found")?;
+        let supported = file
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| {
+                [
+                    "html", "htm", "pdf", "png", "jpg", "jpeg", "webp", "txt", "md",
+                ]
+                .iter()
+                .any(|extension| value.eq_ignore_ascii_case(extension))
+            });
+        if !file.starts_with(&root) || !file.is_file() || !supported {
+            return Err("operation_unavailable");
+        }
+        Ok(file)
+    } else {
+        Ok(root)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn open_in_desktop(path: &Path) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+
+    let mut path: Vec<u16> = path.as_os_str().encode_wide().collect();
+    let verbatim_prefix = [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
+    // ShellExecute expects the usual drive-path spelling for shell associations.
+    if path.starts_with(&verbatim_prefix) && path.get(5) == Some(&(b':' as u16)) {
+        path.drain(..verbatim_prefix.len());
+    }
+    path.push(0);
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            PCWSTR(path.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+        )
+    };
+    if result.0 as isize <= 32 {
+        Err("open_failed")
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn open_in_desktop(path: &Path) -> Result<()> {
+    use gtk::gio::{self, prelude::FileExt};
+
+    let uri = gio::File::for_path(path).uri();
+    gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>)
+        .map_err(|_| "open_failed")
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+fn open_in_desktop(path: &Path) -> Result<()> {
+    let status = std::process::Command::new("open").arg(path).status();
+    if status.is_ok_and(|status| status.success()) {
+        Ok(())
+    } else {
+        Err("open_failed")
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn client_settings(app: AppHandle, request: Request) -> Result<Value> {
     let root = application_root(&app)?;
@@ -158,6 +280,38 @@ pub(crate) async fn client_settings(app: AppHandle, request: Request) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_file_open_resolves_supported_files_and_rejects_traversal() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("workspace");
+        std::fs::create_dir(&project).unwrap();
+        let doc = project.join("index.html");
+        std::fs::write(&doc, "<h1>Dashboard</h1>").unwrap();
+        let outside = root.path().join("external.html");
+        std::fs::write(&outside, "<h1>Outside</h1>").unwrap();
+
+        assert_eq!(
+            resolve_project_path(&project, Some("index.html")).unwrap(),
+            doc.canonicalize().unwrap()
+        );
+        assert_eq!(
+            resolve_project_path(&project, Some("../external.html")),
+            Err("invalid_request")
+        );
+        assert_eq!(
+            resolve_project_path(&project, Some("missing.html")),
+            Err("not_found")
+        );
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(outside, project.join("link.html")).unwrap();
+            assert_eq!(
+                resolve_project_path(&project, Some("link.html")),
+                Err("operation_unavailable")
+            );
+        }
+    }
 
     #[test]
     fn local_environment_does_not_start_a_web_listener() {

@@ -119,5 +119,30 @@
     "selectWorkspace": "选择工作空间",
     "addWorkspace": "登记并打开",
     "workspaceUnavailable": "无法打开此工作空间。"
+  },
+  "inspection": {
+    "openFolder": "打开文件夹",
+    "openFailed": "无法打开该工作区路径，请确认它仍存在且可在本机访问。",
+    "refresh": "刷新",
+    "failed": "无法读取工作区信息。",
+    "loading": "正在读取工作区…",
+    "sessionChanges": "会话文件变更",
+    "sessionBasis": "来自本会话记录的文件写入与编辑操作。",
+    "created": "已创建",
+    "modified": "已修改",
+    "noBaseline": "当前工作区没有可用于比较的 Git 基准。",
+    "changedFiles_one": "{{count}} 个变更文件",
+    "changedFiles_other": "{{count}} 个变更文件",
+    "clean": "没有待审阅的变更",
+    "limited": "只加载了部分变更。",
+    "staged": "已暂存",
+    "unstaged": "未暂存",
+    "untracked": "未跟踪",
+    "showDiff": "查看差异",
+    "branch": "分支",
+    "detached": "分离的 HEAD",
+    "declared": "项目要求",
+    "detected": "检测到的版本",
+    "virtualEnv": "虚拟环境"
   }
 }

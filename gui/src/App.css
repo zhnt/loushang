@@ -541,3 +541,69 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .session-delete-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
 .session-delete-actions button { padding: 6px 14px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--sidebar); color: inherit; }
 .session-delete-actions button:last-child { color: var(--red); background: var(--red-soft); }
+
+.choice-receipt {
+  margin-block: .5rem;
+  padding: .35rem .7rem;
+  border-inline-start: 2px solid currentColor;
+  max-width: 100%;
+  opacity: .82;
+}
+
+.choice-receipt p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.choice-receipt summary,
+.workspace-inspection summary {
+  cursor: pointer;
+}
+
+.workspace-open {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.inspection-refresh {
+  align-self: start;
+}
+
+.inspection-files {
+  list-style: none;
+  padding: 0;
+}
+
+.inspection-files li {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  padding-block: .3rem;
+}
+
+.inspection-files code {
+  overflow-wrap: anywhere;
+}
+
+.inspection-stat {
+  display: inline-flex;
+  gap: .45rem;
+  white-space: nowrap;
+}
+
+.inspection-diff {
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.inspection-stat span:first-child,
+.inspection-diff .added {
+  color: light-dark(#17643d, #88cba2);
+}
+
+.inspection-stat span:last-child,
+.inspection-diff .removed {
+  color: light-dark(#a53436, #f29b9d);
+}

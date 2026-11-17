@@ -270,6 +270,10 @@ impl Backend {
                         .map_err(|_| client.failure_code())?,
                 );
             }
+            "inspect" => WorkspaceRequest::Inspect {
+                path: field(request, "path")?,
+                session: request.get("sessionId").and_then(Value::as_str),
+            },
             "open" => return self.open(target, field(request, "path")?),
             "list" => WorkspaceRequest::List,
             "create" => WorkspaceRequest::Create(workspace_creation_path(request)?),

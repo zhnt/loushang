@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -752,10 +753,15 @@ class AttachmentEventsV1:
 class WorkspaceRequestV1:
     action: str
     path: str | None = None
+    session_id: str | None = None
 
     def __post_init__(self) -> None:
-        if self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary"}:
+        if self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary", "inspect"}:
             raise ValueError("invalid workspace action")
+        if self.session_id is not None:
+            if self.action != "inspect":
+                raise ValueError("invalid workspace inspection session")
+            _require_opaque_id(self.session_id, field="session_id")
         if self.action in {"list", "projects", "allocate-temporary"}:
             if self.path is not None:
                 raise ValueError("workspace action takes no path")
@@ -778,11 +784,17 @@ class WorkspaceInfoV1:
     path: str
     scope: SessionScopeV1
     scope_fingerprint: str
+    inspection: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         WorkspaceRequestV1("open", self.path)
         if type(self.scope) is not SessionScopeV1 or type(self.scope_fingerprint) is not str or not _FINGERPRINT.fullmatch(self.scope_fingerprint):
             raise ValueError("invalid workspace scope")
+        if self.inspection is not None and (
+            type(self.inspection) is not dict
+            or len(json.dumps(self.inspection, ensure_ascii=False, allow_nan=False).encode()) > 48_000
+        ):
+            raise ValueError("invalid workspace inspection")
 
 
 @dataclass(frozen=True, slots=True)
