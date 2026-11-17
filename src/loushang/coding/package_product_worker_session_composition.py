@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from functools import partial
 
 from loushang.harness.capabilities.contracts import (
-    CapabilityDefinition,
     CapabilityRequirement,
 )
 from loushang.harness.capabilities.provider_admission import (
@@ -155,42 +154,14 @@ def prepare_coding_product_worker_session_inputs(
     )
 
 
-def compose_coding_product_worker_with_ordinary_session(
-    *,
-    ordinary: SessionCapabilityCompositionInputs,
-    worker: SessionCapabilityCompositionInputs,
-    definitions: tuple[CapabilityDefinition, ...],
-    workspace_binding: CapabilityBundleProviderBinding,
-) -> SessionCapabilityCompositionInputs:
-    """Recompile one Product graph containing ordinary and selected Worker facts.
-
-    The Worker-only query graph cannot be spliced into an ordinary Session. This
-    function retains both sets of owner-issued admissions, resolves their
-    Providers together, and returns requests bound to that single resolution.
-    It does not activate a Worker or authorize an ordinary Session route.
-    """
-
-    return _WORKER_SESSION_COMPOSITION.compose(
-        ordinary=ordinary,
-        worker=worker,
-        definitions=definitions,
-        workspace_binding=workspace_binding,
-    )
+compose_coding_product_worker_with_ordinary_session = (
+    _WORKER_SESSION_COMPOSITION.compose
+)
 
 
-def validate_coding_product_worker_ordinary_session_inputs(
-    *,
-    ordinary: SessionCapabilityCompositionInputs,
-    combined: SessionCapabilityCompositionInputs,
-    workspace_binding: CapabilityBundleProviderBinding,
-) -> None:
-    """Require one Worker addition while retaining every ordinary Product fact."""
-
-    _WORKER_SESSION_COMPOSITION.validate(
-        ordinary=ordinary,
-        combined=combined,
-        workspace_binding=workspace_binding,
-    )
+validate_coding_product_worker_ordinary_session_inputs = (
+    _WORKER_SESSION_COMPOSITION.validate
+)
 
 
 @dataclass(frozen=True, slots=True)

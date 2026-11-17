@@ -484,6 +484,12 @@ CodingWorkerOptInJournal.change 的单次 super 转调也退出，直接继承�
 
 本批 Coding −30、Harness +10，系统生产净 −20行；Hosting／其他生产／测试0，文档单列。累计 Coding −6,460、Harness +9,474、系统生产仍 +3,014行；C07余13,806行，距过半退出仍差3,674行。完整 decoder 迁移与原有写机制的重复转调删除分别计数，不将旧 H 操作再次算作迁移收益；全组与最终完整候选验证未完成。
 
+## Session 图组合直接绑定已有 owner
+
+普通 Session 的 compose／validate 两个入口直接绑定原不可变配置的 WorkerSessionComposition 方法。实际参数签名、解析后的类型注解和操作文档均与原入口相同；既有61项 composition／handoff／Resume 测试及五源 mypy 通过，四条旧全局函数 pickle 路由仍可加载。原 Code 数据／政策／其他声明、H 实现及测试均不变。当前执行代理在已授权职责内接受这两个内部 facade 的 module／qualname、callable 类型、错误参数绑定前缀及新 pickle 发出格式变化；固定 receiver 不承诺调用途中替换私有配置对象后重新绑定。
+
+本批为已共享机制的重复转发删除，不计为新事务迁移。Coding −29、Harness／Hosting／其他生产／测试0，系统生产 −29行；文档单列。累计 Coding −6,489、Harness +9,474、系统生产仍 +2,985行；C07余13,777行，距过半退出仍差3,645行。整组多数退出和最新完整候选验证仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
