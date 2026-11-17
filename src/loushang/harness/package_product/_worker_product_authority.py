@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
@@ -101,6 +101,152 @@ MaterialT = TypeVar("MaterialT", bound=ProductWorkerNativeLaunchMaterialFacts)
 MaterialCo = TypeVar(
     "MaterialCo", bound=ProductWorkerNativeLaunchMaterialFacts, covariant=True
 )
+
+
+def _derive_product_selected_worker_policy(
+    *,
+    runtime: PackageProductRuntimeBindingV1,
+    product_policy: PackageProductLocalWheelPolicy,
+    selected: PackageProductSelectedPluginManifestV1,
+    session_id: str,
+    product_runtime_id: str,
+    opt_in: ProductWorkerOptInFacts | None,
+    native_closure: ProductWorkerNativeClosureFacts | None = None,
+    session_discovery: SessionDiscoveryMetadata | None = None,
+    product_id: str,
+    source_trust_class: str,
+    opt_in_type: type[ProductWorkerOptInFacts],
+    native_closure_type: type[ProductWorkerNativeClosureFacts],
+    native_profiles: Mapping[str, str],
+    session_scope_id: Callable[[str], str],
+    session_fingerprint: Callable[[SessionDiscoveryMetadata], str],
+    activation_policy: Callable[..., ProductWorkerActivationPolicyV1],
+    error_type: type[RuntimeError],
+    error_prefix: str,
+) -> ProductWorkerActivationPolicyV1 | None:
+    """Recheck Product selection and derive one explicit, authority-free policy."""
+    if opt_in is None:
+        return None
+    if (
+        not isinstance(runtime, PackageProductRuntimeBindingV1)
+        or not isinstance(product_policy, PackageProductLocalWheelPolicy)
+        or (not isinstance(selected, PackageProductSelectedPluginManifestV1))
+        or (not isinstance(opt_in, opt_in_type))
+        or (not isinstance(native_closure, native_closure_type))
+        or (opt_in.native_platform != native_closure.native_platform)
+        or (runtime.product_id != product_id)
+        or (runtime.session_id != session_id)
+        or (runtime.product_runtime_id != product_runtime_id)
+        or (product_policy.product_id != product_id)
+        or (selected.snapshot.installation_key.product_id != product_id)
+        or (
+            selected.snapshot.installation_key.scope_id
+            != product_policy.project_scope_id
+        )
+        or (selected.snapshot.installation_key.plugin_id != opt_in.plugin_id)
+        or (selected.snapshot.root_ref.artifact_digest != opt_in.artifact_digest)
+        or (not isinstance(session_id, str))
+        or (not session_id)
+        or (not isinstance(product_runtime_id, str))
+        or (not product_runtime_id)
+    ):
+        raise error_type(error_prefix + "product_selection_invalid")
+    trust = selected.source_trust_snapshot
+    if selected.snapshot.committed_record.closure_lock.node_count != 1:
+        raise error_type(error_prefix + "dependency_activation_unsupported")
+    if (
+        trust is None
+        or not trust.trusted
+        or trust.source_trust_class != source_trust_class
+        or (trust.source_trust_policy_revision != product_policy.authority_revision)
+    ):
+        raise error_type(error_prefix + "product_trust_changed")
+    bindings = tuple(
+        (
+            binding
+            for binding in product_policy.bindings
+            if binding.plugin_id == opt_in.plugin_id
+            and binding.source_identity
+            == selected.snapshot.package_revision.package_source_identity
+            and (binding.artifact_digest == opt_in.artifact_digest)
+            and (binding.source_trust_class == source_trust_class)
+        )
+    )
+    if len(bindings) != 1:
+        raise error_type(error_prefix + "product_binding_changed")
+    admitted = bindings[0].worker_admission
+    if (
+        admitted is None
+        or admitted.contribution_id != opt_in.contribution_id
+        or admitted.owner_id != opt_in.owner_id
+        or (admitted.native_platform != opt_in.native_platform)
+    ):
+        raise error_type(error_prefix + "product_binding_changed")
+    candidate = verify_product_selected_worker_candidate(
+        selected,
+        contribution_id=opt_in.contribution_id,
+        native_platform=admitted.native_platform,
+    )
+    if candidate.owner_id != opt_in.owner_id:
+        raise error_type(error_prefix + "product_binding_changed")
+    session_route: Literal["new", "selected"]
+    if session_discovery is None:
+        session_route = "new"
+        locator_fingerprint = None
+        locator_revision = "new-session-v1"
+    else:
+        if (
+            not isinstance(session_discovery, SessionDiscoveryMetadata)
+            or not session_discovery.resumable
+            or session_discovery.conflicts
+            or (session_discovery.locator.conversation_id != session_id)
+        ):
+            raise error_type(error_prefix + "session_invalid")
+        session_route = "selected"
+        locator_fingerprint = session_fingerprint(session_discovery)
+        locator_revision = session_discovery.locator.revision
+    runtime.assert_selected_plugin_manifest_current(selected)
+    native_profile_id = native_profiles[opt_in.native_platform]
+    closure = ProductWorkerActivationPolicyV1.native_policy_closure_fingerprint(
+        native_profile_catalog_revision=native_closure.native_profile_catalog_revision,
+        native_profile_id=native_profile_id,
+        payload_sha256=candidate.executable_digest,
+        containment_launcher_sha256=native_closure.containment_launcher_digest,
+        containment_profile_sha256=native_closure.containment_profile_digest,
+    )
+    policy_revision = sha256(
+        canonical_json_bytes(
+            {
+                "packagePolicy": product_policy.authority_revision,
+                "optIn": opt_in.to_dict(),
+                "nativeClosure": native_closure.to_dict(),
+            }
+        )
+    ).hexdigest()
+    return activation_policy(
+        product_runtime_id=product_runtime_id,
+        product_scope_id=session_scope_id(session_id),
+        session_id=session_id,
+        session_route=session_route,
+        selected_locator_fingerprint=locator_fingerprint,
+        selected_locator_revision=locator_revision,
+        plugin_id=candidate.plugin_id,
+        plugin_revision_digest=selected.snapshot.root_ref.artifact_digest,
+        contribution_id=candidate.contribution_id,
+        reservation_fingerprint=candidate.reservation_fingerprint,
+        declaration_fingerprint=candidate.declaration_fingerprint,
+        worker_configuration_fingerprint=candidate.worker_configuration_fingerprint,
+        declared_required=candidate.declared_required,
+        effective_required=candidate.declared_required or opt_in.require_worker,
+        allowed_contribution_ids=(candidate.contribution_id,),
+        owner_selection_generation=opt_in.owner_selection_generation,
+        native_profile_id=native_profile_id,
+        native_profile_catalog_revision=native_closure.native_profile_catalog_revision,
+        allowed_native_profile_ids=(native_profile_id,),
+        expected_native_policy_closure_fingerprint=closure,
+        product_policy_revision=policy_revision,
+        kill_switch_generation=opt_in.kill_switch_generation,
+    )
 
 
 class ProductNativeClosureReadPort(Protocol):

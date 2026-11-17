@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery and Provider candidate/Host-input slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
+- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery, Provider candidate/Host-input, opt-in and selected-policy slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -230,6 +230,20 @@ POSIX current 仍只调用原 journal；allow 保持 writable GC→候选／批�
 本批 Coding −93、Harness +123、Hosting／其他生产 0，系统生产 +30 行；累计 Coding −5,462、Harness +8,335、系统生产 +2,873 行。测试仍 +70 行，文档单列；C07 剩余14,804行，距过半退出仍差4,672行。新增成本来自共享 authority 的显式类型／平台绑定及保留的公开名义入口，未将其称为系统净删减。
 
 既有 candidate、两平台批准／V2、CLI snapshot 和 import／C50／C51／C54 回归336 passed、63 skipped、1 deselected；未改测试、断言、参数、fixtures 或门禁。累计80个源文件 mypy、Ruff、9项文档不变量及生成依赖事实检查通过；累计50份 Coding 公开契约／名义字段检查通过。九个原完整执行体、构造及 Windows scope 的源码对照一致；对两个真实 Code owner Profile 的640组规划观察，与迁移前完整 planner 的 JSON、原始 protocol4／5 pickle、错误类型／消息／code／异常链一致，其中474组错误、6组返回原对象。该探针使用受控 binding／admission 事实，不执行 native 操作，不替代原生 Windows／H6 验证。整组112文件处置、过半目标和完整正确基线交付检查仍未完成。
+
+## 完整选中 Worker 策略证明批次
+
+实现 owner 接受原策略派生完整机制归现有 Package Product receipt／activation authority 组件。它按原顺序执行 runtime／selected／opt-in／native 名义及身份关联→依赖闭合→trust→绑定唯一性及 admission→原候选验证→Session locator→runtime currentness→native closure 与 policy revision 指纹→原 ActivationPolicy 构造；沿用原候选验证和 authority-free policy 值，没有额外读取、发布、激活或清理效果。
+
+Coding 保留 Product identity、信任类别、原名义 opt-in／native 类型、原生 Profile 映射、Session scope／指纹规则，以及 enabled、allowed products、requested owner、no-fallback 的明确构造政策。这些以固定 pure policy 绑定接入完整机制，不提供步骤／字段读取回调，不新增 Profile 数据类、注册器、管理器或执行状态。公开函数及其默认参数／返回类型、两原 nominal DTO 的字段／slots／方法、scope 算法不变。两平台 receipt authority 原来的真实政策调用已接入；原来它们就共用一个 Code 策略函数，此次只计一次机制迁移，不声称删除两份策略实现。
+
+本批 Coding −98、Harness +154、Hosting／其他生产 0，系统生产 +56 行；累计 Coding −5,560、Harness +8,489、系统生产 +2,929 行。测试仍 +70 行，文档单列；C07 剩余14,706行，距过半退出还差4,574行。新增成本来自通用函数的显式政策边界、零状态事实方法声明和必要兼容入口；仍无系统净删减收益，不把固定政策绑定或已经共享的候选验证重计为整链收益。
+
+完整原执行体经明确 Product／错误／scope／指纹及固定 constructor policy 绑定后 AST 一致；两原 Code DTO、scope 函数及其余既有 Package Product 程序 AST 保持原样。672组原完整函数与当前公开入口对照覆盖两平台、requiredness、新建／selected route、28种输入及正常／候选失败／currentness失败，观察640组错误、8个实际 ActivationPolicy，JSON、原始 protocol4／5 pickle、异常图及效果顺序一致；使用真实名义 envelope 和受控嵌套事实／候选效果，不执行物理或 native 操作。首个探针因 fixture 把只读 authority_revision 当可写字段而失败，已改用真实属性和完整字段；未修改 Product 掩盖该 fixture 错误。原生 Windows／H6 及整组交付验证仍未执行。
+
+首轮既有回归326 passed、63 skipped、1 deselected、1 failed；唯一失败为 C51 精确 consumer 清单，候选模块新增了 activation policy 依赖。完整机制已调整到原本持有该依赖的 receipt／activation authority，继续复用原 candidate verifier；未扩大白名单或修改测试。移动调用点时曾误删 partial 的函数实参，fresh-import 对照立即失败，已补回并加强绑定检查，最终672组对照复验通过。原候选 owner 的通用程序保持原样，不保留两份机制。
+
+最终 owner 调整后的真实 Product 事务、Windows receipt base 与 import／C50／C51／C54 为212 passed；与首轮覆盖有交叠，不累加。累计81源 mypy 通过，最终调整的3个源复核通过；Ruff、51份 Coding 公开契约／字段及原测试入口／断言／用户改动哈希检查通过。9项文档不变量和生成依赖事实通过。已重新生成全部112文件当前行数／类基类／静态引用事实；它不是112份职责已验收的证明，策略文件剩余通用 DTO 校验也明确列为未完成项。完整正确 PR 基线的 check-changed 仍须在交付前执行，当前只核对了适用检查计划。
 
 ## 当前验证与限制
 

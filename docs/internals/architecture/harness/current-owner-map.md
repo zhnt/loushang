@@ -88,6 +88,15 @@ Product/trust construction, nominal values/errors, requiredness policy and publi
 entries. This moves the previously shared Code planner once; it does not claim
 two duplicate planners were removed. No second journal or lifecycle owner exists.
 
+Package Product's existing receipt/activation authority component also owns the
+complete authority-free policy derivation: selected/runtime/opt-in correlation,
+trust and binding proof, native candidate verification, Session locator correlation,
+currentness recheck and exact policy/native closure fingerprints. Coding binds its
+actual nominal input types, Product/trust identity, native profiles, Session scope
+and fingerprint rules, and explicit enabled/owner/no-fallback constructor policy.
+Both platform receipt authorities continue through the same public Coding entry.
+No activation, native preparation or cleanup authority is added by this value.
+
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
 including POSIX/Windows file custody and strict decoding after cleanup. It directly
 uses Resources' existing file consumer. Coding retains Source policy, original

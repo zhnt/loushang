@@ -63,6 +63,11 @@ class ProductWorkerOptInFacts:
     artifact_digest: str
     native_platform: str
     require_worker: bool
+    owner_selection_generation: int
+    kill_switch_generation: int
+
+    def to_dict(self) -> dict[str, object]:
+        raise NotImplementedError
 
 
 class ProductWorkerNativeClosureFacts:
@@ -71,6 +76,9 @@ class ProductWorkerNativeClosureFacts:
     native_profile_catalog_revision: str
     containment_launcher_digest: str
     containment_profile_digest: str
+
+    def to_dict(self) -> dict[str, object]:
+        raise NotImplementedError
 
 
 class ProductWorkerNativeLaunchMaterialFacts:
