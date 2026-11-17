@@ -299,6 +299,18 @@ Scoped mypy 初次发现公共 Windows ctor 原有的 optional Session 值不再
 
 既有五流、launch intent、四种退休／stage review 及原恢复值兼容为136 passed，8源 mypy、Ruff及57份 Code公开声明／原测试入口／断言／用户改动哈希检查通过。宏展开一处共享前置校验后，五个完整 validator 模块 AST 与原样一致；两个 Code 模块除指定私有定义／import 外 AST 不变。冻结基线的18个实际值、36份原 protocol4／5 pickle 字节、16项错误、全部字段／dataclass 元数据／slots／公开签名／历史 wire 完全一致。原生 Windows／H6、全部112文件最终处置及整组交付检查仍未完成。
 
+## Resume 结算绑定归原 C5 组件
+
+现有 Worker product_activation 接管原绑定对象的完整通用构造／匹配、读取原 C5 snapshot 后的锁内绑定，以及持锁捕获 coordinator 后的原 C5 settlement 检查。原 Coding 公开类和构造／bind／require_current 签名保留，matches 从私有方法基类继承原签名。对象仍只有原 receipt、context、coordinator、RLock 四个字段；原 C5 Coordinator 是唯一实际状态／结算 owner，没有第二个绑定实例、账本、恢复器或生命周期管理器。Code 继续在原位置执行准确的 Coding v2 intent 类型、effect owner 集合及 parent-context 判断，保留原产品错误身份与入口。公开 enroll／seal 和其原失败工厂不变；原私有 _snapshot 薄转发退出，绑定在原读取点直接调用其唯一的固定 C5 命令。
+
+私有方法基类采用普通实例字典继承，公开 Code 类的原实例字典／weakref 布局、字段名／顺序、receipt/context 对象引用和 canonical RLock 类型不变；MRO 明确增加该私有基类。初始空 slots 草案被 mypy 指出不能写入原字典字段，已以原字典存储方式解决，未压制检查或增加字段容器。绑定原本因 RLock 不可 pickle，原公开类路径和相同 TypeError 保持；不宣称该活对象具有持久化契约。原记录／intent／context 的类和 C5 原程序未修改。
+
+首轮原 Resume／Coordinator／import／C50／C51／C54 为284 passed；最终字典基类及错误工厂调整后，直接受影响的原 Resume／C5 路线19 passed，覆盖有交叠不相加。最终两源 mypy、Ruff、58份 Coding 公开声明／字段、原测试入口／断言及用户改动哈希检查通过；10项既有文档检查和依赖事实 renderer 通过。构造／matches／锁内 bind／currentness 的完整旧程序经固定错误与原直接 snapshot 命令展开后 AST 一致，准确 Code intent 政策块及其他 Code／C5 原程序 AST 不变。
+
+9组原构造输入、72组原公开绑定行为对照（48组实际触发故障）及40次原／当前双线程竞争通过；比较字段／布局、公开签名、错误图、未知 parent、重复／换 owner 绑定、未知或过期 settlement、锁进入／退出失败及异常，竞争始终只有一个实际 owner 成功。使用真实 Code receipt／v2 attempt／context 与原错误类，C5 snapshot／settlement 为受控完整命令，锁和线程为真实 Python 对象，不替代平台原生恢复。外部探针首次因未加入工作树 tests 路径而导入失败，补齐探针路径后通过；未修改 Product 处理该探针环境错误。
+
+本批 Coding −45、Harness +73、Hosting／其他生产0，系统生产 +28 行；累计 Coding −5,782、Harness +8,823、系统生产仍 +3,041 行。测试仍 +70，文档单列。通用绑定完整方法与真实消费者归位，但新增兼容公开转发和明确错误边界仍有成本；不将其算作系统净删减。C07 剩余14,484行，距过半退出还差4,352行；全部112文件最终处置、原生 Windows／H6 和正确 PR 基线整组交付验证仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

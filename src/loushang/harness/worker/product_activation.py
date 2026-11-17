@@ -3291,6 +3291,79 @@ def _fingerprint(domain: str, document: Mapping[str, object]) -> str:
     return digest.hexdigest()
 
 
+class _WorkerResumeSettlementMethods:
+    """Methods on the same Product binding; the C5 coordinator owns settlement."""
+
+    def _initialize_settlement(
+        self,
+        *,
+        receipt: ProductWorkerActivationReceiptV1,
+        context: ResumeEffectParentContextV1,
+        invalid_inputs: str,
+    ) -> None:
+        if (
+            type(receipt) is not ProductWorkerActivationReceiptV1
+            or type(context) is not ResumeEffectParentContextV1
+            or context.product_id != receipt.policy.product_id
+            or context.session_id != receipt.policy.session_id
+            or context.owner_id != "harness.worker-activation"
+            or context.scope_digest
+            != ProductWorkerActivationCoordinator.resume_parent_scope_digest(
+                product_id=receipt.policy.product_id,
+                product_scope_id=receipt.policy.product_scope_id,
+            )
+            or context.contract_digest
+            != ProductWorkerActivationCoordinator.resume_parent_contract_digest_value()
+        ):
+            raise TypeError(invalid_inputs)
+        self._receipt = receipt
+        self._context = context
+        self._coordinator: ProductWorkerActivationCoordinator | None = None
+        self._lock = threading.RLock()
+
+    def matches(
+        self,
+        *,
+        receipt: ProductWorkerActivationReceiptV1,
+        context: ResumeEffectParentContextV1,
+    ) -> bool:
+        """Return whether one pending Host supplied the exact frozen inputs."""
+        return receipt == self._receipt and context == self._context
+
+    def _bind_settlement(
+        self,
+        coordinator: ProductWorkerActivationCoordinator,
+        *,
+        invalid_owner: str,
+        failure: Callable[[str], Exception],
+    ) -> None:
+        if not isinstance(coordinator, ProductWorkerActivationCoordinator):
+            raise TypeError(invalid_owner)
+        snapshot = ProductWorkerActivationCoordinator._resume_parent_if_known(
+            coordinator, self._context
+        )
+        if snapshot is None:
+            raise failure("parent_missing")
+        with self._lock:
+            if self._coordinator is not None and self._coordinator is not coordinator:
+                raise failure("settlement_owner_changed")
+            self._coordinator = coordinator
+
+    def _require_current_settlement(
+        self, *, failure: Callable[[str], Exception]
+    ) -> None:
+        with self._lock:
+            coordinator = self._coordinator
+        if coordinator is None:
+            raise failure("settlement_unknown")
+        ProductWorkerActivationCoordinator.require_resume_parent_settlement(
+            coordinator,
+            self._context,
+            receipt=self._receipt,
+            failure=failure,
+        )
+
+
 def _json_clone(value: Mapping[str, object] | None) -> dict[str, object]:
     if value is None:
         return {}

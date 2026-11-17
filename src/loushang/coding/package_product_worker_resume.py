@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from threading import RLock
 
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
     ProductWorkerActivationReceiptV1,
+    _WorkerResumeSettlementMethods,
 )
 
 from .resume_activation_attempt import CodingResumeRecoveryRequired
@@ -46,8 +46,8 @@ def prepare_coding_worker_resume_effect_owner(
     )
 
 
-class CodingWorkerResumeSettlementBinding:
-    """Read exact live/no-start/cleanup facts from the original C5 owner."""
+class CodingWorkerResumeSettlementBinding(_WorkerResumeSettlementMethods):
+    """Bind Coding intent policy to the original Worker C5 settlement owner."""
 
     def __init__(
         self,
@@ -55,50 +55,21 @@ class CodingWorkerResumeSettlementBinding:
         receipt: ProductWorkerActivationReceiptV1,
         context: ResumeEffectParentContextV1,
     ) -> None:
-        if (
-            type(receipt) is not ProductWorkerActivationReceiptV1
-            or type(context) is not ResumeEffectParentContextV1
-            or context.product_id != receipt.policy.product_id
-            or context.session_id != receipt.policy.session_id
-            or context.owner_id != "harness.worker-activation"
-            or context.scope_digest
-            != ProductWorkerActivationCoordinator.resume_parent_scope_digest(
-                product_id=receipt.policy.product_id,
-                product_scope_id=receipt.policy.product_scope_id,
-            )
-            or context.contract_digest
-            != ProductWorkerActivationCoordinator.resume_parent_contract_digest_value()
-        ):
-            raise TypeError("Coding Worker Resume settlement inputs are invalid")
-        self._receipt = receipt
-        self._context = context
-        self._coordinator: ProductWorkerActivationCoordinator | None = None
-        self._lock = RLock()
-
-    def matches(
-        self,
-        *,
-        receipt: ProductWorkerActivationReceiptV1,
-        context: ResumeEffectParentContextV1,
-    ) -> bool:
-        """Return whether one pending Host supplied the exact frozen inputs."""
-
-        return receipt == self._receipt and context == self._context
+        self._initialize_settlement(
+            receipt=receipt,
+            context=context,
+            invalid_inputs="Coding Worker Resume settlement inputs are invalid",
+        )
 
     def bind(self, coordinator: ProductWorkerActivationCoordinator) -> None:
         """Retain the actual attempt owner after native evidence is bound."""
-
-        if not isinstance(coordinator, ProductWorkerActivationCoordinator):
-            raise TypeError("Coding Worker Resume settlement owner is invalid")
-        snapshot = _snapshot(coordinator, self._context)
-        if snapshot is None:
-            raise CodingWorkerResumeParentError("coding_worker_resume_parent_missing")
-        with self._lock:
-            if self._coordinator is not None and self._coordinator is not coordinator:
-                raise CodingWorkerResumeParentError(
-                    "coding_worker_resume_settlement_owner_changed"
-                )
-            self._coordinator = coordinator
+        self._bind_settlement(
+            coordinator,
+            invalid_owner="Coding Worker Resume settlement owner is invalid",
+            failure=lambda code: CodingWorkerResumeParentError(
+                "coding_worker_resume_" + code
+            ),
+        )
 
     def require_current(self, attempt: CodingActivationAttemptV2) -> None:
         """Require sealed exact membership and current live or cleanup proof."""
@@ -113,14 +84,7 @@ class CodingWorkerResumeSettlementBinding:
         owner = owners.get("harness.worker-activation")
         if owner is None or attempt.parent_context(owner) != self._context:
             raise CodingResumeRecoveryRequired("input.effect_owner_set_unsupported")
-        with self._lock:
-            coordinator = self._coordinator
-        if coordinator is None:
-            raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
-        ProductWorkerActivationCoordinator.require_resume_parent_settlement(
-            coordinator,
-            self._context,
-            receipt=self._receipt,
+        self._require_current_settlement(
             failure=lambda _code: CodingResumeRecoveryRequired(
                 "input.effect_settlement_unknown"
             ),
@@ -146,15 +110,6 @@ def _resume_parent_matches_settlement(
     ):
         return False
     return True
-
-
-def _snapshot(
-    coordinator: ProductWorkerActivationCoordinator,
-    context: ResumeEffectParentContextV1,
-) -> Mapping[str, object] | None:
-    return ProductWorkerActivationCoordinator._resume_parent_if_known(
-        coordinator, context
-    )
 
 
 def enroll_coding_worker_resume_parent(

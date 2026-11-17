@@ -416,6 +416,13 @@ bound-request/root verifiers, so two obsolete private Code forwarders have exite
 [C07 reuse evidence](c07-worker-bulk-migration.md#源身份校验复用与退出的-windows-私有转发)
 records the actual system net reduction and unchanged persisted value contracts.
 
+The original Worker C5 component owns the Resume binding's generic constructor,
+matching, locked owner binding and settlement-currentness methods on the same
+Code object. Code keeps exact v2 intent/effect-owner membership and its original
+errors. One private method base joins the MRO; the original four fields, instance
+dictionary, lock and coordinator remain. [C07 binding evidence](c07-worker-bulk-migration.md#resume-结算绑定归原-c5-组件)
+records real lock-race checks, unchanged public shape and the remaining costs.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding
