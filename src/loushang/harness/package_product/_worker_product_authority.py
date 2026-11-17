@@ -7,7 +7,16 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Generic, Literal, Protocol, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    Self,
+    TypeVar,
+    cast,
+)
 
 from loushang.harness.capabilities.contracts import CapabilityDefinition
 from loushang.harness.capabilities.provider_admission import (
@@ -42,6 +51,7 @@ from loushang.harness.plugin_management.package_gc_reservation import (
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
+    PackageProductSelectedRootReader,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -394,6 +404,19 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     _max_total_bytes: ClassVar[int]
     _opt_in_type: ClassVar[type[ProductWorkerOptInFacts]]
     _native_closure_type: ClassVar[type[ProductWorkerNativeClosureFacts]]
+
+    _receipt_factory_label: ClassVar[str]
+    _receipt_session_label: ClassVar[str]
+    _receipt_manifest_max_files: ClassVar[int]
+    _receipt_manifest_max_bytes: ClassVar[int]
+
+    @staticmethod
+    def _receipt_session_type() -> type[_AttachedTranscriptReadPort]:
+        raise NotImplementedError
+
+    @staticmethod
+    def _receipt_discovery_type() -> Callable[..., ProductSessionDiscoveryReadPort]:
+        raise NotImplementedError
 
     _provider_native_platform: ClassVar[Literal["linux-x86_64", "windows-amd64"]]
 
@@ -837,6 +860,104 @@ class _PosixWorkerProductReceiptAuthority(
     _native_error: ClassVar[type[Exception]]
     _native_profile_id: ClassVar[str]
 
+    @staticmethod
+    def _receipt_opt_in_journal_type() -> Callable[..., CurrentOptIn]:
+        raise NotImplementedError
+
+    @classmethod
+    def _open_selected(
+        cls,
+        *,
+        product_owner: PosixLocalWheelProductSessionOwner,
+        runtime: PackageProductRuntimeBindingV1,
+        plugin_id: str,
+        native_closure_reader: ProductNativeClosureReadPort,
+        transcript_directory: AgentTranscriptDirectoryRuntime,
+        session_manager: _AttachedTranscriptReadPort,
+        active_session: bool = False,
+    ) -> Self:
+        """Bind one Product candidate to its exact attached Session owner.
+
+        An attached active Session owns subsequent transcript appends. Detached
+        selection retains the discovery locator revision as an exact snapshot.
+        """
+
+        if not isinstance(product_owner, PosixLocalWheelProductSessionOwner):
+            raise TypeError(f"{cls._receipt_factory_label} requires a Product owner")
+        if not isinstance(runtime, PackageProductRuntimeBindingV1):
+            raise TypeError(
+                f"{cls._receipt_factory_label} requires an active Product runtime"
+            )
+        if (
+            not isinstance(plugin_id, str)
+            or not plugin_id
+            or plugin_id != plugin_id.strip()
+        ):
+            raise ValueError(f"{cls._receipt_factory_label} Plugin identity is invalid")
+        if runtime.session_id is None:
+            raise ValueError(
+                f"{cls._receipt_factory_label} Session identity is unavailable"
+            )
+        if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
+            raise TypeError(
+                f"{cls._receipt_factory_label} requires a Transcript directory owner"
+            )
+        if not isinstance(session_manager, cls._receipt_session_type()):
+            raise TypeError(
+                f"{cls._receipt_factory_label} requires a {cls._receipt_session_label}"
+            )
+        selected_session_file = _capture_selected_worker_session_file(
+            session_manager=session_manager,
+            transcript_directory=transcript_directory,
+            runtime=runtime,
+            product_owner=product_owner,
+            invalid_owner=f"{cls._receipt_factory_label} selected Session owner changed",
+        )
+        root_reader = runtime._selected_root_reader
+        manifest_reader = runtime._selected_manifest_reader
+        if not isinstance(root_reader, PackageProductSelectedRootReader):
+            raise ValueError(
+                f"{cls._receipt_factory_label} Product runtime owners changed"
+            )
+        bound_root = cast(PackageProductSelectedRootReader, root_reader)
+        if (
+            getattr(manifest_reader, "root_reader", None) is not bound_root
+            or bound_root.desired_state is not product_owner.desired_state
+            or bound_root.bindings is not product_owner.gc_bindings
+            or bound_root.gc_gate is not product_owner.gc_gate
+            or bound_root.product_id != product_owner.policy.product_id
+            or bound_root.scope_id != product_owner.policy.project_scope_id
+        ):
+            raise ValueError(
+                f"{cls._receipt_factory_label} Product runtime owners changed"
+            )
+        selected = runtime.capture_selected_plugin_manifest_for(
+            plugin_id,
+            max_files=cls._receipt_manifest_max_files,
+            max_total_bytes=cls._receipt_manifest_max_bytes,
+        )
+        opt_in = cls._receipt_opt_in_journal_type()(
+            product_owner.state_root / "worker-opt-in.jsonl",
+            scope_id=product_owner.policy.project_scope_id,
+            gc_gate=product_owner.gc_gate,
+            store_id=product_owner.epoch_runtime.registry.store_id,
+        )
+        discovery = cls._receipt_discovery_type()(
+            directory=transcript_directory,
+            gc_gate=product_owner.gc_gate,
+            session_id=runtime.session_id,
+            selected_session_file=selected_session_file,
+            attached_session=session_manager if active_session else None,
+        )
+        return cast(Callable[..., Self], cls)(
+            product_owner=product_owner,
+            runtime=runtime,
+            selected=selected,
+            opt_in_journal=opt_in,
+            native_closure_reader=native_closure_reader,
+            session_discovery_reader=discovery,
+        )
+
     def _history_for_product(
         self, product: PosixLocalWheelProductSessionOwner
     ) -> ReceiptHistory[R]:
@@ -1058,6 +1179,66 @@ class _WindowsWorkerProductReceiptAuthority(
     _journal: WindowsReceiptRecords[R]
     _native: ProductNativeClosureReadPort
     _session_discovery_reader: ProductSessionDiscoveryReadPort | None
+
+    @classmethod
+    def _open_selected(
+        cls,
+        *,
+        product_owner: WindowsLocalWheelProductSessionOwner,
+        runtime: PackageProductRuntimeBindingV1,
+        plugin_id: str,
+        transcript_directory: AgentTranscriptDirectoryRuntime,
+        session_manager: _AttachedTranscriptReadPort,
+        active_session: bool = False,
+    ) -> Self:
+        """Bind an exact selected Windows Worker to its persisted attached Session."""
+
+        if type(product_owner) is not WindowsLocalWheelProductSessionOwner:
+            raise TypeError(f"{cls._receipt_factory_label} requires a Product owner")
+        if type(runtime) is not PackageProductRuntimeBindingV1:
+            raise TypeError(
+                f"{cls._receipt_factory_label} requires an active Product runtime"
+            )
+        if (
+            not isinstance(plugin_id, str)
+            or not plugin_id
+            or plugin_id != plugin_id.strip()
+        ):
+            raise ValueError(f"{cls._receipt_factory_label} Plugin identity is invalid")
+        if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
+            raise TypeError(
+                f"{cls._receipt_factory_label} requires a Transcript directory owner"
+            )
+        if not isinstance(session_manager, cls._receipt_session_type()):
+            raise TypeError(
+                f"{cls._receipt_factory_label} requires a {cls._receipt_session_label}"
+            )
+        selected_session_file = _capture_selected_worker_session_file(
+            session_manager=session_manager,
+            transcript_directory=transcript_directory,
+            runtime=runtime,
+            product_owner=product_owner,
+            invalid_owner=f"{cls._receipt_factory_label} selected Session owner changed",
+        )
+        product_owner.assert_session_runtime_current(runtime)
+        selected = runtime.capture_selected_plugin_manifest_for(
+            plugin_id,
+            max_files=cls._receipt_manifest_max_files,
+            max_total_bytes=cls._receipt_manifest_max_bytes,
+        )
+        discovery = cls._receipt_discovery_type()(
+            directory=transcript_directory,
+            gc_gate=product_owner.gc_gate,
+            session_id=cast(str, runtime.session_id),
+            selected_session_file=selected_session_file,
+            attached_session=session_manager if active_session else None,
+        )
+        return cast(Callable[..., Self], cls)(
+            product=product_owner,
+            runtime=runtime,
+            selected=selected,
+            session_discovery_reader=discovery,
+        )
 
     def _read_backend(
         self, product: WindowsLocalWheelProductSessionOwner

@@ -440,6 +440,16 @@ frozen Code binding keeps its fields, slots and pickle path over an empty-slot
 method base. [C07 proof evidence](c07-worker-bulk-migration.md#base-当前性与完整启动版本关联归原-product-owner)
 records complete-program equivalence, bounded runtime models and costs.
 
+The same existing receipt authorities now hold complete selected-owner creation:
+Session-file proof, original platform runtime/root association, bounded manifest
+capture and opt-in/discovery/receipt-owner construction. Code keeps nominal
+constructors and approved native-release selection. The two leaf names directly
+bind these class methods; old global pickle lookup and parameter shape remain,
+while internal callable reflection follows Harness. Five lazy nominal type getters
+retain original lookup order; no operation state or new lifecycle owner is added.
+[C07 creation evidence](c07-worker-bulk-migration.md#两平台完整回执创建归现有-authority)
+records the distinct platform checks, bounded proofs and system growth.
+
 Ten internal Code payload recovery names bind directly to methods of the same
 existing Product custody instance. Their duplicate function layer has exited;
 nominal admission, materialization and repair guards remain. No read route gains

@@ -347,6 +347,20 @@ Scoped mypy 初次发现公共 Windows ctor 原有的 optional Session 值不再
 
 本批 Coding −64、Harness +13、Hosting／其他生产0，系统生产净 −51 行；累计 Coding −5,975、Harness +9,060、系统生产仍 +3,085 行。Harness 增长仅是保留操作说明，测试仍 +70，文档单列；不是靠删说明取得净收益。C07 剩余14,291行，距过半退出还差4,159行。本批属于真实复用后的重复胶水删除，未完成的完整链、全部112文件处置和整组交付验证仍保留。
 
+## 两平台完整回执创建归现有 authority
+
+原 Product Worker receipt authority 接管两个完整选中回执创建操作：原名义 Product／runtime／Plugin／Session 准入→原 Session-file 所有权证明→平台 runtime／root 关联校验→原16文件／16MiB manifest 读取→原 opt-in／discovery owner 构造→同一个 Code receipt owner。POSIX 原 session_id 缺失检查与 selected-root 六项关联保留；Windows 的准确类型准入及更强 runtime 当前性检查保持在原位置，不把 nullable session_id 提前改为另一种失败。已有 Session 证明不重计为本批新能力，没有新建账本、恢复器或状态容器。
+
+Code 的真实构造函数、字段和 MRO 不变，公开 Product-native 入口仍先从产品托管读取批准的原生 release，再调用原模块入口；不会接受新增的调用方 digest／profile／launcher 参数。两个入口名称直接绑定原 Code 类在既有 Harness authority 上的创建方法；与前一批一样，它们不属于顶层稳定 SDK。当前执行代理在已授权 Coding／Harness 职责内接受精确两项内部 callable 元数据变化：参数位置／关键字／默认值形状保留，运行时注解、module／qualname、Python 参数绑定错误前缀和新 callable pickle 编码随共享方法。原四条 protocol4／5 全局函数 lookup 仍可读取；不宣称新旧 callable 编码相同。必要的 Code 数据 pickle 类路径不变。
+
+五个静态 getter 只在原查找时机返回两平台模块中实际的 Session／Discovery／OptIn 类型，保留晚绑定和先查构造器、再求参数的求值顺序；不按字段或阶段传入 callbacks。固定错误标签、Session 产品名称和原 capture budget 由 Code profile 绑定；预算与后续64文件复核预算独立，不合并故障或配额入口。完整流程由已有 Harness owner 持有，原 Code 协调体删除。
+
+既有完整候选、discovery、原 receipt access／issue ordering／Windows receipt 兼容及冻结 SDK 为85 passed、7 skipped；六个实际生产／消费源 mypy 和 Ruff 通过。现有 import／C50／C51／C54 为192 passed，文档10 passed，依赖事实 renderer --check 通过；没有改测试或门禁。源码证明展开固定类型和配置后两段完整操作体与原实现一致；原 Code 构造、Product-native wrapper、其余 Code 与所有原 Harness 程序 AST 不变。公开声明审计仅为既有十项载荷别名加这精确两项创建别名设例外，其他60份 Code 声明／名义字段、原测试入口／断言及用户改动哈希保持。
+
+原／当前1776组逐事件对照中464组实际触发故障，每组两次调用，覆盖真实名义 Product／runtime／root／Session／directory envelope、原 Session-file 完整证明、平台差异、active／detached、缺失或错配 Session／root、读取与构造故障和取消。原校验错误身份、优先级、事件、原对象传递一致。实际构造副作用、manifest／opt-in／discovery 为受控完整操作，不能代替真实 Product 准入或原生 Windows／H6。外部探针初次遗漏迁出 Code 的历史注解导入，补齐探针命名空间后通过，未修改 Product 来处理探针问题。
+
+本批 Coding −109、Harness +181、Hosting／其他生产0，系统生产 +72 行；累计 Coding −6,084、Harness +9,241、系统生产仍 +3,157 行。增长包括明确的强类型创建入口、名义类型绑定和保留错误／预算契约，不作净精简收益。测试仍 +70，文档单列；C07 剩余14,182行，距过半退出仍差4,050行。全部112文件最终语义处置、完整链路验收和整组交付检查未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

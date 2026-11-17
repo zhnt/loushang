@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import os
-from typing import cast
 
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendInstalledMethods,
 )
 from loushang.harness.package_product._worker_product_authority import (
-    _capture_selected_worker_session_file,
     _WindowsWorkerProductReceiptAuthority,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -23,7 +21,6 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 from .package_product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
@@ -58,6 +55,12 @@ class CodingWindowsWorkerProductReceiptOwner(
     _CodingWorkerReceiptAuthority,
 ):
     """Keep original admission/data construction; all fixed custody is Core."""
+
+    _receipt_factory_label = "Windows Worker"
+    _receipt_session_type = staticmethod(lambda: SessionManager)
+    _receipt_discovery_type = staticmethod(
+        lambda: CodingWorkerTranscriptDiscoveryReader
+    )
 
     _stale_derivation_errors = (
         CodingWorkerPolicySelectionError,
@@ -158,55 +161,9 @@ class CodingWindowsWorkerProductReceiptOwner(
         return super().current_payload_and_worker_owner_id(receipt)
 
 
-def open_coding_windows_product_selected_worker_receipt_owner(
-    *,
-    product_owner: WindowsLocalWheelProductSessionOwner,
-    runtime: PackageProductRuntimeBindingV1,
-    plugin_id: str,
-    transcript_directory: AgentTranscriptDirectoryRuntime,
-    session_manager: SessionManager,
-    active_session: bool = False,
-) -> CodingWindowsWorkerProductReceiptOwner:
-    """Bind an exact selected Windows Worker to its persisted Coding Session."""
-
-    if type(product_owner) is not WindowsLocalWheelProductSessionOwner:
-        raise TypeError("Windows Worker requires a Product owner")
-    if type(runtime) is not PackageProductRuntimeBindingV1:
-        raise TypeError("Windows Worker requires an active Product runtime")
-    if (
-        not isinstance(plugin_id, str)
-        or not plugin_id
-        or plugin_id != plugin_id.strip()
-    ):
-        raise ValueError("Windows Worker Plugin identity is invalid")
-    if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
-        raise TypeError("Windows Worker requires a Transcript directory owner")
-    if not isinstance(session_manager, SessionManager):
-        raise TypeError("Windows Worker requires a Coding Session owner")
-    selected_session_file = _capture_selected_worker_session_file(
-        session_manager=session_manager,
-        transcript_directory=transcript_directory,
-        runtime=runtime,
-        product_owner=product_owner,
-        invalid_owner="Windows Worker selected Session owner changed",
-    )
-    product_owner.assert_session_runtime_current(runtime)
-    selected = runtime.capture_selected_plugin_manifest_for(
-        plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
-    )
-    discovery = CodingWorkerTranscriptDiscoveryReader(
-        directory=transcript_directory,
-        gc_gate=product_owner.gc_gate,
-        session_id=cast(str, runtime.session_id),
-        selected_session_file=selected_session_file,
-        attached_session=session_manager if active_session else None,
-    )
-    return CodingWindowsWorkerProductReceiptOwner(
-        product=product_owner,
-        runtime=runtime,
-        selected=selected,
-        session_discovery_reader=discovery,
-    )
+open_coding_windows_product_selected_worker_receipt_owner = (
+    CodingWindowsWorkerProductReceiptOwner._open_selected
+)
 
 
 def read_coding_windows_product_worker_receipt_record(
