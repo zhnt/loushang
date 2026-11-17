@@ -570,13 +570,21 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     }} />);
     const start = await screen.findByRole("button", { name: "New Session" });
     await waitFor(() => expect(start).toBeEnabled());
+    const heading = screen.getByRole("heading", { name: "GUI development" });
+    const transcript = screen.getByLabelText("Session transcript");
+    const input = screen.getByRole("textbox");
+    const model = screen.getByRole("button", { name: "Session model" });
     fireEvent.click(start);
     expect(createSession).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "New Session" }).closest("header")).not.toBeNull();
-    expect(screen.getByLabelText("Session transcript")).toBeEmptyDOMElement();
+    expect(screen.getByRole("heading", { name: "New Session" })).toBe(heading);
+    expect(screen.getByLabelText("Session transcript")).toBe(transcript);
+    expect(transcript).toBeEmptyDOMElement();
+    expect(screen.getByRole("button", { name: "Session model" })).toBe(model);
+    expect(model).toBeDisabled();
     expect(screen.getByText("Default model")).toBeVisible();
     expect(screen.getByRole("button", { name: /^GUI development ·/ })).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("textbox")).toHaveFocus();
+    expect(screen.getByRole("textbox")).toBe(input);
+    expect(input).toHaveFocus();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep this draft" } });
     fireEvent.click(start);
     expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
@@ -632,6 +640,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       await waitFor(() => expect(start).toBeEnabled());
       fireEvent.click(start);
       const input = screen.getByRole("textbox");
+      const transcript = screen.getByLabelText("Session transcript");
+      const heading = screen.getByRole("heading", { name: "New Session" });
+      const model = screen.getByRole("button", { name: "Session model" });
       fireEvent.change(input, { target: { value: "First message" } });
       const send = screen.getByRole("button", { name: "Send" });
       if (failure === "unconfirmed-create") {
@@ -680,7 +691,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       } else {
         await waitFor(() => expect(input).toHaveValue(""));
         expect(screen.getByRole("textbox")).toBe(input);
-        expect(screen.getByRole("heading", { name: "New Session" })).toBeVisible();
+        expect(screen.getByLabelText("Session transcript")).toBe(transcript);
+        expect(screen.getByRole("heading", { name: "New Session" })).toBe(heading);
+        expect(screen.getByRole("button", { name: "Session model" })).toBe(model);
       }
     },
   );

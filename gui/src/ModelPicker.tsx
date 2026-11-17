@@ -5,7 +5,7 @@ import type { ModelChoice, SessionModels, ThinkingLevel } from "./client/model";
 
 export function ModelPicker({ models, emptyLabel, disabled, busy, onSelect }: {
   readonly models: SessionModels | null;
-  readonly emptyLabel: "none" | "loading" | "unavailable" | "empty" | "choose";
+  readonly emptyLabel: "default" | "none" | "loading" | "unavailable" | "empty" | "choose";
   readonly disabled: boolean;
   readonly busy: boolean;
   readonly onSelect: (id: string, level?: ThinkingLevel) => Promise<SessionModels | null>;

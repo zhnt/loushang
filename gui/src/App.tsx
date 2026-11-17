@@ -3,7 +3,7 @@ import { appName } from "./branding";
 import { useTranslation } from "react-i18next";
 import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
@@ -347,6 +347,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
   const selected = !draft && selectedId ? state.remote.sessions[selectedId] : undefined;
+  const conversationOpen = Boolean(selected || draft);
   const rightVisible = Boolean(selected) && (environmentOpen || panelOpen);
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
@@ -439,7 +440,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     observer.observe(pane);
     observer.observe(transcript);
     return () => observer.disconnect();
-  }, [selected?.id, draftId]);
+  }, [conversationOpen]);
   useLayoutEffect(() => {
     const transcript = transcriptRef.current;
     if (transcript) transcript.scrollTop = transcriptPosition.current ?? transcript.scrollHeight;
@@ -578,6 +579,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
   const draftPending = draft?.status === "creating" || draft?.status === "sending";
   const draftTitle = t("workspace:sidebar.newSession");
+  const conversationTitle = selected ? displaySessionTitle(selected) : draftTitle;
   const newSessionEnabled = !draftPending && (projectNavigation
     ? projectNavigation.available && !projectNavigation.pending
     : Boolean(client.createSession) && connected);
@@ -623,32 +625,20 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }
 
   const composer = draft ? {
-    title: draftTitle,
     text: draft.text,
     onChange: draftCreation.change,
     onSubmit: submitDraft,
     submitLabel: draft.status === "createUnknown" ? t("session:composer.checkCreation") : undefined,
     disabled: draftPending || draft.status === "firstSubmissionUnknown",
     buttonDisabled: !draftEnabled || draftPending || !canSubmitDraft(draft),
-    model: <span className="model-trigger model-default">{t("session:models.default")}</span>,
   } : selected ? {
-    title: displaySessionTitle(selected),
     text: state.local.drafts[selected.id] ?? "",
     onChange: (value: string) => dispatch({ type: "draft.changed", sessionId: selected.id, value }),
     onSubmit: () => void submit(state.local.drafts[selected.id] ?? ""),
     disabled: installedClient !== client || !selectionReady,
     onInterrupt: selected.status === "running" ? () => void interrupt() : undefined,
     buttonDisabled: selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim(),
-    fixture: Boolean(fixture),
     notice: <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>,
-    model: <ModelPicker
-      key={modelScope ?? selected.id}
-      models={sessionModels}
-      emptyLabel={modelLabel}
-      disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
-      busy={modelPending}
-      onSelect={selectModel}
-    />,
   } : null;
 
   return (
@@ -695,9 +685,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }} onLostPointerCapture={() => { sidebarDrag.current = null; }} />
         </div>
 
-        {draft || selected || (attachedClient && !fixture) ? <SessionHeader
-          session={selected}
-          draftTitle={draft ? draftTitle : undefined}
+        {conversationOpen || (attachedClient && !fixture) ? <SessionHeader
+          title={conversationOpen ? conversationTitle : undefined}
+          sessionReady={Boolean(selected)}
           connection={liveConnecting ? "connecting" : state.remote.connection}
           dockOpen={panelOpen}
           environmentOpen={environmentOpen}
@@ -717,9 +707,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>{t("session:sync.retry")}</button> : null}
             </div>
           ) : null}
-          {draft || selected ? (
+          {composer ? (
             <>
-              <div key={selected?.id ?? draft?.id} className="transcript markdown-reading"
+              <div className="transcript markdown-reading"
                 data-markdown-theme={markdown.theme}
                 aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
                 onScroll={selected ? (event) => {
@@ -727,7 +717,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   const following = !fixture && scrollHeight - clientHeight - scrollTop <= 32;
                   dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: following ? null : scrollTop });
                 } : undefined}>
-                {selected ? <>
+                {selected ? <Fragment key={selected.id}>
                   {selected.messages.map((message) => message.role === "status" ? (
                     <p className="message transcript-status" role="status" key={message.id}>{message.content}</p>
                   ) : (
@@ -798,7 +788,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                       }}
                     />
                   ) : null}
-                </> : null}
+                </Fragment> : null}
               </div>
 
               {quickLookDocument && changesAvailable ? (
@@ -833,7 +823,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                 {draft && draft.status !== "ready" ? <p className="draft-notice" role="status">
                   <NoticeText notice={{ key: `notice.${draft.status}` }} />
                 </p> : null}
-                {composer ? <MessageComposer {...composer} /> : null}
+                <MessageComposer {...composer} title={conversationTitle} fixture={Boolean(fixture)}
+                  model={<ModelPicker
+                    models={sessionModels}
+                    emptyLabel={draft ? "default" : modelLabel}
+                    disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
+                    busy={Boolean(selected) && modelPending}
+                    onSelect={selectModel}
+                  />}
+                />
               </div>
             </>
           ) : !liveConnecting ? (
@@ -1122,11 +1120,11 @@ function ExecutionDetail({ execution, stale }: {
   );
 }
 
-function SessionHeader({ session, draftTitle, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment }: {
+function SessionHeader({ title, sessionReady, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment }: {
   readonly environmentOpen: boolean;
   readonly onEnvironment: () => void;
-  readonly session: SessionSnapshot | undefined;
-  readonly draftTitle?: string;
+  readonly title?: string;
+  readonly sessionReady: boolean;
   readonly connection: ConnectionState | "connecting";
   readonly dockOpen: boolean;
   readonly onOpenDock: () => void;
@@ -1136,19 +1134,19 @@ function SessionHeader({ session, draftTitle, connection, dockOpen, onOpenDock, 
   return (
     <header className="conversation-header">
       <div className="session-heading">
-        {session ? <>
+        {title !== undefined ? <>
           <UiIcon name="folder" />
-          <div><h1>{displaySessionTitle(session)}</h1></div>
-          <button type="button" aria-label={t("panels:header.actions")}><span aria-hidden="true">⋯</span></button>
-        </> : draftTitle ? <h1>{draftTitle}</h1> : null}
+          <div><h1>{title}</h1></div>
+          <button type="button" disabled={!sessionReady} aria-label={t("panels:header.actions")}><span aria-hidden="true">⋯</span></button>
+        </> : null}
       </div>
-      <div className="header-actions" data-session-ready={Boolean(session)}>
+      <div className="header-actions" data-conversation-open={title !== undefined}>
         <span className={`connection-chip ${connection}`} role="status"
           title={connection === "connecting" ? t("session:sync.live") : label}>{label}</span>
         <button type="button" aria-label={t("panels:header.shareUnavailable")} disabled>{t("panels:header.share")}</button>
-        <button type="button" aria-label={t("panels:header.toggleEnvironment")} title={t("workspace:environment.title")} aria-pressed={environmentOpen} onClick={onEnvironment}><PanelIcon side="environment" /></button>
+        <button type="button" aria-label={t("panels:header.toggleEnvironment")} title={t("workspace:environment.title")} aria-pressed={environmentOpen} onClick={onEnvironment} disabled={!sessionReady}><PanelIcon side="environment" /></button>
         <button type="button" aria-label={t("panels:header.bottomUnavailable")} title={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>
-        <button type="button" aria-label={t("panels:header.openDock")} title={t("panels:header.toggleDock")} aria-pressed={dockOpen} onClick={onOpenDock}><PanelIcon side="right" /></button>
+        <button type="button" aria-label={t("panels:header.openDock")} title={t("panels:header.toggleDock")} aria-pressed={dockOpen} onClick={onOpenDock} disabled={!sessionReady}><PanelIcon side="right" /></button>
       </div>
     </header>
   );
