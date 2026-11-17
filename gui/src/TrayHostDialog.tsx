@@ -12,11 +12,12 @@ export function TrayHostDialog({ details, error, onClose, onConfirm }: {
     if (details || error) { if (!dialog.current?.open) dialog.current?.showModal(); }
     else if (dialog.current?.open) dialog.current.close();
   }, [details, error]);
+  const restarting = details?.confirm === "restart";
   const state = details?.probe.host;
   const name = details?.entry.kind === "local" ? t("shell:tray.localHost") : details?.entry.name;
   return <dialog ref={dialog} role={details?.confirm ? "alertdialog" : "dialog"} className="tray-host-dialog" aria-labelledby="tray-host-title" onClose={onClose}>
-    <h2 id="tray-host-title">{details?.confirm ? t("localHost.confirmTitle") : t("localHost.identity")}{name ? ` · ${name}` : ""}</h2>
-    {details?.confirm ? <p>{t("localHost.confirmStop")}</p> : null}
+    <h2 id="tray-host-title">{details?.confirm ? t(restarting ? "localHost.restartTitle" : "localHost.confirmTitle") : t("localHost.identity")}{name ? ` · ${name}` : ""}</h2>
+    {details?.confirm ? <p>{t(restarting ? "localHost.confirmRestart" : "localHost.confirmStop")}</p> : null}
     {details ? <dl className="detail-list">
       <div><dt>{t("shell:tray.service")}</dt><dd>{state?.state === "exited" ? t("localHost.states.exited")
         : t(`shell:tray.${state?.state === "not_running" ? "stopped" : state?.state ?? "unknown"}`)}</dd></div>
@@ -28,7 +29,7 @@ export function TrayHostDialog({ details, error, onClose, onConfirm }: {
     {error || state?.errorCode ? <p role="alert">{t("localHost.errors.unknown")} <code>{error ?? state?.errorCode}</code></p> : null}
     <footer>
       <button autoFocus onClick={onClose}>{details?.confirm ? t("localHost.cancel") : t("shell:close")}</button>
-      {details?.confirm ? <button className="host-danger" onClick={onConfirm}>{t("localHost.confirm")}</button> : null}
+      {details?.confirm ? <button className="host-danger" onClick={onConfirm}>{t(restarting ? "localHost.restart" : "localHost.confirm")}</button> : null}
     </footer>
   </dialog>;
 }

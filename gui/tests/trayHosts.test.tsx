@@ -30,7 +30,7 @@ describe("shared Host directory for the tray", () => {
     act(() => result.current.action("office", "stop"));
     expect(result.current.details?.probe.host.instanceId).toBe("office-instance");
     expect(native.invoke.mock.calls.some(([, { request }]) => request.request?.action === "stop")).toBe(false);
-    act(() => result.current.confirmStop());
+    act(() => result.current.confirmAction());
     await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", { request: {
       operation: "host/request", connectionId: "office", request: { operation: "manage", action: "stop", instanceId: "office-instance" },
     } }));
@@ -47,15 +47,15 @@ describe("shared Host directory for the tray", () => {
     expect(props.onSelect).toHaveBeenCalledTimes(1);
     expect(props.onSelect).toHaveBeenCalledWith("office");
   });
-  it("does not route an old stop confirmation to a newly selected Host", async () => {
+  it.each(["stop", "restart"] as const)("keeps the original Host and instance on %s confirmation", async (action) => {
     const props = options();
     const { result, rerender } = renderHook((value) => useTrayHosts(value), { initialProps: props });
     await waitFor(() => expect(result.current.hosts).toHaveLength(2));
-    act(() => result.current.action("local", "stop"));
+    act(() => result.current.action("local", action));
     rerender({ ...props, selectedId: "office" });
-    act(() => result.current.confirmStop());
+    act(() => result.current.confirmAction());
     await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", { request: {
-      operation: "host/request", connectionId: "local", request: { operation: "manage", action: "stop", instanceId: "local-instance" },
+      operation: "host/request", connectionId: "local", request: { operation: "manage", action, instanceId: "local-instance" },
     } }));
     expect(props.onManage).not.toHaveBeenCalled();
   });
