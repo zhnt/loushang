@@ -12,6 +12,7 @@ from loushang.appserver.execution.model import (
     ExecutionSessionSnapshotV1,
     ExecutionSessionViewV1,
     InteractiveGoalCommandV1,
+    InteractiveGoalRecoveryV1,
     InteractiveGoalReviewSubmissionV1,
     InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
@@ -28,6 +29,7 @@ from .execution_ports import (
     HostedExecutionPortV1,
     HostedInteractiveGoalCommandPortV1,
     HostedInteractiveGoalPortV1,
+    HostedInteractiveGoalRecoveryPortV1,
     HostedInteractiveGoalReviewPortV1,
 )
 from .execution_registry import (
@@ -241,6 +243,22 @@ class ScopedExecutionClientV1:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return port.control_interactive_goal(command, check_current=check_current)
 
+    async def interactive_goal_recovery(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+    ) -> InteractiveGoalRecoveryV1:
+        session, binding = await self._resolve(control, expected_instance_id)
+        port = binding.port
+        if (not isinstance(port, HostedInteractiveGoalRecoveryPortV1)
+                or not port.supports_interactive_goal_recovery):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        result = await port.interactive_goal_recovery()
+        self._check(control, session)
+        self._registry.require_instance(expected_instance_id)
+        if (session._execution is not binding or binding.closing
+                or not port.supports_interactive_goal_recovery):
+            raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
+        return result
+
     async def snapshot_execution_session(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
     ) -> ExecutionSessionSnapshotV1:
@@ -279,6 +297,10 @@ class ScopedExecutionClientV1:
                 ),
                 supports_interactive_goal=goal is not None,
                 supports_interactive_goal_commands=isinstance(goal, HostedInteractiveGoalCommandPortV1),
+                supports_interactive_goal_recovery=(
+                    isinstance(binding.port, HostedInteractiveGoalRecoveryPortV1)
+                    and binding.port.supports_interactive_goal_recovery
+                ),
             )
         except BaseException:
             if self._streams.get(key) is stream:

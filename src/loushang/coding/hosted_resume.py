@@ -20,6 +20,7 @@ from loushang.apphost.integrations.session_control import (
     _HostedAgentExecutionWork,
     _HostedApprovalPresentation,
 )
+from loushang.appserver.execution.model import InteractiveGoalRecoveryV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -56,6 +57,7 @@ from .appservice_adapter import (
 from .bootstrap import BootstrapServices
 from .composition_sets import resolve_coding_composition_set
 from .hosted_catalog import CodingHostedCatalogError, CodingHostedResumeSourceV1
+from .hosted_goal_recovery import read_interactive_goal_recovery, unavailable_recovery
 from .hosted_session import (
     _MAX_INTERACTIONS,
     _TEXT_LIMIT,
@@ -158,6 +160,32 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     @property
     def execution_available(self) -> bool:
         return self._close_task is None
+
+    @property
+    def supports_interactive_goal_recovery(self) -> bool:
+        return self._active is None and self._close_task is None
+
+    async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1:
+        source = self._source
+        record = source.record
+        try:
+            history = source.history
+            source.require_current_source()
+            if (not self.supports_interactive_goal_recovery or self._activation_lock.locked()
+                    or self.identity != record.identity
+                    or history.header_preview.header != record.header
+                    or record.header.conversation_id != self.identity.session_id
+                    or record.scope.fingerprint != self.identity.scope_fingerprint
+                    or record.path.parent != record.scope.session_dir):
+                return unavailable_recovery("source_changed")
+            result = await settled_io(read_interactive_goal_recovery, record.scope.session_dir, self.identity.session_id)
+            if (not self.supports_interactive_goal_recovery or self._activation_lock.locked()
+                    or source.history is not history):
+                return unavailable_recovery("source_changed")
+            source.require_current_source()
+            return result
+        except (CodingHostedCatalogError, OSError, ValueError):
+            return unavailable_recovery("source_changed")
 
     @property
     def current_model(self) -> Model | None:

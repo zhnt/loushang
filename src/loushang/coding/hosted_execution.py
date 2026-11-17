@@ -14,6 +14,7 @@ from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
 from loushang.appserver.execution.model import (
     InteractiveGoalCommandV1,
+    InteractiveGoalRecoveryV1,
     InteractiveGoalReviewSubmissionV1,
     InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
@@ -178,6 +179,20 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     @property
     def supports_interactive_goal(self) -> bool:
         return type(self) is CodingHostedExecutionSessionV1 and type(self._product_binding) is CodingRealHostedSessionV1
+
+    @property
+    def supports_interactive_goal_recovery(self) -> bool:
+        binding = self._product_binding
+        return (type(self) is CodingHostedExecutionSessionV1
+                and isinstance(binding, CodingDeferredHostedSessionV1)
+                and binding.supports_interactive_goal_recovery)
+
+    async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1:
+        self._require_execution_open()
+        binding = self._product_binding
+        if not self.supports_interactive_goal_recovery or not isinstance(binding, CodingDeferredHostedSessionV1):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await binding.interactive_goal_recovery()
 
     def _interactive_goal_binding(self) -> CodingRealHostedSessionV1:
         self._require_execution_open()

@@ -1191,3 +1191,62 @@ it("offers Goal review only for a current candidate and gates acceptance on chec
   });
   expect(goal.queryByText("Completed")).not.toBeInTheDocument();
 });
+
+it.each([
+  { status: "active", reason: "created", label: "Active when last recorded", unresolved: true },
+  { status: "paused", reason: "review_required", label: "Paused", unresolved: false },
+  { status: "completed", reason: "requirements_satisfied", label: "Completed", unresolved: false },
+] as const)("replaces a prior Host's command with read-only $status Goal history", async ({
+  status, reason, label, unresolved,
+}) => {
+  const seed = await createMockAppClient().snapshot();
+  const active = {
+    ...seed.sessions[0], status: "idle" as const, execution: null,
+    supportsInteractiveGoal: true as const, supportsInteractiveGoalCommands: true as const,
+  };
+  const deferred = {
+    ...active, supportsInteractiveGoal: undefined, supportsInteractiveGoalCommands: undefined,
+    supportsInteractiveGoalRecovery: true as const,
+  };
+  const initial: ClientSnapshot = {
+    ...seed, sessions: [active], selectedSessionId: active.id, connection: "connected",
+    source: { kind: "live", serviceInstanceId: "first-host", muxSpaceId: "mux", connectionEpoch: "1" },
+  };
+  type Recover = NonNullable<HarnessClientUiPort["interactiveGoalRecovery"]>;
+  const recover = vi.fn<Recover>().mockResolvedValue({
+    presence: "present", goalId: "original-goal", goalStatus: status, reasonCode: reason, revision: 1, epoch: 1,
+    batchCount: 2, completedCount: unresolved ? 1 : 2, failedCount: 0, cancelledCount: 0,
+    orphanedCount: unresolved ? 1 : 0, executionUnresolved: unresolved, readOnly: true,
+  });
+  let publish: (snapshot: ClientSnapshot) => void = () => {};
+  const control = vi.fn();
+  const client: HarnessClientUiPort = {
+    snapshot: async () => initial,
+    subscribe: () => () => {},
+    subscribeSnapshots(listener) { publish = listener; return () => {}; },
+    createInteractiveGoal: async () => null,
+    controlInteractiveGoal: control,
+    interactiveGoalRecovery: recover,
+    interactiveGoalStatus: async () => ({
+      availability: "present", goalId: "original-goal", status: "active", revision: 1, epoch: 1, executionUnresolved: false,
+      command: { action: "run", commandId: "old-run", status: "running" },
+    }),
+    submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+    interrupt: async () => ({ accepted: false }),
+  };
+  render(<HarnessGui client={client} />);
+  expect(await screen.findByText("Goal command running")).toBeVisible();
+  expect(recover).not.toHaveBeenCalled();
+  act(() => publish({
+    ...initial, sessions: [deferred],
+    source: { kind: "live", serviceInstanceId: "second-host", muxSpaceId: "mux", connectionEpoch: "2" },
+  }));
+  const panel = within(await screen.findByRole("region", { name: "Historical Goal" }));
+  expect(await panel.findByText(label)).toBeVisible();
+  expect(panel.getByText(reason)).toBeVisible();
+  expect(panel.queryAllByText(/Some execution results are unconfirmed/)).toHaveLength(unresolved ? 1 : 0);
+  expect(panel.queryAllByRole("button")).toHaveLength(0);
+  expect(screen.queryByText("Goal command running")).not.toBeInTheDocument();
+  expect(control).not.toHaveBeenCalled();
+  expect(recover).toHaveBeenCalledExactlyOnceWith({ sessionId: active.id, serviceInstanceId: "second-host", connectionEpoch: "2" });
+});

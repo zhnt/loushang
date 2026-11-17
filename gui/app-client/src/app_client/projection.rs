@@ -306,6 +306,12 @@ struct Snapshot {
         deserialize_with = "present"
     )]
     supports_interactive_goal_commands: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    supports_interactive_goal_recovery: Option<bool>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -364,6 +370,7 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
             || e.result.supports_goal_start == Some(false)
             || e.result.supports_interactive_goal == Some(false)
             || e.result.supports_interactive_goal_commands == Some(false)
+            || e.result.supports_interactive_goal_recovery == Some(false)
             || (e.result.supports_interactive_goal_commands == Some(true)
                 && e.result.supports_interactive_goal != Some(true))
             || !identifier(&e.result.service_instance_id, 128)
@@ -706,7 +713,113 @@ impl InteractiveGoalReview {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct InteractiveGoalRecovery {
+    presence: String,
+    reason_code: String,
+    goal_id: Box<RawValue>,
+    goal_status: Box<RawValue>,
+    revision: Box<RawValue>,
+    epoch: Box<RawValue>,
+    batch_count: u64,
+    completed_count: u64,
+    failed_count: u64,
+    cancelled_count: u64,
+    orphaned_count: u64,
+    execution_unresolved: bool,
+    read_only: bool,
+}
+
+impl InteractiveGoalRecovery {
+    fn valid(&self) -> Result<bool, ()> {
+        const MAX: u64 = 9_007_199_254_740_991;
+        let goal_id = optional_string(&self.goal_id)?;
+        let status = optional_string(&self.goal_status)?;
+        let revision: Option<u64> = serde_json::from_str(self.revision.get()).map_err(|_| ())?;
+        let epoch: Option<u64> = serde_json::from_str(self.epoch.get()).map_err(|_| ())?;
+        let work = [
+            self.completed_count,
+            self.failed_count,
+            self.cancelled_count,
+            self.orphaned_count,
+        ];
+        if !self.read_only
+            || self.batch_count > MAX
+            || work.iter().any(|&n| n > MAX)
+            || work.iter().sum::<u64>() > self.batch_count
+            || (self.orphaned_count > 0 && !self.execution_unresolved)
+        {
+            return Ok(false);
+        }
+        let reason = self.reason_code.as_str();
+        if self.presence == "present" {
+            return Ok(goal_id.is_some_and(|id| identifier(&id, 128))
+                && status.is_some_and(|s| {
+                    [
+                        "active",
+                        "paused",
+                        "completed",
+                        "abandoned",
+                        "failed",
+                        "superseded",
+                    ]
+                    .contains(&s.as_str())
+                })
+                && [revision, epoch]
+                    .iter()
+                    .all(|n| n.is_some_and(|n| (1..=MAX).contains(&n)))
+                && [
+                    "created",
+                    "review_required",
+                    "user_accepted_current_result",
+                    "requirements_satisfied",
+                    "user_pause",
+                    "user_resume",
+                    "user_review",
+                    "user_cancel",
+                    "run_interrupted",
+                    "batch_limit",
+                    "execution_unresolved",
+                    "other",
+                ]
+                .contains(&reason));
+        }
+        if goal_id.is_some()
+            || status.is_some()
+            || revision.is_some()
+            || epoch.is_some()
+            || self.batch_count != 0
+        {
+            return Ok(false);
+        }
+        Ok(match self.presence.as_str() {
+            "absent" => reason == "no_goal" && !self.execution_unresolved,
+            "unavailable" => {
+                self.execution_unresolved
+                    && [
+                        "source_changed",
+                        "goal_journal_invalid",
+                        "work_log_invalid",
+                        "unsupported_goal",
+                        "ambiguous_goal",
+                    ]
+                    .contains(&reason)
+            }
+            _ => false,
+        })
+    }
+}
+
 pub fn control_bridge(kind: &str, wire: &str) -> Result<Value, ()> {
+    if kind == "interactive_goal_recovery" {
+        let parsed: Envelope<InteractiveGoalRecovery> =
+            serde_json::from_str(wire).map_err(|_| ())?;
+        if !envelope(&parsed, kind) || !parsed.result.valid()? {
+            return Err(());
+        }
+        return serde_json::to_value(parsed).map_err(|_| ());
+    }
     if kind == "interactive_goal_review" {
         let parsed: Envelope<InteractiveGoalReview> = serde_json::from_str(wire).map_err(|_| ())?;
         if !envelope(&parsed, kind) || !parsed.result.valid() {

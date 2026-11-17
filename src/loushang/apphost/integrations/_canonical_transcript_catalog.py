@@ -212,6 +212,9 @@ class _CanonicalTranscriptCatalogMethods(
     ) -> RecordT | None:
         raise NotImplementedError
 
+    def _candidate_layout(self, directory: Path) -> AgentTranscriptFileLayout:
+        return AgentTranscriptFileLayout(directory)
+
     def _header_read_context(self) -> tuple[bool, threading.Event | None]:
         return self._owned_factory is not None, None
 
@@ -434,7 +437,7 @@ class _CanonicalTranscriptCatalogMethods(
         before = self._directory_revision(admitted.session_dir)
         if before is None:
             return HostedSessionDiscoverySnapshotV1(scope, (), True)
-        layout = AgentTranscriptFileLayout(admitted.session_dir)
+        layout = self._candidate_layout(admitted.session_dir)
         scan = layout.scan_candidate_path_snapshot(
             layout.namespace,
             max_candidates=self._maximum_candidates(),
@@ -512,7 +515,7 @@ class _CanonicalTranscriptCatalogMethods(
                 before = self._directory_revision(scope.session_dir)
                 if before is None:
                     continue
-                layout = AgentTranscriptFileLayout(scope.session_dir)
+                layout = self._candidate_layout(scope.session_dir)
                 snapshot = layout.scan_candidate_path_snapshot(
                     layout.namespace,
                     max_candidates=self._maximum_candidates(),

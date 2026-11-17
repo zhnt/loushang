@@ -999,6 +999,27 @@ impl ControlAuthority {
         decode_interactive_goal(result, Some(&command))
     }
 
+    pub(crate) fn interactive_goal_recovery<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        let payload = self.payload(session_id)?;
+        let result = execution_request(
+            channel,
+            "session/interactive_goal_recovery",
+            request_id,
+            payload,
+        )?;
+        if rejected_result(&result)?.is_some() {
+            return Ok(None);
+        }
+        let mut checked =
+            projection::control_bridge("interactive_goal_recovery", &result.to_string())?;
+        Ok(Some(checked["result"].take()))
+    }
+
     pub(crate) fn interactive_goal_review<R: Read, W: Write>(
         &self,
         channel: &mut Channel<R, W>,

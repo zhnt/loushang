@@ -50,8 +50,10 @@ from loushang.harness.transcript import (
     AgentTranscriptSessionFactory,
     _canonical_header,
 )
+from loushang.harness.transcript.jsonl_file import AgentTranscriptFileLayout
 from loushang.harness.transcript.product_session import ProductTranscriptSession
 
+from .adapters._goal_store import is_goal_journal_filename
 from .appservice_adapter import CodingHostedSessionBindingV1
 from .composition_provenance import composition_header_metadata
 from .composition_sets import resolve_coding_composition_set
@@ -447,6 +449,9 @@ class CodingHostedSessionCatalogV1(
 
     def _compatibility_id(self) -> str:
         return CODING_HOSTED_COMPATIBILITY_ID
+
+    def _candidate_layout(self, directory: Path) -> AgentTranscriptFileLayout:
+        return AgentTranscriptFileLayout(directory, excluded_candidate_name=is_goal_journal_filename)
 
     def _maximum_candidates(self) -> int:
         return _MAX_CANDIDATES

@@ -13,6 +13,7 @@ from loushang.harness.journal import (
     JournalDurabilityProfile,
     JournalLoadPolicy,
     JsonlJournal,
+    decode_jsonl,
 )
 from loushang.harness.journal.owned import (
     DirectoryWriterLease,
@@ -49,6 +50,10 @@ class _GoalWriter(DirectoryWriterLease):
     # Physical exclusion never varies by Product identity or Goal id.
     _lock_directory = GOAL_LOCK_DIRECTORY
     _hash_domain = GOAL_WRITER_HASH_DOMAIN
+
+
+_HEADER_CODEC = FunctionalJournalHeaderCodec(encode_header, decode_header)
+_RECORD_CODEC = FunctionalJournalRecordCodec(encode_record, decode_record)
 
 
 class JsonlGoalRecordStore:
@@ -103,8 +108,8 @@ class JsonlGoalRecordStore:
             yield JsonlJournal(
                 self.path,
                 bound_file=bound,
-                record_codec=FunctionalJournalRecordCodec(encode_record, decode_record),
-                header_codec=FunctionalJournalHeaderCodec(encode_header, decode_header),
+                record_codec=_RECORD_CODEC,
+                header_codec=_HEADER_CODEC,
                 durability=JournalDurabilityProfile(
                     locking=False, flush=True, fsync=True
                 ),
@@ -127,6 +132,20 @@ class JsonlGoalRecordStore:
                 raise GoalError("missing Goal header")
             self._check_header(value.header)
             return value.header, value.records
+
+    def decode_detached(self, raw: str) -> GoalHistory:
+        """Replay an authorized stable read without acquiring a Writer lease."""
+        if not self._read_only:
+            raise GoalError("detached Goal reads require read-only authority")
+        snapshot = decode_jsonl(
+            raw, target=self.path, record_codec=_RECORD_CODEC, header_codec=_HEADER_CODEC,
+            load_policy=JournalLoadPolicy(header="required", collect_duplicate_keys=True),
+        )
+        snapshot.require_unique_keys("duplicate Goal journal fields")
+        if snapshot.header is None:
+            raise GoalError("missing Goal header")
+        self._check_header(snapshot.header)
+        return replay(snapshot.header, snapshot.records)
 
     def append(self, expected_sequence: int, record: GoalRecord) -> int:
         if self._read_only:

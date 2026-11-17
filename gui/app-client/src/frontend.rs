@@ -660,6 +660,20 @@ fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
             })?;
             Ok(json!(result))
         }
+        "interactive-goal-recovery" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let epoch = field(input, "connectionEpoch")?;
+            if input.as_object().map(|object| object.len()) != Some(3) {
+                return Err("invalid_request".into());
+            }
+            if epoch != view.epoch.to_string() {
+                return Ok(Value::Null);
+            }
+            let result = view.control(Some(instance), |reply| {
+                ControlCommand::ReadInteractiveGoalRecovery { session_id, reply }
+            })?;
+            Ok(json!(result))
+        }
         "interactive-goal-review" | "interactive-goal-review-submit" => {
             let instance = field(input, "serviceInstanceId")?;
             let epoch = field(input, "connectionEpoch")?;

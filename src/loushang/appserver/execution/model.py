@@ -258,6 +258,7 @@ class ExecutionSessionSnapshotV1:
     supports_goal_start: bool = False
     supports_interactive_goal: bool = False
     supports_interactive_goal_commands: bool = False
+    supports_interactive_goal_recovery: bool = False
 
     def __post_init__(self) -> None:
         _identifier(self.service_instance_id)
@@ -267,7 +268,7 @@ class ExecutionSessionSnapshotV1:
             raise ValueError("invalid execution composite snapshot")
         if any(type(flag) is not bool for flag in (
             self.supports_goal_progress, self.supports_goal_start, self.supports_interactive_goal,
-            self.supports_interactive_goal_commands,
+            self.supports_interactive_goal_commands, self.supports_interactive_goal_recovery,
         )):
             raise TypeError("invalid Goal capability")
         if self.supports_interactive_goal_commands and not self.supports_interactive_goal:
@@ -499,6 +500,60 @@ class InteractiveGoalViewV1:
             raise TypeError("invalid interactive Goal command")
 
 
+GoalRecoveryHistoryReasonV1 = Literal[
+    "created", "review_required", "requirements_satisfied", "user_accepted_current_result", "user_pause", "user_resume",
+    "user_review", "user_cancel", "run_interrupted", "batch_limit", "execution_unresolved", "other",
+]
+GoalRecoveryUnavailableReasonV1 = Literal[
+    "source_changed", "goal_journal_invalid", "work_log_invalid", "unsupported_goal", "ambiguous_goal",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class InteractiveGoalRecoveryV1:
+    presence: Literal["absent", "present", "unavailable"]
+    reason_code: Literal[GoalRecoveryHistoryReasonV1, GoalRecoveryUnavailableReasonV1, "no_goal"]
+    goal_id: str | None = None
+    goal_status: ExecutionGoalStatusV1 | None = None
+    revision: int | None = None
+    epoch: int | None = None
+    batch_count: int = 0
+    completed_count: int = 0
+    failed_count: int = 0
+    cancelled_count: int = 0
+    orphaned_count: int = 0
+    execution_unresolved: bool = False
+    read_only: bool = True
+
+    def __post_init__(self) -> None:
+        if self.read_only is not True or type(self.execution_unresolved) is not bool:
+            raise ValueError("invalid recovery ownership")
+        counts = (self.batch_count, self.completed_count, self.failed_count, self.cancelled_count, self.orphaned_count)
+        for count in counts:
+            _counter(count)
+        if sum(counts[1:]) > self.batch_count or (self.orphaned_count and not self.execution_unresolved):
+            raise ValueError("invalid recovery counts")
+        if self.presence == "present":
+            if self.goal_id is None or self.goal_status not in get_args(ExecutionGoalStatusV1):
+                raise ValueError("invalid recovered Goal identity")
+            _identifier(self.goal_id)
+            for number in (self.revision, self.epoch):
+                _counter(number)
+                if number == 0:
+                    raise ValueError("invalid recovered Goal revision")
+            if self.reason_code not in get_args(GoalRecoveryHistoryReasonV1):
+                raise ValueError("invalid recovered Goal reason")
+            return
+        if any(value is not None for value in (self.goal_id, self.goal_status, self.revision, self.epoch)) or any(counts):
+            raise ValueError("unexpected recovered Goal facts")
+        if self.presence == "absent" and self.reason_code == "no_goal" and not self.execution_unresolved:
+            return
+        if (self.presence == "unavailable" and self.execution_unresolved
+                and self.reason_code in get_args(GoalRecoveryUnavailableReasonV1)):
+            return
+        raise ValueError("invalid unavailable recovery")
+
+
 class ExecutionOperationV1(str, Enum):
     SUBMIT = "execution/submit"
     GET = "execution/get"
@@ -507,6 +562,7 @@ class ExecutionOperationV1(str, Enum):
     INTERACTIVE_GOAL_CREATE = "session/interactive_goal_create"
     INTERACTIVE_GOAL_STATUS = "session/interactive_goal_status"
     INTERACTIVE_GOAL_COMMAND = "session/interactive_goal_command"
+    INTERACTIVE_GOAL_RECOVERY = "session/interactive_goal_recovery"
     INTERACTIVE_GOAL_REVIEW = "session/interactive_goal_review"
     INTERACTIVE_GOAL_REVIEW_SUBMIT = "session/interactive_goal_review_submit"
     FIND = "execution/find_submission"
@@ -633,7 +689,7 @@ class ExecutionFailureV1:
 ExecutionResultV1 = (
     ExecutionRecordV1 | ExecutionSessionSnapshotV1 | ExecutionEventsV1
     | ExecutionInterruptResultV1 | ExecutionFailureV1 | AppFailureV1 | None
-    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1 | InteractiveGoalReviewV1
+    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1 | InteractiveGoalReviewV1 | InteractiveGoalRecoveryV1
 )
 
 
@@ -648,6 +704,6 @@ class ExecutionResponseV1:
             ExecutionRecordV1, ExecutionSessionSnapshotV1, ExecutionEventsV1,
             ExecutionFailureV1, AppFailureV1,
             ExecutionInterruptResultV1,
-            ResumeInputLookupResultV1, ExecutionGoalProgressV1, InteractiveGoalViewV1, InteractiveGoalReviewV1,
+            ResumeInputLookupResultV1, ExecutionGoalProgressV1, InteractiveGoalViewV1, InteractiveGoalReviewV1, InteractiveGoalRecoveryV1,
         ):
             raise TypeError("invalid execution response")

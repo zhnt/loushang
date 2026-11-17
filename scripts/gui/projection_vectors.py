@@ -120,6 +120,31 @@ def emit_projection_vectors() -> None:
         invalid = copy.deepcopy(summary)
         invalid["result"][field] = value
         add(f"interactive-review-invalid-{field}", "interactive_goal_review", invalid, False)
+    recovery_snapshot = replace(snapshot, supports_interactive_goal_recovery=True)
+    recovery_wire = json.loads(encode_response(em.ExecutionResponseV1("recovery-capability", recovery_snapshot)))
+    add("interactive-recovery-capability", "snapshot", recovery_wire)
+    for flag in (None, False):
+        item = copy.deepcopy(recovery_wire)
+        item["result"]["supportsInteractiveGoalRecovery"] = flag
+        add(f"interactive-recovery-capability-{flag}", "snapshot", item, False)
+    for recovery in (
+        em.InteractiveGoalRecoveryV1("absent", "no_goal"),
+        em.InteractiveGoalRecoveryV1("unavailable", "goal_journal_invalid", execution_unresolved=True),
+        em.InteractiveGoalRecoveryV1("present", "requirements_satisfied", "goal-1", "completed", 1, 2, 4, 4),
+        em.InteractiveGoalRecoveryV1("present", "review_required", "goal-1", "paused", 1, 2, 3, 3),
+        em.InteractiveGoalRecoveryV1("present", "created", "goal-1", "active", 1, 1, 2, 1,
+                                     orphaned_count=1, execution_unresolved=True),
+    ):
+        wire = json.loads(encode_response(em.ExecutionResponseV1("recovery", recovery)))
+        add(f"recovery-{recovery.presence}-{recovery.reason_code}", "interactive_goal_recovery", wire)
+    for index, (field, value) in enumerate((
+        ("goalStatus", "running"), ("orphanedCount", -1), ("orphanedCount", 2),
+        ("completedCount", 2**53), ("executionUnresolved", False), ("readOnly", False),
+        ("reasonCode", "workspace private detail"), ("revision", 0), ("goalId", None), ("commandId", "old"),
+    )):
+        invalid = copy.deepcopy(wire)
+        invalid["result"][field] = value
+        add(f"recovery-invalid-{field}-{index}", "interactive_goal_recovery", invalid, False)
     goal = em.ExecutionGoalProgressV1(
         "execution-1", "present", "goal-1", "paused", "advance_budget_exhausted",
         "not_checked", True, 3, 6, 2,

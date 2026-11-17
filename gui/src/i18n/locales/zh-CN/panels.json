@@ -1,5 +1,19 @@
 {
   "interactiveGoal": {
+    "recovery": {
+      "title": "历史目标",
+      "readOnly": "只读历史",
+      "loading": "正在读取目标历史…",
+      "unavailable": "无法读取可靠的目标历史。",
+      "active": "最后记录为活动状态",
+      "reason": "记录原因",
+      "batches": "Work 批次",
+      "completed": "已完成的 Work",
+      "failed": "失败的 Work",
+      "cancelled": "已取消的 Work",
+      "orphaned": "失去执行者的 Work",
+      "unresolved": "部分执行结果尚未确认，请核查原工作区。"
+    },
     "review": {
       "open": "审阅结果",
       "loading": "正在读取当前候选…",

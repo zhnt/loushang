@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { validateGoalProgress } from "../../contracts/goalProgress";
 import { validateUserChoice } from "../../contracts/userChoice";
 import { ApprovalResponses } from "./approvalResponses";
+import { validateInteractiveGoalRecovery } from "../../contracts/interactiveGoalRecovery";
 import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { thinkingLevels, type ThinkingLevel } from "./model";
@@ -232,6 +233,12 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       const result = await invoke<unknown>("live_interactive_goal_command", { input });
       return result === null ? null : validateInteractiveGoal(result);
     },
+    async interactiveGoalRecovery(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_recovery", { input });
+      return result === null ? null : validateInteractiveGoalRecovery(result);
+    },
     async interactiveGoalReview(input) {
       const source = current;
       if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
@@ -359,7 +366,7 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
   const sessions = root.sessions.map((raw, index) => {
     const session = object(raw);
     if (identifier(session.serviceInstanceId) !== serviceInstanceId) throw new Error("instance");
-    for (const key of ["supportsGoalProgress", "supportsGoalStart", "supportsInteractiveGoal", "supportsInteractiveGoalCommands"]) {
+    for (const key of ["supportsGoalProgress", "supportsGoalStart", "supportsInteractiveGoal", "supportsInteractiveGoalCommands", "supportsInteractiveGoalRecovery"]) {
       if (key in session && session[key] !== true) throw new Error("Goal capability");
     }
     if (session.supportsInteractiveGoalCommands && !session.supportsInteractiveGoal) throw new Error("interactive Goal capability");
@@ -601,6 +608,7 @@ function projectSession(
     supportsGoalStart: snapshot.supportsGoalStart,
     supportsInteractiveGoal: snapshot.supportsInteractiveGoal,
     supportsInteractiveGoalCommands: snapshot.supportsInteractiveGoalCommands,
+    supportsInteractiveGoalRecovery: snapshot.supportsInteractiveGoalRecovery,
     pendingApprovals: snapshot.pendingApprovals ?? [],
     userChoice: source.userChoice,
     documents: [],
