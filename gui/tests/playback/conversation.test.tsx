@@ -572,6 +572,10 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);
     expect(createSession).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "New Session" }).closest("header")).not.toBeNull();
+    expect(screen.getByLabelText("Session transcript")).toBeEmptyDOMElement();
+    expect(screen.getByText("Default model")).toBeVisible();
+    expect(screen.getByRole("button", { name: /^GUI development ·/ })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("textbox")).toHaveFocus();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep this draft" } });
     fireEvent.click(start);
@@ -674,7 +678,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         expect(submitText).toHaveBeenCalledTimes(1);
         expect(createSession).toHaveBeenCalledTimes(1);
       } else {
-        await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+        await waitFor(() => expect(input).toHaveValue(""));
+        expect(screen.getByRole("textbox")).toBe(input);
         expect(screen.getByRole("heading", { name: "New Session" })).toBeVisible();
       }
     },

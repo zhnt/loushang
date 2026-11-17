@@ -300,6 +300,7 @@ export default interface Resources {
     "models": {
       "back": "Models",
       "choose": "Select a model",
+      "default": "Default model",
       "empty": "No models available",
       "endpoint": "Endpoint: {{endpoint}}",
       "label": "Session model",

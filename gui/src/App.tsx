@@ -439,7 +439,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     observer.observe(pane);
     observer.observe(transcript);
     return () => observer.disconnect();
-  }, [selected?.id]);
+  }, [selected?.id, draftId]);
   useLayoutEffect(() => {
     const transcript = transcriptRef.current;
     if (transcript) transcript.scrollTop = transcriptPosition.current ?? transcript.scrollHeight;
@@ -584,6 +584,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
   function openDraft(path: string | null) {
     if (!newSessionEnabled) return;
+    setEnvironmentOpen(false);
+    if (panelOpen) dispatch({ type: "dock.closed" });
     const sourceSessionId = state.local.selectedSessionId ?? undefined;
     draftCreation.open({
       key: JSON.stringify([draftHost, path]),
@@ -620,6 +622,35 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     if (draftEnabled && !draftPending && draft) void draftCreation.submit();
   }
 
+  const composer = draft ? {
+    title: draftTitle,
+    text: draft.text,
+    onChange: draftCreation.change,
+    onSubmit: submitDraft,
+    submitLabel: draft.status === "createUnknown" ? t("session:composer.checkCreation") : undefined,
+    disabled: draftPending || draft.status === "firstSubmissionUnknown",
+    buttonDisabled: !draftEnabled || draftPending || !canSubmitDraft(draft),
+    model: <span className="model-trigger model-default">{t("session:models.default")}</span>,
+  } : selected ? {
+    title: displaySessionTitle(selected),
+    text: state.local.drafts[selected.id] ?? "",
+    onChange: (value: string) => dispatch({ type: "draft.changed", sessionId: selected.id, value }),
+    onSubmit: () => void submit(state.local.drafts[selected.id] ?? ""),
+    disabled: installedClient !== client || !selectionReady,
+    onInterrupt: selected.status === "running" ? () => void interrupt() : undefined,
+    buttonDisabled: selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim(),
+    fixture: Boolean(fixture),
+    notice: <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>,
+    model: <ModelPicker
+      key={modelScope ?? selected.id}
+      models={sessionModels}
+      emptyLabel={modelLabel}
+      disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
+      busy={modelPending}
+      onSelect={selectModel}
+    />,
+  } : null;
+
   return (
     <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
       onPointerDownCapture={(event) => { event.currentTarget.dataset.inputModality = "pointer"; }}
@@ -651,6 +682,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           onNewSession={() => openDraft(null)}
           newSessionEnabled={newSessionEnabled}
           newSessionPending={Boolean(projectNavigation?.pending || draftPending)}
+          activeSessionId={selected?.id ?? null}
           projectNavigation={navigation}
           projectTitles={knownTitles}
         />
@@ -663,8 +695,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }} onLostPointerCapture={() => { sidebarDrag.current = null; }} />
         </div>
 
-        {selected || (attachedClient && !fixture) ? <SessionHeader
+        {draft || selected || (attachedClient && !fixture) ? <SessionHeader
           session={selected}
+          draftTitle={draft ? draftTitle : undefined}
           connection={liveConnecting ? "connecting" : state.remote.connection}
           dockOpen={panelOpen}
           environmentOpen={environmentOpen}
@@ -684,101 +717,88 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>{t("session:sync.retry")}</button> : null}
             </div>
           ) : null}
-          {draft ? (
+          {draft || selected ? (
             <>
-              <div className="transcript empty-state"><h2>{draftTitle}</h2></div>
-              <div className="composer-stack">
-                {draft.status !== "ready" ? <p className="draft-notice" role="status">
-                  <NoticeText notice={{ key: `notice.${draft.status}` }} />
-                </p> : null}
-                <MessageComposer key={draft.id} title={draftTitle} text={draft.text}
-                  onChange={draftCreation.change} onSubmit={submitDraft}
-                  submitLabel={draft.status === "createUnknown" ? t("session:composer.checkCreation") : undefined}
-                  disabled={draftPending || draft.status === "firstSubmissionUnknown"}
-                  buttonDisabled={!draftEnabled || draftPending || !canSubmitDraft(draft)} />
-              </div>
-            </>
-          ) : selected ? (
-            <>
-
-              <div key={selected.id} className="transcript markdown-reading"
+              <div key={selected?.id ?? draft?.id} className="transcript markdown-reading"
                 data-markdown-theme={markdown.theme}
                 aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
-                onScroll={(event) => {
+                onScroll={selected ? (event) => {
                   const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
                   const following = !fixture && scrollHeight - clientHeight - scrollTop <= 32;
                   dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: following ? null : scrollTop });
-                }}>
-                {selected.messages.map((message) => message.role === "status" ? (
-                  <p className="message transcript-status" role="status" key={message.id}>{message.content}</p>
-                ) : (
-                  <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
-                    <div className="message-meta">
-                      <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
-                      <span>{valueLabel(message.phase)}</span>
-                    </div>
-                    {message.role === "assistant" && message.content
-                      ? <MessageMarkdown text={message.content} />
-                      : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
-                  </article>
-                ))}
-                {selected.pendingApprovals?.map((approval) => (
-                  <ToolApproval key={approval.interactionId} approval={approval}
-                    enabled={connected && selectionReady && !syncing && Boolean(client.respondInteraction)}
-                    onRespond={(outcome) => {
-                      if (approval.sessionId === selected.id) {
-                        void client.respondInteraction?.(selected.id, approval.interactionId, outcome);
-                      }
-                    }} />
-                ))}
-                {question && choiceKey ? <UserChoiceCard key={question.questionId} question={question}
-                  answer={rejectedBeforeInput && choiceAnswer ? { ...choiceAnswer, status: "rejected" } : choiceAnswer}
-                  enabled={Boolean(submitAllowed && selected.status !== "running")}
-                  onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
-                <GoalStart {...goalStart} />
-                {selected.supportsInteractiveGoalRecovery && client.interactiveGoalRecovery && state.remote.source.kind === "live" ? (
-                  <InteractiveGoalRecovery
-                    key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
-                      state.remote.source.muxSpaceId, state.remote.source.connectionEpoch, selected.id])}
-                    client={client} sessionId={selected.id} instanceId={state.remote.source.serviceInstanceId}
-                    epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null} />
-                ) : null}
-                {!selected.supportsInteractiveGoalRecovery && selected.supportsInteractiveGoal && client.createInteractiveGoal && client.interactiveGoalStatus && state.remote.source.kind === "live" ? (
-                  <InteractiveGoal
-                    key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
-                      state.remote.source.muxSpaceId, selected.id])}
-                    client={client} session={selected} instanceId={state.remote.source.serviceInstanceId}
-                    epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null}
-                    enabled={mutationsAllowed} scopeKey={modelScope} setBusyScope={setGoalBusyScope} />
-                ) : null}
-                {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
-                {connected && selected.execution && selected.supportsGoalProgress && client.goalProgress && state.remote.source.kind === "live" ? (
-                  <GoalProgress
-                    key={JSON.stringify([state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch,
-                      state.remote.source.muxSpaceId, selected.id, selected.execution.id])}
-                    client={client} sessionId={selected.id} execution={selected.execution} />
-                ) : null}
-                {selected.run && tasksAvailable ? (
-                  <RunActivity
-                    run={selected.run}
-                    expanded={Boolean(state.local.expandedActivities[selected.run.id])}
-                    onToggle={() => dispatch({ type: "activity.toggled", activityGroupId: selected.run!.id })}
-                    onSelectTask={(taskId) => dispatch({ type: "task.selected", taskId })}
-                  />
-                ) : null}
-                {selected.changeSet && changesAvailable ? (
-                  <ChangeSetCard
-                    changeSet={selected.changeSet}
-                    onOpenFile={(documentId, trigger) => {
-                      quickLookTriggerRef.current = trigger;
-                      dispatch({ type: "quick-look.opened", documentId });
-                    }}
-                    onOpenReview={() => {
-                      const first = selected.changeSet?.files[0];
-                      if (first) openReview(first.documentId);
-                    }}
-                  />
-                ) : null}
+                } : undefined}>
+                {selected ? <>
+                  {selected.messages.map((message) => message.role === "status" ? (
+                    <p className="message transcript-status" role="status" key={message.id}>{message.content}</p>
+                  ) : (
+                    <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
+                      <div className="message-meta">
+                        <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
+                        <span>{valueLabel(message.phase)}</span>
+                      </div>
+                      {message.role === "assistant" && message.content
+                        ? <MessageMarkdown text={message.content} />
+                        : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
+                    </article>
+                  ))}
+                  {selected.pendingApprovals?.map((approval) => (
+                    <ToolApproval key={approval.interactionId} approval={approval}
+                      enabled={connected && selectionReady && !syncing && Boolean(client.respondInteraction)}
+                      onRespond={(outcome) => {
+                        if (approval.sessionId === selected.id) {
+                          void client.respondInteraction?.(selected.id, approval.interactionId, outcome);
+                        }
+                      }} />
+                  ))}
+                  {question && choiceKey ? <UserChoiceCard key={question.questionId} question={question}
+                    answer={rejectedBeforeInput && choiceAnswer ? { ...choiceAnswer, status: "rejected" } : choiceAnswer}
+                    enabled={Boolean(submitAllowed && selected.status !== "running")}
+                    onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
+                  <GoalStart {...goalStart} />
+                  {selected.supportsInteractiveGoalRecovery && client.interactiveGoalRecovery && state.remote.source.kind === "live" ? (
+                    <InteractiveGoalRecovery
+                      key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
+                        state.remote.source.muxSpaceId, state.remote.source.connectionEpoch, selected.id])}
+                      client={client} sessionId={selected.id} instanceId={state.remote.source.serviceInstanceId}
+                      epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null} />
+                  ) : null}
+                  {!selected.supportsInteractiveGoalRecovery && selected.supportsInteractiveGoal && client.createInteractiveGoal && client.interactiveGoalStatus && state.remote.source.kind === "live" ? (
+                    <InteractiveGoal
+                      key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
+                        state.remote.source.muxSpaceId, selected.id])}
+                      client={client} session={selected} instanceId={state.remote.source.serviceInstanceId}
+                      epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null}
+                      enabled={mutationsAllowed} scopeKey={modelScope} setBusyScope={setGoalBusyScope} />
+                  ) : null}
+                  {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
+                  {connected && selected.execution && selected.supportsGoalProgress && client.goalProgress && state.remote.source.kind === "live" ? (
+                    <GoalProgress
+                      key={JSON.stringify([state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch,
+                        state.remote.source.muxSpaceId, selected.id, selected.execution.id])}
+                      client={client} sessionId={selected.id} execution={selected.execution} />
+                  ) : null}
+                  {selected.run && tasksAvailable ? (
+                    <RunActivity
+                      run={selected.run}
+                      expanded={Boolean(state.local.expandedActivities[selected.run.id])}
+                      onToggle={() => dispatch({ type: "activity.toggled", activityGroupId: selected.run!.id })}
+                      onSelectTask={(taskId) => dispatch({ type: "task.selected", taskId })}
+                    />
+                  ) : null}
+                  {selected.changeSet && changesAvailable ? (
+                    <ChangeSetCard
+                      changeSet={selected.changeSet}
+                      onOpenFile={(documentId, trigger) => {
+                        quickLookTriggerRef.current = trigger;
+                        dispatch({ type: "quick-look.opened", documentId });
+                      }}
+                      onOpenReview={() => {
+                        const first = selected.changeSet?.files[0];
+                        if (first) openReview(first.documentId);
+                      }}
+                    />
+                  ) : null}
+                </> : null}
               </div>
 
               {quickLookDocument && changesAvailable ? (
@@ -789,7 +809,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                 />
               ) : null}
 
-              {fixture ? <details className="playback-strip" aria-label={t("session:fixture.controls")}>
+              {selected && fixture ? <details className="playback-strip" aria-label={t("session:fixture.controls")}>
                 <summary>{t("session:fixture.summary", { count: remainingSteps })}</summary>
                 <div className="playback-body">
                 <div>
@@ -802,7 +822,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               </details> : null}
 
               <div className="composer-stack">
-                {selected.run && tasksAvailable ? (
+                {selected?.run && tasksAvailable ? (
                   <TaskProgressControl
                     run={selected.run}
                     open={state.local.taskListOpen}
@@ -810,23 +830,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     onSelect={(taskId) => dispatch({ type: "task.selected", taskId })}
                   />
                 ) : null}
-                <MessageComposer key={selected.id} title={displaySessionTitle(selected)}
-                  text={state.local.drafts[selected.id] ?? ""}
-                  onChange={(value) => dispatch({ type: "draft.changed", sessionId: selected.id, value })}
-                  onSubmit={() => void submit(state.local.drafts[selected.id] ?? "")} disabled={installedClient !== client || !selectionReady}
-                  onInterrupt={selected.status === "running" ? () => void interrupt() : undefined}
-                  buttonDisabled={selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
-                  fixture={Boolean(fixture)}
-                  notice={<p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>}
-                  model={<ModelPicker
-                    key={modelScope ?? selected.id}
-                    models={sessionModels}
-                    emptyLabel={modelLabel}
-                    disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
-                    busy={modelPending}
-                    onSelect={selectModel}
-                  />}
-                />
+                {draft && draft.status !== "ready" ? <p className="draft-notice" role="status">
+                  <NoticeText notice={{ key: `notice.${draft.status}` }} />
+                </p> : null}
+                {composer ? <MessageComposer {...composer} /> : null}
               </div>
             </>
           ) : !liveConnecting ? (
@@ -871,11 +878,12 @@ interface SidebarProps {
   readonly onNewSession: () => void;
   readonly newSessionEnabled: boolean;
   readonly newSessionPending: boolean;
+  readonly activeSessionId: string | null;
   readonly projectNavigation?: ProjectNavigationProps;
   readonly projectTitles: Readonly<Record<string, string>>;
 }
 
-function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings, projectNavigation, projectTitles }: SidebarProps) {
+function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings, activeSessionId, projectNavigation, projectTitles }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   const preferencesKey = sidebarPreferencesKey(state.remote.source);
@@ -904,8 +912,8 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
       {!managedLocal ? <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div> : null}
 
       {projectNavigation
-        ? <ProjectNavigation navigation={projectNavigation} selectedId={state.local.selectedSessionId} titles={projectTitles} />
-        : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state}
+        ? <ProjectNavigation navigation={projectNavigation} selectedId={activeSessionId} titles={projectTitles} />
+        : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state} activeSessionId={activeSessionId}
             onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />}
 
       </div>
@@ -914,8 +922,8 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
   );
 }
 
-function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace }: Pick<SidebarProps,
-  "state" | "onSelect" | "onToggleWorkspace"> & { readonly preferencesKey: string }) {
+function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace, activeSessionId }: Pick<SidebarProps,
+  "state" | "onSelect" | "onToggleWorkspace" | "activeSessionId"> & { readonly preferencesKey: string }) {
   const { t } = useTranslation("workspace");
   const [preferences, setPreferences] = useState(() => readSidebarPreferences(preferencesKey));
   const list = useRef<HTMLElement>(null);
@@ -983,7 +991,7 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace 
 
   function renderSession(session: SessionSnapshot, isPinned = false) {
     return <SessionButton key={session.id} session={session} stale={stale}
-      selected={session.id === selectedSessionId} unread={Boolean(state.local.unread[session.id])}
+      selected={session.id === activeSessionId} unread={Boolean(state.local.unread[session.id])}
       pinned={isPinned} onSelect={() => onSelect(session.id)} onTogglePin={() => {
         restorePinFocus.current = session.id;
         if (isPinned && workspaceIds.has(session.workspaceId) && state.local.expandedWorkspaces[session.workspaceId] === false) {
@@ -1114,10 +1122,11 @@ function ExecutionDetail({ execution, stale }: {
   );
 }
 
-function SessionHeader({ session, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment }: {
+function SessionHeader({ session, draftTitle, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment }: {
   readonly environmentOpen: boolean;
   readonly onEnvironment: () => void;
   readonly session: SessionSnapshot | undefined;
+  readonly draftTitle?: string;
   readonly connection: ConnectionState | "connecting";
   readonly dockOpen: boolean;
   readonly onOpenDock: () => void;
@@ -1131,7 +1140,7 @@ function SessionHeader({ session, connection, dockOpen, onOpenDock, environmentO
           <UiIcon name="folder" />
           <div><h1>{displaySessionTitle(session)}</h1></div>
           <button type="button" aria-label={t("panels:header.actions")}><span aria-hidden="true">⋯</span></button>
-        </> : null}
+        </> : draftTitle ? <h1>{draftTitle}</h1> : null}
       </div>
       <div className="header-actions" data-session-ready={Boolean(session)}>
         <span className={`connection-chip ${connection}`} role="status"

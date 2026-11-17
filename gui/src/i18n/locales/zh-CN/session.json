@@ -63,6 +63,7 @@
     "messageFor": "发送给 {{title}} 的消息"
   },
   "models": {
+    "default": "默认模型",
     "label": "会话模型",
     "unavailable": "模型列表不可用",
     "none": "模型信息不可用",

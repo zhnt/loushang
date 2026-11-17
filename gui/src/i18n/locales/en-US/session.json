@@ -63,6 +63,7 @@
     "messageFor": "Message for {{title}}"
   },
   "models": {
+    "default": "Default model",
     "label": "Session model",
     "unavailable": "Model catalog unavailable",
     "none": "Model information unavailable",
