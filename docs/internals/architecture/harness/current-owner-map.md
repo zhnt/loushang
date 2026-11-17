@@ -744,12 +744,15 @@ including live root/ACL/handle lifetime at completion. No second file engine is
 introduced. Product checks and selection remain at their original call points.
 
 The existing [Package Product boundary](../../../../src/loushang/harness/package_product/_worker_windows_attempt.py)
-now owns fixed Windows intent read/inventory/commit, provisioning load/CAS and
+now owns fixed Windows intent read/inventory/commit, complete provisioning
+binding/intent validation/load/CAS and retained native-cleanup rechecks, plus
 the outer cleanup-fact acquisition sequence under the original GC/currentness
 scope. It uses the same original Resources receipt writer, Journal, C5 and
 Hosting authorities. It adds no writer, journal, retained descriptor or fact
-index. Coding retains exact receipt/request/selection policy, error and layout
-bindings, and real public record/Prepared dataclasses with their own fields.
+index. Provisioning uses the same payload recovery inventory, completed-retirement
+proof and admission owner; Coding retains exact platform/type/active Product
+admission, scope and layout bindings. Public record/Prepared dataclasses keep
+their original nominal fields.
 
 The same Package Product boundary also owns the fixed inner orphan/runtime
 join, recovery-fact acquisition and retirement-root observation. Both payload

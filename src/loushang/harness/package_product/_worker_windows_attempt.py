@@ -23,10 +23,14 @@ from weakref import WeakKeyDictionary
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
+    PackageProductSelectedPluginManifestV1,
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
+)
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
 )
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
@@ -48,8 +52,11 @@ from loushang.harness.resources.plugins.declarations import (
 )
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.worker._native_profile_bridge import (
+    _WINDOWS_LPAC_PROFILE_ID,
     _rebuild_windows_lpac_cleanup_spec,
     _recover_windows_lpac_containment_cleanup,
+    _windows_lpac_provisioning_identity,
+    _WindowsLpacProductWorkerProfilePlan,
 )
 from loushang.harness.worker._windows_provisioning_journal import (
     WindowsWorkerProvisioningAttemptV1,
@@ -61,6 +68,9 @@ from loushang.harness.worker.contracts import (
     WorkerRuntimeBindingV1,
 )
 from loushang.harness.worker.history._receipts import _ReceiptRecordMethods
+from loushang.harness.worker.history._windows_launch_intent_base import (
+    WindowsLaunchIntentMethods,
+)
 from loushang.harness.worker.history._windows_product_journals import (
     WindowsActivationStateJournal,
     WindowsSupervisorJournal,
@@ -96,7 +106,10 @@ from loushang.hosting.windows_backend_material import (
 )
 
 from ._worker_product_authority import _WindowsWorkerProductReceiptAuthority
-from .product_worker_candidate import ProductWorkerSelectedPayloadFacts
+from .product_worker_candidate import (
+    ProductWorkerSelectedPayloadFacts,
+    verify_product_selected_worker_candidate,
+)
 
 _PersistedCheckpointT = TypeVar("_PersistedCheckpointT")
 _PersistedBasesT = TypeVar("_PersistedBasesT")
@@ -563,9 +576,9 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
 class WindowsProductWorkerProvisioningAccess:
     """Load/CAS on the original actual Code object; policy hooks keep its rules.
 
-    This base initializes no state. The real public object's constructor keeps
-    the same Product/runtime/request/Journal references, and owns the precise
-    selection and retained-cleanup policy at the two original hook points.
+    Binding, intent validation and stale native cleanup use the original
+    selection, payload recovery and Journal owners; Code supplies its Profile
+    and exact public constructor admission. No parallel state is introduced.
     """
 
     _product: WindowsLocalWheelProductSessionOwner
@@ -574,19 +587,203 @@ class WindowsProductWorkerProvisioningAccess:
     _worker_request: ManagedWorkerLaunchRequestV1
     _journal: WindowsWorkerProvisioningStateJournal
 
+    _product_id: str
+    _provisioning_journal_type: type[WindowsWorkerProvisioningStateJournal]
+    _selected: PackageProductSelectedPluginManifestV1
+
     @staticmethod
+    def _session_scope_id(session_id: str) -> str:
+        raise NotImplementedError("the Product session scope Profile is required")
+
+    _read_launch_intent: Callable[
+        [WindowsLocalWheelProductSessionOwner, str], WindowsLaunchIntentMethods | None
+    ]
+
+    def _recovery_payload(
+        self,
+    ) -> WindowsProductWorkerPayload[
+        WindowsWorkerLaunchPayload, _PendingPayload, WindowsRecoveryAttemptV1
+    ]:
+        raise NotImplementedError("the existing Product recovery owner is required")
+
+    def _bind_provisioning_attempt(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        runtime: PackageProductRuntimeBindingV1,
+        selected: PackageProductSelectedPluginManifestV1,
+        receipt: ProductWorkerActivationReceiptV1,
+        worker_request: ManagedWorkerLaunchRequestV1,
+        plan: _WindowsLpacProductWorkerProfilePlan,
+    ) -> None:
+        assert runtime.session_id is not None
+        session_scope_id = self._session_scope_id(runtime.session_id)
+        product.assert_session_runtime_current(runtime)
+        runtime.assert_selected_plugin_manifest_current(selected)
+        selected_candidate = verify_product_selected_worker_candidate(
+            selected,
+            contribution_id=receipt.policy.contribution_id,
+            native_platform="windows-amd64",
+        )
+        candidate = (
+            tuple(
+                binding
+                for binding in product.policy.bindings
+                if binding.source_trust_class == "local-worker-candidate"
+                and binding.plugin_id == receipt.policy.plugin_id
+                and binding.artifact_digest == receipt.policy.plugin_revision_digest
+                and binding.worker_admission is not None
+                and binding.worker_admission.contribution_id
+                == receipt.policy.contribution_id
+                and binding.worker_admission.owner_id
+                == worker_request.identity.owner_id
+                and binding.worker_admission.native_platform == "windows-amd64"
+            )
+            if type(receipt) is ProductWorkerActivationReceiptV1
+            and type(worker_request) is ManagedWorkerLaunchRequestV1
+            else ()
+        )
+        if (
+            type(receipt) is not ProductWorkerActivationReceiptV1
+            or type(worker_request) is not ManagedWorkerLaunchRequestV1
+            or type(plan) is not _WindowsLpacProductWorkerProfilePlan
+            or product.policy.product_id != self._product_id
+            or len(candidate) != 1
+            or candidate[0].source_identity
+            != selected.snapshot.package_revision.package_source_identity
+            or candidate[0].artifact_digest
+            != selected.snapshot.root_ref.artifact_digest
+            or receipt.policy.product_id != self._product_id
+            or not receipt.policy.enabled
+            or receipt.policy.product_scope_id != session_scope_id
+            or receipt.policy.native_profile_id != _WINDOWS_LPAC_PROFILE_ID
+            or receipt.policy.native_profile_catalog_revision
+            != plan.native_profile_catalog_revision
+            or worker_request.identity.product_id != self._product_id
+            or worker_request.identity.scope_id != session_scope_id
+            or worker_request.identity.plugin_id != receipt.policy.plugin_id
+            or worker_request.identity.plugin_revision_digest
+            != receipt.policy.plugin_revision_digest
+            or worker_request.identity.contribution_id != receipt.policy.contribution_id
+            or worker_request.identity.owner_generation
+            != receipt.policy.owner_selection_generation
+            or worker_request.identity.declaration_fingerprint
+            != receipt.policy.declaration_fingerprint
+            or worker_request.identity.worker_configuration_fingerprint
+            != receipt.policy.worker_configuration_fingerprint
+            or selected_candidate.plugin_id != receipt.policy.plugin_id
+            or selected_candidate.owner_id != worker_request.identity.owner_id
+            or selected_candidate.reservation_fingerprint
+            != receipt.policy.reservation_fingerprint
+            or selected_candidate.declaration_fingerprint
+            != receipt.policy.declaration_fingerprint
+            or selected_candidate.worker_configuration_fingerprint
+            != receipt.policy.worker_configuration_fingerprint
+            or selected_candidate.executable_digest
+            != worker_request.runtime.executable_digest
+            or selected_candidate.executable_size
+            != worker_request.runtime.executable_size
+            or plan.worker_request_fingerprint != worker_request.fingerprint
+            or plan.expected_native_policy_closure_fingerprint
+            != receipt.policy.expected_native_policy_closure_fingerprint
+        ):
+            raise ValueError("Windows Worker Product provisioning binding is invalid")
+        product.assert_root_gc_authority_current()
+        with product.gc_gate.guard():
+            self._require_launch_intent(
+                product, receipt=receipt, worker_request=worker_request
+            )
+        identity = _windows_lpac_provisioning_identity(
+            receipt=receipt,
+            worker_request=worker_request,
+            plan=plan,
+        )
+        attempt_id = worker_request.identity.attempt_id
+        self._product = product
+        self._runtime = runtime
+        self._selected = selected
+        self._receipt = receipt
+        self._worker_request = worker_request
+        self._journal = self._provisioning_journal_type(
+            product.state_root / f"worker-native-provisioning-{attempt_id}.jsonl",
+            identity=identity,
+        )
+        product.assert_root_gc_authority_current()
+
     def _require_launch_intent(
+        self,
         product: WindowsLocalWheelProductSessionOwner,
         *,
         receipt: ProductWorkerActivationReceiptV1,
         worker_request: ManagedWorkerLaunchRequestV1,
     ) -> None:
-        raise NotImplementedError("the original Product intent policy is required")
+        intent = self._read_launch_intent(product, worker_request.identity.attempt_id)
+        if (
+            intent is None
+            or intent.receipt_fingerprint != receipt.fingerprint
+            or intent.request_fingerprint != worker_request.fingerprint
+            or intent.identity_fingerprint != worker_request.identity.fingerprint
+            or intent.runtime_fingerprint != worker_request.runtime.fingerprint
+            or intent.payload_digest != worker_request.runtime.executable_digest
+            or intent.stage_identity
+            != (
+                worker_request.runtime.cwd_device,
+                worker_request.runtime.cwd_inode,
+            )
+            or intent.owner_id != worker_request.identity.owner_id
+            or intent.supervisor_epoch != worker_request.identity.supervisor_epoch
+        ):
+            raise ValueError("Windows Worker Product launch intent is invalid")
 
     def _require_store_current(
         self, *, desired_phase: object | None = None, write: bool = False
     ) -> None:
-        raise NotImplementedError("the original Product cleanup policy is required")
+        try:
+            self._runtime.assert_selected_plugin_manifest_current(self._selected)
+            self._worker_request.validate_current()
+            return
+        except (PackageProductRuntimeReadError, WorkerBindingError) as stale:
+            # Disable or update invalidates Product selection. A terminal
+            # Supervisor may still be waiting for Hosting to close native
+            # preparation before it can record physical process settlement.
+            # Only this exact retained attempt may write cleanup phases.
+
+            try:
+                if write and desired_phase not in {
+                    "debt",
+                    "cleaning",
+                    "revoke_effect",
+                    "grants_revoked",
+                    "delete_effect",
+                    "profile_deleted",
+                    "settled",
+                }:
+                    raise ValueError("Windows Worker stale write is not native cleanup")
+                recovery = self._recovery_payload()
+                inventory = recovery.inspect_inventory(self._product)
+                inventory = recovery.current_attempts(
+                    self._product,
+                    inventory,
+                    attempt_id=self._worker_request.identity.attempt_id,
+                )
+                recovery.admission.require_native_release(
+                    inventory,
+                    attempt_id=self._worker_request.identity.attempt_id,
+                    payload_directory_identity=(
+                        self._worker_request.runtime.cwd_device,
+                        self._worker_request.runtime.cwd_inode,
+                    ),
+                    request_fingerprint=self._worker_request.fingerprint,
+                    receipt_fingerprint=self._receipt.fingerprint,
+                    identity_fingerprint=self._worker_request.identity.fingerprint,
+                )
+                self._worker_request.runtime.verify()
+            except (OSError, RuntimeError, ValueError) as error:
+                raise stale from error
+
+    @property
+    def path(self) -> Path:
+        return self._journal.path
 
     def load(self) -> Mapping[str, object] | None:
         with self._product.gc_gate.guard():

@@ -195,6 +195,8 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package_product_worker_windows_provisioning.py": {
         "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.history._windows_recovery",
+        "loushang.harness.worker.payload._selected_payload",
         "loushang.harness.worker.contracts",
         "loushang.harness.worker.product_activation",
     },
