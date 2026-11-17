@@ -3,8 +3,9 @@ import os
 
 import pytest
 
+from loushang.apphost.managed._workspace_preview import read_workspace_preview
+from loushang.apphost.workspace_registry import WorkspacePreviewError
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
-from loushang.coding.workspace_preview import read_workspace_preview
 
 
 def test_reads_current_utf8_and_resolves_links_from_preview_directory(tmp_path):
@@ -25,9 +26,9 @@ def test_lists_bounded_directory_entries_and_can_preview_workspace_root(tmp_path
     (root / "notes.txt").write_text("notes", encoding="utf-8")
     preview = read_workspace_preview(root, ".", "")
     assert preview.path == "."
-    assert [(item.name, item.kind) for item in preview.entries] == [
+    assert preview.entries == (
         ("docs", "directory"), ("notes.txt", "file"),
-    ]
+    )
     assert not preview.limited
     for index in range(160):
         (root / "docs" / str(index)).touch()
@@ -39,7 +40,7 @@ def test_lists_bounded_directory_entries_and_can_preview_workspace_root(tmp_path
 
 @pytest.mark.parametrize("reference", ["../outside.txt", "/outside.txt", r"C:\outside.txt", "//host/share", "file:outside", r"..\outside.txt"])
 def test_rejects_references_outside_workspace(tmp_path, reference):
-    with pytest.raises(AppServiceError) as rejected:
+    with pytest.raises(WorkspacePreviewError) as rejected:
         read_workspace_preview(tmp_path.resolve(), reference, "")
     assert rejected.value.code == AppErrorCodeV1.PERMISSION_DENIED
 
@@ -55,7 +56,7 @@ def test_does_not_follow_file_or_directory_links(tmp_path):
     except (NotImplementedError, OSError):
         pytest.skip("native symlinks are unavailable")
     for reference in ("link.txt", "elsewhere/notes.txt"):
-        with pytest.raises(AppServiceError) as rejected:
+        with pytest.raises(WorkspacePreviewError) as rejected:
             read_workspace_preview(root, reference, "")
         assert rejected.value.code == AppErrorCodeV1.PERMISSION_DENIED
     assert read_workspace_preview(root, ".", "").entries == ()
@@ -73,15 +74,15 @@ def test_does_not_follow_file_or_directory_links(tmp_path):
 def test_file_failures_return_safe_codes(tmp_path, name, content, error):
     if content is not None:
         (tmp_path / name).write_bytes(content)
-    with pytest.raises(AppServiceError) as rejected:
+    with pytest.raises(WorkspacePreviewError) as rejected:
         read_workspace_preview(tmp_path.resolve(), name, "")
-    assert rejected.value.code.value == error
+    assert rejected.value.code == error
 
 
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX FIFO required")
 def test_does_not_read_special_files(tmp_path):
     os.mkfifo(tmp_path / "pipe")
-    with pytest.raises(AppServiceError) as rejected:
+    with pytest.raises(WorkspacePreviewError) as rejected:
         read_workspace_preview(tmp_path.resolve(), "pipe", "")
     assert rejected.value.code == AppErrorCodeV1.PERMISSION_DENIED
 
@@ -141,7 +142,7 @@ def test_accepts_exact_read_limits_and_preserves_tabs_and_line_endings(tmp_path)
 
 def test_trailing_separator_is_for_directories(tmp_path):
     (tmp_path / "README.md").touch()
-    with pytest.raises(AppServiceError) as missing:
+    with pytest.raises(WorkspacePreviewError) as missing:
         read_workspace_preview(tmp_path.resolve(), "README.md/", "")
     assert missing.value.code == AppErrorCodeV1.NOT_FOUND
 
@@ -153,6 +154,6 @@ def test_trailing_separator_is_for_directories(tmp_path):
     ("missing/" + "x" * 4089, AppErrorCodeV1.INVALID_REQUEST),
 ])
 def test_resolved_paths_have_bounded_depth_and_length(tmp_path, reference, code):
-    with pytest.raises(AppServiceError) as rejected:
+    with pytest.raises(WorkspacePreviewError) as rejected:
         read_workspace_preview(tmp_path.resolve(), reference, "")
     assert rejected.value.code == code

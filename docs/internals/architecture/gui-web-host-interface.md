@@ -178,7 +178,9 @@ and live connection. Tauri and Rust Web pass it through the shared Rust
 AppClient. The AppClient checks the authenticated service instance before
 sending the `preview` action of `workspace/request`. The AppService uses its
 existing Workspace port and lock. The Coding catalog checks that the Workspace
-is still registered and that its scope fingerprint matches before reading.
+is still registered and that its scope fingerprint matches. The AppHost
+Workspace Registry owns native directory and file handles. The Coding
+catalog projects its bounded results into the AppServer protocol values.
 
 References use a Workspace-relative path and an optional base directory.
 Transcript references start at the Workspace root. Markdown preview links

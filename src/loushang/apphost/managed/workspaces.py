@@ -9,12 +9,17 @@ from pathlib import Path
 from secrets import token_hex
 from time import monotonic
 
-from loushang.apphost.workspace_registry import WorkspaceRegistrationError
+from loushang.apphost.workspace_registry import (
+    WorkspaceDirectoryRead,
+    WorkspaceFileRead,
+    WorkspaceRegistrationError,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
 )
 
 from ._files import ManagedStorageError, PrivateManagedDirectory
+from ._workspace_preview import read_workspace_preview
 from .contracts import _invalid_windows_part
 
 
@@ -151,6 +156,10 @@ class WorkspaceRegistry:
         if path not in self.list():
             raise ValueError("workspace_not_registered")
         return path
+
+    def preview(self, root: Path, reference: str, base: str) -> WorkspaceFileRead | WorkspaceDirectoryRead:
+        """Read beneath the selected canonical root after the caller checks its scope."""
+        return read_workspace_preview(root, reference, base)
 
     def _read(self):
         snapshot = self._directory.read("workspaces.json")

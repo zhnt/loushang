@@ -13,7 +13,11 @@ from loushang.apphost.integrations._canonical_transcript_catalog import (
     _WorkspaceTranscriptCatalogMethods,
 )
 from loushang.apphost.integrations.session_control import project_session_models
-from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
+from loushang.apphost.workspace_registry import (
+    HostWorkspaceRegistryPort,
+    WorkspaceFileRead,
+    WorkspacePreviewError,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -24,7 +28,13 @@ from loushang.appserver.protocol import (
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
-from loushang.appserver.protocol.workspace_preview import WorkspacePreviewRequestV1
+from loushang.appserver.protocol.workspace_preview import (
+    WorkspaceDirectoryPreviewV1,
+    WorkspaceFilePreviewV1,
+    WorkspacePreviewEntryV1,
+    WorkspacePreviewRequestV1,
+    WorkspacePreviewV1,
+)
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 
@@ -37,7 +47,6 @@ from .hosted_catalog import (
 from .hosted_models import preview_workspace_models
 from .managed_catalog import CodingManagedSessionCatalogV1
 from .workspace_inspection import inspect_session_changes, inspect_workspace
-from .workspace_preview import read_workspace_preview
 
 
 class CodingWorkspaceCatalog(
@@ -119,8 +128,17 @@ class CodingWorkspaceCatalog(
         scope = catalog.scopes[0]
         if root != Path(path) or scope.fingerprint != request.scope_fingerprint:
             raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
-        result = await settled_io(read_workspace_preview, root, request.reference, request.base)
-        return WorkspaceResultV1((WorkspaceInfoV1(str(root), scope.scope, scope.fingerprint, preview=result),))
+        try:
+            opened = await settled_io(self.registry.preview, root, request.reference, request.base)
+        except WorkspacePreviewError as exc:
+            raise AppServiceError(AppErrorCodeV1(exc.code)) from None
+        preview: WorkspacePreviewV1
+        if isinstance(opened, WorkspaceFileRead):
+            preview = WorkspaceFilePreviewV1(opened.path, opened.text)
+        else:
+            entries = tuple(WorkspacePreviewEntryV1(name, kind) for name, kind in opened.entries)
+            preview = WorkspaceDirectoryPreviewV1(opened.path, entries, opened.limited)
+        return WorkspaceResultV1((WorkspaceInfoV1(str(root), scope.scope, scope.fingerprint, preview=preview),))
 
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         if request.preview is not None and request.path is not None:
