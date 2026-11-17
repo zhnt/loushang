@@ -324,6 +324,7 @@ export default interface Resources {
       "createUnknown": "Session creation is unconfirmed. Your draft is saved.",
       "creating": "Creating Session…",
       "emptyPrompt": "Enter a message before sending.",
+      "firstModelUnavailable": "The selected model could not be applied. Your draft is saved.",
       "firstSubmissionUnknown": "The first message outcome is unknown. Your draft is saved.",
       "firstSubmitRejected": "The first message was rejected. Your draft is saved.",
       "fixtureAccepted": "Fixture accepted the prompt. Advance it step by step.",

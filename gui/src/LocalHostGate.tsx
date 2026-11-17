@@ -3,7 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import App, { HarnessGui } from "./App";
 import { useOfflineAccount } from "./client/offlineAccount";
-import { nativeLiveAvailable } from "./client/nativeLiveClient";
+import { nativeLiveAvailable, validateSessionModels } from "./client/nativeLiveClient";
 import type { ConnectionState, HarnessClientUiPort } from "./client/model";
 import { useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
@@ -362,6 +362,9 @@ export default function LocalHostGate() {
       closeFolder: () => setFolderInput(false),
       register: registerWorkspace,
       hostKey: selectedId,
+      draftModels: async (path) => validateSessionModels(
+        await webRequest({ operation: "workspace", action: "models", path }, connectionId.current),
+      ),
       createChat,
       togglePin: (chat) => { void togglePin(chat); },
       select: openConversation,

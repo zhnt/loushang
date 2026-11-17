@@ -44,6 +44,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
@@ -373,6 +374,10 @@ class AppClientScopeV1:
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         self._require_open()
         return await self._service.workspace(request)
+
+    async def workspace_models(self, request: WorkspaceModelsRequestV1) -> SessionModelsV1:
+        self._require_open()
+        return await self._service.workspace_models(request)
 
     async def attach_mux(self, request: MuxAttachV1) -> MuxAttachmentV1:
         self._service._require_request(request, MuxAttachV1)

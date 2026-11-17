@@ -1,4 +1,4 @@
-import type { DraftBinding } from "./model";
+import type { DraftBinding, SessionModels } from "./model";
 
 export const TEMPORARY_WORKSPACE = "@temporary";
 
@@ -31,5 +31,6 @@ export interface ProjectNavigationProps {
 }
 
 export interface ManagedProjectNavigation extends Omit<ProjectNavigationProps, "create"> {
+  readonly draftModels?: (path: string | null) => Promise<SessionModels>;
   readonly createChat: (path: string | null, continuityId: string, title: string) => Promise<DraftBinding | null>;
 }

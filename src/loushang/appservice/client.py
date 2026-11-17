@@ -22,6 +22,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
@@ -46,6 +47,9 @@ class InProcessAppClientV1:
 
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         return await self._service.workspace(request)
+
+    async def workspace_models(self, request: WorkspaceModelsRequestV1) -> SessionModelsV1:
+        return await self._service.workspace_models(request)
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1:
         return await self._service.create_mux(request)

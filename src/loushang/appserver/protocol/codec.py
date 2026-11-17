@@ -60,6 +60,7 @@ from .model import (
     UserChoiceOptionV1,
     UserChoicePromptV1,
     WorkspaceInfoV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
@@ -411,6 +412,8 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
     if operation is AppOperationV1.WORKSPACE:
         workspace = cast(WorkspaceRequestV1, payload)
         return {"action": workspace.action, "path": workspace.path}
+    if operation is AppOperationV1.WORKSPACE_MODELS:
+        return {"path": cast(WorkspaceModelsRequestV1, payload).path}
     if operation is AppOperationV1.MUX_CREATE:
         return {"name": cast(MuxCreateV1, payload).name}
     if operation is AppOperationV1.MUX_LIST:
@@ -492,6 +495,9 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
         value = _object(raw, {"action", "path"})
         return _construct(WorkspaceRequestV1, action=_string(value["action"]),
                           path=_optional_string(value["path"]))
+    if operation is AppOperationV1.WORKSPACE_MODELS:
+        value = _object(raw, {"path"})
+        return _construct(WorkspaceModelsRequestV1, path=_optional_string(value["path"]))
     if operation is AppOperationV1.MUX_CREATE:
         value = _object(raw, {"name"})
         return _construct(MuxCreateV1, name=_string(value["name"]))

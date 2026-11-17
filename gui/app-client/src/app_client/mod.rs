@@ -539,6 +539,24 @@ impl AppClient {
         })
     }
 
+    /// Read a Workspace's model choices without opening it or acquiring an attachment.
+    pub fn workspace_models(
+        &self,
+        target: AppTarget<'_>,
+        timeout: Duration,
+        path: Option<&str>,
+    ) -> Result<ModelControlResult, ()> {
+        self.request_once(target, timeout, |channel, _| {
+            let response = attachment::request(
+                channel,
+                "workspace/models",
+                "1",
+                serde_json::json!({"path": path}),
+            )?;
+            attachment::decode_model_result(&response.result_type, &response.result)
+        })
+    }
+
     pub fn instance(&self, target: AppTarget<'_>, timeout: Duration) -> Result<String, ()> {
         self.request_once(target, timeout, |_, hello| {
             Ok(hello.service_instance_id.clone())

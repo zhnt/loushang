@@ -51,6 +51,7 @@ from loushang.appserver.protocol import (
     UserChoiceOptionV1,
     UserChoicePromptV1,
     WorkspaceInfoV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
     decode_event,
@@ -345,6 +346,18 @@ def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
 def test_workspace_requests_roundtrip(action, path):
     request = AppRequestV1('request-1', AppOperationV1.WORKSPACE, WorkspaceRequestV1(action, path))
     assert decode_request(encode_request(request)) == request
+
+
+@pytest.mark.parametrize("path", [None, "/project", "C:/Workspace A"])
+def test_workspace_models_request_only_accepts_the_target_path(path):
+    request = AppRequestV1("request-1", AppOperationV1.WORKSPACE_MODELS, WorkspaceModelsRequestV1(path))
+    assert decode_request(encode_request(request)) == request
+    wire = json.loads(encode_request(request))
+    wire["payload"]["attachmentId"] = "unrelated"
+    with pytest.raises(InvalidAppMessageError):
+        decode_request(json.dumps(wire).encode())
+    with pytest.raises(ValueError):
+        WorkspaceModelsRequestV1("relative")
 
 
 @pytest.mark.parametrize("action", ["projects", "allocate-temporary"])

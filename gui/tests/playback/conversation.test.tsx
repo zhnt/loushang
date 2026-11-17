@@ -594,6 +594,77 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
   });
 
+  it.each([false, true])("sends only with the model selected before creation (selection fails first: %s)", async (rejectFirstModel) => {
+    const inputSnapshot = await createMockAppClient().snapshot();
+    const second = { ...liveModel, id: "test:primary:second", modelId: "second" };
+    const choices: SessionModels = { currentId: liveModel.id, models: [liveModel, second] };
+    const defaultModels = vi.fn(async () => choices);
+    let snapshot: ClientSnapshot = {
+      ...inputSnapshot,
+      connection: "connected",
+      source: { kind: "live", serviceInstanceId: "host", muxSpaceId: "workspace", connectionEpoch: "1" },
+      sessions: [], selectedSessionId: "", recentSessionIds: [],
+    };
+    let publish: ((value: ClientSnapshot) => void) | undefined;
+    let activeModel = liveModel.id;
+    const selectModel = vi.fn(async (_sessionId: string, modelId: string) => {
+      if (!rejectFirstModel || selectModel.mock.calls.length > 1) activeModel = modelId;
+      return { ...choices, currentId: activeModel };
+    });
+    const submitText = vi.fn<HarnessClientUiPort["submitText"]>(async ({ submissionId }) => {
+      expect(activeModel).toBe(second.id);
+      return { accepted: true, submissionId };
+    });
+    const client: HarnessClientUiPort = {
+      snapshot: async () => snapshot,
+      subscribe: () => () => {},
+      subscribeSnapshots: (listener) => { publish = listener; return () => {}; },
+      interrupt: async () => ({ accepted: false }),
+      sessionModels: async () => ({ ...choices, currentId: activeModel }),
+      selectModel, submitText,
+    };
+    const createChat = vi.fn(async (_path: string | null, continuityId: string) => {
+      const session = {
+        ...inputSnapshot.sessions[0], id: "first-model", title: "New Session", messages: [],
+        context: { ...inputSnapshot.sessions[0].context, continuityId },
+      };
+      snapshot = { ...snapshot, sessions: [session], selectedSessionId: session.id };
+      return {
+        client, sessionId: session.id,
+        show: () => { publish?.(snapshot); return true; },
+      };
+    });
+    render(<HarnessGui client={client} projectNavigation={{
+      hostKey: "local", directory: { projects: [], temporarySessions: [] }, available: true,
+      pending: false, error: false, folderInput: false, selection: null,
+      openFolder: () => {}, closeFolder: () => {}, register: async () => false,
+      createChat, draftModels: defaultModels, togglePin: () => {}, select: () => {},
+    }} />);
+    fireEvent.click(screen.getByRole("button", { name: "New Session" }));
+    const picker = screen.getByRole("button", { name: "Session model" });
+    await waitFor(() => expect(picker).toHaveTextContent("test · model"));
+    expect(defaultModels).toHaveBeenCalledWith(null);
+    fireEvent.click(picker);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /test · second/ }));
+    await waitFor(() => expect(picker).toHaveTextContent("test · second"));
+    expect(createChat).not.toHaveBeenCalled();
+    expect(selectModel).not.toHaveBeenCalled();
+    expect(submitText).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Use the selected model" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    if (rejectFirstModel) {
+      expect(await screen.findByText("The selected model could not be applied. Your draft is saved.")).toBeVisible();
+      expect(submitText).not.toHaveBeenCalled();
+      expect(screen.getByRole("textbox")).toHaveValue("Use the selected model");
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    }
+    await waitFor(() => expect(submitText).toHaveBeenCalledOnce());
+    expect(createChat).toHaveBeenCalledExactlyOnceWith(null, expect.any(String), "New Session");
+    expect(selectModel.mock.calls).toEqual(rejectFirstModel
+      ? [["first-model", second.id], ["first-model", second.id]]
+      : [["first-model", second.id]]);
+  });
+
   it.each(["rejected", "lost-create", "unconfirmed-create", "rejected-submit", "lost-submit"] as const)(
     "binds first send to the confirmed Session and preserves the draft on %s",
     async (failure) => {

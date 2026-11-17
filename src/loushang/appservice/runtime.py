@@ -46,6 +46,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
@@ -87,6 +88,7 @@ from .ports import (
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
     HostedSessionResolverV1,
+    HostedWorkspaceModelsPort,
     HostedWorkspacePort,
 )
 from .resume_ports import (
@@ -594,6 +596,15 @@ class AppServiceV1:
         self._continuity_application_id: str | None = None
         self._continuity_owner_epoch: str | None = None
         self._continuity_revision: int | None = None
+
+    async def workspace_models(self, request: WorkspaceModelsRequestV1) -> SessionModelsV1:
+        self._require_request(request, WorkspaceModelsRequestV1)
+        async with self._workspace_lock:
+            self._require_open()
+            owner = self._workspaces
+            if not isinstance(owner, HostedWorkspaceModelsPort):
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            return await owner.workspace_models(request.path)
 
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         async with self._workspace_lock:

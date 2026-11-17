@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from .client import AppServicePortV1, SessionDiscoveryPortV1
+from .client import AppServicePortV1, SessionDiscoveryPortV1, WorkspaceModelsPortV1
 from .protocol import (
     AppErrorCodeV1,
     AppOperationV1,
@@ -26,6 +26,7 @@ from .protocol import (
     SessionSnapshotRequestV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
 )
 
@@ -39,6 +40,10 @@ async def dispatch_request(
     match request.operation:
         case AppOperationV1.WORKSPACE:
             return await service_port.workspace(cast(WorkspaceRequestV1, value))
+        case AppOperationV1.WORKSPACE_MODELS:
+            if not isinstance(service_port, WorkspaceModelsPortV1):
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            return await service_port.workspace_models(cast(WorkspaceModelsRequestV1, value))
         case AppOperationV1.MUX_CREATE:
             return await service_port.create_mux(cast(MuxCreateV1, value))
         case AppOperationV1.MUX_LIST:

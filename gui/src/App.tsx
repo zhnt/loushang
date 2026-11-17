@@ -24,6 +24,7 @@ import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreference
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
 import { canSubmitDraft, useSessionCreation } from "./useSessionCreation";
+import { useDraftModels } from "./useDraftModels";
 import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
 import { createNativeLiveClient } from "./client/nativeLiveClient";
@@ -589,9 +590,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     setEnvironmentOpen(false);
     if (panelOpen) dispatch({ type: "dock.closed" });
     const sourceSessionId = state.local.selectedSessionId ?? undefined;
+    const loadModels = projectNavigation?.draftModels;
     draftCreation.open({
       key: JSON.stringify([draftHost, path]),
       hostKey: draftHost,
+      loadModels: loadModels ? () => loadModels(path) : undefined,
       create: async (continuityId) => {
         if (projectNavigation) return projectNavigation.createChat(path, continuityId, draftTitle);
         let sessionId: string | undefined;
@@ -620,8 +623,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   } : undefined;
   const draftEnabled = projectNavigation ? projectNavigation.available && !projectNavigation.pending
     : connected || Boolean(draft?.binding);
+  const draftModelTarget = draftCreation.draft?.target;
+  const draftModels = useDraftModels(draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled);
+  const draftModelId = draftModels.models?.currentId ?? undefined;
+  const canSendDraft = draftEnabled && !draftPending && canSubmitDraft(draft)
+    && (!draftModels.required || Boolean(draftModelId));
   function submitDraft() {
-    if (draftEnabled && !draftPending && draft) void draftCreation.submit();
+    if (canSendDraft) void draftCreation.submit(draftModelId);
   }
 
   const composer = draft ? {
@@ -630,7 +638,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     onSubmit: submitDraft,
     submitLabel: draft.status === "createUnknown" ? t("session:composer.checkCreation") : undefined,
     disabled: draftPending || draft.status === "firstSubmissionUnknown",
-    buttonDisabled: !draftEnabled || draftPending || !canSubmitDraft(draft),
+    buttonDisabled: !canSendDraft,
   } : selected ? {
     text: state.local.drafts[selected.id] ?? "",
     onChange: (value: string) => dispatch({ type: "draft.changed", sessionId: selected.id, value }),
@@ -825,11 +833,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                 </p> : null}
                 <MessageComposer {...composer} title={conversationTitle} fixture={Boolean(fixture)}
                   model={<ModelPicker
-                    models={sessionModels}
-                    emptyLabel={draft ? "default" : modelLabel}
-                    disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
+                    models={draft ? draftModels.models : sessionModels}
+                    emptyLabel={draft ? draftModels.label : modelLabel}
+                    disabled={draft
+                      ? draftPending || draft.status === "firstSubmissionUnknown"
+                        || !draftModels.models?.models.some((model) => model.id !== draftModelId)
+                      : !canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
                     busy={Boolean(selected) && modelPending}
-                    onSelect={selectModel}
+                    onSelect={draft ? draftModels.select : selectModel}
                   />}
                 />
               </div>

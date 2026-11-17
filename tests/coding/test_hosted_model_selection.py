@@ -24,6 +24,7 @@ from loushang.appserver.protocol import (
     SessionModelSelectV1,
     SessionOpenSpecV1,
     SessionSnapshotRequestV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
 )
 from loushang.appservice.execution_contract import ExecutionStatusV1
@@ -156,6 +157,22 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
 
     async def scenario():
         async with host() as client:
+            if managed:
+                settings().set_default_model(selection_b, scope="project")
+                before = await client.workspace(WorkspaceRequestV1("list"))
+                project_models = await client.workspace_models(
+                    WorkspaceModelsRequestV1(str(tmp_path))
+                )
+                assert project_models.current_id == second_id
+                assert {choice.id for choice in project_models.models if choice.provider == "faux"} == available
+                assert (await client.workspace_models(WorkspaceModelsRequestV1())).current_id is None
+                with pytest.raises(AppServiceError) as unknown:
+                    await client.workspace_models(WorkspaceModelsRequestV1(str(home)))
+                assert unknown.value.code is AppErrorCodeV1.NOT_FOUND
+                assert await client.workspace(WorkspaceRequestV1("list")) == before
+                assert not (await client.list_muxes()).mux_spaces
+                assert not list(tmp_path.rglob("hosted-*.jsonl"))
+                project_path.unlink()
             first, session_a = await open_session(client, "first", create=True)
             await require_current(client, first, None)
             await require_submission_rejected(client, first)

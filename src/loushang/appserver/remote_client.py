@@ -80,6 +80,7 @@ from .protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
     decode_response,
@@ -400,6 +401,9 @@ class RemoteAppClientV1:
 
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         return await self._call(AppOperationV1.WORKSPACE, request, WorkspaceResultV1)
+
+    async def workspace_models(self, request: WorkspaceModelsRequestV1) -> SessionModelsV1:
+        return await self._call(AppOperationV1.WORKSPACE_MODELS, request, SessionModelsV1)
 
     async def list_muxes(self) -> MuxListResultV1:
         return await self._call(AppOperationV1.MUX_LIST, MuxListV1(), MuxListResultV1)

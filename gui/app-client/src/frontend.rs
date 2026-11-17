@@ -260,6 +260,15 @@ impl Backend {
         let operation = match action {
             "navigation" => return self.navigation(target),
             "create-chat" => return create_chat(target, request),
+            "models" => {
+                let path = optional_workspace_path(request)?;
+                let client = AppClient::default();
+                return models(
+                    client
+                        .workspace_models(target, TIMEOUT, path)
+                        .map_err(|_| client.failure_code())?,
+                );
+            }
             "open" => return self.open(target, field(request, "path")?),
             "list" => WorkspaceRequest::List,
             "create" => WorkspaceRequest::Create(workspace_creation_path(request)?),
@@ -566,6 +575,14 @@ fn created(result: CreateSessionResult) -> Result<Value> {
     }
 }
 
+fn optional_workspace_path(request: &Value) -> Result<Option<&str>> {
+    request
+        .get("path")
+        .filter(|path| !path.is_null())
+        .map(|path| path.as_str().ok_or_else(|| "invalid_request".into()))
+        .transpose()
+}
+
 fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let title = request
         .get("title")
@@ -578,11 +595,7 @@ fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let command = create_command(&json!({
         "title": title, "continuityId": request["continuityId"],
     }))?;
-    let workspace_path = request
-        .get("path")
-        .filter(|path| !path.is_null())
-        .map(|path| path.as_str().ok_or("invalid_request"))
-        .transpose()?;
+    let workspace_path = optional_workspace_path(request)?;
     let scope = match workspace_path {
         Some(path) => open_workspace(target, path),
         None => workspaces(target, WorkspaceRequest::AllocateTemporary).and_then(single),

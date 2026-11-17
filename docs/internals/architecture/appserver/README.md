@@ -1,5 +1,22 @@
 # Loushang AppServer Architecture
 
+## First-message model selection (2026-11-17)
+
+Codex, acting as the implementation agent, accepts the AppServer, AppService,
+Coding and GUI boundary for the first-message model selection change based on
+`5c4f38d55`. The managed connection's read-only `workspace/models` operation
+returns the existing `sessionModels` value for a registered Workspace path or
+for the global configuration used by a fresh temporary Workspace. The request
+holds no Mux or Session authority. AppService delegates the lookup and Coding
+resolves the model from its own settings and catalog.
+
+The GUI keeps the choice with the unsent draft. On submission it binds to the
+confirmed Session, confirms or applies the choice through the existing Session
+controls, and then submits. The GUI regressions exercise a rejected model
+selection and a retry against the same Session. A local Chromium and managed
+AppHost run checks the project/global defaults, absence of a temporary Workspace
+before send, and the selected model ID in the first streaming HTTP request.
+
 ## GUI integration review (2026-11-11)
 
 Codex, acting as the implementation agent for PR #885, reviewed the GUI

@@ -58,6 +58,7 @@ from .bootstrap import BootstrapServices
 from .composition_sets import resolve_coding_composition_set
 from .hosted_catalog import CodingHostedCatalogError, CodingHostedResumeSourceV1
 from .hosted_goal_recovery import read_interactive_goal_recovery, unavailable_recovery
+from .hosted_models import load_workspace_models
 from .hosted_session import (
     _MAX_INTERACTIONS,
     _TEXT_LIMIT,
@@ -279,21 +280,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             raise CodingResumeRecoveryRequired("input.plan_unavailable")
         return plan
 
-    def _load_model_catalog(self) -> None:
-        cwd = self._source.record.scope.cwd
-        inputs = self._services.resource_loader.preview_catalog_input_receipt(cwd)
-        # Match the ordinary bootstrap's nearest project context, then user context.
-        roots_with_context = {fact.root for fact in inputs.context_file_facts if fact.status == "file"}
-        roots = (*inputs.user_resource_roots, *inputs.project_context_roots)
-        project_root = next((root for root in reversed(roots) if root in roots_with_context), cwd)
-        self._services.model_registry.reload_if_project_layer(
-            user_dir=Path.home() / ".loushang" / "models",
-            project_dir=project_root / ".loushang" / "models",
-        )
-
     async def start_background_planning(self) -> None:
         self._source.require_current_source()
-        await settled_io(self._load_model_catalog)
+        await settled_io(load_workspace_models, self._services, self._source.record.scope.cwd)
         self._source.require_current_source()
         policy = workspace_tool_runtime_settings(self._services.settings_manager)
         raw_policy_engine = policy.policy_engine

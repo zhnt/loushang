@@ -107,6 +107,7 @@ class AppOperationV1(str, Enum):
     ATTACHMENT_READ_EVENTS = "attachment/read_events"
     SESSIONS_LIST = "sessions/list"
     WORKSPACE = "workspace/request"
+    WORKSPACE_MODELS = "workspace/models"
 
 
 @dataclass(frozen=True, slots=True)
@@ -761,6 +762,15 @@ class WorkspaceRequestV1:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkspaceModelsRequestV1:
+    path: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.path is not None:
+            WorkspaceRequestV1("open", self.path)
+
+
+@dataclass(frozen=True, slots=True)
 class WorkspaceInfoV1:
     path: str
     scope: SessionScopeV1
@@ -785,6 +795,7 @@ class WorkspaceResultV1:
 
 AppRequestPayloadV1: TypeAlias = (
     WorkspaceRequestV1
+    | WorkspaceModelsRequestV1
     | MuxCreateV1
     | MuxListV1
     | MuxReadV1
@@ -805,6 +816,7 @@ AppRequestPayloadV1: TypeAlias = (
 
 _PAYLOAD_TYPES: dict[AppOperationV1, type[object]] = {
     AppOperationV1.WORKSPACE: WorkspaceRequestV1,
+    AppOperationV1.WORKSPACE_MODELS: WorkspaceModelsRequestV1,
     AppOperationV1.MUX_CREATE: MuxCreateV1,
     AppOperationV1.MUX_LIST: MuxListV1,
     AppOperationV1.MUX_READ: MuxReadV1,
@@ -901,7 +913,7 @@ class AppResponseV1:
 
 
 __all__ = [
-    "WorkspaceRequestV1", "WorkspaceInfoV1", "WorkspaceResultV1",
+    "WorkspaceRequestV1", "WorkspaceModelsRequestV1", "WorkspaceInfoV1", "WorkspaceResultV1",
     "APP_PROTOCOL_VERSION",
     "MAX_MEMBERS",
     "MAX_MUX_SPACES",

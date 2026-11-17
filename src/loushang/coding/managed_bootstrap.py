@@ -88,6 +88,7 @@ def create_coding_managed_attempt(
         WorkspaceRegistry(launch.application_root.parent / "workspaces"),
         launch.session_root,
         launch.store_state_root or launch.application_root.parent / "session-stores",
+        model=model,
     )
     return _create_coding_attempt(
         application_root=launch.application_root, application_id=launch.application_id,

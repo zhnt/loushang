@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import type { ClientSnapshot, DraftBinding, HarnessClientUiPort, SessionSnapshot, SubmitReceipt } from "./client/model";
+import type { ClientSnapshot, DraftBinding, HarnessClientUiPort, SessionModels, SessionSnapshot, SubmitReceipt } from "./client/model";
 
 export interface DraftTarget {
   readonly key: string;
   readonly hostKey: string;
+  readonly loadModels?: () => Promise<SessionModels>;
   readonly create: (continuityId: string) => Promise<DraftBinding | null>;
 }
 
 type DraftStatus = "ready" | "creating" | "sending" | "createFailed" | "createUnknown"
-  | "createSyncFailed" | "firstSubmitRejected" | "firstSubmissionUnknown";
+  | "createSyncFailed" | "firstModelUnavailable" | "firstSubmitRejected" | "firstSubmissionUnknown";
 
 interface Draft {
   readonly id: string;
@@ -117,14 +118,14 @@ class SessionCreation {
     return published;
   }
 
-  async submit(onAccepted: Accepted) {
+  async submit(onAccepted: Accepted, modelId?: string) {
     const input = this.current;
     if (this.inFlight || !canSubmitDraft(input)) return;
     this.inFlight = true;
     this.update(input.id, { status: input.binding?.sessionId ? "sending" : "creating" });
     try {
       const published = await this.resolveBinding(input);
-      if (published) await this.send(input, published, onAccepted);
+      if (published) await this.send(input, published, onAccepted, modelId);
     } catch {
       this.update(input.id, { status: "createUnknown" });
     } finally {
@@ -132,13 +133,14 @@ class SessionCreation {
     }
   }
 
-  private async send(input: Draft, published: PublishedSession, onAccepted: Accepted) {
+  private async send(input: Draft, published: PublishedSession, onAccepted: Accepted, modelId?: string) {
     const binding = this.current?.binding;
     if (!this.current?.visible || !binding?.show(published.session.id)) {
       this.update(input.id, { status: "createSyncFailed" });
       return;
     }
     this.update(input.id, { status: "sending" });
+    if (modelId && !await this.applyFirstModel(binding, published.session.id, input.id, modelId)) return;
     const receipt = await sendDraft(binding.client, published.session.id, input.text);
     if (!receipt.accepted) {
       this.update(input.id, { status: receipt.reason === "submission_outcome_unknown" ? "firstSubmissionUnknown" : "firstSubmitRejected" });
@@ -148,6 +150,16 @@ class SessionCreation {
       onAccepted(published, input.text, receipt, this.current.visible);
       this.save(null);
     }
+  }
+
+  private async applyFirstModel(binding: DraftBinding, sessionId: string, draftId: string, modelId: string) {
+    if (!await confirmFirstModel(binding.client, sessionId, modelId)) {
+      this.update(draftId, { status: "firstModelUnavailable" });
+      return false;
+    }
+    if (this.current?.id === draftId && this.current.visible) return true;
+    this.update(draftId, { status: "createSyncFailed" });
+    return false;
   }
 }
 
@@ -159,8 +171,19 @@ export function useSessionCreation(onAccepted: Accepted) {
     draft, observe: creation.observe, hide: creation.hide,
     open: (target: DraftTarget) => creation.open(target),
     change: (text: string) => creation.change(text),
-    submit: () => creation.submit(onAccepted),
+    submit: (modelId?: string) => creation.submit(onAccepted, modelId),
   };
+}
+
+async function confirmFirstModel(client: HarnessClientUiPort, sessionId: string, modelId: string) {
+  try {
+    const current = await client.sessionModels?.(sessionId);
+    if (current?.currentId === modelId) return true;
+    if (!current?.models.some((model) => model.id === modelId)) return false;
+    return (await client.selectModel?.(sessionId, modelId))?.currentId === modelId;
+  } catch {
+    return false;
+  }
 }
 
 async function sendDraft(client: HarnessClientUiPort, sessionId: string, text: string): Promise<SubmitReceipt> {

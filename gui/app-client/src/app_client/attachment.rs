@@ -1159,7 +1159,10 @@ impl ControlAuthority {
 
 const THINKING_LEVELS: [&str; 6] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 
-fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelControlResult, ()> {
+pub(super) fn decode_model_result(
+    result_type: &str,
+    result: &RawValue,
+) -> Result<ModelControlResult, ()> {
     if let Some(code) = decode_app_error(result_type, result)? {
         return Ok(ModelControlResult::Rejected(code));
     }
