@@ -7,6 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding.package_product_worker_windows_crash_supervisor_settlement as supervisor_settlement
+import loushang.coding.package_product_worker_windows_launch_intent as intent_owner
+import loushang.coding.package_product_worker_windows_orphan_review as orphan_owner
+import loushang.coding.package_product_worker_windows_recovery_inventory as inventory_owner
+import loushang.coding.package_product_worker_windows_supervisor_journal as supervisor_owner
 import loushang.harness.package_product._windows_worker_recovery as recovery
 from loushang.coding.package_product_worker_windows_crash_cleanup_review import (
     CodingWindowsWorkerCrashCleanupReviewV1,
@@ -168,24 +172,24 @@ def test_windows_crash_supervisor_product_keeps_transitions_inside_locks(
             ),
         )
 
-    monkeypatch.setattr(supervisor_settlement, "WindowsLocalWheelProductSessionOwner", Product)
-    monkeypatch.setattr(supervisor_settlement, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(recovery, "WindowsLocalWheelProductSessionOwner", Product)
+    monkeypatch.setattr(recovery, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(
-        supervisor_settlement, "_review_under_gc_guard", lambda *_a, **_k: orphan
+        orphan_owner, "_review_under_gc_guard", lambda *_a, **_k: orphan
     )
     monkeypatch.setattr(
         recovery, "_crash_cleanup_history_matches", lambda _r: True
     )
     monkeypatch.setattr(
-        supervisor_settlement, "_read_intent_under_gc_guard", lambda *_a: intent
+        intent_owner, "_read_intent_under_gc_guard", lambda *_a: intent
     )
     monkeypatch.setattr(
-        supervisor_settlement,
+        supervisor_owner,
         "open_coding_windows_product_worker_supervisor_journal",
         lambda _p: Journal(),
     )
     monkeypatch.setattr(
-        supervisor_settlement,
+        inventory_owner,
         "_inspect_windows_worker_recovery_inventory_under_gc_guard",
         refreshed,
     )

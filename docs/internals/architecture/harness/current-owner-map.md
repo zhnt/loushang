@@ -73,8 +73,12 @@ lease repair. Worker owns the read-only cleanup evidence join. Coding keeps trus
 identities, Product admission and nominal records. Existing recovery also owns gated/orphan review, lease repair and Supervisor
 settlement; StartGateHistory holds the original append/C5 initialization scope.
 Coding retains nominal values, Product/type admission and late Journal binding.
-Recovery orchestration and remaining dispositions are unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
-this slice does not complete that chain or its majority-exit target.
+The existing Windows lease owner now also holds the complete crash-recovery
+command and its Supervisor/native/C5 programs. It reuses the original
+retirement owner, journals and fact readers; Code supplies nominal/Profile
+bindings rather than eight action callbacks. Remaining dispositions and the
+majority-exit target of the [C07 bulk migration](c07-worker-bulk-migration.md)
+are unfinished.
 
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
 including POSIX/Windows file custody and strict decoding after cleanup. It directly

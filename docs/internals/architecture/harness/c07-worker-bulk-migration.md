@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — history/recovery/crash read, four stage-retirement, crash-settlement, payload/intent and POSIX custody/start-gate gated-recovery Windows Provisioning and registered-value mechanisms reviewed by implementation owner; whole-chain closure pending
+- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value and complete Windows crash-recovery slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -185,6 +185,20 @@ complete 与 registered repair 两个 codec 复用同一份七字段 plan 构造
 
 Windows 总编排仍未迁移：它当前调用八个分散 Code 入口，直接转换成阶段回调集合不符合本 Goal。后续需让现有 history、retirement、lease/native/C5 owners 提供完整操作并收拢实际绑定，再接总编排；本批未引入该回调方案，也未降低过半标准。原生 Windows/H6 与全量交付验证仍未执行，所有受控/源码证明均不替代 native 证据。
 
+## Windows 完整崩溃恢复 owner 批次
+
+实现 owner 接受原 lease-pinning/repair owner 扩展并更名为 WindowsProductWorkerCrashRecovery，收拢同模块现有 cleanup review、Supervisor/native/C5 结算程序，直接持有恢复总编排。原四个自由函数和原三字段 lease owner 已退出，没有同时保留第二套恢复实现。总入口按原顺序反复读取 orphan→验证 C5 authority→Supervisor→复读→native→复读→lease repair→复读→stage retirement→C5 settle；实际 stage proof/intent/删除/重放仍交给原 WindowsProductWorkerCrashStageRetirement。
+
+Coding 仅构造一个无状态 Profile，绑定实际的 nominal record factories、Journal、完整事实读取能力、installed backend、C5 evidence/state-store 和已有 retirement 对象。它没有提供八个 action/stage 回调，没有缓存 root/事实或新增账本/恢复器。完整操作的原 platform/Product/type/attempt/review 准入随执行体在原首个 guard 位置运行；公开 Coding 函数、返回注解、名义 DTO/错误/slots/pickle 仍保留。九个动作复用同一原 platform/Product 三项检查，宏展开仍与原短路顺序一致；registry→GC→pinned root 的锁、原 Job 不可观察状态及每次重新读取/复核不变。
+
+本批 Coding −207、Harness +211、Hosting/其他生产 0、系统生产 +4行；既有共享执行体的改组不重计为迁移收益，新增收益主要是完整总编排及重复绑定退出 Code。累计 Coding −5,215、Harness +8,006、系统生产 +2,791行。测试 +70行，文档单列；C07 剩余15,051行，距过半退出仍差4,919行。仍未实现系统净删减，也未达到整组验收。
+
+首轮既有六类 crash 消费者、原恢复 value golden、CLI snapshot、import/C50/C51/C54 为289 passed、49 skipped、1 failed。失败来自 Code 为类型注解直接引用 Worker 私有 Profile；已将具体类型别名留在 Package Product 边界，Code 仅引用其 owner 类型，未扩大原 C50 白名单或门禁。受影响 C50/C54 复验16 passed；统一九处准入检查后的六类消费者及原 value golden 复验98 passed。各组有交叠，不累加。测试只把原故障口从已退出的 Code 变量改绑实际 shared/canonical fact owner，Windows snapshot 中两个暂停点改到实际完整 command，断言/参数化/fixtures 不变。74源 mypy、最后改动的 Core 单源复核和 Ruff 通过。
+
+19个原完整执行体、公开及嵌套准入经明确 owner/Profile 绑定后 AST 一致；真实 Profile 中14个原 owner 身份及 evidence/domain/stage-reader 身份逐一核实。27个名义记录、54份原始 protocol4/5 pickle 字节、20项错误及字段/slots/元数据/公开签名与精确基线一致。总编排与原函数12,480组逐事件/结果/剩余状态对照，1,536组实际故障，每组连续尝试三次，覆盖操作前后失败、丢失确认及已完成边的重试。使用受控的有状态完整组件，不执行 native IO，不替代内层 command 和原生平台验证。
+
+本批关闭原 Windows crash 总编排仍在 Code 的具体缺口；不代表全部112文件、其余恢复/批准/Session/Profile 边界或 C07 大部分退出已完成。Windows 原生路线、H6 与全量正确基线交付检查仍未执行，49项跳过用例不计为 native 验证。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
@@ -195,7 +209,7 @@ Windows 原生 LPAC/Job、真实崩溃路线尚未执行；合成事实和跨进
 
 ## 剩余工作
 
-继续收敛恢复总编排；复核证据 factory、Provisioning、回执及全部剩余文件，优先删除重复机制以降低系统成本。
+继续复核证据 factory、回执/批准记录、Provider/Session 消费者及全部112文件的当前处置，优先复用已有能力并删除重复机制以降低系统成本。
 全部112文件均须更新职责与处置，区分产品政策、必要名义入口、迁移、复用删除；重新审查旧轮次保留理由，Coding 类型或固定名称不单独构成保留整个实现的理由。
 每批计入 Coding/Harness/Hosting/其他生产代码及系统总量，测试和文档单列；系统成本与实际重复删除、职责迁移分别报告。
 本轮尚未达到多数退出目标，未提交 PR 或交付，不修改原轮次已完成的历史证据。

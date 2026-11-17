@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 
 import loushang.coding.package_product_worker_windows_crash_lease_repair as repair
+import loushang.coding.package_product_worker_windows_orphan_review as orphan_owner
+import loushang.coding.package_product_worker_windows_provisioning as provisioning_owner
 import loushang.harness.package_product._windows_worker_recovery as recovery
 
 
@@ -115,9 +117,9 @@ def test_windows_crash_lease_repair_rechecks_settlement_under_package_and_gc_loc
         def assert_root_gc_authority_current(self) -> None:
             events.append("root.check")
 
-    monkeypatch.setattr(repair, "WindowsLocalWheelProductSessionOwner", Product)
+    monkeypatch.setattr(recovery, "WindowsLocalWheelProductSessionOwner", Product)
     monkeypatch.setattr(
-        repair,
+        recovery,
         "os",
         SimpleNamespace(
             name="nt",
@@ -126,11 +128,11 @@ def test_windows_crash_lease_repair_rechecks_settlement_under_package_and_gc_loc
             close=lambda _fd: events.append("stage.close"),
         ),
     )
-    monkeypatch.setattr(recovery, "os", repair.os)
-    monkeypatch.setattr(repair, "_review_under_gc_guard", lambda *_a, **_k: orphan)
+    monkeypatch.setattr(recovery, "os", recovery.os)
+    monkeypatch.setattr(orphan_owner, "_review_under_gc_guard", lambda *_a, **_k: orphan)
     monkeypatch.setattr(recovery, "_crash_settled_history_matches", lambda _r: True)
     monkeypatch.setattr(
-        repair,
+        provisioning_owner,
         "inspect_coding_windows_product_worker_provisioning_attempts",
         lambda _p: (state["native"],),
     )

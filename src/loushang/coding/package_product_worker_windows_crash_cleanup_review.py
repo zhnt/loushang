@@ -6,13 +6,9 @@ must repeat every observation while holding its Package and Product locks.
 
 from __future__ import annotations
 
-import os
-import re
 from dataclasses import dataclass
+from typing import cast
 
-from loushang.harness.package_product._windows_worker_recovery import (
-    review_windows_product_worker_crash_cleanup,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -26,17 +22,10 @@ from loushang.harness.worker.history._windows_recovery import (
 
 from .package_product_worker_windows_orphan_review import (
     CodingWindowsWorkerOrphanRuntimeReviewV1,
-    _review_under_gc_guard,
-)
-from .package_product_worker_windows_provisioning import (
-    inspect_coding_windows_product_worker_provisioning_attempts,
 )
 from .package_product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
-    _inspect_windows_worker_recovery_inventory_under_gc_guard,
 )
-
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 
 
 class CodingWindowsWorkerCrashCleanupReviewError(RuntimeError):
@@ -93,24 +82,11 @@ def review_coding_windows_product_worker_crash_cleanup(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWindowsWorkerCrashCleanupReviewV1:
     """Join an orphan, exact stage and current LPAC spec without an effect."""
+    from .package_product_worker_windows_crash_recovery import _recovery_program
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or _ATTEMPT.fullmatch(attempt_id) is None
-    ):
-        raise ValueError("Windows Worker crash cleanup review requires a Product")
-    return review_windows_product_worker_crash_cleanup(
-        product,
-        attempt_id=attempt_id,
-        record_type=CodingWindowsWorkerCrashCleanupReviewV1,
-        review_runtime=_review_under_gc_guard,
-        inspect_native=inspect_coding_windows_product_worker_provisioning_attempts,
-        inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
-        error_type=CodingWindowsWorkerCrashCleanupReviewError,
-        error_prefix="coding_worker_crash_cleanup",
+    return cast(
+        "CodingWindowsWorkerCrashCleanupReviewV1",
+        _recovery_program().review_cleanup(product, attempt_id=attempt_id),
     )
 
 

@@ -3464,7 +3464,7 @@ module["_exercise_windows_worker_wheel_transaction"](
                 assert inspected["c5Phase"] == "published"
                 assert inspected["orphanLeaseCount"] == 1
                 with patch(
-                    "loushang.coding.package_product_worker_windows_crash_recovery.settle_coding_windows_product_worker_crash_native",
+                    "loushang.harness.package_product._windows_worker_recovery.WindowsProductWorkerCrashRecovery.settle_native",
                     side_effect=OSError("injected native recovery pause"),
                 ):
                     assert (
@@ -3483,7 +3483,7 @@ module["_exercise_windows_worker_wheel_transaction"](
                 assert after_supervisor.attempt.supervisor_phase == "process_settled"
                 assert after_supervisor.attempt.native_phase != "settled"
                 with patch(
-                    "loushang.coding.package_product_worker_windows_crash_recovery.settle_coding_windows_product_worker_crash_c5",
+                    "loushang.harness.package_product._windows_worker_recovery.WindowsProductWorkerCrashRecovery.settle_c5",
                     side_effect=OSError("injected C5 recovery pause"),
                 ):
                     assert (

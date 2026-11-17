@@ -10,6 +10,7 @@ import pytest
 
 import loushang.coding.package_product_worker_windows_crash_stage_retirement as retirement
 import loushang.coding.package_product_worker_windows_stage_retirement as stage_retirement
+import loushang.harness.package_product._windows_worker_recovery as recovery_owner
 import loushang.harness.package_product._windows_worker_retirement as retirement_owner
 import loushang.harness.package_product._worker_windows_attempt as worker_attempt
 from loushang.coding.package_product_worker_windows_crash_stage_review import (
@@ -231,13 +232,13 @@ def test_windows_crash_stage_retirement_resumes_after_root_delete(
         assert read_root_delete_intent() == receipt
         assert not state["stage_present"]
 
-    monkeypatch.setattr(retirement, "WindowsLocalWheelProductSessionOwner", Product)
+    monkeypatch.setattr(recovery_owner, "WindowsLocalWheelProductSessionOwner", Product)
     os_port = SimpleNamespace(
         name="nt",
         fstat=lambda _fd: object(),
         path=SimpleNamespace(samestat=lambda _a, _b: True),
     )
-    monkeypatch.setattr(retirement, "os", os_port)
+    monkeypatch.setattr(recovery_owner, "os", os_port)
     monkeypatch.setattr(worker_attempt, "os", os_port)
     monkeypatch.setattr(worker_attempt, "WindowsPrivateDirectoryAcl", acl_guard)
     monkeypatch.setattr(

@@ -9,10 +9,11 @@ read operation acquires repair or deletion authority.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -52,7 +53,6 @@ from loushang.harness.worker.history._retention import (
     matching_gc_revision_refs,
 )
 from loushang.harness.worker.history._windows_product_journals import (
-    WindowsActivationStateJournal,
     WindowsSupervisorJournal,
     settle_windows_crashed_supervisor_record,
 )
@@ -117,6 +117,27 @@ from ._worker_windows_attempt import (
     settle_windows_product_worker_native_cleanup,
     windows_product_worker_offline_write,
 )
+
+if TYPE_CHECKING:
+    from ._windows_worker_retirement import (
+        WindowsProductWorkerCrashStageRetirement,
+        _RetirementLaunchIntent,
+    )
+from loushang.harness.worker.history._windows_recovery import (
+    _WindowsStageRetirementReceiptMethods,
+)
+
+if TYPE_CHECKING:
+    CrashStageRetirementProfile = WindowsProductWorkerCrashStageRetirement[
+        _WindowsCrashStageReviewMethods,
+        _WindowsStageRetirementReceiptMethods,
+        _RetirementLaunchIntent,
+    ]
+    CrashEvidenceFactory = Callable[
+        ..., WindowsWorkerCleanupEvidence[WindowsLiveCleanupReview]
+    ]
+
+_CRASH_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 
 
 class _OptInHistory(Protocol):
@@ -655,7 +676,6 @@ def review_windows_product_worker_no_effect_under_guard(
 
 _OrphanReviewT = TypeVar("_OrphanReviewT", bound=_WindowsOrphanRuntimeReviewMethods)
 _CrashReviewT = TypeVar("_CrashReviewT", bound=_WindowsCrashStageReviewMethods)
-_CleanupReviewT = TypeVar("_CleanupReviewT")
 
 
 def read_windows_product_worker_orphan_runtime(
@@ -700,90 +720,6 @@ def repair_windows_product_worker_clean_exit_orphan(
         expected_lease.lease_id, validation_guard=validate_while_locked
     )
     return expected_lease
-
-
-def review_windows_product_worker_crash_cleanup(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    record_type: Callable[..., _CleanupReviewT],
-    review_runtime: _RuntimeReview[_WindowsOrphanRuntimeReviewMethods],
-    inspect_native: Callable[
-        [WindowsLocalWheelProductSessionOwner],
-        tuple[WindowsWorkerProvisioningAttemptV1, ...],
-    ],
-    inspect_inventory: ReadWindowsRecoveryInventory[WindowsRecoveryAttemptV1],
-    error_type: type[RuntimeError],
-    error_prefix: str,
-) -> _CleanupReviewT:
-    registry = product.epoch_runtime.registry
-    orphans = registry.review_orphans(store_id=registry.store_id)
-    with product.gc_gate.read_guard():
-        review = review_runtime(product, attempt_id=attempt_id, orphans=orphans)
-        attempt = review.attempt
-        receipt = review.receipt_record
-        if not _crash_cleanup_history_matches(review):
-            raise error_type(error_prefix + "_history_unverified")
-        assert attempt is not None and receipt is not None
-        assert attempt.native_revision is not None
-        assert attempt.payload_directory_identity is not None
-        native = tuple(
-            item for item in inspect_native(product) if item.attempt_id == attempt_id
-        )
-        if len(native) != 1:
-            raise error_type(error_prefix + "_native_identity_unverified")
-        [provisioned] = native
-        identity = provisioned.identity
-        if (
-            provisioned.phase != attempt.native_phase
-            or provisioned.state_revision != attempt.native_revision
-            or provisioned.phase_history != attempt.native_phase_history
-            or provisioned.witness_present_history
-            != attempt.native_witness_present_history
-            or identity["workerRequestFingerprint"]
-            != attempt.launch_request_fingerprint
-            or identity["receiptFingerprint"] != receipt.receipt.fingerprint
-            or identity["jobObjectName"] != attempt.native_job_name
-            or identity["nativeProfileId"] != receipt.receipt.policy.native_profile_id
-            or identity["nativeProfileCatalogRevision"]
-            != receipt.receipt.policy.native_profile_catalog_revision
-        ):
-            raise error_type(error_prefix + "_native_identity_unverified")
-        stage = product.state_root / f"worker-payload-{attempt_id}"
-        _rebuild_windows_lpac_cleanup_spec(
-            identity=identity,
-            runtime_root=stage,
-            platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
-            owner_private_ancestors=True,
-        )
-        product.assert_root_gc_authority_current()
-        if (
-            observe_windows_worker_job_absent(cast(str, identity["jobObjectName"]))
-            is not True
-        ):
-            raise error_type(error_prefix + "_job_unverified")
-        current = next(
-            (
-                item
-                for item in inspect_inventory(product)
-                if item.attempt_id == attempt_id
-            ),
-            None,
-        )
-        if current != attempt:
-            raise error_type(error_prefix + "_history_changed")
-        current_native = tuple(
-            item for item in inspect_native(product) if item.attempt_id == attempt_id
-        )
-        if current_native != native:
-            raise error_type(error_prefix + "_history_changed")
-        product.assert_root_gc_authority_current()
-        return record_type(
-            orphan_review=review,
-            native_revision=attempt.native_revision,
-            native_spec_fingerprint=cast(str, identity["specFingerprint"]),
-            payload_directory_identity=attempt.payload_directory_identity,
-        )
 
 
 def review_windows_product_worker_crash_stage_under_guard(
@@ -887,210 +823,54 @@ class WindowsWorkerBackendRelease(Protocol):
     def expectation(self) -> WindowsBackendMaterialExpectationV1: ...
 
 
-_NativeSettlementT = TypeVar("_NativeSettlementT")
-_LeaseReviewT = TypeVar("_LeaseReviewT", bound=WindowsCrashCleanupReview)
+@dataclass(frozen=True, slots=True)
+class WindowsProductWorkerCrashRecovery:
+    """Existing lease owner expanded to the complete fixed crash recovery command.
 
+    Original history/native/C5 programs share their actual readers and journals;
+    stage proof/deletion stays with the existing retirement owner. No action
+    callbacks, cached roots, durable state or parallel recovery manager are added.
+    """
 
-def settle_windows_product_worker_crash_supervisor(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    expected_review: WindowsCrashCleanupReview,
-    review_runtime: _RuntimeReview[_WindowsOrphanRuntimeReviewMethods],
+    product_id: str
+    orphan_type: type[_WindowsOrphanRuntimeReviewMethods]
+    cleanup_type: Callable[..., WindowsCrashCleanupReview]
+    cleanup_error: type[RuntimeError]
+    cleanup_error_prefix: str
+    inspect_inventory: ReadWindowsRecoveryInventory[WindowsRecoveryAttemptV1]
     read_intent: Callable[
         [WindowsLocalWheelProductSessionOwner, str], _SupervisorLaunchIntent | None
-    ],
+    ]
     supervisor_journal: Callable[
         [WindowsLocalWheelProductSessionOwner], WindowsSupervisorJournal
-    ],
-    inspect_inventory: ReadWindowsRecoveryInventory[WindowsRecoveryAttemptV1],
-) -> WorkerAttemptRecordV1 | None:
-    expected_orphan = expected_review.orphan_review
-    [expected_lease] = expected_orphan.orphan_leases
-    attempt_id = expected_orphan.attempt_id
-    registry = product.epoch_runtime.registry
-    with registry.guard_orphan_recovery(
-        store_id=registry.store_id, lease_id=expected_lease.lease_id
-    ) as lease:
-        if lease != expected_lease:
-            raise ValueError("Windows Worker crash Supervisor lease changed")
-        with product.gc_gate.guard(require_write=True):
-            current = review_runtime(product, attempt_id=attempt_id, orphans=(lease,))
-            if current != expected_orphan or not _crash_cleanup_history_matches(
-                current
-            ):
-                raise ValueError("Windows Worker crash Supervisor review is stale")
-            attempt = current.attempt
-            assert attempt is not None
-            assert attempt.native_job_name is not None
-            intent = read_intent(product, attempt_id)
-            if (
-                intent is None
-                or intent.identity_fingerprint != attempt.launch_identity_fingerprint
-                or intent.stage_identity != attempt.payload_directory_identity
-                or (attempt.native_revision != expected_review.native_revision)
-                or (
-                    attempt.payload_directory_identity
-                    != expected_review.payload_directory_identity
-                )
-            ):
-                raise ValueError("Windows Worker crash Supervisor identity changed")
-            if observe_windows_worker_job_absent(attempt.native_job_name) is not True:
-                raise ValueError("Windows Worker crash Job is still present")
-            if attempt.supervisor_phase is None:
-                product.assert_root_gc_authority_current()
-                return None
-            journal = supervisor_journal(product)
-            records = tuple(
-                (
-                    item
-                    for item in journal.inspect_records()
-                    if item.attempt_id == attempt_id
-                )
-            )
-            if not records:
-                raise ValueError("Windows Worker crash Supervisor history disappeared")
-            record = records[-1]
-            if (
-                record.phase != attempt.supervisor_phase
-                or record.record_revision != attempt.supervisor_revision
-                or record.identity_fingerprint != intent.identity_fingerprint
-                or (record.supervisor_epoch != intent.supervisor_epoch)
-            ):
-                raise ValueError("Windows Worker crash Supervisor history changed")
-            settled = settle_windows_crashed_supervisor_record(journal, record)
-            refreshed = next(
-                (
-                    item
-                    for item in inspect_inventory(product)
-                    if item.attempt_id == attempt_id
-                ),
-                None,
-            )
-            if (
-                refreshed is None
-                or refreshed.native_revision != attempt.native_revision
-                or refreshed.payload_directory_identity
-                != attempt.payload_directory_identity
-                or (
-                    refreshed.launch_identity_fingerprint
-                    != attempt.launch_identity_fingerprint
-                )
-                or (refreshed.supervisor_phase != settled.phase)
-                or (refreshed.supervisor_revision != settled.record_revision)
-                or (refreshed.supervisor_process_settled is not True)
-                or (
-                    observe_windows_worker_job_absent(attempt.native_job_name)
-                    is not True
-                )
-            ):
-                raise ValueError("Windows Worker crash Supervisor settlement changed")
-            product.assert_root_gc_authority_current()
-            return settled
-
-
-def settle_windows_product_worker_crash_native(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    expected_review: WindowsCrashCleanupReview,
-    review_runtime: _RuntimeReview[_WindowsOrphanRuntimeReviewMethods],
-    inspect_native: Callable[
-        [WindowsLocalWheelProductSessionOwner],
-        tuple[WindowsWorkerProvisioningAttemptV1, ...],
-    ],
+    ]
+    activation_journal: Callable[
+        [WindowsLocalWheelProductSessionOwner], _ActivationHistory
+    ]
     read_backend: Callable[
         [WindowsLocalWheelProductSessionOwner], WindowsWorkerBackendRelease
-    ],
-    settlement_type: Callable[..., _NativeSettlementT],
-) -> _NativeSettlementT:
-    expected_orphan = expected_review.orphan_review
-    [expected_lease] = expected_orphan.orphan_leases
-    attempt_id = expected_orphan.attempt_id
-    registry = product.epoch_runtime.registry
-    with registry.guard_orphan_recovery(
-        store_id=registry.store_id, lease_id=expected_lease.lease_id
-    ) as lease:
-        if lease != expected_lease:
-            raise ValueError("Windows Worker crash lease changed")
-        with product.gc_gate.guard(require_write=True):
-            current = review_runtime(product, attempt_id=attempt_id, orphans=(lease,))
-            if current != expected_orphan or not _crash_cleanup_history_matches(
-                current
-            ):
-                raise ValueError("Windows Worker crash cleanup review is stale")
-            attempt = current.attempt
-            assert attempt is not None and current.receipt_record is not None
-            if (
-                attempt.supervisor_phase is not None
-                and attempt.supervisor_process_settled is not True
-            ):
-                raise ValueError("Windows Worker crash Supervisor is unsettled")
-            native = tuple(
-                (
-                    item
-                    for item in inspect_native(product)
-                    if item.attempt_id == attempt_id
-                )
-            )
-            if len(native) != 1:
-                raise ValueError("Windows Worker native cleanup history changed")
-            [provisioned] = native
-            identity = provisioned.identity
-            if (
-                provisioned.phase != attempt.native_phase
-                or provisioned.phase_history != attempt.native_phase_history
-                or provisioned.witness_present_history
-                != attempt.native_witness_present_history
-                or (provisioned.state_revision != expected_review.native_revision)
-                or (
-                    identity["specFingerprint"]
-                    != expected_review.native_spec_fingerprint
-                )
-                or (
-                    attempt.payload_directory_identity
-                    != expected_review.payload_directory_identity
-                )
-                or (
-                    identity["receiptFingerprint"]
-                    != current.receipt_record.receipt.fingerprint
-                )
-                or (
-                    identity["workerRequestFingerprint"]
-                    != attempt.launch_request_fingerprint
-                )
-                or (identity["jobObjectName"] != attempt.native_job_name)
-                or (
-                    identity["nativeProfileId"]
-                    != current.receipt_record.receipt.policy.native_profile_id
-                )
-                or (
-                    identity["nativeProfileCatalogRevision"]
-                    != current.receipt_record.receipt.policy.native_profile_catalog_revision
-                )
-            ):
-                raise ValueError("Windows Worker native cleanup identity changed")
-            stage_name = f"worker-payload-{attempt_id}"
-            material = read_backend(product)
-            return settle_windows_product_worker_native_cleanup(
-                product,
-                stage_name=stage_name,
-                attempt_id=attempt_id,
-                identity=identity,
-                expected_stage_identity=expected_review.payload_directory_identity,
-                material_expectation=material.expectation,
-                settlement_type=settlement_type,
-            )
-
-
-@dataclass(frozen=True, slots=True)
-class WindowsProductWorkerCrashLeaseRepair(Generic[_LeaseReviewT]):
-    """Pin the original stage while the existing registry validates/appends repair."""
-
-    record_type: Callable[..., _LeaseReviewT]
+    ]
+    settlement_type: Callable[..., object]
+    evidence_factory: CrashEvidenceFactory
+    state_store: Callable[[WindowsLocalWheelProductSessionOwner], _ActivationStateStore]
+    evidence_authority_id: str
+    evidence_authority_fingerprint: str
+    host_domain: str
+    boot_domain: str
+    stage_retirement: CrashStageRetirementProfile
+    record_type: Callable[..., WindowsCrashCleanupReview]
     review_runtime: _RuntimeReview[_WindowsOrphanRuntimeReviewMethods]
     inspect_native: Callable[
         [WindowsLocalWheelProductSessionOwner],
         tuple[WindowsWorkerProvisioningAttemptV1, ...],
     ]
+
+    def _product_invalid(self, product: WindowsLocalWheelProductSessionOwner) -> bool:
+        return (
+            os.name != "nt"
+            or type(product) is not WindowsLocalWheelProductSessionOwner
+            or product.policy.product_id != self.product_id
+        )
 
     @contextmanager
     def guard_settled_review(
@@ -1099,7 +879,7 @@ class WindowsProductWorkerCrashLeaseRepair(Generic[_LeaseReviewT]):
         *,
         attempt_id: str,
         orphans: tuple[PackageEpochRuntimeLeaseV1, ...],
-    ) -> Iterator[_LeaseReviewT]:
+    ) -> Iterator[WindowsCrashCleanupReview]:
         """Caller holds GC gate; pin retained stage across an optional Package append."""
         review = self.review_runtime(product, attempt_id=attempt_id, orphans=orphans)
         if not _crash_settled_history_matches(review):
@@ -1184,9 +964,15 @@ class WindowsProductWorkerCrashLeaseRepair(Generic[_LeaseReviewT]):
             finally:
                 os.close(stage)
 
-    def review(
+    def review_lease(
         self, product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
-    ) -> _LeaseReviewT:
+    ) -> WindowsCrashCleanupReview:
+        if (
+            self._product_invalid(product)
+            or type(attempt_id) is not str
+            or _CRASH_ATTEMPT.fullmatch(attempt_id) is None
+        ):
+            raise ValueError("Windows Worker crash lease review requires exact Product")
         registry = product.epoch_runtime.registry
         orphans = registry.review_orphans(store_id=registry.store_id)
         with product.gc_gate.read_guard():
@@ -1195,12 +981,20 @@ class WindowsProductWorkerCrashLeaseRepair(Generic[_LeaseReviewT]):
             ) as review:
                 return review
 
-    def repair(
+    def repair_lease(
         self,
         product: WindowsLocalWheelProductSessionOwner,
         *,
-        expected_review: _LeaseReviewT,
+        expected_review: WindowsCrashCleanupReview,
     ) -> PackageEpochRuntimeLeaseV1:
+        if (
+            self._product_invalid(product)
+            or type(expected_review) is not self.record_type
+            or len(expected_review.orphan_review.orphan_leases) != 1
+        ):
+            raise ValueError(
+                "Windows Worker crash lease repair requires exact Product proof"
+            )
         [expected_lease] = expected_review.orphan_review.orphan_leases
         registry = product.epoch_runtime.registry
 
@@ -1223,6 +1017,547 @@ class WindowsProductWorkerCrashLeaseRepair(Generic[_LeaseReviewT]):
         )
         return expected_lease
 
+    def review_cleanup(
+        self, product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> WindowsCrashCleanupReview:
+        if (
+            self._product_invalid(product)
+            or type(attempt_id) is not str
+            or _CRASH_ATTEMPT.fullmatch(attempt_id) is None
+        ):
+            raise ValueError("Windows Worker crash cleanup review requires a Product")
+        registry = product.epoch_runtime.registry
+        orphans = registry.review_orphans(store_id=registry.store_id)
+        with product.gc_gate.read_guard():
+            review = self.review_runtime(
+                product, attempt_id=attempt_id, orphans=orphans
+            )
+            attempt = review.attempt
+            receipt = review.receipt_record
+            if not _crash_cleanup_history_matches(review):
+                raise self.cleanup_error(
+                    self.cleanup_error_prefix + "_history_unverified"
+                )
+            assert attempt is not None and receipt is not None
+            assert attempt.native_revision is not None
+            assert attempt.payload_directory_identity is not None
+            native = tuple(
+                (
+                    item
+                    for item in self.inspect_native(product)
+                    if item.attempt_id == attempt_id
+                )
+            )
+            if len(native) != 1:
+                raise self.cleanup_error(
+                    self.cleanup_error_prefix + "_native_identity_unverified"
+                )
+            [provisioned] = native
+            identity = provisioned.identity
+            if (
+                provisioned.phase != attempt.native_phase
+                or provisioned.state_revision != attempt.native_revision
+                or provisioned.phase_history != attempt.native_phase_history
+                or (
+                    provisioned.witness_present_history
+                    != attempt.native_witness_present_history
+                )
+                or (
+                    identity["workerRequestFingerprint"]
+                    != attempt.launch_request_fingerprint
+                )
+                or (identity["receiptFingerprint"] != receipt.receipt.fingerprint)
+                or (identity["jobObjectName"] != attempt.native_job_name)
+                or (
+                    identity["nativeProfileId"]
+                    != receipt.receipt.policy.native_profile_id
+                )
+                or (
+                    identity["nativeProfileCatalogRevision"]
+                    != receipt.receipt.policy.native_profile_catalog_revision
+                )
+            ):
+                raise self.cleanup_error(
+                    self.cleanup_error_prefix + "_native_identity_unverified"
+                )
+            stage = product.state_root / f"worker-payload-{attempt_id}"
+            _rebuild_windows_lpac_cleanup_spec(
+                identity=identity,
+                runtime_root=stage,
+                platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
+                owner_private_ancestors=True,
+            )
+            product.assert_root_gc_authority_current()
+            if (
+                observe_windows_worker_job_absent(cast(str, identity["jobObjectName"]))
+                is not True
+            ):
+                raise self.cleanup_error(self.cleanup_error_prefix + "_job_unverified")
+            current = next(
+                (
+                    item
+                    for item in self.inspect_inventory(product)
+                    if item.attempt_id == attempt_id
+                ),
+                None,
+            )
+            if current != attempt:
+                raise self.cleanup_error(self.cleanup_error_prefix + "_history_changed")
+            current_native = tuple(
+                (
+                    item
+                    for item in self.inspect_native(product)
+                    if item.attempt_id == attempt_id
+                )
+            )
+            if current_native != native:
+                raise self.cleanup_error(self.cleanup_error_prefix + "_history_changed")
+            product.assert_root_gc_authority_current()
+            return self.cleanup_type(
+                orphan_review=review,
+                native_revision=attempt.native_revision,
+                native_spec_fingerprint=cast(str, identity["specFingerprint"]),
+                payload_directory_identity=attempt.payload_directory_identity,
+            )
+
+    def settle_supervisor(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        expected_review: WindowsCrashCleanupReview,
+    ) -> WorkerAttemptRecordV1 | None:
+        if (
+            self._product_invalid(product)
+            or type(expected_review) is not self.cleanup_type
+            or len(expected_review.orphan_review.orphan_leases) != 1
+        ):
+            raise ValueError(
+                "Windows Worker crash Supervisor requires exact Product proof"
+            )
+        expected_orphan = expected_review.orphan_review
+        [expected_lease] = expected_orphan.orphan_leases
+        attempt_id = expected_orphan.attempt_id
+        registry = product.epoch_runtime.registry
+        with registry.guard_orphan_recovery(
+            store_id=registry.store_id, lease_id=expected_lease.lease_id
+        ) as lease:
+            if lease != expected_lease:
+                raise ValueError("Windows Worker crash Supervisor lease changed")
+            with product.gc_gate.guard(require_write=True):
+                current = self.review_runtime(
+                    product, attempt_id=attempt_id, orphans=(lease,)
+                )
+                if current != expected_orphan or not _crash_cleanup_history_matches(
+                    current
+                ):
+                    raise ValueError("Windows Worker crash Supervisor review is stale")
+                attempt = current.attempt
+                assert attempt is not None
+                assert attempt.native_job_name is not None
+                intent = self.read_intent(product, attempt_id)
+                if (
+                    intent is None
+                    or intent.identity_fingerprint
+                    != attempt.launch_identity_fingerprint
+                    or intent.stage_identity != attempt.payload_directory_identity
+                    or (attempt.native_revision != expected_review.native_revision)
+                    or (
+                        attempt.payload_directory_identity
+                        != expected_review.payload_directory_identity
+                    )
+                ):
+                    raise ValueError("Windows Worker crash Supervisor identity changed")
+                if (
+                    observe_windows_worker_job_absent(attempt.native_job_name)
+                    is not True
+                ):
+                    raise ValueError("Windows Worker crash Job is still present")
+                if attempt.supervisor_phase is None:
+                    product.assert_root_gc_authority_current()
+                    return None
+                journal = self.supervisor_journal(product)
+                records = tuple(
+                    (
+                        item
+                        for item in journal.inspect_records()
+                        if item.attempt_id == attempt_id
+                    )
+                )
+                if not records:
+                    raise ValueError(
+                        "Windows Worker crash Supervisor history disappeared"
+                    )
+                record = records[-1]
+                if (
+                    record.phase != attempt.supervisor_phase
+                    or record.record_revision != attempt.supervisor_revision
+                    or record.identity_fingerprint != intent.identity_fingerprint
+                    or (record.supervisor_epoch != intent.supervisor_epoch)
+                ):
+                    raise ValueError("Windows Worker crash Supervisor history changed")
+                settled = settle_windows_crashed_supervisor_record(journal, record)
+                refreshed = next(
+                    (
+                        item
+                        for item in self.inspect_inventory(product)
+                        if item.attempt_id == attempt_id
+                    ),
+                    None,
+                )
+                if (
+                    refreshed is None
+                    or refreshed.native_revision != attempt.native_revision
+                    or refreshed.payload_directory_identity
+                    != attempt.payload_directory_identity
+                    or (
+                        refreshed.launch_identity_fingerprint
+                        != attempt.launch_identity_fingerprint
+                    )
+                    or (refreshed.supervisor_phase != settled.phase)
+                    or (refreshed.supervisor_revision != settled.record_revision)
+                    or (refreshed.supervisor_process_settled is not True)
+                    or (
+                        observe_windows_worker_job_absent(attempt.native_job_name)
+                        is not True
+                    )
+                ):
+                    raise ValueError(
+                        "Windows Worker crash Supervisor settlement changed"
+                    )
+                product.assert_root_gc_authority_current()
+                return settled
+
+    def settle_native(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        expected_review: WindowsCrashCleanupReview,
+    ) -> object:
+        if (
+            self._product_invalid(product)
+            or type(expected_review) is not self.cleanup_type
+            or len(expected_review.orphan_review.orphan_leases) != 1
+        ):
+            raise ValueError(
+                "Windows Worker crash settlement requires exact Product proof"
+            )
+        expected_orphan = expected_review.orphan_review
+        [expected_lease] = expected_orphan.orphan_leases
+        attempt_id = expected_orphan.attempt_id
+        registry = product.epoch_runtime.registry
+        with registry.guard_orphan_recovery(
+            store_id=registry.store_id, lease_id=expected_lease.lease_id
+        ) as lease:
+            if lease != expected_lease:
+                raise ValueError("Windows Worker crash lease changed")
+            with product.gc_gate.guard(require_write=True):
+                current = self.review_runtime(
+                    product, attempt_id=attempt_id, orphans=(lease,)
+                )
+                if current != expected_orphan or not _crash_cleanup_history_matches(
+                    current
+                ):
+                    raise ValueError("Windows Worker crash cleanup review is stale")
+                attempt = current.attempt
+                assert attempt is not None and current.receipt_record is not None
+                if (
+                    attempt.supervisor_phase is not None
+                    and attempt.supervisor_process_settled is not True
+                ):
+                    raise ValueError("Windows Worker crash Supervisor is unsettled")
+                native = tuple(
+                    (
+                        item
+                        for item in self.inspect_native(product)
+                        if item.attempt_id == attempt_id
+                    )
+                )
+                if len(native) != 1:
+                    raise ValueError("Windows Worker native cleanup history changed")
+                [provisioned] = native
+                identity = provisioned.identity
+                if (
+                    provisioned.phase != attempt.native_phase
+                    or provisioned.phase_history != attempt.native_phase_history
+                    or provisioned.witness_present_history
+                    != attempt.native_witness_present_history
+                    or (provisioned.state_revision != expected_review.native_revision)
+                    or (
+                        identity["specFingerprint"]
+                        != expected_review.native_spec_fingerprint
+                    )
+                    or (
+                        attempt.payload_directory_identity
+                        != expected_review.payload_directory_identity
+                    )
+                    or (
+                        identity["receiptFingerprint"]
+                        != current.receipt_record.receipt.fingerprint
+                    )
+                    or (
+                        identity["workerRequestFingerprint"]
+                        != attempt.launch_request_fingerprint
+                    )
+                    or (identity["jobObjectName"] != attempt.native_job_name)
+                    or (
+                        identity["nativeProfileId"]
+                        != current.receipt_record.receipt.policy.native_profile_id
+                    )
+                    or (
+                        identity["nativeProfileCatalogRevision"]
+                        != current.receipt_record.receipt.policy.native_profile_catalog_revision
+                    )
+                ):
+                    raise ValueError("Windows Worker native cleanup identity changed")
+                stage_name = f"worker-payload-{attempt_id}"
+                material = self.read_backend(product)
+                return settle_windows_product_worker_native_cleanup(
+                    product,
+                    stage_name=stage_name,
+                    attempt_id=attempt_id,
+                    identity=identity,
+                    expected_stage_identity=expected_review.payload_directory_identity,
+                    material_expectation=material.expectation,
+                    settlement_type=self.settlement_type,
+                )
+
+    def settle_c5(
+        self, product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _RetainedAttemptFields:
+        if self._product_invalid(product):
+            raise ValueError("Windows crash C5 settlement requires its Coding Product")
+        runtime = self.review_orphan(product, attempt_id=attempt_id)
+        attempt = runtime.attempt
+        record = runtime.receipt_record
+        if (
+            attempt is None
+            or record is None
+            or runtime.orphan_leases
+            or (runtime.native_job_absent is not True)
+            or (attempt.supervisor_phase != "process_settled")
+            or (attempt.supervisor_process_settled is not True)
+            or (attempt.native_phase != "settled")
+            or (not _valid_crash_effect_history(attempt, settled=True))
+            or (attempt.payload_directory_identity is not None)
+            or (attempt.observed_debts != ("payload_missing", "launch_intent_retained"))
+            or (attempt.launch_receipt_fingerprint != record.receipt.fingerprint)
+        ):
+            raise ValueError("Windows crash C5 Product recovery is incomplete")
+        receipt = record.receipt
+        journal = self.activation_journal(product)
+        retained = tuple(
+            (
+                item
+                for item in journal.retained_attempts_read_only()
+                if item.attempt_id == attempt_id
+            )
+        )
+        if len(retained) != 1:
+            raise ValueError("Windows crash C5 attempt is missing or ambiguous")
+        [c5] = retained
+        if (
+            c5.receipt_fingerprint != receipt.fingerprint
+            or c5.policy_fingerprint != receipt.policy.fingerprint
+            or c5.owner_generation != receipt.policy.owner_selection_generation
+            or (c5.cleanup_contract_version != 2)
+            or (not c5.current)
+        ):
+            raise ValueError("Windows crash C5 attempt cannot be recovered")
+        evidence = self.evidence_factory(
+            product=product, receipt=receipt, attempt_id=attempt_id
+        )
+        if (
+            c5.host_identity != evidence.host_identity
+            or c5.boot_identity != evidence.boot_identity
+        ):
+            raise ValueError("Windows crash C5 owner identity changed")
+        state = journal.load()
+        attempts = None if state is None else state.get("attempts")
+        if not isinstance(attempts, Mapping):
+            raise ValueError("Windows crash C5 owner state is unavailable")
+        exact = tuple(
+            (
+                item
+                for item in attempts.values()
+                if isinstance(item, Mapping) and item.get("attemptId") == attempt_id
+            )
+        )
+        if (
+            len(exact) != 1
+            or exact[0].get("evidenceAuthorityId") != evidence.authority_id
+            or exact[0].get("evidenceAuthorityFingerprint")
+            != evidence.authority_fingerprint
+            or (exact[0].get("phase") != c5.phase)
+        ):
+            raise ValueError("Windows crash C5 evidence authority changed")
+        if c5.phase == "settled":
+            if exact[0].get("cleanupSettlement") is None:
+                raise ValueError("Windows crash C5 settlement record is missing")
+            return c5
+        coordinator = ProductWorkerActivationCoordinator(
+            authority=_ClosedWindowsCrashRecoveryAuthority(product),
+            evidence_authority=evidence,
+            trusted_evidence_authority_id=evidence.authority_id,
+            trusted_evidence_authority_fingerprint=evidence.authority_fingerprint,
+            state_store=self.state_store(product),
+        )
+        generation = receipt.policy.owner_selection_generation
+        coordinator.retire_exact(
+            receipt=receipt, attempt_id=attempt_id, owner_generation=generation
+        )
+        coordinator.record_protocol_terminal(
+            receipt=receipt, attempt_id=attempt_id, owner_generation=generation
+        )
+        tree = evidence.current_tree_witness(attempt_id=attempt_id)
+        coordinator.record_cleanup_settlement(
+            WorkerCleanupSettlementV2(
+                receipt_fingerprint=receipt.fingerprint,
+                attempt_id=attempt_id,
+                owner_generation=generation,
+                host_identity=evidence.host_identity,
+                boot_identity=evidence.boot_identity,
+                protocol_terminal=True,
+                domain_retired=True,
+                tree_settled=True,
+                native_containment_settled=True,
+            ),
+            witness=tree,
+            native_containment_witness=evidence.current_native_witness(),
+        )
+        [settled] = (
+            item
+            for item in journal.retained_attempts_read_only()
+            if item.attempt_id == attempt_id
+        )
+        if settled.phase != "settled":
+            raise ValueError("Windows crash C5 settlement did not persist")
+        return settled
+
+    def review_orphan(
+        self, product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _WindowsOrphanRuntimeReviewMethods:
+        if (
+            self._product_invalid(product)
+            or type(attempt_id) is not str
+            or _CRASH_ATTEMPT.fullmatch(attempt_id) is None
+        ):
+            raise ValueError("Windows Worker orphan review requires an exact Product")
+        return read_windows_product_worker_orphan_runtime(
+            product, attempt_id=attempt_id, review_runtime=self.review_runtime
+        )
+
+    def review_stage(
+        self, product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _WindowsCrashStageReviewMethods:
+        if (
+            self._product_invalid(product)
+            or type(attempt_id) is not str
+            or _CRASH_ATTEMPT.fullmatch(attempt_id) is None
+        ):
+            raise ValueError("Windows Worker crash stage requires exact Product")
+        return review_windows_product_worker_offline(
+            product,
+            active_error=lambda: ValueError(
+                "Windows Worker crash stage has active leases"
+            ),
+            review=lambda quiescence: self.stage_retirement.review_stage(
+                product, attempt_id=attempt_id, quiescence=quiescence
+            ),
+        )
+
+    def retire_stage(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        expected_review: _WindowsCrashStageReviewMethods,
+    ) -> _WindowsStageRetirementReceiptMethods:
+        if (
+            self._product_invalid(product)
+            or type(expected_review) is not self.stage_retirement.records.review_type
+        ):
+            raise ValueError(
+                "Windows Worker crash stage retirement requires exact Product"
+            )
+        return self.stage_retirement.retire(product, expected_review=expected_review)
+
+    def recover(
+        self, product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _RetainedAttemptFields:
+        current = self.review_orphan(product, attempt_id=attempt_id)
+        attempt = current.attempt
+        record = current.receipt_record
+        if attempt is None or record is None:
+            raise ValueError("Windows Worker crash attempt is absent")
+        journal = self.activation_journal(product)
+        retained = tuple(
+            (
+                item
+                for item in journal.retained_attempts_read_only()
+                if item.attempt_id == attempt_id
+            )
+        )
+        if len(retained) != 1:
+            raise ValueError("Windows Worker crash C5 owner is missing or ambiguous")
+        [c5] = retained
+        receipt = record.receipt
+        expected_host = self.host_domain + product.epoch_runtime.registry.store_id
+        expected_boot = self.boot_domain + receipt.policy.product_runtime_id
+        state = journal.load()
+        attempts = None if state is None else state.get("attempts")
+        exact = (
+            ()
+            if not isinstance(attempts, Mapping)
+            else tuple(
+                (
+                    item
+                    for item in attempts.values()
+                    if isinstance(item, Mapping) and item.get("attemptId") == attempt_id
+                )
+            )
+        )
+        if (
+            not c5.current
+            or c5.phase
+            not in {"effect_started", "published", "cleanup_debt", "retired", "settled"}
+            or c5.receipt_fingerprint != receipt.fingerprint
+            or (c5.policy_fingerprint != receipt.policy.fingerprint)
+            or (c5.owner_generation != receipt.policy.owner_selection_generation)
+            or (c5.cleanup_contract_version != 2)
+            or (c5.host_identity != expected_host)
+            or (c5.boot_identity != expected_boot)
+            or (len(exact) != 1)
+            or (exact[0].get("evidenceAuthorityId") != self.evidence_authority_id)
+            or (
+                exact[0].get("evidenceAuthorityFingerprint")
+                != self.evidence_authority_fingerprint
+            )
+        ):
+            raise ValueError("Windows Worker crash C5 owner changed")
+        if attempt.supervisor_phase != "process_settled":
+            review = self.review_cleanup(product, attempt_id=attempt_id)
+            self.settle_supervisor(product, expected_review=review)
+        current = self.review_orphan(product, attempt_id=attempt_id)
+        attempt = current.attempt
+        if attempt is None:
+            raise ValueError("Windows Worker crash attempt disappeared")
+        if attempt.native_phase != "settled":
+            review = self.review_cleanup(product, attempt_id=attempt_id)
+            self.settle_native(product, expected_review=review)
+        current = self.review_orphan(product, attempt_id=attempt_id)
+        if len(current.orphan_leases) == 1:
+            lease_review = self.review_lease(product, attempt_id=attempt_id)
+            self.repair_lease(product, expected_review=lease_review)
+        elif current.orphan_leases:
+            raise ValueError("Windows Worker crash orphan lease is ambiguous")
+        current = self.review_orphan(product, attempt_id=attempt_id)
+        attempt = current.attempt
+        if attempt is None:
+            raise ValueError("Windows Worker crash attempt disappeared")
+        if attempt.payload_directory_identity is not None:
+            stage_review = self.review_stage(product, attempt_id=attempt_id)
+            self.retire_stage(product, expected_review=stage_review)
+        return self.settle_c5(product, attempt_id=attempt_id)
+
 
 class ReadWindowsOrphanRuntime(Protocol):
     def __call__(
@@ -1230,134 +1565,10 @@ class ReadWindowsOrphanRuntime(Protocol):
     ) -> _WindowsOrphanRuntimeReviewMethods: ...
 
 
-_RetainedT = TypeVar("_RetainedT", bound=_RetainedAttemptFields)
-_EvidenceReviewT = TypeVar("_EvidenceReviewT", bound=WindowsLiveCleanupReview)
-
-
 class _ClosedWindowsCrashRecoveryAuthority(
     ClosedProductWorkerCrashRecoveryAuthority[WindowsLocalWheelProductSessionOwner]
 ):
     _admission_error = "Windows crash recovery cannot change Worker admission"
-
-
-def settle_windows_product_worker_crash_c5(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    review_runtime: ReadWindowsOrphanRuntime,
-    activation_journal: Callable[
-        [WindowsLocalWheelProductSessionOwner],
-        WindowsActivationStateJournal[_RetainedT],
-    ],
-    evidence_factory: Callable[..., WindowsWorkerCleanupEvidence[_EvidenceReviewT]],
-    state_store: Callable[
-        [WindowsLocalWheelProductSessionOwner], _ActivationStateStore
-    ],
-) -> _RetainedT:
-    runtime = review_runtime(product, attempt_id=attempt_id)
-    attempt = runtime.attempt
-    record = runtime.receipt_record
-    if (
-        attempt is None
-        or record is None
-        or runtime.orphan_leases
-        or (runtime.native_job_absent is not True)
-        or (attempt.supervisor_phase != "process_settled")
-        or (attempt.supervisor_process_settled is not True)
-        or (attempt.native_phase != "settled")
-        or (not _valid_crash_effect_history(attempt, settled=True))
-        or (attempt.payload_directory_identity is not None)
-        or (attempt.observed_debts != ("payload_missing", "launch_intent_retained"))
-        or (attempt.launch_receipt_fingerprint != record.receipt.fingerprint)
-    ):
-        raise ValueError("Windows crash C5 Product recovery is incomplete")
-    receipt = record.receipt
-    journal = activation_journal(product)
-    retained = tuple(
-        (
-            item
-            for item in journal.retained_attempts_read_only()
-            if item.attempt_id == attempt_id
-        )
-    )
-    if len(retained) != 1:
-        raise ValueError("Windows crash C5 attempt is missing or ambiguous")
-    [c5] = retained
-    if (
-        c5.receipt_fingerprint != receipt.fingerprint
-        or c5.policy_fingerprint != receipt.policy.fingerprint
-        or c5.owner_generation != receipt.policy.owner_selection_generation
-        or (c5.cleanup_contract_version != 2)
-        or (not c5.current)
-    ):
-        raise ValueError("Windows crash C5 attempt cannot be recovered")
-    evidence = evidence_factory(product=product, receipt=receipt, attempt_id=attempt_id)
-    if (
-        c5.host_identity != evidence.host_identity
-        or c5.boot_identity != evidence.boot_identity
-    ):
-        raise ValueError("Windows crash C5 owner identity changed")
-    state = journal.load()
-    attempts = None if state is None else state.get("attempts")
-    if not isinstance(attempts, Mapping):
-        raise ValueError("Windows crash C5 owner state is unavailable")
-    exact = tuple(
-        (
-            item
-            for item in attempts.values()
-            if isinstance(item, Mapping) and item.get("attemptId") == attempt_id
-        )
-    )
-    if (
-        len(exact) != 1
-        or exact[0].get("evidenceAuthorityId") != evidence.authority_id
-        or exact[0].get("evidenceAuthorityFingerprint")
-        != evidence.authority_fingerprint
-        or (exact[0].get("phase") != c5.phase)
-    ):
-        raise ValueError("Windows crash C5 evidence authority changed")
-    if c5.phase == "settled":
-        if exact[0].get("cleanupSettlement") is None:
-            raise ValueError("Windows crash C5 settlement record is missing")
-        return c5
-    coordinator = ProductWorkerActivationCoordinator(
-        authority=_ClosedWindowsCrashRecoveryAuthority(product),
-        evidence_authority=evidence,
-        trusted_evidence_authority_id=evidence.authority_id,
-        trusted_evidence_authority_fingerprint=evidence.authority_fingerprint,
-        state_store=state_store(product),
-    )
-    generation = receipt.policy.owner_selection_generation
-    coordinator.retire_exact(
-        receipt=receipt, attempt_id=attempt_id, owner_generation=generation
-    )
-    coordinator.record_protocol_terminal(
-        receipt=receipt, attempt_id=attempt_id, owner_generation=generation
-    )
-    tree = evidence.current_tree_witness(attempt_id=attempt_id)
-    coordinator.record_cleanup_settlement(
-        WorkerCleanupSettlementV2(
-            receipt_fingerprint=receipt.fingerprint,
-            attempt_id=attempt_id,
-            owner_generation=generation,
-            host_identity=evidence.host_identity,
-            boot_identity=evidence.boot_identity,
-            protocol_terminal=True,
-            domain_retired=True,
-            tree_settled=True,
-            native_containment_settled=True,
-        ),
-        witness=tree,
-        native_containment_witness=evidence.current_native_witness(),
-    )
-    [settled] = (
-        item
-        for item in journal.retained_attempts_read_only()
-        if item.attempt_id == attempt_id
-    )
-    if settled.phase != "settled":
-        raise ValueError("Windows crash C5 settlement did not persist")
-    return settled
 
 
 class ReviewWindowsReservedStage(Protocol):

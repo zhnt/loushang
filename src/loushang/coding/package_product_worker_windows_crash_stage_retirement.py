@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+from typing import cast
 
 from loushang.harness.package_product._windows_worker_retirement import (
     WindowsProductWorkerCrashStageRetirement,
@@ -43,15 +43,12 @@ def retire_coding_windows_product_worker_crash_stage(
     expected_review: CodingWindowsWorkerCrashStageReviewV1,
 ) -> CodingWindowsWorkerStageRetirementReceiptV1:
     """Recheck durable crash proof, then delete only reviewed stage members."""
+    from .package_product_worker_windows_crash_recovery import _recovery_program
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(expected_review) is not CodingWindowsWorkerCrashStageReviewV1
-    ):
-        raise ValueError("Windows Worker crash stage retirement requires exact Product")
-    return _operations.retire(product, expected_review=expected_review)
+    return cast(
+        "CodingWindowsWorkerStageRetirementReceiptV1",
+        _recovery_program().retire_stage(product, expected_review=expected_review),
+    )
 
 
 _records = WindowsWorkerRetirementRecords(

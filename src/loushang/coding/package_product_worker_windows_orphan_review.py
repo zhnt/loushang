@@ -7,11 +7,10 @@ repair, native cleanup, payload retirement, or another Worker launch.
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
+from typing import cast
 
 from loushang.harness.package_product._windows_worker_recovery import (
-    read_windows_product_worker_orphan_runtime,
     repair_windows_product_worker_clean_exit_orphan,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
@@ -37,8 +36,6 @@ from .package_product_worker_windows_recovery_inventory import (
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
 )
 
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerOrphanRuntimeReviewV1(_WindowsOrphanRuntimeReviewMethods):
@@ -57,19 +54,11 @@ def review_coding_windows_product_worker_orphan_runtime(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWindowsWorkerOrphanRuntimeReviewV1:
     """Join strict persisted facts without creating or settling Worker state."""
+    from .package_product_worker_windows_crash_recovery import _recovery_program
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or _ATTEMPT.fullmatch(attempt_id) is None
-    ):
-        raise ValueError("Windows Worker orphan review requires an exact Product")
-    return read_windows_product_worker_orphan_runtime(
-        product,
-        attempt_id=attempt_id,
-        review_runtime=_review_under_gc_guard,
+    return cast(
+        "CodingWindowsWorkerOrphanRuntimeReviewV1",
+        _recovery_program().review_orphan(product, attempt_id=attempt_id),
     )
 
 

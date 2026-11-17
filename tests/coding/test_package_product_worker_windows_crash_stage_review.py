@@ -146,8 +146,8 @@ def test_windows_crash_stage_review_requires_quiescence_and_current_native_ident
         def assert_root_gc_authority_current(self) -> None:
             events.append("root.check")
 
-    monkeypatch.setattr(stage_review, "WindowsLocalWheelProductSessionOwner", Product)
-    monkeypatch.setattr(stage_review, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(recovery_owner, "WindowsLocalWheelProductSessionOwner", Product)
+    monkeypatch.setattr(recovery_owner, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(
         stage_review, "_review_under_gc_guard", lambda *_a, **_k: joined
     )

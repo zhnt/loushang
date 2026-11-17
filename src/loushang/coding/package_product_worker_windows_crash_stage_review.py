@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-import os
-import re
 from dataclasses import dataclass
+from typing import cast
 
 from loushang.harness.package_product._windows_worker_recovery import (
     review_windows_product_worker_crash_stage_under_guard,
-)
-from loushang.harness.package_product._worker_windows_attempt import (
-    review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -35,7 +31,6 @@ from .package_product_worker_windows_stage_review import (
     _capture_stage_bytes,
 )
 
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _MAX_REVIEW_BYTES = 32768
 
 
@@ -70,21 +65,11 @@ def review_coding_windows_product_worker_crash_stage(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWindowsWorkerCrashStageReviewV1:
     """Capture a fully settled crash stage while Package leases are quiescent."""
+    from .package_product_worker_windows_crash_recovery import _recovery_program
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or _ATTEMPT.fullmatch(attempt_id) is None
-    ):
-        raise ValueError("Windows Worker crash stage requires exact Product")
-    return review_windows_product_worker_offline(
-        product,
-        active_error=lambda: ValueError("Windows Worker crash stage has active leases"),
-        review=lambda quiescence: _review_crash_stage_under_gc_guard(
-            product, attempt_id=attempt_id, quiescence=quiescence
-        ),
+    return cast(
+        "CodingWindowsWorkerCrashStageReviewV1",
+        _recovery_program().review_stage(product, attempt_id=attempt_id),
     )
 
 
