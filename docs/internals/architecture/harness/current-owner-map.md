@@ -181,6 +181,10 @@ Worker programs. Its existing Product authority owner holds the POSIX start-gate
 pipe, intent/bound Journal handoff, release and close sequence; Coding retains the
 nominal class, Product admission and error Profile. No second gate runtime or
 parallel payload recovery engine is introduced.
+Registered/no-effect review predicates and the repair intent codec also use
+the original Worker retention/payload owners; complete and registered repair
+reuse the same plan field constructor while retaining their version/error order.
+Coding retains the original reflective method entries and nominal record slots.
 Coding retains its public value facades, exact Product admission and a narrow
 access adapter; the original Product/GC and Hosting authorities remain separate.
 Other Worker profiles, Product evidence/preflight and broader cleanup coordination remain

@@ -31,6 +31,9 @@ from loushang.harness.worker.history._retention import (
     registered_repair_matches_no_effect_closure,
 )
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
+from loushang.harness.worker.payload._records import (
+    RegisteredPayloadRepairIntentMethods,
+)
 from loushang.harness.worker.payload._repair import RepairJournal
 
 from .package_product_worker_activation_history import (
@@ -39,7 +42,6 @@ from .package_product_worker_activation_history import (
 from .package_product_worker_payload import (
     CodingWorkerPayloadDebtPlanV1,
     CodingWorkerPayloadMaterializationError,
-    _plan_fields,
 )
 from .package_product_worker_receipt import (
     CodingWorkerReceiptRecordV1,
@@ -65,7 +67,8 @@ class CodingWorkerRegisteredPayloadRepairError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerRegisteredPayloadRepairIntentV1:
+class CodingWorkerRegisteredPayloadRepairIntentV1(RegisteredPayloadRepairIntentMethods):
+    _plan_type = CodingWorkerPayloadDebtPlanV1
     plan: CodingWorkerPayloadDebtPlanV1
     gate_record_digest: str
     receipt_record_digest: str
@@ -75,98 +78,16 @@ class CodingWorkerRegisteredPayloadRepairIntentV1:
     boot_identity: str
     owner_generation: int
 
-    def __post_init__(self) -> None:
-        if (
-            type(self.plan) is not CodingWorkerPayloadDebtPlanV1
-            or any(
-                type(value) is not str or _DIGEST.fullmatch(value) is None
-                for value in (
-                    self.gate_record_digest,
-                    self.receipt_record_digest,
-                    self.policy_fingerprint,
-                    self.lease_id,
-                )
-            )
-            or type(self.host_identity) is not str
-            or not self.host_identity
-            or type(self.boot_identity) is not str
-            or not self.boot_identity
-            or type(self.owner_generation) is not int
-            or self.owner_generation < 0
-        ):
-            raise ValueError("Registered Worker payload repair intent is invalid")
+    @classmethod
+    def from_dict(cls, value: object) -> CodingWorkerRegisteredPayloadRepairIntentV1:
+        return super(CodingWorkerRegisteredPayloadRepairIntentV1, cls).from_dict(value)
 
     @property
     def attempt_id(self) -> str:
-        return self.plan.attempt_id
+        return super(CodingWorkerRegisteredPayloadRepairIntentV1, self).attempt_id
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "bootIdentity": self.boot_identity,
-            "gateRecordDigest": self.gate_record_digest,
-            "hostIdentity": self.host_identity,
-            "leaseId": self.lease_id,
-            "ownerGeneration": self.owner_generation,
-            "plan": _plan_fields(self.plan),
-            "policyFingerprint": self.policy_fingerprint,
-            "receiptRecordDigest": self.receipt_record_digest,
-            "version": 1,
-        }
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingWorkerRegisteredPayloadRepairIntentV1:
-        if (
-            type(value) is not dict
-            or set(value)
-            != {
-                "bootIdentity",
-                "gateRecordDigest",
-                "hostIdentity",
-                "leaseId",
-                "ownerGeneration",
-                "plan",
-                "policyFingerprint",
-                "receiptRecordDigest",
-                "version",
-            }
-            or value["version"] != 1
-        ):
-            raise ValueError("Registered Worker payload repair fields are invalid")
-        raw_plan = value["plan"]
-        if (
-            type(raw_plan) is not dict
-            or set(raw_plan)
-            != {
-                "attemptId",
-                "entrypoint",
-                "payloadDigest",
-                "payloadSize",
-                "receiptFingerprint",
-                "stageDevice",
-                "stageInode",
-                "version",
-            }
-            or raw_plan["version"] != 1
-        ):
-            raise ValueError("Registered Worker payload repair plan is invalid")
-        return cls(
-            plan=CodingWorkerPayloadDebtPlanV1(
-                attempt_id=raw_plan["attemptId"],
-                entrypoint=raw_plan["entrypoint"],
-                payload_digest=raw_plan["payloadDigest"],
-                payload_size=raw_plan["payloadSize"],
-                receipt_fingerprint=raw_plan["receiptFingerprint"],
-                stage_device=raw_plan["stageDevice"],
-                stage_inode=raw_plan["stageInode"],
-            ),
-            gate_record_digest=value["gateRecordDigest"],
-            receipt_record_digest=value["receiptRecordDigest"],
-            policy_fingerprint=value["policyFingerprint"],
-            lease_id=value["leaseId"],
-            host_identity=value["hostIdentity"],
-            boot_identity=value["bootIdentity"],
-            owner_generation=value["ownerGeneration"],
-        )
+        return super(CodingWorkerRegisteredPayloadRepairIntentV1, self).to_dict()
 
 
 def _names(attempt_id: str) -> tuple[str, str]:

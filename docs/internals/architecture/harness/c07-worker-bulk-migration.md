@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — history/recovery/crash read, four stage-retirement, crash-settlement, payload/intent and POSIX custody/start-gate gated-recovery and Windows Provisioning slices reviewed by implementation owner; whole-chain closure pending
+- Design status: partial acceptance — history/recovery/crash read, four stage-retirement, crash-settlement, payload/intent and POSIX custody/start-gate gated-recovery Windows Provisioning and registered-value mechanisms reviewed by implementation owner; whole-chain closure pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -170,6 +170,20 @@ POSIX 原物化/请求绑定和物理修复已由 Harness 持有，本轮不重�
 本批 Coding −166、Harness +197、Hosting/其他生产 0、系统生产 +31行；其中负担主要为原完整关联体迁移，另有12行净薄转发退出。累计 Coding −4,891、Harness +7,607、系统生产 +2,716行；测试 +59行，文档单列。C07 剩余15,375行，仍需至少5,243行退出，系统尚无净删减收益。
 
 既有 snapshot/backend/native-bridge/cleanup-evidence 与 import/C50/C51/C54 为234 passed、51 skipped，原生 Windows 路线仍跳过。该结果在随后移除纯 load/CAS 转发前取得，最终直接继承另核对构造/path/load/CAS 的公开签名及48组双次调用，Journal/guard/失败事件和实例引用顺序与基线完全一致。70源 mypy、Ruff 通过。三段原完整执行体与声明的 owner/Profile 绑定后 AST 一致，原 public constructor 三个准入 guard 原样保留。失效清理与基线756组逐事件/异常链对照，其中436组实际故障，每组两次调用；使用受控 owner 效果验证原共享方法，不是 Windows 原生证据。测试只补齐真实导入 inventory，没有新增断言、路线或门禁。
+
+## 注册态恢复证明与修复记录批次
+
+实现 owner 接受 registered/no-effect 链中残留的三个 review 判据和修复 intent 的完整校验/编解码归原 Worker retention/payload value owners。原 Package Product recovery 已持有 lease、payload intent/重试/删除及 C5 结算，本批不重计那些既有共享执行体。Coding 保留全部名义字段、slots/pickle 路径、精确 plan 类型/Profile、错误和原公开入口；未移动字段来计算收益。注册态 gate/C5/receipt/lease/boot 关联及修复记录 envelope/version/字段/plan 的语义校验不再由 Coding 实现。
+
+complete 与 registered repair 两个 codec 复用同一份七字段 plan 构造。两条路线各自保留原 envelope 和 version 校验位置；complete 在构造后检查 nested version，registered 在构造前检查，错误优先级不合并。没有新 Journal、恢复器或阶段回调，也未授予额外删除/修复权限。
+
+原固定反射契约要求若干公开方法仍在 Code 类字典中，因此保留五个必要名义适配和 from_dict 原返回注解。它们仅调用共享方法，dataclass slots 使用显式 super 避免替换 class 的 __class__ cell 问题。完整实现仍已退出 Code，不能将这些兼容入口当成重复业务实现删除，也不能以此宣布整组迁移完成。
+
+本批 Coding −117、Harness +188、Hosting/其他生产 0，系统生产 +71行；其中共用 plan 构造删除了一份重复的七字段构造体，其余主要为职责迁移及名义/类型成本。累计 Coding −5,008、Harness +7,795、系统生产 +2,787行；测试 +60行、文档单列。C07 剩余15,258行，距过半仍需5,126行。没有系统净删减收益。
+
+首轮实际存在的恢复/修复 golden 和架构消费者为487 passed、1 failed；失败为原反射 API 形状，补回必要入口后受影响的57项 golden 全通过，其余已通过项不重跑且两组不可相加。初次命令另有一个不存在的测试路径，未执行测试，修正为实际 payload recovery 路径后才取得上述结果。3个真实记录的字段/dataclass 字段清单/slots/公开签名、6份原始 protocol4/5 pickle 字节及57项原 API/值/错误观察与精确基线一致；8个原完整执行体在明确 Profile/名义绑定及共用 plan helper 展开后 AST 一致。73源 mypy、Ruff 通过，既有断言/参数/fixtures 不变。
+
+Windows 总编排仍未迁移：它当前调用八个分散 Code 入口，直接转换成阶段回调集合不符合本 Goal。后续需让现有 history、retirement、lease/native/C5 owners 提供完整操作并收拢实际绑定，再接总编排；本批未引入该回调方案，也未降低过半标准。原生 Windows/H6 与全量交付验证仍未执行，所有受控/源码证明均不替代 native 证据。
 
 ## 当前验证与限制
 

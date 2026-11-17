@@ -114,8 +114,9 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._no_effect",
         "loushang.harness.worker.journal",
     },
-    CODING_ROOT / "package_product_worker_registered_payload_repair.py": {"loushang.harness.worker.history._retention", "loushang.harness.worker.journal", "loushang.harness.worker.payload._repair"},
+    CODING_ROOT / "package_product_worker_registered_payload_repair.py": {"loushang.harness.worker.history._retention", "loushang.harness.worker.journal", "loushang.harness.worker.payload._repair", "loushang.harness.worker.payload._records"},
     CODING_ROOT / "package_product_worker_registered_recovery.py": {
+        "loushang.harness.worker.history._retention",
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_start_gate.py": {

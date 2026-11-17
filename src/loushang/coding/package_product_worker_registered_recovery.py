@@ -18,6 +18,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeLeaseV1,
 )
+from loushang.harness.worker.history._retention import RegisteredOrphanReviewMethods
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
 from .package_product_worker_activation_history import (
@@ -46,7 +47,8 @@ class CodingWorkerRegisteredRecoveryError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerRegisteredOrphanReviewV1:
+class CodingWorkerRegisteredOrphanReviewV1(RegisteredOrphanReviewMethods):
+    _product_id = "coding"
     attempt_id: str
     gate_record: CodingWorkerStartGateRecordV1 | None
     activation_attempt: CodingProductWorkerRetainedAttemptV1 | None
@@ -64,57 +66,17 @@ class CodingWorkerRegisteredOrphanReviewV1:
 
     @property
     def registered_candidate(self) -> bool:
-        gate = self.gate_record
-        c5 = self.activation_attempt
-        receipt = self.receipt_record
-        lease = self.orphan_lease or self.repaired_orphan_lease
-        plan = self.payload_plan
-        if (
-            gate is None
-            or c5 is None
-            or receipt is None
-            or lease is None
-            or plan is None
-        ):
-            return False
-        policy = receipt.receipt.policy
-        return bool(
-            c5.phase == "registered"
-            and c5.current
-            and not c5.no_effect
-            and c5.attempt_id == self.attempt_id == gate.attempt_id == plan.attempt_id
-            and c5.receipt_fingerprint
-            == gate.receipt_fingerprint
-            == plan.receipt_fingerprint
-            == receipt.receipt.fingerprint
-            and c5.policy_fingerprint == gate.policy_fingerprint == policy.fingerprint
-            and c5.owner_generation == policy.owner_selection_generation
-            and c5.cleanup_contract_version == 1
-            and c5.host_identity == self.host_identity
-            and c5.boot_identity != self.current_boot_identity
-            and gate.phase == "intent"
-            and gate.identity is None
-            and self.supervisor_attempt is None
-            and policy.product_id == "coding"
-            and policy.product_scope_id == gate.scope_id
-            and lease.runtime_id == policy.product_runtime_id
-            and lease.runtime_epoch == self.runtime_epoch
-            and lease.store_root_identity == self.store_root_identity
-            and not self.unrecognized_worker_state_names
-        )
+        return super(CodingWorkerRegisteredOrphanReviewV1, self).registered_candidate
 
     @property
     def repair_candidate(self) -> bool:
-        return self.registered_candidate and self.orphan_lease is not None
+        return super(CodingWorkerRegisteredOrphanReviewV1, self).repair_candidate
 
     @property
     def payload_repair_candidate(self) -> bool:
-        return bool(
-            self.registered_candidate
-            and self.orphan_lease is None
-            and self.repaired_orphan_lease is not None
-            and self.repaired_owner_revision is not None
-        )
+        return super(
+            CodingWorkerRegisteredOrphanReviewV1, self
+        ).payload_repair_candidate
 
 
 def review_coding_product_worker_registered_orphan(

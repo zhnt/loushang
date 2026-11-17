@@ -8,7 +8,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Protocol
+from typing import Protocol, Self, TypeVar, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -87,6 +87,24 @@ def plan_fields(plan: PayloadPlan) -> dict[str, object]:
         "stageInode": plan.stage_inode,
         "version": 1,
     }
+
+
+_PlanT = TypeVar("_PlanT", bound=PayloadPlan)
+
+
+def plan_from_fields(
+    plan_type: Callable[..., _PlanT], value: dict[str, object]
+) -> _PlanT:
+    """Construct only after the calling codec has checked its own envelope/version."""
+    return plan_type(
+        attempt_id=value["attemptId"],
+        entrypoint=value["entrypoint"],
+        payload_digest=value["payloadDigest"],
+        payload_size=value["payloadSize"],
+        receipt_fingerprint=value["receiptFingerprint"],
+        stage_device=value["stageDevice"],
+        stage_inode=value["stageInode"],
+    )
 
 
 def empty_fields(
@@ -176,15 +194,7 @@ class PayloadValueTypes:
         ):
             raise ValueError("Worker complete repair record is invalid")
         raw_plan = value["plan"]
-        plan = self.plan_type(
-            attempt_id=raw_plan["attemptId"],
-            entrypoint=raw_plan["entrypoint"],
-            payload_digest=raw_plan["payloadDigest"],
-            payload_size=raw_plan["payloadSize"],
-            receipt_fingerprint=raw_plan["receiptFingerprint"],
-            stage_device=raw_plan["stageDevice"],
-            stage_inode=raw_plan["stageInode"],
-        )
+        plan = plan_from_fields(self.plan_type, raw_plan)
         supervisor_fingerprint = value["supervisorFingerprint"]
         if (
             raw_plan["version"] != 1
@@ -394,3 +404,103 @@ class PayloadReviewMethods:
     @property
     def fingerprint(self) -> str:
         return sha256(canonical_json_bytes(unmarked_fields(self))).hexdigest()
+
+
+class RegisteredPayloadRepairIntentMethods:
+    __slots__ = ()
+    _plan_type: type[PayloadPlanMethods]
+    plan: PayloadPlan
+    gate_record_digest: str
+    receipt_record_digest: str
+    policy_fingerprint: str
+    lease_id: str
+    host_identity: str
+    boot_identity: str
+    owner_generation: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.plan) is not self._plan_type
+            or any(
+                (
+                    type(value) is not str or _DIGEST.fullmatch(value) is None
+                    for value in (
+                        self.gate_record_digest,
+                        self.receipt_record_digest,
+                        self.policy_fingerprint,
+                        self.lease_id,
+                    )
+                )
+            )
+            or type(self.host_identity) is not str
+            or (not self.host_identity)
+            or (type(self.boot_identity) is not str)
+            or (not self.boot_identity)
+            or (type(self.owner_generation) is not int)
+            or (self.owner_generation < 0)
+        ):
+            raise ValueError("Registered Worker payload repair intent is invalid")
+
+    @property
+    def attempt_id(self) -> str:
+        return self.plan.attempt_id
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "bootIdentity": self.boot_identity,
+            "gateRecordDigest": self.gate_record_digest,
+            "hostIdentity": self.host_identity,
+            "leaseId": self.lease_id,
+            "ownerGeneration": self.owner_generation,
+            "plan": plan_fields(self.plan),
+            "policyFingerprint": self.policy_fingerprint,
+            "receiptRecordDigest": self.receipt_record_digest,
+            "version": 1,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        if (
+            type(value) is not dict
+            or set(value)
+            != {
+                "bootIdentity",
+                "gateRecordDigest",
+                "hostIdentity",
+                "leaseId",
+                "ownerGeneration",
+                "plan",
+                "policyFingerprint",
+                "receiptRecordDigest",
+                "version",
+            }
+            or value["version"] != 1
+        ):
+            raise ValueError("Registered Worker payload repair fields are invalid")
+        raw_plan = value["plan"]
+        if (
+            type(raw_plan) is not dict
+            or set(raw_plan)
+            != {
+                "attemptId",
+                "entrypoint",
+                "payloadDigest",
+                "payloadSize",
+                "receiptFingerprint",
+                "stageDevice",
+                "stageInode",
+                "version",
+            }
+            or raw_plan["version"] != 1
+        ):
+            raise ValueError("Registered Worker payload repair plan is invalid")
+        return cast(Callable[..., Self], cls)(
+            plan=plan_from_fields(cls._plan_type, raw_plan),
+            gate_record_digest=value["gateRecordDigest"],
+            receipt_record_digest=value["receiptRecordDigest"],
+            policy_fingerprint=value["policyFingerprint"],
+            lease_id=value["leaseId"],
+            host_identity=value["hostIdentity"],
+            boot_identity=value["bootIdentity"],
+            owner_generation=value["ownerGeneration"],
+        )
