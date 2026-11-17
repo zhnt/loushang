@@ -191,7 +191,10 @@ reflects the file system at the time of the read. Opening or closing it
 requires no Session control, Transcript update, shell command or external editor.
 
 The implementation agent (Codex) reviewed and accepted this action and its
-GUI, AppServer/AppService and Coding Workspace boundaries on
+GUI, AppServer/AppService and AppHost Workspace boundaries on
 `feature/gui-markdown-file-preview`, based on GUI integration revision
 `2af01272f`. The protocol round-trip, rooted file tests, live Rust Web test with
 two Workspaces, and Chromium preview playback provide implementation evidence.
+The existing AppServer reviewability budget counts all 140 additional protocol
+lines, including closed values, error codes and codec projection. AppHost's
+native reader belongs to the managed Workspace Registry.

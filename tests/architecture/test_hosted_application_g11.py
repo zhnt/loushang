@@ -323,7 +323,9 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # and history deletion on these same v1 owners (main: 2,360).
         # Read-only Workspace inspection extends the existing response and
         # codec by 20 lines (12 model, 8 codec). See the delivery review.
-        "appserver": 2_360 + 126 + 20,
+        # Workspace preview adds 140 net lines of closed request/result values,
+        # errors and codec projection. Native file IO remains in AppHost.
+        "appserver": 2_360 + 126 + 20 + 140,
         # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity
