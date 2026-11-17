@@ -80,6 +80,14 @@ bindings rather than eight action callbacks. Remaining dispositions and the
 majority-exit target of the [C07 bulk migration](c07-worker-bulk-migration.md)
 are unfinished.
 
+The same Package Product authority family owns opt-in replay/generation planning
+for both platforms and the complete POSIX current/allow/revoke operations over
+the original journal, selected candidate and installed-native reader. Windows
+retains its original pinned-root and currentness scopes. Coding keeps actual
+Product/trust construction, nominal values/errors, requiredness policy and public
+entries. This moves the previously shared Code planner once; it does not claim
+two duplicate planners were removed. No second journal or lifecycle owner exists.
+
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
 including POSIX/Windows file custody and strict decoding after cleanup. It directly
 uses Resources' existing file consumer. Coding retains Source policy, original

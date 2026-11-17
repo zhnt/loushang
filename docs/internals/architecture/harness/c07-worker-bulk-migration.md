@@ -221,6 +221,16 @@ Coding 的私有调用名仍作为原 Session 机制的政策绑定存在，绑�
 
 既有两平台 candidate/Provider、CLI snapshot、共享 native-to-graph handoff 与 import/C50/C51/C54 为232 passed、63 skipped、1 deselected；未修改测试、参数、fixtures 或门禁。77源 mypy、Ruff 通过。完整原输入执行体和政策绑定、所有既有 Session 程序及公开 Code entry/classes 的 AST 均一致；使用原两平台 Code 名义类，对原私有 keyword 入口的28组无效输入观察，类型、消息及错误身份完全一致，未构造 Product 或执行 native 效果。原生 Windows/H6 路线仍未执行，上述证据不替代原生验证。
 
+## 批准重放规划与 POSIX 完整操作批次
+
+实现 owner 接受批准重放／代次规划归现有 Package Product authority 家族，原 Windows authority 直接继承同一实现；POSIX authority 持有完整 current、allow、revoke 操作，继续使用原 OptInJournal、候选选择和 installed native reader。Coding 保留真实 Product／trust 构造准入、requiredness／错误与名义值 Profile、原公开入口及 installed reader 的产品绑定。原 Code planner 和 Windows 私有转发同步退出，没有新建账本、恢复器、平台模式开关或阶段回调集合。
+
+POSIX current 仍只调用原 journal；allow 保持 writable GC→候选／批准事实→native closure→平台复核→历史→重放规划→journal.change 顺序；revoke 保持 writable GC→root currentness→journal.change。Windows 原 current／allow／revoke 的 pinned descriptor 和前后 currentness 检查执行体保持原样，没有将平台差异抹平。重放返回原 opt-in 对象；错误身份、生成顺序和失败优先级不变。两平台此前已共用同一 Code planner，因此本次不是删除两份 planner；收益主要是完整机制归属和原私有转发退出。
+
+本批 Coding −93、Harness +123、Hosting／其他生产 0，系统生产 +30 行；累计 Coding −5,462、Harness +8,335、系统生产 +2,873 行。测试仍 +70 行，文档单列；C07 剩余14,804行，距过半退出仍差4,672行。新增成本来自共享 authority 的显式类型／平台绑定及保留的公开名义入口，未将其称为系统净删减。
+
+既有 candidate、两平台批准／V2、CLI snapshot 和 import／C50／C51／C54 回归336 passed、63 skipped、1 deselected；未改测试、断言、参数、fixtures 或门禁。累计80个源文件 mypy、Ruff、9项文档不变量及生成依赖事实检查通过；累计50份 Coding 公开契约／名义字段检查通过。九个原完整执行体、构造及 Windows scope 的源码对照一致；对两个真实 Code owner Profile 的640组规划观察，与迁移前完整 planner 的 JSON、原始 protocol4／5 pickle、错误类型／消息／code／异常链一致，其中474组错误、6组返回原对象。该探针使用受控 binding／admission 事实，不执行 native 操作，不替代原生 Windows／H6 验证。整组112文件处置、过半目标和完整正确基线交付检查仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

@@ -70,6 +70,7 @@ from loushang.harness.worker.history._opt_in import (
     _OptInDecisionMethods,
     _OptInValue,
 )
+from loushang.harness.worker.history._opt_in_store import OptInJournal
 from loushang.harness.worker.history._receipt_store import ReceiptHistory
 from loushang.harness.worker.history._receipts import (
     _ReceiptRecordMethods,
@@ -890,7 +891,137 @@ class _WindowsWorkerProductReceiptAuthority(
         return latest_receipt_record(records, policy)
 
 
-class _WindowsWorkerProductOptInAuthority(Generic[D, P]):
+OptInProjectionT = TypeVar("OptInProjectionT")
+
+
+class _ProductWorkerOptInPlanning(Generic[P]):
+    _opt_in_error: ClassVar[type[RuntimeError]]
+    _error_prefix: ClassVar[str]
+    _opt_in_type: ClassVar[type[_OptInValue]]
+
+    def _plan_allow(
+        self,
+        previous: _OptInDecisionMethods | None,
+        *,
+        binding: PackageProductLocalWheelBindingV1,
+        admission: PackageProductLocalWorkerAdmissionV1,
+        plugin_id: str,
+        operation_id: str,
+        expected_generation: int,
+        require_worker: bool,
+    ) -> P:
+        """Validate a current allow or return the exact prior opt-in for replay."""
+        generation = 0 if previous is None else previous.generation
+        kill_generation = 0 if previous is None else previous.kill_switch_generation
+        if (
+            previous is not None
+            and previous.operation_id == operation_id
+            and (previous.action == "allow")
+            and (previous.generation == expected_generation + 1)
+        ):
+            prior_opt_in = cast("ProductWorkerOptInFacts | None", previous.opt_in)
+            if (
+                prior_opt_in is None
+                or prior_opt_in.plugin_id != plugin_id
+                or prior_opt_in.contribution_id != admission.contribution_id
+                or (prior_opt_in.owner_id != admission.owner_id)
+                or (prior_opt_in.artifact_digest != binding.artifact_digest)
+                or (prior_opt_in.native_platform != admission.native_platform)
+                or (prior_opt_in.require_worker != require_worker)
+            ):
+                raise self._opt_in_error(
+                    self._error_prefix + "opt_in_operation_conflict"
+                )
+            return cast(P, prior_opt_in)
+        if generation != expected_generation:
+            raise self._opt_in_error(self._error_prefix + "opt_in_stale")
+        return cast(Callable[..., P], type(self)._opt_in_type)(
+            plugin_id=plugin_id,
+            contribution_id=admission.contribution_id,
+            owner_id=admission.owner_id,
+            artifact_digest=binding.artifact_digest,
+            native_platform=admission.native_platform,
+            owner_selection_generation=generation + 1,
+            kill_switch_generation=kill_generation,
+            require_worker=require_worker,
+        )
+
+
+class _PosixWorkerProductOptInAuthority(
+    _ProductWorkerOptInPlanning[P], Generic[D, OptInProjectionT, P]
+):
+    _product: PosixLocalWheelProductSessionOwner
+    _journal: OptInJournal[D, OptInProjectionT, P]
+    _product_id: ClassVar[str]
+    _requiredness_error: ClassVar[str]
+    _selection_error_prefix: ClassVar[str]
+
+    def _current_native_closure(self) -> ProductWorkerNativeClosureFacts:
+        raise NotImplementedError("the installed native owner is required")
+
+    def current(self, plugin_id: str) -> D | None:
+        return self._journal.current(plugin_id)
+
+    def allow(
+        self,
+        *,
+        plugin_id: str,
+        operation_id: str,
+        expected_generation: int,
+        require_worker: bool,
+    ) -> D:
+        """Pin the currently enabled candidate and approved native release."""
+        if type(require_worker) is not bool:
+            raise TypeError(self._requiredness_error)
+        with self._product.gc_gate.guard(require_write=True):
+            binding, admission = _capture_worker_opt_in_selection(
+                self._product,
+                plugin_id,
+                product_id=self._product_id,
+                error_type=self._opt_in_error,
+                error_prefix=self._selection_error_prefix,
+            )
+            closure = self._current_native_closure()
+            if closure.native_platform != admission.native_platform:
+                raise self._opt_in_error(
+                    self._error_prefix + "opt_in_native_platform_changed"
+                )
+            previous = self._journal.current(plugin_id)
+            opt_in = self._plan_allow(
+                previous,
+                binding=binding,
+                admission=admission,
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                expected_generation=expected_generation,
+                require_worker=require_worker,
+            )
+            return self._journal.change(
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                expected_generation=expected_generation,
+                action="allow",
+                opt_in=opt_in,
+            )
+
+    def revoke(
+        self, *, plugin_id: str, operation_id: str, expected_generation: int
+    ) -> D:
+        """Revoke even when the selected candidate or native bytes disappeared."""
+        with self._product.gc_gate.guard(require_write=True):
+            self._product.assert_root_gc_authority_current()
+            return self._journal.change(
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                expected_generation=expected_generation,
+                action="revoke",
+                opt_in=None,
+            )
+
+
+class _WindowsWorkerProductOptInAuthority(
+    _ProductWorkerOptInPlanning[P], Generic[D, P]
+):
     _product: WindowsLocalWheelProductSessionOwner
     _journal: WindowsOptInRecords[D, P]
     _opt_in_error: ClassVar[type[RuntimeError]]
@@ -902,19 +1033,6 @@ class _WindowsWorkerProductOptInAuthority(Generic[D, P]):
     def _read_backend(
         self, product: WindowsLocalWheelProductSessionOwner
     ) -> _WindowsBackendInstalledMethods:
-        raise NotImplementedError
-
-    def _plan_allow(
-        self,
-        previous: D | None,
-        *,
-        binding: PackageProductLocalWheelBindingV1,
-        admission: PackageProductLocalWorkerAdmissionV1,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        require_worker: bool,
-    ) -> P:
         raise NotImplementedError
 
     def current(self, plugin_id: str) -> D | None:

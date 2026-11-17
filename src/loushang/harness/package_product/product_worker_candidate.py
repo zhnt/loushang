@@ -58,6 +58,11 @@ from .product_runtime import PackageProductRuntimeRequestV1
 class ProductWorkerOptInFacts:
     __slots__ = ()
     owner_id: str
+    plugin_id: str
+    contribution_id: str
+    artifact_digest: str
+    native_platform: str
+    require_worker: bool
 
 
 class ProductWorkerNativeClosureFacts:
