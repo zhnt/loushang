@@ -193,8 +193,11 @@ The original Product Worker receipt authority also owns Provider candidate proof
 serialized Base/receipt freshness, manifest/payload capture, exact candidate and
 Provider correlation, inert envelope construction, and final receipt recheck.
 It uses the same platform owners; Coding retains nominal admission and its
-query/Base policy. Capability authority and Provider Host convergence remain
-in progress, and this slice provides no publication or facet authority.
+query/Base policy. The existing Session Worker integration now also owns
+the full Host input correlation using its original QueryAuthority interface;
+Code binds nominal admission, candidate/platform policy and error identity.
+Capability authority and broader Session preparation remain in progress,
+and this input proof provides no publication or facet authority.
 Coding retains its public value facades, exact Product admission and a narrow
 access adapter; the original Product/GC and Hosting authorities remain separate.
 Other Worker profiles, Product evidence/preflight and broader cleanup coordination remain

@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery and Provider candidate slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
+- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery and Provider candidate/Host-input slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -210,6 +210,16 @@ Coding 保留原精确 receipt-owner/receipt/definition/provider/Base-binding �
 既有两平台 candidate/Provider、CLI snapshot 与 import/C50/C51/C54 为227 passed、63 skipped、1 deselected，未修改测试/fixtures/参数/门禁。该回归之后仅将固定平台读取限定为 class Profile；两真实 Code 名义 owner 的独立对照证明结果与原 dispatch 一致，instance 覆盖被忽略，原正常路径不变。75源 mypy及最后 Core 单源复核、Ruff通过。完整原候选执行体和公开准入经明确 owner/error/platform 绑定后 AST 一致；原 Base policy 类及所有既有 authority 执行体 AST 均保持原样。平台、字段/版本与错误假设不以该源码证明替代原生验证；Windows/H6 路线仍未执行。
 
 相邻 Capability bridge 的新基类草案未采用：实测 Code 仅减少57行、Harness增加124行、系统增加67行，主要来自新增类型/状态声明和必要名义转发，尚无已有组件复用收益。已恢复原 Code 实现并移除草案，不将其计入收益。该 identity/currentness/facet-grant bridge 仍是明确未完成项，后续应扩展现有 receipt/facet owner 的完整能力，避免再引入适配基类；本轮不因保留而降低过半目标。
+
+## Provider Host 完整输入复核批次
+
+实现 owner 接受原 _read_coding_worker_provider_inputs 的完整输入复核归既有 Session _worker_provider 组件。复用原 _QueryAuthority、candidate reader、原 Provider/worker admission 和后续 _prepare_worker_provider_binding；没有新增 Protocol、适配基类、状态对象、发布器或生命周期管理器。完整操作按原顺序执行名义输入/graph/callback 检查→binding spec 检查→Code 候选政策读取→current authority/binding 读取→候选、policy/revocation、native platform、receipt、binding、adapter/admission 关联→adapter freshness 检查。它不执行 grant、publication、release 或 native 操作。
+
+Coding 的私有调用名仍作为原 Session 机制的政策绑定存在，绑定实际 Code receipt-owner family、capability authority 名义类型、完整候选政策、原平台类型政策及错误身份。两个真实调用方（公开 Host prepare 与 ordinary/native preparation policy capture）继续接入同一入口；既有公开 prepare、Code Prepared/Release/error 类及其 fields/slots/方法执行体 AST 完全未变。私有名不属于 __all__，实际调用方均使用原 keyword 形状；它没有进入持久化 JSON/wire 或新建接口分发器。
+
+本批 Coding −64、Harness +82、Hosting/其他生产 0，系统生产 +18行；累计 Coding −5,369、Harness +8,212、系统生产 +2,843行。测试仍 +70行，文档单列。C07 剩余14,897行，距过半退出仍需4,765行。此次复用已有完整 authority 接口，未重复上轮弃用的 Capability 适配基类；该 Capability bridge 及其余 C07 工作仍未完成，系统尚未净删减。
+
+既有两平台 candidate/Provider、CLI snapshot、共享 native-to-graph handoff 与 import/C50/C51/C54 为232 passed、63 skipped、1 deselected；未修改测试、参数、fixtures 或门禁。77源 mypy、Ruff 通过。完整原输入执行体和政策绑定、所有既有 Session 程序及公开 Code entry/classes 的 AST 均一致；使用原两平台 Code 名义类，对原私有 keyword 入口的28组无效输入观察，类型、消息及错误身份完全一致，未构造 Product 或执行 native 效果。原生 Windows/H6 路线仍未执行，上述证据不替代原生验证。
 
 ## 当前验证与限制
 

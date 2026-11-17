@@ -10,6 +10,7 @@ from typing import Protocol, TypeVar
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderCandidateEnvelope,
     CapabilityProviderOwnerAuthority,
+    CapabilityWorkerProviderBindingSpec,
     _admit_provider_for_duration,
 )
 from loushang.harness.capabilities.provider_binding import (
@@ -348,3 +349,84 @@ async def _prepare_native_worker_component(
             except BaseException as cleanup_error:
                 error.add_note(cleanup_note + type(cleanup_error).__name__)
         raise
+
+
+def _read_worker_provider_inputs(
+    *,
+    resolved: ResolvedCapabilityProvider,
+    receipt_owner: object,
+    receipt: ProductWorkerActivationReceiptV1,
+    capability_authority: _QueryAuthority,
+    adapter: CapabilityQueryWorkerAdapter,
+    worker_admission: CapabilityWorkerAdmissionV1,
+    graph_generation: int,
+    clock: Callable[[], int],
+    release_attempt: Callable[[], Awaitable[None]],
+    base_policy_binding: _BasePolicyGuard | None = None,
+    renewing_provider_owner: CapabilityProviderOwnerAuthority | None = None,
+    on_graph_publication: Callable[[], None] | None = None,
+    receipt_owner_types: tuple[type[object], ...],
+    capability_authority_type: type[_QueryAuthority],
+    read_candidate: Callable[..., CapabilityProviderCandidateEnvelope],
+    native_platform_for_owner: Callable[..., str],
+    error_type: type[RuntimeError],
+    error_prefix: str,
+    invalid_inputs: str,
+) -> tuple[CapabilityProviderCandidateEnvelope, CapabilityWorkerBindingV1]:
+    """Prepare a graph binding only for an exact current Product/owner selection."""
+    if (
+        not isinstance(resolved, ResolvedCapabilityProvider)
+        or type(receipt_owner) not in receipt_owner_types
+        or (not isinstance(receipt, ProductWorkerActivationReceiptV1))
+        or (not isinstance(capability_authority, capability_authority_type))
+        or (not isinstance(adapter, CapabilityQueryWorkerAdapter))
+        or (not isinstance(worker_admission, CapabilityWorkerAdmissionV1))
+        or (type(graph_generation) is not int)
+        or (graph_generation < 1)
+        or (not callable(clock))
+        or (not callable(release_attempt))
+        or (on_graph_publication is not None and (not callable(on_graph_publication)))
+        or (
+            renewing_provider_owner is not None
+            and (
+                not isinstance(
+                    renewing_provider_owner, CapabilityProviderOwnerAuthority
+                )
+            )
+        )
+    ):
+        raise TypeError(invalid_inputs)
+    spec = resolved.binding_spec
+    if not isinstance(spec, CapabilityWorkerProviderBindingSpec):
+        raise error_type(error_prefix + "_binding_not_worker")
+    candidate = read_candidate(
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+        definition=resolved.definition,
+        provider=resolved.provider,
+        base_policy_binding=base_policy_binding,
+    )
+    authority = capability_authority.current_authority()
+    binding = capability_authority.binding
+    if (
+        candidate != resolved.admission.candidate
+        or candidate.binding_spec != spec
+        or spec.native_platform != native_platform_for_owner(receipt_owner)
+        or (authority.owner_policy_revision != resolved.admission.owner_policy_revision)
+        or (authority.revocation_epoch != resolved.admission.revocation_epoch)
+        or (authority.plugin_revision_digest != receipt.policy.plugin_revision_digest)
+        or (authority.declaration_fingerprint != receipt.policy.declaration_fingerprint)
+        or (authority.product_policy_revision != receipt.policy.product_policy_revision)
+        or (binding.plugin_id != spec.plugin_id)
+        or (binding.contribution_id != spec.contribution_id)
+        or (binding.product_id != receipt.policy.product_id)
+        or (binding.scope_id != receipt.policy.product_scope_id)
+        or (binding.owner_id != spec.owner_id)
+        or (resolved.capability_id not in binding.allowed_capability_ids)
+        or (adapter.binding != binding)
+        or (adapter.admission != worker_admission)
+        or (len(resolved.provider.facets) != 1)
+    ):
+        raise error_type(error_prefix + "_host_mismatch")
+    adapter.assert_admitted_current(worker_admission)
+    return (candidate, binding)
