@@ -17,6 +17,7 @@ from loushang.harness.worker.history._windows_launch_intent_base import (
 from loushang.harness.worker.history._windows_opt_in_base import (
     _WindowsOptInBaseMethods,
 )
+from loushang.harness.worker.history._windows_prepared import _WindowsPreparationBinding
 from loushang.harness.worker.history._windows_provisioning_base import (
     _WindowsProvisioningBaseMethods,
 )
@@ -28,6 +29,8 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
     _DIGEST,
     _RecoveryFacts,
     _SourceFacts,
+    _WindowsHistorySemanticFacts,
+    _WindowsPreparationFacts,
 )
 from loushang.harness.worker.history._windows_supervisor_base import (
     _WindowsSupervisorBaseMethods,
@@ -35,7 +38,7 @@ from loushang.harness.worker.history._windows_supervisor_base import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsHistoryJoinMethods:
+class _WindowsHistoryJoinMethods(_WindowsPreparationBinding):
     __slots__ = ()
     scope_id: str
     store_id: str
@@ -275,4 +278,26 @@ class _WindowsHistoryJoinMethods:
             effect_attempt_ids=effects,
             launched_attempt_ids=launched,
             review_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
+        )
+
+    @classmethod
+    def _from_prepared_history(
+        cls,
+        prepared: _WindowsPreparationFacts,
+        semantic: _WindowsHistorySemanticFacts,
+    ) -> Self:
+        if type(prepared) is not cls._preparation_type:
+            raise ValueError("Windows Worker history join preparation is invalid")
+        prepared._require_semantic_read(semantic)
+        source = semantic.source_snapshot
+        recovery = semantic.offline_recovery
+        observed = cls._observed_attempt_ids(recovery)
+        opt_in = cls._opt_in_type._from_prepared_history(prepared, semantic)
+        receipt = cls._receipt_type._from_prepared_history(prepared, semantic)
+        supervisor = cls._supervisor_type._from_prepared_history(prepared, semantic)
+        c5 = cls._c5_type._from_prepared_history(prepared, semantic)
+        launch = cls._launch_intent_type._from_prepared_history(prepared, semantic)
+        native = cls._provisioning_type._from_prepared_history(prepared, semantic)
+        return cls._from_source_bases(
+            source, recovery, observed, opt_in, receipt, supervisor, c5, launch, native
         )

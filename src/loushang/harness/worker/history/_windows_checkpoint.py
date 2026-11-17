@@ -23,23 +23,14 @@ from loushang.harness.worker.history._windows_history_join import (
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _ATTEMPT,
     _DIGEST,
-    _RecoveryFacts,
     _SourceFacts,
+)
+from loushang.harness.worker.history._windows_semantic_contracts import (
+    _WindowsHistorySemanticFacts as _WindowsHistorySemanticFacts,
 )
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
-
-
-class _WindowsHistorySemanticFacts(Protocol):
-    @property
-    def source_snapshot(self) -> _SourceFacts: ...
-    @property
-    def offline_recovery(self) -> _RecoveryFacts: ...
-    @property
-    def desired_inventory_revision(self) -> int | None: ...
-    @property
-    def desired_history_digest(self) -> str | None: ...
 
 
 class _WindowsPackageReferenceFacts(Protocol):
@@ -175,6 +166,7 @@ class _WindowsHistoryPreparationMethods(_BaseWireMethods):
 
 class _WindowsHistoryCheckpointMethods(_BaseWireMethods):
     __slots__ = ()
+    _join_type: ClassVar[type[_WindowsHistoryJoinMethods]]
     _source_snapshot_type: ClassVar[type[_SourceFacts]]
     _package_reference_type: ClassVar[type[_WindowsPackageReferenceFacts]]
     _native_approval_type: ClassVar[type[_NativeDecision]]
@@ -396,4 +388,18 @@ class _WindowsHistoryCheckpointMethods(_BaseWireMethods):
             attempt_ids=joined.observed_attempt_ids,
             native_provisioning_attempt_ids=joined.native_provisioning.attempt_ids,
             record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
+        )
+
+    @classmethod
+    def _from_guarded_history(
+        cls,
+        prepared: _WindowsHistoryPreparationMethods,
+        semantic: _WindowsHistorySemanticFacts,
+        package_review: _WindowsPackageReferenceFacts,
+        native_approvals: tuple[_NativeDecision, ...],
+    ) -> Self:
+        prepared._require_semantic_read(semantic)
+        joined = cls._join_type._from_prepared_history(prepared, semantic)
+        return cls._from_guarded_bases(
+            prepared, semantic, package_review, native_approvals, joined
         )

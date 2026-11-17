@@ -45,6 +45,8 @@ class CodingWindowsWorkerLaunchIntentReplayV1:
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerLaunchIntentSemanticBaseV1(_WindowsLaunchIntentBaseMethods):
+    _preparation_type = CodingWindowsWorkerHistoryPreparationV1
+    _preparation_label = "launch-intent"
     _intent_type = CodingWindowsWorkerLaunchIntentV1
     _replay_type = CodingWindowsWorkerLaunchIntentReplayV1
 
@@ -56,12 +58,7 @@ class CodingWindowsWorkerLaunchIntentSemanticBaseV1(_WindowsLaunchIntentBaseMeth
         prepared: CodingWindowsWorkerHistoryPreparationV1,
         semantic: CodingWindowsWorkerHistorySemanticReadV1,
     ) -> CodingWindowsWorkerLaunchIntentSemanticBaseV1:
-        if type(prepared) is not CodingWindowsWorkerHistoryPreparationV1:
-            raise ValueError("Windows Worker launch-intent preparation is invalid")
-        prepared.require_semantic_read(semantic)
-        return cls._from_source_read(
-            semantic.source_snapshot, semantic.offline_recovery
-        )
+        return cls._from_prepared_history(prepared, semantic)
 
     def replay(
         self, intents: tuple[CodingWindowsWorkerLaunchIntentV1, ...]

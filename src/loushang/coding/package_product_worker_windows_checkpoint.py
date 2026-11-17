@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from loushang.harness.package_product._windows_worker_history import (
     publish_windows_product_worker_checkpoint,
+    read_current_windows_product_worker_checkpoint_under_guard,
     read_windows_product_worker_checkpoint,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -33,7 +34,6 @@ from loushang.harness.worker.history._windows_checkpoint import (
 
 from .package_legacy_windows_receipt import (
     _receipt_io,
-    read_windows_private_receipt,
 )
 from .package_product_worker_native_approval import (
     CodingWorkerNativeApprovalDecisionV1,
@@ -71,6 +71,7 @@ _BASE_NAMES = (
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerHistoryCheckpointV1(_WindowsHistoryCheckpointMethods):
+    _join_type = CodingWindowsWorkerHistorySemanticJoinV1
     """An exact pre-cutover commitment to six source-bound semantic bases."""
 
     _source_snapshot_type = CodingWindowsWorkerHistorySourceSnapshotV1
@@ -112,14 +113,8 @@ class CodingWindowsWorkerHistoryCheckpointV1(_WindowsHistoryCheckpointMethods):
         package_review: CodingWindowsWorkerPackageReferenceReviewV1,
         native_approvals: tuple[CodingWorkerNativeApprovalDecisionV1, ...],
     ) -> CodingWindowsWorkerHistoryCheckpointV1:
-        """Derive the canonical record from one held Product preflight read."""
-
-        prepared.require_semantic_read(semantic)
-        joined = CodingWindowsWorkerHistorySemanticJoinV1.from_semantic_read(
-            prepared, semantic
-        )
-        return cls._from_guarded_bases(
-            prepared, semantic, package_review, native_approvals, joined
+        return cls._from_guarded_history(
+            prepared, semantic, package_review, native_approvals
         )
 
 
@@ -152,28 +147,17 @@ def _current_checkpoint_under_guard(
     allow_checkpoint_stage: bool,
     allow_base_stage: bool = False,
 ) -> CodingWindowsWorkerHistoryCheckpointV1:
-    review, prepared, semantic = (
-        _review_coding_windows_worker_package_references_under_guard(
-            product,
-            quiescence=quiescence,
-            gc_snapshot=gc_snapshot,
-            allow_checkpoint_stage=allow_checkpoint_stage,
-            allow_base_stage=allow_base_stage,
-        )
-    )
-    retained_preparation = read_windows_private_receipt(
-        product.state_root / _PREPARATION_NAME,
-        maximum_bytes=_MAX_BYTES,
-    )
-    if retained_preparation != prepared.to_bytes():
-        raise ValueError("Windows Worker checkpoint preparation changed")
-    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-        native_approvals = CodingWindowsWorkerNativeApprovalJournal(
-            product.state_root / "worker-native-release-approvals.jsonl",
-            scope_id=product.policy.project_scope_id,
-        ).history_read_only(directory_fd=root)
-    return CodingWindowsWorkerHistoryCheckpointV1.from_guarded_read(
-        prepared, semantic, review, native_approvals
+    return read_current_windows_product_worker_checkpoint_under_guard(
+        product,
+        record_type=CodingWindowsWorkerHistoryCheckpointV1,
+        review_references=_review_coding_windows_worker_package_references_under_guard,
+        approval_journal=CodingWindowsWorkerNativeApprovalJournal,
+        io=_receipt_io,
+        preparation_name=_PREPARATION_NAME,
+        quiescence=quiescence,
+        gc_snapshot=gc_snapshot,
+        allow_checkpoint_stage=allow_checkpoint_stage,
+        allow_base_stage=allow_base_stage,
     )
 
 

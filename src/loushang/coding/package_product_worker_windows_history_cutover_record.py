@@ -9,16 +9,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from hashlib import sha256
 
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+from loushang.harness.worker.history._base_codec import _unchanged
+from loushang.harness.worker.history._windows_persisted import (
+    _WindowsHistoryCutoverMethods,
 )
-from loushang.harness.worker.history._base_codec import _BaseWireMethods, _unchanged
 
 from .package_product_worker_windows_base_files import (
     WINDOWS_WORKER_BASE_FILES,
@@ -34,7 +33,8 @@ _BASE_KEYS = tuple(key for key, _ in WINDOWS_WORKER_BASE_FILES)
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerHistoryCutoverRecordV1(_BaseWireMethods):
+class CodingWindowsWorkerHistoryCutoverRecordV1(_WindowsHistoryCutoverMethods):
+    _persisted_type = CodingWindowsWorkerPersistedBasesV1
     _wire_label = "Windows Worker history cutover record"
     _wire_lists = ("baseDigests",)
     _wire_invalid_bytes = _wire_invalid_fields = _wire_invalid_encoding = "is invalid"
@@ -53,78 +53,11 @@ class CodingWindowsWorkerHistoryCutoverRecordV1(_BaseWireMethods):
     record_digest: str
     cutover_version: int = 1
 
-    def __post_init__(self) -> None:
-        if (
-            type(self.scope_id) is not str
-            or not 0 < len(self.scope_id) <= 128
-            or type(self.store_id) is not str
-            or not 0 < len(self.store_id) <= 128
-            or any(
-                type(value) is not str or _DIGEST.fullmatch(value) is None
-                for value in (
-                    self.checkpoint_digest,
-                    self.source_snapshot_digest,
-                    self.record_digest,
-                )
-            )
-            or type(self.base_digests) is not tuple
-            or any(
-                type(item) is not tuple or len(item) != 2 for item in self.base_digests
-            )
-            or tuple(key for key, _ in self.base_digests) != _BASE_KEYS
-            or any(
-                type(digest) is not str or _DIGEST.fullmatch(digest) is None
-                for _, digest in self.base_digests
-            )
-            or type(self.cutover_version) is not int
-            or self.cutover_version != 1
-            or self.record_digest
-            != sha256(canonical_json_bytes(self._unsigned_dict())).hexdigest()
-        ):
-            raise ValueError("Windows Worker history cutover record is invalid")
-
-    def _unsigned_dict(self) -> dict[str, object]:
-        return {
-            "baseDigests": [list(item) for item in self.base_digests],
-            "checkpointDigest": self.checkpoint_digest,
-            "cutoverVersion": self.cutover_version,
-            "scopeId": self.scope_id,
-            "sourceSnapshotDigest": self.source_snapshot_digest,
-            "storeId": self.store_id,
-        }
-
-    def to_bytes(self) -> bytes:
-        raw = canonical_json_bytes(
-            {**self._unsigned_dict(), "recordDigest": self.record_digest}
-        )
-        if len(raw) > _MAX_BYTES:
-            raise ValueError("Windows Worker history cutover record exceeds capacity")
-        return raw
-
     @classmethod
     def from_persisted_bases(
         cls, persisted: CodingWindowsWorkerPersistedBasesV1
     ) -> CodingWindowsWorkerHistoryCutoverRecordV1:
-        if type(persisted) is not CodingWindowsWorkerPersistedBasesV1:
-            raise ValueError("Windows Worker persisted cutover bases are invalid")
-        checkpoint = persisted.checkpoint
-        source = checkpoint.source_snapshot
-        unsigned = {
-            "baseDigests": [list(item) for item in checkpoint.base_digests],
-            "checkpointDigest": checkpoint.record_digest,
-            "cutoverVersion": 1,
-            "scopeId": source.scope_id,
-            "sourceSnapshotDigest": source.snapshot_digest,
-            "storeId": source.store_id,
-        }
-        return cls(
-            scope_id=source.scope_id,
-            store_id=source.store_id,
-            checkpoint_digest=checkpoint.record_digest,
-            source_snapshot_digest=source.snapshot_digest,
-            base_digests=checkpoint.base_digests,
-            record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
-        )
+        return cls._from_persisted_bases(persisted)
 
     def require_persisted_bases(
         self, persisted: CodingWindowsWorkerPersistedBasesV1

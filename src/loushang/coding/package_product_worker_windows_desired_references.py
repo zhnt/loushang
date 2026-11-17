@@ -26,6 +26,8 @@ from .package_product_worker_windows_receipt_base import (
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerDesiredReferenceReviewV1(_WindowsDesiredReferenceMethods):
+    _preparation_type = CodingWindowsWorkerHistoryPreparationV1
+    _receipt_base_type = CodingWindowsWorkerReceiptSemanticBaseV1
     """Exact selected-revision references from one retained Desired history."""
 
     _product_id = "coding"
@@ -48,13 +50,7 @@ class CodingWindowsWorkerDesiredReferenceReviewV1(_WindowsDesiredReferenceMethod
         prepared: CodingWindowsWorkerHistoryPreparationV1,
         semantic: CodingWindowsWorkerHistorySemanticReadV1,
     ) -> CodingWindowsWorkerDesiredReferenceReviewV1:
-        if type(prepared) is not CodingWindowsWorkerHistoryPreparationV1:
-            raise ValueError("Windows Worker Desired preparation is invalid")
-        prepared.require_semantic_read(semantic)
-        receipt_base = CodingWindowsWorkerReceiptSemanticBaseV1.from_semantic_read(
-            prepared, semantic
-        )
-        return cls._from_captured_desired(semantic, receipt_base)
+        return cls._from_prepared_history(prepared, semantic)
 
 
 __all__ = ["CodingWindowsWorkerDesiredReferenceReviewV1"]

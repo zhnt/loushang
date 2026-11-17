@@ -9,6 +9,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from loushang.harness.package_product._windows_worker_history import (
+    capture_windows_product_worker_reference_inputs_under_guard,
+    review_windows_product_worker_package_references,
+)
 from loushang.harness.package_product._windows_worker_references import (
     _WindowsPackageReferenceMethods,
 )
@@ -43,6 +47,8 @@ from .package_product_worker_windows_history_sources import (
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerPackageReferenceReviewV1(_WindowsPackageReferenceMethods):
+    _desired_type = CodingWindowsWorkerDesiredReferenceReviewV1
+    _join_type = CodingWindowsWorkerHistorySemanticJoinV1
     """One guarded reference set, with no history retirement authority."""
 
     _backup_observation_type = CodingWorkerBackupReferenceObservationV1
@@ -68,23 +74,8 @@ class CodingWindowsWorkerPackageReferenceReviewV1(_WindowsPackageReferenceMethod
         quiescence: PackageWindowsRuntimeQuiescenceV1,
         backup_topology: CodingWorkerBackupReferenceObservationV1,
     ) -> CodingWindowsWorkerPackageReferenceReviewV1:
-        """Join Package and Product facts captured under the same held guards."""
-
-        prepared.require_semantic_read(semantic)
-        cls._require_reference_inputs(semantic, quiescence, backup_topology)
-        desired = CodingWindowsWorkerDesiredReferenceReviewV1.from_semantic_read(
-            prepared, semantic
-        )
-        joined = CodingWindowsWorkerHistorySemanticJoinV1.from_semantic_read(
-            prepared, semantic
-        )
-        return cls._from_closed_references(
-            prepared,
-            semantic,
-            quiescence=quiescence,
-            backup_topology=backup_topology,
-            desired=desired,
-            joined=joined,
+        return cls._from_guarded_history(
+            prepared, semantic, quiescence=quiescence, backup_topology=backup_topology
         )
 
 
@@ -99,21 +90,10 @@ def review_coding_windows_worker_package_references(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Windows Worker Package references require their Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker Package runtime remains active")
-        product.assert_root_gc_authority_current()
-        with product.gc_gate.read_snapshot_guard() as gc_snapshot:
-            review, _, _ = _review_coding_windows_worker_package_references_under_guard(
-                product,
-                quiescence=quiescence,
-                gc_snapshot=gc_snapshot,
-            )
-        product.assert_root_gc_authority_current()
-    return review
+    return review_windows_product_worker_package_references(
+        product,
+        review_under_guard=_review_coding_windows_worker_package_references_under_guard,
+    )
 
 
 def _review_coding_windows_worker_package_references_under_guard(
@@ -130,29 +110,17 @@ def _review_coding_windows_worker_package_references_under_guard(
 ]:
     """Return the review and exact inputs while both outer locks remain held."""
 
-    if gc_snapshot.active:
-        raise ValueError("Windows Worker GC reservation remains active")
-    product.assert_root_gc_authority_current()
-    semantic = _capture_coding_windows_worker_semantics_under_gc_guard(
+    return capture_windows_product_worker_reference_inputs_under_guard(
         product,
-        store=quiescence,
+        record_type=CodingWindowsWorkerPackageReferenceReviewV1,
+        preparation_type=CodingWindowsWorkerHistoryPreparationV1,
+        capture_semantic=_capture_coding_windows_worker_semantics_under_gc_guard,
+        observe_backup=observe_coding_worker_backup_references_under_gc_guard,
         quiescence=quiescence,
         gc_snapshot=gc_snapshot,
         allow_checkpoint_stage=allow_checkpoint_stage,
         allow_base_stage=allow_base_stage,
-    )()
-    prepared = CodingWindowsWorkerHistoryPreparationV1.create(semantic)
-    backup_topology = observe_coding_worker_backup_references_under_gc_guard(
-        product, attempt_id="0" * 32
     )
-    review = CodingWindowsWorkerPackageReferenceReviewV1.from_guarded_read(
-        prepared,
-        semantic,
-        quiescence=quiescence,
-        backup_topology=backup_topology,
-    )
-    product.assert_root_gc_authority_current()
-    return review, prepared, semantic
 
 
 __all__ = [

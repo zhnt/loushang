@@ -20,6 +20,9 @@ from loushang.harness.worker.history._activation import (
     project_retained_attempts,
 )
 from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
+from loushang.harness.worker.history._windows_prepared import (
+    _WindowsPreparedSourceMethods,
+)
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _ATTEMPT,
     _DIGEST,
@@ -29,7 +32,7 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsC5BaseMethods(_SourceBoundBaseWireMethods):
+class _WindowsC5BaseMethods(_WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods):
     __slots__ = ()
     scope_id: str
     store_id: str

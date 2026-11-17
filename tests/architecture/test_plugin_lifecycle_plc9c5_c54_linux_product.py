@@ -324,6 +324,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / 'package_product_worker_windows_history_cutover_record.py': {
         'loushang.harness.worker.history._base_codec',
+        'loushang.harness.worker.history._windows_persisted',
     },
     CODING_ROOT / 'package_product_worker_windows_history_preparation.py': {
         'loushang.harness.worker.history._base_codec',
@@ -334,6 +335,9 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / 'package_product_worker_windows_reserved_review.py': {
         'loushang.harness.worker.history._windows_stage_review_wire',
+    },
+    CODING_ROOT / "package_product_worker_windows_persisted_bases.py": {
+        "loushang.harness.worker.history._windows_persisted",
     },
     CODING_ROOT / "package_product_worker_gc_references.py": {"loushang.harness.worker.history._retention"},
 }

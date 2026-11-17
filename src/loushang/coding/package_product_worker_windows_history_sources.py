@@ -19,7 +19,6 @@ from loushang.harness.package_product._windows_worker_history import (
     read_windows_product_worker_history_semantics,
 )
 from loushang.harness.package_product._windows_worker_references import (
-    capture_windows_product_worker_desired_history,
     windows_worker_desired_history_digest,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -52,6 +51,8 @@ from .package_product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
     _inspect_coding_windows_product_worker_offline_recovery_under_gc_guard,
 )
+
+_coding_windows_worker_desired_history_digest = windows_worker_desired_history_digest
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_FILES = 8192
@@ -178,25 +179,6 @@ def read_coding_windows_worker_history_semantics(
         product,
         capture_semantic=_capture_coding_windows_worker_semantics_under_gc_guard,
     )
-
-
-def _coding_windows_worker_desired_history_digest(
-    snapshot: PluginDesiredStateSnapshotV1,
-    transitions: tuple[PluginDesiredStateJournalTransition, ...],
-) -> str:
-    """Hash one complete Desired selection and transition capture."""
-    return windows_worker_desired_history_digest(snapshot, transitions)
-
-
-def _capture_coding_windows_worker_desired_history_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> tuple[
-    PluginDesiredStateSnapshotV1,
-    tuple[PluginDesiredStateJournalTransition, ...],
-    str,
-]:
-    """Bind current Desired selection and its complete transition provenance."""
-    return capture_windows_product_worker_desired_history(product)
 
 
 def _capture_coding_windows_worker_history_sources(

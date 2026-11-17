@@ -73,7 +73,9 @@ class _RecoveryFacts(Protocol):
     @property
     def gc_reservation_revision(self) -> int: ...
     @property
-    def worker_backup_observations(self) -> tuple[_WorkerBackupObservationFacts, ...]: ...
+    def worker_backup_observations(
+        self,
+    ) -> tuple[_WorkerBackupObservationFacts, ...]: ...
     @property
     def gc_revision_refs(self) -> frozenset[object]: ...
     @property
@@ -149,3 +151,20 @@ def no_effect_history_matches(
     ):
         return False
     return True
+
+
+class _WindowsHistorySemanticFacts(Protocol):
+    @property
+    def source_snapshot(self) -> _SourceFacts: ...
+    @property
+    def offline_recovery(self) -> _RecoveryFacts: ...
+    @property
+    def desired_inventory_revision(self) -> int | None: ...
+    @property
+    def desired_history_digest(self) -> str | None: ...
+
+
+class _WindowsPreparationFacts(Protocol):
+    def _require_semantic_read(
+        self, semantic: _WindowsHistorySemanticFacts
+    ) -> None: ...

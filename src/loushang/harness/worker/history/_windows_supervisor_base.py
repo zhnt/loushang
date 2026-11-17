@@ -11,6 +11,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
+from loushang.harness.worker.history._windows_prepared import (
+    _WindowsPreparedSourceMethods,
+)
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _ATTEMPT,
     _DIGEST,
@@ -25,7 +28,9 @@ from loushang.harness.worker.journal import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsSupervisorBaseMethods(_SourceBoundBaseWireMethods):
+class _WindowsSupervisorBaseMethods(
+    _WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods
+):
     __slots__ = ()
     scope_id: str
     store_id: str

@@ -13,6 +13,8 @@ from typing import ClassVar, Protocol, TypeVar, cast
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product._windows_worker_references import (
+    _WindowsPackageReferenceMethods,
+    _WindowsProductHistorySemanticFacts,
     capture_windows_product_worker_desired_history,
     windows_worker_desired_history_digest,
 )
@@ -33,14 +35,20 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry
     PackageWindowsEpochRuntimeLeaseRegistry,
     PackageWindowsRuntimeQuiescenceV1,
 )
+from loushang.harness.worker.history._native_approval import _NativeDecision
 from loushang.harness.worker.history._windows_checkpoint import (
     _WindowsHistoryCheckpointMethods,
     _WindowsHistoryPreparationMethods,
     _WindowsHistorySemanticFacts,
 )
+from loushang.harness.worker.history._windows_persisted import (
+    _WindowsHistoryCutoverMethods,
+    _WindowsPersistedBasesMethods,
+)
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _DIGEST,
     _RecoveryFacts,
+    _WorkerBackupObservationFacts,
 )
 from loushang.harness.worker.history._windows_sources import (
     _WindowsHistorySourceSnapshotMethods,
@@ -60,10 +68,13 @@ class CapturePreparedWindowsSemantic(Protocol[_SemanticT_co]):
         self,
         product: WindowsLocalWheelProductSessionOwner,
         *,
-        store: PackageWindowsEpochRuntimeLeaseRegistry,
+        store: PackageWindowsEpochRuntimeLeaseRegistry
+        | PackageWindowsRuntimeQuiescenceV1,
         quiescence: PackageWindowsRuntimeQuiescenceV1,
         gc_snapshot: PluginPackageGcReservationSnapshotV1,
         allow_preparation_stage: bool = False,
+        allow_checkpoint_stage: bool = False,
+        allow_base_stage: bool = False,
     ) -> Callable[[], _SemanticT_co]: ...
 
 
@@ -484,3 +495,206 @@ def capture_windows_product_worker_history_semantics_under_guard(
         )
 
     return build_semantic
+
+
+_ReferenceT = TypeVar("_ReferenceT", bound=_WindowsPackageReferenceMethods)
+_ReferenceT_co = TypeVar(
+    "_ReferenceT_co", bound=_WindowsPackageReferenceMethods, covariant=True
+)
+_ProductSemanticT = TypeVar(
+    "_ProductSemanticT", bound=_WindowsProductHistorySemanticFacts
+)
+_CutoverT = TypeVar("_CutoverT", bound=_WindowsHistoryCutoverMethods)
+_PersistedT = TypeVar("_PersistedT", bound=_WindowsPersistedBasesMethods)
+_PersistedT_co = TypeVar(
+    "_PersistedT_co", bound=_WindowsPersistedBasesMethods, covariant=True
+)
+
+
+class ObserveWindowsWorkerBackup(Protocol):
+    def __call__(
+        self, product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _WorkerBackupObservationFacts: ...
+
+
+class ReviewWindowsReferences(Protocol[_ReferenceT_co]):
+    def __call__(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        quiescence: PackageWindowsRuntimeQuiescenceV1,
+        gc_snapshot: PluginPackageGcReservationSnapshotV1,
+        allow_checkpoint_stage: bool = False,
+        allow_base_stage: bool = False,
+    ) -> tuple[
+        _ReferenceT_co,
+        _WindowsHistoryPreparationMethods,
+        _WindowsProductHistorySemanticFacts,
+    ]: ...
+
+
+class _NativeApprovalHistory(Protocol):
+    def history_read_only(
+        self, *, directory_fd: int
+    ) -> tuple[_NativeDecision, ...]: ...
+
+
+class ReadWindowsPersistedBases(Protocol[_PersistedT_co]):
+    def __call__(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        root: int,
+        *,
+        require_cutover: bool,
+    ) -> tuple[_PersistedT_co, _WindowsHistoryCutoverMethods | None]: ...
+
+
+def capture_windows_product_worker_reference_inputs_under_guard(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    record_type: type[_ReferenceT],
+    preparation_type: type[_PreparationT],
+    capture_semantic: CapturePreparedWindowsSemantic[_ProductSemanticT],
+    observe_backup: ObserveWindowsWorkerBackup,
+    quiescence: PackageWindowsRuntimeQuiescenceV1,
+    gc_snapshot: PluginPackageGcReservationSnapshotV1,
+    allow_checkpoint_stage: bool = False,
+    allow_base_stage: bool = False,
+) -> tuple[_ReferenceT, _PreparationT, _ProductSemanticT]:
+    """Close the entire captured reference set under the caller's actual guards."""
+    if gc_snapshot.active:
+        raise ValueError("Windows Worker GC reservation remains active")
+    product.assert_root_gc_authority_current()
+    semantic = capture_semantic(
+        product,
+        store=quiescence,
+        quiescence=quiescence,
+        gc_snapshot=gc_snapshot,
+        allow_checkpoint_stage=allow_checkpoint_stage,
+        allow_base_stage=allow_base_stage,
+    )()
+    prepared = preparation_type._create_from_semantic_read(semantic)
+    backup_topology = observe_backup(product, attempt_id="0" * 32)
+    review = record_type._from_guarded_history(
+        prepared,
+        semantic,
+        quiescence=quiescence,
+        backup_topology=backup_topology,
+    )
+    product.assert_root_gc_authority_current()
+    return review, prepared, semantic
+
+
+def review_windows_product_worker_package_references(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    review_under_guard: ReviewWindowsReferences[_ReferenceT],
+) -> _ReferenceT:
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as quiescence:
+        if quiescence.active_runtime_lease_ids:
+            raise ValueError("Windows Worker Package runtime remains active")
+        product.assert_root_gc_authority_current()
+        with product.gc_gate.read_snapshot_guard() as gc_snapshot:
+            review, _, _ = review_under_guard(
+                product, quiescence=quiescence, gc_snapshot=gc_snapshot
+            )
+        product.assert_root_gc_authority_current()
+    return review
+
+
+def read_current_windows_product_worker_checkpoint_under_guard(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    record_type: type[_CheckpointT],
+    review_references: ReviewWindowsReferences[_WindowsPackageReferenceMethods],
+    approval_journal: Callable[..., _NativeApprovalHistory],
+    io: WindowsPrivateReceiptIO,
+    preparation_name: str,
+    quiescence: PackageWindowsRuntimeQuiescenceV1,
+    gc_snapshot: PluginPackageGcReservationSnapshotV1,
+    allow_checkpoint_stage: bool,
+    allow_base_stage: bool = False,
+) -> _CheckpointT:
+    review, prepared, semantic = review_references(
+        product,
+        quiescence=quiescence,
+        gc_snapshot=gc_snapshot,
+        allow_checkpoint_stage=allow_checkpoint_stage,
+        allow_base_stage=allow_base_stage,
+    )
+    retained_preparation = io.read_private_receipt(
+        product.state_root / preparation_name,
+        maximum_bytes=record_type._wire_maximum(),
+    )
+    if retained_preparation != prepared.to_bytes():
+        raise ValueError("Windows Worker checkpoint preparation changed")
+    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+        native_approvals = approval_journal(
+            product.state_root / "worker-native-release-approvals.jsonl",
+            scope_id=product.policy.project_scope_id,
+        ).history_read_only(directory_fd=root)
+    return record_type._from_guarded_history(
+        prepared, semantic, review, native_approvals
+    )
+
+
+def capture_windows_product_worker_persisted_history(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    read_under_guard: ReadWindowsPersistedBases[_PersistedT],
+    require_cutover: bool,
+) -> tuple[_PersistedT, _WindowsHistoryCutoverMethods | None]:
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as quiescence:
+        if quiescence.active_runtime_lease_ids:
+            raise ValueError("Windows Worker persisted bases runtime remains active")
+        product.assert_root_gc_authority_current()
+        with product.gc_gate.guard(require_write=True):
+            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+                result = read_under_guard(
+                    product, root, require_cutover=require_cutover
+                )
+            product.assert_root_gc_authority_current()
+            return result
+
+
+def review_windows_product_worker_history_cutover_candidate(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    record_type: type[_CutoverT],
+    read_persisted: ReadWindowsPersistedBases[_WindowsPersistedBasesMethods],
+    review_checkpoint: ReviewWindowsCheckpoint[_WindowsHistoryCheckpointMethods],
+) -> _CutoverT:
+    """Reprove both old sources and retained bases; no marker writer is borrowed."""
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as quiescence:
+        if quiescence.active_runtime_lease_ids:
+            raise ValueError("Windows Worker cutover runtime remains active")
+        product.assert_root_gc_authority_current()
+        with product.gc_gate.guard(require_write=True):
+            gc_snapshot = product.gc_gate.snapshot()
+            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+                persisted, marker = read_persisted(product, root, require_cutover=False)
+            if marker is not None:
+                raise ValueError("Windows Worker cutover marker is already present")
+            current = review_checkpoint(
+                product,
+                quiescence=quiescence,
+                gc_snapshot=gc_snapshot,
+                allow_checkpoint_stage=False,
+            )
+            if current != persisted.checkpoint:
+                raise ValueError("Windows Worker cutover source changed")
+            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+                reread, marker = read_persisted(product, root, require_cutover=False)
+            if marker is not None or reread != persisted:
+                raise ValueError("Windows Worker cutover bases changed")
+            product.assert_root_gc_authority_current()
+            return record_type._from_persisted_bases(persisted)

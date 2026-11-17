@@ -39,6 +39,7 @@ from loushang.harness.worker.history._windows_receipt_base import (
 )
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _DIGEST,
+    _WindowsPreparationFacts,
     _WorkerBackupObservationFacts,
 )
 
@@ -54,6 +55,8 @@ class _WindowsProductHistorySemanticFacts(_WindowsHistorySemanticFacts, Protocol
 
 class _WindowsDesiredReferenceMethods:
     __slots__ = ()
+    _preparation_type: ClassVar[type[_WindowsPreparationFacts]]
+    _receipt_base_type: ClassVar[type[_WindowsReceiptBaseMethods]]
     _product_id: ClassVar[str]
     _installation_scope: ClassVar[str]
     scope_id: str
@@ -242,9 +245,23 @@ class _WindowsDesiredReferenceMethods:
             review_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
         )
 
+    @classmethod
+    def _from_prepared_history(
+        cls,
+        prepared: _WindowsPreparationFacts,
+        semantic: _WindowsProductHistorySemanticFacts,
+    ) -> Self:
+        if type(prepared) is not cls._preparation_type:
+            raise ValueError("Windows Worker Desired preparation is invalid")
+        prepared._require_semantic_read(semantic)
+        receipt_base = cls._receipt_base_type._from_prepared_history(prepared, semantic)
+        return cls._from_captured_desired(semantic, receipt_base)
+
 
 class _WindowsPackageReferenceMethods:
     __slots__ = ()
+    _desired_type: ClassVar[type[_WindowsDesiredReferenceMethods]]
+    _join_type: ClassVar[type[_WindowsHistoryJoinMethods]]
     _backup_observation_type: ClassVar[type[_WorkerBackupObservationFacts]]
     scope_id: str
     store_id: str
@@ -426,6 +443,28 @@ class _WindowsPackageReferenceMethods:
             repaired_runtime_leases=relevant_repairs,
             worker_backup_observations=backups,
             review_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
+        )
+
+    @classmethod
+    def _from_guarded_history(
+        cls,
+        prepared: _WindowsHistoryPreparationMethods,
+        semantic: _WindowsProductHistorySemanticFacts,
+        *,
+        quiescence: PackageWindowsRuntimeQuiescenceV1,
+        backup_topology: _WorkerBackupObservationFacts,
+    ) -> Self:
+        prepared._require_semantic_read(semantic)
+        cls._require_reference_inputs(semantic, quiescence, backup_topology)
+        desired = cls._desired_type._from_prepared_history(prepared, semantic)
+        joined = cls._join_type._from_prepared_history(prepared, semantic)
+        return cls._from_closed_references(
+            prepared,
+            semantic,
+            quiescence=quiescence,
+            backup_topology=backup_topology,
+            desired=desired,
+            joined=joined,
         )
 
 

@@ -22,6 +22,9 @@ from loushang.harness.worker._windows_provisioning_journal import (
     windows_worker_provisioning_settlement_fingerprint,
 )
 from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
+from loushang.harness.worker.history._windows_prepared import (
+    _WindowsPreparedSourceMethods,
+)
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _ATTEMPT,
     _DIGEST,
@@ -169,7 +172,9 @@ class _WindowsProvisioningRetainedMethods:
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsProvisioningBaseMethods(_SourceBoundBaseWireMethods):
+class _WindowsProvisioningBaseMethods(
+    _WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods
+):
     __slots__ = ()
     scope_id: str
     store_id: str
