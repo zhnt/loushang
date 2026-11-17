@@ -391,6 +391,37 @@ Code 的真实构造函数、字段和 MRO 不变，公开 Product-native 入口
 
 既有 Windows cleanup／crash cleanup／native settlement／Supervisor settlement／C5／Resume 为17 passed、1 skipped，三个实际 owner／消费源 mypy 和 Ruff 通过。本批 Coding −16、Harness +36、Hosting／其他生产0，系统生产 +20 行；累计 Coding −6,214、Harness +9,337、系统生产仍 +3,123 行。测试仍 +70，文档单列；C07 剩余14,052行，距过半退出还差3,920行，全部112文件最终处置与完整交付验证仍未完成。原生 Windows／H6 未执行，不把本工厂完成视为整条生命周期或整组完成。
 
+## 首组18文件的当前职责处置
+
+本次逐项复核首组冻结库存和真实共享 owner，详见下表。文件列统一省略 `package_product_worker_windows_` 前缀；H owner 省略 `loushang.harness`，路径中的 `history` 指 `worker.history`。基线3,379行，当前1,927行，累计退出1,452行；此累计含此前各批，不当作本次新迁移。本次仅退出三个私有残留常量和无消费者 re 导入，净减3行，Harness／Hosting／其他生产和测试无增长。
+
+| Code 文件 | 基线→当前 | 实际共享 owner | Code 保留与未完成 |
+| --- | ---: | --- | --- |
+| `base_files.py` | 25→22 | `worker/history/_windows_sources:WINDOWS_WORKER_BASE_FILES` | 保留原四个名称与旧模块导出，实际文件集合直接引用 H；无第二份命名规则。 旧显式 __all__ 不增加 cutover 名称；存在的模块属性仍保留。 |
+| `c5_base.py` | 91→88 | `worker/history/_windows_c5_base:_WindowsC5BaseMethods` | 保留 Code C5 replay 名义字段、retained-attempt 类型、wire profile／动态容量及公开签名；完整状态与 tombstone 重放在 H。 Code 的 RecordSchema 只绑定真实 Code 记录 codec，不另写重放器。 |
+| `checkpoint.py` | 466→212 | `package_product/_windows_worker_history:publish_windows_product_worker_checkpoint` | 保留 checkpoint 名义字段、批准／join 类型、备份域和容量、Code Product 准入及真实 IO／journal 接线。 H 持有完整读／发布／阶段重试事务；Code 的 _current_checkpoint_under_guard 只是实际家族绑定。 |
+| `desired_references.py` | 230→56 | `package_product/_windows_worker_references:_WindowsDesiredReferenceMethods` | 保留 Code 名义字段、workspace／coding 政策和 receipt-base／preparation 类型绑定。 Desired 历史／当前引用关联与摘要完整程序在 H，不因字段类型把证明留回 Code。 |
+| `gc_history.py` | 239→89 | `package_product/_windows_worker_recovery:require_windows_product_worker_settled_history` | 保留真实 Code Product 准入、借用 Product 属性和实际 Code journal／inventory／job-observer 接线。 H 统一已退休历史、C5 与严格原生不存在证明；只读能力不获得退休／修复权。 |
+| `history_bases.py` | 184→79 | `package_product/_windows_worker_history:guard_windows_product_worker_history_bases` | 保留 read／publish 两个显式入口与 Code Product 准入、实际 checkpoint/references/IO/容量绑定。 完整六流发布及精确字节重试归 H；publish bool 仍由原两个入口固定选择。 |
+| `history_cutover_preflight.py` | 76→48 | `package_product/_windows_worker_history:review_windows_product_worker_history_cutover_candidate` | 保留 Code Product 准入和原 inert marker 类型、持久化／checkpoint 实际读入口。 H 负责 quiescence／GC／双重读取关联；本入口没有 marker writer，不声称已经实现真正读写 owner 切换。 |
+| `history_cutover_record.py` | 148→80 | `worker/history/_windows_persisted:_WindowsHistoryCutoverMethods` | 保留 Code record 字段、persisted 名义类型、RecordSchema、4KiB 动态限额及公开入口。 require_persisted_bases 仍有通用相等性复核，应评估与现有 H cutover owner 合并；不把整份文件当永久产品政策。 |
+| `history_join.py` | 93→70 | `worker/history/_windows_history_join:_WindowsHistoryJoinMethods` | 保留六个 Code base 字段与准确家族／preparation 名义绑定、公开 from_semantic_read 签名。 完整跨六流关联与校验归 H；没有 Code 第二份 join。 |
+| `history_preparation.py` | 232→111 | `package_product/_windows_worker_history:prepare_windows_product_worker_history` | 保留 Code preparation 字段／嵌套 snapshot codec／动态8MiB限额、Product 准入和 IO 接线。 H 持有捕获、stage／published 比较、原子发布与重试的完整事务；公开 create／require 签名兼容。 |
+| `history_sources.py` | 530→260 | `worker/history/_windows_sources:_WindowsHistorySourceSnapshotMethods` | 保留四个 Code 名义记录、真实 Code recovery family、Product 准入与 source/file/total 容量 getter。 H Sources 负责文件／摘要校验与捕获，H Product history 负责 quiescence／GC／语义捕获；容量和 Code reader 故障口仍 live。 |
+| `launch_intent_base.py` | 113→110 | `worker/history/_windows_launch_intent_base:_WindowsLaunchIntentBaseMethods` | 保留 Code replay／intent 字段、准确 Code intent codec 和错误类、wire profile／动态16MiB容量、公开签名。 完整源身份、intent retained/replay 关联归 H；Code codec 调用既有 intent.from_bytes，非第二份 decoder。 |
+| `opt_in_base.py` | 98→95 | `worker/history/_windows_opt_in_base:_WindowsOptInBaseMethods` | 保留 Code replay／decision 字段、准确 decision/error/replay 类型、wire profile／动态32MiB容量、公开签名。 完整 opt-in retained/replay 机制归 H；不把 stricter scope 语义与其他基类混用。 |
+| `package_references.py` | 303→129 | `package_product/_windows_worker_history:capture_windows_product_worker_reference_inputs_under_guard` | 保留 Code reference 字段、准确 Desired／join／backup 类型、Product 准入和实际 backup observer。 完整 Package lease／backup／Desired 闭合归 H Product references 与 history，observer 仍是产品证明。 |
+| `persisted_bases.py` | 257→195 | `package_product/_worker_windows_attempt:read_windows_product_worker_persisted_bases` | 保留 Code 七个值字段、真实六流类型／codec、Product／root 准入、live limits 和循环打断的 marker decoder。 H 持有 ACL／源字节／head／六流读取复核；Code decoder 中 from_bytes→require_persisted_bases 以及 marker 非空后置条件仍待评估，不能整份默认保留。 |
+| `provisioning_base.py` | 106→101 | `worker/history/_windows_provisioning_base:_WindowsProvisioningBaseMethods` | 保留 Code retained／base 名义字段、Code native record codec、wire profile／动态32MiB容量及公开签名。 H 完整验证 native phase/witness／retained attempts；Code 只绑定实际 record.from_dict。 |
+| `receipt_base.py` | 93→90 | `worker/history/_windows_receipt_base:_WindowsReceiptBaseMethods` | 保留 Code receipt/replay 类型、准确 Windows profile／coding Session namespace 政策、wire profile／动态32MiB容量和签名。 H 持有 receipt sequence／历史 allow／tombstone 关联；平台／Session 域由产品绑定，不能按统一 opaque 校验代替。 |
+| `supervisor_base.py` | 95→92 | `worker/history/_windows_supervisor_base:_WindowsSupervisorBaseMethods` | 保留 Code replay 字段、实际 WorkerAttemptRecord codec、wire profile／动态32MiB容量和公开签名。 H 持有 Supervisor revision／retained attempts／tombstone 重放，Code 无第二份状态机。 |
+
+这次退役的两个 `_DIGEST` 与一个 `_BASE_KEYS` 已不被实际 Code 类或 H profile 读取；真实验证器直接使用原 H semantic-contract digest／base-files，未换校验规则。源 quota、RecordSchema decoder、JSON 故障入口与公开 record 方法仍保留；`WINDOWS_WORKER_BASE_FILES` 的原模块属性显式同名 re-export。删除依据包括真实继承校验体／profile 绑定、显式导出、存量 wire／pickle 字段与现有故障注入口，静态零匹配只作辅助。
+
+当前17条既有测试路径为272 passed、1 skipped，包含六流旧 wire／原 pickle、来源故障与 persisted IO golden；此为受控平台事实和真实文件/codec，不代替原生 Windows。切换预检只返回 inert marker，不宣称实现真正读写 owner 切换或获得删除权。残留 Code persisted 比较／marker 后置条件明确列为待处理，不把所有具名类型文件整体判为产品政策。当前接受角色为本任务执行代理，接受范围为本次逐文件职责事实与私有残留删除；全部112文件和整链／过半目标尚未验收。
+
+普通 Session 的约196行协调体也已重读：原 selection proof、candidate、provider selection 和图合成实际已在各现有 H owner，剩余真实 Product／平台／Session 工厂接线不能通过大量阶段 callbacks 机械搬运或重复计为共享机制收益。此结论不阻止继续抽取其中独立的通用关联证明。当前累计 Code −6,217、Harness +9,337、系统生产仍 +3,120行；C07 余14,049行，距过半退出还差3,917行，不降低验收标准。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

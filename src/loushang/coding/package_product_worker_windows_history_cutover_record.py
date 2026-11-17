@@ -7,7 +7,6 @@ writer and publish it under runtime quiescence and the GC write gate.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
@@ -20,16 +19,16 @@ from loushang.harness.worker.history._windows_persisted import (
 )
 
 from .package_product_worker_windows_base_files import (
-    WINDOWS_WORKER_BASE_FILES,
+    WINDOWS_WORKER_BASE_FILES as WINDOWS_WORKER_BASE_FILES,
+)
+from .package_product_worker_windows_base_files import (
     WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
 )
 from .package_product_worker_windows_persisted_bases import (
     CodingWindowsWorkerPersistedBasesV1,
 )
 
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_BYTES = 4096
-_BASE_KEYS = tuple(key for key, _ in WINDOWS_WORKER_BASE_FILES)
 
 
 @dataclass(frozen=True, slots=True)

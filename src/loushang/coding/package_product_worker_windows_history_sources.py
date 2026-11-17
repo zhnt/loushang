@@ -7,7 +7,6 @@ retirement, new Worker attempt, or Package GC authority.
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -54,7 +53,6 @@ from .package_product_worker_windows_recovery_inventory import (
 
 _coding_windows_worker_desired_history_digest = windows_worker_desired_history_digest
 
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_FILES = 8192
 _MAX_FILE_BYTES = 64 * 1024 * 1024
 _MAX_TOTAL_BYTES = 256 * 1024 * 1024
