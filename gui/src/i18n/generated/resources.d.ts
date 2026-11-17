@@ -379,6 +379,7 @@ export default interface Resources {
     },
     "transcript": {
       "copyCode": "Copy code",
+      "copyReply": "Copy reply",
       "harness": "Harness",
       "label": "Session transcript",
       "message": "{{role}} message",
@@ -545,11 +546,13 @@ export default interface Resources {
       "changedFiles_one": "1 changed file",
       "changedFiles_other": "{{count}} changed files",
       "clean": "No changes to review",
+      "commit": "Commit",
       "created": "Created",
       "declared": "Project requirement",
       "detached": "Detached HEAD",
       "detected": "Detected version",
       "failed": "Workspace information is unavailable.",
+      "git": "Git",
       "limited": "Only part of the changes could be loaded.",
       "loading": "Reading workspace…",
       "missingPath": "This workspace path no longer exists.",
@@ -573,7 +576,8 @@ export default interface Resources {
       "untracked": "Untracked",
       "updateHost": "This AppHost could not provide workspace inspection. Restart the local AppHost after an update, then refresh.",
       "virtualEnv": "Virtual environment",
-      "workspaceMismatch": "This path is no longer registered for the selected session."
+      "workspaceMismatch": "This path is no longer registered for the selected session.",
+      "worktree": "Worktree"
     },
     "live": {
       "context": "AppHost session context",
@@ -631,6 +635,28 @@ export default interface Resources {
       "unsupported": "No AppServer connection is configured.",
       "workspace": "Workspace",
       "workspaceUnavailable": "Unable to open this workspace."
+    },
+    "preview": {
+      "back": "Back",
+      "binary": "This file is binary or uses an unsupported text encoding.",
+      "close": "Close file preview",
+      "connectionChanged": "The Host connection changed. Reopen the reference in the current conversation.",
+      "copyContent": "Copy file contents",
+      "copyPath": "Copy file path",
+      "currentHost": "Current file system content from the connected Host · Read only",
+      "denied": "The Host denied access to this path in the current Workspace.",
+      "directory": "Folder",
+      "empty": "No previewable entries in this folder.",
+      "failed": "The Host could not read this path. Check the connection or try again.",
+      "limited": "Showing the first portion of this folder.",
+      "line": "Line {{line}}",
+      "loading": "Reading from the Host…",
+      "notFound": "The Host could not find this path in the current Workspace.",
+      "parent": "Parent folder",
+      "root": "Workspace files",
+      "source": "Source view",
+      "text": "Plain text",
+      "tooLarge": "This file exceeds the 128 KiB preview limit."
     },
     "sidebar": {
       "addProject": "Add project",

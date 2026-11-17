@@ -292,6 +292,8 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .workspace-heading .vcs-badge { max-width: 100px; }
 .session-heading p { display: none; }
 .message-meta { display: none; }
+.reply-actions { display: flex; margin-block-start: 8px; min-block-size: 26px; }
+.reply-actions .secondary-button { padding: 3px 7px; color: var(--muted); }
 .change-files button { min-height: 36px; font-size: 13px; }
 .change-card strong, .activity-summary strong { font-size: 13px; }
 .document-view pre { font-size: 13px; }

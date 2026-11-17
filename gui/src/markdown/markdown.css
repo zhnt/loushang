@@ -6,20 +6,22 @@
 }
 .markdown-body :where(p, ul, ol, blockquote, pre, hr) { margin: 0; }
 .markdown-body > * + *,
-.markdown-body :is(li, blockquote) > * + * { margin-block-start: var(--md-paragraph-gap); }
+.markdown-body blockquote > * + * { margin-block-start: var(--md-paragraph-gap); }
+.markdown-body li > * + * { margin-block-start: var(--md-list-gap); }
 .markdown-body :is(h1, h2, h3, h4, h5, h6) {
   margin-block: var(--heading-gap) 0;
   font-size: var(--heading-size);
   font-weight: 600;
   line-height: 1.35;
 }
-.markdown-body :is(h1, h2) { font-weight: 650; }
+.markdown-body :is(h1, h2) { font-weight: 700; }
+.markdown-body h2 { padding-block-end: 0.3em; border-block-end: 1px solid var(--md-border); }
 .markdown-body h1 { --heading-size: var(--md-h1-size); --heading-gap: var(--md-h1-gap); }
 .markdown-body h2 { --heading-size: var(--md-h2-size); --heading-gap: var(--md-h2-gap); }
 .markdown-body h3 { --heading-size: var(--md-h3-size); --heading-gap: var(--md-h3-gap); }
 .markdown-body :is(h4, h5, h6) { --heading-size: var(--md-font-size); --heading-gap: var(--md-h4-gap); }
 .markdown-body > :first-child { margin-block-start: 0; }
-.markdown-body :is(ul, ol) { padding-inline-start: 1.5em; }
+.markdown-body :is(ul, ol) { padding-inline-start: 1.45em; }
 .markdown-body li + li,
 .markdown-body li > :is(ul, ol) { margin-block-start: var(--md-list-gap); }
 .markdown-body li::marker { color: var(--md-muted); }
@@ -38,9 +40,9 @@
 .markdown-body hr { border: 0; border-block-start: 1px solid var(--md-border); }
 
 .markdown-body code {
-  padding: 0.12em 0.34em;
+  padding: 0.06em 0.2em;
   border-radius: 4px;
-  background: var(--md-code-bg);
+  background: var(--md-inline-code-bg);
   font: 400 var(--md-code-size)/var(--md-code-line-height) var(--md-code-font);
 }
 .markdown-body .markdown-code-block {
@@ -50,7 +52,13 @@
   background: var(--md-code-bg);
 }
 .markdown-body .markdown-code-label {
-  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
+  background: var(--md-surface);
+  border-radius: var(--md-radius) var(--md-radius) 0 0;
   border-block-end: 1px solid var(--md-border);
   color: var(--md-muted);
   font-size: var(--md-caption-size);
@@ -95,5 +103,22 @@
 .markdown-body th { background: var(--md-surface); font-weight: 600; }
 .markdown-body tbody tr { border-block-start: 1px solid var(--md-border); }
 
-.markdown-body .markdown-code-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .markdown-code-label .secondary-button { padding: 3px 7px; }
+
+.markdown-file-reference {
+  display: inline;
+  max-inline-size: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: var(--md-link);
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.markdown-file-reference:hover { background: var(--md-inline-code-bg); text-decoration-style: solid; }
+.markdown-file-reference:focus-visible { outline: 2px solid var(--md-accent); outline-offset: 2px; }

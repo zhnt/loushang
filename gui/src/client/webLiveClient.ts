@@ -6,6 +6,8 @@ import { validateInteractiveGoalRecovery } from "../../contracts/interactiveGoal
 import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { webRequest } from "./hostApi";
+import { TEMPORARY_WORKSPACE } from "./projectDirectory";
+import type { WorkspacePreview, WorkspacePreviewRequest } from "./workspacePreview";
 
 /** Same projection/contracts as desktop; authoritative snapshots arrive from AppHost. */
 export interface WebLiveClient extends HarnessClientUiPort {
@@ -75,9 +77,30 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       if (listeners.size && serial === generation) timer = setTimeout(() => void poll(serial), 500);
     }
   };
+  function previewScope(input: WorkspacePreviewRequest) {
+    const source = current?.source;
+    if (!viewId || source?.kind !== "live" || source.serviceInstanceId !== input.serviceInstanceId
+      || source.connectionEpoch !== input.connectionEpoch) throw new Error("instance_changed");
+    const fingerprint = current?.sessions.find((session) => session.id === input.sessionId)?.context.scopeFingerprint;
+    if (!fingerprint) throw new Error("permission_denied");
+    return fingerprint;
+  }
+
+  async function previewWorkspace(input: WorkspacePreviewRequest) {
+    const id = viewId;
+    const fingerprint = previewScope(input);
+    const result = await webRequest<WorkspacePreview>({
+      operation: "workspace", action: "preview", path: workspace, fingerprint,
+      serviceInstanceId: input.serviceInstanceId, reference: input.reference, base: input.base,
+    }, connectionId);
+    if (id !== viewId || previewScope(input) !== fingerprint) throw new Error("instance_changed");
+    return result;
+  }
+
   const pageHidden = () => { void close(); };
   return {
     snapshot: refresh,
+    ...(workspace !== TEMPORARY_WORKSPACE ? { previewWorkspace } : {}),
     subscribe: () => () => {},
     subscribeSnapshots(listener) {
       listeners.add(listener);

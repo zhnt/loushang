@@ -92,6 +92,7 @@
   },
   "transcript": {
     "copyCode": "复制代码",
+    "copyReply": "复制回复",
     "label": "会话记录",
     "resumesRuntime": "发送消息后将恢复此会话。",
     "you": "你",

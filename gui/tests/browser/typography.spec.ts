@@ -30,7 +30,7 @@ for (const sample of [
       const page = await context.newPage();
       const fontRequests: string[] = [];
       page.on("request", (request) => { if (request.resourceType() === "font") fontRequests.push(request.url()); });
-      await page.route(/\/tests\/browser\/main\.tsx$/, (route) => route.fulfill({
+      await page.route(/\/tests\/browser\/main\.tsx(?:\?.*)?$/, (route) => route.fulfill({
         contentType: "application/javascript",
         body: 'import "/tests/browser/typography.fixture.tsx";',
       }));
@@ -67,7 +67,7 @@ for (const sample of [
         await expect(label).toHaveCSS("line-height", "20px");
       }
       await expect(page.locator(".project-label")).toHaveCSS("font-weight", "500");
-      await expect(page.locator(".detail-list dd code").first()).toContainText("fixture");
+      await expect(page.locator(".environment-technical dd code").first()).toHaveText("typography");
       const rows = await Promise.all([zh, en, mixed].map((label) => label.boundingBox()));
       expect(new Set(rows.map((row) => row?.height)).size).toBe(1);
       const section = page.locator(".project-navigation .section-label").first();

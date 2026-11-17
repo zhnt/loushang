@@ -24,6 +24,11 @@ const markdown = [
   "",
   "- 列表项有独立的行间距。",
   "- 输入框上方保留可滚动的留白。",
+  "  - Nested lists keep their own indentation.",
+  "",
+  "The current Workspace determines which files the assistant can reference. ".repeat(12),
+  "",
+  "中英文混排需要保留正文的阅读节奏，代码和路径也需要在窄窗口里换行。".repeat(12),
 ].join("\n");
 
 async function showSample(page: Page) {
@@ -133,6 +138,8 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await body.getByRole("button", { name: "Copy code" }).click();
   await expect(body.getByText("Copied", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await body.locator("pre").textContent());
+  await reading.getByRole("button", { name: "Copy reply" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(markdown);
   await expect(reading).toHaveCSS("padding-bottom", "40px");
   expect((await body.boundingBox())!.width).toBeCloseTo(760, 0);
   await reading.evaluate((element) => { element.scrollTop = 0; });

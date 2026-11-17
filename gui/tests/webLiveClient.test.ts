@@ -129,3 +129,32 @@ it("submits a decision through the polling attachment and removes it after dismi
   await vi.advanceTimersByTimeAsync(0);
   expect(requests[requests.length - 1]).toEqual({ ...requests[0], action: "close" });
 });
+
+it("binds previews to the Session's live Workspace and discards replies after closing the view", async () => {
+  const requests: Record<string, unknown>[] = [];
+  let complete!: (value: unknown) => void;
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
+    const request = JSON.parse(String(options.body));
+    requests.push(request);
+    if (request.request.action === "preview") return new Promise((resolve) => { complete = resolve; });
+    return { ok: true, json: async () => ({ result: request.request.action === "snapshot" ? liveSnapshot() : {} }) };
+  }));
+  const client = createWebLiveClient("C:\\Projects\\workspace", "remote-host");
+  await client.snapshot();
+  const input = { sessionId: "session-1", serviceInstanceId: "service-1", connectionEpoch: "1", reference: "../README.md", base: "gui" };
+  await expect(client.previewWorkspace!({ ...input, sessionId: "other-session" })).rejects.toThrow("permission_denied");
+  await expect(client.previewWorkspace!({ ...input, serviceInstanceId: "old-host" })).rejects.toThrow("instance_changed");
+  expect(requests).toHaveLength(1);
+  const read = client.previewWorkspace!(input);
+  expect(requests[1]).toEqual({
+    operation: "host/request", connectionId: "remote-host",
+    request: {
+      operation: "workspace", action: "preview", path: "C:\\Projects\\workspace", fingerprint: "a".repeat(64),
+      serviceInstanceId: "service-1", reference: "../README.md", base: "gui",
+    },
+  });
+  await client.suspend();
+  complete({ ok: true, json: async () => ({ result: { kind: "file", path: "README.md", text: "old Host content" } }) });
+  await expect(read).rejects.toThrow("instance_changed");
+  expect(createWebLiveClient("@temporary").previewWorkspace).toBeUndefined();
+});

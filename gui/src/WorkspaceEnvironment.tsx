@@ -20,15 +20,15 @@ function GitEnvironment({ report, git, workspacePath }: {
   const changedFiles = new Set(report.changes.map(({ path }) => path)).size;
   return <section className="inspection-group">
     <header className="inspection-group-heading">
-      <h2>Git</h2>
+      <h2>{t("inspection.git")}</h2>
       {!report.limited && <span>{changedFiles ? t("inspection.changedFiles", { count: changedFiles }) : t("inspection.clean")}</span>}
     </header>
     <dl className="inspection-fields">
       <div><dt>{t("inspection.branch")}</dt><dd>{git.branch || t("inspection.detached")}</dd></div>
-      {git.commit && <div><dt>Commit</dt><dd><code title={git.commit}>{git.commit.slice(0, 12)}</code></dd></div>}
+      {git.commit && <div><dt>{t("inspection.commit")}</dt><dd><code title={git.commit}>{git.commit.slice(0, 12)}</code></dd></div>}
       {git.root !== workspacePath &&
         <div><dt>{t("inspection.repositoryRoot")}</dt><dd><code title={git.root}>{git.root}</code></dd></div>}
-      {git.worktree && <div><dt>Worktree</dt><dd>{git.worktree}</dd></div>}
+      {git.worktree && <div><dt>{t("inspection.worktree")}</dt><dd>{git.worktree}</dd></div>}
     </dl>
   </section>;
 }

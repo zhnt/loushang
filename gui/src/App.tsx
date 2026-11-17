@@ -19,6 +19,8 @@ import { ModelPicker } from "./ModelPicker";
 import { ReviewNotice } from "./WorkspaceReview";
 import { OpenWorkspacePath, WorkspaceInspection, type Inspection } from "./WorkspaceInspection";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
+import type { FileReference } from "./markdown/fileReference";
+import { WorkspacePreviewDialog } from "./WorkspacePreviewDialog";
 import { readMarkdownPreferences } from "./markdown/preferences";
 import { DraftChatRow, ProjectNavigation, type SidebarDraft } from "./ProjectNavigation";
 import { TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectNavigationProps } from "./client/projectDirectory";
@@ -704,6 +706,23 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     ) : undefined;
   const openWorkspacePath = connected && workspacePath && workspaceFingerprint && projectNavigation?.openProjectPath
     ? (file?: string) => projectNavigation.openProjectPath!(workspacePath, workspaceFingerprint, file) : undefined;
+  const readPreview = client.previewWorkspace;
+  const previewSource = state.remote.source.kind === "live" ? state.remote.source : null;
+  const previewScope = connected && selectionReady && readPreview && previewSource && selected && workspaceFingerprint
+    ? { sessionId: selected.id, serviceInstanceId: previewSource.serviceInstanceId, connectionEpoch: previewSource.connectionEpoch }
+    : null;
+  const previewScopeKey = previewScope
+    ? JSON.stringify([previewSource?.connectionId, workspaceFingerprint, previewScope])
+    : null;
+  const [filePreview, setFilePreview] = useState<{
+    scope: string; reference: FileReference; trigger: HTMLButtonElement;
+  }>();
+  useEffect(() => {
+    setFilePreview((current) => current?.scope === previewScopeKey ? current : undefined);
+  }, [previewScopeKey]);
+  const openFilePreview = useMemo(() => previewScopeKey ? (reference: FileReference, trigger: HTMLButtonElement) => {
+    setFilePreview({ scope: previewScopeKey, reference, trigger });
+  } : undefined, [previewScopeKey]);
   const projectContext = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE
     ? workspaceName(workspaceContext) : undefined;
   const conversationTitle = selected ? displaySessionTitle(selected, liveTitles[selected.id])
@@ -900,8 +919,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                           <span>{valueLabel(message.phase)}</span>
                         </div>
                         {message.role === "assistant" && message.content
-                          ? <MessageMarkdown text={message.content} openFile={openWorkspacePath} />
+                          ? <MessageMarkdown text={message.content} openFile={openFilePreview} />
                           : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
+                        {message.role === "assistant" && message.phase === "complete" && message.content
+                          ? <div className="reply-actions"><CopyButton text={message.content}
+                              showLabel label={t("session:transcript.copyReply")} /></div>
+                          : null}
                       </article>
                     ); })}
                     {selected.pendingApprovals?.map((approval) => (
@@ -952,6 +975,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   </div> : null}
                 </div>
               </div>
+
+              {filePreview && filePreview.scope === previewScopeKey && previewScope && readPreview
+                ? <WorkspacePreviewDialog key={previewScopeKey} initial={filePreview.reference} theme={markdown.theme}
+                  read={(reference, base) => readPreview({ ...previewScope, reference, base })}
+                  onClose={() => {
+                    setFilePreview(undefined);
+                    filePreview.trigger.focus({ preventScroll: true });
+                  }} />
+                : null}
 
               {quickLookDocument && changesAvailable ? (
                 <QuickLook

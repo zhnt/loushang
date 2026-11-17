@@ -2,7 +2,12 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
 
-export function CopyButton({ text, label, icon = false }: { text: string; label?: string; icon?: boolean }) {
+export function CopyButton({ text, label, icon = false, showLabel = false }: {
+  readonly text: string;
+  readonly label?: string;
+  readonly icon?: boolean;
+  readonly showLabel?: boolean;
+}) {
   const { t } = useTranslation("common");
   const [outcome, setOutcome] = useState<"copied" | "failed">();
   async function copy() {
@@ -22,7 +27,7 @@ export function CopyButton({ text, label, icon = false }: { text: string; label?
   </span>;
   return <span className="copy-action">
     <button type="button" className="secondary-button" aria-label={label}
-      onClick={() => void copy()}>{t("clipboard.copy")}</button>
+      onClick={() => void copy()}>{(showLabel && label) || t("clipboard.copy")}</button>
     {outcome ? <small role="status">{t(`clipboard.${outcome}`)}</small> : null}
   </span>;
 }

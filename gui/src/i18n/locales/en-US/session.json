@@ -92,6 +92,7 @@
   },
   "transcript": {
     "copyCode": "Copy code",
+    "copyReply": "Copy reply",
     "label": "Session transcript",
     "resumesRuntime": "Sending a message resumes the session.",
     "you": "You",

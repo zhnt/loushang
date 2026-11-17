@@ -1,3 +1,4 @@
+import type { ReadWorkspacePreview } from "./workspacePreview";
 import type { ExecutionGoalProgressV1, InteractiveGoalCommandV1, InteractiveGoalRecoveryV1, InteractiveGoalReviewSubmissionV1, InteractiveGoalReviewV1, InteractiveGoalViewV1, UserChoicePromptV1 } from "../../contracts/generated/bridge";
 
 export type ConnectionState =
@@ -325,6 +326,7 @@ export interface HarnessClientUiPort {
   subscribeSnapshots?(listener: (snapshot: ClientSnapshot) => void): () => void;
   subscribeConnection?(listener: (connection: "disconnected" | "resync-required") => void): () => void;
   requestResync?(): Promise<void>;
+  previewWorkspace?: ReadWorkspacePreview;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   findSubmission?(sessionId: string, submissionId: string, serviceInstanceId: string): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
