@@ -66,6 +66,10 @@ function NoticeText({ notice }: { notice: Notice }) {
   }
 }
 
+type ManagedHostConnection =
+  | { readonly status: "connecting" | "disconnected" }
+  | { readonly status: "running"; readonly serviceInstanceId?: string };
+
 interface HarnessGuiProps {
   readonly client: HarnessClientUiPort | FixturePlaybackPort | null;
   readonly account?: OfflineAccount | null;
@@ -73,6 +77,7 @@ interface HarnessGuiProps {
   readonly startLocalHost?: ReactNode;
   readonly projectNavigation?: ManagedProjectNavigation;
   readonly hostSettingsRequest?: number;
+  readonly managedHostConnection?: ManagedHostConnection;
   readonly onConnectionChange?: (connection: ConnectionState | "connecting") => void;
 }
 
@@ -118,7 +123,7 @@ function waitingForFirstReply(session: SessionSnapshot, preview: FirstMessagePre
   return !finished && !session.messages.some((message) => message.role === "assistant" && message.content);
 }
 
-export function HarnessGui({ client: attachedClient, account, hostSettings, startLocalHost, hostSettingsRequest = 0, onConnectionChange, projectNavigation }: HarnessGuiProps) {
+export function HarnessGui({ client: attachedClient, account, hostSettings, startLocalHost, hostSettingsRequest = 0, managedHostConnection, onConnectionChange, projectNavigation }: HarnessGuiProps) {
   const client = attachedClient ?? offlineClient;
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = fixturePlayback(client);
@@ -352,11 +357,16 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const selectionReady = !requestedSelection || appliedSelection.current === requestedSelection
     || requestedSelection.id === selectedId;
   const selectionKey = liveSelectionKey(state.remote.source);
-  const connected = installedClient === client && state.remote.connection === "connected";
-  const liveConnecting = Boolean(attachedClient && !fixture && syncing);
+  const expectedInstance = managedHostConnection?.status === "running" ? managedHostConnection.serviceInstanceId : undefined;
+  const awaitingHostSnapshot = expectedInstance && attachedClient
+    && (state.remote.source.kind !== "live" || state.remote.source.serviceInstanceId !== expectedInstance);
+  const connection = managedHostConnection && managedHostConnection.status !== "running" ? managedHostConnection.status
+    : (attachedClient && !fixture && syncing) || awaitingHostSnapshot ? "connecting" : state.remote.connection;
+  const liveConnecting = connection === "connecting";
+  const connected = installedClient === client && connection === "connected";
   useEffect(() => {
-    onConnectionChange?.(liveConnecting ? "connecting" : state.remote.connection);
-  }, [liveConnecting, state.remote, onConnectionChange]);
+    onConnectionChange?.(connection);
+  }, [connection, onConnectionChange]);
   useEffect(() => {
     if (connected && selectionKey && selectedId) rememberSessionSelection(selectionKey, selectedId);
   }, [connected, selectionKey, selectedId]);
@@ -487,7 +497,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }, [connected, publications, state.remote.source, state.remote.sessions]);
   const controlsAllowed = installedClient === client && selectionReady && !syncing && !controlPending && (
     (state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline")
-    || (state.remote.source.kind === "live" && state.remote.connection === "connected")
+    || (state.remote.source.kind === "live" && connected)
   );
   const goalStart = useGoalStart(client, selected, connected && state.remote.source.kind === "live"
     ? state.remote.source : null, controlsAllowed);
@@ -815,7 +825,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           contextLabel={workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats")
             : selected ? projectContext : undefined}
           sessionReady={Boolean(selected)}
-          connection={liveConnecting ? "connecting" : state.remote.connection}
+          connection={connection}
           dockOpen={panelOpen}
           environmentOpen={environmentOpen}
           goalPanel={goalPanelScope ? {

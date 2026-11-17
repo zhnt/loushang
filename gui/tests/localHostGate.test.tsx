@@ -8,10 +8,12 @@ import { readMarkdownPreferences } from "../src/markdown/preferences";
 import LocalHostGate from "../src/LocalHostGate";
 import { ProjectNavigation } from "../src/ProjectNavigation";
 import type { ManagedProjectNavigation } from "../src/client/projectDirectory";
+import type { ClientSnapshot, HarnessClientUiPort } from "../src/client/model";
+import { createMockAppClient } from "./support/mockAppClient";
 
 const native = vi.hoisted(() => ({
   invoke: vi.fn(), create: vi.fn(() => ({ suspend: async () => () => {} })), listeners: new Map<string, (value: any) => void>(),
-  available: vi.fn(async () => false),
+  available: vi.fn(async () => false), realShell: false,
 }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: native.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async (name, callback) => {
@@ -20,13 +22,20 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async (name, callback) =
 }) }));
 vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: native.available }));
 vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.create }));
-vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header> }));
-vi.mock("../src/App", () => ({
-  default: () => <p>Fixture</p>,
-  HarnessGui: ({ client, account, hostSettings, hostSettingsRequest = 0, projectNavigation }: { projectNavigation: ManagedProjectNavigation; client: unknown; account: OfflineAccount | null; hostSettings: ReactNode; hostSettingsRequest?: number }) => {
+vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header>, PanelIcon: () => null }));
+vi.mock("../src/App", async (importOriginal) => {
+  const { HarnessGui } = await importOriginal<typeof import("../src/App")>();
+  function StubShell({ client, account, hostSettings, hostSettingsRequest = 0, projectNavigation }: {
+    projectNavigation?: ManagedProjectNavigation;
+    client: unknown;
+    account?: OfflineAccount | null;
+    hostSettings?: ReactNode;
+    hostSettingsRequest?: number;
+  }) {
     const dialog = useRef<HTMLDialogElement>(null);
     const [draft, setDraft] = useState<{ path: string | null } | null>(null);
     useEffect(() => { if (hostSettingsRequest) dialog.current?.showModal(); }, [hostSettingsRequest]);
+    if (!projectNavigation) return null;
     return <>
       <button disabled={!projectNavigation.available} onClick={() => setDraft({ path: null })}>New Session</button>
       <ProjectNavigation navigation={{ ...projectNavigation, create: (path) => setDraft({ path }) }}
@@ -38,8 +47,13 @@ vi.mock("../src/App", () => ({
       <SettingsDialog dialogRef={dialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
         markdown={readMarkdownPreferences()} onMarkdownChange={() => {}} />
     </>;
-  },
-}));
+  }
+  return {
+    default: () => <p>Fixture</p>,
+    HarnessGui: (props: Parameters<typeof HarnessGui>[0]) =>
+      native.realShell ? <HarnessGui {...props} /> : <StubShell {...props} />,
+  };
+});
 
 function openSettings() {
   fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
@@ -105,7 +119,7 @@ function countActions(action: string) {
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   HTMLDialogElement.prototype.close = function () { this.open = false; };
-  native.invoke.mockReset(); native.create.mockClear(); native.listeners.clear();
+  native.invoke.mockReset(); native.create.mockClear(); native.listeners.clear(); native.realShell = false;
   installMock(async (command, args) => {
     if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
     if (command === "sync_tray") return;
@@ -334,6 +348,65 @@ describe("local managed Host presentation", () => {
     fireEvent.click(start);
     await screen.findByRole("button", { name: "Reconnect" });
     expect(native.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the open conversation connecting until the replacement Host publishes a snapshot", async () => {
+    native.realShell = true;
+    const seed = await createMockAppClient().snapshot();
+    const session = { ...seed.sessions[0], status: "running" as const };
+    const snapshot = (instance: string): ClientSnapshot => ({
+      ...seed, sessions: [session], selectedSessionId: session.id, connection: "connected",
+      source: { kind: "live", serviceInstanceId: instance, muxSpaceId: "mux", connectionEpoch: "1" },
+    });
+    let publish!: (snapshot: ClientSnapshot) => void;
+    const client: HarnessClientUiPort & { suspend(): Promise<() => void> } = {
+      snapshot: async () => snapshot("service-1"),
+      subscribe: () => () => {},
+      subscribeSnapshots: (listener) => { publish = listener; return () => {}; },
+      submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+      interrupt: async () => ({ accepted: false }),
+      suspend: async () => () => {},
+    };
+    native.create.mockReturnValueOnce(client);
+
+    const running = (instance: number) => ({
+      state: "running", errorCode: null, instanceId: `instance-${instance}`, serviceInstanceId: `service-${instance}`,
+    });
+    let finishRestart!: (status: ReturnType<typeof running>) => void;
+    installMock(async (command, args) => {
+      if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
+      if (command === "sync_tray") return;
+      if (command === "environment") return { supported: true, workspace: "/workspace" };
+      if (args.request.action === "restart") return new Promise((resolve) => { finishRestart = resolve; });
+      return running(1);
+    });
+
+    const { container } = render(<LocalHostGate />);
+    const chip = () => container.querySelector(".connection-chip");
+    await waitFor(() => expect(chip()).toHaveTextContent(/^Connected$/));
+    const editor = screen.getByRole("textbox", { name: /message/i });
+    fireEvent.change(editor, { target: { value: "unsent during restart" } });
+    const interrupt = screen.getByRole("button", { name: "Interrupt" });
+    expect(interrupt).toBeEnabled();
+
+    const settings = openHostSettings();
+    fireEvent.click(settings.getByRole("button", { name: "Restart Host" }));
+    expect(chip()).toHaveTextContent(/^Connected$/);
+    fireEvent.click(within(settings.getByRole("alertdialog")).getByRole("button", { name: "Restart Host" }));
+    expect(settings.getByText("Host starting")).toBeVisible();
+    expect(chip()).toHaveTextContent(/^Connecting$/);
+    expect(interrupt).toBeDisabled();
+
+    await act(async () => finishRestart(running(2)));
+    expect(settings.getByText("Running", { exact: true })).toBeVisible();
+    act(() => publish(snapshot("service-1")));
+    expect(chip()).toHaveTextContent(/^Connecting$/);
+    expect(interrupt).toBeDisabled();
+
+    act(() => publish(snapshot("service-2")));
+    expect(chip()).toHaveTextContent(/^Connected$/);
+    expect(editor).toHaveValue("unsent during restart");
+    expect(interrupt).toBeEnabled();
   });
 
   it("refuses to offer another start when identity is unconfirmed", async () => {

@@ -363,6 +363,9 @@ export default function LocalHostGate() {
   return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
     startLocalHost={canStart ? <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={client ? setConnection : undefined}
+    managedHostConnection={busy ? { status: pendingAction.current === "stop" ? "disconnected" : "connecting" }
+      : host.state === "running" && !host.errorCode ? { status: "running", serviceInstanceId: host.serviceInstanceId }
+        : { status: "disconnected" }}
     projectNavigation={{
       directory, available: host.state === "running" && !host.errorCode && !busy,
       pending: workspacePending, error: workspaceError, folderInput, selection,
