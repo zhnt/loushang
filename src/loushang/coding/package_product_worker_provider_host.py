@@ -2,33 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 
-from loushang.harness.capabilities.provider_admission import (
-    CapabilityProviderOwnerAuthority,
-)
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
 )
-from loushang.harness.capabilities.provider_selection import ResolvedCapabilityProvider
 from loushang.harness.session._worker_provider import (
-    _abort_worker_provider,
-    _commit_worker_provider,
-    _prepare_worker_provider_binding,
+    _PreparedWorkerProviderMethods,
     _read_worker_provider_inputs,
-    _require_current_worker_provider,
 )
 from loushang.harness.session._worker_provider import (
     _WorkerAttemptRelease as _SessionWorkerAttemptRelease,
 )
-from loushang.harness.worker.capability_query import (
-    CapabilityQueryWorkerAdapter,
-    CapabilityWorkerAdmissionV1,
-)
 from loushang.harness.worker.facet_proxy import CapabilityWorkerReadOnlyFacetProxy
-from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
 from .package_product_worker_provider import (
@@ -52,112 +40,6 @@ class _WorkerAttemptRelease(_SessionWorkerAttemptRelease):
     pass
 
 
-@dataclass(frozen=True, slots=True)
-class CodingPreparedWorkerProvider:
-    binding: CapabilityBundleProviderBinding
-    facet: CapabilityWorkerReadOnlyFacetProxy
-    receipt_fingerprint: str
-    worker_admission_fingerprint: str
-    _release: _WorkerAttemptRelease = field(repr=False, compare=False)
-    _commit: Callable[[], None] | None = field(default=None, repr=False, compare=False)
-
-    def commit_after_graph_publication(self) -> None:
-        _commit_worker_provider(
-            self.facet,
-            self._commit,
-            CodingWorkerProviderHostError,
-            "coding_worker_provider",
-        )
-
-    async def abort_uncommitted(self) -> bool:
-        return await _abort_worker_provider(self.facet, self._release)
-
-    def require_current_activation(self) -> None:
-        _require_current_worker_provider(
-            self.facet,
-            self._release,
-            CodingWorkerProviderHostError,
-            "coding_worker_provider",
-        )
-
-
-def prepare_coding_worker_provider_binding(
-    *,
-    resolved: ResolvedCapabilityProvider,
-    receipt_owner: CodingWorkerProductReceiptOwner
-    | CodingWindowsWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    capability_authority: CodingProductWorkerCapabilityAuthority,
-    adapter: CapabilityQueryWorkerAdapter,
-    worker_admission: CapabilityWorkerAdmissionV1,
-    graph_generation: int,
-    clock: Callable[[], int],
-    release_attempt: Callable[[], Awaitable[None]],
-    base_policy_binding: CodingWorkerBaseCompositionPolicyBinding | None = None,
-    renewing_provider_owner: CapabilityProviderOwnerAuthority | None = None,
-    on_graph_publication: Callable[[], None] | None = None,
-) -> CodingPreparedWorkerProvider:
-    """Prepare a graph binding only for an exact current Product/owner selection."""
-    candidate, binding = _read_coding_worker_provider_inputs(
-        resolved=resolved,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        capability_authority=capability_authority,
-        adapter=adapter,
-        worker_admission=worker_admission,
-        graph_generation=graph_generation,
-        clock=clock,
-        release_attempt=release_attempt,
-        base_policy_binding=base_policy_binding,
-        renewing_provider_owner=renewing_provider_owner,
-        on_graph_publication=on_graph_publication,
-    )
-
-    def read_candidate():
-        return prepare_coding_selected_worker_provider_candidate(
-            receipt_owner=receipt_owner,
-            receipt=receipt,
-            definition=resolved.definition,
-            provider=resolved.provider,
-            base_policy_binding=base_policy_binding,
-        )
-
-    graph_binding, facet, release = _prepare_worker_provider_binding(
-        resolved=resolved,
-        receipt=receipt,
-        binding=binding,
-        capability_authority=capability_authority,
-        adapter=adapter,
-        worker_admission=worker_admission,
-        graph_generation=graph_generation,
-        clock=clock,
-        release_attempt=release_attempt,
-        candidate=candidate,
-        read_candidate=read_candidate,
-        base_policy_binding=base_policy_binding,
-        renewing_provider_owner=renewing_provider_owner,
-        error_type=CodingWorkerProviderHostError,
-        error_prefix="coding_worker_provider",
-        fingerprint_namespace=b"loushang.coding-worker-provider-binding/v1\x00",
-        release_type=_WorkerAttemptRelease,
-    )
-    return CodingPreparedWorkerProvider(
-        binding=graph_binding,
-        facet=facet,
-        receipt_fingerprint=receipt.fingerprint,
-        worker_admission_fingerprint=worker_admission.fingerprint,
-        _release=release,
-        _commit=on_graph_publication,
-    )
-
-
-__all__ = [
-    "CodingPreparedWorkerProvider",
-    "CodingWorkerProviderHostError",
-    "prepare_coding_worker_provider_binding",
-]
-
-
 _read_coding_worker_provider_inputs = partial(
     _read_worker_provider_inputs,
     receipt_owner_types=(
@@ -171,3 +53,38 @@ _read_coding_worker_provider_inputs = partial(
     error_prefix="coding_worker_provider",
     invalid_inputs="Coding Worker Provider Host inputs are invalid",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CodingPreparedWorkerProvider(
+    _PreparedWorkerProviderMethods[
+        CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner,
+        CodingProductWorkerCapabilityAuthority,
+        CodingWorkerBaseCompositionPolicyBinding,
+    ]
+):
+    binding: CapabilityBundleProviderBinding
+    facet: CapabilityWorkerReadOnlyFacetProxy
+    receipt_fingerprint: str
+    worker_admission_fingerprint: str
+    _release: _WorkerAttemptRelease = field(repr=False, compare=False)
+    _commit: Callable[[], None] | None = field(default=None, repr=False, compare=False)
+
+    _provider_error_type = CodingWorkerProviderHostError
+    _provider_error_prefix = "coding_worker_provider"
+    _provider_fingerprint_namespace = b"loushang.coding-worker-provider-binding/v1\x00"
+    _provider_release_type = _WorkerAttemptRelease
+    _provider_read_inputs = staticmethod(_read_coding_worker_provider_inputs)
+    _provider_read_candidate = staticmethod(
+        prepare_coding_selected_worker_provider_candidate
+    )
+
+
+prepare_coding_worker_provider_binding = CodingPreparedWorkerProvider._prepare
+
+
+__all__ = [
+    "CodingPreparedWorkerProvider",
+    "CodingWorkerProviderHostError",
+    "prepare_coding_worker_provider_binding",
+]

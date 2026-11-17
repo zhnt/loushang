@@ -500,6 +500,20 @@ Windows opt-in 的 current／history_read_only／change、receipt 的 records／
 
 补齐剩余24份文件的源码与真实静态消费者路由复核后，冻结112份文件均有 SHA 限定的部分职责记录；这不等于112份文件最终验收或主要链路闭合。新核对的 V2 base／archive／cutover／deletion 文件主要是必要名义记录和既有 H 执行体的类型／wire Profile；不能靠搬字段计为机制收益。仍明确标出需继续处理的通用部分：_worker_history_access 的两平台借用适配，以及 provider_host 的完整准备／回执构造接线。回执 owner 构造仍混有通用关联校验和真实产品准入，须按实际失败顺序与原 owner 接管，不把类型或文件名当作整段保留理由。
 
+## Provider 完整准备程序与同一 prepared 值交接
+
+原 prepare_coding_worker_provider_binding 整段程序及 prepared 的 commit／abort／current 操作归现有 Session _worker_provider 内的私有方法基类，Coding 名义 dataclass 直接绑定其准备入口。原输入关联、candidate 重读、grant／facet／Graph binding、发布确认、退休及同一 release_once 仍沿用原组件和实际交接顺序；未增加实例状态、阶段 Protocol、修复器或平行生命周期。两平台 pending 与直接 Session 调用方继续使用同一 Code prepared 类型，原 H native 准备程序及失败清理执行体未改。
+
+Code 保留原六字段、默认／比较／repr 配置、frozen／slots、错误类、release 名义类和实际 Product／Capability 类型／candidate／指纹域 Profile。新增基类 __slots__ 为空，不引入 dict 或 weakref 存储；原构造签名、字段元数据、repr、冻结保证、两份原值 pickle 字节及加载路径保持。六份原 bound-method pickle 字节与两条旧全局函数 pickle 路由保持，入口参数位置／关键字／默认形状不变，具体静态返回仍为 Code prepared；未暴露 Profile 覆写参数。
+
+当前执行代理按已授权职责接受这一内部入口的函数→bound classmethod、module／qualname、泛型运行时注解及参数绑定错误前缀变化，以及 Code prepared 新增无状态基类／方法继承归属。实际记录类名／模块／字段不变，不声称 MRO 或全体反射值不变。Profile 固定绑定原名义 owner、输入校验 callable 与 candidate reader，不承诺继续重绑定旧 Code 模块私有 helper 别名；真实 owner 状态仍在原时点重读，H 的实际故障端口保持。该入口未进入 Coding 顶层稳定 SDK；不据此放宽其它公开记录的兼容要求。
+
+原 composition／handoff／Resume61 passed；真实 Product 事务和候选选择17 passed／7个 host-runtime skip。198组原完整程序与三生命周期操作对照一致，含180组实际故障／取消、两个 event-loop generation、并发双 abort／重试及幂等释放；28个实际两平台名义非法输入结果一致。输入／candidate／binding 端口对照为受控观察，不代替真实权限、H6 或原生 Windows；Product 事务由原测试另证。探针先纠正 Field 对象身份比较和重建模块的名义错误绑定，再通过，未改 Product 来迁就探针。六源 mypy、具体返回类型二源断言、Ruff、依赖图及限定 AST 证明通过。
+
+C51 精确消费者检查发现上批 Windows receipt journal 和本批 provider_host 已退出直接 activation 依赖，两项旧库存同步删除；原扫描与集合相等断言及其它 AST 保持，无门禁／平台／触发器扩展。首轮四项边界通过、一项库存失败的结果保留，原失败库存项修正后重跑1 passed。
+
+本批 Coding −83、Harness +117、Hosting／其他生产0，系统生产 +34行；测试 −2行，文档单列。H 成本含完整方法入口、静态类型／无状态布局约束，Code 原协调体及三个操作方法同步退出 Coding，H 方法继续复用原 helpers；此批记职责迁移，不记系统重复删除。未搬动字段或将旧 grant／release 再计迁移收益。累计 Coding −6,630、Harness +9,591、系统生产仍 +2,961行；C07余13,636行，距过半退出还差3,504行。全组与最新完整候选验证仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

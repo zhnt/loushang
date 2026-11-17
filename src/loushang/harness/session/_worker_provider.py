@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
 from hashlib import sha256
-from typing import TYPE_CHECKING, Protocol, TypeVar
+from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, Self, TypeVar, cast
 
 from loushang.harness.capabilities import MODEL_INPUT_CAPABILITY_DEFINITION
 from loushang.harness.capabilities.consumer_requirements import (
@@ -280,6 +280,123 @@ class _PreparedFactory(Protocol[_ReleaseContra, _PreparedCo]):
         _release: _ReleaseContra,
         _commit: Callable[[], None] | None,
     ) -> _PreparedCo: ...
+
+
+_ReceiptOwnerT = TypeVar("_ReceiptOwnerT")
+_QueryAuthorityT = TypeVar("_QueryAuthorityT", bound=_QueryAuthority)
+_BasePolicyT = TypeVar("_BasePolicyT", bound=_BasePolicyGuard)
+
+
+class _PreparedWorkerProviderMethods(
+    Generic[_ReceiptOwnerT, _QueryAuthorityT, _BasePolicyT]
+):
+    """Operations on the caller's existing prepared value, without extra state."""
+
+    __slots__ = ()
+    facet: CapabilityWorkerReadOnlyFacetProxy
+    _release: _WorkerAttemptRelease
+    _commit: Callable[[], None] | None
+    _provider_error_type: ClassVar[type[RuntimeError]]
+    _provider_error_prefix: ClassVar[str]
+    _provider_fingerprint_namespace: ClassVar[bytes]
+    _provider_release_type: ClassVar[type[_WorkerAttemptRelease]]
+    _provider_read_inputs: ClassVar[
+        Callable[
+            ..., tuple[CapabilityProviderCandidateEnvelope, CapabilityWorkerBindingV1]
+        ]
+    ]
+    _provider_read_candidate: ClassVar[
+        Callable[..., CapabilityProviderCandidateEnvelope]
+    ]
+
+    def commit_after_graph_publication(self) -> None:
+        _commit_worker_provider(
+            self.facet,
+            self._commit,
+            self._provider_error_type,
+            self._provider_error_prefix,
+        )
+
+    async def abort_uncommitted(self) -> bool:
+        return await _abort_worker_provider(self.facet, self._release)
+
+    def require_current_activation(self) -> None:
+        _require_current_worker_provider(
+            self.facet,
+            self._release,
+            self._provider_error_type,
+            self._provider_error_prefix,
+        )
+
+    @classmethod
+    def _prepare(
+        cls,
+        *,
+        resolved: ResolvedCapabilityProvider,
+        receipt_owner: _ReceiptOwnerT,
+        receipt: ProductWorkerActivationReceiptV1,
+        capability_authority: _QueryAuthorityT,
+        adapter: CapabilityQueryWorkerAdapter,
+        worker_admission: CapabilityWorkerAdmissionV1,
+        graph_generation: int,
+        clock: Callable[[], int],
+        release_attempt: Callable[[], Awaitable[None]],
+        base_policy_binding: _BasePolicyT | None = None,
+        renewing_provider_owner: CapabilityProviderOwnerAuthority | None = None,
+        on_graph_publication: Callable[[], None] | None = None,
+    ) -> Self:
+        """Prepare a graph binding only for an exact current Product/owner selection."""
+        candidate, binding = cls._provider_read_inputs(
+            resolved=resolved,
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            capability_authority=capability_authority,
+            adapter=adapter,
+            worker_admission=worker_admission,
+            graph_generation=graph_generation,
+            clock=clock,
+            release_attempt=release_attempt,
+            base_policy_binding=base_policy_binding,
+            renewing_provider_owner=renewing_provider_owner,
+            on_graph_publication=on_graph_publication,
+        )
+
+        def read_candidate():
+            return cls._provider_read_candidate(
+                receipt_owner=receipt_owner,
+                receipt=receipt,
+                definition=resolved.definition,
+                provider=resolved.provider,
+                base_policy_binding=base_policy_binding,
+            )
+
+        graph_binding, facet, release = _prepare_worker_provider_binding(
+            resolved=resolved,
+            receipt=receipt,
+            binding=binding,
+            capability_authority=capability_authority,
+            adapter=adapter,
+            worker_admission=worker_admission,
+            graph_generation=graph_generation,
+            clock=clock,
+            release_attempt=release_attempt,
+            candidate=candidate,
+            read_candidate=read_candidate,
+            base_policy_binding=base_policy_binding,
+            renewing_provider_owner=renewing_provider_owner,
+            error_type=cls._provider_error_type,
+            error_prefix=cls._provider_error_prefix,
+            fingerprint_namespace=cls._provider_fingerprint_namespace,
+            release_type=cls._provider_release_type,
+        )
+        return cast(Callable[..., Self], cls)(
+            binding=graph_binding,
+            facet=facet,
+            receipt_fingerprint=receipt.fingerprint,
+            worker_admission_fingerprint=worker_admission.fingerprint,
+            _release=release,
+            _commit=on_graph_publication,
+        )
 
 
 async def _prepare_native_worker_component(
