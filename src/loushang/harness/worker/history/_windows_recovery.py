@@ -7,7 +7,10 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Generic, TypeVar, cast
 
-from ..journal import WorkerAttemptPhase
+from ..journal import WorkerAttemptPhase, WorkerAttemptRecordV1
+from ._activation import _RetainedAttemptFields
+from ._opt_in import _OptInDecisionMethods
+from ._receipts import _ReceiptRecordMethods
 
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -492,3 +495,161 @@ def project_windows_recovery_attempts(
             cast(Callable[..., _AttemptT], record_type)(attempt_id=attempt_id, **facts)
         )
     return tuple(result)
+
+
+class _WindowsOfflineRecoveryMethods:
+    __slots__ = ()
+    opt_in_decisions: tuple[_OptInDecisionMethods, ...]
+    receipt_records: tuple[_ReceiptRecordMethods, ...]
+    supervisor_records: tuple[WorkerAttemptRecordV1, ...]
+
+    @property
+    def opt_in_history_revision(self) -> int:
+        return max((item.journal_revision for item in self.opt_in_decisions), default=0)
+
+    @property
+    def receipt_history_revision(self) -> int:
+        return max((item.journal_revision for item in self.receipt_records), default=0)
+
+    @property
+    def supervisor_history_revision(self) -> int:
+        return max(
+            (item.record_revision for item in self.supervisor_records), default=0
+        )
+
+    @property
+    def retained_opt_in_operation_ids(self) -> tuple[str, ...]:
+        return tuple(item.operation_id for item in self.opt_in_decisions)
+
+    @property
+    def retained_supervisor_attempt_ids(self) -> tuple[str, ...]:
+        return tuple(sorted({item.attempt_id for item in self.supervisor_records}))
+
+    @property
+    def retained_receipt_fingerprints(self) -> tuple[str, ...]:
+        return tuple(sorted(item.receipt.fingerprint for item in self.receipt_records))
+
+    @property
+    def supervisor_epoch_high_water(self) -> tuple[tuple[str, int], ...]:
+        highest: dict[str, int] = {}
+        for record in self.supervisor_records:
+            highest[record.supervisor_key] = max(
+                highest.get(record.supervisor_key, 0), record.supervisor_epoch
+            )
+        return tuple(sorted(highest.items()))
+
+
+def require_windows_worker_c5_gc_history(
+    state: Mapping[str, object] | None,
+    retained: tuple[_RetainedAttemptFields, ...],
+    inventory: tuple[WindowsRecoveryAttemptV1, ...],
+    receipt_policies: Mapping[str, tuple[str, int]],
+    native_job_absence: Mapping[str, bool | None],
+) -> None:
+    """Join settled C5 attempts to exact launched attempts and Product receipts."""
+
+    if state is None:
+        raise ValueError("Windows Worker GC C5 owner is incomplete")
+    active = cast(dict[str, dict[str, object]], state["attempts"])
+    publications = cast(dict[str, object], state["publications"])
+    if publications or any(
+        attempt["phase"] != "settled" for attempt in active.values()
+    ):
+        raise ValueError("Windows Worker GC C5 activation remains active")
+    by_id = {item.attempt_id: item for item in retained}
+    launched = {
+        item.attempt_id: item
+        for item in inventory
+        if item.launch_request_fingerprint is not None
+        or item.native_phase is not None
+        or item.supervisor_phase is not None
+    }
+    if len(by_id) != len(retained) or set(by_id) != set(launched):
+        raise ValueError("Windows Worker GC C5 attempt history is incomplete")
+    for attempt_id, item in by_id.items():
+        observed = launched[attempt_id]
+        if (
+            item.phase != "settled"
+            or item.cleanup_contract_version != 2
+            or observed.launch_receipt_fingerprint != item.receipt_fingerprint
+            or receipt_policies.get(item.receipt_fingerprint)
+            != (item.policy_fingerprint, item.owner_generation)
+            or native_job_absence.get(attempt_id) is not True
+        ):
+            raise ValueError("Windows Worker GC C5 attempt history is incomplete")
+
+
+_ReferenceT = TypeVar("_ReferenceT")
+
+
+def project_windows_worker_attempt_references(
+    attempts: tuple[WindowsRecoveryAttemptV1, ...],
+    receipts: tuple[_ReceiptRecordMethods, ...],
+    *,
+    reference_type: Callable[..., _ReferenceT],
+    product_id: str,
+    error_type: type[RuntimeError],
+    error_prefix: str,
+) -> tuple[_ReferenceT, ...]:
+    receipt_by_fingerprint = {record.receipt.fingerprint: record for record in receipts}
+    if len(receipt_by_fingerprint) != len(receipts):
+        raise error_type(error_prefix + "receipt_conflict")
+    references: list[_ReferenceT] = []
+    for attempt in attempts:
+        request_fingerprint = attempt.launch_request_fingerprint
+        receipt_fingerprint = attempt.launch_receipt_fingerprint
+        identity_fingerprint = attempt.launch_identity_fingerprint
+        if request_fingerprint is None:
+            if (
+                receipt_fingerprint is not None
+                or identity_fingerprint is not None
+                or attempt.native_phase is not None
+                or attempt.supervisor_phase is not None
+            ):
+                raise error_type(error_prefix + "intent_absent")
+            continue
+        receipt = (
+            None
+            if receipt_fingerprint is None
+            else receipt_by_fingerprint.get(receipt_fingerprint)
+        )
+        if (
+            receipt_fingerprint is None
+            or identity_fingerprint is None
+            or any(
+                type(value) is not str or _FINGERPRINT.fullmatch(value) is None
+                for value in (
+                    request_fingerprint,
+                    receipt_fingerprint,
+                    identity_fingerprint,
+                )
+            )
+            or attempt.launch_stage_identity is None
+            or receipt is None
+            or receipt.receipt.policy.product_id != product_id
+            or (
+                attempt.native_phase is not None
+                and (
+                    attempt.native_worker_request_fingerprint != request_fingerprint
+                    or attempt.native_receipt_fingerprint != receipt_fingerprint
+                )
+            )
+            or (
+                attempt.supervisor_phase is not None
+                and attempt.supervisor_identity_fingerprint != identity_fingerprint
+            )
+        ):
+            raise error_type(error_prefix + "binding_changed")
+        policy = receipt.receipt.policy
+        references.append(
+            reference_type(
+                attempt_id=attempt.attempt_id,
+                plugin_id=policy.plugin_id,
+                receipt_fingerprint=receipt_fingerprint,
+                selected_package_revision_digest=policy.plugin_revision_digest,
+                selected_locator_revision=policy.selected_locator_revision,
+                native_platform="windows",
+                launch_request_fingerprint=request_fingerprint,
+            )
+        )
+    return tuple(references)

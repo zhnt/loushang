@@ -61,8 +61,10 @@ private ReceiptIO. Worker History owns their canonical record proofs; Coding kee
 Product admission and nominal wire facades. PackageProduct also owns source custody,
 Desired capture, reference/checkpoint input assembly and persisted/cutover candidate
 rechecks over original readers. Worker owns the shared six-stream reconstruction
-and persisted/cutover proofs. GC settlement and offline recovery dependencies
-remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
+and persisted/cutover proofs. PackageProduct now also owns GC settlement/offline
+history capture, attempt reference/GC observations and full/partial/no-effect stage
+read coordination. Completed-retirement validators, crash-stage coordination and
+retirement writes remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
 this slice does not complete that chain or its majority-exit target.
 
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
@@ -200,19 +202,21 @@ strict history and single-record journal validation remain distinct. This adds
 no IO, native cleanup authority or new state; see
 [A40](key-designs/windows-worker-semantic-convergence.md#17-a40恢复证明合同澄清与纯历史判据实际归位).
 
-Worker.history also supplies pure reading of the four existing Windows stage-review
-record formats using Resources' original RecordSchema. Coding retains the original
-public dataclasses, own fields, semantic admission, fingerprints and all encoders.
-There is no new I/O, authority or Product coordinator; MRO/private schema metadata
-changes are explicit. Future dataclass field changes require wire-format review.
-See [A43](key-designs/windows-worker-semantic-convergence.md#20-a43四类windows记录读取去重).
+Worker.history owns reading, semantic proofs, canonical encoding and fingerprints
+for the four existing Windows stage-review formats, using Resources' original
+RecordSchema. Coding retains the original dataclasses/slots/fields, public errors,
+fingerprint domains and dynamic quota Profile. Ordinary zero-slot method bases
+preserve the nominal dataclass metadata. There is no new native authority or IO
+in these value methods. See the current [C07 migration](c07-worker-bulk-migration.md)
+and the earlier [A43 reader slice](key-designs/windows-worker-semantic-convergence.md#20-a43四类windows记录读取去重).
 
 The existing canonical record reader also serves checkpoint, preparation,
 cutover, launch-intent and stage-retirement values. Coding keeps each original
-concrete class, own fields, encoders and semantic admission; Resources supplies
-the original schema traversal. Original error/limit/shape differences remain
-explicit policy, and the same reader's 15 existing families retain their default
-contracts. See [A45](key-designs/windows-worker-semantic-convergence.md#21-a45其余五类canonical记录复用既有reader).
+concrete class, fields and wire Profile; Resources supplies schema traversal,
+and Worker owns the migrated preparation/checkpoint/cutover proofs and encoders.
+Launch-intent and retirement helpers still have Coding implementations tracked
+by C07. Original errors, bounds and shapes remain compatible; the same reader's
+15 existing families retain their default contracts. See [A45](key-designs/windows-worker-semantic-convergence.md#21-a45其余五类canonical记录复用既有reader).
 
 The same Worker history owner now supplies complete Windows Supervisor and C5
 journal custody over the existing state engine, activation replay/projection and

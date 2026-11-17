@@ -27,7 +27,8 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._windows_sources"
     },
     CODING_ROOT / "package_product_worker_windows_gc_history.py": {
-        "loushang.harness.worker.history._windows_sources"
+        "loushang.harness.worker.history._windows_sources",
+        "loushang.harness.worker.history._windows_recovery"
     },
     CODING_ROOT / "package_product_worker_windows_opt_in_base.py": {
         "loushang.harness.worker.history._base_codec",

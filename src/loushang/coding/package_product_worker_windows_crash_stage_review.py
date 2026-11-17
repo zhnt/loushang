@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import cast
 
 from loushang.harness.package_product._worker_windows_attempt import (
@@ -17,13 +16,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRecordV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
-from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.worker._native_profile_bridge import (
     _rebuild_windows_lpac_cleanup_spec,
 )
@@ -31,7 +26,7 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
     launch_matches_intent,
 )
 from loushang.harness.worker.history._windows_stage_review_wire import (
-    _WindowsStageReviewWireMethods,
+    _WindowsCrashStageReviewMethods,
 )
 from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 
@@ -46,16 +41,15 @@ from .package_product_worker_windows_provisioning import (
 from .package_product_worker_windows_stage_review import (
     FileIdentity,
     _capture_stage_bytes,
-    _valid_identity,
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_REVIEW_BYTES = 32768
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerCrashStageReviewV1(_WindowsStageReviewWireMethods):
+class CodingWindowsWorkerCrashStageReviewV1(_WindowsCrashStageReviewMethods):
+    _fingerprint_domain = b"loushang.coding-windows-worker-crash-stage-review/v1\x00"
     _record_kind = "crash"
     _record_error = ValueError
     _record_error_code = "Windows Worker crash stage review bytes are invalid"
@@ -78,86 +72,6 @@ class CodingWindowsWorkerCrashStageReviewV1(_WindowsStageReviewWireMethods):
     marker_identity: FileIdentity
     executable_identity: FileIdentity
     executable_digest: str
-
-    def __post_init__(self) -> None:
-        try:
-            path = canonical_plugin_relative_path(self.entrypoint)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                "Windows Worker crash stage entrypoint is invalid"
-            ) from exc
-        if (
-            type(self.attempt_id) is not str
-            or _ATTEMPT.fullmatch(self.attempt_id) is None
-            or any(
-                type(value) is not str or _DIGEST.fullmatch(value) is None
-                for value in (
-                    self.intent_fingerprint,
-                    self.native_spec_fingerprint,
-                    self.executable_digest,
-                )
-            )
-            or type(self.lease_owner_revision) is not int
-            or self.lease_owner_revision < 1
-            or type(self.repaired_lease_id) is not str
-            or _DIGEST.fullmatch(self.repaired_lease_id) is None
-            or type(self.lease_repair_revision) is not int
-            or not 1 <= self.lease_repair_revision < self.lease_owner_revision
-            or type(self.native_revision) is not int
-            or self.native_revision < 1
-            or (
-                self.supervisor_revision is not None
-                and (
-                    type(self.supervisor_revision) is not int
-                    or self.supervisor_revision < 1
-                )
-            )
-            or path.as_posix() != self.entrypoint
-            or not _valid_identity(self.stage_identity)
-            or not _valid_identity(self.marker_identity)
-            or not _valid_identity(self.executable_identity)
-            or not 0 < self.executable_identity[3] <= 16 * 1024 * 1024
-            or type(self.directory_identities) is not tuple
-            or len(self.directory_identities) != len(path.parts) - 1
-            or any(
-                type(item) is not tuple
-                or len(item) != 2
-                or item[0] != "/".join(path.parts[: index + 1])
-                or not _valid_identity(item[1])
-                for index, item in enumerate(self.directory_identities)
-            )
-        ):
-            raise ValueError("Windows Worker crash stage review is invalid")
-
-    def to_bytes(self) -> bytes:
-        return canonical_json_bytes(
-            {
-                "attemptId": self.attempt_id,
-                "directoryIdentities": [
-                    [name, list(identity)]
-                    for name, identity in self.directory_identities
-                ],
-                "entrypoint": self.entrypoint,
-                "executableDigest": self.executable_digest,
-                "executableIdentity": list(self.executable_identity),
-                "intentFingerprint": self.intent_fingerprint,
-                "leaseOwnerRevision": self.lease_owner_revision,
-                "leaseRepairRevision": self.lease_repair_revision,
-                "markerIdentity": list(self.marker_identity),
-                "nativeRevision": self.native_revision,
-                "nativeSpecFingerprint": self.native_spec_fingerprint,
-                "repairedLeaseId": self.repaired_lease_id,
-                "stageIdentity": list(self.stage_identity),
-                "supervisorRevision": self.supervisor_revision,
-                "version": 1,
-            }
-        )
-
-    @property
-    def fingerprint(self) -> str:
-        return sha256(
-            b"loushang.coding-windows-worker-crash-stage-review/v1\0" + self.to_bytes()
-        ).hexdigest()
 
 
 def review_coding_windows_product_worker_crash_stage(
