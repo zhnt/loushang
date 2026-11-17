@@ -456,6 +456,14 @@ POSIX／Windows opt-in owner 不再各声明 current／allow／revoke 的同参�
 
 本批 Coding −25、Harness +89、Hosting／其他生产0，系统生产 +64行，测试 −1行、文档单列。新增成本来自完整通用入口的参数／返回约束和必要适配，而非平行机制；Code 的泛型结果适配占用行数，同步计入。累计 Coding −6,401、Harness +9,433、系统生产仍 +3,032行；C07 余13,865行，距过半退出还差3,733行。仅验收这三条写事务，不宣称全部112文件、整组链路或多数退出完成。
 
+## 整批检查的依赖清单修正
+
+固定 aa6d4ae7c 的首次整批本地检查已结束：Coding 4240 passed／24 skipped／76 deselected；HarnessTUI 1078 passed／87 deselected；Coding UI 614 passed／68 deselected；render contract 319 passed／8152 deselected。Harness Ruff／916源 mypy 通过，回归为6357 passed／110 skipped／2 failed，因而整批未通过，后续 Hosting 路线未执行。上述各路线覆盖有交叠，不相加，也不作为后续提交的最终交付结论。
+
+两项失败均为早期架构库存未随已接受的职责迁移同步：三个 Worker history 文件使用原 Resources 的 lease／record／quiescence 不可变事实，四个 Windows Package Product history／references／recovery／retirement owner 已成为 Worker 消费者。已核对真实导入、类型定义及读事实用途。当前执行代理在已授权迁移职责内接受这些实际边界；PLC9b 按精确文件、模块和符号限定，原共同原语许可不扩大；PLC9c0 仅补齐四个具体 owner，继续使用原精确集合相等断言。没有通配路径、断言跳过、门禁／触发器／平台变更，也没有新生产依赖。
+
+两项原失败测试在后续提交上定向重跑2 passed；完整受影响 Harness 与此前未执行的 Hosting 路线仍待通过。该修正仅改变测试库存与验证记录，不计为迁移或生产代码删减收益；C07仍余13,865行，系统生产仍净增3,032行。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
