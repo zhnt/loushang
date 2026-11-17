@@ -28,7 +28,7 @@ from .package_product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
 from .package_product_worker_windows_history_sources import (
-    CodingWindowsWorkerHistorySemanticReadV1,
+    CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
 
 _MAX_BASE_BYTES = 32 * 1024 * 1024
@@ -50,14 +50,6 @@ class CodingWindowsWorkerOptInSemanticBaseV1(_WindowsOptInBaseMethods):
     _replay_type = CodingWindowsWorkerOptInReplayV1
 
     latest_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
-
-    @classmethod
-    def from_semantic_read(
-        cls,
-        prepared: CodingWindowsWorkerHistoryPreparationV1,
-        semantic: CodingWindowsWorkerHistorySemanticReadV1,
-    ) -> CodingWindowsWorkerOptInSemanticBaseV1:
-        return cls._from_prepared_history(prepared, semantic)
 
     def replay(
         self, events: tuple[CodingWorkerOptInDecisionV1, ...]

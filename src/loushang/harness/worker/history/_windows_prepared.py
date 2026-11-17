@@ -26,6 +26,13 @@ class _WindowsPreparedSourceMethods(_WindowsPreparationBinding):
     _preparation_label: ClassVar[str]
 
     @classmethod
+    def from_semantic_read(
+        cls, prepared: _WindowsPreparationFacts, semantic: _WindowsHistorySemanticFacts
+    ) -> Self:
+        """Reconstruct through the ledger's original preparation and source proof."""
+        return cls._from_prepared_history(prepared, semantic)
+
+    @classmethod
     def _from_prepared_history(
         cls, prepared: _WindowsPreparationFacts, semantic: _WindowsHistorySemanticFacts
     ) -> Self:

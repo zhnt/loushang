@@ -27,7 +27,7 @@ from .package_product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
 from .package_product_worker_windows_history_sources import (
-    CodingWindowsWorkerHistorySemanticReadV1,
+    CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
 
 _MAX_BASE_BYTES = 32 * 1024 * 1024
@@ -45,14 +45,6 @@ class CodingWindowsWorkerSupervisorSemanticBaseV1(_WindowsSupervisorBaseMethods)
     _preparation_type = CodingWindowsWorkerHistoryPreparationV1
     _preparation_label = "Supervisor"
     _replay_type = CodingWindowsWorkerSupervisorReplayV1
-
-    @classmethod
-    def from_semantic_read(
-        cls,
-        prepared: CodingWindowsWorkerHistoryPreparationV1,
-        semantic: CodingWindowsWorkerHistorySemanticReadV1,
-    ) -> CodingWindowsWorkerSupervisorSemanticBaseV1:
-        return cls._from_prepared_history(prepared, semantic)
 
     def replay(
         self, records: tuple[WorkerAttemptRecordV1, ...]

@@ -28,7 +28,7 @@ from .package_product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
 from .package_product_worker_windows_history_sources import (
-    CodingWindowsWorkerHistorySemanticReadV1,
+    CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
 
 _MAX_BASE_BYTES = 32 * 1024 * 1024
@@ -52,14 +52,6 @@ class CodingWindowsWorkerReceiptSemanticBaseV1(_WindowsReceiptBaseMethods):
     _session_scope_id = staticmethod(coding_worker_session_scope_id)
     _product_id = "coding"
     _native_platform = "windows-amd64"
-
-    @classmethod
-    def from_semantic_read(
-        cls,
-        prepared: CodingWindowsWorkerHistoryPreparationV1,
-        semantic: CodingWindowsWorkerHistorySemanticReadV1,
-    ) -> CodingWindowsWorkerReceiptSemanticBaseV1:
-        return cls._from_prepared_history(prepared, semantic)
 
     def replay(
         self, records: tuple[CodingWorkerReceiptRecordV1, ...]

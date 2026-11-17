@@ -484,6 +484,14 @@ no new recovery/evidence owner or cleanup right is introduced.
 [C07 crash factory evidence](c07-worker-bulk-migration.md#崩溃清理证据的完整历史工厂归原-evidence-owner)
 records full source expansion, fault/partial-state retry checks and system cost.
 
+The existing common Windows prepared-source base owns the public creation
+entry for all six semantic base families. Code keeps its nominal records and
+profiles; one inherited method retains virtual cls._from_prepared_history
+dispatch, including Code subclass overrides. Constructor/data identity and
+parameter shape remain, while method reflection follows the shared owner.
+[C07 shared factory evidence](c07-worker-bulk-migration.md#六流-semantic-base-创建入口复用公共-owner)
+records the exact six-method scope and original wire/pickle checks.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding
