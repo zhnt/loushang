@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from contextlib import AsyncExitStack
+from functools import partial
 from pathlib import Path
 from time import monotonic
 from typing import Literal
@@ -172,7 +173,7 @@ class ManagedServiceCoordinatorV1:
     async def _ensure_once(self, deadline: float) -> None:
         state = await self._read(deadline)
         if state is not None:
-            state = await _settled_native(lambda: self._journal.recover_exited(state, deadline=deadline))
+            state = await _settled_native(partial(self._journal.recover_exited, state, deadline=deadline))
         if state is None or state.reusable:
             self._check(deadline)
             try:
@@ -379,7 +380,7 @@ async def control_managed_service(
             return _running(ready, await _settled_native(lambda: journal.read(deadline=deadline, wait_for_lock=True)))
 
         if state is not None:
-            state = await _settled_native(lambda: journal.recover_exited(state, deadline=deadline))
+            state = await _settled_native(partial(journal.recover_exited, state, deadline=deadline))
         status = _recorded_state(state)
         if status != "running":
             return {"state": status}
