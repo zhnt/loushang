@@ -17,8 +17,6 @@
     "addProject": "Add project",
     "newProjectChat": "New chat in {{project}}",
     "temporaryChats": "Temporary chats",
-    "projectDraft": "Project draft · {{project}}",
-    "temporaryDraft": "Temporary chat draft",
     "chats": "Chats",
     "pinned": "Pinned",
     "unassigned": "Without a workspace",

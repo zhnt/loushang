@@ -581,7 +581,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(createSession).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "New Session" })).toBe(heading);
     expect(screen.getByLabelText("Session transcript")).toBe(transcript);
-    expect(transcript).toHaveTextContent(/^$/);
+    expect(within(transcript).getByRole("heading", { name: "What would you like to work on?" })).toBeVisible();
+    expect(within(transcript).queryByRole("article")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Session model" })).toBe(model);
     expect(model).toBeDisabled();
     expect(screen.getByText("Default model")).toBeVisible();
@@ -696,6 +697,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(chats.getAllByRole("button", { name: "Repeated title" })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "New Session" }));
     expect(chats.getByRole("button", { name: "New Session" })).toHaveAttribute("aria-current", "page");
+    const welcome = screen.getByRole("heading", { name: "What would you like to work on?" });
+    expect(welcome).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveFocus();
     const picker = screen.getByRole("button", { name: "Session model" });
     await waitFor(() => expect(picker).toHaveTextContent("test · model"));
@@ -712,6 +715,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const transcript = within(screen.getByLabelText("Session transcript"));
     expect(transcript.getByText("Use the selected model")).toBeVisible();
     expect(transcript.getByText("Creating Session…")).toBeVisible();
+    expect(welcome).not.toBeInTheDocument();
     expect(screen.getByText("Connected", { exact: true })).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveValue("");
     expect(screen.getByRole("heading", { name: "Use the selected model" })).toBeVisible();

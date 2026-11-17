@@ -148,6 +148,8 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .diagnostic { position: absolute; z-index: 9; top: 10px; right: 24px; left: 24px; padding: 8px 10px; border: 1px solid var(--red); border-radius: 8px; color: var(--red); background: var(--red-soft); font-size: 13px; box-shadow: 0 8px 20px rgba(75, 30, 25, 0.08); }
 .transcript { min-height: 0; overflow-y: auto; padding: 28px 24px 40px; overscroll-behavior-y: contain; }
 .transcript-content { max-inline-size: var(--chat-width); margin-inline: auto; }
+.transcript-content:has(> .chat-welcome) { min-block-size: 100%; display: grid; place-items: center; }
+.chat-welcome { margin: 0; color: var(--ink); font-size: clamp(22px, 4vw, 30px); font-weight: 600; line-height: 1.25; text-align: center; }
 .message { max-width: var(--chat-width); margin: 0 auto 25px; }
 .message.user { inline-size: fit-content; max-inline-size: min(74%, 590px); margin-inline-end: 0; padding: 10px 14px; border-radius: 16px; background: var(--control-hover); }
 .message-meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -506,7 +508,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .goal-review-summary ul { margin: 0; max-width: 100%; }
 
 .composer textarea { max-height: min(36vh, 260px); overflow-y: auto; }
-.draft-context { margin: 12px 0; color: var(--ink-secondary); font-size: 13px; }
 .operation-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-inline-start: 3px solid var(--red); color: var(--ink); background: var(--panel); }
 .operation-notice.uncertain { border-inline-start-color: var(--warning); }
 .project-chat-title, .project-chat-scope { display: block; overflow: hidden; text-overflow: ellipsis; }

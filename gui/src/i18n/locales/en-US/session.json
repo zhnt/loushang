@@ -125,6 +125,7 @@
     "title": "Synchronization interrupted. Resynchronize to continue.",
     "details": "Diagnostic details"
   },
+  "welcome": "What would you like to work on?",
   "emptySession": "No Session is available.",
   "opening": "Opening {{appName}}…"
 }

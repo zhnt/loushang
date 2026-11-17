@@ -17,8 +17,6 @@
     "addProject": "添加项目",
     "newProjectChat": "在 {{project}} 中新建会话",
     "temporaryChats": "临时会话",
-    "projectDraft": "项目草稿 · {{project}}",
-    "temporaryDraft": "临时会话草稿",
     "chats": "会话",
     "pinned": "置顶",
     "unassigned": "未归属工作区",

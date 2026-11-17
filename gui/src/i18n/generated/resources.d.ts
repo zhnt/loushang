@@ -381,7 +381,8 @@ export default interface Resources {
       "resumesRuntime": "Sending a message resumes the session.",
       "waiting": "Waiting for output…",
       "you": "You"
-    }
+    },
+    "welcome": "What would you like to work on?"
   },
   "shell": {
     "about": "About {{appName}}",
@@ -606,7 +607,6 @@ export default interface Resources {
       "plugins": "Plugins",
       "pluginsHint": "Plugins are unavailable in the offline fixture",
       "prHint": "Pull requests are unavailable in the offline fixture",
-      "projectDraft": "Project draft · {{project}}",
       "projects": "Projects",
       "pullRequests": "Pull requests",
       "scheduleHint": "Scheduling is unavailable in the offline fixture",
@@ -617,7 +617,6 @@ export default interface Resources {
       "shortcuts": "Application shortcuts",
       "stale": "Stale · was {{status}}",
       "temporaryChats": "Temporary chats",
-      "temporaryDraft": "Temporary chat draft",
       "unassigned": "Without a workspace",
       "unpinChat": "Unpin {{title}}",
       "unread": "Unread updates"

@@ -678,6 +678,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }
 
   const draftPending = isSendingDraft(draft);
+  const showWelcome = draft?.status === "ready" || (selected?.status === "idle"
+    && !selected.messages.length && !preview && !selected.execution && !selected.run && !selected.changeSet
+    && !selected.pendingApprovals?.length && !question && !goalStart.start && !goalStart.attempt);
   const firstMessageText = draftPending ? draft.text
     : preview && selected && !selected.messages.some((message) => message.role === "user") ? preview.text : null;
   const firstMessageStatus = draftPending ? { key: `notice.${draft.status}` } as const
@@ -868,10 +871,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: following ? null : scrollTop });
                 } : undefined}>
                 <div className="transcript-content">
-                  {draft && projectNavigation && !draftPending ? <p className="draft-context">
-                    {projectContext ? t("workspace:sidebar.projectDraft", { project: projectContext })
-                      : t("workspace:sidebar.temporaryDraft")}
-                  </p> : null}
+                  {showWelcome ? <h2 className="chat-welcome">{t("session:welcome")}</h2> : null}
                   {firstMessageText !== null ? <article className="message user" aria-label={t("session:transcript.message", { role: valueLabel("user") })}>
                     <p>{firstMessageText}</p>
                   </article> : null}

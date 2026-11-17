@@ -123,6 +123,7 @@
     "title": "同步已中断，请重新同步后继续。",
     "details": "诊断详情"
   },
+  "welcome": "今天想做什么？",
   "emptySession": "没有可用的会话。",
   "opening": "正在打开 {{appName}}…"
 }
