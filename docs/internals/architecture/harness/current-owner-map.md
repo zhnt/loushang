@@ -429,7 +429,16 @@ Code keeps closed nominal admission and supplies the real facet-owner policy;
 that original policy still grants each facet. The original five references and
 Code pickle path remain; a typed generic method base joins the MRO without a
 second authority container. [C07 authority evidence](c07-worker-bulk-migration.md#完整-product-capability-authority-归现有-owner)
-records complete consumer coverage, original/current behavior and the costs.
+records actual consumer checks, original/current behavior and the costs.
+
+The existing Product authority also owns the complete locked Base selection and
+Worker receipt recheck, plus fresh selected Worker/startup revision correlation.
+It borrows the same compilation and receipt owner; both concrete platform runtime
+getters retain their programs. Code keeps exact Base identity/scope admission,
+query/Consumer decisions and platform wiring in their original order. The original
+frozen Code binding keeps its fields, slots and pickle path over an empty-slot
+method base. [C07 proof evidence](c07-worker-bulk-migration.md#base-当前性与完整启动版本关联归原-product-owner)
+records complete-program equivalence, bounded runtime models and costs.
 
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create

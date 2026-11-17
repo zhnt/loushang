@@ -18,14 +18,8 @@ from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderCandidateEnvelope,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeActivationError,
-)
-from loushang.harness.plugin_management.package_product import (
-    PackageProductRuntimeReadError,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
-    PackagePhysicalStagingError,
+from loushang.harness.package_product._worker_product_authority import (
+    _ProductWorkerBaseCompositionPolicyMethods,
 )
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
@@ -33,7 +27,10 @@ from .package_product_worker_query_consumer import (
     CODING_WORKER_QUERY_DEFINITION,
     CODING_WORKER_QUERY_PROVIDER_ID,
 )
-from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package_product_worker_receipt import (
+    CodingWorkerProductReceiptOwner,
+    CodingWorkerSelectedPayloadV1,
+)
 from .package_product_worker_windows_receipt import (
     CodingWindowsWorkerProductReceiptOwner,
 )
@@ -60,7 +57,9 @@ class CodingWorkerProviderCandidateError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerBaseCompositionPolicyBinding:
+class CodingWorkerBaseCompositionPolicyBinding(
+    _ProductWorkerBaseCompositionPolicyMethods[CodingWorkerSelectedPayloadV1]
+):
     """Product-owned bridge from a current base policy to one Worker receipt.
 
     The Worker activation policy remains distinct. Its receipt fingerprint is
@@ -70,6 +69,12 @@ class CodingWorkerBaseCompositionPolicyBinding:
     base: CodingBaseProductCompilation = field(repr=False)
     receipt_owner: _CodingWorkerReceiptOwner = field(repr=False)
     receipt: ProductWorkerActivationReceiptV1 = field(repr=False)
+
+    _base_policy_failure = staticmethod(
+        lambda code: CodingWorkerProviderCandidateError(
+            "coding_worker_provider_" + code
+        )
+    )
 
     def __post_init__(self) -> None:
         if (
@@ -95,44 +100,6 @@ class CodingWorkerBaseCompositionPolicyBinding:
     @property
     def policy_revision(self) -> str:
         return self.base.plan.context.policy_revision
-
-    def assert_current(self) -> None:
-        """Recheck every base selection and the Worker under one Product gate."""
-
-        with self.receipt_owner.serialized_admission():
-            try:
-                runtime = self.receipt_owner.product_runtime
-                selections = (
-                    self.base.selected_manifest,
-                    *self.base.selected_capability_manifests,
-                    *self.base.selected_external_data_manifests,
-                )
-                for selected in selections:
-                    runtime.assert_selected_plugin_manifest_current(selected)
-                    current = runtime.capture_selected_plugin_manifest_for(
-                        selected.manifest.name,
-                        max_files=64,
-                        max_total_bytes=1024 * 1024,
-                    )
-                    if current != selected:
-                        raise CodingWorkerProviderCandidateError(
-                            "coding_worker_provider_base_selection_stale"
-                        )
-            except (
-                PackagePhysicalStagingError,
-                PackageProductRuntimeActivationError,
-                PackageProductRuntimeReadError,
-            ) as exc:
-                raise CodingWorkerProviderCandidateError(
-                    "coding_worker_provider_base_selection_stale"
-                ) from exc
-            if (
-                self.receipt_owner.current_witness(self.receipt)
-                != self.receipt.authority_witness
-            ):
-                raise CodingWorkerProviderCandidateError(
-                    "coding_worker_provider_receipt_stale"
-                )
 
 
 def coding_worker_query_capability_provider(plugin_id: str) -> CapabilityBundleProvider:

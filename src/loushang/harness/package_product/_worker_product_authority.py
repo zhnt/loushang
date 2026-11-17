@@ -34,6 +34,9 @@ from loushang.harness.package_product.product_worker_candidate import (
     _read_product_selected_worker_payload_facts,
     verify_product_selected_worker_candidate,
 )
+from loushang.harness.plugin_management.current_preview import (
+    plugin_package_revision_fingerprint,
+)
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
@@ -294,6 +297,64 @@ def _derive_product_selected_worker_policy(
     )
 
 
+def capture_worker_startup_selection(
+    *,
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_id: str,
+    receipt: ProductWorkerActivationReceiptV1,
+    existing_startup: dict[str, object] | None,
+    max_files: int,
+    max_total_bytes: int,
+    failure: Callable[[str], RuntimeError],
+) -> PackageProductSelectedPluginManifestV1:
+    selected_worker = runtime.capture_selected_plugin_manifest_for(
+        plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
+    )
+
+    if (
+        selected_worker.snapshot.root_ref.artifact_digest
+        != receipt.policy.plugin_revision_digest
+    ):
+        raise failure("selection_changed")
+
+    if existing_startup is not None:
+        worker = existing_startup.get("workerSelection")
+        expected_revision = {
+            "pluginId": plugin_id,
+            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
+                selected_worker.snapshot.package_revision
+            ),
+            "instanceRevisionRef": selected_worker.snapshot.instance_revision_ref.to_dict(),
+        }
+        revisions = existing_startup.get("selectedRevisions")
+        if (
+            not isinstance(worker, dict)
+            or not isinstance(revisions, list)
+            or expected_revision not in revisions
+            or (worker.get("pluginId") != receipt.policy.plugin_id)
+            or (
+                worker.get("productPolicyRevision")
+                != receipt.policy.product_policy_revision
+            )
+            or (worker.get("nativeProfileId") != receipt.policy.native_profile_id)
+            or (
+                worker.get("selectedLocatorRevision")
+                != receipt.policy.selected_locator_revision
+            )
+            or (
+                worker.get("selectedLocatorFingerprint")
+                != receipt.policy.selected_locator_fingerprint
+            )
+            or (
+                worker.get("workerConfigurationFingerprint")
+                != receipt.policy.worker_configuration_fingerprint
+            )
+        ):
+            raise failure("startup_selection_changed")
+
+    return selected_worker
+
+
 class ProductNativeClosureReadPort(Protocol):
     @property
     def gc_gate(self) -> PluginPackageGcReservationJournal: ...
@@ -340,6 +401,10 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     def serialized_admission(self) -> Iterator[None]:
         raise NotImplementedError("the existing platform admission owner is required")
         yield
+
+    @property
+    def product_runtime(self) -> PackageProductRuntimeBindingV1:
+        raise NotImplementedError("the existing platform runtime owner is required")
 
     def current_selected_manifest(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -607,6 +672,63 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
             selected.snapshot.root_ref.artifact_digest
             != receipt.policy.plugin_revision_digest
         )
+
+
+class _WorkerBaseCompilationFacts(Protocol):
+    @property
+    def selected_manifest(self) -> PackageProductSelectedPluginManifestV1: ...
+    @property
+    def selected_capability_manifests(
+        self,
+    ) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+    @property
+    def selected_external_data_manifests(
+        self,
+    ) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+
+
+class _ProductWorkerBaseCompositionPolicyMethods(Generic[PayloadT]):
+    """Original base selections and Worker receipt rejoined under one gate."""
+
+    __slots__ = ()
+    base: _WorkerBaseCompilationFacts
+    receipt_owner: _ProductWorkerReceiptAuthority[PayloadT]
+    receipt: ProductWorkerActivationReceiptV1
+
+    @staticmethod
+    def _base_policy_failure(code: str) -> RuntimeError:
+        raise NotImplementedError
+
+    def assert_current(self) -> None:
+        """Recheck every base selection and the Worker under one Product gate."""
+        with self.receipt_owner.serialized_admission():
+            try:
+                runtime = self.receipt_owner.product_runtime
+                selections = (
+                    self.base.selected_manifest,
+                    *self.base.selected_capability_manifests,
+                    *self.base.selected_external_data_manifests,
+                )
+                for selected in selections:
+                    runtime.assert_selected_plugin_manifest_current(selected)
+                    current = runtime.capture_selected_plugin_manifest_for(
+                        selected.manifest.name,
+                        max_files=64,
+                        max_total_bytes=1024 * 1024,
+                    )
+                    if current != selected:
+                        raise self._base_policy_failure("base_selection_stale")
+            except (
+                PackagePhysicalStagingError,
+                PackageProductRuntimeActivationError,
+                PackageProductRuntimeReadError,
+            ) as exc:
+                raise self._base_policy_failure("base_selection_stale") from exc
+            if (
+                self.receipt_owner.current_witness(self.receipt)
+                != self.receipt.authority_witness
+            ):
+                raise self._base_policy_failure("receipt_stale")
 
 
 class _ProductWorkerCapabilityAuthority(Generic[PayloadT]):

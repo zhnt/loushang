@@ -323,6 +323,18 @@ Scoped mypy 初次发现公共 Windows ctor 原有的 optional Session 值不再
 
 本批 Coding −73、Harness +102、Hosting／其他生产0，系统生产 +29 行；累计 Coding −5,855、Harness +8,925、系统生产仍 +3,070 行。测试仍 +70，文档单列。完整通用 authority 机制归位，Code 的名义准入及兼容构造入口和明确静态错误契约仍有适配成本，没有系统净删减收益。C07 剩余14,411行，距过半退出还差4,279行；全部112文件最终处置和正确 PR 基线全量交付验证未完成。
 
+## Base 当前性与完整启动版本关联归原 Product owner
+
+原 _worker_product_authority 接管完整 Base currentness 操作：原 receipt owner serialized admission→原 runtime getter→按原 Base／Capability／External Data 顺序逐个 assert-current 和 bounded reread→receipt witness；三种原读取错误仍在原作用域转换，其他异常与取消原样传播。一个三属性只读 base facts 接口读取实际 Code compilation，对象和选择不复制。Code 的准确 Base 名义类型、coding.base 名称、product／scope／runtime 准入与 policy_revision 保留；原公开 frozen slots dataclass 仅继承空 slots 泛型方法提供者，原字段、字段元数据及 pickle 类路径保留。共享 receipt authority 补充实际已存在的 product_runtime 只读契约，两个现有 POSIX／Windows getter 的执行体不变。
+
+同一 owner 还持有完整新选中版本关联操作：原 runtime capture→原 receipt digest 对齐→历史 startup 的 package fingerprint／instance revision 和完整 worker policy identity 对齐→返回同一 selected 对象。Code 历史记录读取、receipt 发放、可选 Resume binding、真实 query／Consumer／平台命令仍按原顺序运行，capture budget 和错误身份由原入口绑定。没有把字段拆成 suppliers，没有增加启动管理器、Schema 或第二份协调状态；字段名和历史格式由通用关联操作解释，不能因此把整段证明视作产品批准。
+
+既有实际候选、原 composition 兼容及 import／C50／C51／C54 为242 passed、7 skipped；host-runtime 跳过项不作原生验证。三源 mypy、Ruff 和公开契约／原测试／用户改动检查通过。完整 Base 复核程序经固定错误工厂展开后 AST 与原样一致；完整普通 Session bootstrap 在展开新 capture 入口后 AST 一致，包括 receipt／Resume／读取／后续产品决策顺序。其他原 Code／Product 程序及两个真实 runtime getter AST 不变。
+
+720组原／当前 Base 对照中570组实际触发故障、90组构造成功；240组完整 startup 对照中160组实际触发故障。使用真实 Code nominal compilation／binding／receipt-owner envelope 与原 receipt／package／instance revision 值，runtime／GC／读取为受控完整口；比较连续调用的事件、错误图、源版本缺失／改变、读错误优先级、锁进入／退出及抑制，全部一致。Code binding 的三项字段／元数据／slots／公开签名／冻结行为和原 protocol4／5 pickle 字节一致，新 startup proof 返回原 selected 对象。模型不替代实际 Product 准入和原生 Windows／H6。
+
+本批 Coding −56、Harness +122、Hosting／其他生产0，系统生产 +66 行；累计 Coding −5,911、Harness +9,047、系统生产仍 +3,136 行。测试仍 +70，文档单列。新增成本包含强类型事实边界、原名义记录适配、完整入口及原文件格式归一的增长；没有删注释或压行取得收益。两个完整证明归位，未迁出的 bootstrap 产品接线和其余 C07 处置仍须核实，不能据此宣布整链／整组完成。C07 剩余14,355行，距过半退出还差4,223行；全部112文件最终处置和整组交付验证未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
