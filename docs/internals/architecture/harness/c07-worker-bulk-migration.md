@@ -1,7 +1,7 @@
 # C07 Worker 大块迁移
 
 - Authority: descriptive audit / execution evidence
-- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value and complete Windows crash-recovery slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
+- Design status: partial acceptance — history, recovery/retirement, payload/start-gate, registered-value, complete Windows crash-recovery and Provider candidate slices reviewed by implementation owner; C07 majority and whole inventory acceptance pending
 - Implementation status: partial; majority exit target not achieved
 - Owner: Coding / Harness Worker History / Package Product
 - 执行基线：`06f8a3f6f7646176a489343d08dbc02b4d41fa10`；开始时已 fetch，main 与 lane/harness 均相同。
@@ -198,6 +198,18 @@ Coding 仅构造一个无状态 Profile，绑定实际的 nominal record factori
 19个原完整执行体、公开及嵌套准入经明确 owner/Profile 绑定后 AST 一致；真实 Profile 中14个原 owner 身份及 evidence/domain/stage-reader 身份逐一核实。27个名义记录、54份原始 protocol4/5 pickle 字节、20项错误及字段/slots/元数据/公开签名与精确基线一致。总编排与原函数12,480组逐事件/结果/剩余状态对照，1,536组实际故障，每组连续尝试三次，覆盖操作前后失败、丢失确认及已完成边的重试。使用受控的有状态完整组件，不执行 native IO，不替代内层 command 和原生平台验证。
 
 本批关闭原 Windows crash 总编排仍在 Code 的具体缺口；不代表全部112文件、其余恢复/批准/Session/Profile 边界或 C07 大部分退出已完成。Windows 原生路线、H6 与全量正确基线交付检查仍未执行，49项跳过用例不计为 native 验证。
+
+## Provider 候选关联与回执 owner 批次
+
+实现 owner 接受完整 Provider 候选证明归原 _ProductWorkerReceiptAuthority，直接复用原 POSIX/Windows serialized_admission、current_witness、manifest、payload 和 worker owner 读取能力。锁内顺序仍为 Base policy 复核→receipt witness→manifest/payload→候选验证→trust/reservation/declaration/executable/Provider 关联→既有 binding spec/envelope 构造→receipt witness 复核。真实 Provider Host 与 ordinary Session 的候选调用已接入，没有新增 Worker、候选账本、Provider 发布器或生命周期管理器。
+
+Coding 保留原精确 receipt-owner/receipt/definition/provider/Base-binding 名义准入、query Provider 政策、Coding Base 选择及其 currentness 决策和公开函数签名。平台 Profile 在原 payload 读取之后取自 owner 的固定 class；两个 Code 名义 owner 与原 type dispatch 一致，instance 字段不能覆盖平台。该候选仍是 inert fact envelope，授予/发布仍由原 Capability/Graph owners 决定。原 Code 类、fields/slots/pickle 和错误身份未变，未用移动字段或压行计算收益。
+
+本批 Coding −90、Harness +124、Hosting/其他生产 0，系统生产 +34行；累计 Coding −5,305、Harness +8,130、系统生产 +2,825行。测试仍 +70行，文档单列。C07 剩余14,961行，距过半退出还需4,829行。新增成本主要为原 common owner 的三项平台能力声明和一个完整 Base policy guard 类型边界；不是系统净删减，也不是整个 Provider/Host 链已完成。
+
+既有两平台 candidate/Provider、CLI snapshot 与 import/C50/C51/C54 为227 passed、63 skipped、1 deselected，未修改测试/fixtures/参数/门禁。该回归之后仅将固定平台读取限定为 class Profile；两真实 Code 名义 owner 的独立对照证明结果与原 dispatch 一致，instance 覆盖被忽略，原正常路径不变。75源 mypy及最后 Core 单源复核、Ruff通过。完整原候选执行体和公开准入经明确 owner/error/platform 绑定后 AST 一致；原 Base policy 类及所有既有 authority 执行体 AST 均保持原样。平台、字段/版本与错误假设不以该源码证明替代原生验证；Windows/H6 路线仍未执行。
+
+相邻 Capability bridge 的新基类草案未采用：实测 Code 仅减少57行、Harness增加124行、系统增加67行，主要来自新增类型/状态声明和必要名义转发，尚无已有组件复用收益。已恢复原 Code 实现并移除草案，不将其计入收益。该 identity/currentness/facet-grant bridge 仍是明确未完成项，后续应扩展现有 receipt/facet owner 的完整能力，避免再引入适配基类；本轮不因保留而降低过半目标。
 
 ## 当前验证与限制
 

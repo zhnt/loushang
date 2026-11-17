@@ -16,14 +16,10 @@ from loushang.harness.capabilities.contracts import (
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderCandidateEnvelope,
-    CapabilityWorkerProviderBindingSpec,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeActivationError,
-)
-from loushang.harness.package_product.product_worker_candidate import (
-    verify_product_selected_worker_candidate,
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
@@ -166,16 +162,12 @@ def prepare_coding_selected_worker_provider_candidate(
     base_policy_binding: CodingWorkerBaseCompositionPolicyBinding | None = None,
 ) -> CapabilityProviderCandidateEnvelope:
     """Capture exact Product-selected bytes and form an owner-reviewable record."""
-
     if (
         type(receipt_owner)
-        not in (
-            CodingWorkerProductReceiptOwner,
-            CodingWindowsWorkerProductReceiptOwner,
-        )
+        not in (CodingWorkerProductReceiptOwner, CodingWindowsWorkerProductReceiptOwner)
         or not isinstance(receipt, ProductWorkerActivationReceiptV1)
-        or not isinstance(definition, CapabilityDefinition)
-        or not isinstance(provider, CapabilityBundleProvider)
+        or (not isinstance(definition, CapabilityDefinition))
+        or (not isinstance(provider, CapabilityBundleProvider))
         or (
             base_policy_binding is not None
             and (
@@ -188,96 +180,14 @@ def prepare_coding_selected_worker_provider_candidate(
         )
     ):
         raise TypeError("Coding Worker Provider candidate inputs are invalid")
-    with receipt_owner.serialized_admission():
-        if base_policy_binding is not None:
-            base_policy_binding.assert_current()
-        if receipt_owner.current_witness(receipt) != receipt.authority_witness:
-            raise CodingWorkerProviderCandidateError(
-                "coding_worker_provider_receipt_stale"
-            )
-        selected = receipt_owner.current_selected_manifest(receipt)
-        payload = receipt_owner.current_selected_payload(receipt)
-        native_platform = _native_platform_for_receipt_owner(receipt_owner)
-        candidate = verify_product_selected_worker_candidate(
-            selected,
-            contribution_id=receipt.policy.contribution_id,
-            native_platform=native_platform,
-        )
-        trust = selected.source_trust_snapshot
-        snapshot = selected.snapshot
-        policy = receipt.policy
-        if (
-            trust is None
-            or not trust.trusted
-            or trust.source_trust_class != "local-worker-candidate"
-            or candidate.plugin_id != policy.plugin_id
-            or candidate.contribution_id != policy.contribution_id
-            or candidate.owner_id != receipt_owner.current_worker_owner_id(receipt)
-            or candidate.owner_id != definition.owner_id
-            or candidate.reservation_fingerprint != policy.reservation_fingerprint
-            or candidate.declaration_fingerprint != policy.declaration_fingerprint
-            or candidate.worker_configuration_fingerprint
-            != policy.worker_configuration_fingerprint
-            or candidate.declared_required != policy.declared_required
-            or candidate.executable_digest != payload.digest
-            or candidate.executable_size != len(payload.body)
-            or snapshot.root_ref.artifact_digest != policy.plugin_revision_digest
-            or snapshot.installation_key.product_id != policy.product_id
-            or provider.capability_id != definition.capability_id
-            or provider.source_id != f"plugin:{candidate.plugin_id}"
-            or provider.requirements
-            or provider.required_authorities
-            or len(selected.declaration_documents) != 1
-        ):
-            raise CodingWorkerProviderCandidateError(
-                "coding_worker_provider_selection_mismatch"
-            )
-        spec = CapabilityWorkerProviderBindingSpec(
-            plugin_id=candidate.plugin_id,
-            contribution_id=candidate.contribution_id,
-            capability_id=definition.capability_id,
-            owner_id=definition.owner_id,
-            package_content_digest=snapshot.package_revision.package_content_digest,
-            dependency_lock_digest=snapshot.package_revision.dependency_lock_digest,
-            manifest_digest=candidate.manifest_digest,
-            reservation_fingerprint=candidate.reservation_fingerprint,
-            declaration_fingerprint=candidate.declaration_fingerprint,
-            worker_configuration_fingerprint=(
-                candidate.worker_configuration_fingerprint
-            ),
-            executable_digest=candidate.executable_digest,
-            executable_size=candidate.executable_size,
-            declared_required=candidate.declared_required,
-            native_platform=native_platform,
-        )
-        result = CapabilityProviderCandidateEnvelope(
-            definition=definition,
-            provider=provider,
-            binding_spec=spec,
-            plugin_candidate_fingerprint=receipt.fingerprint,
-            declaration_fingerprint=candidate.declaration_fingerprint,
-            declaration_evidence_fingerprint=(
-                selected.declaration_documents[0][1].bytes_digest
-            ),
-            product_id=policy.product_id,
-            scope_id=f"session:{policy.session_id}",
-            product_policy_revision=(
-                base_policy_binding.policy_revision
-                if base_policy_binding is not None
-                else policy.product_policy_revision
-            ),
-            instance_revision_ref=snapshot.instance_revision_ref,
-            package_source_identity=trust.package_source_identity,
-            source_trust_class=trust.source_trust_class,
-            source_trust_policy_revision=trust.source_trust_policy_revision,
-            source_trusted=trust.trusted,
-            allowed_authority_ceiling=(),
-        )
-        if receipt_owner.current_witness(receipt) != receipt.authority_witness:
-            raise CodingWorkerProviderCandidateError(
-                "coding_worker_provider_receipt_stale"
-            )
-        return result
+    return receipt_owner.prepare_provider_candidate(
+        receipt=receipt,
+        definition=definition,
+        provider=provider,
+        base_policy_binding=base_policy_binding,
+        error_type=CodingWorkerProviderCandidateError,
+        error_prefix="coding_worker_provider",
+    )
 
 
 __all__ = [

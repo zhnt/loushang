@@ -9,6 +9,12 @@ from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar, Generic, Literal, Protocol, TypeVar, cast
 
+from loushang.harness.capabilities.contracts import CapabilityDefinition
+from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderCandidateEnvelope,
+    CapabilityWorkerProviderBindingSpec,
+)
+from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductSessionOwner,
@@ -116,6 +122,12 @@ class ProductSessionDiscoveryReadPort(Protocol):
     def current_discovery(self) -> SessionDiscoveryMetadata: ...
 
 
+class _ProductWorkerBasePolicyGuard(Protocol):
+    @property
+    def policy_revision(self) -> str: ...
+    def assert_current(self) -> None: ...
+
+
 class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     _product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
     _runtime: PackageProductRuntimeBindingV1
@@ -129,6 +141,116 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     _max_total_bytes: ClassVar[int]
     _opt_in_type: ClassVar[type[ProductWorkerOptInFacts]]
     _native_closure_type: ClassVar[type[ProductWorkerNativeClosureFacts]]
+
+    _provider_native_platform: ClassVar[Literal["linux-x86_64", "windows-amd64"]]
+
+    @contextmanager
+    def serialized_admission(self) -> Iterator[None]:
+        raise NotImplementedError("the existing platform admission owner is required")
+        yield
+
+    def current_selected_manifest(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> PackageProductSelectedPluginManifestV1:
+        raise NotImplementedError("the existing manifest owner is required")
+
+    def current_selected_payload(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> PayloadT:
+        raise NotImplementedError("the existing payload owner is required")
+
+    def prepare_provider_candidate(
+        self,
+        *,
+        receipt: ProductWorkerActivationReceiptV1,
+        definition: CapabilityDefinition,
+        provider: CapabilityBundleProvider,
+        base_policy_binding: _ProductWorkerBasePolicyGuard | None = None,
+        error_type: type[RuntimeError],
+        error_prefix: str,
+    ) -> CapabilityProviderCandidateEnvelope:
+        with self.serialized_admission():
+            if base_policy_binding is not None:
+                base_policy_binding.assert_current()
+            if self.current_witness(receipt) != receipt.authority_witness:
+                raise error_type(error_prefix + "_receipt_stale")
+            selected = self.current_selected_manifest(receipt)
+            payload = self.current_selected_payload(receipt)
+            native_platform = type(self)._provider_native_platform
+            candidate = verify_product_selected_worker_candidate(
+                selected,
+                contribution_id=receipt.policy.contribution_id,
+                native_platform=native_platform,
+            )
+            trust = selected.source_trust_snapshot
+            snapshot = selected.snapshot
+            policy = receipt.policy
+            if (
+                trust is None
+                or not trust.trusted
+                or trust.source_trust_class != "local-worker-candidate"
+                or (candidate.plugin_id != policy.plugin_id)
+                or (candidate.contribution_id != policy.contribution_id)
+                or (candidate.owner_id != self.current_worker_owner_id(receipt))
+                or (candidate.owner_id != definition.owner_id)
+                or (candidate.reservation_fingerprint != policy.reservation_fingerprint)
+                or (candidate.declaration_fingerprint != policy.declaration_fingerprint)
+                or (
+                    candidate.worker_configuration_fingerprint
+                    != policy.worker_configuration_fingerprint
+                )
+                or (candidate.declared_required != policy.declared_required)
+                or (candidate.executable_digest != payload.digest)
+                or (candidate.executable_size != len(payload.body))
+                or (snapshot.root_ref.artifact_digest != policy.plugin_revision_digest)
+                or (snapshot.installation_key.product_id != policy.product_id)
+                or (provider.capability_id != definition.capability_id)
+                or (provider.source_id != f"plugin:{candidate.plugin_id}")
+                or provider.requirements
+                or provider.required_authorities
+                or (len(selected.declaration_documents) != 1)
+            ):
+                raise error_type(error_prefix + "_selection_mismatch")
+            spec = CapabilityWorkerProviderBindingSpec(
+                plugin_id=candidate.plugin_id,
+                contribution_id=candidate.contribution_id,
+                capability_id=definition.capability_id,
+                owner_id=definition.owner_id,
+                package_content_digest=snapshot.package_revision.package_content_digest,
+                dependency_lock_digest=snapshot.package_revision.dependency_lock_digest,
+                manifest_digest=candidate.manifest_digest,
+                reservation_fingerprint=candidate.reservation_fingerprint,
+                declaration_fingerprint=candidate.declaration_fingerprint,
+                worker_configuration_fingerprint=candidate.worker_configuration_fingerprint,
+                executable_digest=candidate.executable_digest,
+                executable_size=candidate.executable_size,
+                declared_required=candidate.declared_required,
+                native_platform=native_platform,
+            )
+            result = CapabilityProviderCandidateEnvelope(
+                definition=definition,
+                provider=provider,
+                binding_spec=spec,
+                plugin_candidate_fingerprint=receipt.fingerprint,
+                declaration_fingerprint=candidate.declaration_fingerprint,
+                declaration_evidence_fingerprint=selected.declaration_documents[0][
+                    1
+                ].bytes_digest,
+                product_id=policy.product_id,
+                scope_id=f"session:{policy.session_id}",
+                product_policy_revision=base_policy_binding.policy_revision
+                if base_policy_binding is not None
+                else policy.product_policy_revision,
+                instance_revision_ref=snapshot.instance_revision_ref,
+                package_source_identity=trust.package_source_identity,
+                source_trust_class=trust.source_trust_class,
+                source_trust_policy_revision=trust.source_trust_policy_revision,
+                source_trusted=trust.trusted,
+                allowed_authority_ceiling=(),
+            )
+            if self.current_witness(receipt) != receipt.authority_witness:
+                raise error_type(error_prefix + "_receipt_stale")
+            return result
 
     def _make_payload(
         self, *, configuration: PluginLocalWorkerConfiguration, body: bytes, digest: str
@@ -300,6 +422,7 @@ class _PosixWorkerProductReceiptAuthority(
     _ProductWorkerReceiptAuthority[PayloadT],
     Generic[R, PayloadT, MaterialT],
 ):
+    _provider_native_platform = "linux-x86_64"
     _product: PosixLocalWheelProductSessionOwner
     _native_closure_reader: ProductNativeClosureReadPort
     _session_discovery_reader: ProductSessionDiscoveryReadPort | None
@@ -523,6 +646,7 @@ class _PosixWorkerProductReceiptAuthority(
 class _WindowsWorkerProductReceiptAuthority(
     _ProductWorkerReceiptAuthority[PayloadT], Generic[R, PayloadT]
 ):
+    _provider_native_platform = "windows-amd64"
     _product: WindowsLocalWheelProductSessionOwner
     _journal: WindowsReceiptRecords[R]
     _native: ProductNativeClosureReadPort
