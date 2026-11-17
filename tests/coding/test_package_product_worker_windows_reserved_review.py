@@ -14,8 +14,6 @@ from loushang.coding.package_product_worker_windows_recovery_inventory import (
 from loushang.coding.package_product_worker_windows_reserved_review import (
     CodingWindowsWorkerReservedNoEffectReviewV1,
     CodingWindowsWorkerReservedReviewError,
-    _require_reserved_no_effect_candidate,
-    _require_settled_no_effect_candidate,
 )
 
 
@@ -125,13 +123,21 @@ def test_windows_worker_reserved_candidate_requires_no_effect_and_exact_join(
     changed: dict[str, object],
 ) -> None:
     intent = _intent()
-    _require_reserved_no_effect_candidate(_attempt(intent), intent)
+    CodingWindowsWorkerReservedNoEffectReviewV1._require_no_effect_candidate(
+        _attempt(intent),
+        intent,
+        settled=False,
+        history_error="coding_worker_reserved_history_unverified",
+    )
     with pytest.raises(
         CodingWindowsWorkerReservedReviewError,
         match="coding_worker_reserved_history_unverified",
     ):
-        _require_reserved_no_effect_candidate(
-            replace(_attempt(intent), **changed), intent
+        CodingWindowsWorkerReservedNoEffectReviewV1._require_no_effect_candidate(
+            replace(_attempt(intent), **changed),
+            intent,
+            settled=False,
+            history_error="coding_worker_reserved_history_unverified",
         )
 
 
@@ -144,7 +150,12 @@ def test_windows_worker_settled_unlaunched_requires_exact_no_effect_history() ->
         native_phase_history=("reserved", "settled"),
         native_witness_present_history=(False, False),
     )
-    _require_settled_no_effect_candidate(settled, intent)
+    CodingWindowsWorkerReservedNoEffectReviewV1._require_no_effect_candidate(
+        settled,
+        intent,
+        settled=True,
+        history_error="coding_worker_unlaunched_history_unverified",
+    )
     for changed in (
         {"native_phase_history": ("profile_effect", "settled")},
         {"native_witness_present_history": (False, True)},
@@ -153,4 +164,9 @@ def test_windows_worker_settled_unlaunched_requires_exact_no_effect_history() ->
         {"payload_directory_identity": None},
     ):
         with pytest.raises(CodingWindowsWorkerReservedReviewError):
-            _require_settled_no_effect_candidate(replace(settled, **changed), intent)
+            CodingWindowsWorkerReservedNoEffectReviewV1._require_no_effect_candidate(
+                replace(settled, **changed),
+                intent,
+                settled=True,
+                history_error="coding_worker_unlaunched_history_unverified",
+            )

@@ -434,6 +434,18 @@ Code 的真实构造函数、字段和 MRO 不变，公开 Product-native 入口
 
 本批 Coding −48、Harness +7、Hosting／其他生产0，系统生产净 −41 行；测试无新增。累计 Coding −6,265、Harness +9,344、系统生产仍 +3,079 行；测试仍 +70，文档单列。C07 余14,001行，距过半退出还差3,869行；首组表更新为当前1,879行，历史 prefix31 的18文件证据保留为当时的1,927行，不把重算差额重复计收益。全部112文件处置、整链与过半退出验收及原生 Windows／H6／完整交付检查仍未完成。
 
+## 双平台 opt-in 与审阅入口直接复用
+
+POSIX／Windows opt-in owner 不再各声明 current／allow／revoke 的同参数 super 转调，直接继承已有 Package Product authority 的完整操作。Code 仍保留原 Product／trust／平台准入、journal 接线、原生闭合与 backend 选择；原共享锁、currentness、选中版本、批准关联和 CAS 程序完全不改。已有 Generic 返回参数保持六项静态结果为实际 Code decision；未增加 H 方法、Protocol、回调或实例状态，也不将旧共享事务重复计作本批迁移。
+
+删除 reserved review 的三个测试专用私有候选校验转发，以及 stage review 的两个测试专用私有 IO／marker 转发。既有消费者直接调用真实 Code-profiled review 类方法和 WindowsStageInspection；原用例、参数化、断言、错误期待和 IO golden 数据保持。原 ACL 模块属性显式同名 re-export。旧 facade 不属于顶层稳定 SDK 或持久化记录字段；生产恢复 owner 本来就直接使用上述真实实现。
+
+当前执行代理在本任务授权职责内接受精确六项 opt-in leaf 方法的继承变化：参数位置／关键字／默认值和名义 owner 不变，函数 module／qualname、运行时泛型注解、错误参数绑定前缀及 class.__dict__ 归属变化；不宣称这些反射值相同。36组原方法分派／实际 owner 故障观察和十二份原 bound-method protocol4／5 pickle 字节／读取一致，涵盖中间 MRO 覆盖；原生批准 DTO 的四项具体返回签名受既有兼容探针约束，本批保留。
+
+四条既有消费者／兼容测试路径退出0，247项进度全部通过，包含原 stage IO golden；五源 mypy（含六项具体返回类型断言）及 Ruff、限定源码 AST／测试断言审计通过。测试不替代原生 Windows。冻结的 aa6d4ae7c 整批检查仍在原 worktree 运行，本批在独立后续 worktree 验证；旧整批结果不作为本批最终交付检查。
+
+本批 Coding −111、Harness／Hosting／其他生产0，系统生产净 −111行；测试因真实 owner 的显式参数接线 +16行，文档另列。累计 Coding −6,376、Harness +9,344，系统生产仍 +2,968行；C07 余13,890行，距离过半退出仍差3,758行。收益为重复适配删除，不计为新完整事务迁移，整个 Goal 仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

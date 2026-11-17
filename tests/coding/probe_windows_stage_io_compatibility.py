@@ -518,7 +518,7 @@ def observe_bytes(case, patch):
             def action():
                 return value.append(
                     list(
-                        review_module._read_checked_file(
+                        review_module._inspection().read_checked_file(
                             fs.directory and fs.handle(fs.directory),
                             "worker.exe",
                             type(
@@ -568,7 +568,7 @@ def observe_bytes(case, patch):
 
             def action():
                 return value.append(
-                    review_module._verify_marker(
+                    review_module._inspection().verify_marker(
                         body, intent=intent, stage_identity=(1, 10)
                     )
                 )

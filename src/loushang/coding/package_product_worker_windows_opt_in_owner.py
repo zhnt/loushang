@@ -62,40 +62,5 @@ class CodingWindowsWorkerProductOptInOwner(
     ) -> _WindowsBackendInstalledMethods:
         return read_coding_windows_worker_installed_backend_release(product)
 
-    def current(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None:
-        return super().current(plugin_id)
-
-    def allow(
-        self,
-        *,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        require_worker: bool,
-    ) -> CodingWorkerOptInDecisionV1:
-        """Record only the selected candidate with an approved installed backend."""
-
-        return super().allow(
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-            require_worker=require_worker,
-        )
-
-    def revoke(
-        self,
-        *,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-    ) -> CodingWorkerOptInDecisionV1:
-        """Persist a kill generation even if the release has disappeared."""
-
-        return super().revoke(
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-        )
-
 
 __all__ = ["CodingWindowsWorkerProductOptInOwner"]

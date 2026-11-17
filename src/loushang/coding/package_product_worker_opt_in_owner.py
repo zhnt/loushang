@@ -68,34 +68,5 @@ class CodingWorkerProductOptInOwner(
             store_id=product_owner.epoch_runtime.registry.store_id,
         )
 
-    def current(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None:
-        return super().current(plugin_id)
-
-    def allow(
-        self,
-        *,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        require_worker: bool,
-    ) -> CodingWorkerOptInDecisionV1:
-        """Pin the currently enabled candidate and approved native release."""
-        return super().allow(
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-            require_worker=require_worker,
-        )
-
-    def revoke(
-        self, *, plugin_id: str, operation_id: str, expected_generation: int
-    ) -> CodingWorkerOptInDecisionV1:
-        """Revoke even when the selected candidate or native bytes disappeared."""
-        return super().revoke(
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-        )
-
 
 __all__ = ["CodingWorkerProductOptInError", "CodingWorkerProductOptInOwner"]

@@ -11,7 +11,9 @@ import os
 import re
 from dataclasses import dataclass
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.foundation.windows_private_acl import (
+    WindowsPrivateDirectoryAcl as WindowsPrivateDirectoryAcl,
+)
 from loushang.harness.package_product._windows_worker_recovery import (
     review_windows_product_worker_complete_stage_under_guard,
 )
@@ -175,25 +177,6 @@ def _inspection() -> WindowsStageInspection:
         _READ_CHUNK,
         _DIRECTORY_ATTRIBUTES,
         _FILE_ATTRIBUTES,
-    )
-
-
-def _verify_marker(
-    raw: bytes,
-    *,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-    stage_identity: tuple[int, int],
-) -> tuple[str, int]:
-    return _inspection().verify_marker(
-        raw, intent=intent, stage_identity=stage_identity
-    )
-
-
-def _read_checked_file(
-    parent: int, name: str, acl: WindowsPrivateDirectoryAcl, *, maximum_bytes: int
-) -> tuple[bytes, FileIdentity]:
-    return _inspection().read_checked_file(
-        parent, name, acl, maximum_bytes=maximum_bytes
     )
 
 

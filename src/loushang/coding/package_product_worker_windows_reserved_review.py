@@ -84,36 +84,6 @@ class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsReservedStageReviewMet
         return _MAX_PAYLOAD_BYTES
 
 
-def _require_no_effect_candidate(
-    attempt: CodingWindowsWorkerRecoveryAttemptV1,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-    *,
-    settled: bool,
-    history_error: str,
-) -> None:
-    CodingWindowsWorkerReservedNoEffectReviewV1._require_no_effect_candidate(
-        attempt, intent, settled=settled, history_error=history_error
-    )
-
-
-def _require_reserved_no_effect_candidate(
-    attempt: CodingWindowsWorkerRecoveryAttemptV1,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-) -> None:
-    _require_no_effect_candidate(
-        attempt, intent, settled=False, history_error=_RESERVED_HISTORY_ERROR
-    )
-
-
-def _require_settled_no_effect_candidate(
-    attempt: CodingWindowsWorkerRecoveryAttemptV1,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-) -> None:
-    _require_no_effect_candidate(
-        attempt, intent, settled=True, history_error=_UNLAUNCHED_HISTORY_ERROR
-    )
-
-
 def review_coding_windows_product_worker_reserved_no_effect(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWindowsWorkerReservedNoEffectReviewV1:
