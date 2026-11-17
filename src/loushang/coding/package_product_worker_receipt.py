@@ -269,6 +269,10 @@ class CodingWorkerProductReceiptOwner(
         PackageProductRuntimeReadError,
     )
 
+    _opt_in: CodingWorkerOptInJournal
+    _receipt_history_initialize = _CodingReceiptHistory.__init__
+    _receipt_history_access = staticmethod(_CodingHistoryAccess)
+
     def __init__(
         self,
         *,
@@ -279,46 +283,14 @@ class CodingWorkerProductReceiptOwner(
         native_closure_reader: CodingWorkerNativeClosureReadPort,
         session_discovery_reader: CodingWorkerSessionDiscoveryReadPort | None = None,
     ) -> None:
-        if (
-            not isinstance(product_owner, PosixLocalWheelProductSessionOwner)
-            or not isinstance(runtime, PackageProductRuntimeBindingV1)
-            or not isinstance(selected, PackageProductSelectedPluginManifestV1)
-            or not isinstance(opt_in_journal, CodingWorkerOptInJournal)
-            or not callable(getattr(native_closure_reader, "current_closure", None))
-            or getattr(native_closure_reader, "gc_gate", None)
-            is not product_owner.gc_gate
-            or (
-                session_discovery_reader is not None
-                and (
-                    getattr(session_discovery_reader, "gc_gate", None)
-                    is not product_owner.gc_gate
-                    or getattr(session_discovery_reader, "session_id", None)
-                    != runtime.session_id
-                    or not callable(
-                        getattr(session_discovery_reader, "current_discovery", None)
-                    )
-                )
-            )
-            or product_owner.policy.product_id != "coding"
-            or runtime.product_id != "coding"
-            or runtime.session_id is None
-            or runtime.product_runtime_id is None
-            or selected.snapshot.installation_key.scope_id
-            != product_owner.policy.project_scope_id
-            or opt_in_journal.path != product_owner.state_root / "worker-opt-in.jsonl"
-            or opt_in_journal.gc_gate is not product_owner.gc_gate
-            or opt_in_journal.scope_id != product_owner.policy.project_scope_id
-        ):
-            raise ValueError("Coding Worker Product receipt owners changed")
-        self._product: PosixLocalWheelProductSessionOwner = product_owner
-        self._runtime = runtime
-        self._selected = selected
-        self._opt_in: CodingWorkerOptInJournal = opt_in_journal
-        self._native_closure_reader = native_closure_reader
-        self._session_discovery_reader = session_discovery_reader
-        super().__init__(
-            product_owner.state_root / "worker-activation-receipts.jsonl",
-            access=_CodingHistoryAccess(product_owner),
+        _PosixWorkerProductReceiptAuthority._initialize_receipt_owner(
+            self,
+            product_owner=product_owner,
+            runtime=runtime,
+            selected=selected,
+            opt_in_journal=opt_in_journal,
+            native_closure_reader=native_closure_reader,
+            session_discovery_reader=session_discovery_reader,
         )
 
     def _checkpoint_writer_fence(

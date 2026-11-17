@@ -514,6 +514,18 @@ C51 精确消费者检查发现上批 Windows receipt journal 和本批 provider
 
 本批 Coding −83、Harness +117、Hosting／其他生产0，系统生产 +34行；测试 −2行，文档单列。H 成本含完整方法入口、静态类型／无状态布局约束，Code 原协调体及三个操作方法同步退出 Coding，H 方法继续复用原 helpers；此批记职责迁移，不记系统重复删除。未搬动字段或将旧 grant／release 再计迁移收益。累计 Coding −6,630、Harness +9,591、系统生产仍 +2,961行；C07余13,636行，距过半退出还差3,504行。全组与最新完整候选验证仍未完成。
 
+## 两平台回执 owner 构造与 Windows 历史查询完整接管
+
+两平台原构造中的完整关联校验、Session／selected current 复核和原组件装配归现有 ProductReceiptAuthority；Windows 的 GC 锁内 current 复核、Journal 创建、根描述符借用、只读 records 和首项匹配也归同一现有 owner。Code 保留 product_id、Windows candidate trust 类别、具体组件与错误／类型 Profile，以及精确公开构造和查询入口。原 POSIX 同对象 _CodingReceiptHistory 初始化、Windows opt-in／native／receipt 组件继续使用，未实例化第二个 owner，未引入新 Protocol、字段 supplier、修复器或生命周期框架。撤销决策和旧公开当前值方法保持原位置／合同。
+
+Code 原公开构造的参数、默认值、运行时解析后的 hints、module／qualname 和具体静态结果保持；构造兼容入口仅调用一次完整 H 操作。直接 __init__ 别名草稿被具体返回断言发现会退化为 Any，已撤回该方案，不以普通源码 mypy 通过代替调用方类型证明。原 Code 类的基类与数据声明不变，private _opt_in 类型标注和组件 Profile 不新增实例字段；四份原名义类、四份原 unbound constructor pickle 字节及加载路由保持。当前执行代理在已授权职责内接受固定 Profile 对既有组件／同对象 history initializer 的绑定，不承诺旧 Code 私有 os 导入别名重绑或插入私有 history 初始化 MRO hook；实际 Code 基类不变。H 仍在原位置读取真实 owner 状态，未把只读查询扩成修复／删除入口。
+
+两个原构造执行体、整个 Windows 读作用域、所有其它原 H 程序／合同、Code 其它数据声明与公开查询 guard 均由限定 AST 证明保持。582组原／新程序对照一致，含462组真实故障／取消，使用实际 Product／runtime／selected／opt-in 名义类和受控事实／authority／native 组件，检查实例部分写入顺序、错误链、GC／根释放和首项匹配；这些有意构造的惰性事实不代表真实 Product 或原生平台准入。真实 Product 构造另由原候选事务测试验证，POSIX V2 history 初始化原路线保持。
+
+首轮扩展 Product 回归16 passed／7 skipped／2 failed，失败来自本批把 OptInJournal 三个类型参数误写成两个，已纠正注解和运行时 cast；原失败路线与回执合同后续304 passed。恢复构造签名时，源码／类型审计还发现误插入旧异常 tuple 的 RuntimeBinding，已删除，最终原异常 tuple AST 不变。最终兼容入口／原失败 Product 路线／回执合同再次304 passed；六源 mypy（含两平台构造／查询具体结果断言）、582组对照、Ruff、依赖图和四项中立／无环边界通过。不抹除先前失败，也不以本机模型代替 Windows／H6。
+
+本批 Coding −71、Harness +148、Hosting／其他生产／测试0，系统生产 +77行，文档另列。增长包含两个完整 typed 操作入口、组件绑定和必要公开兼容构造；全部适配成本计入，未搬动记录字段、删注释或重复计算原 Journal／native 机制。累计 Coding −6,701、Harness +9,739、系统生产仍 +3,038行；C07余13,565行，距过半退出还差3,433行。此批为完整程序职责迁移，不计系统去重收益；整组多数退出及最终完整候选验证未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

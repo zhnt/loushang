@@ -99,6 +99,7 @@ from loushang.harness.worker.history._receipts import (
     _ReceiptRecordMethods,
     latest_receipt_record,
 )
+from loushang.harness.worker.history._rooted_supervisor import WorkerHistoryAccess
 from loushang.harness.worker.history._windows_record_journals import (
     WindowsOptInRecords,
     WindowsReceiptRecords,
@@ -860,6 +861,68 @@ class _PosixWorkerProductReceiptAuthority(
     _native_error: ClassVar[type[Exception]]
     _native_profile_id: ClassVar[str]
 
+    _receipt_history_initialize: Callable[..., None]
+    _receipt_history_access: Callable[
+        [PosixLocalWheelProductSessionOwner], WorkerHistoryAccess
+    ]
+
+    def _initialize_receipt_owner(
+        self,
+        *,
+        product_owner: PosixLocalWheelProductSessionOwner,
+        runtime: PackageProductRuntimeBindingV1,
+        selected: PackageProductSelectedPluginManifestV1,
+        opt_in_journal: OptInJournal[D, OptInProjectionT, P],
+        native_closure_reader: ProductNativeClosureReadPort,
+        session_discovery_reader: ProductSessionDiscoveryReadPort | None = None,
+    ) -> None:
+        if (
+            not isinstance(product_owner, PosixLocalWheelProductSessionOwner)
+            or not isinstance(runtime, PackageProductRuntimeBindingV1)
+            or not isinstance(selected, PackageProductSelectedPluginManifestV1)
+            or not isinstance(
+                opt_in_journal,
+                cast(type[object], self._receipt_opt_in_journal_type()),
+            )
+            or not callable(getattr(native_closure_reader, "current_closure", None))
+            or getattr(native_closure_reader, "gc_gate", None)
+            is not product_owner.gc_gate
+            or (
+                session_discovery_reader is not None
+                and (
+                    getattr(session_discovery_reader, "gc_gate", None)
+                    is not product_owner.gc_gate
+                    or getattr(session_discovery_reader, "session_id", None)
+                    != runtime.session_id
+                    or not callable(
+                        getattr(session_discovery_reader, "current_discovery", None)
+                    )
+                )
+            )
+            or product_owner.policy.product_id != self._product_id
+            or runtime.product_id != self._product_id
+            or runtime.session_id is None
+            or runtime.product_runtime_id is None
+            or selected.snapshot.installation_key.scope_id
+            != product_owner.policy.project_scope_id
+            or opt_in_journal.path != product_owner.state_root / "worker-opt-in.jsonl"
+            or opt_in_journal.gc_gate is not product_owner.gc_gate
+            or opt_in_journal.scope_id != product_owner.policy.project_scope_id
+        ):
+            raise ValueError(
+                f"{self._receipt_factory_label} Product receipt owners changed"
+            )
+        self._product: PosixLocalWheelProductSessionOwner = product_owner
+        self._runtime = runtime
+        self._selected = selected
+        self._opt_in = opt_in_journal
+        self._native_closure_reader = native_closure_reader
+        self._session_discovery_reader = session_discovery_reader
+        self._receipt_history_initialize(
+            product_owner.state_root / "worker-activation-receipts.jsonl",
+            access=self._receipt_history_access(product_owner),
+        )
+
     @staticmethod
     def _receipt_opt_in_journal_type() -> Callable[..., CurrentOptIn]:
         raise NotImplementedError
@@ -1179,6 +1242,91 @@ class _WindowsWorkerProductReceiptAuthority(
     _journal: WindowsReceiptRecords[R]
     _native: ProductNativeClosureReadPort
     _session_discovery_reader: ProductSessionDiscoveryReadPort | None
+
+    _receipt_source_trust_class: str
+    _receipt_opt_in_factory: Callable[
+        [WindowsLocalWheelProductSessionOwner], CurrentOptIn
+    ]
+    _receipt_native_factory: Callable[
+        [WindowsLocalWheelProductSessionOwner], ProductNativeClosureReadPort
+    ]
+    _receipt_journal_factory: Callable[..., WindowsReceiptRecords[R]]
+
+    def _initialize_receipt_owner(
+        self,
+        *,
+        product: WindowsLocalWheelProductSessionOwner,
+        runtime: PackageProductRuntimeBindingV1,
+        selected: PackageProductSelectedPluginManifestV1,
+        session_discovery_reader: ProductSessionDiscoveryReadPort | None = None,
+    ) -> None:
+        if (
+            os.name != "nt"
+            or type(product) is not WindowsLocalWheelProductSessionOwner
+            or type(runtime) is not PackageProductRuntimeBindingV1
+            or type(selected) is not PackageProductSelectedPluginManifestV1
+            or product.policy.product_id != self._product_id
+            or runtime.product_id != self._product_id
+            or runtime.session_id is None
+            or runtime.product_runtime_id is None
+            or selected.snapshot.installation_key.scope_id
+            != product.policy.project_scope_id
+            or (
+                session_discovery_reader is not None
+                and (
+                    getattr(session_discovery_reader, "gc_gate", None)
+                    is not product.gc_gate
+                    or getattr(session_discovery_reader, "session_id", None)
+                    != runtime.session_id
+                    or not callable(
+                        getattr(session_discovery_reader, "current_discovery", None)
+                    )
+                )
+            )
+            or not any(
+                binding.source_trust_class == self._receipt_source_trust_class
+                for binding in product.policy.bindings
+            )
+        ):
+            raise ValueError(
+                f"{self._receipt_factory_label} Product receipt owners changed"
+            )
+        product.assert_session_runtime_current(runtime)
+        runtime.assert_selected_plugin_manifest_current(selected)
+        self._product: WindowsLocalWheelProductSessionOwner = product
+        self._runtime = runtime
+        self._selected = selected
+        self._opt_in = self._receipt_opt_in_factory(product)
+        self._native = self._receipt_native_factory(product)
+        self._session_discovery_reader = session_discovery_reader
+        self._journal = self._receipt_journal_factory(
+            product.state_root / "worker-activation-receipts.jsonl",
+            scope_id=product.policy.project_scope_id,
+        )
+
+    @classmethod
+    def _read_retained_receipt(
+        cls,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        receipt_fingerprint: str,
+    ) -> R | None:
+        with product.gc_gate.guard():
+            product.assert_root_gc_authority_current()
+            journal = cls._receipt_journal_factory(
+                product.state_root / "worker-activation-receipts.jsonl",
+                scope_id=product.policy.project_scope_id,
+            )
+            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+                records = journal.records(directory_fd=root)
+            return next(
+                (
+                    record
+                    for record in records
+                    if record.receipt.fingerprint == receipt_fingerprint
+                ),
+                None,
+            )
 
     @classmethod
     def _open_selected(

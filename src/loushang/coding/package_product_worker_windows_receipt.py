@@ -72,6 +72,12 @@ class CodingWindowsWorkerProductReceiptOwner(
         ValueError,
     )
 
+    _opt_in: CodingWindowsWorkerProductOptInOwner
+    _receipt_source_trust_class = "local-worker-candidate"
+    _receipt_opt_in_factory = staticmethod(CodingWindowsWorkerProductOptInOwner)
+    _receipt_native_factory = staticmethod(CodingWindowsWorkerInstalledBackendReader)
+    _receipt_journal_factory = staticmethod(CodingWindowsWorkerReceiptJournal)
+
     def __init__(
         self,
         *,
@@ -80,48 +86,12 @@ class CodingWindowsWorkerProductReceiptOwner(
         selected: PackageProductSelectedPluginManifestV1,
         session_discovery_reader: CodingWorkerSessionDiscoveryReadPort | None = None,
     ) -> None:
-        if (
-            os.name != "nt"
-            or type(product) is not WindowsLocalWheelProductSessionOwner
-            or type(runtime) is not PackageProductRuntimeBindingV1
-            or type(selected) is not PackageProductSelectedPluginManifestV1
-            or product.policy.product_id != "coding"
-            or runtime.product_id != "coding"
-            or runtime.session_id is None
-            or runtime.product_runtime_id is None
-            or selected.snapshot.installation_key.scope_id
-            != product.policy.project_scope_id
-            or (
-                session_discovery_reader is not None
-                and (
-                    getattr(session_discovery_reader, "gc_gate", None)
-                    is not product.gc_gate
-                    or getattr(session_discovery_reader, "session_id", None)
-                    != runtime.session_id
-                    or not callable(
-                        getattr(session_discovery_reader, "current_discovery", None)
-                    )
-                )
-            )
-            or not any(
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product.policy.bindings
-            )
-        ):
-            raise ValueError("Windows Worker Product receipt owners changed")
-        product.assert_session_runtime_current(runtime)
-        runtime.assert_selected_plugin_manifest_current(selected)
-        self._product: WindowsLocalWheelProductSessionOwner = product
-        self._runtime = runtime
-        self._selected = selected
-        self._opt_in: CodingWindowsWorkerProductOptInOwner = (
-            CodingWindowsWorkerProductOptInOwner(product)
-        )
-        self._native = CodingWindowsWorkerInstalledBackendReader(product)
-        self._session_discovery_reader = session_discovery_reader
-        self._journal = CodingWindowsWorkerReceiptJournal(
-            product.state_root / "worker-activation-receipts.jsonl",
-            scope_id=product.policy.project_scope_id,
+        _WindowsWorkerProductReceiptAuthority._initialize_receipt_owner(
+            self,
+            product=product,
+            runtime=runtime,
+            selected=selected,
+            session_discovery_reader=session_discovery_reader,
         )
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:
@@ -179,22 +149,9 @@ def read_coding_windows_product_worker_receipt_record(
         or any(char not in "0123456789abcdef" for char in receipt_fingerprint)
     ):
         raise ValueError("Windows Worker receipt lookup is invalid")
-    with product.gc_gate.guard():
-        product.assert_root_gc_authority_current()
-        journal = CodingWindowsWorkerReceiptJournal(
-            product.state_root / "worker-activation-receipts.jsonl",
-            scope_id=product.policy.project_scope_id,
-        )
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            records = journal.records(directory_fd=root)
-        return next(
-            (
-                record
-                for record in records
-                if record.receipt.fingerprint == receipt_fingerprint
-            ),
-            None,
-        )
+    return CodingWindowsWorkerProductReceiptOwner._read_retained_receipt(
+        product, receipt_fingerprint=receipt_fingerprint
+    )
 
 
 __all__ = [
