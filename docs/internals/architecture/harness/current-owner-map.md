@@ -107,6 +107,13 @@ the operator query use the same public entry. Existing select/compose/validate
 and Provider cleanup programs remain their sole mechanisms; no second runtime
 or callback lifecycle exists.
 
+Worker payload method providers reuse the existing read-only PayloadPlan,
+EmptyPayloadPlan, PayloadMember and PayloadReview fact contracts, with no second
+copy of their field declarations. Concrete Code dataclasses retain fields/slots
+and their original MRO. Canonical owner-byte and payload repair/marker encoders
+are called directly by their existing owners; retired Code forwards and an unused
+opt-in reader Protocol have exited. Active decoder, quota and fault seams remain.
+
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
 including POSIX/Windows file custody and strict decoding after cleanup. It directly
 uses Resources' existing file consumer. Coding retains Source policy, original

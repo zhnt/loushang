@@ -34,8 +34,12 @@ from loushang.harness.worker.payload._records import (
     PayloadPlanMethods,
     PayloadReviewMethods,
     PayloadValueTypes,
-    plan_fields,
-    unmarked_fields,
+)
+from loushang.harness.worker.payload._records import (
+    plan_fields as plan_fields,
+)
+from loushang.harness.worker.payload._records import (
+    unmarked_fields as unmarked_fields,
 )
 from loushang.harness.worker.payload._selected_payload import (
     PendingPayloadMethods,
@@ -278,10 +282,6 @@ _write_payload = _STORAGE._write_payload
 _write_marker = _STORAGE._write_marker
 
 
-def _plan_fields(plan: CodingWorkerPayloadDebtPlanV1) -> dict[str, object]:
-    return plan_fields(plan)
-
-
 def preview_coding_product_worker_payload_debt(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerPayloadDebtPlanV1:
@@ -383,12 +383,6 @@ def repair_coding_product_worker_empty_payload_debt(
 
 
 _read_repair_file = _STORAGE._read_repair_file
-
-
-def _unmarked_repair_fields(
-    review: CodingWorkerUnmarkedPayloadDebtReviewV1,
-) -> dict[str, object]:
-    return unmarked_fields(review)
 
 
 _stage_exists = _STORAGE._stage_exists

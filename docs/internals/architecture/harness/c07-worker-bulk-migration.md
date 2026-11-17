@@ -257,6 +257,16 @@ Coding 保留原 closed nominal 输入 guard、错误身份和查询 definition�
 
 1,472组原公开函数与当前入口对照中，1,446组错误、418组实际到达注入失败点、26组成功请求；两平台×查询／非查询×立即／延迟的8条正常路线均明确成功。真实 resolver／admission／Compiler／request 值的 composition fingerprints、效果顺序、连续两次 callback generation、错误及取消异常图一致；候选／manifest／native prepare 和纯产品政策是受控完整口，故不替代真实 Product/native 准入。独立冷导入禁止 Coding，亦确认 type-only Product runtime 未加载；局部 callback 原本即为不可 pickle 的本地闭包，持久记录和公开 DTO 字段不变。Windows／H6 原生路线及整组交付检查仍未执行。
 
+## 既有载荷事实契约复用与残留胶水删减
+
+本批复用现有 PayloadPlan／EmptyPayloadPlan／PayloadMember／PayloadReview 只读事实接口，删除四个普通零 slots 方法基类里重复的21项事实字段声明；方法通过同一对象的 identity cast 读取已存在的事实契约。没有让名义 DTO 继承 Protocol，没有新增 ABC、字段、注册器或状态；真实 Code dataclass 的声明、slots、MRO 和实例形状不变。Registered repair 的私有 factory 类型也改为现有 PayloadPlan 事实接口，避免继续把无状态方法基类当作完整数据形状。
+
+同步删除已退出真实链路的三个私有转发 _owner_bytes、_plan_fields、_unmarked_repair_fields，以及无消费者的 _WorkerOptInReader。现有 publication／Product commit 已直接调用 HistoryPublication.owner_bytes；载荷指纹、marker 和 repair codec 已直接使用 Harness 的 plan_fields／unmarked_fields。旧轮次中这些 Code helpers 曾有真实消费者，当前接线已改变，不重复计旧机制迁移收益。公开 __all__、无 __all__ 模块的默认公开名称集、实际 codec／quota／故障绑定保持原样；原 canonical plan_fields／unmarked_fields 以显式 re-export 保留，严格数据记录和原值持久化中不包含这些私有函数；删除依据同时包括真实 owner 接线和原记录／回归证据。回执 decoder、segment parser 及 _linux_receipt_line 仍有 Windows／V2／原固定探针消费者，全部保留；read_backend 的晚绑定故障口也未改成静态捕获。
+
+本批 Coding −15、Harness −13、Hosting／其他生产 0，系统生产净 −28 行；累计 Coding −5,652、Harness +8,629，系统仍净 +2,977 行。测试仍 +70 行，文档单列。这里的 Coding 删减包括三个退出的转发、一个退出的 Protocol 及一个随之消失的 import 及相应分隔；保留的两个 re-export 也计入成本；Harness 删减是重复类型声明扣除8项 identity cast 的净额。没有新增完整机制迁移，不能靠这批胶水／类型整理宣称过半目标达成。C07 剩余14,614行，距至少10,134行退出仍差4,482行。
+
+原固定值／载荷修复／完整恢复、owner commit、receipt base 和 prepared consumers 为224 passed；84源 mypy、Ruff、54份 Coding 公开契约／字段及原测试／用户改动检查通过。八个完整载荷方法在仅消除 identity cast／局部同对象别名后 AST 与原样一致；其余 codec／fact interface、Code 剩余函数／类及模块级绑定完整 AST 不变。与冻结基线对照9个载荷／intent／lease 值和3个 registered 值，24份原始 protocol4／5 pickle 字节、字段／slots／元数据／公开签名、16项错误／配额及57项原值观察一致。初次 scoped mypy 发现方法基类的旧 factory 注解仍假定完整事实字段，已以既有事实接口纠正；不新增接口或改变数据验证。原生 Windows／H6、全部112文件处置和整组交付验证仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

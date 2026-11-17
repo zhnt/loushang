@@ -83,7 +83,6 @@ from .package_product_worker_installed_native import (
     open_coding_product_installed_worker_release_reader,
 )
 from .package_product_worker_opt_in import (
-    CodingWorkerOptInDecisionV1,
     CodingWorkerOptInJournal,
 )
 from .package_product_worker_policy import (
@@ -195,10 +194,6 @@ class _CodingReceiptHistory(ReceiptHistory[CodingWorkerReceiptRecordV1]):
 
     def _max_history_bytes(self) -> int:
         return _MAX_RECEIPT_SEGMENT_BYTES
-
-
-class _WorkerOptInReader(Protocol):
-    def current(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None: ...
 
 
 class _CodingWorkerReceiptAuthority(

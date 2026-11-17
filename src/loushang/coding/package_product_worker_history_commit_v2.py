@@ -47,10 +47,6 @@ class CodingWorkerV2OwnerCommitError(RuntimeError):
         self.code = code
 
 
-def _owner_bytes(rooted: RootedFile) -> bytes | None:
-    return _HISTORY_PUBLICATION.owner_bytes(rooted, max_index_bytes=_MAX_INDEX_BYTES)
-
-
 def commit_coding_worker_v2_owner_under_guard(
     rooted: RootedFile, *, prepared: CodingWorkerPreparedProductCutoverV2
 ) -> CodingWorkerProductCutoverIndexV2:
