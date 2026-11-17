@@ -140,6 +140,12 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await body.locator("pre").textContent());
   await reading.getByRole("button", { name: "Copy reply" }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(markdown);
+  await page.evaluate(() => Object.defineProperty(navigator.clipboard, "writeText", {
+    value: () => Promise.reject(new Error("Clipboard unavailable")), configurable: true,
+  }));
+  await body.getByRole("button", { name: "Copy code" }).click();
+  await expect(body.getByRole("status")).toHaveText("Could not copy");
+  await page.evaluate(() => Reflect.deleteProperty(navigator.clipboard, "writeText"));
   await expect(reading).toHaveCSS("padding-bottom", "40px");
   expect((await body.boundingBox())!.width).toBeCloseTo(760, 0);
   await reading.evaluate((element) => { element.scrollTop = 0; });

@@ -32,13 +32,20 @@ _WINDOWS = os.name == "nt"
 _MAX_COMPONENTS = 128
 _BINARY_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0e-\x1f\x7f-\x9f]")
 _EntryKind = Literal["directory", "file"]
+_READ_ERRORS = {
+    errno.ENOENT: AppErrorCodeV1.NOT_FOUND,
+    errno.EACCES: AppErrorCodeV1.PERMISSION_DENIED,
+    errno.EPERM: AppErrorCodeV1.PERMISSION_DENIED,
+    errno.ELOOP: AppErrorCodeV1.PERMISSION_DENIED,
+    errno.ENOTDIR: AppErrorCodeV1.PERMISSION_DENIED,
+}
 
 
 def _relative_parts(value: str) -> list[str]:
     path = value.replace("\\", "/")
     if path.startswith("/") or ":" in path:
         raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
-    return path.split("/")
+    return [part for part in path.split("/") if part not in {"", "."}]
 
 
 def _resolve_parts(base: str, reference: str) -> list[str]:
@@ -48,7 +55,7 @@ def _resolve_parts(base: str, reference: str) -> list[str]:
             if not parts:
                 raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
             parts.pop()
-        elif part and part != ".":
+        else:
             parts.append(part)
     if _WINDOWS and any(_invalid_windows_part(part) for part in parts):
         raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
@@ -160,10 +167,7 @@ def read_workspace_preview(root: Path, reference: str, base: str) -> WorkspacePr
                 return _read_file(parent, name, path)
             if kind == "directory":
                 return _read_directory(_checked_directory(parent, name, handles), path)
-    except FileNotFoundError:
-        raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
     except OSError as exc:
-        if exc.errno in {errno.EACCES, errno.EPERM, errno.ELOOP, errno.ENOTDIR}:
-            raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED) from None
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+        code = _READ_ERRORS.get(exc.errno, AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        raise AppServiceError(code) from None
     raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
