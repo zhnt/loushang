@@ -490,6 +490,16 @@ CodingWorkerOptInJournal.change 的单次 super 转调也退出，直接继承�
 
 本批为已共享机制的重复转发删除，不计为新事务迁移。Coding −29、Harness／Hosting／其他生产／测试0，系统生产 −29行；文档单列。累计 Coding −6,489、Harness +9,474、系统生产仍 +2,985行；C07余13,777行，距过半退出仍差3,645行。整组多数退出和最新完整候选验证仍未完成。
 
+## Windows Journal 完整接口直接复用与剩余边界复核
+
+Windows opt-in 的 current／history_read_only／change、receipt 的 records／issue 及 C5 的 retained_attempts_read_only 六个纯 super 转发退出，调用方沿用原 Code nominal journal，直接继承现有泛型 H owner。原构造、Product／平台准入、字段、codec／错误／配额及所有 H 执行体不变，未新增 owner、状态或 callback。六项具体静态返回类型断言、四源 mypy、Ruff 与限定 AST 审计通过；十二份旧 bound-method protocol4／5 pickle 字节及加载路由保持，72组普通／中间 MRO／空历史／失败／取消分派对照一致。当前执行代理在已授权职责内接受这六项 internal leaf 的 own-method 归属、module／qualname、泛型运行时注解和 Python 参数绑定错误前缀变化，不扩大记录或稳定 SDK 的兼容例外。
+
+原生批准 Journal 的三个入口不是同类纯 super 转发。尝试迁到基类后，差分探针观察到新增中间 MRO 拦截，已完整撤回该部分及 H 增量；保留原虚拟分派，不计迁移或删减收益。首次探针还曾把 public 调用的关键字／位置转调形状当作底层 Journal 端口观察，已改为观察实际读写端口并显式绑定中间方法参数；最终证明仅覆盖上述六项纯转发，原 native approval 与 H 文件均逐字不变。
+
+最终源码的既有 Windows IO golden、read-scope、C5、checkpoint、opt-in／receipt base 六条路径267 passed／1 skipped，测试、断言、fixtures 及门禁未变。模型和本地 FD 证据不替代原生 Windows。此批 Coding −58、Harness／Hosting／其他生产／测试0，系统生产 −58行，文档另列；累计 Coding −6,547、Harness +9,474、系统生产仍 +2,927行，C07余13,719行，距过半退出还差3,587行。旧完整回归不验证最新候选，最终整体验证仍待完成。
+
+补齐剩余24份文件的源码与真实静态消费者路由复核后，冻结112份文件均有 SHA 限定的部分职责记录；这不等于112份文件最终验收或主要链路闭合。新核对的 V2 base／archive／cutover／deletion 文件主要是必要名义记录和既有 H 执行体的类型／wire Profile；不能靠搬字段计为机制收益。仍明确标出需继续处理的通用部分：_worker_history_access 的两平台借用适配，以及 provider_host 的完整准备／回执构造接线。回执 owner 构造仍混有通用关联校验和真实产品准入，须按实际失败顺序与原 owner 接管，不把类型或文件名当作整段保留理由。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
