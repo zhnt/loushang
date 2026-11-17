@@ -41,7 +41,12 @@ from loushang.harness.worker.history._retention import (
     RetentionReviewMethods,
     registered_repair_matches_no_effect_closure,
 )
-from loushang.harness.worker.history._start_gate import _StartGateRecordMethods
+from loushang.harness.worker.history._start_gate import (
+    _GATED_ACTIVE_PHASES,
+    GatedRecoveryReviewMethods,
+    OrphanGatedRecoveryReviewMethods,
+    _StartGateRecordMethods,
+)
 from loushang.harness.worker.journal import (
     WorkerAttemptRecordV1,
     WorkerSupervisorJournal,
@@ -189,19 +194,24 @@ def _read_receipt(
     *,
     receipt_fingerprint: str,
 ) -> _ReceiptRecordMethods | None:
-    if not isinstance(product, PosixLocalWheelProductSessionOwner):
-        raise TypeError(
-            f"{bindings.history.product_label} Worker Product owner is required"
-        )
-    if (
-        type(receipt_fingerprint) is not str
-        or len(receipt_fingerprint) != 64
-        or any((char not in "0123456789abcdef" for char in receipt_fingerprint))
-    ):
-        raise ValueError(
-            f"{bindings.history.product_label} Worker receipt fingerprint is invalid"
-        )
-    return bindings.history.receipts(product).find_retained_record(receipt_fingerprint)
+    return _read_history_receipt(
+        bindings.history, product, receipt_fingerprint=receipt_fingerprint
+    )
+
+
+def _read_history_receipt(
+    bindings: HistoryProofBindings[HistoryT],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    receipt_fingerprint: str,
+) -> _ReceiptRecordMethods | None:
+    _require_receipt_lookup_input(
+        product,
+        receipt_fingerprint,
+        product_required_message=f"{bindings.product_label} Worker Product owner is required",
+        receipt_invalid_message=f"{bindings.product_label} Worker receipt fingerprint is invalid",
+    )
+    return bindings.receipts(product).find_retained_record(receipt_fingerprint)
 
 
 class CleanupEvidenceAuthority(Generic[HistoryT]):
@@ -1748,3 +1758,201 @@ class PosixProductWorkerPayloadCustody(
             self.storage.open_root(lambda: product.state_root) as root_fd,
         ):
             return operation(self.storage, root_fd, **arguments)
+
+
+_GatedOrphanT = TypeVar("_GatedOrphanT", bound=OrphanGatedRecoveryReviewMethods)
+
+
+def read_gated_review_under_guard(
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+) -> GatedRecoveryReviewMethods:
+    return cast(
+        GatedRecoveryReviewMethods,
+        review_gated_offline(history(), product, attempt_id=attempt_id),
+    )
+
+
+def _read_gated_receipt(
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    receipt_fingerprint: str,
+    product_required_message: str,
+    receipt_invalid_message: str,
+) -> _ReceiptRecordMethods | None:
+    _require_receipt_lookup_input(
+        product,
+        receipt_fingerprint,
+        product_required_message=product_required_message,
+        receipt_invalid_message=receipt_invalid_message,
+    )
+    return history().receipts(product).find_retained_record(receipt_fingerprint)
+
+
+def review_gated_orphan_runtime(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    storage: PayloadStorage,
+    record_type: Callable[..., _GatedOrphanT],
+    product_required_message: str,
+    receipt_invalid_message: str,
+) -> _GatedOrphanT:
+    if not isinstance(product, PosixLocalWheelProductSessionOwner):
+        raise TypeError(product_required_message)
+    registry = product.epoch_runtime.registry
+    orphans = registry.review_orphans(store_id=registry.store_id)
+    with product.gc_gate.guard():
+        product.assert_root_gc_authority_current()
+        gated = read_gated_review_under_guard(history, product, attempt_id=attempt_id)
+        gate = gated.gate_record
+        receipt = (
+            None
+            if gate is None
+            else _read_gated_receipt(
+                history,
+                product,
+                receipt_fingerprint=gate.receipt_fingerprint,
+                product_required_message=product_required_message,
+                receipt_invalid_message=receipt_invalid_message,
+            )
+        )
+        matching = (
+            ()
+            if receipt is None
+            else tuple(
+                (
+                    lease
+                    for lease in orphans
+                    if lease.runtime_id == receipt.receipt.policy.product_runtime_id
+                )
+            )
+        )
+        plan = None
+        if gate is not None:
+            with storage.open_root(lambda: product.state_root) as root_fd:
+                plan = storage._verify_debt(root_fd, gate.attempt_id)
+        fence = product.epoch_runtime.cutover_result.fence
+        assert fence is not None
+        return record_type(
+            gated_review=gated,
+            receipt_record=receipt,
+            orphan_lease=matching[0] if len(matching) == 1 else None,
+            payload_plan=plan,
+            current_runtime_epoch=fence.epoch,
+            current_store_root_identity=fence.fenced_root_identity,
+        )
+
+
+def repair_gated_orphan_runtime(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    expected_review: OrphanGatedRecoveryReviewMethods,
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    storage: PayloadStorage,
+    record_type: Callable[..., _GatedOrphanT],
+    product_required_message: str,
+    receipt_invalid_message: str,
+    error_type: type[RuntimeError],
+    error_prefix: str,
+) -> PackageEpochRuntimeLeaseV1:
+    current = review_gated_orphan_runtime(
+        product,
+        attempt_id=expected_review.gated_review.attempt_id,
+        history=history,
+        storage=storage,
+        record_type=record_type,
+        product_required_message=product_required_message,
+        receipt_invalid_message=receipt_invalid_message,
+    )
+    if current != expected_review:
+        raise error_type(error_prefix + "_orphan_runtime_review_stale")
+    if not current.repair_candidate or current.orphan_lease is None:
+        raise error_type(error_prefix + "_orphan_runtime_unproven")
+    product.epoch_runtime.registry.repair_orphan(current.orphan_lease.lease_id)
+    return current.orphan_lease
+
+
+def review_gated_recovery(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    custody: PosixProductWorkerPayloadCustody,
+) -> GatedRecoveryReviewMethods:
+    """Reopen exact histories while Product runtimes are quiescent."""
+    with custody.offline(product):
+        return read_gated_review_under_guard(history, product, attempt_id=attempt_id)
+
+
+def settle_gated_attempt(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    expected_review: GatedRecoveryReviewMethods,
+    expected_plan: PayloadPlan,
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    custody: PosixProductWorkerPayloadCustody,
+    storage: PayloadStorage,
+    error_type: type[RuntimeError],
+    error_prefix: str,
+    failure_code: str,
+) -> WorkerAttemptRecordV1:
+    with custody.offline(product):
+        current = read_gated_review_under_guard(
+            history, product, attempt_id=expected_review.attempt_id
+        )
+        if current != expected_review:
+            raise error_type(error_prefix + "_gated_recovery_review_stale")
+        if not current.settlement_candidate:
+            raise error_type(error_prefix + "_gated_recovery_unproven")
+        gate = current.gate_record
+        attempt = current.attempt_record
+        assert gate is not None and attempt is not None
+        if expected_plan.attempt_id != gate.attempt_id:
+            raise error_type(error_prefix + "_gated_recovery_attempt_mismatch")
+        with storage.open_root(lambda: product.state_root) as root_fd:
+            plan = storage._verify_debt(root_fd, gate.attempt_id)
+            if (
+                plan != expected_plan
+                or plan.receipt_fingerprint != gate.receipt_fingerprint
+            ):
+                raise error_type(error_prefix + "_gated_recovery_payload_mismatch")
+            journal = custody.supervisor(product)
+            if attempt.phase in _GATED_ACTIVE_PHASES:
+                attempt = journal.transition(
+                    gate.attempt_id,
+                    expected_phase=attempt.phase,
+                    next_phase="failed",
+                    expected_record_revision=attempt.record_revision,
+                    expected_supervisor_epoch=attempt.supervisor_epoch,
+                    failure_code=failure_code,
+                )
+            return journal.transition(
+                gate.attempt_id,
+                expected_phase=attempt.phase,
+                next_phase="process_settled",
+                expected_record_revision=attempt.record_revision,
+                expected_supervisor_epoch=attempt.supervisor_epoch,
+                failure_code=attempt.failure_code,
+            )
+
+
+def _require_receipt_lookup_input(
+    product: PosixLocalWheelProductSessionOwner,
+    receipt_fingerprint: str,
+    *,
+    product_required_message: str,
+    receipt_invalid_message: str,
+) -> None:
+    if not isinstance(product, PosixLocalWheelProductSessionOwner):
+        raise TypeError(product_required_message)
+    if (
+        type(receipt_fingerprint) is not str
+        or len(receipt_fingerprint) != 64
+        or any((char not in "0123456789abcdef" for char in receipt_fingerprint))
+    ):
+        raise ValueError(receipt_invalid_message)

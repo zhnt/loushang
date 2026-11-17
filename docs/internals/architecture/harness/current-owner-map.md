@@ -70,8 +70,10 @@ completed-history validation, with Code nominal Profile and Product admission.
 PackageProduct also owns the six-base read/publication transaction, crash
 Supervisor/native/C5 settlement, no-effect reservation settlement and pinned-stage
 lease repair. Worker owns the read-only cleanup evidence join. Coding keeps trust
-identities, Product admission and nominal records. Recovery orchestration and
-start-gate activation-history/gated settlement remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
+identities, Product admission and nominal records. Existing recovery also owns gated/orphan review, lease repair and Supervisor
+settlement; StartGateHistory holds the original append/C5 initialization scope.
+Coding retains nominal values, Product/type admission and late Journal binding.
+Recovery orchestration and remaining dispositions are unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
 this slice does not complete that chain or its majority-exit target.
 
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,

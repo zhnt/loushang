@@ -140,7 +140,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._windows_supervisor_base",
         "loushang.harness.worker.journal",
     },
-    CODING_ROOT / "package_product_worker_start_gate_recovery.py": {"loushang.harness.worker.journal"},
+    CODING_ROOT / "package_product_worker_start_gate_recovery.py": {"loushang.harness.worker.journal", "loushang.harness.worker.history._start_gate"},
     CODING_ROOT / "package_product_worker_native_release.py": {
         "loushang.harness.worker._linux_native_release"
     },
