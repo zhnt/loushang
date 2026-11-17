@@ -32,7 +32,6 @@ from loushang.harness.worker.history._start_gate import (
     _MAX_BYTES,
     _MAX_EVENTS,
     _StartGateRecordMethods,
-    fold_start_gate_records,
 )
 from loushang.harness.worker.history._start_gate import (
     _identity_dict as _identity_dict,
@@ -98,9 +97,6 @@ _CODEC: FunctionalJournalRecordCodec[CodingWorkerStartGateRecordV1] = (
         decoder=_decode,
     )
 )
-
-
-_fold_start_gate_records = fold_start_gate_records
 
 
 class CodingWorkerStartGateJournal(StartGateHistory[CodingWorkerStartGateRecordV1]):
