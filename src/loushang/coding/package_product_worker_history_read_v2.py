@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.journal._rooted_io import RootedFile as RootedFile
 from loushang.harness.worker.history._read_v2 import (
     RetainedHistoryReader,
     _RetainedHistoryFields,
@@ -24,7 +24,7 @@ from .package_product_worker_history_deletion_v2 import (
     CodingWorkerV2DeletionLedger,
 )
 from .package_product_worker_history_prepared_v2 import (
-    CodingWorkerPreparedProductCutoverV2,
+    CodingWorkerPreparedProductCutoverV2 as CodingWorkerPreparedProductCutoverV2,
 )
 from .package_product_worker_history_stage_v2 import (
     _PREPARATION_HISTORY,
@@ -72,21 +72,10 @@ _HISTORY_READER = RetainedHistoryReader(
 )
 
 
-def read_coding_worker_v2_retained_history(
-    rooted: RootedFile, *, stem: str
-) -> CodingWorkerV2RetainedHistory:
-    "Verify owner, checkpoint, ledger, manifest, heads, and typed replay."
-    return _HISTORY_READER.read(rooted, stem=stem)
+read_coding_worker_v2_retained_history = _HISTORY_READER.read
 
 
-def verify_coding_worker_v2_precommit_history(
-    rooted: RootedFile,
-    *,
-    stem: str,
-    prepared: CodingWorkerPreparedProductCutoverV2,
-) -> CodingWorkerV2RetainedHistory:
-    "Run the Product reader before publication; caller owns cutover locks."
-    return _HISTORY_READER.verify_precommit(rooted, stem=stem, prepared=prepared)
+verify_coding_worker_v2_precommit_history = _HISTORY_READER.verify_precommit
 
 
 __all__ = [

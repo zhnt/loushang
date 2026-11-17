@@ -361,6 +361,16 @@ Code 的真实构造函数、字段和 MRO 不变，公开 Product-native 入口
 
 本批 Coding −109、Harness +181、Hosting／其他生产0，系统生产 +72 行；累计 Coding −6,084、Harness +9,241、系统生产仍 +3,157 行。增长包括明确的强类型创建入口、名义类型绑定和保留错误／预算契约，不作净精简收益。测试仍 +70，文档单列；C07 剩余14,182行，距过半退出仍差4,050行。全部112文件最终语义处置、完整链路验收和整组交付检查未完成。
 
+## 历史与恢复内部入口直接复用
+
+本批删除八个 Code 模块中十三个纯转发函数，原名称直接引用已有 CheckpointHistory、RetainedHistoryReader、Prepared／Preview classmethod、GC revision join、Windows crash-history predicate 和历史名称函数。既有机制此前已属于 Harness，本批只计重复胶水删除，不重计完整机制迁移。保留三个有明确冻结签名约束的候选：普通 Session compose、Windows backend candidate／material inspection。当前执行代理在已授权职责内接受精确十三项内部 callable 变化，范围不扩大到稳定 SDK、记录或其他入口。
+
+这些内部名字的参数位置／关键字／默认值形状不变，运行时注解、module／qualname、Python 参数绑定错误前缀和新 callable pickle 编码跟随实际 owner。引用在模块初始化时绑定到原固定实例／Code class／函数，不再每次重查 Code 的对应私有绑定；未发现这十三项的配置替换或实际故障注入口，底层 IO／quota／事务故障点保持。所有原 import 名称仍可访问，必要的失去本文件注解消费者的类型改为显式同名 re-export；不删除隐式模块属性。Prepared archive 名称在原 Code class 创建后绑定，真实初始化与消费者通过。十三项绑定／参数／规范化操作说明、二十六条旧 protocol4／5 全局 lookup 和原无效输入或纯结果核对通过；不宣称 callable 新旧编码相同。没有新增写参数，GC 与恢复观察仍无删除或修复权限。
+
+源码检查确认：除十三个明确函数与别名及同名 import 拼写外，八个模块的全部原程序／类／字段／__all__ 和 import 绑定保持；所有 Harness／Hosting 与测试文件相对上批均无修改。精确例外清单现在包含前两批十二项及本批十三项，其余66份 Code 公开声明／字段、原测试入口／断言和用户改动保持。既有历史／checkpoint／prepared／preview／crash／实际候选为17 passed、7 skipped；GC 名称、历史证明及冻结 Session composition／backend DTO 为211 passed、1 skipped，十个生产／消费源 mypy 和 Ruff 通过。最初测试命令引用了不存在的 Windows GC 文件，未执行测试，改用已发现的真实 gc_names 路线后通过；未改变 Product 或测试。
+
+本批 Coding −87、Harness／Hosting／其他生产0，系统生产净 −87 行，所有原操作说明已经保留在真实 Harness owner，不靠删注释取得收益；测试无新增。累计 Coding −6,171、Harness +9,241、系统生产仍 +3,070 行，测试仍 +70，文档单列。C07 剩余14,095行，距过半退出还差3,963行；这不是整链或整组完成，全部112文件最终语义处置和正确 PR 基线全量交付验证仍未完成。原生 Windows／H6 未执行。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

@@ -56,26 +56,13 @@ def _valid_crash_native_settlement_history(
     return _valid_crash_effect_history(attempt, settled=True)
 
 
-def _valid_crash_effect_history(
-    attempt: CodingWindowsWorkerRecoveryAttemptV1, *, settled: bool
-) -> bool:
-    return _worker_crash_effect_history(attempt, settled=settled)
+_valid_crash_effect_history = _worker_crash_effect_history
 
 
-def _crash_cleanup_history_matches(
-    review: CodingWindowsWorkerOrphanRuntimeReviewV1,
-) -> bool:
-    return windows_worker_crash_cleanup_history_matches(review)
+_crash_cleanup_history_matches = windows_worker_crash_cleanup_history_matches
 
 
-def _crash_settled_history_matches(
-    review: CodingWindowsWorkerOrphanRuntimeReviewV1,
-    *,
-    repaired_lease: bool = False,
-) -> bool:
-    return windows_worker_crash_settled_history_matches(
-        review, repaired_lease=repaired_lease
-    )
+_crash_settled_history_matches = windows_worker_crash_settled_history_matches
 
 
 def review_coding_windows_product_worker_crash_cleanup(

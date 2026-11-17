@@ -458,6 +458,15 @@ internal callable reflection follows the Harness method. [C07 direct reuse evide
 records the explicit metadata delta, historical global pickle lookups and actual
 system net reduction; pre-existing payload mechanisms are not counted again.
 
+Thirteen additional internal history/GC/crash names directly reuse existing
+CheckpointHistory, RetainedHistoryReader, Prepared/Preview and pure history
+operations. Code keeps every original name, module import binding and nominal
+record. Three explicitly frozen signature entries retain their wrappers. This
+removes duplicate dispatch only; prior shared mechanisms are not counted again.
+[C07 history reuse evidence](c07-worker-bulk-migration.md#历史与恢复内部入口直接复用)
+records the exact callable metadata/binding delta, old global pickle lookups,
+consumer evidence and net system reduction.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding

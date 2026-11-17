@@ -128,11 +128,7 @@ class CodingWorkerAttemptReferenceV1:
     gate_phase: Literal["intent", "bound"]
 
 
-def _matching_gc_revision_refs(
-    reference: CodingWorkerAttemptReferenceV1 | None,
-    reservations: frozenset[PluginPackageRevisionRefV1],
-) -> tuple[PluginPackageRevisionRefV1, ...]:
-    return matching_attempt_gc_refs(reference, reservations)
+_matching_gc_revision_refs = matching_attempt_gc_refs
 
 
 def _receipt_gate_reference_issue(

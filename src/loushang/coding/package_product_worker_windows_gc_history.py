@@ -19,7 +19,9 @@ from loushang.harness.worker.history._windows_recovery import (
     require_windows_worker_c5_gc_history,
 )
 from loushang.harness.worker.history._windows_sources import (
-    WindowsHistoryNames,
+    WindowsHistoryNames as WindowsHistoryNames,
+)
+from loushang.harness.worker.history._windows_sources import (
     windows_worker_history_names,
 )
 
@@ -84,5 +86,4 @@ class CodingWindowsWorkerGcHistoryAuthority:
 __all__ = ["CodingWindowsWorkerGcHistoryAuthority"]
 
 
-def _history_names() -> WindowsHistoryNames:
-    return windows_worker_history_names()
+_history_names = windows_worker_history_names

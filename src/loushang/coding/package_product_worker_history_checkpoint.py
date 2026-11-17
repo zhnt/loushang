@@ -104,21 +104,7 @@ def _read_records_or_repair_empty_bootstrap(
     )
 
 
-def _anchor_for_records(
-    rooted: RootedFile,
-    *,
-    scope_id: str,
-    store_id: str,
-    records: tuple[CodingWorkerHistoryCheckpointV1, ...],
-    settle_lag: bool,
-) -> CodingWorkerCheckpointAnchorV1 | None:
-    return _CHECKPOINT_HISTORY.anchor_for_records(
-        rooted,
-        scope_id=scope_id,
-        store_id=store_id,
-        records=records,
-        settle_lag=settle_lag,
-    )
+_anchor_for_records = _CHECKPOINT_HISTORY.anchor_for_records
 
 
 @contextmanager
