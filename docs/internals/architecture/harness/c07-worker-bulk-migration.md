@@ -289,6 +289,16 @@ Scoped mypy 初次发现公共 Windows ctor 原有的 optional Session 值不再
 
 本批 Coding −13、Harness +40、Hosting／其他生产0，系统生产 +27 行；累计 Coding −5,709、Harness +8,765、系统生产 +3,056 行。测试仍 +70，文档单列。这是完整操作归属收敛及两份原写作用域复用，新增明确命令类型边界和兼容入口成本仍超过退出量；不是系统净删减，也不足以作为大块迁移验收。C07 剩余14,557行，距至少10,134行退出仍差4,425行；后续须集中完整大块与实际重复删除。原生 Windows／H6、全部112文件最终处置和正确 PR 基线完整交付验证仍未完成。
 
+## 源身份校验复用与退出的 Windows 私有转发
+
+五个 Windows C5／receipt／Supervisor／launch intent／Provisioning 语义基类复用现有 _SourceBoundBaseWireMethods 的同一组七项源身份前置校验。方法仍按原次序逐项读取同一对象的 scope／store／source digest，不增加状态、Schema、Protocol 或字段 supplier；各流的 live digest pattern、密码运算、版本／记录／历史语义校验留在原位置。Opt-in 在 scope 中间多一项 OPAQUE 规则，未强行统一；C5 原有 last-record 预验证仍先于身份校验。三项新增类型声明只属于现有普通方法基类，原五份 dataclass 方法基类和公开 Code 记录的字段、顺序、slots 均保留。
+
+同时删除 _require_coding_windows_product_bound_request 与 _require_retirement_root 两个已退出的私有转发及后者唯一使用的 import。精确基线中，前者由 Code launch-intent commit 使用，后者由 Code stage retirement 使用；当前真实 intent owner 已直接调用 payload_program.require_bound，四种退休与 orphan review 已直接调用原 Harness root verifier。两私有名不在明确 __all__、公开记录字段或 pickle 类中，也没有固定故障探针／动态注册消费者；不是仅凭搜索无匹配就删除。仍有测试消费者的 uncoupled C5 guard、真实 marker／file 读取口及公开入口全部保留。此前已迁移的主流程不重计收益。
+
+本批 Coding −28、Harness −15、Hosting／其他生产0，系统生产净 −43 行；累计 Coding −5,737、Harness +8,750、系统生产仍 +3,013 行。测试仍 +70，文档单列。C07 剩余14,529行，距过半退出还差4,397行；本批是实际复用去重和死胶水退出，没有新增完整链路迁移，不能作为大块目标达成依据。对两平台回执构造的直接抽取已做成本审查：会新增多项 factory／初始化转接，当前不采用该方案，不因缩小 Code 文件就增加另一层协调。
+
+既有五流、launch intent、四种退休／stage review 及原恢复值兼容为136 passed，8源 mypy、Ruff及57份 Code公开声明／原测试入口／断言／用户改动哈希检查通过。宏展开一处共享前置校验后，五个完整 validator 模块 AST 与原样一致；两个 Code 模块除指定私有定义／import 外 AST 不变。冻结基线的18个实际值、36份原 protocol4／5 pickle 字节、16项错误、全部字段／dataclass 元数据／slots／公开签名／历史 wire 完全一致。原生 Windows／H6、全部112文件最终处置及整组交付检查仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

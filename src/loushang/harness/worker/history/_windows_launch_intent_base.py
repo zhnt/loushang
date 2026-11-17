@@ -44,13 +44,7 @@ class _WindowsLaunchIntentBaseMethods(
 
     def __post_init__(self) -> None:
         if (
-            type(self.scope_id) is not str
-            or not self.scope_id
-            or len(self.scope_id) > 128
-            or type(self.store_id) is not str
-            or not self.store_id
-            or len(self.store_id) > 128
-            or type(self.source_snapshot_digest) is not str
+            self._source_identity_invalid()
             or _DIGEST.fullmatch(self.source_snapshot_digest) is None
             or type(self.retained_intents) is not tuple
             or any(

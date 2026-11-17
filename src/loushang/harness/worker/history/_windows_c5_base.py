@@ -84,13 +84,7 @@ class _WindowsC5BaseMethods(_WindowsPreparedSourceMethods, _SourceBoundBaseWireM
         except (KeyError, RecursionError, TypeError, ValueError) as exc:
             raise ValueError("Windows Worker C5 semantic base is invalid") from exc
         if (
-            type(self.scope_id) is not str
-            or not self.scope_id
-            or len(self.scope_id) > 128
-            or type(self.store_id) is not str
-            or not self.store_id
-            or len(self.store_id) > 128
-            or type(self.source_snapshot_digest) is not str
+            self._source_identity_invalid()
             or _DIGEST.fullmatch(self.source_snapshot_digest) is None
             or type(self.owner_present) is not bool
             or type(self.cutoff_revision) is not int

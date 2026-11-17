@@ -20,7 +20,6 @@ from loushang.harness.package_product._worker_windows_attempt import (
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_stage,
-    require_windows_worker_retirement_root,
     review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -195,17 +194,6 @@ def _read_checked_file(
 ) -> tuple[bytes, FileIdentity]:
     return _inspection().read_checked_file(
         parent, name, acl, maximum_bytes=maximum_bytes
-    )
-
-
-def _require_retirement_root(
-    product: WindowsLocalWheelProductSessionOwner,
-    root: int,
-    error_type: type[Exception],
-    changed_message: str,
-) -> None:
-    require_windows_worker_retirement_root(
-        product, root, _inspection, error_type, changed_message
     )
 
 

@@ -166,22 +166,6 @@ def bind_coding_windows_product_worker_launch_request(
     )
 
 
-def _require_coding_windows_product_bound_request(
-    *,
-    receipt_owner: CodingWindowsWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    payload_lease: CodingWindowsWorkerPayloadLeaseV1,
-    request: ManagedWorkerLaunchRequestV1,
-) -> None:
-    """Identify one live Product-minted request before publishing its intent."""
-    _payload_program().require_bound(
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        payload_lease=payload_lease,
-        request=request,
-    )
-
-
 def _verify_stage_marker(
     *,
     receipt_owner: CodingWindowsWorkerProductReceiptOwner,

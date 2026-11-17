@@ -408,6 +408,14 @@ review-ID approval and public owner identity; no journal or lifecycle manager is
 added. [C07 transaction evidence](c07-worker-bulk-migration.md#windows-原生批准写事务归现有-backend-owner)
 records costs and the remaining native-platform verification gap.
 
+The existing source-bound wire owner provides the common seven-predicate source
+identity prefix for five Windows semantic base streams. Each stream keeps its
+original digest pattern, crypto and history validation; opt-in keeps its stricter
+scope order. Intent and retirement callers directly use the original Harness
+bound-request/root verifiers, so two obsolete private Code forwarders have exited.
+[C07 reuse evidence](c07-worker-bulk-migration.md#源身份校验复用与退出的-windows-私有转发)
+records the actual system net reduction and unchanged persisted value contracts.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding
