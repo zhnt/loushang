@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -102,6 +102,15 @@ function buildWeb() {
 }
 
 function runNative(command, fixtureBridge = false) {
+  if (command === "dev" && process.platform === "linux" && !childEnv.LOUSHANG_MUX) {
+    const mux = path.join(guiDir, "..", ".venv", "bin", "loushang-mux");
+    if (statSync(mux, { throwIfNoEntry: false })?.isFile()) {
+      childEnv.LOUSHANG_MUX = mux;
+      childEnv.LOUSHANG_MUX_BACKEND ??= "managed";
+    } else if (!childEnv.LOUSHANG_APP_RECORD_ROOT) {
+      process.stderr.write("Local AppHost command is missing. Run uv sync --locked in this checkout to enable Host controls.\n");
+    }
+  }
   const webManifest = path.join(guiDir, "web", "Cargo.toml");
   if (command === "build") run(cargo, ["build", "--locked", "--manifest-path", webManifest, "--release"]);
   const args = ["exec", "--", "tauri", command];

@@ -45,9 +45,18 @@ supports `npm.cmd --prefix gui run dev:web`. Enable Web service controls by
 setting `web.manageLocal` in the BFF configuration below. Development starts the frontend
 before AppHost. Windows management runs without a console window.
 
-Linux installed packages configure the bundled management command. In a Linux
-source checkout, set `LOUSHANG_MUX` to the absolute path of the installed
-`loushang-mux` executable to expose its local service controls. AppHost also
+Linux installed packages configure the bundled management command. For Linux
+desktop development, run these commands from the checkout root:
+
+```sh
+uv sync --locked
+npm --prefix gui ci
+npm --prefix gui run dev
+```
+
+The dev launcher discovers the checkout's `.venv/bin/loushang-mux` and uses
+its managed backend. Choose **Start and connect** from the desktop. A
+`LOUSHANG_MUX` override selects a different management command. AppHost also
 supports independent administration through `loushang-mux service`.
 
 For a frontend-only deployment with a prestarted AppHost, set
