@@ -7,8 +7,22 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Generic, TypeVar, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochRuntimeLeaseV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseRecordV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
+    PackageWindowsRuntimeQuiescenceV1,
+)
+
 from ..journal import WorkerAttemptPhase, WorkerAttemptRecordV1
 from ._activation import _RetainedAttemptFields
+from ._base_codec import _BaseWireMethods
 from ._opt_in import _OptInDecisionMethods
 from ._receipts import _ReceiptRecordMethods
 
@@ -653,3 +667,181 @@ def project_windows_worker_attempt_references(
             )
         )
     return tuple(references)
+
+
+class _WindowsOrphanRuntimeReviewMethods:
+    __slots__ = ()
+    attempt_id: str
+    attempt: WindowsRecoveryAttemptV1 | None
+    receipt_record: _ReceiptRecordMethods | None
+    orphan_leases: tuple[PackageEpochRuntimeLeaseV1, ...]
+    runtime_epoch: int
+    store_root_identity: str
+    native_job_absent: bool | None
+
+    @property
+    def clean_exit_repair_candidate(self) -> bool:
+        """Only a fully settled, now-orphaned runtime can reach lease repair."""
+
+        return (
+            self.attempt is not None
+            and self.attempt.attempt_id == self.attempt_id
+            and self.attempt.clean_exit_settled
+            and self.missing_proofs == ()
+        )
+
+    @property
+    def missing_proofs(self) -> tuple[str, ...]:
+        missing: list[str] = []
+        attempt = self.attempt
+        receipt = self.receipt_record
+        if attempt is None:
+            missing.append("attempt_history_absent")
+        elif attempt.launch_receipt_fingerprint is None:
+            missing.append("launch_intent_absent")
+        if receipt is None:
+            missing.append("activation_receipt_absent")
+        elif (
+            attempt is None
+            or attempt.launch_receipt_fingerprint != receipt.receipt.fingerprint
+            or (
+                attempt.native_receipt_fingerprint is not None
+                and attempt.native_receipt_fingerprint != receipt.receipt.fingerprint
+            )
+        ):
+            missing.append("cross_owner_receipt_mismatch")
+        if len(self.orphan_leases) != 1:
+            missing.append(
+                "orphan_lease_absent"
+                if not self.orphan_leases
+                else "orphan_lease_ambiguous"
+            )
+        elif (
+            receipt is None
+            or self.orphan_leases[0].runtime_id
+            != receipt.receipt.policy.product_runtime_id
+            or self.orphan_leases[0].runtime_epoch != self.runtime_epoch
+            or self.orphan_leases[0].store_root_identity != self.store_root_identity
+        ):
+            missing.append("orphan_lease_identity_mismatch")
+        if attempt is not None and attempt.native_job_name is not None:
+            if self.native_job_absent is False:
+                missing.append("native_job_present")
+            elif self.native_job_absent is not True:
+                missing.append("native_job_absence_unverified")
+        else:
+            missing.append("native_job_absence_unverified")
+        return tuple(missing)
+
+
+def windows_worker_crash_cleanup_history_matches(
+    review: _WindowsOrphanRuntimeReviewMethods,
+) -> bool:
+    attempt = review.attempt
+    expected_debts = (
+        ("payload_retained", "launch_intent_retained", "native_unsettled"),
+        (
+            "payload_retained",
+            "launch_intent_retained",
+            "native_unsettled",
+            "supervisor_unsettled",
+        ),
+        (
+            "payload_retained",
+            "launch_intent_retained",
+            "native_unsettled",
+            "supervisor_history_missing",
+        ),
+    )
+    return (
+        not review.missing_proofs
+        and attempt is not None
+        and review.receipt_record is not None
+        and attempt.observed_debts in expected_debts
+        and _valid_crash_effect_history(attempt, settled=False)
+        and attempt.payload_directory_identity is not None
+        and attempt.native_revision is not None
+    )
+
+
+def windows_worker_crash_settled_history_matches(
+    review: _WindowsOrphanRuntimeReviewMethods,
+    *,
+    repaired_lease: bool = False,
+) -> bool:
+    attempt = review.attempt
+    return (
+        review.missing_proofs == (("orphan_lease_absent",) if repaired_lease else ())
+        and attempt is not None
+        and review.receipt_record is not None
+        and attempt.observed_debts
+        in (
+            ("payload_retained", "launch_intent_retained"),
+            (
+                "payload_retained",
+                "launch_intent_retained",
+                "supervisor_history_missing",
+            ),
+        )
+        and (
+            (attempt.supervisor_phase is None)
+            or (
+                attempt.supervisor_phase == "process_settled"
+                and attempt.supervisor_process_settled is True
+            )
+        )
+        and _valid_crash_effect_history(attempt, settled=True)
+        and attempt.payload_directory_identity is not None
+        and attempt.native_revision is not None
+    )
+
+
+def require_windows_worker_repair_record(
+    quiescence: PackageWindowsRuntimeQuiescenceV1,
+    *,
+    runtime_id: str,
+    expected: tuple[str, int] | None = None,
+) -> PackageEpochRuntimeLeaseRecordV1:
+    repaired = tuple(
+        record
+        for record in quiescence.repaired_runtime_records
+        if record.lease.runtime_id == runtime_id
+    )
+    if len(repaired) != 1:
+        raise ValueError("Windows Worker crash lease repair is unverified")
+    [record] = repaired
+    if record.record_revision >= quiescence.owner_revision or (
+        expected is not None
+        and (record.lease.lease_id, record.record_revision) != expected
+    ):
+        raise ValueError("Windows Worker crash lease repair revision changed")
+    return record
+
+
+class _WindowsStageRetirementReceiptMethods(_BaseWireMethods):
+    __slots__ = ()
+    attempt_id: str
+    review_fingerprint: str
+    stage_identity: tuple[int, int]
+    receipt_version: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.attempt_id) is not str
+            or _WINDOWS_RETIREMENT_ATTEMPT.fullmatch(self.attempt_id) is None
+            or type(self.review_fingerprint) is not str
+            or _FINGERPRINT.fullmatch(self.review_fingerprint) is None
+            or type(self.stage_identity) is not tuple
+            or len(self.stage_identity) != 2
+            or any(type(value) is not int or value < 0 for value in self.stage_identity)
+            or self.stage_identity[1] == 0
+            or type(self.receipt_version) is not int
+            or self.receipt_version != 1
+        ):
+            raise ValueError("Windows Worker stage retirement receipt is invalid")
+
+    def to_bytes(self) -> bytes:
+        return canonical_json_bytes(self._wire_schema.encode(self))
+
+
+_WINDOWS_RETIREMENT_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")

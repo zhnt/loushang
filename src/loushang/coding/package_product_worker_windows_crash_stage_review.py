@@ -5,34 +5,26 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import cast
 
+from loushang.harness.package_product._windows_worker_recovery import (
+    review_windows_product_worker_crash_stage_under_guard,
+)
 from loushang.harness.package_product._worker_windows_attempt import (
     review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
-    PackageEpochRuntimeLeaseRecordV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
-from loushang.harness.worker._native_profile_bridge import (
-    _rebuild_windows_lpac_cleanup_spec,
-)
-from loushang.harness.worker.history._windows_semantic_contracts import (
-    launch_matches_intent,
+from loushang.harness.worker.history._windows_recovery import (
+    require_windows_worker_repair_record,
 )
 from loushang.harness.worker.history._windows_stage_review_wire import (
     _WindowsCrashStageReviewMethods,
 )
-from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 
-from .package_product_worker_windows_crash_cleanup_review import (
-    _crash_settled_history_matches,
-)
 from .package_product_worker_windows_launch_intent import _read_intent_under_gc_guard
 from .package_product_worker_windows_orphan_review import _review_under_gc_guard
 from .package_product_worker_windows_provisioning import (
@@ -102,94 +94,19 @@ def _review_crash_stage_under_gc_guard(
     attempt_id: str,
     quiescence: PackageWindowsRuntimeQuiescenceV1,
 ) -> CodingWindowsWorkerCrashStageReviewV1:
-    product.assert_root_gc_authority_current()
-    joined = _review_under_gc_guard(product, attempt_id=attempt_id, orphans=())
-    if not _crash_settled_history_matches(joined, repaired_lease=True):
-        raise ValueError("Windows Worker crash stage history is unverified")
-    attempt = joined.attempt
-    receipt = joined.receipt_record
-    assert attempt is not None and receipt is not None
-    assert attempt.native_revision is not None
-    assert attempt.payload_directory_identity is not None
-    repair_record = _require_repair_record(
-        quiescence, runtime_id=receipt.receipt.policy.product_runtime_id
-    )
-    intent = _read_intent_under_gc_guard(product, attempt_id)
-    if intent is None or not launch_matches_intent(attempt, intent):
-        raise ValueError("Windows Worker crash stage launch intent changed")
-    native = tuple(
-        item
-        for item in inspect_coding_windows_product_worker_provisioning_attempts(product)
-        if item.attempt_id == attempt_id
-    )
-    if len(native) != 1:
-        raise ValueError("Windows Worker crash stage native history is unverified")
-    [provisioned] = native
-    identity = provisioned.identity
-    if (
-        provisioned.phase != "settled"
-        or provisioned.state_revision != attempt.native_revision
-        or provisioned.phase_history != attempt.native_phase_history
-        or provisioned.witness_present_history != attempt.native_witness_present_history
-        or identity["workerRequestFingerprint"] != intent.request_fingerprint
-        or identity["receiptFingerprint"] != receipt.receipt.fingerprint
-        or identity["jobObjectName"] != attempt.native_job_name
-        or identity["nativeProfileId"] != receipt.receipt.policy.native_profile_id
-        or identity["nativeProfileCatalogRevision"]
-        != receipt.receipt.policy.native_profile_catalog_revision
-    ):
-        raise ValueError("Windows Worker crash stage native identity changed")
-    _rebuild_windows_lpac_cleanup_spec(
-        identity=identity,
-        runtime_root=product.state_root / f"worker-payload-{attempt_id}",
-        platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
-        owner_private_ancestors=True,
-    )
-    captured = _capture_stage_bytes(
+    return review_windows_product_worker_crash_stage_under_guard(
         product,
         attempt_id=attempt_id,
-        expected_stage=attempt.payload_directory_identity,
-        intent=intent,
-    )
-    product.assert_root_gc_authority_current()
-    return CodingWindowsWorkerCrashStageReviewV1(
-        attempt_id=attempt_id,
-        intent_fingerprint=intent.fingerprint,
-        lease_owner_revision=quiescence.owner_revision,
-        repaired_lease_id=repair_record.lease.lease_id,
-        lease_repair_revision=repair_record.record_revision,
-        native_revision=attempt.native_revision,
-        supervisor_revision=attempt.supervisor_revision,
-        native_spec_fingerprint=cast(str, identity["specFingerprint"]),
-        entrypoint=captured.entrypoint,
-        stage_identity=captured.stage_identity,
-        directory_identities=captured.directory_identities,
-        marker_identity=captured.marker_identity,
-        executable_identity=captured.executable_identity,
-        executable_digest=captured.executable_digest,
+        quiescence=quiescence,
+        record_type=CodingWindowsWorkerCrashStageReviewV1,
+        review_runtime=_review_under_gc_guard,
+        inspect_native=inspect_coding_windows_product_worker_provisioning_attempts,
+        read_intent=_read_intent_under_gc_guard,
+        capture_stage=_capture_stage_bytes,
     )
 
 
-def _require_repair_record(
-    quiescence: PackageWindowsRuntimeQuiescenceV1,
-    *,
-    runtime_id: str,
-    expected: tuple[str, int] | None = None,
-) -> PackageEpochRuntimeLeaseRecordV1:
-    repaired = tuple(
-        record
-        for record in quiescence.repaired_runtime_records
-        if record.lease.runtime_id == runtime_id
-    )
-    if len(repaired) != 1:
-        raise ValueError("Windows Worker crash lease repair is unverified")
-    [record] = repaired
-    if record.record_revision >= quiescence.owner_revision or (
-        expected is not None
-        and (record.lease.lease_id, record.record_revision) != expected
-    ):
-        raise ValueError("Windows Worker crash lease repair revision changed")
-    return record
+_require_repair_record = require_windows_worker_repair_record
 
 
 __all__ = [

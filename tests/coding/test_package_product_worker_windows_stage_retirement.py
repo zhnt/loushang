@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import loushang.harness.package_product._windows_worker_retirement as retirement_owner
 from loushang.coding import (
     package_product_worker_windows_stage_retirement as retirement,
 )
@@ -216,12 +217,22 @@ def test_windows_worker_retired_history_requires_all_owner_fingerprints(
         launch_identity_fingerprint=intent.identity_fingerprint,
         launch_stage_identity=intent.stage_identity,
     )
-    monkeypatch.setattr(retirement, "_read_review", lambda *_: review)
-    monkeypatch.setattr(retirement, "_read_receipt", lambda *_: receipt)
-    monkeypatch.setattr(retirement, "_read_root_delete_intent", lambda *_: receipt)
-    monkeypatch.setattr(retirement, "_read_intent_under_gc_guard", lambda *_: intent)
+    monkeypatch.setattr(type(retirement._records), "read_start", lambda *_: review)
+    monkeypatch.setattr(type(retirement._records), "read_receipt", lambda *_: receipt)
     monkeypatch.setattr(
-        retirement, "_partial_retirement_artifact_present", lambda *_: False
+        type(retirement._records), "read_root_intent", lambda *_: receipt
+    )
+    monkeypatch.setattr(
+        retirement,
+        "_require_completed_retirement_under_gc_guard",
+        replace(
+            retirement._operations, read_intent=lambda *_: intent
+        ).require_completed,
+    )
+    monkeypatch.setattr(
+        retirement_owner,
+        "has_other_windows_worker_retirement_artifact",
+        lambda *_: False,
     )
     retirement._require_completed_retirement_under_gc_guard(None, attempt)  # type: ignore[arg-type]
     with pytest.raises(
@@ -231,6 +242,6 @@ def test_windows_worker_retired_history_requires_all_owner_fingerprints(
         retirement._require_completed_retirement_under_gc_guard(  # type: ignore[arg-type]
             None, replace(attempt, native_receipt_fingerprint="0" * 64)
         )
-    monkeypatch.setattr(retirement, "_read_root_delete_intent", lambda *_: None)
+    monkeypatch.setattr(type(retirement._records), "read_root_intent", lambda *_: None)
     with pytest.raises(CodingWindowsWorkerStageRetirementError):
         retirement._require_completed_retirement_under_gc_guard(None, attempt)  # type: ignore[arg-type]

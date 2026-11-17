@@ -48,8 +48,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package_product_worker_windows_stage_retirement.py": {
         'loushang.harness.worker.history._base_codec',
-        'loushang.harness.worker.history._windows_sources',
-        'loushang.harness.worker.payload._windows_stage_retirement',
+        'loushang.harness.worker.history._windows_recovery',
     },
     CODING_ROOT / "package_product_worker_windows_partial_stage_retirement.py": {
         "loushang.harness.worker.payload._windows_stage_retirement"
@@ -243,15 +242,17 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_windows_supervisor_journal.py": {
         "loushang.harness.worker.history._windows_product_journals",
     },
+    CODING_ROOT / "package_product_worker_windows_orphan_review.py": {
+        "loushang.harness.worker.history._windows_recovery",
+    },
     CODING_ROOT / "package_product_worker_windows_crash_cleanup_review.py": {
-        'loushang.harness.worker._native_profile_bridge',
         'loushang.harness.worker.history._windows_recovery',
     },
     CODING_ROOT / "package_product_worker_windows_crash_lease_repair.py": {
         "loushang.harness.worker._native_profile_bridge",
     },
     CODING_ROOT / "package_product_worker_windows_crash_stage_review.py": {
-        'loushang.harness.worker._native_profile_bridge',
+        'loushang.harness.worker.history._windows_recovery',
         'loushang.harness.worker.history._windows_stage_review_wire',
     },
     CODING_ROOT / "package_product_worker_windows_crash_supervisor_settlement.py": {

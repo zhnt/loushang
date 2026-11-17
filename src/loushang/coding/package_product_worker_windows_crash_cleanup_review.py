@@ -9,19 +9,20 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import cast
 
+from loushang.harness.package_product._windows_worker_recovery import (
+    review_windows_product_worker_crash_cleanup,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
-)
-from loushang.harness.worker._native_profile_bridge import (
-    _rebuild_windows_lpac_cleanup_spec,
 )
 from loushang.harness.worker.history._windows_recovery import (
     _valid_crash_effect_history as _worker_crash_effect_history,
 )
-from loushang.hosting import observe_windows_worker_job_absent
-from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
+from loushang.harness.worker.history._windows_recovery import (
+    windows_worker_crash_cleanup_history_matches,
+    windows_worker_crash_settled_history_matches,
+)
 
 from .package_product_worker_windows_orphan_review import (
     CodingWindowsWorkerOrphanRuntimeReviewV1,
@@ -75,31 +76,7 @@ def _valid_crash_effect_history(
 def _crash_cleanup_history_matches(
     review: CodingWindowsWorkerOrphanRuntimeReviewV1,
 ) -> bool:
-    attempt = review.attempt
-    expected_debts = (
-        ("payload_retained", "launch_intent_retained", "native_unsettled"),
-        (
-            "payload_retained",
-            "launch_intent_retained",
-            "native_unsettled",
-            "supervisor_unsettled",
-        ),
-        (
-            "payload_retained",
-            "launch_intent_retained",
-            "native_unsettled",
-            "supervisor_history_missing",
-        ),
-    )
-    return (
-        not review.missing_proofs
-        and attempt is not None
-        and review.receipt_record is not None
-        and attempt.observed_debts in expected_debts
-        and _valid_crash_cleanup_history(attempt)
-        and attempt.payload_directory_identity is not None
-        and attempt.native_revision is not None
-    )
+    return windows_worker_crash_cleanup_history_matches(review)
 
 
 def _crash_settled_history_matches(
@@ -107,30 +84,8 @@ def _crash_settled_history_matches(
     *,
     repaired_lease: bool = False,
 ) -> bool:
-    attempt = review.attempt
-    return (
-        review.missing_proofs == (("orphan_lease_absent",) if repaired_lease else ())
-        and attempt is not None
-        and review.receipt_record is not None
-        and attempt.observed_debts
-        in (
-            ("payload_retained", "launch_intent_retained"),
-            (
-                "payload_retained",
-                "launch_intent_retained",
-                "supervisor_history_missing",
-            ),
-        )
-        and (
-            (attempt.supervisor_phase is None)
-            or (
-                attempt.supervisor_phase == "process_settled"
-                and attempt.supervisor_process_settled is True
-            )
-        )
-        and _valid_crash_native_settlement_history(attempt)
-        and attempt.payload_directory_identity is not None
-        and attempt.native_revision is not None
+    return windows_worker_crash_settled_history_matches(
+        review, repaired_lease=repaired_lease
     )
 
 
@@ -147,96 +102,16 @@ def review_coding_windows_product_worker_crash_cleanup(
         or _ATTEMPT.fullmatch(attempt_id) is None
     ):
         raise ValueError("Windows Worker crash cleanup review requires a Product")
-    registry = product.epoch_runtime.registry
-    orphans = registry.review_orphans(store_id=registry.store_id)
-    with product.gc_gate.read_guard():
-        review = _review_under_gc_guard(product, attempt_id=attempt_id, orphans=orphans)
-        attempt = review.attempt
-        receipt = review.receipt_record
-        if not _crash_cleanup_history_matches(review):
-            raise CodingWindowsWorkerCrashCleanupReviewError(
-                "coding_worker_crash_cleanup_history_unverified"
-            )
-        assert attempt is not None and receipt is not None
-        assert attempt.native_revision is not None
-        assert attempt.payload_directory_identity is not None
-        native = tuple(
-            item
-            for item in inspect_coding_windows_product_worker_provisioning_attempts(
-                product
-            )
-            if item.attempt_id == attempt_id
-        )
-        if len(native) != 1:
-            raise CodingWindowsWorkerCrashCleanupReviewError(
-                "coding_worker_crash_cleanup_native_identity_unverified"
-            )
-        [provisioned] = native
-        identity = provisioned.identity
-        if (
-            provisioned.phase != attempt.native_phase
-            or provisioned.state_revision != attempt.native_revision
-            or provisioned.phase_history != attempt.native_phase_history
-            or provisioned.witness_present_history
-            != attempt.native_witness_present_history
-            or identity["workerRequestFingerprint"]
-            != attempt.launch_request_fingerprint
-            or identity["receiptFingerprint"] != receipt.receipt.fingerprint
-            or identity["jobObjectName"] != attempt.native_job_name
-            or identity["nativeProfileId"] != receipt.receipt.policy.native_profile_id
-            or identity["nativeProfileCatalogRevision"]
-            != receipt.receipt.policy.native_profile_catalog_revision
-        ):
-            raise CodingWindowsWorkerCrashCleanupReviewError(
-                "coding_worker_crash_cleanup_native_identity_unverified"
-            )
-        stage = product.state_root / f"worker-payload-{attempt_id}"
-        _rebuild_windows_lpac_cleanup_spec(
-            identity=identity,
-            runtime_root=stage,
-            platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
-            owner_private_ancestors=True,
-        )
-        product.assert_root_gc_authority_current()
-        if (
-            observe_windows_worker_job_absent(cast(str, identity["jobObjectName"]))
-            is not True
-        ):
-            raise CodingWindowsWorkerCrashCleanupReviewError(
-                "coding_worker_crash_cleanup_job_unverified"
-            )
-        current = next(
-            (
-                item
-                for item in _inspect_windows_worker_recovery_inventory_under_gc_guard(
-                    product
-                )
-                if item.attempt_id == attempt_id
-            ),
-            None,
-        )
-        if current != attempt:
-            raise CodingWindowsWorkerCrashCleanupReviewError(
-                "coding_worker_crash_cleanup_history_changed"
-            )
-        current_native = tuple(
-            item
-            for item in inspect_coding_windows_product_worker_provisioning_attempts(
-                product
-            )
-            if item.attempt_id == attempt_id
-        )
-        if current_native != native:
-            raise CodingWindowsWorkerCrashCleanupReviewError(
-                "coding_worker_crash_cleanup_history_changed"
-            )
-        product.assert_root_gc_authority_current()
-        return CodingWindowsWorkerCrashCleanupReviewV1(
-            orphan_review=review,
-            native_revision=attempt.native_revision,
-            native_spec_fingerprint=cast(str, identity["specFingerprint"]),
-            payload_directory_identity=attempt.payload_directory_identity,
-        )
+    return review_windows_product_worker_crash_cleanup(
+        product,
+        attempt_id=attempt_id,
+        record_type=CodingWindowsWorkerCrashCleanupReviewV1,
+        review_runtime=_review_under_gc_guard,
+        inspect_native=inspect_coding_windows_product_worker_provisioning_attempts,
+        inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
+        error_type=CodingWindowsWorkerCrashCleanupReviewError,
+        error_prefix="coding_worker_crash_cleanup",
+    )
 
 
 __all__ = [

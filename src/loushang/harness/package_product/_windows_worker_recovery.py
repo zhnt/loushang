@@ -8,7 +8,8 @@ read operation acquires repair or deletion authority.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Protocol, TypeVar, cast
 
@@ -18,11 +19,17 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationSnapshotV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochRuntimeLeaseV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     windows_listdir_at,
+)
+from loushang.harness.worker._native_profile_bridge import (
+    _rebuild_windows_lpac_cleanup_spec,
 )
 from loushang.harness.worker._windows_provisioning_journal import (
     WindowsWorkerProvisioningAttemptV1,
@@ -45,12 +52,23 @@ from loushang.harness.worker.history._windows_product_journals import (
 from loushang.harness.worker.history._windows_recovery import (
     WindowsRecoveryAttemptV1,
     _valid_crash_effect_history,
+    _WindowsOrphanRuntimeReviewMethods,
     project_windows_worker_attempt_references,
     require_windows_worker_c5_gc_history,
+)
+from loushang.harness.worker.history._windows_recovery import (
+    require_windows_worker_repair_record as _require_repair_record,
+)
+from loushang.harness.worker.history._windows_recovery import (
+    windows_worker_crash_cleanup_history_matches as _crash_cleanup_history_matches,
+)
+from loushang.harness.worker.history._windows_recovery import (
+    windows_worker_crash_settled_history_matches as _crash_settled_history_matches,
 )
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _LaunchIntentFacts,
     _RecoveryFacts,
+    launch_matches_intent,
 )
 from loushang.harness.worker.history._windows_sources import (
     WINDOWS_WORKER_BASE_STAGE_NAMES,
@@ -58,9 +76,12 @@ from loushang.harness.worker.history._windows_sources import (
 )
 from loushang.harness.worker.history._windows_stage_review_wire import (
     _WindowsCompleteStageReviewMethods,
+    _WindowsCrashStageReviewMethods,
     _WindowsPartialStageReviewMethods,
     _WindowsReservedStageReviewMethods,
 )
+from loushang.hosting import observe_windows_worker_job_absent
+from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 
 from ._windows_worker_history import (
     ObserveWindowsWorkerBackup,
@@ -69,6 +90,7 @@ from ._windows_worker_history import (
 from ._worker_windows_attempt import (
     CapturedWindowsWorkerStage,
     _ReceiptJournalFactory,
+    _RuntimeReview,
     review_windows_product_worker_offline,
 )
 
@@ -605,3 +627,216 @@ def review_windows_product_worker_no_effect_under_guard(
     )
     product.assert_root_gc_authority_current()
     return review
+
+
+_OrphanReviewT = TypeVar("_OrphanReviewT", bound=_WindowsOrphanRuntimeReviewMethods)
+_CrashReviewT = TypeVar("_CrashReviewT", bound=_WindowsCrashStageReviewMethods)
+_CleanupReviewT = TypeVar("_CleanupReviewT")
+
+
+def read_windows_product_worker_orphan_runtime(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    review_runtime: _RuntimeReview[_OrphanReviewT],
+) -> _OrphanReviewT:
+    registry = product.epoch_runtime.registry
+    orphans = registry.review_orphans(store_id=registry.store_id)
+    with product.gc_gate.read_guard():
+        return review_runtime(product, attempt_id=attempt_id, orphans=orphans)
+
+
+def repair_windows_product_worker_clean_exit_orphan(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    expected_review: _WindowsOrphanRuntimeReviewMethods,
+    review_runtime: _RuntimeReview[_WindowsOrphanRuntimeReviewMethods],
+) -> PackageEpochRuntimeLeaseV1:
+    [expected_lease] = expected_review.orphan_leases
+    registry = product.epoch_runtime.registry
+
+    @contextmanager
+    def validate_while_locked(
+        lease: PackageEpochRuntimeLeaseV1,
+    ) -> Iterator[None]:
+        if lease != expected_lease:
+            raise ValueError("Windows Worker orphan lease changed")
+        with product.gc_gate.guard(require_write=True):
+            current = review_runtime(
+                product, attempt_id=expected_review.attempt_id, orphans=(lease,)
+            )
+            if current != expected_review:
+                raise ValueError("Windows Worker clean-exit review is stale")
+            if not current.clean_exit_repair_candidate:
+                raise ValueError("Windows Worker clean-exit repair is unproven")
+            yield
+            product.assert_root_gc_authority_current()
+
+    registry.repair_orphan(
+        expected_lease.lease_id, validation_guard=validate_while_locked
+    )
+    return expected_lease
+
+
+def review_windows_product_worker_crash_cleanup(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    record_type: Callable[..., _CleanupReviewT],
+    review_runtime: _RuntimeReview[_WindowsOrphanRuntimeReviewMethods],
+    inspect_native: Callable[
+        [WindowsLocalWheelProductSessionOwner],
+        tuple[WindowsWorkerProvisioningAttemptV1, ...],
+    ],
+    inspect_inventory: ReadWindowsRecoveryInventory[WindowsRecoveryAttemptV1],
+    error_type: type[RuntimeError],
+    error_prefix: str,
+) -> _CleanupReviewT:
+    registry = product.epoch_runtime.registry
+    orphans = registry.review_orphans(store_id=registry.store_id)
+    with product.gc_gate.read_guard():
+        review = review_runtime(product, attempt_id=attempt_id, orphans=orphans)
+        attempt = review.attempt
+        receipt = review.receipt_record
+        if not _crash_cleanup_history_matches(review):
+            raise error_type(error_prefix + "_history_unverified")
+        assert attempt is not None and receipt is not None
+        assert attempt.native_revision is not None
+        assert attempt.payload_directory_identity is not None
+        native = tuple(
+            item for item in inspect_native(product) if item.attempt_id == attempt_id
+        )
+        if len(native) != 1:
+            raise error_type(error_prefix + "_native_identity_unverified")
+        [provisioned] = native
+        identity = provisioned.identity
+        if (
+            provisioned.phase != attempt.native_phase
+            or provisioned.state_revision != attempt.native_revision
+            or provisioned.phase_history != attempt.native_phase_history
+            or provisioned.witness_present_history
+            != attempt.native_witness_present_history
+            or identity["workerRequestFingerprint"]
+            != attempt.launch_request_fingerprint
+            or identity["receiptFingerprint"] != receipt.receipt.fingerprint
+            or identity["jobObjectName"] != attempt.native_job_name
+            or identity["nativeProfileId"] != receipt.receipt.policy.native_profile_id
+            or identity["nativeProfileCatalogRevision"]
+            != receipt.receipt.policy.native_profile_catalog_revision
+        ):
+            raise error_type(error_prefix + "_native_identity_unverified")
+        stage = product.state_root / f"worker-payload-{attempt_id}"
+        _rebuild_windows_lpac_cleanup_spec(
+            identity=identity,
+            runtime_root=stage,
+            platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
+            owner_private_ancestors=True,
+        )
+        product.assert_root_gc_authority_current()
+        if (
+            observe_windows_worker_job_absent(cast(str, identity["jobObjectName"]))
+            is not True
+        ):
+            raise error_type(error_prefix + "_job_unverified")
+        current = next(
+            (
+                item
+                for item in inspect_inventory(product)
+                if item.attempt_id == attempt_id
+            ),
+            None,
+        )
+        if current != attempt:
+            raise error_type(error_prefix + "_history_changed")
+        current_native = tuple(
+            item for item in inspect_native(product) if item.attempt_id == attempt_id
+        )
+        if current_native != native:
+            raise error_type(error_prefix + "_history_changed")
+        product.assert_root_gc_authority_current()
+        return record_type(
+            orphan_review=review,
+            native_revision=attempt.native_revision,
+            native_spec_fingerprint=cast(str, identity["specFingerprint"]),
+            payload_directory_identity=attempt.payload_directory_identity,
+        )
+
+
+def review_windows_product_worker_crash_stage_under_guard(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    quiescence: PackageWindowsRuntimeQuiescenceV1,
+    record_type: type[_CrashReviewT],
+    review_runtime: _RuntimeReview[_WindowsOrphanRuntimeReviewMethods],
+    inspect_native: Callable[
+        [WindowsLocalWheelProductSessionOwner],
+        tuple[WindowsWorkerProvisioningAttemptV1, ...],
+    ],
+    read_intent: Callable[[WindowsLocalWheelProductSessionOwner, str], _IntentT | None],
+    capture_stage: _CaptureCompleteStage[_IntentT],
+) -> _CrashReviewT:
+    product.assert_root_gc_authority_current()
+    joined = review_runtime(product, attempt_id=attempt_id, orphans=())
+    if not _crash_settled_history_matches(joined, repaired_lease=True):
+        raise ValueError("Windows Worker crash stage history is unverified")
+    attempt = joined.attempt
+    receipt = joined.receipt_record
+    assert attempt is not None and receipt is not None
+    assert attempt.native_revision is not None
+    assert attempt.payload_directory_identity is not None
+    repair_record = _require_repair_record(
+        quiescence, runtime_id=receipt.receipt.policy.product_runtime_id
+    )
+    intent = read_intent(product, attempt_id)
+    if intent is None or not launch_matches_intent(attempt, intent):
+        raise ValueError("Windows Worker crash stage launch intent changed")
+    native = tuple(
+        item for item in inspect_native(product) if item.attempt_id == attempt_id
+    )
+    if len(native) != 1:
+        raise ValueError("Windows Worker crash stage native history is unverified")
+    [provisioned] = native
+    identity = provisioned.identity
+    if (
+        provisioned.phase != "settled"
+        or provisioned.state_revision != attempt.native_revision
+        or provisioned.phase_history != attempt.native_phase_history
+        or provisioned.witness_present_history != attempt.native_witness_present_history
+        or identity["workerRequestFingerprint"] != intent.request_fingerprint
+        or identity["receiptFingerprint"] != receipt.receipt.fingerprint
+        or identity["jobObjectName"] != attempt.native_job_name
+        or identity["nativeProfileId"] != receipt.receipt.policy.native_profile_id
+        or identity["nativeProfileCatalogRevision"]
+        != receipt.receipt.policy.native_profile_catalog_revision
+    ):
+        raise ValueError("Windows Worker crash stage native identity changed")
+    _rebuild_windows_lpac_cleanup_spec(
+        identity=identity,
+        runtime_root=product.state_root / f"worker-payload-{attempt_id}",
+        platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
+        owner_private_ancestors=True,
+    )
+    captured = capture_stage(
+        product,
+        attempt_id=attempt_id,
+        expected_stage=attempt.payload_directory_identity,
+        intent=intent,
+    )
+    product.assert_root_gc_authority_current()
+    return cast(Callable[..., _CrashReviewT], record_type)(
+        attempt_id=attempt_id,
+        intent_fingerprint=intent.fingerprint,
+        lease_owner_revision=quiescence.owner_revision,
+        repaired_lease_id=repair_record.lease.lease_id,
+        lease_repair_revision=repair_record.record_revision,
+        native_revision=attempt.native_revision,
+        supervisor_revision=attempt.supervisor_revision,
+        native_spec_fingerprint=cast(str, identity["specFingerprint"]),
+        entrypoint=captured.entrypoint,
+        stage_identity=captured.stage_identity,
+        directory_identities=captured.directory_identities,
+        marker_identity=captured.marker_identity,
+        executable_identity=captured.executable_identity,
+        executable_digest=captured.executable_digest,
+    )

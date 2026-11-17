@@ -278,6 +278,16 @@ class NativeModel:
             write_windows_private_receipt=self.receipt_write,
         )
         modules = [full, partial, unlaunched, crash, review_module, payload]
+        modules.append(
+            importlib.import_module(
+                "loushang.harness.package_product._windows_worker_retirement"
+            )
+        )
+        patch.setattr(
+            type(full._receipt_io),
+            "write_private_receipt",
+            lambda _io, *args, **kwargs: self.receipt_write(*args, **kwargs),
+        )
         for name in ("_windows_stage_io", "_windows_stage_retirement"):
             module_name = "loushang.harness.worker.payload." + name
             try:
