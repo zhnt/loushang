@@ -447,8 +447,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 @media (prefers-reduced-motion: no-preference) {
   .project-chats { transition: grid-template-rows 150ms ease-out; }
 }
-.project-create-workspace { padding: 2px 5px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 12px; }
-.project-create-workspace:hover:not(:disabled) { color: var(--ink); }
 .project-path { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
 .project-path input { flex-basis: 100%; min-width: 0; width: 100%; }
 .project-error { padding: 0 8px; }

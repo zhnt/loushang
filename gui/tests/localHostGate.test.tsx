@@ -250,43 +250,18 @@ describe("local managed Host presentation", () => {
     expect(countActions("open")).toBe(0);
   });
 
-  it("keeps the selected Session and preserves the path when creating a Workspace fails", async () => {
-    let finish: (result: unknown) => void = () => {};
-    installMock(async (command, args) => {
-      if (command === "environment") return { supported: true, workspace: "" };
-      if (command === "workspace" && args.action === "create") {
-        if (args.path === "/previous") throw "already_exists";
-        return new Promise((resolve) => { finish = resolve; });
-      }
-      return { state: "running", errorCode: null };
-    });
+  it("hides Workspace creation while keeping existing projects and Add project available", async () => {
+    installMock(async (command) => command === "environment"
+      ? { supported: true, workspace: "" }
+      : { state: "running", errorCode: null });
     render(<LocalHostGate />);
     const projects = within(screen.getByRole("region", { name: "Projects" }));
-    const current = await projects.findByRole("button", { name: "Project B chat" });
-    fireEvent.click(current);
-    const createWorkspace = projects.getByRole("button", { name: "New Workspace" });
-    await waitFor(() => expect(createWorkspace).toBeEnabled());
-    fireEvent.click(createWorkspace);
-    const path = projects.getByRole("textbox", { name: "Absolute path on the Host" });
-    const submit = projects.getByRole("button", { name: "Create" });
-    fireEvent.change(path, { target: { value: "/previous" } });
-    fireEvent.click(submit);
-    expect(await projects.findByRole("alert")).toHaveTextContent("That path already exists.");
-    expect(path).toHaveValue("/previous");
-
-    fireEvent.change(path, { target: { value: "/new-project" } });
-    const form = submit.closest("form")!;
-    fireEvent.submit(form);
-    fireEvent.submit(form);
-    expect(countActions("create")).toBe(2);
-    expect(submit).toBeDisabled();
-    await act(async () => finish({ workspaces: [{ path: "/new-project" }] }));
-    expect(await projects.findByRole("button", { name: "new-project" })).toBeInTheDocument();
-    expect(path).not.toBeInTheDocument();
-    expect(current).toHaveAttribute("aria-current", "true");
-    expect(native.create).toHaveBeenLastCalledWith("/previous", "local");
-    expect(countActions("create-chat")).toBe(0);
-    expect(countActions("open")).toBe(0);
+    const add = projects.getByRole("button", { name: "Add project" });
+    await waitFor(() => expect(add).toBeEnabled());
+    expect(projects.getByRole("button", { name: "Project B chat" })).toBeVisible();
+    expect(projects.queryByRole("button", { name: "New Workspace" })).not.toBeInTheDocument();
+    expect(projects.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(countActions("create")).toBe(0);
   });
 
   it("shows a picker failure without opening a manual path field for the local desktop", async () => {

@@ -492,20 +492,6 @@ export default interface Resources {
       "missing": "{{capability}} capability",
       "workspace": "Workspace details"
     },
-    "createWorkspace": {
-      "errors": {
-        "already_exists": "That path already exists. Use Add project to register an existing directory.",
-        "invalid_request": "Enter a valid absolute directory path on the Host.",
-        "not_found": "The parent directory does not exist on the Host.",
-        "operation_unavailable": "The Host could not create the directory.",
-        "permission_denied": "The Host does not have permission to create this directory.",
-        "refresh_failed": "The Workspace was created. Refresh the Host status to update the project list.",
-        "unknown": "The result is unknown. Check the project list or use Add project if the directory exists.",
-        "workspace_registration_failed": "The directory was created. Registration could not be confirmed. Use Add project to recover it."
-      },
-      "path": "Absolute path on the Host",
-      "submit": "Create"
-    },
     "environment": {
       "agentsLink": "Subagents →",
       "application": "Application",
@@ -585,7 +571,6 @@ export default interface Resources {
     "sidebar": {
       "addProject": "Add project",
       "chats": "Chats",
-      "createWorkspace": "New Workspace",
       "creating": "Creating…",
       "fixtureBanner": "Fixture data · no backend",
       "live": "Live · AppHost",

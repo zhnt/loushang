@@ -15,7 +15,6 @@
     "fixtureBanner": "测试数据 · 无后端",
     "liveBanner": "在线 AppHost · 受控",
     "projects": "项目",
-    "createWorkspace": "新建 Workspace",
     "addProject": "添加项目",
     "newProjectChat": "在 {{project}} 中新建会话",
     "chats": "会话",
@@ -29,20 +28,6 @@
     "unread": "未读更新",
     "stale": "数据已过期 · 此前为{{status}}",
     "sessionLabel": "{{title}} · {{status}}"
-  },
-  "createWorkspace": {
-    "path": "Host 上的完整绝对路径",
-    "submit": "创建",
-    "errors": {
-      "invalid_request": "请输入 Host 上有效的绝对目录路径。",
-      "not_found": "Host 上的父目录不存在。",
-      "already_exists": "目标路径已存在。已有目录可通过「添加项目」登记。",
-      "permission_denied": "Host 没有权限创建该目录。",
-      "workspace_registration_failed": "目录已创建，但无法确认登记结果。可通过「添加项目」恢复。",
-      "operation_unavailable": "Host 无法创建该目录。",
-      "unknown": "无法确认创建结果。请检查项目列表，若目录已存在可通过「添加项目」恢复。",
-      "refresh_failed": "Workspace 已创建。请刷新 Host 状态以更新项目列表。"
-    }
   },
   "environment": {
     "summary": "环境概览",

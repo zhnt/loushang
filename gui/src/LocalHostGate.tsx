@@ -9,7 +9,7 @@ import { useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
 import { createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
-import { TEMPORARY_WORKSPACE, workspaceCreationError, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
+import { TEMPORARY_WORKSPACE, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
 import { TrayHostDialog } from "./TrayHostDialog";
 import "./LocalHostGate.css";
 
@@ -96,27 +96,6 @@ export default function LocalHostGate() {
       setWorkspacePending(false);
     }
   }
-
-  const createWorkspace: ManagedProjectNavigation["createWorkspace"] = async (path) => {
-    if (workspaceMutation.current || folderPicker.current || pending.current || host.state !== "running" || host.errorCode) {
-      return "unknown";
-    }
-    workspaceMutation.current = true;
-    setWorkspacePending(true);
-    const epoch = ++workspaceEpoch.current;
-    let created = false;
-    try {
-      await webRequest({ operation: "workspace", action: "create", path }, connectionId.current);
-      created = true;
-      if (epoch === workspaceEpoch.current) await refreshDirectory();
-      return null;
-    } catch (error) {
-      return created ? "refresh_failed" : workspaceCreationError(error);
-    } finally {
-      workspaceMutation.current = false;
-      setWorkspacePending(false);
-    }
-  };
 
   const createChat: ManagedProjectNavigation["createChat"] = async (path, continuityId, title) => {
     const origin = connectionId.current;
@@ -382,7 +361,6 @@ export default function LocalHostGate() {
       openFolder: () => { void openFolder(); },
       closeFolder: () => setFolderInput(false),
       register: registerWorkspace,
-      createWorkspace,
       hostKey: selectedId,
       createChat,
       togglePin: (chat) => { void togglePin(chat); },
