@@ -130,23 +130,42 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   }
   await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
   await expect(body).toHaveCSS("font-size", "15px");
+  await expect(body).toHaveCSS("line-height", "25.5px");
+  await expect(body.locator("strong")).toHaveCSS("font-weight", "600");
   await expect(body.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "22px");
   await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("margin-block-start", "24px");
+  await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("border-block-end-width", "0px");
   await expect(body.getByRole("columnheader").first()).toHaveCSS("background-color", "rgb(245, 245, 244)");
   await expect(body.locator("pre")).toHaveCSS("font-size", "13.5px");
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await body.getByRole("button", { name: "Copy code" }).click();
   await expect(body.getByText("Copied", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await body.locator("pre").textContent());
-  await reading.getByRole("button", { name: "Copy reply" }).click();
+  const toolbar = reading.locator(".reply-actions");
+  const copyReply = toolbar.getByRole("button", { name: "Copy reply" });
+  await input.focus();
+  await composer.hover();
+  await expect(toolbar).toHaveCSS("opacity", "0");
+  await body.hover();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  await copyReply.focus();
+  await composer.hover();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  await copyReply.press("Enter");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(markdown);
+  await expect(toolbar.getByRole("status")).toHaveText("Copied");
+  await expect(toolbar.getByRole("status")).toHaveText("");
   await page.evaluate(() => Object.defineProperty(navigator.clipboard, "writeText", {
     value: () => Promise.reject(new Error("Clipboard unavailable")), configurable: true,
   }));
   await body.getByRole("button", { name: "Copy code" }).click();
   await expect(body.getByRole("status")).toHaveText("Could not copy");
   await page.evaluate(() => Reflect.deleteProperty(navigator.clipboard, "writeText"));
-  await expect(reading).toHaveCSS("padding-bottom", "40px");
+  await reading.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const lastParagraph = body.locator(":scope > p").last();
+  await expect(lastParagraph).toBeInViewport({ ratio: 1 });
+  const lastLineBox = (await lastParagraph.boundingBox())!;
+  expect(lastLineBox.y + lastLineBox.height).toBeLessThan((await composer.boundingBox())!.y);
   expect((await body.boundingBox())!.width).toBeCloseTo(760, 0);
   await reading.evaluate((element) => { element.scrollTop = 0; });
   await page.screenshot({ path: info.outputPath("loushang-minimal-light.png"), fullPage: true });

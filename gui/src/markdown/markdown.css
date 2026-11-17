@@ -14,8 +14,7 @@
   font-weight: 600;
   line-height: 1.35;
 }
-.markdown-body :is(h1, h2) { font-weight: 700; }
-.markdown-body h2 { padding-block-end: 0.3em; border-block-end: 1px solid var(--md-border); }
+.markdown-body :is(strong, b) { font-weight: 600; }
 .markdown-body h1 { --heading-size: var(--md-h1-size); --heading-gap: var(--md-h1-gap); }
 .markdown-body h2 { --heading-size: var(--md-h2-size); --heading-gap: var(--md-h2-gap); }
 .markdown-body h3 { --heading-size: var(--md-h3-size); --heading-gap: var(--md-h3-gap); }
@@ -40,7 +39,7 @@
 .markdown-body hr { border: 0; border-block-start: 1px solid var(--md-border); }
 
 .markdown-body code {
-  padding: 0.06em 0.2em;
+  padding: 0.03em 0.14em;
   border-radius: 4px;
   background: var(--md-inline-code-bg);
   font: 400 var(--md-code-size)/var(--md-code-line-height) var(--md-code-font);
@@ -111,14 +110,15 @@
   padding: 0;
   border: 0;
   border-radius: 3px;
-  color: var(--md-link);
+  color: inherit;
   background: transparent;
   font: inherit;
   text-align: start;
-  text-decoration: underline dotted;
+  text-decoration: underline dotted var(--md-quote-border);
   text-underline-offset: 3px;
   overflow-wrap: anywhere;
   cursor: pointer;
 }
-.markdown-file-reference:hover { background: var(--md-inline-code-bg); text-decoration-style: solid; }
+.markdown-file-reference code { padding: 0; background: transparent; }
+.markdown-file-reference:is(:hover, :focus-visible) { color: var(--md-link); text-decoration: underline; }
 .markdown-file-reference:focus-visible { outline: 2px solid var(--md-accent); outline-offset: 2px; }

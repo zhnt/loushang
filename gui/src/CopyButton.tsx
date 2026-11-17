@@ -1,27 +1,34 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
 
-export function CopyButton({ text, label, icon = false, showLabel = false }: {
+export function CopyButton({ text, label, icon = false, showLabel = false, feedbackMs }: {
   readonly text: string;
   readonly label?: string;
   readonly icon?: boolean;
   readonly showLabel?: boolean;
+  readonly feedbackMs?: number;
 }) {
   const { t } = useTranslation("common");
-  const [outcome, setOutcome] = useState<"copied" | "failed">();
+  const [feedback, setFeedback] = useState<{ outcome: "copied" | "failed" }>();
+  const outcome = feedback?.outcome;
+  useEffect(() => {
+    if (!feedback || feedbackMs === undefined) return;
+    const timer = window.setTimeout(() => setFeedback(undefined), feedbackMs);
+    return () => window.clearTimeout(timer);
+  }, [feedback, feedbackMs]);
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
-      setOutcome("copied");
+      setFeedback({ outcome: "copied" });
     } catch {
-      setOutcome("failed");
+      setFeedback({ outcome: "failed" });
     }
   }
   if (icon) return <span className="panel-copy" data-outcome={outcome}>
     <button type="button" className="panel-icon-button" aria-label={label ?? t("clipboard.copy")}
       title={outcome ? t(`clipboard.${outcome}`) : label ?? t("clipboard.copy")} onClick={() => void copy()}>
-      <UiIcon name="copy" />
+      <UiIcon name={feedbackMs === undefined || !outcome ? "copy" : outcome === "copied" ? "check" : "close"} />
     </button>
     <span className="sr-only" role="status">{outcome ? t(`clipboard.${outcome}`) : ""}</span>
   </span>;

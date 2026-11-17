@@ -923,7 +923,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                           : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
                         {message.role === "assistant" && message.phase === "complete" && message.content
                           ? <div className="reply-actions"><CopyButton text={message.content}
-                              showLabel label={t("session:transcript.copyReply")} /></div>
+                              icon feedbackMs={1600} label={t("session:transcript.copyReply")} /></div>
                           : null}
                       </article>
                     ); })}
