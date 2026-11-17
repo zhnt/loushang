@@ -30,15 +30,12 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
   };
   const approvals = new ApprovalResponses(publish);
 
-  function disconnected() {
-    current = null;
-    approvals.disconnected();
-    for (const listener of connections) listener("disconnected");
-  }
-  function close() {
+  function close(notify = true) {
     const released = viewId;
     viewId = undefined;
-    disconnected();
+    current = null;
+    approvals.disconnected();
+    if (notify) for (const listener of connections) listener("disconnected");
     if (!released) return closing;
     // Close after an in-flight snapshot so it cannot open an orphaned view.
     closing = Promise.allSettled([closing, running]).then(() =>
@@ -102,7 +99,8 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
     subscribeConnection(listener) { connections.add(listener); return () => { connections.delete(listener); }; },
     async suspend() {
       suspended = true;
-      await close();
+      // Releasing the controller for session creation does not disconnect the Host.
+      await close(false);
       return () => { suspended = false; };
     },
     async requestResync() {

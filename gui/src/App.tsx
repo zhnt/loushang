@@ -362,11 +362,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     && (state.remote.source.kind !== "live" || state.remote.source.serviceInstanceId !== expectedInstance);
   const connection = managedHostConnection && managedHostConnection.status !== "running" ? managedHostConnection.status
     : (attachedClient && !fixture && syncing) || awaitingHostSnapshot ? "connecting" : state.remote.connection;
+  // The verified Host stays connected while a draft opens or attaches its Workspace view.
+  const draftHostConnected = draft && managedHostConnection?.status === "running" && !state.diagnostic
+    && (state.remote.source.kind !== "live" || !expectedInstance || state.remote.source.serviceInstanceId === expectedInstance);
+  const displayedConnection = draftHostConnected ? "connected" : connection;
   const liveConnecting = connection === "connecting";
   const connected = installedClient === client && connection === "connected";
   useEffect(() => {
-    onConnectionChange?.(connection);
-  }, [connection, onConnectionChange]);
+    onConnectionChange?.(displayedConnection);
+  }, [displayedConnection, onConnectionChange]);
   useEffect(() => {
     if (connected && selectionKey && selectedId) rememberSessionSelection(selectionKey, selectedId);
   }, [connected, selectionKey, selectedId]);
@@ -825,7 +829,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           contextLabel={workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats")
             : selected ? projectContext : undefined}
           sessionReady={Boolean(selected)}
-          connection={connection}
+          connection={displayedConnection}
           dockOpen={panelOpen}
           environmentOpen={environmentOpen}
           goalPanel={goalPanelScope ? {
@@ -1119,7 +1123,8 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace,
 
   const knownSessions = new Set(sessionOrder.filter((id) => !drafts.some((draft) => draft.sessionId === id)));
   const pinned = new Set(preferences.pinned);
-  const orderedIds = [...new Set([...preferences.recent, ...recentSessionIds, ...sessionOrder])];
+  const orderedIds = state.remote.source.kind === "live" ? [...sessionOrder].reverse()
+    : [...new Set([...preferences.recent, ...recentSessionIds, ...sessionOrder])];
   const availableWorkspaces = hasCapability(state, "workspace") ? workspaceOrder : [];
   const workspaceIds = new Set(availableWorkspaces);
   const ungrouped: SessionSnapshot[] = [];

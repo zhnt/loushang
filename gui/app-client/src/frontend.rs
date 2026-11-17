@@ -303,7 +303,8 @@ impl Backend {
             };
             let scope = format!("mux:{}", field(mux, "muxSpaceId")?);
             let pinned = pins(&database, &scope)?;
-            let mut result = mux["members"].as_array().ok_or("invalid_host_reply")?.iter().map(|member| {
+            // Mux members are appended in creation order and retained in that order.
+            let mut result = mux["members"].as_array().ok_or("invalid_host_reply")?.iter().rev().map(|member| {
                 let id = field(&member["session"], "sessionId")?;
                 Ok(json!({"id": id, "title": member["title"], "scope": scope, "pinned": pinned.iter().any(|value| value == id)}))
             }).collect::<Result<Vec<_>>>()?;

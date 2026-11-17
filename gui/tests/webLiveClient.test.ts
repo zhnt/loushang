@@ -42,6 +42,28 @@ it("surfaces failed snapshots without fallback and stops polling after unsubscri
   expect(fetcher).toHaveBeenCalledTimes(calls);
 });
 
+it("releases a view for session creation without publishing a Host disconnect", async () => {
+  const requests: Array<{ action: string; viewId: string }> = [];
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
+    const request = JSON.parse(String(options.body));
+    requests.push(request);
+    return { ok: true, json: async () => ({ result: request.action === "snapshot" ? liveSnapshot() : {} }) };
+  }));
+  const client = createWebLiveClient("/workspace");
+  const disconnected = vi.fn();
+  const release = client.subscribeConnection!(disconnected);
+  await client.snapshot();
+  const resume = await client.suspend();
+  expect(requests[1]).toMatchObject({ action: "close", viewId: requests[0].viewId });
+  expect(disconnected).not.toHaveBeenCalled();
+  await expect(client.snapshot()).rejects.toThrow("connection_suspended");
+  resume();
+  expect((await client.snapshot()).connection).toBe("connected");
+  expect(requests[2].viewId).not.toBe(requests[0].viewId);
+  expect(disconnected).not.toHaveBeenCalled();
+  release();
+});
+
 it("binds operations to the original connection even after selection changes", async () => {
   const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({ result: liveSnapshot() }) }));
   vi.stubGlobal("fetch", fetcher);

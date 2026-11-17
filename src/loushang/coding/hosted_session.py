@@ -832,7 +832,7 @@ def _bounded(text: str, *, limit: int = _TEXT_LIMIT) -> str:
 
 
 def _uses_automatic_title(identity: SessionIdentityV1) -> bool:
-    return identity.continuity_id.startswith(("gui-new-", "gui-default-"))
+    return identity.continuity_id.startswith(("gui-new-", "gui-default-", "gui-draft-"))
 
 
 def _title_messages(session: AgentSession) -> Iterable[object]:

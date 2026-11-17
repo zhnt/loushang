@@ -683,7 +683,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       };
     });
     const previousChats = ["earlier", "later"].map((id) => ({ id, title: "Repeated title", scope: "temporary", pinned: false }));
-    render(<HarnessGui client={client} projectNavigation={{
+    render(<HarnessGui client={client} managedHostConnection={{ status: "running", serviceInstanceId: "host" }} projectNavigation={{
       hostKey: "local", directory: { projects: [], temporarySessions: previousChats }, available: true,
       pending: false, error: false, folderInput: false, selection: null,
       openFolder: () => {}, closeFolder: () => {}, register: async () => false,
@@ -708,6 +708,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const transcript = within(screen.getByLabelText("Session transcript"));
     expect(transcript.getByText("Use the selected model")).toBeVisible();
     expect(transcript.getByText("Creating Session…")).toBeVisible();
+    expect(screen.getByText("Connected", { exact: true })).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveValue("");
     expect(chats.getByRole("button", { name: "New Session" })).toHaveAttribute("aria-current", "page");
     if (rejectFirstModel) {

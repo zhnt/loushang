@@ -316,7 +316,7 @@ def test_gui_title_and_primary_reply_keep_independent_durable_outcomes(tmp_path:
         try:
             binding = await _binding(
                 tmp_path, prepared_model(api=adapter.api),
-                continuity_id="gui-new-durable-title-test", stream_fn=None,
+                continuity_id="gui-draft-durable-title-test", stream_fn=None,
             )
             hosted = CodingHostedExecutionSessionV1(binding)
             hosted.subscribe(lambda event: title_published.set() if event.kind is SessionEventKindV1.STATUS else None)
