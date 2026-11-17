@@ -1,14 +1,13 @@
 .markdown-reading[data-markdown-theme="loushang-minimal"] {
-  --md-bg: light-dark(#ffffff, #20201f);
-  --md-fg: light-dark(#242424, #ededeb);
+  --md-fg: light-dark(#373936, #d9dad6);
+  --md-heading: light-dark(#20211f, #f3f3f0);
   --md-muted: light-dark(#676765, #aeaeaa);
   --md-accent: light-dark(#0d8a70, #70d7b7);
   --md-link: light-dark(#08735f, #70d7b7);
   --md-border: light-dark(#e7e7e5, #3d3d3a);
-  --md-surface: light-dark(#f5f5f4, #282827);
-  --md-inline-code-bg: light-dark(#f8f8f7, #272725);
-  --md-code-bg: light-dark(#f6f6f5, #232322);
-  --md-quote-border: light-dark(#cececa, #5c5c58);
+  --md-inline-code-bg: light-dark(#f9f9f8, #282827);
+  --md-code-bg: light-dark(#f7f7f6, #252524);
+  --md-guide: light-dark(#bcbeb8, #737570);
   --md-syntax-keyword: light-dark(#275c91, #a4c8ed);
   --md-syntax-string: light-dark(#216a4d, #a7d8ae);
   --md-syntax-number: light-dark(#985328, #eab88c);
@@ -17,16 +16,12 @@
   --md-font: var(--font-ui);
   --md-code-font: var(--font-mono);
   --md-font-size: 15px;
-  --md-line-height: 1.7;
+  --md-line-height: 1.72;
   --md-paragraph-gap: 12px;
-  --md-list-gap: 4px;
+  --md-list-gap: 2px;
   --md-h1-size: 22px;
   --md-h2-size: 19px;
   --md-h3-size: 16px;
-  --md-h1-gap: 28px;
-  --md-h2-gap: 24px;
-  --md-h3-gap: 20px;
-  --md-h4-gap: 16px;
   --md-table-size: 14px;
   --md-table-line-height: 1.55;
   --md-code-size: 13.5px;

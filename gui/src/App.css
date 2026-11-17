@@ -292,16 +292,26 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .workspace-heading .vcs-badge { max-width: 100px; }
 .session-heading p { display: none; }
 .message-meta { display: none; }
-.reply-actions { display: flex; margin-block-start: 2px; }
-.message:has(> .reply-actions) { margin-block-end: 6px; }
+.reply-actions {
+  --panel-icon-size: 36px;
+  display: flex;
+  justify-content: flex-end;
+  margin-block-start: 3px;
+}
 .message:last-child { margin-block-end: 0; }
-@media (hover: hover) and (any-pointer: fine) {
-  .reply-actions { opacity: 0; pointer-events: none; }
+@media (hover: hover) and (pointer: fine) and (not (any-pointer: coarse)) {
+  .message:has(> .reply-actions) { position: relative; }
+  .reply-actions {
+    --panel-icon-size: 24px;
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-start: 100%;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
   .message:is(:hover, :focus-within) > .reply-actions,
   .reply-actions:has([data-outcome]) { opacity: 1; pointer-events: auto; }
-}
-@media (any-pointer: coarse) {
-  .reply-actions { opacity: 1; pointer-events: auto; }
 }
 .change-files button { min-height: 36px; font-size: 13px; }
 .change-card strong, .activity-summary strong { font-size: 13px; }
@@ -618,8 +628,8 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 
 .desktop-shell button:is(.panel-icon-button, .workspace-folder-action) {
   display: grid;
-  width: 28px;
-  height: 28px;
+  inline-size: var(--panel-icon-size, 28px);
+  block-size: var(--panel-icon-size, 28px);
   place-items: center;
   padding: 0;
   border: 0;

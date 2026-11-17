@@ -9,7 +9,7 @@ const markdown = [
   "",
   "## 表格与代码",
   "",
-  "> 引用使用柔和的底色与左侧分隔线。",
+  "> 引用使用左侧引导线。",
   "",
   `| ${columns.join(" | ")} |`,
   `| ${columns.map(() => "---").join(" | ")} |`,
@@ -128,14 +128,14 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   for (const box of [shortBox!, longBox!]) {
     expect(Math.abs(box.x + box.width - (composerBox!.x + composerBox!.width))).toBeLessThanOrEqual(1);
   }
-  await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
+  await expect(body).toHaveCSS("color", "rgb(55, 57, 54)");
   await expect(body).toHaveCSS("font-size", "15px");
-  await expect(body).toHaveCSS("line-height", "25.5px");
-  await expect(body.locator("strong")).toHaveCSS("font-weight", "600");
+  await expect(body).toHaveCSS("line-height", "25.8px");
+  await expect(body.locator("strong")).toHaveCSS("font-weight", "500");
   await expect(body.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "22px");
-  await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("margin-block-start", "24px");
+  await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("margin-block-start", "26px");
   await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("border-block-end-width", "0px");
-  await expect(body.getByRole("columnheader").first()).toHaveCSS("background-color", "rgb(245, 245, 244)");
+  await expect(body.getByRole("columnheader").first()).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(body.locator("pre")).toHaveCSS("font-size", "13.5px");
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await body.getByRole("button", { name: "Copy code" }).click();
@@ -143,6 +143,10 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await body.locator("pre").textContent());
   const toolbar = reading.locator(".reply-actions");
   const copyReply = toolbar.getByRole("button", { name: "Copy reply" });
+  await expect(toolbar).toHaveCSS("position", "absolute");
+  const [toolbarBox, contentBox] = await Promise.all([toolbar.boundingBox(), body.boundingBox()]);
+  expect(toolbarBox!.x).toBeGreaterThanOrEqual(contentBox!.x + contentBox!.width - 1);
+  expect(toolbarBox!.y + toolbarBox!.height).toBeCloseTo(contentBox!.y + contentBox!.height, 0);
   await input.focus();
   await composer.hover();
   await expect(toolbar).toHaveCSS("opacity", "0");
@@ -197,21 +201,21 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await page.keyboard.press("Escape");
   await expect(reading).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(pane).toHaveCSS("background-color", "rgb(32, 32, 31)");
-  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
+  await expect(body).toHaveCSS("color", "rgb(217, 218, 214)");
   await expect(composer).toHaveCSS("background-color", "rgb(32, 32, 31)");
   await expect(sidebar).toHaveCSS("background-color", "rgb(37, 37, 37)");
   await page.reload();
-  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
+  await expect(body).toHaveCSS("color", "rgb(217, 218, 214)");
   await openSettings(page);
   await expect(appearance).toHaveText("Dark");
   await selectAppearance("Follow system");
   await page.keyboard.press("Escape");
-  await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
+  await expect(body).toHaveCSS("color", "rgb(55, 57, 54)");
   await page.emulateMedia({ colorScheme: "dark" });
-  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
+  await expect(body).toHaveCSS("color", "rgb(217, 218, 214)");
   await openSettings(page);
   await selectAppearance("Light");
-  await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
+  await expect(body).toHaveCSS("color", "rgb(55, 57, 54)");
   await selectAppearance("Follow system");
   await page.keyboard.press("Escape");
 
@@ -236,5 +240,21 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await page.reload();
   await expect(reading).toHaveAttribute("data-markdown-theme", "loushang-minimal");
   await expect(page.locator("html")).toHaveAttribute("data-appearance", "system");
-  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
+  await expect(body).toHaveCSS("color", "rgb(217, 218, 214)");
+});
+
+test.describe("touch reading", () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 700, height: 900 } });
+
+  test("keeps the reply copy action available without hover", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await showSample(page);
+    const toolbar = page.locator(".reply-actions");
+    const copy = toolbar.getByRole("button", { name: "Copy reply" });
+    await expect(toolbar).toHaveCSS("opacity", "1");
+    expect((await copy.boundingBox())!.height).toBeGreaterThanOrEqual(36);
+    await copy.tap();
+    await expect(toolbar.getByRole("status")).toHaveText("Copied");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(markdown);
+  });
 });

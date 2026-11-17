@@ -4,43 +4,52 @@
   font: 400 var(--md-font-size)/var(--md-line-height) var(--md-font);
   overflow-wrap: anywhere;
 }
-.markdown-body :where(p, ul, ol, blockquote, pre, hr) { margin: 0; }
+.markdown-body :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, pre, hr) { margin: 0; }
+
 .markdown-body > * + *,
 .markdown-body blockquote > * + * { margin-block-start: var(--md-paragraph-gap); }
-.markdown-body li > * + * { margin-block-start: var(--md-list-gap); }
-.markdown-body :is(h1, h2, h3, h4, h5, h6) {
-  margin-block: var(--heading-gap) 0;
-  font-size: var(--heading-size);
-  font-weight: 600;
-  line-height: 1.35;
+.markdown-body :is(h1, h2, h3, h4, h5, h6) + :not(h1, h2, h3, h4, h5, h6) {
+  margin-block-start: 8px;
 }
-.markdown-body :is(strong, b) { font-weight: 600; }
-.markdown-body h1 { --heading-size: var(--md-h1-size); --heading-gap: var(--md-h1-gap); }
-.markdown-body h2 { --heading-size: var(--md-h2-size); --heading-gap: var(--md-h2-gap); }
-.markdown-body h3 { --heading-size: var(--md-h3-size); --heading-gap: var(--md-h3-gap); }
-.markdown-body :is(h4, h5, h6) { --heading-size: var(--md-font-size); --heading-gap: var(--md-h4-gap); }
-.markdown-body > :first-child { margin-block-start: 0; }
-.markdown-body :is(ul, ol) { padding-inline-start: 1.45em; }
+.markdown-body > * + :is(h1, h2, h3, h4, h5, h6),
+.markdown-body blockquote > * + :is(h1, h2, h3, h4, h5, h6) { margin-block-start: var(--heading-gap); }
+
+.markdown-body :is(h1, h2, h3, h4, h5, h6) {
+  --heading-gap: 18px;
+  color: var(--md-heading);
+  font-size: var(--md-font-size);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.markdown-body h1 { --heading-gap: 32px; font-size: var(--md-h1-size); }
+.markdown-body h2 { --heading-gap: 26px; font-size: var(--md-h2-size); }
+.markdown-body h3 { --heading-gap: 22px; font-size: var(--md-h3-size); }
+.markdown-body :is(strong, b) { color: var(--md-heading); font-weight: 500; }
+.markdown-body :is(h1, h2, h3, h4, h5, h6) :is(strong, b) { font-weight: inherit; }
+
+.markdown-body :is(ul, ol) { padding-inline-start: 1.5em; }
 .markdown-body li + li,
+.markdown-body li > * + *,
 .markdown-body li > :is(ul, ol) { margin-block-start: var(--md-list-gap); }
 .markdown-body li::marker { color: var(--md-muted); }
 .markdown-body .task-list-item { list-style: none; }
 .markdown-body .task-list-item input { accent-color: var(--md-accent); }
-.markdown-body a { color: var(--md-link); text-underline-offset: 3px; }
-.markdown-body a:hover { background: var(--md-surface); }
+.markdown-body a {
+  color: var(--md-link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
 .markdown-body :is(a, pre, .markdown-table):focus-visible { outline-color: var(--md-accent); }
 .markdown-body blockquote {
-  padding: 10px 14px;
-  border-inline-start: 3px solid var(--md-quote-border);
-  border-start-end-radius: var(--md-radius);
-  border-end-end-radius: var(--md-radius);
-  background: var(--md-surface);
+  padding: 2px 0 2px 14px;
+  border-inline-start: 2px solid var(--md-guide);
+  color: var(--md-muted);
 }
 .markdown-body hr { border: 0; border-block-start: 1px solid var(--md-border); }
 
-.markdown-body code {
-  padding: 0.03em 0.14em;
-  border-radius: 4px;
+.markdown-body :not(pre) > code {
+  padding-inline: 0.16em;
+  border-radius: 3px;
   background: var(--md-inline-code-bg);
   font: 400 var(--md-code-size)/var(--md-code-line-height) var(--md-code-font);
 }
@@ -55,10 +64,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 5px 12px;
-  background: var(--md-surface);
-  border-radius: var(--md-radius) var(--md-radius) 0 0;
-  border-block-end: 1px solid var(--md-border);
+  padding: 6px 14px 0;
   color: var(--md-muted);
   font-size: var(--md-caption-size);
 }
@@ -66,13 +72,13 @@
   max-inline-size: 100%;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  padding: 12px 14px;
+  padding: 8px 14px 12px;
   font: 400 var(--md-code-size)/var(--md-code-line-height) var(--md-code-font);
   white-space: pre;
   overflow-wrap: normal;
   tab-size: 4;
 }
-.markdown-body pre code { padding: 0; background: transparent; font: inherit; }
+.markdown-body pre code { font: inherit; }
 .markdown-body :is(.hljs-keyword, .hljs-selector-tag, .hljs-doctag) { color: var(--md-syntax-keyword); }
 .markdown-body :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--md-syntax-string); }
 .markdown-body :is(.hljs-number, .hljs-literal, .hljs-deletion) { color: var(--md-syntax-number); }
@@ -83,23 +89,21 @@
   max-inline-size: 100%;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  border: 1px solid var(--md-border);
-  border-radius: var(--md-radius);
+  border-block-end: 1px solid var(--md-border);
 }
 .markdown-body table {
   inline-size: 100%;
   border-collapse: collapse;
-  background: var(--md-bg);
   font-size: var(--md-table-size);
   line-height: var(--md-table-line-height);
 }
 .markdown-body :is(th, td) {
   min-inline-size: 7rem;
-  padding: 10px 12px;
+  padding: 8px 12px;
   vertical-align: top;
   text-align: start;
 }
-.markdown-body th { background: var(--md-surface); font-weight: 600; }
+.markdown-body th { color: var(--md-heading); font-weight: 600; }
 .markdown-body tbody tr { border-block-start: 1px solid var(--md-border); }
 
 .markdown-code-label .secondary-button { padding: 3px 7px; }
@@ -114,11 +118,11 @@
   background: transparent;
   font: inherit;
   text-align: start;
-  text-decoration: underline dotted var(--md-quote-border);
-  text-underline-offset: 3px;
+  text-decoration: underline dotted var(--md-guide);
+  text-underline-offset: 0.18em;
   overflow-wrap: anywhere;
   cursor: pointer;
 }
-.markdown-file-reference code { padding: 0; background: transparent; }
+.markdown-body .markdown-file-reference > code { padding: 0; background: transparent; }
 .markdown-file-reference:is(:hover, :focus-visible) { color: var(--md-link); text-decoration: underline; }
 .markdown-file-reference:focus-visible { outline: 2px solid var(--md-accent); outline-offset: 2px; }
