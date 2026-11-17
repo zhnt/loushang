@@ -28,6 +28,7 @@
     "modelRejected": "模型切换被拒绝，会话仍使用原模型。",
     "creating": "正在创建会话…",
     "sending": "正在发送首条消息…",
+    "waitingForReply": "正在等待回复…",
     "createUnknown": "会话创建结果待确认，草稿已保留。",
     "firstSubmissionUnknown": "首条消息的提交结果待确认，草稿已保留。",
     "firstModelUnavailable": "无法应用选中的模型，已保留草稿。",

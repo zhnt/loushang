@@ -682,13 +682,18 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         show: () => { publish?.(snapshot); return true; },
       };
     });
+    const previousChats = ["earlier", "later"].map((id) => ({ id, title: "Repeated title", scope: "temporary", pinned: false }));
     render(<HarnessGui client={client} projectNavigation={{
-      hostKey: "local", directory: { projects: [], temporarySessions: [] }, available: true,
+      hostKey: "local", directory: { projects: [], temporarySessions: previousChats }, available: true,
       pending: false, error: false, folderInput: false, selection: null,
       openFolder: () => {}, closeFolder: () => {}, register: async () => false,
       createChat, draftModels: defaultModels, togglePin: () => {}, select: () => {},
     }} />);
+    const chats = within(screen.getByRole("region", { name: "Chats" }));
+    expect(chats.getAllByRole("button", { name: "Repeated title" })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "New Session" }));
+    expect(chats.getByRole("button", { name: "New Session" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("textbox")).toHaveFocus();
     const picker = screen.getByRole("button", { name: "Session model" });
     await waitFor(() => expect(picker).toHaveTextContent("test · model"));
     expect(defaultModels).toHaveBeenCalledWith(null);
@@ -700,6 +705,11 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(submitText).not.toHaveBeenCalled();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Use the selected model" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const transcript = within(screen.getByLabelText("Session transcript"));
+    expect(transcript.getByText("Use the selected model")).toBeVisible();
+    expect(transcript.getByText("Creating Session…")).toBeVisible();
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    expect(chats.getByRole("button", { name: "New Session" })).toHaveAttribute("aria-current", "page");
     if (rejectFirstModel) {
       expect(await screen.findByText("The selected model could not be applied. Your draft is saved.")).toBeVisible();
       expect(submitText).not.toHaveBeenCalled();
@@ -707,6 +717,18 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       fireEvent.click(screen.getByRole("button", { name: "Send" }));
     }
     await waitFor(() => expect(submitText).toHaveBeenCalledOnce());
+    expect(await transcript.findByText("Waiting for a reply…")).toBeVisible();
+    expect(transcript.getAllByText("Use the selected model")).toHaveLength(1);
+
+    const session = snapshot.sessions[0];
+    const message = { id: "first-user", role: "user", phase: "sent", content: "Use the selected model" } as const;
+    act(() => publish?.({ ...snapshot, sessions: [{ ...session, cursor: "first-user", messages: [message] }] }));
+    expect(transcript.getAllByText("Use the selected model")).toHaveLength(1);
+    expect(transcript.getByText("Waiting for a reply…")).toBeVisible();
+    const reply = { id: "first-assistant", role: "assistant", phase: "streaming", content: "First reply" } as const;
+    act(() => publish?.({ ...snapshot, sessions: [{ ...session, cursor: "first-assistant", messages: [message, reply] }] }));
+    expect(transcript.getByText("First reply")).toBeVisible();
+    expect(transcript.queryByText("Waiting for a reply…")).not.toBeInTheDocument();
     expect(createChat).toHaveBeenCalledExactlyOnceWith(null, expect.any(String), "New Session");
     expect(selectModel.mock.calls).toEqual(rejectFirstModel
       ? [["first-model", second.id], ["first-model", second.id]]

@@ -360,7 +360,8 @@ export default interface Resources {
       "submitFailed": "Submit failed before its outcome could be confirmed. The draft was preserved.",
       "thinkingChanged": "Reasoning effort updated.",
       "thinkingRejected": "Could not change reasoning effort.",
-      "unknownSubmission": "Submission outcome is unknown. The draft was preserved; resynchronize before retrying."
+      "unknownSubmission": "Submission outcome is unknown. The draft was preserved; resynchronize before retrying.",
+      "waitingForReply": "Waiting for a reply…"
     },
     "opening": "Opening {{appName}}…",
     "sync": {
@@ -592,7 +593,6 @@ export default interface Resources {
     "sidebar": {
       "addProject": "Add project",
       "chats": "Chats",
-      "creating": "Creating…",
       "fixtureBanner": "Fixture data · no backend",
       "live": "Live · AppHost",
       "liveBanner": "Live AppHost · controlled",

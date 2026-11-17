@@ -14,9 +14,6 @@
   --control-focus: light-dark(#686c72, #b4b4ae);
   --primary: light-dark(#252527, #e7e7e5);
   --primary-text: light-dark(#ffffff, #252527);
-  --accent: light-dark(#7555dc, #b9a6f5);
-  --accent-ink: light-dark(#534483, #d3c5fc);
-  --accent-soft: light-dark(#eee9ff, #363044);
   --orange: light-dark(#b5481e, #f4a07e);
   --green: light-dark(#168a50, #8ad3a6);
   --green-soft: light-dark(#e9f7ee, #21362b);

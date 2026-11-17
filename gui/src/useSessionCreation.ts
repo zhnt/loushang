@@ -47,13 +47,13 @@ class SessionCreation {
   private waiter: ((observation: Observation | null) => void) | null = null;
   private inFlight = false;
 
-  constructor(private readonly setDraft: (draft: Draft | null) => void) {}
+  constructor(private readonly publish: (state: { current: Draft | null; drafts: readonly Draft[] }) => void) {}
 
   private save(next: Draft | null) {
     if (next) this.drafts.set(next.target.key, next);
     else if (this.current) this.drafts.delete(this.current.target.key);
     this.current = next;
-    this.setDraft(next);
+    this.publish({ current: next, drafts: [...this.drafts.values()] });
   }
 
   dispose() {
@@ -198,11 +198,13 @@ class SessionCreation {
 }
 
 export function useSessionCreation(onAccepted: Accepted) {
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [creation] = useState(() => new SessionCreation(setDraft));
+  const [{ current: draft, drafts }, publish] = useState<{ current: Draft | null; drafts: readonly Draft[] }>({
+    current: null, drafts: [],
+  });
+  const [creation] = useState(() => new SessionCreation(publish));
   useEffect(() => () => creation.dispose(), [creation]);
   return {
-    draft, observe: creation.observe, hide: creation.hide,
+    draft, drafts, observe: creation.observe, hide: creation.hide,
     open: (target: DraftTarget) => creation.open(target),
     change: (text: string) => creation.change(text),
     selectModel: (id: string) => creation.selectModel(id),

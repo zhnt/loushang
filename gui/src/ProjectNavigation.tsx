@@ -3,20 +3,44 @@ import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
 import { TEMPORARY_WORKSPACE, workspaceName, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
 
-export function ProjectNavigation({ navigation, selectedId, titles }: {
+export interface SidebarDraft {
+  readonly id: string;
+  readonly workspace: string | null;
+  readonly sessionId?: string;
+  readonly title: string;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}
+
+export function DraftChatRow({ draft }: { draft: SidebarDraft }) {
+  return <div className={draft.selected ? "session-row selected" : "session-row"}>
+    <button type="button" className="project-chat"
+      aria-current={draft.selected ? "page" : undefined} onClick={draft.onSelect}>
+      <span className="project-chat-title">{draft.title}</span>
+    </button>
+  </div>;
+}
+
+export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] }: {
   navigation: ProjectNavigationProps;
   selectedId: string | null;
   titles: Readonly<Record<string, string>>;
+  drafts?: readonly SidebarDraft[];
 }) {
   const { t } = useTranslation("workspace");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [path, setPath] = useState("");
   const editable = navigation.available && !navigation.pending;
   const { projects, temporarySessions } = navigation.directory;
+  const inDraft = (session: ProjectChat) => drafts.some((draft) => draft.sessionId === session.id);
+  function draftRows(workspace: string | null) {
+    return drafts.filter((draft) => draft.workspace === workspace)
+      .map((draft) => <DraftChatRow key={draft.id} draft={draft} />);
+  }
   const pinned = [
-    ...projects.flatMap((project) => project.sessions.filter((session) => session.pinned)
+    ...projects.flatMap((project) => project.sessions.filter((session) => session.pinned && !inDraft(session))
       .map((session) => ({ workspace: project.path, session }))),
-    ...temporarySessions.filter((session) => session.pinned)
+    ...temporarySessions.filter((session) => session.pinned && !inDraft(session))
       .map((session) => ({ workspace: TEMPORARY_WORKSPACE, session })),
   ];
   const sidebar = useRef<HTMLDivElement>(null);
@@ -38,15 +62,12 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
   function chat(workspace: string, session: ProjectChat, showWorkspace = false) {
     const selected = selectedId === session.id;
     const name = sessionTitle(session);
-    const siblings = workspace === TEMPORARY_WORKSPACE ? temporarySessions : projects.find((project) => project.path === workspace)?.sessions ?? [];
-    const duplicates = siblings.filter((item) => sessionTitle(item) === name);
-    const duplicateNumber = duplicates.length > 1 ? duplicates.findIndex((item) => item.id === session.id) + 1 : 0;
     const title = name === "New Session" ? t("sidebar.newSession") : name;
     return <div className={selected ? "session-row selected" : "session-row"} key={session.id}>
       <button type="button" className="project-chat"
         aria-current={selected ? "true" : undefined} disabled={!navigation.available}
         onClick={() => navigation.select(workspace, session.id)}>
-        <span className="project-chat-title">{title}{duplicateNumber ? ` · ${duplicateNumber}` : ""}</span>
+        <span className="project-chat-title">{title}</span>
         {showWorkspace ? <small className="project-chat-scope" aria-hidden="true" title={workspace === TEMPORARY_WORKSPACE ? undefined : workspace}>
           {workspace === TEMPORARY_WORKSPACE ? t("sidebar.temporaryChats") : workspaceName(workspace)}
         </small> : null}
@@ -104,14 +125,18 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
               onClick={() => { setCollapsed((old) => new Set([...old].filter((key) => key !== project.path))); navigation.create(project.path); }}><span className="sidebar-add-mark" aria-hidden="true" /></button>
           </div>
           <div className="project-chats" aria-hidden={!expanded} inert={!expanded}>
-            <div>{project.sessions.filter((session) => !session.pinned).map((session) => chat(project.path, session))}</div>
+            <div>
+              {draftRows(project.path)}
+              {project.sessions.filter((session) => !session.pinned && !inDraft(session)).map((session) => chat(project.path, session))}
+            </div>
           </div>
         </div>;
       })}
     </section>
     <section className="project-navigation" aria-label={t("sidebar.chats")}>
       <h2 className="section-label">{t("sidebar.temporaryChats")}</h2>
-      {temporarySessions.filter((session) => !session.pinned).map((session) => chat(TEMPORARY_WORKSPACE, session))}
+      {draftRows(null)}
+      {temporarySessions.filter((session) => !session.pinned && !inDraft(session)).map((session) => chat(TEMPORARY_WORKSPACE, session))}
     </section>
   </div>;
 }

@@ -17,7 +17,7 @@ import { UserChoiceCard, type ChoiceAnswer } from "./UserChoiceCard";
 import { ModelPicker } from "./ModelPicker";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
-import { ProjectNavigation } from "./ProjectNavigation";
+import { DraftChatRow, ProjectNavigation, type SidebarDraft } from "./ProjectNavigation";
 import { TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
@@ -105,6 +105,19 @@ const dockTabs = [
   { id: "review", label: "panels:changes.review", glyph: "▣" },
 ] as const;
 
+interface FirstMessagePreview {
+  readonly continuityId?: string;
+  readonly text: string;
+  readonly executionId?: string;
+}
+
+function waitingForFirstReply(session: SessionSnapshot, preview: FirstMessagePreview) {
+  const execution = session.execution;
+  const finished = execution && (!preview.executionId || execution.id === preview.executionId)
+    && ["succeeded", "failed", "interrupted"].includes(execution.status);
+  return !finished && !session.messages.some((message) => message.role === "assistant" && message.content);
+}
+
 export function HarnessGui({ client: attachedClient, account, hostSettings, startLocalHost, hostSettingsRequest = 0, onConnectionChange, projectNavigation }: HarnessGuiProps) {
   const client = attachedClient ?? offlineClient;
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
@@ -170,7 +183,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     readonly draftText?: string;
   }>>>({});
   const [choiceAnswers, setChoiceAnswers] = useState<Readonly<Record<string, ChoiceAnswer>>>({});
+  const [firstMessages, setFirstMessages] = useState<Readonly<Record<string, FirstMessagePreview>>>({});
   const draftCreation = useSessionCreation(({ session, snapshot }, text, receipt, select) => {
+    setFirstMessages((current) => ({
+      ...current, [session.id]: { continuityId: session.context.continuityId, text, executionId: receipt.executionId },
+    }));
     if (select) dispatch({ type: "session.selected", sessionId: session.id });
     if (receipt.executionId) setPublications((current) => ({
       ...current,
@@ -353,6 +370,20 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const tasksOpen = state.local.dockOpen && state.local.dockTab === "tasks";
   const selected = !draft && selectedId ? state.remote.sessions[selectedId] : undefined;
   const conversationOpen = Boolean(selected || draft);
+  const firstMessage = selected && firstMessages[selected.id];
+  const preview = firstMessage && firstMessage.continuityId === selected?.context.continuityId ? firstMessage : null;
+  useEffect(() => {
+    const completed = Object.entries(firstMessages).filter(([id, preview]) => {
+      const session = state.remote.sessions[id];
+      return session && session.context.continuityId === preview.continuityId
+        && session.messages.some((message) => message.role === "user") && !waitingForFirstReply(session, preview);
+    });
+    if (completed.length) setFirstMessages((current) => {
+      const remaining = { ...current };
+      for (const [id, preview] of completed) if (current[id] === preview) delete remaining[id];
+      return remaining;
+    });
+  }, [state.remote.sessions, firstMessages]);
   const operationScope = selected ? JSON.stringify([selectionKey, selected.id]) : null;
   const failure = operationScope ? operationFailures[operationScope] : undefined;
   function reportFailure(notice: Notice, pending?: { id: string; text: string; instanceId?: string }) {
@@ -630,6 +661,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }
 
   const draftPending = draft?.status === "creating" || draft?.status === "sending";
+  const firstMessageText = draftPending ? draft.text
+    : preview && selected && !selected.messages.some((message) => message.role === "user") ? preview.text : null;
+  const firstMessageStatus = draftPending ? { key: `notice.${draft.status}` } as const
+    : preview && selected && waitingForFirstReply(selected, preview) ? { key: "notice.waitingForReply" } as const : null;
+  useLayoutEffect(() => {
+    const transcript = transcriptRef.current;
+    if (draftPending && transcript) transcript.scrollTop = transcript.scrollHeight;
+  }, [draftPending]);
   const draftTitle = t("workspace:sidebar.newSession");
   const workspaceContext = draft && projectNavigation ? draft.target.workspace
     : projectNavigation?.selection?.id === selected?.id ? projectNavigation?.selection?.workspace : undefined;
@@ -666,6 +705,22 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     setDraftFocus((focus) => focus + 1);
   }
 
+  const sidebarDrafts: SidebarDraft[] = draftCreation.drafts.filter((item) => item.target.hostKey === draftHost)
+    .map((item) => ({
+      id: item.id, workspace: item.target.workspace, sessionId: item.binding?.sessionId,
+      title: draftTitle, selected: draftId === item.id, onSelect: () => openDraft(item.target.workspace),
+    }));
+  // The connected Session can arrive before the background directory refresh.
+  if (projectNavigation && workspaceContext && selected?.context.continuityId?.startsWith("gui-draft-")) {
+    const directory = projectNavigation.directory;
+    const chats = workspaceContext === TEMPORARY_WORKSPACE ? directory.temporarySessions
+      : directory.projects.find((project) => project.path === workspaceContext)?.sessions;
+    if (!chats?.some((chat) => chat.id === selected.id)) sidebarDrafts.unshift({
+      id: selected.id, workspace: workspaceContext === TEMPORARY_WORKSPACE ? null : workspaceContext,
+      title: displaySessionTitle(selected), selected: true, onSelect: () => selectSession(selected.id),
+    });
+  }
+
   const navigation: ProjectNavigationProps | undefined = projectNavigation ? {
     ...projectNavigation,
     selection: draft ? null : projectNavigation.selection,
@@ -695,7 +750,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }
 
   const composer = draft ? {
-    text: draft.text,
+    text: draftPending ? "" : draft.text,
     onChange: draftCreation.change,
     onSubmit: submitDraft,
     submitLabel: draft.status === "createUnknown" ? t("session:composer.checkCreation") : undefined,
@@ -741,8 +796,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
           onNewSession={() => openDraft(null)}
           newSessionEnabled={newSessionEnabled}
-          newSessionPending={Boolean(projectNavigation?.pending || draftPending)}
           activeSessionId={selected?.id ?? null}
+          drafts={sidebarDrafts}
           projectNavigation={navigation}
           projectTitles={knownTitles}
         />
@@ -794,10 +849,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   const following = !fixture && scrollHeight - clientHeight - scrollTop <= 32;
                   dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: following ? null : scrollTop });
                 } : undefined}>
-                {draft && projectNavigation ? <p className="draft-context">
+                {draft && projectNavigation && !draftPending ? <p className="draft-context">
                   {projectContext ? t("workspace:sidebar.projectDraft", { project: projectContext })
                     : t("workspace:sidebar.temporaryDraft")}
                 </p> : null}
+                {firstMessageText !== null ? <article className="message user" aria-label={t("session:transcript.message", { role: valueLabel("user") })}>
+                  <p>{firstMessageText}</p>
+                </article> : null}
                 {selected ? <Fragment key={selected.id}>
                   {selected.messages.map((message) => message.role === "status" ? (
                     <p className="message transcript-status" role="status" key={message.id}>{message.systemNotice ? t("session:transcript.resumesRuntime") : message.content}</p>
@@ -847,6 +905,17 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     />
                   ) : null}
                 </Fragment> : null}
+                {firstMessageStatus ? <p className="message first-turn-status" role="status">
+                  <span className="first-turn-spinner" aria-hidden="true" />
+                  <NoticeText notice={firstMessageStatus} />
+                </p> : null}
+                {draft && draft.status !== "ready" && !draftPending ? <div
+                  className={draft.unconfirmed ? "operation-notice uncertain" : "operation-notice"}
+                  role={draft.unconfirmed || draft.status === "createUnknown" ? "status" : "alert"}>
+                  <NoticeText notice={{ key: `notice.${draft.status}` }} />
+                  {draft.unconfirmed ? <button type="button" className="secondary-button"
+                    onClick={() => void draftCreation.check()}>{t("session:composer.checkConversation")}</button> : null}
+                </div> : null}
               </div>
 
               {quickLookDocument && changesAvailable ? (
@@ -870,11 +939,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               </details> : null}
 
               <div className="composer-stack">
-                {draft && draft.status !== "ready" ? <div className={draft.unconfirmed ? "draft-notice operation-notice uncertain" : "draft-notice"} role="status">
-                  <NoticeText notice={{ key: `notice.${draft.status}` }} />
-                  {draft.unconfirmed ? <button type="button" className="secondary-button"
-                    onClick={() => void draftCreation.check()}>{t("session:composer.checkConversation")}</button> : null}
-                </div> : null}
                 {selected && failure ? <div className={failure.pending ? "operation-notice uncertain" : "operation-notice"} role={failure.pending ? "status" : "alert"}>
                   <span><NoticeText notice={failure.notice} /></span>
                   {failure.pending ? <button type="button" className="secondary-button"
@@ -950,13 +1014,13 @@ interface SidebarProps {
   readonly onToggleWorkspace: (workspaceId: string) => void;
   readonly onNewSession: () => void;
   readonly newSessionEnabled: boolean;
-  readonly newSessionPending: boolean;
+  readonly drafts: readonly SidebarDraft[];
   readonly activeSessionId: string | null;
   readonly projectNavigation?: ProjectNavigationProps;
   readonly projectTitles: Readonly<Record<string, string>>;
 }
 
-function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings, activeSessionId, projectNavigation, projectTitles }: SidebarProps) {
+function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, drafts, onToggleSidebar, onSettings, activeSessionId, projectNavigation, projectTitles }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   const preferencesKey = sidebarPreferencesKey(state.remote.source);
@@ -973,9 +1037,9 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
       <div className="workspace-scroll">
       <nav className="sidebar-shortcuts" aria-label={t("workspace:sidebar.shortcuts")}>
         <button className="new-session" type="button" onClick={onNewSession}
-          disabled={!newSessionEnabled || newSessionPending}>
+          disabled={!newSessionEnabled}>
           <UiIcon name="new-session" />
-          <span>{t(newSessionPending ? "workspace:sidebar.creating" : "workspace:sidebar.newSession")}</span>
+          <span>{t("workspace:sidebar.newSession")}</span>
           <span className="sidebar-add-mark" aria-hidden="true" />
         </button>
         <button type="button" disabled title={t("workspace:sidebar.prHint")}><UiIcon name="pull-request" /><span>{t("workspace:sidebar.pullRequests")}</span></button>
@@ -985,8 +1049,8 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
       {!managedLocal ? <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div> : null}
 
       {projectNavigation
-        ? <ProjectNavigation navigation={projectNavigation} selectedId={activeSessionId} titles={projectTitles} />
-        : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state} activeSessionId={activeSessionId}
+        ? <ProjectNavigation navigation={projectNavigation} selectedId={activeSessionId} titles={projectTitles} drafts={drafts} />
+        : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state} activeSessionId={activeSessionId} drafts={drafts}
             onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />}
 
       </div>
@@ -995,8 +1059,8 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
   );
 }
 
-function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace, activeSessionId }: Pick<SidebarProps,
-  "state" | "onSelect" | "onToggleWorkspace" | "activeSessionId"> & { readonly preferencesKey: string }) {
+function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace, activeSessionId, drafts }: Pick<SidebarProps,
+  "state" | "onSelect" | "onToggleWorkspace" | "activeSessionId" | "drafts"> & { readonly preferencesKey: string }) {
   const { t } = useTranslation("workspace");
   const [preferences, setPreferences] = useState(() => readSidebarPreferences(preferencesKey));
   const list = useRef<HTMLElement>(null);
@@ -1043,7 +1107,7 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace,
       .find((button) => button.dataset.pinSession === id)?.focus();
   }, [preferences.pinned]);
 
-  const knownSessions = new Set(sessionOrder);
+  const knownSessions = new Set(sessionOrder.filter((id) => !drafts.some((draft) => draft.sessionId === id)));
   const pinned = new Set(preferences.pinned);
   const orderedIds = [...new Set([...preferences.recent, ...recentSessionIds, ...sessionOrder])];
   const availableWorkspaces = hasCapability(state, "workspace") ? workspaceOrder : [];
@@ -1088,6 +1152,7 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace,
     </section> : null}
     <section className="sidebar-session-section" aria-labelledby="chat-sessions">
       <h2 id="chat-sessions" className="section-label">{t("sidebar.chats")}</h2>
+      {drafts.map((draft) => <DraftChatRow key={draft.id} draft={draft} />)}
       {ungrouped.length ? <div className="workspace-group">
         {grouped.size ? <p className="section-label">{t("sidebar.unassigned")}</p> : null}
         {ungrouped.map((session) => renderSession(session))}
