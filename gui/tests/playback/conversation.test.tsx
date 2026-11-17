@@ -555,6 +555,11 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     fireEvent.click(within(context).getByText("Technical details"));
     expect(within(context).getByText("cwd")).toBeVisible();
     expect(within(context).getByText("a".repeat(64))).toBeVisible();
+    const user = userEvent.setup();
+    const copy = within(context).getByRole("button", { name: "Copy Scope fingerprint" });
+    expect(copy).not.toHaveTextContent("Copy");
+    await user.click(copy);
+    expect(await navigator.clipboard.readText()).toBe("a".repeat(64));
     expect(within(context).getByText("Workspace details unavailable")).toBeVisible();
   });
 

@@ -16,6 +16,7 @@ import { GoalStart, useGoalStart } from "./GoalStart";
 import { ToolApproval } from "./ToolApproval";
 import { ChoiceReceipt, submittedChoiceLabel, UserChoiceCard, type ChoiceAnswer } from "./UserChoiceCard";
 import { ModelPicker } from "./ModelPicker";
+import { ReviewNotice } from "./WorkspaceReview";
 import { OpenWorkspacePath, WorkspaceInspection, type Inspection } from "./WorkspaceInspection";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
@@ -106,10 +107,10 @@ function fixturePlayback(client: HarnessClientUiPort): FixturePlaybackPort | nul
 }
 
 const dockTabs = [
-  { id: "environment", label: "workspace:environment.title", glyph: "◎" },
-  { id: "tasks", label: "panels:dock.tasks", glyph: "☷" },
-  { id: "agents", label: "panels:dock.agents", glyph: "✣" },
-  { id: "review", label: "panels:changes.review", glyph: "▣" },
+  { id: "environment", label: "workspace:environment.title" },
+  { id: "tasks", label: "panels:dock.tasks" },
+  { id: "agents", label: "panels:dock.agents" },
+  { id: "review", label: "panels:changes.review" },
 ] as const;
 
 interface FirstMessagePreview {
@@ -1434,6 +1435,9 @@ function WorkDock(props: WorkDockProps) {
     onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
   const facet = tab === "environment" ? "workspace" : tab === "review" ? "changes" : tab;
   const available = hasCapability(state, facet);
+  const live = state.remote.source.kind === "live";
+  const [inspectionRefresh, setInspectionRefresh] = useState(0);
+  const showRefresh = live && props.inspectWorkspace && (tab === "environment" || tab === "review");
   const showTasks = tab === "tasks" && open;
   const visibleRun = session.run ? {
     ...session.run,
@@ -1443,13 +1447,20 @@ function WorkDock(props: WorkDockProps) {
   return (
     <aside hidden={!open} className={`work-dock${tab === "environment" ? " dock-environment" : ""}`} aria-label={t(tab === "environment" ? "workspace:environment.summary" : "panels:dock.title")}>
       <header className="dock-header">
-        <strong>{t(dockTabs.find((item) => item.id === tab)!.label)}</strong>
-        <button type="button" className="icon-close" onClick={onClose} aria-label={t(tab === "environment" ? "workspace:environment.close" : "panels:dock.close")}><UiIcon name="close" /></button>
+        <strong>{t("panels:dock.title")}</strong>
+        <div className="dock-header-actions">
+          {showRefresh && <button type="button" className="panel-icon-button" aria-label={t("workspace:inspection.refresh")}
+            title={t("workspace:inspection.refresh")} onClick={() => setInspectionRefresh((value) => value + 1)}>
+            <UiIcon name="refresh" />
+          </button>}
+          <button type="button" className="panel-icon-button" onClick={onClose}
+            aria-label={t(tab === "environment" ? "workspace:environment.close" : "panels:dock.close")}><UiIcon name="close" /></button>
+        </div>
       </header>
       <nav className="dock-tabs" aria-label={t("panels:dock.panels")}>
         {dockTabs.map((item) => (
           <button type="button" key={item.id} aria-pressed={tab === item.id} onClick={() => onTab(item.id)}>
-            <span aria-hidden="true">{item.glyph}</span><span>{t(item.label)}</span>
+            {t(item.label)}
           </button>
         ))}
       </nav>
@@ -1471,13 +1482,16 @@ function WorkDock(props: WorkDockProps) {
           {goalProgress}
           {showTasks && session.execution ? <ExecutionDetail execution={session.execution} stale={stale} /> : null}
         </div>
-        {tab === "tasks" ? null : tab === "environment" && state.remote.source.kind === "live" ? <>
+        {tab === "tasks" ? null : tab === "environment" && live ? <>
           <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} openPath={props.openWorkspacePath}>
             {open && props.inspectWorkspace && <WorkspaceInspection load={props.inspectWorkspace} review={false} workspacePath={props.workspacePath}
-              revision={session.execution?.status ?? ""} />}
+              revision={session.execution?.status ?? ""} refresh={inspectionRefresh} />}
           </LiveContextPanel>
-        </> : tab === "review" && state.remote.source.kind === "live" && open && props.inspectWorkspace
-          ? <WorkspaceInspection load={props.inspectWorkspace} review revision={session.execution?.status ?? ""} />
+        </> : tab === "review" && live
+          ? open && props.inspectWorkspace
+            ? <div className="inspection-review"><WorkspaceInspection load={props.inspectWorkspace} review
+              revision={session.execution?.status ?? ""} refresh={inspectionRefresh} /></div>
+            : <ReviewNotice title={t("workspace:inspection.reviewUnavailable")} detail={t("workspace:inspection.reviewNoData")} />
           : !available ? <UnavailablePanel label={facet === "workspace" ? t("workspace:capability.workspace") : t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>
         {tab === "environment" ? <EnvironmentPanel state={state} session={session} /> : null}
         {tab === "agents" ? (
@@ -1547,23 +1561,26 @@ function LiveContextPanel({ state, session, workspacePath, openPath, children }:
     [t("workspace:live.service"), source.serviceInstanceId],
   ] as const;
   return (
-    <section className="panel-stack" aria-label={t("workspace:live.context")}>
+    <section className="workspace-environment" aria-label={t("workspace:live.context")}>
       <div className="workspace-location">
         <div className="workspace-location-label">
-          <strong>{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}</strong>
-          {root && <code title={root}>{root}</code>}
+          <strong><UiIcon name="folder-closed" />{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}</strong>
+          {root && <div className="workspace-location-path">
+            <code title={root}>{root}</code>
+            <CopyButton icon text={root} label={t("common:clipboard.copyValue", { label: t("workspace:environment.root") })} />
+          </div>}
         </div>
         {openPath && <OpenWorkspacePath open={openPath} />}
       </div>
       {!workspace && !path && !temporary ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}
       {children}
       <details className="environment-technical">
-        <summary>{t("workspace:environment.technical")}</summary>
-        <dl className="detail-list">
+        <summary>{t("workspace:environment.technical")}<UiIcon name="chevron-down" /></summary>
+        <dl className="inspection-fields">
           <div><dt>{t("workspace:live.product")}</dt><dd>{session.context.project}</dd></div>
           <div><dt>{t("workspace:live.scope")}</dt><dd>{session.context.scope ?? unavailable}</dd></div>
           {identities.map(([label, value]) => <div key={label}>
-            <dt>{label}</dt><dd>{value ? <><code>{value}</code> <CopyButton text={value}
+            <dt>{label}</dt><dd>{value ? <><code title={value}>{value}</code><CopyButton icon text={value}
               label={t("common:clipboard.copyValue", { label })} /></> : unavailable}</dd>
           </div>)}
         </dl>

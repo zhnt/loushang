@@ -1,9 +1,12 @@
-export type UiIconName = "close" | "chevron-down" | "chevron-up" | "search" | "back" | "forward" | "folder" | "folder-closed" | "new-session" | "pull-request" | "scheduled" | "plugins" | "settings" | "account" | "host" | "pin";
+export type UiIconName = "close" | "chevron-down" | "chevron-up" | "search" | "back" | "forward" | "folder" | "folder-closed" | "new-session" | "pull-request" | "scheduled" | "plugins" | "settings" | "account" | "host" | "pin" | "copy" | "refresh" | "review";
 
 // Shared presentation icons: fixed boxes avoid font-dependent glyph baselines.
 export function UiIcon({ name }: { name: UiIconName }) {
   return <svg className="ui-icon" data-icon={name} aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     {name === "close" && <path d="m6 6 12 12M18 6 6 18" />}
+    {name === "copy" && <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>}
+    {name === "refresh" && <path d="M20 10a8 8 0 0 0-13-4L4 9m0-5v5h5m-5 5a8 8 0 0 0 13 4l3-3m-5 0h5v5" />}
+    {name === "review" && <path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10zm0 0v7h7M8 14l2 2 4-4" />}
     {name === "chevron-down" && <path d="m7 10 5 5 5-5" />}
     {name === "chevron-up" && <path d="m7 14 5-5 5 5" />}
     {name === "search" && <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></>}
