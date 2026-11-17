@@ -245,9 +245,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_windows_crash_lease_repair.py": {
         "loushang.harness.worker._native_profile_bridge",
     },
-    CODING_ROOT / "package_product_worker_windows_crash_native_settlement.py": {
-        "loushang.harness.worker._native_profile_bridge",
-    },
     CODING_ROOT / "package_product_worker_windows_crash_stage_review.py": {
         'loushang.harness.worker._native_profile_bridge',
         'loushang.harness.worker.history._windows_stage_review_wire',

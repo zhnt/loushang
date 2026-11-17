@@ -230,3 +230,19 @@ def _remove_private_legacy_stage(stage: Path) -> None:
     for directory, _children, _files in os.walk(stage, topdown=False):
         Path(directory).chmod(0o700)
     shutil.rmtree(stage)
+
+
+class _LegacyLocalWheelFields:
+    """Inert recapture facts and inspection shared with nominal Product adapters."""
+
+    __slots__ = ()
+
+    plugin_id: str
+    original_source_identity: str
+    source_content_digest: str
+    manifest_digest: str
+    requested_package: str
+    plugin_manifest_path: str
+    filename: str
+    artifact_digest: str
+    wheel_bytes: bytes

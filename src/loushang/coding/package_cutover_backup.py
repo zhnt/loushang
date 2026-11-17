@@ -2,30 +2,27 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import Literal
 
 from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.package_pre_b_snapshot import reopen_coding_package_cutover
-from loushang.harness.resources.packages.product_pre_b_snapshot import (
-    read_posix_product_pre_b_snapshot,
+from loushang.harness.package_product._legacy_runtime import (
+    LegacyCutoverBackupReason as CodingCutoverBackupReason,
 )
-from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
-    read_windows_product_pre_b_snapshot,
+from loushang.harness.package_product._legacy_runtime import (
+    LegacyCutoverBackupStatus as CodingCutoverBackupStatus,
 )
-
-CodingCutoverBackupStatus = Literal["retained", "unknown"]
-CodingCutoverBackupReason = Literal[
-    "snapshot_verified",
-    "snapshot_evidence_missing",
-    "snapshot_owner_unavailable",
-]
+from loushang.harness.package_product._legacy_runtime import (
+    _LegacyCutoverBackupFacts,
+    inspect_legacy_cutover_backup,
+)
 
 
 @dataclass(frozen=True, slots=True)
-class CodingPackageCutoverBackupStatusV1:
+class CodingPackageCutoverBackupStatusV1(_LegacyCutoverBackupFacts):
+    _backup_label = "Coding"
+
     store_id: str
     namespace_id: str
     snapshot_receipt_id: str
@@ -35,33 +32,6 @@ class CodingPackageCutoverBackupStatusV1:
     entry_count: int | None
     byte_count: int | None
     status_version: int = 1
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.status_version) is not int
-            or self.status_version != 1
-            or not all((self.store_id, self.namespace_id, self.snapshot_receipt_id))
-        ):
-            raise ValueError("Coding cutover backup status identity is invalid")
-        if self.status == "retained":
-            if (
-                self.reason != "snapshot_verified"
-                or self.evidence_id is None
-                or self.entry_count is None
-                or self.byte_count is None
-            ):
-                raise ValueError("Retained cutover backup requires owner evidence")
-        elif self.status == "unknown":
-            if (
-                self.reason
-                not in {"snapshot_evidence_missing", "snapshot_owner_unavailable"}
-                or self.evidence_id is not None
-                or self.entry_count is not None
-                or self.byte_count is not None
-            ):
-                raise ValueError("Unknown cutover backup cannot claim evidence")
-        else:
-            raise ValueError("Unsupported cutover backup status")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -88,56 +58,12 @@ def inspect_coding_package_cutover_backup(
         raise TypeError("Coding Package lifecycle layout is required")
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     cutover = reopen_coding_package_cutover(lifecycle, read_only=True)
-    if cutover.disposition != "fenced" or cutover.fence is None:
-        raise RuntimeError("Coding Package Product fence is unavailable")
-    fence = cutover.fence
-    receipt_id = fence.request.snapshot_receipt_id
-    reason: CodingCutoverBackupReason
-    snapshot_reader = (
-        read_windows_product_pre_b_snapshot
-        if os.name == "nt"
-        else read_posix_product_pre_b_snapshot
-    )
-    try:
-        evidence = snapshot_reader(
-            snapshot_root=epoch.snapshot_root,
-            store_id=epoch.store_id,
-            snapshot_receipt_id=receipt_id,
-        )
-    except FileNotFoundError:
-        evidence = None
-        reason = "snapshot_owner_unavailable"
-    else:
-        reason = "snapshot_evidence_missing"
-    if evidence is None:
-        return CodingPackageCutoverBackupStatusV1(
-            store_id=epoch.store_id,
-            namespace_id=fence.request.namespace_id,
-            snapshot_receipt_id=receipt_id,
-            status="unknown",
-            reason=reason,
-            evidence_id=None,
-            entry_count=None,
-            byte_count=None,
-        )
-    snapshot = evidence.snapshot
-    if (
-        snapshot.store_id != epoch.store_id
-        or snapshot.legacy_root_identity != fence.request.legacy_root_identity
-        or snapshot.quiescence_receipt_id != fence.request.quiescence_receipt_id
-        or cutover.switch_receipt is None
-        or cutover.switch_receipt.snapshot_receipt_id != receipt_id
-    ):
-        raise ValueError("Coding cutover backup does not match the current fence")
-    return CodingPackageCutoverBackupStatusV1(
+    return inspect_legacy_cutover_backup(
+        cutover,
+        snapshot_root=epoch.snapshot_root,
         store_id=epoch.store_id,
-        namespace_id=fence.request.namespace_id,
-        snapshot_receipt_id=receipt_id,
-        status="retained",
-        reason="snapshot_verified",
-        evidence_id=evidence.evidence_id,
-        entry_count=snapshot.entry_count,
-        byte_count=snapshot.byte_count,
+        status_factory=CodingPackageCutoverBackupStatusV1,
+        product_label="Coding",
     )
 
 

@@ -7,7 +7,6 @@ changes attempt state or grants payload-deletion authority.
 
 from __future__ import annotations
 
-import os
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from typing import Literal, cast
@@ -27,10 +26,9 @@ from .package_product_worker_native_release import (
     CodingWorkerNativeReleaseError as CodingWorkerNativeReleaseError,
 )
 from .package_product_worker_payload import (
-    _DIR_FLAGS,
+    _STORAGE,
     CodingWorkerPayloadDebtPlanV1,
     _offline,
-    _require_private_visible_root,
     _verify_debt,
     open_coding_product_worker_supervisor_journal,
 )
@@ -202,12 +200,8 @@ def review_coding_product_worker_orphan_runtime(
         )
         plan = None
         if gate is not None:
-            root_fd = os.open(product.state_root, _DIR_FLAGS)
-            try:
-                _require_private_visible_root(product.state_root, root_fd)
+            with _STORAGE.open_root(lambda: product.state_root) as root_fd:
                 plan = _verify_debt(root_fd, gate.attempt_id)
-            finally:
-                os.close(root_fd)
         fence = product.epoch_runtime.cutover_result.fence
         assert fence is not None
         return CodingWorkerOrphanRuntimeReviewV1(
@@ -291,9 +285,7 @@ def settle_coding_product_worker_gated_attempt(
             raise CodingWorkerGatedRecoveryError(
                 "coding_worker_gated_recovery_attempt_mismatch"
             )
-        root_fd = os.open(product.state_root, _DIR_FLAGS)
-        try:
-            _require_private_visible_root(product.state_root, root_fd)
+        with _STORAGE.open_root(lambda: product.state_root) as root_fd:
             plan = _verify_debt(root_fd, gate.attempt_id)
             if (
                 plan != expected_plan
@@ -320,8 +312,6 @@ def settle_coding_product_worker_gated_attempt(
                 expected_supervisor_epoch=attempt.supervisor_epoch,
                 failure_code=attempt.failure_code,
             )
-        finally:
-            os.close(root_fd)
 
 
 def _review_offline(

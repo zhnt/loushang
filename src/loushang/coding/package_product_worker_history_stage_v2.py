@@ -7,8 +7,13 @@ or a named, resumable V1-only preparation. The Product owner index is separate.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
-from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
+from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.package_product._linux_worker_history import (
+    rollback_product_history_preparation,
+    stage_product_history_preparation,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -30,14 +35,12 @@ from loushang.harness.worker.history._preparation import (
 )
 
 from .package_product_worker_history_preflight_v2 import (
-    _prepare_coding_product_worker_history_cutover_under_guard,
+    CodingWorkerCutoverPreflightError,
 )
 from .package_product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
 )
-from .package_product_worker_history_v2_names import (
-    PREPARATION_INTENT_NAME,
-)
+from .package_product_worker_history_retention import _history_proof_bindings
 
 
 class CodingWorkerV2PreparationError(RuntimeError):
@@ -119,28 +122,16 @@ def stage_coding_product_worker_v2_preparation(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Coding Worker V2 staging requires its Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        with product.gc_gate.guard(require_write=True):
-            prepared = _prepare_coding_product_worker_history_cutover_under_guard(
-                product,
-                first_retained_generations=first_retained_generations,
-                active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
-                gc_snapshot=product.gc_gate.snapshot(),
-            )
-            product.assert_root_gc_authority_current()
-            with product.pinned_state_root_gc_read() as root_fd:
-                with RootedFileIO(product.state_root, root_fd) as file_io:
-                    with file_io.bind(
-                        product.state_root / PREPARATION_INTENT_NAME, durable=True
-                    ) as rooted:
-                        result = stage_coding_worker_v2_preparation(
-                            rooted, prepared=prepared
-                        )
-            product.assert_root_gc_authority_current()
-            return result
+    return cast(
+        CodingWorkerV2PreparationIntent,
+        stage_product_history_preparation(
+            _history_proof_bindings(),
+            product,
+            prepared_type=CodingWorkerPreparedProductCutoverV2,
+            error_type=CodingWorkerCutoverPreflightError,
+            first_retained_generations=first_retained_generations,
+        ),
+    )
 
 
 def rollback_coding_product_worker_v2_preparation(
@@ -153,18 +144,7 @@ def rollback_coding_product_worker_v2_preparation(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Coding Worker V2 rollback requires its Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id):
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with product.pinned_state_root_gc_read() as root_fd:
-                with RootedFileIO(product.state_root, root_fd) as file_io:
-                    with file_io.bind(
-                        product.state_root / PREPARATION_INTENT_NAME, durable=True
-                    ) as rooted:
-                        result = rollback_coding_worker_v2_preparation(rooted)
-            product.assert_root_gc_authority_current()
-            return result
+    return rollback_product_history_preparation(_history_proof_bindings(), product)
 
 
 __all__ = [

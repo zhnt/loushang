@@ -36,6 +36,7 @@ from loushang.coding.package_product_worker_posix_gc_history import (
     CodingPosixWorkerGcHistoryAuthority,
 )
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
+from loushang.harness.package_product import _linux_worker_history as history_owner
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -242,14 +243,14 @@ def test_product_staging_and_rollback_hold_one_runtime_gc_custody(
     )
 
     def prepare(
-        _product: object, **_kwargs: object
+        _bindings: object, _product: object, **_kwargs: object
     ) -> CodingWorkerPreparedProductCutoverV2:
         assert calls == ["runtime-enter", "gc-enter"]
         return prepared
 
     monkeypatch.setattr(
-        stage_module,
-        "_prepare_coding_product_worker_history_cutover_under_guard",
+        history_owner,
+        "prepare_history_cutover_under_guard",
         prepare,
     )
     intent = stage_module.stage_coding_product_worker_v2_preparation(
