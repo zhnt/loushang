@@ -359,14 +359,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       ? previous : { ...previous, ...liveTitles });
   }, [Boolean(projectNavigation), liveTitles]);
   useLayoutEffect(() => {
-    if (!requestedSelection || appliedSelection.current === requestedSelection || installedClient !== client
-      || !state.remote.sessions[requestedSelection.id]) return;
+    const id = requestedSelection?.id;
+    if (!id || appliedSelection.current === requestedSelection || installedClient !== client
+      || !state.remote.sessions[id]) return;
     appliedSelection.current = requestedSelection;
-    dispatch({ type: "session.selected", sessionId: requestedSelection.id });
+    dispatch({ type: "session.selected", sessionId: id });
   }, [client, installedClient, requestedSelection, state.remote.sessions]);
 
   const selectedId = state.local.selectedSessionId;
-  const selectionReady = !requestedSelection || appliedSelection.current === requestedSelection
+  const selectionReady = !requestedSelection?.id || appliedSelection.current === requestedSelection
     || requestedSelection.id === selectedId;
   const selectionKey = liveSelectionKey(state.remote.source);
   const expectedInstance = managedHostConnection?.status === "running" ? managedHostConnection.serviceInstanceId : undefined;
@@ -391,10 +392,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     dispatch({ type: "session.selected", sessionId });
   }
   const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, selectSession);
-  const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
+  const panelOpen = state.local.dockOpen;
   const environmentOpen = state.local.dockOpen && state.local.dockTab === "environment";
   const tasksOpen = state.local.dockOpen && state.local.dockTab === "tasks";
   const selected = !draft && selectedId ? state.remote.sessions[selectedId] : undefined;
+  const visibleMessages = selected?.messages.filter((message) => message.systemNotice !== "resumesRuntime");
   const conversationOpen = Boolean(selected || draft);
   const firstMessage = selected && firstMessages[selected.id];
   const preview = firstMessage && firstMessage.continuityId === selected?.context.continuityId ? firstMessage : null;
@@ -443,7 +445,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const openTasks = () => dispatch({ type: "dock.opened", tab: "tasks" });
   const toggleEnvironment = () => dispatch(environmentOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: "environment" });
   const toggleDock = () => dispatch(panelOpen ? { type: "dock.closed" }
-    : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab });
+    : { type: "dock.opened", tab: state.local.dockTab });
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
@@ -684,7 +686,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
   const draftPending = isSendingDraft(draft);
   const showWelcome = draft?.status === "ready" || (selected?.status === "idle"
-    && !selected.messages.length && !preview && !selected.execution && !selected.run && !selected.changeSet
+    && !visibleMessages?.length && !preview && !selected.execution && !selected.run && !selected.changeSet
     && !selected.pendingApprovals?.length && !question && !goalStart.start && !goalStart.attempt);
   const firstMessageText = draftPending ? draft.text
     : preview && selected && !selected.messages.some((message) => message.role === "user") ? preview.text : null;
@@ -696,7 +698,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }, [draftPending]);
   const draftTitle = t("workspace:sidebar.newSession");
   const workspaceContext = draft && projectNavigation ? draft.target.workspace
-    : projectNavigation?.selection?.id === selected?.id ? projectNavigation?.selection?.workspace : undefined;
+    : selected && installedClient === client && selectionReady ? requestedSelection?.workspace : undefined;
   const workspaceFingerprint = selected?.context.scopeFingerprint;
   const workspaceSessionId = selected?.context.sessionId;
   const workspacePath = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE ? workspaceContext : undefined;
@@ -869,7 +871,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           sessionReady={Boolean(selected)}
           connection={displayedConnection}
           dockOpen={panelOpen}
-          environmentOpen={environmentOpen}
           goalPanel={goalPanelScope ? {
             id: goalPanelId,
             open: goalPanelOpen,
@@ -878,7 +879,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               if (!goalPanelOpen) openTasks();
             },
           } : undefined}
-          onEnvironment={toggleEnvironment}
           onOpenDock={toggleDock}
         /> : null}
 
@@ -907,11 +907,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     <p>{firstMessageText}</p>
                   </article> : null}
                   {selected ? <Fragment key={selected.id}>
-                    {selected.messages.map((message) => {
+                    {visibleMessages?.map((message) => {
                       const choice = message.role === "user" ? submittedChoiceLabel(message.content) : undefined;
                       if (choice) return <ChoiceReceipt key={message.id} label={choice} text={message.content} />;
                       return message.role === "status" ? (
-                      <p className="message transcript-status" role="status" key={message.id}>{message.systemNotice ? t("session:transcript.resumesRuntime") : message.content}</p>
+                      <p className="message transcript-status" role="status" key={message.id}>{message.content}</p>
                     ) : (
                       <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
                         <div className="message-meta">
@@ -1332,9 +1332,7 @@ function ExecutionDetail({ execution, stale }: {
   );
 }
 
-function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment, goalPanel }: {
-  readonly environmentOpen: boolean;
-  readonly onEnvironment: () => void;
+function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen, onOpenDock, goalPanel }: {
   readonly title?: string;
   readonly contextLabel?: string;
   readonly sessionReady: boolean;
@@ -1359,7 +1357,6 @@ function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen
         {goalPanel ? <button type="button" aria-expanded={goalPanel.open}
           aria-controls={goalPanel.id} onClick={goalPanel.toggle}>{t("panels:interactiveGoal.title")}</button> : null}
         <button type="button" aria-label={t("panels:header.shareUnavailable")} disabled>{t("panels:header.share")}</button>
-        <button type="button" aria-label={t("panels:header.toggleEnvironment")} title={t("workspace:environment.title")} aria-pressed={environmentOpen} onClick={onEnvironment} disabled={!sessionReady}><PanelIcon side="environment" /></button>
         <button type="button" aria-label={t("panels:header.bottomUnavailable")} title={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>
         <button type="button" aria-label={t("panels:header.openDock")} title={t("panels:header.toggleDock")} aria-pressed={dockOpen} onClick={onOpenDock} disabled={!sessionReady}><PanelIcon side="right" /></button>
       </div>
@@ -1516,12 +1513,12 @@ function WorkDock(props: WorkDockProps) {
         </div>
         {tab === "tasks" ? null : tab === "environment" && live ? <>
           <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} openPath={props.openWorkspacePath}>
-            {open && props.inspectWorkspace && <WorkspaceInspection load={props.inspectWorkspace} review={false} workspacePath={props.workspacePath}
+            {open && props.inspectWorkspace && <WorkspaceInspection key={session.id} load={props.inspectWorkspace} review={false} workspacePath={props.workspacePath}
               revision={session.execution?.status ?? ""} refresh={inspectionRefresh} />}
           </LiveContextPanel>
         </> : tab === "review" && live
           ? open && props.inspectWorkspace
-            ? <div className="inspection-review"><WorkspaceInspection load={props.inspectWorkspace} review
+            ? <div className="inspection-review"><WorkspaceInspection key={session.id} load={props.inspectWorkspace} review
               revision={session.execution?.status ?? ""} refresh={inspectionRefresh} /></div>
             : <ReviewNotice title={t("workspace:inspection.reviewUnavailable")} detail={t("workspace:inspection.reviewNoData")} />
           : !available ? <UnavailablePanel label={facet === "workspace" ? t("workspace:capability.workspace") : t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>

@@ -24,7 +24,7 @@ export interface ProjectNavigationProps {
   readonly pending: boolean;
   readonly error: boolean;
   readonly folderInput: boolean;
-  readonly selection: { workspace: string; id: string } | null;
+  readonly selection: { workspace: string; id?: string } | null;
   readonly openFolder: () => void;
   readonly closeFolder: () => void;
   readonly hostKey: string;

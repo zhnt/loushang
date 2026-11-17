@@ -150,7 +150,6 @@
     "actions": "会话操作",
     "shareUnavailable": "分享不可用",
     "share": "⇧ 分享",
-    "toggleEnvironment": "切换环境面板",
     "bottomUnavailable": "底部面板不可用",
     "bottomHint": "当前测试模式不支持底部面板",
     "openDock": "打开工作面板",

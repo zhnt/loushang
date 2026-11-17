@@ -44,7 +44,7 @@ export default function LocalHostGate() {
   const [folderInput, setFolderInput] = useState(false);
   const [workspaceError, setWorkspaceError] = useState(false);
   const [workspacePending, setWorkspacePending] = useState(false);
-  const [selection, setSelection] = useState<{ workspace: string; id: string } | null>(null);
+  const [selection, setSelection] = useState<ManagedProjectNavigation["selection"]>(null);
   const workspaceEpoch = useRef(0);
   const workspaceClients = useRef(new Map<string, WebLiveClient>());
   const workspaceMutation = useRef(false);
@@ -61,7 +61,7 @@ export default function LocalHostGate() {
 
   function openConversation(path: string, id?: string) {
     setWorkspace(path);
-    setSelection(id ? { workspace: path, id } : null);
+    setSelection({ workspace: path, id });
     const selected = workspaceClient(path);
     clientRef.current = selected;
     setClient(selected);
@@ -155,7 +155,7 @@ export default function LocalHostGate() {
           ? { ...project, sessions: withoutChat(project.sessions) } : project),
         temporarySessions: path === TEMPORARY_WORKSPACE ? withoutChat(current.temporarySessions) : current.temporarySessions,
       }));
-      setSelection((current) => current?.workspace === path && current.id === chat.id ? null : current);
+      setSelection((current) => current?.workspace === path && current.id === chat.id ? { workspace: path } : current);
       return true;
     } catch {
       return false;
@@ -395,6 +395,7 @@ export default function LocalHostGate() {
       </div>
     </div> : null}
   </>;
+  const requestConnection = connectionId.current;
   return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
     startLocalHost={canStart ? <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={client ? setConnection : undefined}
@@ -410,7 +411,7 @@ export default function LocalHostGate() {
       hostKey: selectedId,
       inspectWorkspace: async (path, fingerprint, sessionId) => {
         const result = await webRequest<{ workspaces: { scopeFingerprint: string; inspection?: import("./WorkspaceInspection").Inspection }[] }>(
-          { operation: "workspace", action: "inspect", path, sessionId }, selectedId,
+          { operation: "workspace", action: "inspect", path, sessionId }, requestConnection,
         );
         const workspace = result.workspaces[0];
         if (workspace?.scopeFingerprint !== fingerprint || !workspace.inspection) throw new Error("workspace_unavailable");

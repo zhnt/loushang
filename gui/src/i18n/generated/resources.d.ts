@@ -161,8 +161,7 @@ export default interface Resources {
       "openDock": "Open Work Dock",
       "share": "⇧ Share",
       "shareUnavailable": "Share unavailable",
-      "toggleDock": "Toggle right panel",
-      "toggleEnvironment": "Toggle environment"
+      "toggleDock": "Toggle right panel"
     },
     "interactiveGoal": {
       "check": "Check goal status",
@@ -385,7 +384,6 @@ export default interface Resources {
       "message": "{{role}} message",
       "noText": "No text output was recorded.",
       "plainTextCode": "Plain text",
-      "resumesRuntime": "Sending a message resumes the session.",
       "waiting": "Waiting for output…",
       "you": "You"
     },

@@ -14,6 +14,7 @@ const scenarios = [
 ];
 
 async function verifyLayout(page: Page, info: TestInfo, mode: string) {
+  await page.locator("main").evaluate((element) => { element.scrollTop = 0; });
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   const geometry = await page.evaluate(() => {
     function rect(selector: string) {
@@ -88,11 +89,13 @@ for (const scenario of scenarios) {
         await expect(separator).toHaveAttribute("aria-valuenow", String(scenario.rail));
       }
       await verifyLayout(page, info, "environment");
-      await page.getByRole("button", { name: "Toggle environment" }).click();
+      await page.getByRole("button", { name: "Open Work Dock" }).click();
       await verifyLayout(page, info, "closed");
       await page.getByRole("button", { name: "Open Work Dock" }).click();
+      const tabs = page.getByRole("navigation", { name: "Work Dock panels" });
+      await tabs.getByRole("button", { name: "Tasks" }).click();
       await verifyLayout(page, info, "work-panel");
-      await page.getByRole("button", { name: "Toggle environment" }).click();
+      await tabs.getByRole("button", { name: "Environment" }).click();
       await expect(page.getByRole("complementary", { name: "Work Dock", exact: true })).toHaveCount(0);
       await verifyLayout(page, info, "environment-restored");
       expect(errors).toEqual([]);

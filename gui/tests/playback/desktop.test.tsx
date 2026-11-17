@@ -21,7 +21,7 @@ describe("desktop frame", () => {
     expect(rail.textContent).not.toMatch(/[♢▱⌕]/);
     expect(rail.querySelectorAll('[data-icon="folder"]')).toHaveLength(3);
     expect(rail.querySelector('.brand-name [data-icon="chevron-down"]')).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
+    await user.click(screen.getByRole("button", { name: "Tasks" }));
     const close = screen.getByRole("button", { name: "Close Work Dock" });
     expect(close.querySelector('[data-icon="close"]')).toBeInTheDocument();
     await user.click(close);
@@ -112,7 +112,7 @@ describe("desktop frame", () => {
     expect(layout).toHaveClass("right-stacked");
     await user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
     expect(layout).not.toHaveClass("right-stacked");
-    await user.click(screen.getByRole("button", { name: "Toggle environment" }));
+    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
     expect(layout).toHaveClass("dock-closed");
     expect(layout).not.toHaveClass("right-visible");
   });
@@ -134,19 +134,24 @@ describe("desktop frame", () => {
     expect(screen.queryByRole("button", { name: "Minimize window" })).not.toBeInTheDocument();
   });
 
-  it("separates environment and work panel controls and shares the Work Dock and switches to Review", async () => {
+  it("toggles one Work Dock and restores the selected tab", async () => {
     const user = userEvent.setup();
     render(<HarnessGui client={createMockAppClient()} />);
     await screen.findByRole("heading", { name: "GUI development" });
     expect(screen.getByLabelText("Environment summary")).toBeVisible();
-    expect(screen.queryByRole("complementary", { name: "Work Dock" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle environment" })).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Open Work Dock" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Bottom panel unavailable" })).toBeDisabled();
     await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Review" }));
     expect(screen.getByLabelText("Read-only review")).toBeVisible();
     expect(screen.queryByLabelText("Environment summary")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
+    await user.click(toggle);
     expect(screen.queryByRole("complementary", { name: "Work Dock" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Toggle environment" }));
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await user.click(toggle);
+    expect(screen.getByLabelText("Read-only review")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Environment" }));
     expect(screen.getByLabelText("Environment summary")).toBeVisible();
   });
 

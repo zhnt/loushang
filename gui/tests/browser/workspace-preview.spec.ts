@@ -18,8 +18,9 @@ test("reads Workspace files on demand without moving the conversation or running
   await page.addInitScript(() => Object.assign(window, { __LOUSHANG_MANAGED_TEST__: true }));
   const snapshot = liveSnapshot();
   snapshot.sessions[0].source.source.records[1].text = reply;
-  snapshot.sessions[0].source.draft = "Streaming draft";
-  snapshot.sessions[0].source.observation = { executionId: "draft-execution", status: "running", finalCursor: null };
+  snapshot.sessions[0].source.source.records.push({
+    kind: "status", text: "Sending a message resumes the session runtime.",
+  });
   const reads: { reference: string; base: string }[] = [];
   const entries = [{ name: "config.py", kind: "file" }, { name: "advanced", kind: "directory" }];
   const file = (path: string, text: string) => ({ kind: "file", path, text });
@@ -48,12 +49,30 @@ test("reads Workspace files on demand without moving the conversation or running
       projects: [{ path: "/workspace", sessions: [{ id: "session-1", title: "Live session", scope: "mux:mux-1", pinned: false }] }],
       temporarySessions: [],
     };
+    else if (request.operation === "workspace" && request.action === "inspect") {
+      expect(request.path).toBe("/workspace");
+      result = { workspaces: [{
+        scopeFingerprint: "a".repeat(64),
+        inspection: { git: null, changes: [], toolchains: [{ name: "Node", declared: "24" }], limited: false },
+      }] };
+    }
+    else if (request.action === "models") result = {
+      currentId: "test",
+      models: [{ id: "test", provider: "sample", endpointId: "local", modelId: "test", label: "Test", supportsThinking: false }],
+    };
     else if (request.action === "snapshot") result = snapshot;
     return route.fulfill({ json: { result } });
   });
 
   await page.goto("/");
   const transcript = page.locator(".transcript");
+  await expect(page.getByText("/workspace", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Node", exact: true })).toBeVisible();
+  await expect(transcript.locator(".transcript-status")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Toggle environment" })).toHaveCount(0);
+  await page.locator("#message-input").fill("Ready to continue");
+  await expect(page.locator(".composer-submit")).toBeEnabled();
+  await page.locator("#message-input").fill("");
   const trigger = transcript.getByRole("button", { name: "README.zh-CN.md", exact: true });
   await expect(trigger).toBeVisible();
   expect(reads).toEqual([]);
@@ -104,8 +123,9 @@ test("reads Workspace files on demand without moving the conversation or running
 
   await transcript.evaluate((node) => { node.scrollTop = 170; });
   await expect.poll(() => transcript.evaluate((node) => node.scrollTop)).toBe(170);
-  snapshot.sessions[0].source.draft += " plus another update";
-  await expect(transcript.getByText("Streaming draft plus another update")).toBeAttached();
+  snapshot.sessions[0].source.observation = { executionId: "draft-execution", status: "running", finalCursor: null };
+  snapshot.sessions[0].source.draft = "Streaming draft";
+  await expect(transcript.getByText("Streaming draft")).toBeAttached();
   expect(await transcript.evaluate((node) => node.scrollTop)).toBe(170);
   expect(reads).toContainEqual({ base: "gui", reference: "../README.zh-CN.md" });
 });

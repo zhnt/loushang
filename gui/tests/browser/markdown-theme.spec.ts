@@ -91,7 +91,7 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await page.emulateMedia({ colorScheme: "light" });
   await showSample(page);
   await page.getByRole("button", { name: "Toggle sidebar" }).click();
-  await page.getByRole("button", { name: "Toggle environment" }).click();
+  await page.getByRole("button", { name: "Open Work Dock" }).click();
   const body = page.locator(".markdown-body");
   const reading = page.locator(".markdown-reading");
   const composer = page.locator(".composer");
@@ -217,7 +217,7 @@ test("app appearance includes the shell, settings, and Markdown while preserving
 
   await page.setViewportSize({ width: 700, height: 900 });
   await page.getByRole("button", { name: "Toggle sidebar" }).click();
-  await page.getByRole("button", { name: "Toggle environment" }).click();
+  await page.getByRole("button", { name: "Open Work Dock" }).click();
   for (const block of [body.locator(".markdown-table"), body.locator("pre")]) {
     expect(await block.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     await block.evaluate((element) => { element.scrollLeft = 64; });

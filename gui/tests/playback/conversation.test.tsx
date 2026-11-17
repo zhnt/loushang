@@ -236,7 +236,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.queryByLabelText("Quick look gui-interface-specification.md")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Step 1 / 4" })).not.toBeInTheDocument();
     expect(screen.queryByText("git · main")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
+    await user.click(screen.getByRole("button", { name: "Tasks" }));
     const dock = screen.getByLabelText("Work Dock");
     for (const label of ["Tasks", "Subagents", "Review"]) {
       await user.click(within(dock).getByRole("button", { name: label }));
@@ -1109,7 +1109,7 @@ describe("Hosted Goal observation", () => {
     expect(goalProgress).toHaveBeenCalledTimes(1);
 
     act(() => publish(initial));
-    fireEvent.click(await screen.findByRole("button", { name: "Open Work Dock" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
     const panel = within(await screen.findByRole("region", { name: "Goal progress" }));
     expect(panel.getByText("real-goal")).not.toBeVisible();
     fireEvent.click(panel.getByText("Live execution details"));
@@ -1174,7 +1174,7 @@ describe("Hosted Goal start", () => {
     await screen.findByRole("textbox", { name: /message/i });
     expect(screen.queryByRole("button", { name: "Start Goal" })).not.toBeInTheDocument();
     act(() => publish(ready));
-    fireEvent.click(await screen.findByRole("button", { name: "Open Work Dock" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
     const button = await screen.findByRole("button", { name: "Start Goal" });
     act(() => { fireEvent.click(button); fireEvent.click(button); });
     expect(button).toBeDisabled();
@@ -1202,7 +1202,7 @@ describe("Hosted Goal start", () => {
     act(() => publish({ ...ready, source: { ...source, serviceInstanceId: "new-host", connectionEpoch: "3" } }));
     const dock = screen.queryByLabelText("Work Dock");
     if (!dock || !within(dock).queryByRole("button", { name: "Start Goal" })) {
-      fireEvent.click(screen.getByRole("button", { name: "Open Work Dock" }));
+      fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
     }
     expect(await screen.findByRole("button", { name: "Start Goal" })).toBeEnabled();
     expect(startGoal).toHaveBeenCalledTimes(1);
