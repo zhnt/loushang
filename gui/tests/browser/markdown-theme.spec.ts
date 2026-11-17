@@ -95,7 +95,7 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   const border = await composer.evaluate((element) => getComputedStyle(element).borderColor);
   await input.click();
   await expect(input).toBeFocused();
-  await expect(composer).not.toHaveCSS("border-color", border);
+  await expect(composer).toHaveCSS("border-color", border);
   await expect(model).toBeEnabled();
   await expect(model).toHaveCSS("font-weight", "600");
   await expect(model.locator("[data-icon=chevron-down]")).toBeVisible();

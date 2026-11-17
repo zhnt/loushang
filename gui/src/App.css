@@ -201,7 +201,7 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .task-status.running { color: var(--control-focus); animation: spin 1.25s linear infinite; }
 .task-status.completed { color: var(--green); }
 .task-status.failed { color: var(--red); }
-.composer { padding: 9px 10px 8px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--paper); box-shadow: 0 7px 23px rgba(31, 32, 34, 0.07); }
+.composer { padding: 9px 10px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 7px 23px rgba(31, 32, 34, 0.07); }
 .composer > label { display: block; color: var(--faint); font-size: 12px; }
 .composer textarea { width: 100%; min-height: 54px; resize: none; padding: 6px 2px; border: 0; color: var(--ink); background: transparent; font-size: 13px; line-height: 1.45; }
 .composer textarea:focus { outline: 0; }
@@ -504,7 +504,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .goal-review-summary ul { margin: 0; max-width: 100%; }
 
 .composer textarea { max-height: min(36vh, 260px); overflow-y: auto; }
-.composer:focus-within { border-color: var(--control-focus); }
 .draft-context { margin: 12px 0; color: var(--ink-secondary); font-size: 13px; }
 .operation-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-inline-start: 3px solid var(--red); color: var(--ink); background: var(--panel); }
 .operation-notice.uncertain { border-inline-start-color: var(--warning); }
@@ -529,5 +528,3 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .account-technical { margin-top: 6px; }
 .account-technical summary { color: var(--ink-secondary); font-size: 12px; cursor: pointer; }
 .account-technical .copy-action { margin-top: 6px; }
-.project-navigation .session-row.selected { border-inline-start: 2px solid var(--control-focus); }
-.project-navigation .session-row { border-inline-start: 2px solid transparent; }
