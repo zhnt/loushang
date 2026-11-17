@@ -188,12 +188,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let product_name = &app.package_info().name;
     let menu_name = product_name.replace('&', "&&");
     let user = MenuItem::new(app, &menu_name, false, None::<&str>)?;
-    let current = MenuItem::new(
-        app,
-        "未选择 Host / No Host selected",
-        false,
-        None::<&str>,
-    )?;
+    let current = MenuItem::new(app, "未选择 Host / No Host selected", false, None::<&str>)?;
     let show = MenuItem::with_id(
         app,
         "tray-show",
