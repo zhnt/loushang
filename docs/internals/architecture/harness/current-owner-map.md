@@ -71,7 +71,7 @@ PackageProduct also owns the six-base read/publication transaction, crash
 Supervisor/native/C5 settlement, no-effect reservation settlement and pinned-stage
 lease repair. Worker owns the read-only cleanup evidence join. Coding keeps trust
 identities, Product admission and nominal records. Recovery orchestration and
-payload/start chains remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
+POSIX offline payload/start-gate custody remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
 this slice does not complete that chain or its majority-exit target.
 
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
@@ -221,8 +221,9 @@ The existing canonical record reader also serves checkpoint, preparation,
 cutover, launch-intent and stage-retirement values. Coding keeps each original
 concrete class, fields and wire Profile; Resources supplies schema traversal,
 and Worker owns the migrated preparation/checkpoint/cutover proofs and encoders.
-Launch-intent still has a Coding implementation tracked by C07; stage-retirement
-receipt proof and all four retirement transactions are shared. Original errors, bounds and shapes remain compatible; the same reader's
+Windows launch-intent proof/encoding and generic binding now belong to Worker
+and PackageProduct. Coding retains the nominal record, Profile and true Product
+admission; stage-retirement receipt proof and all four transactions are shared. Original errors, bounds and shapes remain compatible; the same reader's
 15 existing families retain their default contracts. See [A45](key-designs/windows-worker-semantic-convergence.md#21-a45其余五类canonical记录复用既有reader).
 
 The same Worker history owner now supplies complete Windows Supervisor and C5
@@ -232,6 +233,13 @@ access adapter to the original guard, currentness and borrowed-root authorities.
 Supervisor marker/history and C5 per-revision committed-head protocols remain
 distinct; no repair, additional root ownership or second history is introduced.
 See [A32](key-designs/windows-worker-semantic-convergence.md#14-a32supervisor-与-c5-的完整-windows-托管路径).
+
+PackageProduct now also owns complete Windows pending planning, payload
+materialization, live request binding and intent construction over the original
+stage/Journal/receipt owners. The original weak request registry has one shared
+owner. Worker payload values own the migrated debt proofs and both pending
+validators, preserving platform type differences. Coding keeps Product admission,
+nominal fields and dynamic limits; existing POSIX physical programs are unchanged.
 
 Worker.payload also supplies Windows stage marker/read/direct checks and common
 physical member retirement over the existing Resources native APIs and ACL.

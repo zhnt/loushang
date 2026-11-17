@@ -10,7 +10,10 @@ from typing import ClassVar, Self, cast
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
-from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
+from loushang.harness.worker.history._base_codec import (
+    _BaseWireMethods,
+    _SourceBoundBaseWireMethods,
+)
 from loushang.harness.worker.history._windows_prepared import (
     _WindowsPreparedSourceMethods,
 )
@@ -147,3 +150,59 @@ class _WindowsLaunchIntentBaseMethods(
             retained_intents=tuple(retained[key] for key in sorted(retained)),
             attempt_ids=frozenset(ids),
         )
+
+
+class WindowsLaunchIntentMethods(_BaseWireMethods):
+    __slots__ = ()
+    _fingerprint_domain: bytes
+    attempt_id: str
+    stage_identity: tuple[int, int]
+    receipt_fingerprint: str
+    request_fingerprint: str
+    identity_fingerprint: str
+    runtime_fingerprint: str
+    payload_digest: str
+    owner_id: str
+    supervisor_epoch: int
+    intent_version: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.attempt_id) is not str
+            or _ATTEMPT.fullmatch(self.attempt_id) is None
+            or type(self.stage_identity) is not tuple
+            or (len(self.stage_identity) != 2)
+            or any(
+                (type(value) is not int or value < 0 for value in self.stage_identity)
+            )
+            or any(
+                (
+                    type(value) is not str or _DIGEST.fullmatch(value) is None
+                    for value in (
+                        self.receipt_fingerprint,
+                        self.request_fingerprint,
+                        self.identity_fingerprint,
+                        self.runtime_fingerprint,
+                        self.payload_digest,
+                    )
+                )
+            )
+            or (type(self.owner_id) is not str)
+            or (not self.owner_id)
+            or (len(self.owner_id) > 256)
+            or (type(self.supervisor_epoch) is not int)
+            or (self.supervisor_epoch < 1)
+            or (type(self.intent_version) is not int)
+            or (self.intent_version != 1)
+        ):
+            raise ValueError("Windows Worker launch intent is invalid")
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256(self._fingerprint_domain + self.to_bytes()).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return self._wire_schema.encode(self, sort_keys=True)
+
+    def to_bytes(self) -> bytes:
+        return canonical_json_bytes(self.to_dict())

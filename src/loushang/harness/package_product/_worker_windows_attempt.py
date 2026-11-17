@@ -9,14 +9,17 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import stat
+import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Generic, Protocol, Self, TypeVar, cast
+from weakref import WeakKeyDictionary
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -54,22 +57,30 @@ from loushang.harness.worker._windows_provisioning_journal import (
 )
 from loushang.harness.worker.contracts import (
     ManagedWorkerLaunchRequestV1,
+    WorkerBindingError,
     WorkerRuntimeBindingV1,
 )
 from loushang.harness.worker.history._receipts import _ReceiptRecordMethods
 from loushang.harness.worker.history._windows_product_journals import (
     WindowsActivationStateJournal,
+    WindowsSupervisorJournal,
 )
 from loushang.harness.worker.history._windows_recovery import (
+    WindowsRecoveryAdmission,
     WindowsRecoveryAttemptV1,
     project_windows_recovery_attempts,
 )
 from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
+from loushang.harness.worker.payload._selected_payload import (
+    _PendingPayload,
+    worker_identity_from_receipt,
+)
 from loushang.harness.worker.payload._windows_stage_io import (
     FileIdentity,
     LaunchIntent,
     WindowsStageInspection,
+    create_windows_payload_stage,
     marker_bytes,
     require_payload_root,
     require_payload_streams,
@@ -83,6 +94,9 @@ from loushang.hosting.windows_backend_material import (
     WindowsBackendMaterialExpectationV1,
     verify_windows_backend_material_expectation,
 )
+
+from ._worker_product_authority import _WindowsWorkerProductReceiptAuthority
+from .product_worker_candidate import ProductWorkerSelectedPayloadFacts
 
 _PersistedCheckpointT = TypeVar("_PersistedCheckpointT")
 _PersistedBasesT = TypeVar("_PersistedBasesT")
@@ -469,6 +483,81 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
                     raise self._failure("publication_changed")
             self._product.assert_root_gc_authority_current()
             return intent
+
+    def commit_bound(
+        self,
+        *,
+        receipt_owner: _WindowsWorkerProductReceiptAuthority[
+            _PayloadReceiptT, _SelectedPayloadT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+        payload_lease: WindowsWorkerLaunchPayload,
+        payload_program: WindowsProductWorkerPayload[
+            _WindowsPayloadT, _WindowsPendingT, _PayloadAttemptT
+        ],
+    ) -> IntentT:
+        if (
+            request.identity.scope_id != receipt.policy.product_scope_id
+            or request.identity.plugin_id != receipt.policy.plugin_id
+            or request.identity.plugin_revision_digest
+            != receipt.policy.plugin_revision_digest
+            or (request.identity.contribution_id != receipt.policy.contribution_id)
+            or (
+                request.identity.owner_generation
+                != receipt.policy.owner_selection_generation
+            )
+            or (
+                request.identity.declaration_fingerprint
+                != receipt.policy.declaration_fingerprint
+            )
+            or (
+                request.identity.worker_configuration_fingerprint
+                != receipt.policy.worker_configuration_fingerprint
+            )
+            or (request.identity.attempt_id != payload_lease.attempt_id)
+            or (request.identity.owner_id != payload_lease.owner_id)
+            or (request.runtime != payload_lease.runtime)
+            or (receipt.fingerprint != payload_lease.receipt_fingerprint)
+            or (request.runtime.executable_digest != payload_lease.payload_digest)
+            or (
+                (request.runtime.cwd_device, request.runtime.cwd_inode)
+                != payload_lease.stage_identity
+            )
+        ):
+            raise self._failure("binding_mismatch")
+        intent = cast(Callable[..., IntentT], self._record_type)(
+            attempt_id=payload_lease.attempt_id,
+            stage_identity=payload_lease.stage_identity,
+            receipt_fingerprint=receipt.fingerprint,
+            request_fingerprint=request.fingerprint,
+            identity_fingerprint=request.identity.fingerprint,
+            runtime_fingerprint=request.runtime.fingerprint,
+            payload_digest=payload_lease.payload_digest,
+            owner_id=payload_lease.owner_id,
+            supervisor_epoch=request.identity.supervisor_epoch,
+        )
+        return self.commit(
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            request=request,
+            payload_lease=payload_lease,
+            intent=intent,
+            require_bound=partial(
+                payload_program.require_bound,
+                receipt_owner=receipt_owner,
+                receipt=receipt,
+                payload_lease=payload_lease,
+                request=request,
+            ),
+            verify_marker=partial(
+                payload_program.verify_stage,
+                receipt_owner=receipt_owner,
+                receipt=receipt,
+                payload_lease=payload_lease,
+                initial=True,
+            ),
+        )
 
 
 class WindowsProductWorkerProvisioningAccess:
@@ -1138,7 +1227,9 @@ def capture_windows_product_worker_partial_stage(
 
 
 class _PinnedRecoveryStore:
-    def __init__(self, journal: WindowsWorkerProvisioningStateJournal, root: int) -> None:
+    def __init__(
+        self, journal: WindowsWorkerProvisioningStateJournal, root: int
+    ) -> None:
         self._journal = journal
         self._root = root
 
@@ -1184,10 +1275,9 @@ def settle_windows_product_worker_native_cleanup(
             observed = os.fstat(stage)
             visible = windows_stat_at(root, stage_name)
             if (
-                (observed.st_dev, observed.st_ino)
-                != expected_stage_identity
-                or not os.path.samestat(observed, visible)
-            ):
+                observed.st_dev,
+                observed.st_ino,
+            ) != expected_stage_identity or not os.path.samestat(observed, visible):
                 raise ValueError("Windows Worker crash payload stage changed")
             spec = _rebuild_windows_lpac_cleanup_spec(
                 identity=identity,
@@ -1195,13 +1285,13 @@ def settle_windows_product_worker_native_cleanup(
                 platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
                 owner_private_ancestors=True,
             )
-            if observe_windows_worker_job_absent(
-                cast(str, identity["jobObjectName"])
-            ) is not True:
+            if (
+                observe_windows_worker_job_absent(cast(str, identity["jobObjectName"]))
+                is not True
+            ):
                 raise ValueError("Windows Worker crash Job is still present")
             journal = WindowsWorkerProvisioningStateJournal(
-                product.state_root
-                / f"worker-native-provisioning-{attempt_id}.jsonl",
+                product.state_root / f"worker-native-provisioning-{attempt_id}.jsonl",
                 identity=identity,
             )
             _recover_windows_lpac_containment_cleanup(
@@ -1227,7 +1317,6 @@ def settle_windows_product_worker_native_cleanup(
             os.close(stage)
 
 
-
 @contextmanager
 def windows_product_worker_offline_write(
     product: WindowsLocalWheelProductSessionOwner,
@@ -1245,3 +1334,385 @@ def windows_product_worker_offline_write(
         with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             yield quiescence
+
+
+_PayloadReceiptT = TypeVar("_PayloadReceiptT", bound=_ReceiptRecordMethods)
+_SelectedPayloadT = TypeVar(
+    "_SelectedPayloadT", bound=ProductWorkerSelectedPayloadFacts
+)
+_WindowsPendingT = TypeVar("_WindowsPendingT", bound=_PendingPayload)
+_PayloadAttemptT = TypeVar("_PayloadAttemptT", bound=WindowsRecoveryAttemptV1)
+
+
+class WindowsWorkerLaunchPayload(_LaunchPayload, _StageCaptureIntent, Protocol):
+    @property
+    def attempt_id(self) -> str: ...
+    @property
+    def runtime(self) -> WorkerRuntimeBindingV1: ...
+    @property
+    def receipt_fingerprint(self) -> str: ...
+
+
+_WindowsPayloadT = TypeVar("_WindowsPayloadT", bound=WindowsWorkerLaunchPayload)
+
+
+class _PayloadStageName(Protocol):
+    @property
+    def attempt_id(self) -> str: ...
+
+
+class _CodedPayloadError(Protocol):
+    @property
+    def code(self) -> str: ...
+
+
+_BOUND_REQUESTS_LOCK = threading.Lock()
+_BOUND_REQUESTS: WeakKeyDictionary[
+    Callable[[], None], tuple[int, str, str, tuple[int, int]]
+] = WeakKeyDictionary()
+
+
+@dataclass(frozen=True, slots=True)
+class WindowsProductWorkerPayload(
+    Generic[_WindowsPayloadT, _WindowsPendingT, _PayloadAttemptT]
+):
+    """Original complete launch binding; the sole live request registry is preserved."""
+
+    lease_type: Callable[..., _WindowsPayloadT]
+    pending_type: type[_WindowsPendingT]
+    inspect_inventory: Callable[
+        [WindowsLocalWheelProductSessionOwner], tuple[_PayloadAttemptT, ...]
+    ]
+    current_attempts: Callable[..., tuple[_PayloadAttemptT, ...]]
+    inspect_payload: Callable[..., tuple[_PayloadStageName, ...]]
+    supervisor_journal: Callable[
+        [WindowsLocalWheelProductSessionOwner], WindowsSupervisorJournal
+    ]
+    admission: WindowsRecoveryAdmission[_PayloadAttemptT]
+    limits: Callable[[], tuple[int, int]]
+    marker_name: str
+    error_type: type[RuntimeError]
+    error_prefix: str
+    stale_errors: tuple[type[Exception], ...]
+    stale_message: str
+
+    def plan(
+        self,
+        *,
+        receipt_owner: _WindowsWorkerProductReceiptAuthority[
+            _PayloadReceiptT, _SelectedPayloadT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+    ) -> _WindowsPendingT:
+        product = receipt_owner.product_owner
+        with product.gc_gate.guard():
+            if receipt_owner.current_witness(receipt) != receipt.authority_witness:
+                raise self.error_type(self.error_prefix + "_selection_stale")
+            selected, owner_id = receipt_owner.current_payload_and_worker_owner_id(
+                receipt
+            )
+            if (
+                selected.configuration.fingerprint
+                != receipt.policy.worker_configuration_fingerprint
+            ):
+                raise self.error_type(self.error_prefix + "_selection_stale")
+            receipt_owner.current_backend_capture_expectation(receipt)
+            if any(
+                (
+                    item.attempt_id == attempt_id
+                    for item in self.inspect_inventory(product)
+                )
+            ):
+                raise self.error_type(self.error_prefix + "_attempt_reused")
+            identity = worker_identity_from_receipt(
+                receipt=receipt,
+                owner_id=owner_id,
+                attempt_id=attempt_id,
+                supervisor_epoch=1,
+                session_nonce=secrets.token_hex(32),
+            )
+            journal = self.supervisor_journal(product)
+            if journal.status(attempt_id) is not None:
+                raise self.error_type(self.error_prefix + "_attempt_reused")
+            epoch = journal.next_supervisor_epoch(identity)
+            product.assert_root_gc_authority_current()
+            return cast(Callable[..., _WindowsPendingT], self.pending_type)(
+                receipt_fingerprint=receipt.fingerprint,
+                identity=replace(identity, supervisor_epoch=epoch),
+            )
+
+    def materialize(
+        self,
+        *,
+        receipt_owner: _WindowsWorkerProductReceiptAuthority[
+            _PayloadReceiptT, _SelectedPayloadT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+    ) -> _WindowsPayloadT:
+        product = receipt_owner.product_owner
+        stage_name = "worker-payload-" + attempt_id
+        with product.gc_gate.guard(require_write=True):
+            product.assert_root_gc_authority_current()
+            payload, owner_id = receipt_owner.current_payload_and_worker_owner_id(
+                receipt
+            )
+            if (
+                not 0 < len(payload.body) <= self.limits()[0]
+                or sha256(payload.body).hexdigest() != payload.digest
+            ):
+                raise self.error_type(self.error_prefix + "_digest_changed")
+            entrypoint = canonical_plugin_relative_path(
+                payload.configuration.entrypoint
+            ).as_posix()
+            parts = entrypoint.split("/")
+            if (
+                entrypoint != payload.configuration.entrypoint
+                or self.marker_name in parts
+            ):
+                raise self.error_type(self.error_prefix + "_entrypoint_invalid")
+            retained = self.inspect_inventory(product)
+            previous = next(
+                (item for item in retained if item.attempt_id == attempt_id), None
+            )
+            if previous is not None:
+                raise self.error_type(
+                    self.error_prefix + "_attempt_reused"
+                    if previous.payload_directory_identity is None
+                    or previous.native_phase is not None
+                    or previous.supervisor_phase is not None
+                    or (previous.launch_request_fingerprint is not None)
+                    else self.error_prefix + "_attempt_debt"
+                )
+            if len(retained) >= self.limits()[1]:
+                raise self.error_type(self.error_prefix + "_capacity")
+            with WindowsPrivateDirectoryAcl() as acl:
+                with (
+                    product.epoch_runtime.borrow_product_state_root_descriptor() as root
+                ):
+                    acl.validate(root)
+                    require_payload_root(
+                        product.state_root,
+                        root,
+                        error_type=self.error_type,
+                        error_prefix=self.error_prefix,
+                    )
+                    inventory = self.inspect_payload(
+                        product.state_root, directory_fd=root
+                    )
+                    if any((item.attempt_id == attempt_id for item in inventory)):
+                        raise self.error_type(self.error_prefix + "_attempt_debt")
+                    if len(inventory) >= self.limits()[1]:
+                        raise self.error_type(self.error_prefix + "_capacity")
+
+                    def complete(
+                        runtime: WorkerRuntimeBindingV1, stage_identity: tuple[int, int]
+                    ) -> _WindowsPayloadT:
+                        if (
+                            receipt_owner.current_witness(receipt)
+                            != receipt.authority_witness
+                        ):
+                            raise self.error_type(
+                                self.error_prefix + "_selection_stale"
+                            )
+                        product.assert_root_gc_authority_current()
+                        return self.lease_type(
+                            attempt_id=attempt_id,
+                            runtime=runtime,
+                            receipt_fingerprint=receipt.fingerprint,
+                            payload_digest=payload.digest,
+                            owner_id=owner_id,
+                            stage_identity=stage_identity,
+                        )
+
+                    return create_windows_payload_stage(
+                        root=root,
+                        acl=acl,
+                        root_path=lambda: product.state_root,
+                        stage_name=stage_name,
+                        parts=parts,
+                        entrypoint=entrypoint,
+                        body=payload.body,
+                        configuration=payload.configuration,
+                        attempt_id=attempt_id,
+                        owner_id=owner_id,
+                        payload_digest=payload.digest,
+                        receipt_fingerprint=receipt.fingerprint,
+                        marker_name=self.marker_name,
+                        complete=complete,
+                        error_type=self.error_type,
+                        error_prefix=self.error_prefix,
+                    )
+
+    def bind(
+        self,
+        *,
+        receipt_owner: _WindowsWorkerProductReceiptAuthority[
+            _PayloadReceiptT, _SelectedPayloadT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        payload_lease: _WindowsPayloadT,
+        supervisor_epoch: int,
+        pending_launch: _WindowsPendingT | None = None,
+    ) -> ManagedWorkerLaunchRequestV1:
+        if (
+            type(supervisor_epoch) is not int
+            or supervisor_epoch < 1
+            or payload_lease.receipt_fingerprint != receipt.fingerprint
+            or (
+                payload_lease.runtime.package_root
+                != receipt_owner.product_owner.state_root
+                / ("worker-payload-" + payload_lease.attempt_id)
+            )
+        ):
+            raise self.error_type(self.error_prefix + "_binding_mismatch")
+        product = receipt_owner.product_owner
+        bound_request: ManagedWorkerLaunchRequestV1 | None = None
+
+        def verify_current(*, initial: bool) -> None:
+            with product.gc_gate.guard():
+                product.assert_root_gc_authority_current()
+                if initial != (bound_request is None):
+                    raise self.error_type(self.error_prefix + "_binding_mismatch")
+                inventory = self.inspect_inventory(product)
+                try:
+                    inventory = self.current_attempts(
+                        product, inventory, attempt_id=payload_lease.attempt_id
+                    )
+                    self.admission.require_current(
+                        inventory,
+                        attempt_id=payload_lease.attempt_id,
+                        payload_directory_identity=payload_lease.stage_identity,
+                        initial=initial,
+                        request_fingerprint=None
+                        if bound_request is None
+                        else bound_request.fingerprint,
+                        receipt_fingerprint=None if initial else receipt.fingerprint,
+                        identity_fingerprint=None
+                        if bound_request is None
+                        else bound_request.identity.fingerprint,
+                    )
+                except self.admission.error_type as exc:
+                    raise self.error_type(cast(_CodedPayloadError, exc).code) from exc
+                selected, owner_id = receipt_owner.current_payload_and_worker_owner_id(
+                    receipt
+                )
+                if (
+                    selected.digest != payload_lease.payload_digest
+                    or selected.configuration.fingerprint
+                    != payload_lease.runtime.worker_configuration_fingerprint
+                    or len(selected.body) != payload_lease.runtime.executable_size
+                    or (owner_id != payload_lease.owner_id)
+                ):
+                    raise self.error_type(self.error_prefix + "_binding_mismatch")
+                self.verify_stage(
+                    receipt_owner=receipt_owner,
+                    receipt=receipt,
+                    payload_lease=payload_lease,
+                    entrypoint=selected.configuration.entrypoint,
+                    initial=initial,
+                )
+                payload_lease.runtime.verify()
+                product.assert_root_gc_authority_current()
+
+        verify_current(initial=True)
+        if pending_launch is not None:
+            with product.gc_gate.guard():
+                if (
+                    type(pending_launch) is not self.pending_type
+                    or pending_launch.receipt_fingerprint != receipt.fingerprint
+                    or pending_launch.identity
+                    != worker_identity_from_receipt(
+                        receipt=receipt,
+                        owner_id=payload_lease.owner_id,
+                        attempt_id=payload_lease.attempt_id,
+                        supervisor_epoch=supervisor_epoch,
+                        session_nonce=pending_launch.identity.session_nonce,
+                    )
+                    or (
+                        self.supervisor_journal(product).next_supervisor_epoch(
+                            pending_launch.identity
+                        )
+                        != supervisor_epoch
+                    )
+                ):
+                    raise self.error_type(self.error_prefix + "_pending_launch_changed")
+
+        def validate_current() -> None:
+            try:
+                verify_current(initial=False)
+            except self.stale_errors as exc:
+                raise WorkerBindingError(
+                    self.stale_message, code="worker_product_selection_stale"
+                ) from exc
+
+        identity = (
+            pending_launch.identity
+            if pending_launch is not None
+            else worker_identity_from_receipt(
+                receipt=receipt,
+                owner_id=payload_lease.owner_id,
+                attempt_id=payload_lease.attempt_id,
+                supervisor_epoch=supervisor_epoch,
+                session_nonce=secrets.token_hex(32),
+            )
+        )
+        bound_request = ManagedWorkerLaunchRequestV1(
+            identity=identity,
+            runtime=payload_lease.runtime,
+            validate_current=validate_current,
+        )
+        with _BOUND_REQUESTS_LOCK:
+            _BOUND_REQUESTS[validate_current] = (
+                id(receipt_owner),
+                receipt.fingerprint,
+                bound_request.fingerprint,
+                payload_lease.stage_identity,
+            )
+        return bound_request
+
+    def require_bound(
+        self,
+        *,
+        receipt_owner: object,
+        receipt: ProductWorkerActivationReceiptV1,
+        payload_lease: WindowsWorkerLaunchPayload,
+        request: ManagedWorkerLaunchRequestV1,
+    ) -> None:
+        """Identify one live Product-minted request before publishing its intent."""
+        with _BOUND_REQUESTS_LOCK:
+            try:
+                recorded = _BOUND_REQUESTS.get(request.validate_current)
+            except TypeError:
+                recorded = None
+        if recorded != (
+            id(receipt_owner),
+            receipt.fingerprint,
+            request.fingerprint,
+            payload_lease.stage_identity,
+        ):
+            raise self.error_type(self.error_prefix + "_request_unbound")
+
+    def verify_stage(
+        self,
+        *,
+        receipt_owner: _WindowsWorkerProductReceiptAuthority[
+            _PayloadReceiptT, _SelectedPayloadT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        payload_lease: WindowsWorkerLaunchPayload,
+        entrypoint: str,
+        initial: bool,
+    ) -> None:
+        verify_windows_product_worker_live_stage(
+            receipt_owner.product_owner,
+            receipt=receipt,
+            payload_lease=payload_lease,
+            runtime=payload_lease.runtime,
+            entrypoint=entrypoint,
+            initial=initial,
+            marker_name=self.marker_name,
+            error_type=self.error_type,
+            error_prefix=self.error_prefix,
+        )

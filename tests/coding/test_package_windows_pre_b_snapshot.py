@@ -29,11 +29,11 @@ import loushang.coding.package_legacy_windows_receipt as windows_receipt_module
 import loushang.coding.package_private_data_windows_backup as windows_backup_module
 import loushang.coding.package_private_data_windows_restore_journal as windows_restore_journal_module
 import loushang.coding.package_product_backup_types as backup_types_module
-import loushang.coding.package_product_worker_windows_payload as windows_payload_module
 import loushang.harness.plugin_management._private_data_backup_windows as windows_archive_action
 import loushang.harness.plugin_management._private_data_expiry_windows as windows_expiry_action
 import loushang.harness.resources.packages._private_tree_windows as windows_deletion_module
 import loushang.harness.resources.packages._private_tree_windows as windows_restore_tree_module
+import loushang.harness.worker.payload._windows_stage_io as windows_payload_io
 from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
@@ -6209,7 +6209,7 @@ finally:
                             supervisor_epoch=2,
                         )
                     with patch.object(
-                        windows_payload_module,
+                        windows_payload_io,
                         "windows_flush_file",
                         side_effect=OSError("injected payload flush interruption"),
                     ):

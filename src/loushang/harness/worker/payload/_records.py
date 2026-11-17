@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Protocol
 
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -241,3 +244,153 @@ class PayloadValueTypes:
         ):
             raise ValueError("Worker unmarked repair record changed")
         return review
+
+
+class PayloadPlanMethods:
+    __slots__ = ()
+    _invalid_message: str
+    attempt_id: str
+    entrypoint: str
+    payload_digest: str
+    payload_size: int
+    receipt_fingerprint: str
+    stage_device: int
+    stage_inode: int
+
+    def __post_init__(self) -> None:
+        if (
+            _ATTEMPT.fullmatch(self.attempt_id) is None
+            or canonical_plugin_relative_path(self.entrypoint).as_posix()
+            != self.entrypoint
+            or _DIGEST.fullmatch(self.payload_digest) is None
+            or (_DIGEST.fullmatch(self.receipt_fingerprint) is None)
+            or (type(self.payload_size) is not int)
+            or (not 0 < self.payload_size <= 16 * 1024 * 1024)
+            or (type(self.stage_device) is not int)
+            or (self.stage_device < 0)
+            or (type(self.stage_inode) is not int)
+            or (self.stage_inode < 1)
+        ):
+            raise ValueError(self._invalid_message)
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256(canonical_json_bytes(plan_fields(self))).hexdigest()
+
+
+class EmptyPayloadPlanMethods:
+    __slots__ = ()
+    _invalid_message: str
+    attempt_id: str
+    stage_device: int
+    stage_inode: int
+
+    def __post_init__(self) -> None:
+        if (
+            _ATTEMPT.fullmatch(self.attempt_id) is None
+            or type(self.stage_device) is not int
+            or self.stage_device < 0
+            or (type(self.stage_inode) is not int)
+            or (self.stage_inode < 1)
+        ):
+            raise ValueError(self._invalid_message)
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256(canonical_json_bytes(empty_fields(self))).hexdigest()
+
+
+class PayloadMemberMethods:
+    __slots__ = ()
+    _invalid_message: str
+    relative_path: str
+    kind: str
+    device: int
+    inode: int
+    mode: int
+    size: int
+    digest: str | None
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.relative_path, str)
+            or canonical_plugin_relative_path(self.relative_path).as_posix()
+            != self.relative_path
+            or self.kind not in {"directory", "file"}
+            or (type(self.device) is not int)
+            or (self.device < 0)
+            or (type(self.inode) is not int)
+            or (self.inode < 1)
+            or (type(self.mode) is not int)
+            or (type(self.size) is not int)
+            or (self.size < 0)
+            or (
+                self.kind == "directory"
+                and (self.mode != 448 or self.size != 0 or self.digest is not None)
+            )
+            or (
+                self.kind == "file"
+                and (
+                    self.mode not in {384, 320}
+                    or self.size > 16 * 1024 * 1024
+                    or (not isinstance(self.digest, str))
+                    or (_DIGEST.fullmatch(self.digest) is None)
+                )
+            )
+        ):
+            raise ValueError(self._invalid_message)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "device": self.device,
+            "digest": self.digest,
+            "inode": self.inode,
+            "kind": self.kind,
+            "mode": self.mode,
+            "relativePath": self.relative_path,
+            "size": self.size,
+        }
+
+
+class PayloadReviewMethods:
+    __slots__ = ()
+    _invalid_message: str
+    _invalid_member_message: str
+    _chain_changed_message: str
+    _member_type: type[PayloadMember]
+    _maximum_depth: Callable[[], int]
+    _maximum_path_bytes: Callable[[], int]
+    attempt_id: str
+    stage_device: int
+    stage_inode: int
+    members: tuple[PayloadMember, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.attempt_id, str)
+            or _ATTEMPT.fullmatch(self.attempt_id) is None
+            or type(self.stage_device) is not int
+            or (self.stage_device < 0)
+            or (type(self.stage_inode) is not int)
+            or (self.stage_inode < 1)
+            or (not isinstance(self.members, tuple))
+            or (not 1 <= len(self.members) <= self._maximum_depth() + 1)
+        ):
+            raise ValueError(self._invalid_message)
+        parent = ""
+        for index, member in enumerate(self.members):
+            if not isinstance(member, self._member_type):
+                raise ValueError(self._invalid_member_message)
+            parts = canonical_plugin_relative_path(member.relative_path).parts
+            if (
+                len(parts) != index + 1
+                or (parent and (not member.relative_path.startswith(parent + "/")))
+                or (member.kind == "file" and index != len(self.members) - 1)
+                or (len(os.fsencode(member.relative_path)) > self._maximum_path_bytes())
+            ):
+                raise ValueError(self._chain_changed_message)
+            parent = member.relative_path
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256(canonical_json_bytes(unmarked_fields(self))).hexdigest()

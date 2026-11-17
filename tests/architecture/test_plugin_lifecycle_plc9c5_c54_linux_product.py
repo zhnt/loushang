@@ -208,6 +208,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         'loushang.harness.worker.contracts',
         'loushang.harness.worker.history._base_codec',
         'loushang.harness.worker.product_activation',
+        "loushang.harness.worker.history._windows_launch_intent_base",
     },
     CODING_ROOT / "package_product_worker_windows_payload.py": {
         'loushang.harness.worker.contracts',

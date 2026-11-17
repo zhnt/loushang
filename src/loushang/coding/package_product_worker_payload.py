@@ -8,23 +8,15 @@ an exact attempt name as debt and a replay refuses to reuse it.
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import cast
 
 import loushang.harness.worker.payload._recovery as _recovery
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
-from loushang.harness.resources.plugins.locators import (
-    canonical_plugin_relative_path,
 )
 from loushang.harness.worker.contracts import (
     ManagedWorkerLaunchRequestV1,
@@ -35,12 +27,16 @@ from loushang.harness.worker.journal import (
     WorkerAttemptRecordV1,
 )
 from loushang.harness.worker.payload._records import (
+    EmptyPayloadPlanMethods,
+    PayloadMemberMethods,
+    PayloadPlanMethods,
+    PayloadReviewMethods,
     PayloadValueTypes,
-    empty_fields,
     plan_fields,
     unmarked_fields,
 )
 from loushang.harness.worker.payload._selected_payload import (
+    PendingPayloadMethods,
     bind_selected_payload_request,
     materialize_selected_payload,
     plan_selected_payload_launch,
@@ -88,7 +84,6 @@ from .package_product_worker_supervisor_journal import (
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class CodingWorkerPayloadMaterializationError(RuntimeError):
@@ -108,19 +103,13 @@ class CodingProductWorkerPayloadLeaseV1:
 
 
 @dataclass(frozen=True, slots=True)
-class CodingProductWorkerPendingLaunchV1:
+class CodingProductWorkerPendingLaunchV1(PendingPayloadMethods):
     """No-effect identity pinned before asynchronous Worker preparation."""
 
     receipt_fingerprint: str
     identity: WorkerLaunchIdentityV1
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.receipt_fingerprint) is not str
-            or _DIGEST.fullmatch(self.receipt_fingerprint) is None
-            or not isinstance(self.identity, WorkerLaunchIdentityV1)
-        ):
-            raise ValueError("Coding Worker pending launch identity is invalid")
+    _pending_exact_identity = False
+    _pending_invalid_message = "Coding Worker pending launch identity is invalid"
 
 
 def open_coding_product_worker_supervisor_journal(
@@ -135,7 +124,7 @@ def open_coding_product_worker_supervisor_journal(
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerPayloadDebtPlanV1:
+class CodingWorkerPayloadDebtPlanV1(PayloadPlanMethods):
     """Exact complete stage accepted for offline deletion."""
 
     attempt_id: str
@@ -145,53 +134,21 @@ class CodingWorkerPayloadDebtPlanV1:
     receipt_fingerprint: str
     stage_device: int
     stage_inode: int
-
-    def __post_init__(self) -> None:
-        if (
-            _ATTEMPT.fullmatch(self.attempt_id) is None
-            or canonical_plugin_relative_path(self.entrypoint).as_posix()
-            != self.entrypoint
-            or _DIGEST.fullmatch(self.payload_digest) is None
-            or _DIGEST.fullmatch(self.receipt_fingerprint) is None
-            or type(self.payload_size) is not int
-            or not 0 < self.payload_size <= 16 * 1024 * 1024
-            or type(self.stage_device) is not int
-            or self.stage_device < 0
-            or type(self.stage_inode) is not int
-            or self.stage_inode < 1
-        ):
-            raise ValueError("Coding Worker payload debt plan is invalid")
-
-    @property
-    def fingerprint(self) -> str:
-        return sha256(canonical_json_bytes(_plan_fields(self))).hexdigest()
+    _invalid_message = "Coding Worker payload debt plan is invalid"
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerEmptyPayloadDebtPlanV1:
+class CodingWorkerEmptyPayloadDebtPlanV1(EmptyPayloadPlanMethods):
     """An empty pre-marker stage for an attempt never claimed by Supervisor."""
 
     attempt_id: str
     stage_device: int
     stage_inode: int
-
-    def __post_init__(self) -> None:
-        if (
-            _ATTEMPT.fullmatch(self.attempt_id) is None
-            or type(self.stage_device) is not int
-            or self.stage_device < 0
-            or type(self.stage_inode) is not int
-            or self.stage_inode < 1
-        ):
-            raise ValueError("Coding Worker empty payload debt plan is invalid")
-
-    @property
-    def fingerprint(self) -> str:
-        return sha256(canonical_json_bytes(empty_fields(self))).hexdigest()
+    _invalid_message = "Coding Worker empty payload debt plan is invalid"
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerUnmarkedPayloadMemberV1:
+class CodingWorkerUnmarkedPayloadMemberV1(PayloadMemberMethods):
     """One no-follow member of an incomplete, single-path Product stage."""
 
     relative_path: str
@@ -201,86 +158,23 @@ class CodingWorkerUnmarkedPayloadMemberV1:
     mode: int
     size: int
     digest: str | None
-
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(self.relative_path, str)
-            or canonical_plugin_relative_path(self.relative_path).as_posix()
-            != self.relative_path
-            or self.kind not in {"directory", "file"}
-            or type(self.device) is not int
-            or self.device < 0
-            or type(self.inode) is not int
-            or self.inode < 1
-            or type(self.mode) is not int
-            or type(self.size) is not int
-            or self.size < 0
-            or (
-                self.kind == "directory"
-                and (self.mode != 0o700 or self.size != 0 or self.digest is not None)
-            )
-            or (
-                self.kind == "file"
-                and (
-                    self.mode not in {0o600, 0o500}
-                    or self.size > 16 * 1024 * 1024
-                    or not isinstance(self.digest, str)
-                    or _DIGEST.fullmatch(self.digest) is None
-                )
-            )
-        ):
-            raise ValueError("Coding Worker unmarked payload member is invalid")
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "device": self.device,
-            "digest": self.digest,
-            "inode": self.inode,
-            "kind": self.kind,
-            "mode": self.mode,
-            "relativePath": self.relative_path,
-            "size": self.size,
-        }
+    _invalid_message = "Coding Worker unmarked payload member is invalid"
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerUnmarkedPayloadDebtReviewV1:
+class CodingWorkerUnmarkedPayloadDebtReviewV1(PayloadReviewMethods):
     """Exact tree evidence; cleanup needs a separate durable intent."""
 
     attempt_id: str
     stage_device: int
     stage_inode: int
     members: tuple[CodingWorkerUnmarkedPayloadMemberV1, ...]
-
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(self.attempt_id, str)
-            or _ATTEMPT.fullmatch(self.attempt_id) is None
-            or type(self.stage_device) is not int
-            or self.stage_device < 0
-            or type(self.stage_inode) is not int
-            or self.stage_inode < 1
-            or not isinstance(self.members, tuple)
-            or not 1 <= len(self.members) <= _MAX_UNMARKED_DEPTH + 1
-        ):
-            raise ValueError("Coding Worker unmarked payload review is invalid")
-        parent = ""
-        for index, member in enumerate(self.members):
-            if not isinstance(member, CodingWorkerUnmarkedPayloadMemberV1):
-                raise ValueError("Coding Worker unmarked payload member is invalid")
-            parts = canonical_plugin_relative_path(member.relative_path).parts
-            if (
-                len(parts) != index + 1
-                or (parent and not member.relative_path.startswith(parent + "/"))
-                or (member.kind == "file" and index != len(self.members) - 1)
-                or len(os.fsencode(member.relative_path)) > _MAX_UNMARKED_PATH_BYTES
-            ):
-                raise ValueError("Coding Worker unmarked payload chain changed")
-            parent = member.relative_path
-
-    @property
-    def fingerprint(self) -> str:
-        return sha256(canonical_json_bytes(_unmarked_repair_fields(self))).hexdigest()
+    _invalid_message = "Coding Worker unmarked payload review is invalid"
+    _invalid_member_message = "Coding Worker unmarked payload member is invalid"
+    _chain_changed_message = "Coding Worker unmarked payload chain changed"
+    _member_type = CodingWorkerUnmarkedPayloadMemberV1
+    _maximum_depth = staticmethod(lambda: _MAX_UNMARKED_DEPTH)
+    _maximum_path_bytes = staticmethod(lambda: _MAX_UNMARKED_PATH_BYTES)
 
 
 @dataclass(frozen=True, slots=True)
