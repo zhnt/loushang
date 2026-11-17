@@ -428,6 +428,6 @@ export default function LocalHostGate() {
       select: openConversation,
     }} />
     <TrayHostDialog details={trayHosts.details} error={trayHosts.error}
-      onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmStop} />
+      onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmAction} />
   </>;
 }
