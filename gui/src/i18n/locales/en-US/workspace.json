@@ -33,6 +33,7 @@
     "sessionLabel": "{{title}} · {{status}}"
   },
   "environment": {
+    "technical": "Technical details",
     "summary": "Environment summary",
     "title": "Environment",
     "close": "Close environment",

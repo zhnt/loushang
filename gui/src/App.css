@@ -197,13 +197,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .playback-strip span { color: var(--warning); font-size: 12px; }
 .playback-strip button { padding: 5px 8px; border: 1px solid var(--warning-line); border-radius: 6px; color: var(--warning); background: var(--paper); font-size: 12px; }
 .composer-stack { position: relative; margin: 0 max(28px, calc((100% - 760px) / 2)) 16px; }
-.task-progress-wrap { position: relative; display: flex; justify-content: center; height: 27px; }
-.task-progress { align-self: start; display: flex; align-items: center; gap: 7px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--paper); font-size: 12px; box-shadow: 0 3px 10px rgba(32, 33, 34, 0.04); }
-.task-dot { width: 8px; height: 8px; border: 2px solid var(--line-strong); border-radius: 50%; }
-.task-dot.running { border-color: var(--accent-soft); border-top-color: var(--accent); animation: spin 1.25s linear infinite; }
-.task-popover { position: absolute; z-index: 8; bottom: 31px; left: 50%; width: min(430px, 90%); display: grid; padding: 7px; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--paper); box-shadow: 0 14px 34px rgba(30, 31, 32, 0.14); transform: translateX(-50%); }
-.task-popover button { display: grid; grid-template-columns: 21px minmax(0, 1fr); align-items: center; gap: 5px; padding: 7px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; text-align: left; font-size: 12px; }
-.task-popover button.current { background: var(--line); }
 .task-status { display: inline-grid; width: 18px; height: 18px; place-items: center; color: var(--faint); }
 .task-status.running { color: var(--accent); animation: spin 1.25s linear infinite; }
 .task-status.completed { color: var(--green); }
@@ -297,7 +290,7 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .session-heading p { display: none; }
 .message-meta { display: none; }
 .change-files button { min-height: 36px; font-size: 13px; }
-.change-card strong, .activity-summary strong, .task-progress { font-size: 13px; }
+.change-card strong, .activity-summary strong { font-size: 13px; }
 .document-view pre { font-size: 13px; }
 .composer-stack, .playback-strip { min-width: 0; }
 .composer { border-radius: 20px; padding: 12px; }
@@ -328,7 +321,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .composer-submit svg { width: 24px; height: 24px; }
 .composer-submit:disabled { background: var(--control-focus); }
 .composer textarea { min-height: 54px; }
-.task-progress-wrap { height: 36px; }
 .rail-footer strong { font-size: 13px; font-weight: 500; }
 .playback-strip { display: block; background: var(--panel); border: 1px solid var(--line); }
 .playback-strip summary { cursor: pointer; font-size: 12px; color: var(--muted); }
@@ -516,3 +508,17 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .operation-notice.uncertain { border-inline-start-color: var(--warning); }
 .project-chat-title, .project-chat-scope { display: block; overflow: hidden; text-overflow: ellipsis; }
 .project-chat-scope { margin-top: 2px; color: var(--ink-secondary); font-size: 11px; }
+
+
+.work-dock[hidden], .dock-task-content[hidden] { display: none; }
+.dock-task-content:not([hidden]) { display: grid; gap: 10px; padding: 12px; min-width: 0; }
+.dock-task-content :is(.execution-detail, .run-activity) { width: 100%; min-width: 0; margin: 0; }
+.dock-task-content .panel-stack { padding: 0; }
+.execution-summary { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-secondary); font-size: 12px; text-align: start; }
+.execution-summary:hover { background: var(--control-hover); }
+.task-summary { margin: 0; font-size: 13px; font-weight: 600; }
+.goal-technical { padding: 8px 12px; }
+.goal-technical summary { cursor: pointer; color: var(--muted); }
+.environment-technical { margin-top: 16px; }
+.environment-technical summary { margin-bottom: 10px; cursor: pointer; }
+.copy-action { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }

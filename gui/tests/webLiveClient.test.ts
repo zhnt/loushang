@@ -94,6 +94,7 @@ it("submits a decision through the polling attachment and removes it after dismi
   expect(changes.mock.lastCall?.[0].sessions[0].pendingApprovals[0].status).toBe("submitting");
   expect(await client.respondInteraction!("session-1", "approval-1", "cancel")).toMatchObject({ accepted: false });
   expect(await decision).toEqual({ accepted: true });
+  expect(changes.mock.lastCall?.[0].sessions[0].pendingApprovals[0].status).toBe("processed");
   expect(requests.filter(({ action }) => action === "respond-interaction")).toEqual([
     { ...requests[0], action: "respond-interaction", input: {
       sessionId: "session-1", interactionId: "approval-1", outcome: "deny", connectionEpoch: "1",

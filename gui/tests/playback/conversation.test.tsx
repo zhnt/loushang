@@ -156,7 +156,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     }));
     expect(await screen.findByText(/^Execution failed$/i)).toBeVisible();
     expect(input).toHaveValue("Keep this message");
-    await user.click(screen.getByText(/^Execution failed$/i));
+    await user.click(within(screen.getByLabelText("Session transcript")).getByText(/^Execution failed$/i));
+    await user.click(within(screen.getByLabelText("Work Dock")).getByText("Live execution details"));
     expect(screen.getByText("execution_start_failed")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(submit).toHaveBeenCalledTimes(2);
@@ -550,6 +551,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(within(navigation).queryByText("Workspace details unavailable")).not.toBeInTheDocument();
     expect(within(navigation).queryByText(/git ·/)).not.toBeInTheDocument();
     const context = within(screen.getByLabelText("Environment summary")).getByLabelText("AppHost session context");
+    expect(within(context).getByText("a".repeat(64))).not.toBeVisible();
+    fireEvent.click(within(context).getByText("Technical details"));
     expect(within(context).getByText("cwd")).toBeVisible();
     expect(within(context).getByText("a".repeat(64))).toBeVisible();
     expect(within(context).getByText("Workspace details unavailable")).toBeVisible();
@@ -849,7 +852,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
 
     const progress = screen.getByRole("button", { name: "Step 1 / 4" });
     await user.click(progress);
-    const taskList = screen.getByLabelText("Run tasks");
+    const taskList = screen.getByLabelText("Task details");
     expect(within(taskList).getByRole("button", { name: /Inspect GUI workspace/ })).toBeVisible();
 
     const activity = screen.getByRole("button", { name: /Build the Workspace.*Activities: 3/ });
@@ -867,7 +870,6 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     while (client.remainingFixtureSteps() > 0) await user.click(advance);
     expect(screen.getByRole("button", { name: "4 / 4 complete" })).toBeVisible();
     expect(screen.getByRole("button", { name: /^GUI development ·/ })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
     const dock = screen.getByLabelText("Work Dock");
     await user.click(within(dock).getByRole("button", { name: "Subagents" }));
     const agents = within(dock).getByLabelText("AgentRun details");
@@ -1047,7 +1049,10 @@ describe("Hosted Goal observation", () => {
     expect(goalProgress).toHaveBeenCalledTimes(1);
 
     act(() => publish(initial));
+    fireEvent.click(await screen.findByRole("button", { name: "Open Work Dock" }));
     const panel = within(await screen.findByRole("region", { name: "Goal progress" }));
+    expect(panel.getByText("real-goal")).not.toBeVisible();
+    fireEvent.click(panel.getByText("Live execution details"));
     expect(panel.getByText("real-goal")).toBeVisible();
     expect(panel.getByText("Paused")).toBeVisible();
     expect(panel.getByText("advance_budget_exhausted")).toBeVisible();
@@ -1076,7 +1081,7 @@ describe("Hosted Goal observation", () => {
     expect(within(first).getByText("batch-2")).toBeVisible();
     const total = goalProgress.mock.calls.length;
     act(() => disconnect("disconnected"));
-    expect(screen.queryByRole("region", { name: "Goal progress" })).not.toBeInTheDocument();
+    expect(await panel.findByText(/Last confirmed observation/)).toBeVisible();
     await new Promise((resolve) => setTimeout(resolve, 2100));
     expect(goalProgress).toHaveBeenCalledTimes(total);
   });
@@ -1109,6 +1114,7 @@ describe("Hosted Goal start", () => {
     await screen.findByRole("textbox", { name: /message/i });
     expect(screen.queryByRole("button", { name: "Start Goal" })).not.toBeInTheDocument();
     act(() => publish(ready));
+    fireEvent.click(await screen.findByRole("button", { name: "Open Work Dock" }));
     const button = await screen.findByRole("button", { name: "Start Goal" });
     act(() => { fireEvent.click(button); fireEvent.click(button); });
     expect(button).toBeDisabled();
@@ -1130,10 +1136,14 @@ describe("Hosted Goal start", () => {
       interruptRequested: false, sourceStatus: "running", finalCursor: null, truncated: false,
     } }] }));
     expect(screen.queryByText(unknown)).not.toBeInTheDocument();
-    expect(screen.getByText("Execution Running")).toBeVisible();
+    expect(within(screen.getByLabelText("Session transcript")).getByText("Execution Running")).toBeVisible();
     expect(startGoal).toHaveBeenCalledTimes(1);
 
     act(() => publish({ ...ready, source: { ...source, serviceInstanceId: "new-host", connectionEpoch: "3" } }));
+    const dock = screen.queryByLabelText("Work Dock");
+    if (!dock || !within(dock).queryByRole("button", { name: "Start Goal" })) {
+      fireEvent.click(screen.getByRole("button", { name: "Open Work Dock" }));
+    }
     expect(await screen.findByRole("button", { name: "Start Goal" })).toBeEnabled();
     expect(startGoal).toHaveBeenCalledTimes(1);
   });
@@ -1202,7 +1212,9 @@ describe("Interactive development goal", () => {
     expect(create).toBeDisabled();
 
     fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
-    expect(await goal.findByText("goal-original")).toBeVisible();
+    expect(await goal.findByText("Goal created. Execution has not started.")).toBeVisible();
+    fireEvent.click(goal.getByText("Live execution details"));
+    expect(goal.getByText("goal-original")).toBeVisible();
     expect(goal.getByText("Goal created. Execution has not started.")).toBeVisible();
     expect(goal.queryByRole("button", { name: "Create goal" })).not.toBeInTheDocument();
     expect(createInteractiveGoal).toHaveBeenCalledTimes(1);
@@ -1400,6 +1412,8 @@ it.each([
   fireEvent.click(entry);
   const panel = within(await screen.findByRole("region", { name: "Historical Goal" }));
   expect(await panel.findByText(label)).toBeVisible();
+  expect(panel.getByText(reason)).not.toBeVisible();
+  fireEvent.click(panel.getByText("Live execution details"));
   expect(panel.getByText(reason)).toBeVisible();
   expect(panel.queryAllByText(/Some execution results are unconfirmed/)).toHaveLength(unresolved ? 1 : 0);
   expect(panel.queryAllByRole("button")).toHaveLength(0);

@@ -1,6 +1,7 @@
 import { i18n } from "./i18n";
 import { appName } from "./branding";
 import { useTranslation } from "react-i18next";
+import { CopyButton } from "./CopyButton";
 import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
@@ -127,7 +128,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     }
   }, [sidebarOpen]);
   const [sidebarWidth, setSidebarWidth] = useState(280);
-  const [environmentOpen, setEnvironmentOpen] = useState(true);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   const [contentMetrics, setContentMetrics] = useState({ gutter: 24, scrollbar: 0 });
   const conversationRef = useRef<HTMLElement | null>(null);
@@ -349,7 +349,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }
   const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, selectSession);
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
-  useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
+  const environmentOpen = state.local.dockOpen && state.local.dockTab === "environment";
+  const tasksOpen = state.local.dockOpen && state.local.dockTab === "tasks";
   const selected = !draft && selectedId ? state.remote.sessions[selectedId] : undefined;
   const conversationOpen = Boolean(selected || draft);
   const operationScope = selected ? JSON.stringify([selectionKey, selected.id]) : null;
@@ -380,11 +381,20 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     && client.createInteractiveGoal && client.interactiveGoalStatus;
   const goalPanelScope = selected && goalSource && (canReadGoalHistory || canControlGoal)
     ? JSON.stringify([goalSource.connectionId, goalSource.serviceInstanceId, goalSource.muxSpaceId, selected.id]) : null;
-  const goalPanelOpen = goalPanelScope !== null && goalPanelScope === openGoalScope;
-  const rightVisible = Boolean(selected) && (environmentOpen || panelOpen);
+  const goalPanelOpen = tasksOpen && goalPanelScope !== null && goalPanelScope === openGoalScope;
+  const rightVisible = Boolean(selected) && state.local.dockOpen;
+  const openTasks = () => dispatch({ type: "dock.opened", tab: "tasks" });
+  const toggleEnvironment = () => dispatch(environmentOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: "environment" });
+  const toggleDock = () => dispatch(panelOpen ? { type: "dock.closed" }
+    : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab });
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
+  const run = selected?.run;
+  const stepIndex = run ? run.tasks.findIndex((item) => item.id === run.currentTaskId) : -1;
+  const runSummary = run && (stepIndex >= 0
+    ? t("panels:progress.step", { current: stepIndex + 1, total: run.tasks.length })
+    : t("panels:progress.complete", { completed: run.tasks.filter((item) => item.status === "completed").length, total: run.tasks.length }));
   const tasksAvailable = hasCapability(state, "tasks");
   const changesAvailable = hasCapability(state, "changes");
   const modelScope = connected && selected && selectedId && state.remote.source.kind === "live"
@@ -601,11 +611,17 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
   function openReview(documentId: string): void {
     if (!selected) return;
-    setEnvironmentOpen(false);
     restoreQuickLookFocusRef.current = false;
     dispatch({ type: "document.selected", sessionId: selected.id, documentId });
     dispatch({ type: "dock.opened", tab: "review" });
     dispatch({ type: "quick-look.closed" });
+  }
+
+  function reviewDiff(path: string) {
+    if (!changesAvailable || !selected) return;
+    const file = selected.changeSet?.files.find((item) => item.path === path);
+    if (!file || !selected.documents.some((document) => document.id === file.documentId && document.kind === "diff")) return;
+    return () => openReview(file.documentId);
   }
 
   function closeQuickLook(): void {
@@ -616,7 +632,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const draftPending = draft?.status === "creating" || draft?.status === "sending";
   const draftTitle = t("workspace:sidebar.newSession");
   const workspaceContext = draft && projectNavigation ? draft.target.workspace
-    : projectNavigation?.selection?.workspace;
+    : projectNavigation?.selection?.id === selected?.id ? projectNavigation?.selection?.workspace : undefined;
   const projectContext = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE
     ? workspaceName(workspaceContext) : undefined;
   const conversationTitle = selected
@@ -627,8 +643,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
   function openDraft(path: string | null) {
     if (!newSessionEnabled) return;
-    setEnvironmentOpen(false);
-    if (panelOpen) dispatch({ type: "dock.closed" });
     const sourceSessionId = state.local.selectedSessionId ?? undefined;
     const loadModels = projectNavigation?.draftModels;
     draftCreation.open({
@@ -708,9 +722,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
         onOpenFolder={projectNavigation?.available && !projectNavigation.pending ? projectNavigation.openFolder : undefined}
         onFocusComposer={selected || draft ? () => document.getElementById("message-input")?.focus() : undefined}
         environmentOpen={environmentOpen}
-        onToggleEnvironment={selected ? () => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); } : undefined}
+        onToggleEnvironment={selected ? toggleEnvironment : undefined}
         dockOpen={panelOpen}
-        onToggleDock={selected ? () => { setEnvironmentOpen(false); dispatch(panelOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab }); } : undefined} />
+        onToggleDock={selected ? toggleDock : undefined} />
       <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 48}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
         {!sidebarOpen ? <aside className="collapsed-rail" aria-label={shellText("collapsedSidebar")}>
           <button className="frame-icon" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="false" onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button>
@@ -750,13 +764,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           goalPanel={goalPanelScope ? {
             id: goalPanelId,
             open: goalPanelOpen,
-            toggle: () => setOpenGoalScope(goalPanelOpen ? null : goalPanelScope),
+            toggle: () => {
+              setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
+              if (!goalPanelOpen) openTasks();
+            },
           } : undefined}
-          onEnvironment={() => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); }}
-          onOpenDock={() => {
-            setEnvironmentOpen(false);
-            dispatch(panelOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab });
-          }}
+          onEnvironment={toggleEnvironment}
+          onOpenDock={toggleDock}
         /> : null}
 
         <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
@@ -798,6 +812,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   ))}
                   {selected.pendingApprovals?.map((approval) => (
                     <ToolApproval key={approval.interactionId} approval={approval}
+                      scope={projectContext ?? (workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats") : undefined)}
                       enabled={connected && selectionReady && !syncing && Boolean(client.respondInteraction)}
                       onRespond={(outcome) => {
                         if (approval.sessionId === selected.id) {
@@ -809,34 +824,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     answer={rejectedBeforeInput && choiceAnswer ? { ...choiceAnswer, status: "rejected" } : choiceAnswer}
                     enabled={Boolean(submitAllowed && selected.status !== "running")}
                     onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
-                  <GoalStart {...goalStart} />
-                  {goalPanelScope && goalSource ? (
-                    <div id={goalPanelId} hidden={!goalPanelOpen}>
-                      {canReadGoalHistory && goalPanelOpen ? <InteractiveGoalRecovery
-                        key={JSON.stringify([goalPanelScope, goalSource.connectionEpoch])}
-                        client={client} sessionId={selected.id} instanceId={goalSource.serviceInstanceId}
-                        epoch={connected && selectionReady && !syncing ? goalSource.connectionEpoch : null} /> : null}
-                      {canControlGoal ? <InteractiveGoal key={goalPanelScope}
-                        client={client} session={selected} instanceId={goalSource.serviceInstanceId}
-                        epoch={connected && selectionReady && !syncing ? goalSource.connectionEpoch : null}
-                        enabled={goalPanelOpen && mutationsAllowed} scopeKey={modelScope} setBusyScope={setGoalBusyScope} /> : null}
-                    </div>
-                  ) : null}
-                  {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
-                  {connected && selected.execution && selected.supportsGoalProgress && client.goalProgress && state.remote.source.kind === "live" ? (
-                    <GoalProgress
-                      key={JSON.stringify([state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch,
-                        state.remote.source.muxSpaceId, selected.id, selected.execution.id])}
-                      client={client} sessionId={selected.id} execution={selected.execution} />
-                  ) : null}
-                  {selected.run && tasksAvailable ? (
-                    <RunActivity
-                      run={selected.run}
-                      expanded={Boolean(state.local.expandedActivities[selected.run.id])}
-                      onToggle={() => dispatch({ type: "activity.toggled", activityGroupId: selected.run!.id })}
-                      onSelectTask={(taskId) => dispatch({ type: "task.selected", taskId })}
-                    />
-                  ) : null}
+                  {selected.execution || (tasksAvailable && selected.run) || goalStart.start || goalStart.attempt ? <button
+                    className="execution-summary" type="button" onClick={openTasks}>
+                    {selected.execution ? t(!fixture && !connected ? "panels:execution.lastKnownStatus" : "panels:execution.status",
+                      { status: valueLabel(selected.execution.status) })
+                      : runSummary ?? t("panels:dock.tasks")}
+                    <span aria-hidden="true">›</span>
+                  </button> : null}
                   {selected.changeSet && changesAvailable ? (
                     <ChangeSetCard
                       changeSet={selected.changeSet}
@@ -874,14 +868,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               </details> : null}
 
               <div className="composer-stack">
-                {selected?.run && tasksAvailable ? (
-                  <TaskProgressControl
-                    run={selected.run}
-                    open={state.local.taskListOpen}
-                    onToggle={() => dispatch({ type: "task-list.toggled" })}
-                    onSelect={(taskId) => dispatch({ type: "task.selected", taskId })}
-                  />
-                ) : null}
                 {draft && draft.status !== "ready" ? <div className={draft.unconfirmed ? "draft-notice operation-notice uncertain" : "draft-notice"} role="status">
                   <NoticeText notice={{ key: `notice.${draft.status}` }} />
                   {draft.unconfirmed ? <button type="button" className="secondary-button"
@@ -916,18 +902,31 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           ) : null}
         </section>
 
-        {selected && rightVisible ? (
-          <WorkDock
-            tab={environmentOpen ? "environment" : state.local.dockTab}
-            state={state}
-            session={selected}
-            selectedDocument={selectedDocument}
-            onClose={() => { setEnvironmentOpen(false); dispatch({ type: "dock.closed" }); }}
-            onTab={(tab) => {
-              setEnvironmentOpen(tab === "environment");
-              dispatch(tab === "environment" ? { type: "dock.closed" } : { type: "dock.opened", tab });
-            }}
+        {selected ? (
+          <WorkDock key={JSON.stringify([selectionKey, selected.id])}
+            open={rightVisible} tab={state.local.dockTab}
+            state={state} session={selected} workspacePath={workspaceContext ?? undefined} selectedDocument={selectedDocument}
+            goalControls={<>
+              <GoalStart {...goalStart} />
+              {goalPanelScope && goalSource ? <div id={goalPanelId} hidden={!goalPanelOpen}>
+                {canReadGoalHistory && goalPanelOpen ? <InteractiveGoalRecovery
+                  key={JSON.stringify([goalPanelScope, goalSource.connectionEpoch])}
+                  client={client} sessionId={selected.id} instanceId={goalSource.serviceInstanceId}
+                  epoch={connected && selectionReady && !syncing ? goalSource.connectionEpoch : null} /> : null}
+                {canControlGoal ? <InteractiveGoal key={goalPanelScope}
+                  client={client} session={selected} instanceId={goalSource.serviceInstanceId}
+                  epoch={connected && selectionReady && !syncing ? goalSource.connectionEpoch : null}
+                  enabled={goalPanelOpen && mutationsAllowed} reviewDiff={reviewDiff} scopeKey={modelScope} setBusyScope={setGoalBusyScope} /> : null}
+              </div> : null}
+            </>}
+            goalProgress={selected.execution && selected.supportsGoalProgress && client.goalProgress && goalSource ? (
+              <GoalProgress key={JSON.stringify([goalSource.serviceInstanceId, goalSource.muxSpaceId, selected.id, selected.execution.id])}
+                client={client} sessionId={selected.id} execution={selected.execution} connected={connected} />
+            ) : null}
+            onClose={() => dispatch({ type: "dock.closed" })}
+            onTab={(tab) => dispatch({ type: "dock.opened", tab })}
             onSelectDocument={(documentId) => dispatch({ type: "document.selected", sessionId: selected.id, documentId })}
+            onToggleActivity={(id) => dispatch({ type: "activity.toggled", activityGroupId: id })}
             onSelectTask={(taskId) => dispatch({ type: "task.selected", taskId })}
             onSelectAgent={(agentRunId) => dispatch({ type: "agent.selected", agentRunId })}
           />
@@ -1178,7 +1177,7 @@ function ExecutionDetail({ execution, stale }: {
     <details className="execution-detail" aria-label={t("panels:execution.details")}>
       <summary>
         <span className={`run-indicator ${stale ? "unknown" : execution.status}`} aria-hidden="true">◌</span>
-        <strong>{t(stale ? "panels:execution.lastKnownStatus" : "panels:execution.status", { status: valueLabel(execution.status) })}</strong>
+        <strong>{t("panels:execution.details")}</strong>
         <span className="execution-disclosure" aria-hidden="true">⌄</span>
       </summary>
       <dl>
@@ -1262,34 +1261,6 @@ function RunActivity({ run, expanded, onToggle, onSelectTask }: {
   );
 }
 
-function TaskProgressControl({ run, open, onToggle, onSelect }: {
-  readonly run: RunProjection;
-  readonly open: boolean;
-  readonly onToggle: () => void;
-  readonly onSelect: (taskId: string) => void;
-}) {
-  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
-  const currentIndex = run.currentTaskId ? run.tasks.findIndex((task) => task.id === run.currentTaskId) : -1;
-  const completed = run.tasks.filter((task) => task.status === "completed").length;
-  const label = currentIndex >= 0 ? t("panels:progress.step", { current: currentIndex + 1, total: run.tasks.length }) : t("panels:progress.complete", { completed, total: run.tasks.length });
-  return (
-    <div className="task-progress-wrap">
-      {open ? (
-        <div className="task-popover" aria-label={t("panels:progress.tasks")}>
-          {run.tasks.map((task) => (
-            <button type="button" key={task.id} className={task.id === run.currentTaskId ? "current" : ""} onClick={() => onSelect(task.id)}>
-              <TaskStatusGlyph status={task.status} /><span>{task.title}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <button className="task-progress" type="button" aria-expanded={open} onClick={onToggle}>
-        <span className={`task-dot ${run.status}`} aria-hidden="true" />{label}
-      </button>
-    </div>
-  );
-}
-
 function ChangeSetCard({ changeSet, onOpenFile, onOpenReview }: {
   readonly changeSet: ChangeSetProjection;
   readonly onOpenFile: (documentId: string, trigger: HTMLButtonElement) => void;
@@ -1332,6 +1303,10 @@ function QuickLook({ document, onClose, onOpenReview }: {
 }
 
 interface WorkDockProps {
+  readonly open: boolean;
+  readonly workspacePath?: string;
+  readonly goalControls: ReactNode;
+  readonly goalProgress: ReactNode;
   readonly tab: DockTab;
   readonly state: GuiState;
   readonly session: SessionSnapshot;
@@ -1339,13 +1314,15 @@ interface WorkDockProps {
   readonly onClose: () => void;
   readonly onTab: (tab: DockTab) => void;
   readonly onSelectDocument: (documentId: string) => void;
+  readonly onToggleActivity: (id: string) => void;
   readonly onSelectTask: (taskId: string) => void;
   readonly onSelectAgent: (agentRunId: string) => void;
 }
 
 function WorkDock(props: WorkDockProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
-  const { tab, state, session, selectedDocument, onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
+  const { open, tab, state, session, selectedDocument, goalControls, goalProgress,
+    onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
   const facet = tab === "environment" ? "workspace" : tab === "review" ? "changes" : tab;
   const available = hasCapability(state, facet);
   const visibleRun = session.run ? {
@@ -1354,7 +1331,7 @@ function WorkDock(props: WorkDockProps) {
     agentRuns: hasCapability(state, "agents") ? session.run.agentRuns : [],
   } : null;
   return (
-    <aside className={`work-dock${tab === "environment" ? " dock-environment" : ""}`} aria-label={t(tab === "environment" ? "workspace:environment.summary" : "panels:dock.title")}>
+    <aside hidden={!open} className={`work-dock${tab === "environment" ? " dock-environment" : ""}`} aria-label={t(tab === "environment" ? "workspace:environment.summary" : "panels:dock.title")}>
       <header className="dock-header">
         <strong>{t(dockTabs.find((item) => item.id === tab)!.label)}</strong>
         <button type="button" className="icon-close" onClick={onClose} aria-label={t(tab === "environment" ? "workspace:environment.close" : "panels:dock.close")}><UiIcon name="close" /></button>
@@ -1367,13 +1344,27 @@ function WorkDock(props: WorkDockProps) {
         ))}
       </nav>
       <div className="dock-content">
-        {!available ? tab === "environment" && state.remote.source.kind === "live"
-          ? <LiveContextPanel state={state} session={session} />
+        <div className="dock-task-content" hidden={tab !== "tasks"}>
+          {open && tab === "tasks" && (session.execution ? <p className="task-summary">
+            {t(isStale(state) ? "panels:execution.lastKnownStatus" : "panels:execution.status",
+              { status: valueLabel(session.execution.status) })}
+          </p> : visibleRun && hasCapability(state, "tasks") ? <p className="task-summary">{visibleRun.title}</p> : null)}
+          {goalControls}
+          {visibleRun && hasCapability(state, "tasks") ? <>
+            <RunActivity run={visibleRun} expanded={Boolean(state.local.expandedActivities[visibleRun.id])}
+              onToggle={() => props.onToggleActivity(visibleRun.id)} onSelectTask={onSelectTask} />
+            <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId}
+              onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
+          </> : !session.execution && !session.supportsInteractiveGoal && !session.supportsInteractiveGoalRecovery
+            ? <UnavailablePanel label={hasCapability(state, "tasks") ? t("panels:tasks.projection")
+              : t("workspace:capability.missing", { capability: capabilityLabel("tasks") })} /> : null}
+          {goalProgress}
+          {open && tab === "tasks" && session.execution ? <ExecutionDetail execution={session.execution} stale={isStale(state)} /> : null}
+        </div>
+        {tab === "tasks" ? null : !available ? tab === "environment" && state.remote.source.kind === "live"
+          ? <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} />
           : <UnavailablePanel label={facet === "workspace" ? t("workspace:capability.workspace") : t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>
         {tab === "environment" ? <EnvironmentPanel state={state} session={session} /> : null}
-        {tab === "tasks" ? (
-          <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId} onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
-        ) : null}
         {tab === "agents" ? (
           <AgentsPanel run={visibleRun} selectedAgentRunId={state.local.selectedAgentRunId} onSelectAgent={onSelectAgent} onSelectTask={onSelectTask} />
         ) : null}
@@ -1396,11 +1387,16 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
         <div><dt>{t("workspace:environment.workspace")}</dt><dd>{workspace?.title ?? t("workspace:environment.unavailable")}</dd></div>
         <div><dt>{t("workspace:environment.root")}</dt><dd>{workspace?.rootLabel ?? session.context.rootLabel}</dd></div>
         <div><dt>{t("workspace:environment.vcs")}</dt><dd>{workspace?.vcs ? `${workspace.vcs.kind} · ${workspace.vcs.label}` : t("workspace:environment.none")}</dd></div>
-        <div><dt>{t("workspace:environment.application")}</dt><dd>{session.context.applicationId}</dd></div>
-        <div><dt>{t("workspace:environment.member")}</dt><dd>{session.context.muxId} / {session.context.memberId}</dd></div>
-        <div><dt>{t("workspace:environment.session")}</dt><dd>{session.context.sessionId}</dd></div>
-        <div><dt>{t("workspace:environment.generation")}</dt><dd>{state.remote.generation}</dd></div>
       </dl>
+      <details className="environment-technical">
+        <summary>{t("workspace:environment.technical")}</summary>
+        <dl className="detail-list">
+          <div><dt>{t("workspace:environment.application")}</dt><dd>{session.context.applicationId}</dd></div>
+          <div><dt>{t("workspace:environment.member")}</dt><dd>{session.context.muxId} / {session.context.memberId}</dd></div>
+          <div><dt>{t("workspace:environment.session")}</dt><dd>{session.context.sessionId}</dd></div>
+          <div><dt>{t("workspace:environment.generation")}</dt><dd>{state.remote.generation}</dd></div>
+        </dl>
+      </details>
       <h2>{t("workspace:environment.capabilities")}</h2>
       <div className="capability-list">
         {state.remote.capabilities.map((capability) => (
@@ -1413,22 +1409,45 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
   );
 }
 
-function LiveContextPanel({ state, session }: { readonly state: GuiState; readonly session: SessionSnapshot }) {
+function LiveContextPanel({ state, session, workspacePath }: {
+  readonly state: GuiState;
+  readonly session: SessionSnapshot;
+  readonly workspacePath?: string;
+}) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const source = state.remote.source;
   if (source.kind !== "live") return null;
+  const temporary = workspacePath === TEMPORARY_WORKSPACE;
+  const path = temporary ? undefined : workspacePath;
+  const unavailable = t("workspace:environment.unavailable");
+  const workspace = state.remote.workspaces[session.workspaceId];
+  const identities = [
+    [t("workspace:live.fingerprint"), session.context.scopeFingerprint],
+    [t("workspace:live.mux"), source.muxName ?? source.muxSpaceId],
+    [t("workspace:environment.member"), session.context.memberId],
+    [t("workspace:environment.session"), session.context.sessionId],
+    [t("workspace:live.service"), source.serviceInstanceId],
+  ] as const;
   return (
     <section className="panel-stack" aria-label={t("workspace:live.context")}>
-      <p className="fixture-panel-label">{t("workspace:live.identity")}</p>
       <dl className="detail-list">
-        <div><dt>{t("workspace:live.product")}</dt><dd>{session.context.project}</dd></div>
-        <div><dt>{t("workspace:live.scope")}</dt><dd>{session.context.scope ?? t("workspace:environment.unavailable")}</dd></div>
-        <div><dt>{t("workspace:live.fingerprint")}</dt><dd>{session.context.scopeFingerprint ?? t("workspace:environment.unavailable")}</dd></div>
-        <div><dt>{t("workspace:live.mux")}</dt><dd>{source.muxName ?? source.muxSpaceId}</dd></div>
-        <div><dt>{t("workspace:environment.session")}</dt><dd>{session.context.sessionId}</dd></div>
-        <div><dt>{t("workspace:live.service")}</dt><dd>{source.serviceInstanceId}</dd></div>
+        <div><dt>{t("workspace:environment.workspace")}</dt>
+          <dd>{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}</dd></div>
+        <div><dt>{t("workspace:environment.root")}</dt><dd>{workspace?.rootLabel ?? path ?? unavailable}</dd></div>
+        <div><dt>{t("workspace:environment.vcs")}</dt><dd>{workspace?.vcs?.label ?? unavailable}</dd></div>
       </dl>
-      <UnavailablePanel label={t("workspace:capability.workspace")} />
+      {!workspace && !path && !temporary ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}
+      <details className="environment-technical">
+        <summary>{t("workspace:environment.technical")}</summary>
+        <dl className="detail-list">
+          <div><dt>{t("workspace:live.product")}</dt><dd>{session.context.project}</dd></div>
+          <div><dt>{t("workspace:live.scope")}</dt><dd>{session.context.scope ?? unavailable}</dd></div>
+          {identities.map(([label, value]) => <div key={label}>
+            <dt>{label}</dt><dd>{value ? <><code>{value}</code> <CopyButton text={value}
+              label={t("common:clipboard.copyValue", { label })} /></> : unavailable}</dd>
+          </div>)}
+        </dl>
+      </details>
     </section>
   );
 }

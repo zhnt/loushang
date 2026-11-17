@@ -33,6 +33,7 @@
     "sessionLabel": "{{title}} · {{status}}"
   },
   "environment": {
+    "technical": "技术详情",
     "summary": "环境概览",
     "title": "环境",
     "close": "关闭环境面板",

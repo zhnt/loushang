@@ -5,6 +5,7 @@ import type { HarnessClientUiPort, InteractiveGoalScope } from "./client/model";
 
 interface Props {
   client: HarnessClientUiPort;
+  reviewDiff?: (path: string) => (() => void) | undefined;
   scope: InteractiveGoalScope;
   goalId: string;
   revision: number | null;
@@ -14,7 +15,7 @@ interface Props {
   submit: (input: Omit<InteractiveGoalReviewSubmissionV1, "commandId">) => void;
 }
 
-export function GoalReview({ client, scope, goalId, revision, epoch, disabled, setReading, submit }: Props) {
+export function GoalReview({ client, scope, goalId, revision, epoch, disabled, setReading, submit, reviewDiff }: Props) {
   const { t } = useTranslation("panels");
   const [basis, setBasis] = useState<InteractiveGoalReviewV1 | null>();
   const [loading, setLoading] = useState(false);
@@ -52,10 +53,14 @@ export function GoalReview({ client, scope, goalId, revision, epoch, disabled, s
     {basis === null ? <p role="status">{t("interactiveGoal.review.unavailable")}</p> : null}
     {basis ? <div className="goal-review-summary">
       <p>{t("interactiveGoal.review.inspect")}</p>
-      <p>{t("interactiveGoal.review.fingerprint")} <code>{basis.reviewToken}</code></p>
+      <details><summary>{t("interactiveGoal.review.fingerprint")}</summary><code>{basis.reviewToken}</code></details>
       {basis.changedFiles.length > 0 ? <>
         <p>{t("interactiveGoal.review.files")}</p>
-        <ul>{basis.changedFiles.map((path) => <li key={path}><code>{path}</code></li>)}</ul>
+        <ul>{basis.changedFiles.map((path) => {
+          const open = reviewDiff?.(path);
+          return <li key={path}><code>{path}</code>{open ? <button type="button" className="secondary-button"
+            onClick={open}>{t("interactiveGoal.review.openDiff")}</button> : null}</li>;
+        })}</ul>
       </> : <p>{t("interactiveGoal.review.noFiles")}</p>}
       {basis.filesTruncated ? <p>{t("interactiveGoal.review.truncated")}</p> : null}
       <p>{t(basis.checkCount === 0 ? "interactiveGoal.review.checksNone"

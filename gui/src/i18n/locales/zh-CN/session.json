@@ -1,5 +1,7 @@
 {
   "approval": {
+    "processed": "审批已处理",
+    "scope": "作用范围 · {{scope}}",
     "title": "工具执行审批",
     "approve": "允许一次",
     "deny": "拒绝",

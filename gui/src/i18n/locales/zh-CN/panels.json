@@ -15,6 +15,8 @@
       "unresolved": "部分执行结果尚未确认，请核查原工作区。"
     },
     "review": {
+      "openDiff": "查看差异",
+      "accepted": "已记录接受结果。",
       "open": "审阅结果",
       "loading": "正在读取当前候选…",
       "unavailable": "无法取得当前候选。请重新读取后再决定。",

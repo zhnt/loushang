@@ -1,6 +1,6 @@
 import type { ClientSnapshot, ControlReceipt, PendingApproval } from "./model";
 
-type Decision = { status: "submitting" | "unavailable" };
+type Decision = { status: "submitting" | "processed" | "unavailable" };
 const key = (sessionId: string, interactionId: string) => JSON.stringify([sessionId, interactionId]);
 
 function connectionKey(snapshot: ClientSnapshot | null): string {
@@ -56,13 +56,13 @@ export class ApprovalResponses {
     this.publish(this.project(snapshot));
     const receipt = await send(snapshot.source.connectionEpoch)
       .catch(() => ({ accepted: false, reason: "connection_failed" }));
-    if (!receipt.accepted) this.markUnavailable(id, decision);
+    this.markSettled(id, decision, receipt.accepted);
     return receipt;
   }
 
-  private markUnavailable(id: string, decision: Decision) {
+  private markSettled(id: string, decision: Decision, accepted: boolean) {
     if (this.current && this.decisions.get(id) === decision) {
-      decision.status = "unavailable";
+      decision.status = accepted ? "processed" : "unavailable";
       this.publish(this.project(this.current));
     }
   }

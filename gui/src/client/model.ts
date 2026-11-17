@@ -144,7 +144,7 @@ export interface PendingApproval {
   readonly sessionId: string;
   readonly interactionId: string;
   readonly text: string;
-  readonly status: "pending" | "submitting" | "unavailable";
+  readonly status: "pending" | "submitting" | "processed" | "unavailable";
 }
 
 export interface SessionSnapshot {

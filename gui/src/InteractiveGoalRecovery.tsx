@@ -31,12 +31,8 @@ export function InteractiveGoalRecovery({ client, sessionId, instanceId, epoch }
   return <section className="execution-detail interactive-goal" aria-label={t("interactiveGoal.recovery.title")}>
     <p>{t("interactiveGoal.recovery.readOnly")}</p>
     {recovery?.presence === "present" ? <dl>
-      <dt>{t("goalProgress.goal")}</dt><dd><code>{recovery.goalId}</code></dd>
       <dt>{t("goalProgress.status")}</dt><dd>{recovery.goalStatus === "active"
         ? t("interactiveGoal.recovery.active") : t(`goalProgress.states.${recovery.goalStatus ?? "unknown"}`)}</dd>
-      <dt>{t("interactiveGoal.recovery.reason")}</dt><dd><code>{recovery.reasonCode}</code></dd>
-      <dt>{t("interactiveGoal.revision")}</dt><dd>{recovery.revision}</dd>
-      <dt>{t("interactiveGoal.epoch")}</dt><dd>{recovery.epoch}</dd>
       <dt>{t("interactiveGoal.recovery.batches")}</dt><dd>{recovery.batchCount}</dd>
       <dt>{t("interactiveGoal.recovery.completed")}</dt><dd>{recovery.completedCount}</dd>
       <dt>{t("interactiveGoal.recovery.failed")}</dt><dd>{recovery.failedCount}</dd>
@@ -45,6 +41,15 @@ export function InteractiveGoalRecovery({ client, sessionId, instanceId, epoch }
     </dl> : <p role="status">{recovery === undefined
       ? t("interactiveGoal.recovery.loading") : t("interactiveGoal.recovery.unavailable")}
       {recovery?.reasonCode ? <> <code>{recovery.reasonCode}</code></> : null}</p>}
+    {recovery?.presence === "present" ? <details className="goal-technical">
+      <summary>{t("execution.details")}</summary>
+      <dl>
+        <dt>{t("goalProgress.goal")}</dt><dd><code>{recovery.goalId}</code></dd>
+        <dt>{t("interactiveGoal.recovery.reason")}</dt><dd><code>{recovery.reasonCode}</code></dd>
+        <dt>{t("interactiveGoal.revision")}</dt><dd>{recovery.revision}</dd>
+        <dt>{t("interactiveGoal.epoch")}</dt><dd>{recovery.epoch}</dd>
+      </dl>
+    </details> : null}
     {recovery?.executionUnresolved ? <p role="status">{t("interactiveGoal.recovery.unresolved")}</p> : null}
   </section>;
 }

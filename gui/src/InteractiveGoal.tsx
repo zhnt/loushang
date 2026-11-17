@@ -13,6 +13,7 @@ interface Props {
   enabled: boolean;
   scopeKey: string | null;
   setBusyScope: Dispatch<SetStateAction<string | null>>;
+  reviewDiff?: (path: string) => (() => void) | undefined;
 }
 
 type Action = InteractiveGoalCommandV1["action"];
@@ -21,7 +22,7 @@ function commandActive(view?: InteractiveGoalViewV1 | null): boolean {
   return view?.command?.status === "running" || view?.command?.status === "settling";
 }
 
-export function InteractiveGoal({ client, session, instanceId, epoch, enabled, scopeKey, setBusyScope }: Props) {
+export function InteractiveGoal({ client, session, instanceId, epoch, enabled, scopeKey, setBusyScope, reviewDiff }: Props) {
   const { t } = useTranslation("panels");
   const [target, setTarget] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -138,11 +139,7 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
     {note && (!unknown || availability) ? <p role="status">{note}</p> : null}
     {unknown ? <p role="status">{t("interactiveGoal.unknown")}</p> : null}
     {view?.availability === "present" ? <dl>
-      <dt>{t("goalProgress.goal")}</dt><dd><code>{view.goalId}</code></dd>
       <dt>{t("goalProgress.status")}</dt><dd>{t(`goalProgress.states.${view.status ?? "unknown"}`)}</dd>
-      <dt>{t("interactiveGoal.revision")}</dt><dd>{view.revision}</dd>
-      <dt>{t("interactiveGoal.epoch")}</dt><dd>{view.epoch}</dd>
-      <dt>{t("goalProgress.unresolved")}</dt><dd>{t(view.executionUnresolved ? "goalProgress.yes" : "goalProgress.no")}</dd>
     </dl> : null}
     {view?.availability === "present" && view.goalId && session.supportsInteractiveGoalCommands && client.controlInteractiveGoal ? (
       <GoalCommandControls view={view} disabled={controlsDisabled || readingReview}
@@ -152,8 +149,9 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
     {view?.reviewAvailable && view.goalId && scope && client.interactiveGoalReview && client.submitInteractiveGoalReview ? (
       <GoalReview key={JSON.stringify([scope.connectionEpoch, view.goalId, view.revision, view.epoch])}
         client={client} scope={scope} goalId={view.goalId} revision={view.revision} epoch={view.epoch}
-        disabled={controlsDisabled} setReading={setReadingReview} submit={submitReview} />
+        disabled={controlsDisabled} setReading={setReadingReview} submit={submitReview} reviewDiff={reviewDiff} />
     ) : null}
+    {command?.action === "accept" && command.status === "finished" ? <p role="status">{t("interactiveGoal.review.accepted")}</p> : null}
     {command?.action === "reject" && command.status === "finished" ? <p role="status">{t("interactiveGoal.review.feedbackRecorded")}</p> : null}
     {(command?.action === "accept" || command?.action === "reject") && command.status === "failed" ? (
       <p role="status">{t("interactiveGoal.review.failed")}</p>
@@ -174,6 +172,15 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
         {t("interactiveGoal.create")}
       </button>
     </form> : null}
+    {view?.availability === "present" ? <details className="goal-technical">
+      <summary>{t("execution.details")}</summary>
+      <dl>
+        <dt>{t("goalProgress.goal")}</dt><dd><code>{view.goalId}</code></dd>
+        <dt>{t("interactiveGoal.revision")}</dt><dd>{view.revision}</dd>
+        <dt>{t("interactiveGoal.epoch")}</dt><dd>{view.epoch}</dd>
+        <dt>{t("goalProgress.unresolved")}</dt><dd>{t(view.executionUnresolved ? "goalProgress.yes" : "goalProgress.no")}</dd>
+      </dl>
+    </details> : null}
     <button type="button" className="secondary-button" disabled={!scope || creating || sendingCommand}
       onClick={() => void readStatus()}>{t("interactiveGoal.check")}</button>
   </section>;

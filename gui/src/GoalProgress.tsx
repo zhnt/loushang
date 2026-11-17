@@ -3,10 +3,11 @@ import { useTranslation } from "react-i18next";
 import type { ExecutionGoalProgressV1 } from "../contracts/generated/bridge";
 import type { ExecutionProjection, HarnessClientUiPort } from "./client/model";
 
-export function GoalProgress({ client, sessionId, execution }: {
+export function GoalProgress({ client, sessionId, execution, connected }: {
   client: HarnessClientUiPort;
   sessionId: string;
   execution: ExecutionProjection;
+  connected: boolean;
 }) {
   const { t } = useTranslation("panels");
   const [observation, setObservation] = useState<{
@@ -17,10 +18,11 @@ export function GoalProgress({ client, sessionId, execution }: {
   const running = execution.status === "accepted" || execution.status === "running";
 
   useEffect(() => {
+    if (!connected) return;
     let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     function unavailable() {
-      setObservation((previous) => !running && previous ? { ...previous, lastConfirmed: true } : null);
+      setObservation((previous) => previous ? { ...previous, lastConfirmed: true } : null);
     }
     async function refresh() {
       try {
@@ -38,25 +40,30 @@ export function GoalProgress({ client, sessionId, execution }: {
     }
     void refresh();
     return () => { current = false; clearTimeout(timer); };
-  }, [client, sessionId, executionId, running]);
+  }, [client, sessionId, executionId, running, connected]);
 
   if (!observation) return null;
   const { progress, lastConfirmed } = observation;
   if (progress.presence === "unavailable") return null;
   return <section className="execution-detail goal-progress" aria-label={t("goalProgress.title")}>
     <strong>{t("goalProgress.title")}</strong>
-    {lastConfirmed && <p className="goal-work-note" role="status">{t("goalProgress.lastConfirmed")}</p>}
+    {(!connected || lastConfirmed) && <p className="goal-work-note" role="status">{t("goalProgress.lastConfirmed")}</p>}
     <dl>
-      <dt>{t("goalProgress.goal")}</dt><dd><code>{progress.goalId ?? t("goalProgress.notObserved")}</code></dd>
       <dt>{t("goalProgress.status")}</dt><dd>{t(`goalProgress.states.${progress.presence === "present" ? progress.status ?? "unknown" : progress.presence}`)}</dd>
       <dt>{t("goalProgress.batches")}</dt><dd>{progress.batchCount}</dd>
       <dt>{t("goalProgress.models")}</dt><dd>{progress.modelCalls}</dd>
       <dt>{t("goalProgress.advances")}</dt><dd>{progress.advances}</dd>
-      <dt>{t("goalProgress.reason")}</dt><dd><code>{progress.reasonCode}</code></dd>
-      <dt>{t("goalProgress.validity")}</dt><dd>{t(`goalProgress.states.${progress.validity}`)}</dd>
-      <dt>{t("goalProgress.unresolved")}</dt><dd>{t(progress.executionUnresolved ? "goalProgress.yes" : "goalProgress.no")}</dd>
     </dl>
     <GoalWorkBatches progress={progress} />
+    <details className="goal-technical">
+      <summary>{t("execution.details")}</summary>
+      <dl>
+        <dt>{t("goalProgress.goal")}</dt><dd><code>{progress.goalId ?? t("goalProgress.notObserved")}</code></dd>
+        <dt>{t("goalProgress.reason")}</dt><dd><code>{progress.reasonCode}</code></dd>
+        <dt>{t("goalProgress.validity")}</dt><dd>{t(`goalProgress.states.${progress.validity}`)}</dd>
+        <dt>{t("goalProgress.unresolved")}</dt><dd>{t(progress.executionUnresolved ? "goalProgress.yes" : "goalProgress.no")}</dd>
+      </dl>
+    </details>
   </section>;
 }
 

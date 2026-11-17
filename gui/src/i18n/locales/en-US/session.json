@@ -1,5 +1,7 @@
 {
   "approval": {
+    "processed": "Decision processed",
+    "scope": "Scope · {{scope}}",
     "title": "Tool approval",
     "approve": "Allow once",
     "deny": "Deny",

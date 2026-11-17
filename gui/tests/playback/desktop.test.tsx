@@ -25,7 +25,7 @@ describe("desktop frame", () => {
     const close = screen.getByRole("button", { name: "Close Work Dock" });
     expect(close.querySelector('[data-icon="close"]')).toBeInTheDocument();
     await user.click(close);
-    expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Work Dock" })).not.toBeInTheDocument();
   });
   it("pins chats above workspace groups, keeps unassigned chats, and scopes pins to the mux", async () => {
     const user = userEvent.setup();
@@ -141,13 +141,13 @@ describe("desktop frame", () => {
     render(<HarnessGui client={createMockAppClient()} />);
     await screen.findByRole("heading", { name: "GUI development" });
     expect(screen.getByLabelText("Environment summary")).toBeVisible();
-    expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Work Dock" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bottom panel unavailable" })).toBeDisabled();
     await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Review" }));
     expect(screen.getByLabelText("Read-only review")).toBeVisible();
     expect(screen.queryByLabelText("Environment summary")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
-    expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Work Dock" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Toggle environment" }));
     expect(screen.getByLabelText("Environment summary")).toBeVisible();
   });

@@ -1,4 +1,10 @@
 {
+  "clipboard": {
+    "copy": "Copy",
+    "copyValue": "Copy {{label}}",
+    "copied": "Copied",
+    "failed": "Could not copy"
+  },
   "status": {
     "idle": "Idle",
     "running": "Running",

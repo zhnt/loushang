@@ -2,6 +2,12 @@
 export default interface Resources {
   "common": {
     "additions": "+{{value, number}}",
+    "clipboard": {
+      "copied": "Copied",
+      "copy": "Copy",
+      "copyValue": "Copy {{label}}",
+      "failed": "Could not copy"
+    },
     "connection": {
       "connected": "Connected",
       "connecting": "Connecting",
@@ -195,6 +201,7 @@ export default interface Resources {
       },
       "review": {
         "accept": "Accept result",
+        "accepted": "Acceptance recorded.",
         "checksMissing": "Current passing evidence is missing for one or more of the {{total}} configured checks.",
         "checksNone": "No configured checks.",
         "checksPassed": "Current evidence covers {{total}} configured checks.",
@@ -206,6 +213,7 @@ export default interface Resources {
         "loading": "Reading current candidate…",
         "noFiles": "No changed files reported.",
         "open": "Review result",
+        "openDiff": "Open diff",
         "reason": "Specific rejection feedback",
         "reject": "Reject with feedback",
         "truncated": "Some paths are omitted from this summary.",
@@ -250,6 +258,8 @@ export default interface Resources {
       "approve": "Allow once",
       "cancel": "Cancel operation",
       "deny": "Deny",
+      "processed": "Decision processed",
+      "scope": "Scope · {{scope}}",
       "submitting": "Sending decision…",
       "title": "Tool approval",
       "unavailable": "This request is unavailable."
@@ -512,6 +522,7 @@ export default interface Resources {
       "root": "Root",
       "session": "Session",
       "summary": "Environment summary",
+      "technical": "Technical details",
       "title": "Environment",
       "unavailable": "Unavailable",
       "unavailableValue": "unavailable",
