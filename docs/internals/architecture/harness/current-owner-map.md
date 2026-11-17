@@ -400,6 +400,14 @@ Coding retains Product admission/budgets, public DTOs/Reader/closure and indepen
 approval/revocation decisions. [A93](key-designs/windows-backend-release-custody-convergence.md)
 records full costs, old pickle evidence and the separate pre-existing H5 mismatch.
 
+The existing Windows backend owner also holds complete approve/revoke write
+custody, including the original GC gate, root pin, journal change and both
+currentness checks. It reads actual owner/review fields at their original guarded
+points and calls the real public journal override. Coding keeps Wheel review,
+review-ID approval and public owner identity; no journal or lifecycle manager is
+added. [C07 transaction evidence](c07-worker-bulk-migration.md#windows-原生批准写事务归现有-backend-owner)
+records costs and the remaining native-platform verification gap.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding

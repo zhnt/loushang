@@ -279,6 +279,16 @@ Coding 保留原 closed nominal 输入 guard、错误身份和查询 definition�
 
 Scoped mypy 初次发现公共 Windows ctor 原有的 optional Session 值不再由本地条件流窄化，已在原读取点以 identity cast 解决；未改变该值的读取时刻或错误优先级。87源 mypy、Ruff 和56份 Coding 公开契约／字段、原测试／用户改动检查通过。共享 owner 冷导入禁止 Coding。原生 Windows／H6、全部112文件最终处置及正确 PR 基线全量交付检查仍未完成。
 
+## Windows 原生批准写事务归现有 Backend owner
+
+现有 Package Product backend owner 接管 approve／revoke 的完整写事务：写 GC gate→首次 currentness→借用同一 Product root→实际 journal.change→root 释放→再次 currentness→返回原 decision。Coding 保留真实 Wheel 审阅、review ID 批准判断、公开入口及原 owner 构造；current 与原 journal／CAS／IO 程序未变。操作接收原 owner 和完整 review，在原锁内位置读取 owner 属性与 approval，实际 Coding journal.change 覆盖仍是故障入口；不提前读取字段、不绕过覆盖，也没有增加生命周期管理器或账本。
+
+一次不采用的 mixin 草案会改变 owner MRO 且增加无状态绑定，已退出；当前原 class bases、构造、current、公开签名及默认值保持不变。最初回归404 passed、49 skipped、1 failed，C50 指出 backend 对私有具体 journal 的新增依赖；已删除该依赖，通过一个完整 change 命令结构口调用真实 journal，不修改检查或白名单。最终批准／backend／C50 消费者222 passed、49 skipped，单独原失败项亦复测通过；两组覆盖不相加。两源 mypy 和 Ruff 通过，57份 Coding 公开契约／字段、原测试入口／断言及用户改动哈希检查通过；10项现有文档检查和依赖事实 renderer 通过。
+
+两个原公开操作与当前入口324组对照，每组连续三次调用；225组实际触发注入，315组包含成功返回。使用真实 Code approval／decision 和原纯 replay／CAS，比较事件、完整记录、返回对象归属、错误图、写后丢失回执及幂等重试、嵌套清理、取消类异常、上下文抑制及原字段晚读取；GC/root 与 journal 为受控完整口，不代替 Windows 原生验证。完整旧写作用域经固定动作与原 owner 绑定后 AST 一致，其余原 backend 与整个 journal 模块 AST 未变。
+
+本批 Coding −13、Harness +40、Hosting／其他生产0，系统生产 +27 行；累计 Coding −5,709、Harness +8,765、系统生产 +3,056 行。测试仍 +70，文档单列。这是完整操作归属收敛及两份原写作用域复用，新增明确命令类型边界和兼容入口成本仍超过退出量；不是系统净删减，也不足以作为大块迁移验收。C07 剩余14,557行，距至少10,134行退出仍差4,425行；后续须集中完整大块与实际重复删除。原生 Windows／H6、全部112文件最终处置和正确 PR 基线完整交付验证仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
