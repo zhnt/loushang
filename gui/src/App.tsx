@@ -3,7 +3,7 @@ import { appName } from "./branding";
 import { useTranslation } from "react-i18next";
 import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
@@ -349,6 +349,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
   const selected = !draft && selectedId ? state.remote.sessions[selectedId] : undefined;
   const conversationOpen = Boolean(selected || draft);
+  const [openGoalScope, setOpenGoalScope] = useState<string | null>(null);
+  const goalPanelId = useId();
+  const goalSource = state.remote.source.kind === "live" ? state.remote.source : null;
+  const canReadGoalHistory = selected?.supportsInteractiveGoalRecovery && client.interactiveGoalRecovery;
+  const canControlGoal = !selected?.supportsInteractiveGoalRecovery && selected?.supportsInteractiveGoal
+    && client.createInteractiveGoal && client.interactiveGoalStatus;
+  const goalPanelScope = selected && goalSource && (canReadGoalHistory || canControlGoal)
+    ? JSON.stringify([goalSource.connectionId, goalSource.serviceInstanceId, goalSource.muxSpaceId, selected.id]) : null;
+  const goalPanelOpen = goalPanelScope !== null && goalPanelScope === openGoalScope;
   const rightVisible = Boolean(selected) && (environmentOpen || panelOpen);
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
@@ -699,6 +708,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           connection={liveConnecting ? "connecting" : state.remote.connection}
           dockOpen={panelOpen}
           environmentOpen={environmentOpen}
+          goalPanel={goalPanelScope ? {
+            id: goalPanelId,
+            open: goalPanelOpen,
+            toggle: () => setOpenGoalScope(goalPanelOpen ? null : goalPanelScope),
+          } : undefined}
           onEnvironment={() => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); }}
           onOpenDock={() => {
             setEnvironmentOpen(false);
@@ -753,20 +767,17 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     enabled={Boolean(submitAllowed && selected.status !== "running")}
                     onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
                   <GoalStart {...goalStart} />
-                  {selected.supportsInteractiveGoalRecovery && client.interactiveGoalRecovery && state.remote.source.kind === "live" ? (
-                    <InteractiveGoalRecovery
-                      key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
-                        state.remote.source.muxSpaceId, state.remote.source.connectionEpoch, selected.id])}
-                      client={client} sessionId={selected.id} instanceId={state.remote.source.serviceInstanceId}
-                      epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null} />
-                  ) : null}
-                  {!selected.supportsInteractiveGoalRecovery && selected.supportsInteractiveGoal && client.createInteractiveGoal && client.interactiveGoalStatus && state.remote.source.kind === "live" ? (
-                    <InteractiveGoal
-                      key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
-                        state.remote.source.muxSpaceId, selected.id])}
-                      client={client} session={selected} instanceId={state.remote.source.serviceInstanceId}
-                      epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null}
-                      enabled={mutationsAllowed} scopeKey={modelScope} setBusyScope={setGoalBusyScope} />
+                  {goalPanelScope && goalSource ? (
+                    <div id={goalPanelId} hidden={!goalPanelOpen}>
+                      {canReadGoalHistory && goalPanelOpen ? <InteractiveGoalRecovery
+                        key={JSON.stringify([goalPanelScope, goalSource.connectionEpoch])}
+                        client={client} sessionId={selected.id} instanceId={goalSource.serviceInstanceId}
+                        epoch={connected && selectionReady && !syncing ? goalSource.connectionEpoch : null} /> : null}
+                      {canControlGoal ? <InteractiveGoal key={goalPanelScope}
+                        client={client} session={selected} instanceId={goalSource.serviceInstanceId}
+                        epoch={connected && selectionReady && !syncing ? goalSource.connectionEpoch : null}
+                        enabled={goalPanelOpen && mutationsAllowed} scopeKey={modelScope} setBusyScope={setGoalBusyScope} /> : null}
+                    </div>
                   ) : null}
                   {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
                   {connected && selected.execution && selected.supportsGoalProgress && client.goalProgress && state.remote.source.kind === "live" ? (
@@ -1131,7 +1142,7 @@ function ExecutionDetail({ execution, stale }: {
   );
 }
 
-function SessionHeader({ title, sessionReady, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment }: {
+function SessionHeader({ title, sessionReady, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment, goalPanel }: {
   readonly environmentOpen: boolean;
   readonly onEnvironment: () => void;
   readonly title?: string;
@@ -1139,6 +1150,7 @@ function SessionHeader({ title, sessionReady, connection, dockOpen, onOpenDock, 
   readonly connection: ConnectionState | "connecting";
   readonly dockOpen: boolean;
   readonly onOpenDock: () => void;
+  readonly goalPanel?: { readonly id: string; readonly open: boolean; readonly toggle: () => void };
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const label = connectionLabel(connection);
@@ -1154,6 +1166,8 @@ function SessionHeader({ title, sessionReady, connection, dockOpen, onOpenDock, 
       <div className="header-actions" data-conversation-open={title !== undefined}>
         <span className={`connection-chip ${connection}`} role="status"
           title={connection === "connecting" ? t("session:sync.live") : label}>{label}</span>
+        {goalPanel ? <button type="button" aria-expanded={goalPanel.open}
+          aria-controls={goalPanel.id} onClick={goalPanel.toggle}>{t("panels:interactiveGoal.title")}</button> : null}
         <button type="button" aria-label={t("panels:header.shareUnavailable")} disabled>{t("panels:header.share")}</button>
         <button type="button" aria-label={t("panels:header.toggleEnvironment")} title={t("workspace:environment.title")} aria-pressed={environmentOpen} onClick={onEnvironment} disabled={!sessionReady}><PanelIcon side="environment" /></button>
         <button type="button" aria-label={t("panels:header.bottomUnavailable")} title={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>

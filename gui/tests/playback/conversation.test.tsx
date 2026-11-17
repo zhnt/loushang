@@ -1130,6 +1130,13 @@ describe("Interactive development goal", () => {
     expect(interactiveGoalStatus).not.toHaveBeenCalled();
 
     act(() => publish(supported));
+    const entry = await screen.findByRole("button", { name: "Development goal" });
+    expect(entry).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Check goal status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Goal target" })).not.toBeInTheDocument();
+    fireEvent.click(entry);
+    expect(entry).toHaveAttribute("aria-expanded", "true");
     const goal = within(await screen.findByRole("region", { name: "Development goal" }));
     expect(await goal.findByText(/Send an ordinary message/)).toBeVisible();
     expect(goal.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
@@ -1154,6 +1161,9 @@ describe("Interactive development goal", () => {
     expect(goal.getByText("Goal created. Execution has not started.")).toBeVisible();
     expect(goal.queryByRole("button", { name: "Create goal" })).not.toBeInTheDocument();
     expect(createInteractiveGoal).toHaveBeenCalledTimes(1);
+    fireEvent.click(entry);
+    expect(entry).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("region", { name: "Development goal" })).not.toBeInTheDocument();
   });
 });
 
@@ -1197,6 +1207,8 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
     interrupt: async () => ({ accepted: false }),
   };
   render(<HarnessGui client={client} />);
+  const entry = await screen.findByRole("button", { name: "Development goal" });
+  fireEvent.click(entry);
   const goal = within(await screen.findByRole("region", { name: "Development goal" }));
   const run = await goal.findByRole("button", { name: /^Run$/ });
   act(() => { fireEvent.click(run); fireEvent.click(run); });
@@ -1206,6 +1218,10 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
     sessionId: session.id, serviceInstanceId: "goal-host", connectionEpoch: "1",
   });
   expect(goal.queryByRole("button", { name: "Step" })).not.toBeInTheDocument();
+  fireEvent.click(entry);
+  expect(screen.queryByRole("region", { name: "Development goal" })).not.toBeInTheDocument();
+  fireEvent.click(entry);
+  expect(goal.getByText("Goal command running")).toBeVisible();
 
   fireEvent.click(goal.getByRole("button", { name: /^Pause$/ }));
   expect(await goal.findByText("Paused. Waiting for current Work to settle.")).toBeVisible();
@@ -1259,6 +1275,8 @@ it("offers Goal review only for a current candidate and gates acceptance on chec
     interrupt: async () => ({ accepted: false }),
   };
   render(<HarnessGui client={client} />);
+  const entry = await screen.findByRole("button", { name: "Development goal" });
+  fireEvent.click(entry);
   const goal = within(await screen.findByRole("region", { name: "Development goal" }));
   const review = await goal.findByRole("button", { name: "Review result" });
   fireEvent.click(review);
@@ -1324,12 +1342,17 @@ it.each([
     interrupt: async () => ({ accepted: false }),
   };
   render(<HarnessGui client={client} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Development goal" }));
   expect(await screen.findByText("Goal command running")).toBeVisible();
   expect(recover).not.toHaveBeenCalled();
   act(() => publish({
     ...initial, sessions: [deferred],
     source: { kind: "live", serviceInstanceId: "second-host", muxSpaceId: "mux", connectionEpoch: "2" },
   }));
+  const entry = await screen.findByRole("button", { name: "Development goal" });
+  expect(entry).toHaveAttribute("aria-expanded", "false");
+  expect(recover).not.toHaveBeenCalled();
+  fireEvent.click(entry);
   const panel = within(await screen.findByRole("region", { name: "Historical Goal" }));
   expect(await panel.findByText(label)).toBeVisible();
   expect(panel.getByText(reason)).toBeVisible();
