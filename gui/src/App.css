@@ -531,3 +531,13 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .account-technical { margin-top: 6px; }
 .account-technical summary { color: var(--ink-secondary); font-size: 12px; cursor: pointer; }
 .account-technical .copy-action { margin-top: 6px; }
+
+.app-context-menu { position: fixed; z-index: 100; min-inline-size: 150px; max-inline-size: calc(100vw - 8px); padding: 4px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); color: var(--ink); box-shadow: 0 6px 20px #0002; font-size: 13px; }
+.app-context-menu button { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: start; }
+.app-context-menu .context-menu-danger { color: var(--red); }
+.context-menu-error { position: fixed; inset: auto 16px 16px auto; z-index: 110; margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 13px; }
+.session-delete-dialog { margin: auto; overflow-wrap: anywhere; }
+.session-delete-dialog [role="alert"] { color: var(--red); }
+.session-delete-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
+.session-delete-actions button { padding: 6px 14px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--sidebar); color: inherit; }
+.session-delete-actions button:last-child { color: var(--red); background: var(--red-soft); }

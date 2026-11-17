@@ -576,6 +576,7 @@ class MuxMemberCloseV1:
     selector: MuxSelectorV1
     member_id: str
     close_session: bool = True
+    delete_history: bool = False
 
     def __post_init__(self) -> None:
         if type(self.selector) is not MuxSelectorV1:
@@ -583,6 +584,8 @@ class MuxMemberCloseV1:
         _require_opaque_id(self.member_id, field="member_id")
         if type(self.close_session) is not bool:
             raise TypeError("invalid close_session")
+        if type(self.delete_history) is not bool or (self.delete_history and not self.close_session):
+            raise ValueError("history deletion requires closing the session")
 
 
 @dataclass(frozen=True, slots=True)

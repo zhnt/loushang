@@ -89,3 +89,8 @@ class HostedWorkspacePort(Protocol):
 @runtime_checkable
 class HostedWorkspaceModelsPort(Protocol):
     async def workspace_models(self, path: str | None) -> SessionModelsV1: ...
+
+
+@runtime_checkable
+class HostedSessionHistoryDeletionPort(Protocol):
+    async def delete_session_history(self, identity: SessionIdentityV1) -> None: ...

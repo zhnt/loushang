@@ -89,6 +89,11 @@ pub enum ControlCommand {
         title: String,
         reply: SyncSender<Result<CreateSessionResult, ()>>,
     },
+    CloseSession {
+        mux_space_id: String,
+        session_id: String,
+        reply: SyncSender<Result<bool, ()>>,
+    },
     Submit {
         session_id: String,
         submission_id: String,
@@ -671,6 +676,17 @@ fn process_controls<R: Read, W: Write>(
                     &request_id,
                 );
                 let reconnect = matches!(result, Ok(CreateSessionResult::Accepted(_)) | Err(()));
+                let _ = reply.send(result);
+                reconnect
+            }
+            ControlCommand::CloseSession {
+                mux_space_id,
+                session_id,
+                reply,
+            } => {
+                let result =
+                    authority.close_session(channel, &mux_space_id, &session_id, &request_id);
+                let reconnect = !matches!(result, Ok(false));
                 let _ = reply.send(result);
                 reconnect
             }

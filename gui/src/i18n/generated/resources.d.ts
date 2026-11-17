@@ -6,7 +6,11 @@ export default interface Resources {
       "copied": "Copied",
       "copy": "Copy",
       "copyValue": "Copy {{label}}",
-      "failed": "Could not copy"
+      "cut": "Cut",
+      "failed": "Could not copy",
+      "paste": "Paste",
+      "selectAll": "Select all",
+      "unavailable": "Could not access the clipboard. Try the keyboard shortcut."
     },
     "connection": {
       "connected": "Connected",
@@ -14,6 +18,7 @@ export default interface Resources {
       "disconnected": "Disconnected",
       "resync": "Resync required"
     },
+    "contextMenu": "Context menu",
     "deletions": "-{{value, number}}",
     "openItem": "Open {{title}} →",
     "status": {
@@ -593,7 +598,13 @@ export default interface Resources {
     },
     "sidebar": {
       "addProject": "Add project",
+      "cancelDelete": "Cancel",
       "chats": "Chats",
+      "confirmDelete": "Delete",
+      "copyProjectPath": "Copy path",
+      "deleteChat": "Delete conversation",
+      "deleteChatPrompt": "Permanently delete “{{title}}” and its chat history?",
+      "deleteFailed": "Could not confirm that the conversation history was deleted.",
       "fixtureBanner": "Fixture data · no backend",
       "live": "Live · AppHost",
       "liveBanner": "Live AppHost · controlled",
@@ -601,6 +612,7 @@ export default interface Resources {
       "newProjectChat": "New chat in {{project}}",
       "newSession": "New Session",
       "offline": "Offline fixture",
+      "pin": "Pin",
       "pinChat": "Pin {{title}}",
       "pinned": "Pinned",
       "plain": "plain",
@@ -618,6 +630,7 @@ export default interface Resources {
       "stale": "Stale · was {{status}}",
       "temporaryChats": "Temporary chats",
       "unassigned": "Without a workspace",
+      "unpin": "Unpin",
       "unpinChat": "Unpin {{title}}",
       "unread": "Unread updates"
     }

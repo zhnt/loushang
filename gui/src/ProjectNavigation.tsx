@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useContextMenu } from "./ContextMenu";
 import { UiIcon } from "./UiIcon";
 import { TEMPORARY_WORKSPACE, workspaceName, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
 
@@ -28,6 +29,15 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
   drafts?: readonly SidebarDraft[];
 }) {
   const { t } = useTranslation("workspace");
+  const openMenu = useContextMenu();
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+  const [deletion, setDeletion] = useState<{ workspace: string; session: ProjectChat; title: string; hostKey: string } | null>(null);
+  const [deleteFailed, setDeleteFailed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  useLayoutEffect(() => {
+    if (deletion?.hostKey === navigation.hostKey) deleteDialog.current?.showModal();
+    else deleteDialog.current?.close();
+  }, [deletion, navigation.hostKey]);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [path, setPath] = useState("");
   const editable = navigation.available && !navigation.pending;
@@ -59,14 +69,44 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
 
   const sessionTitle = (session: ProjectChat) => titles[session.id] ?? session.title;
 
+  function expand(workspace: string) {
+    setCollapsed((current) => new Set([...current].filter((key) => key !== workspace)));
+  }
+
+  async function confirmDeletion() {
+    if (!editable || deleting || !deletion || deletion.hostKey !== navigation.hostKey || !navigation.deleteChat) return;
+    setDeleting(true);
+    setDeleteFailed(false);
+    try {
+      if (await navigation.deleteChat(deletion.workspace, deletion.session)) deleteDialog.current?.close();
+      else setDeleteFailed(true);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function chat(workspace: string, session: ProjectChat, showWorkspace = false) {
     const selected = selectedId === session.id;
     const name = sessionTitle(session);
     const title = name === "New Session" ? t("sidebar.newSession") : name;
+    function togglePin() {
+      if (session.pinned && collapsed.has(workspace)) expand(workspace);
+      navigation.togglePin(session);
+    }
     return <div className={selected ? "session-row selected" : "session-row"} key={session.id}>
       <button type="button" className="project-chat"
         aria-current={selected ? "true" : undefined} disabled={!navigation.available}
-        onClick={() => navigation.select(workspace, session.id)}>
+        onClick={() => navigation.select(workspace, session.id)}
+        onContextMenu={(event) => openMenu(event, [
+          { label: t(session.pinned ? "sidebar.unpin" : "sidebar.pin"), disabled: !editable, run: togglePin },
+          ...(navigation.deleteChat ? [{
+            label: t("sidebar.deleteChat"), disabled: !editable, danger: true,
+            run: () => {
+              setDeleteFailed(false);
+              setDeletion({ workspace, session, title, hostKey: navigation.hostKey });
+            },
+          }] : []),
+        ])}>
         <span className="project-chat-title">{title}</span>
         {showWorkspace ? <small className="project-chat-scope" aria-hidden="true" title={workspace === TEMPORARY_WORKSPACE ? undefined : workspace}>
           {workspace === TEMPORARY_WORKSPACE ? t("sidebar.temporaryChats") : workspaceName(workspace)}
@@ -78,10 +118,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
         onClick={(event) => {
           pinFocus.current = event.currentTarget === document.activeElement
             ? { id: session.id, pinned: !session.pinned } : null;
-          if (session.pinned && collapsed.has(workspace)) {
-            setCollapsed((old) => new Set([...old].filter((key) => key !== workspace)));
-          }
-          navigation.togglePin(session);
+          togglePin();
         }}><UiIcon name="pin" /></button>
     </div>;
   }
@@ -111,9 +148,17 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
       {projects.map((project) => {
         const label = workspaceName(project.path);
         const expanded = !collapsed.has(project.path);
+        function create() {
+          expand(project.path);
+          navigation.create(project.path);
+        }
         return <div key={project.path}>
           <div className="project-heading project-row">
             <button type="button" className="project-label" aria-expanded={expanded} title={project.path}
+              onContextMenu={(event) => openMenu(event, [
+                { label: t("sidebar.newSession"), disabled: !editable, run: create },
+                { label: t("sidebar.copyProjectPath"), run: () => navigator.clipboard.writeText(project.path) },
+              ])}
               onClick={() => setCollapsed((old) => {
                 const next = new Set(old);
                 if (expanded) next.add(project.path);
@@ -122,7 +167,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
               })}><UiIcon name={expanded ? "folder" : "folder-closed"} /><span>{label}</span></button>
             <button type="button" className="project-action" disabled={!editable}
               aria-label={t("sidebar.newProjectChat", { project: label })} title={t("sidebar.newProjectChat", { project: label })}
-              onClick={() => { setCollapsed((old) => new Set([...old].filter((key) => key !== project.path))); navigation.create(project.path); }}><span className="sidebar-add-mark" aria-hidden="true" /></button>
+              onClick={create}><span className="sidebar-add-mark" aria-hidden="true" /></button>
           </div>
           <div className="project-chats" aria-hidden={!expanded} inert={!expanded}>
             <div>
@@ -138,5 +183,15 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
       {draftRows(null)}
       {temporarySessions.filter((session) => !session.pinned && !inDraft(session)).map((session) => chat(TEMPORARY_WORKSPACE, session))}
     </section>
+    {navigation.deleteChat ? <dialog ref={deleteDialog} className="frame-dialog session-delete-dialog" aria-labelledby="delete-chat-heading"
+      onClose={() => setDeletion(null)} onCancel={(event) => { if (deleting) event.preventDefault(); }}>
+      <h2 id="delete-chat-heading">{t("sidebar.deleteChat")}</h2>
+      <p>{t("sidebar.deleteChatPrompt", { title: deletion?.title ?? "" })}</p>
+      {deleteFailed ? <p role="alert">{t("sidebar.deleteFailed")}</p> : null}
+      <div className="session-delete-actions">
+        <button type="button" autoFocus disabled={deleting} onClick={() => deleteDialog.current?.close()}>{t("sidebar.cancelDelete")}</button>
+        <button type="button" disabled={deleting || !editable} onClick={() => { void confirmDeletion(); }}>{t("sidebar.confirmDelete")}</button>
+      </div>
+    </dialog> : null}
   </div>;
 }

@@ -17,6 +17,7 @@ from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
+    SessionIdentityV1,
     SessionModelsV1,
     SessionScopeV1,
 )
@@ -78,6 +79,10 @@ class CodingWorkspaceCatalog(
             workspace=path,
             store_state_root=self._state,
         )
+
+    async def delete_session_history(self, identity: SessionIdentityV1) -> None:
+        catalog = self._find(lambda scope: scope.fingerprint == identity.scope_fingerprint)
+        await catalog.delete_session_history(identity)
 
     async def workspace_models(self, path: str | None) -> SessionModelsV1:
         if self._closed:

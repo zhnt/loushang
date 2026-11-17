@@ -160,6 +160,10 @@ def test_snapshot_execution_submission_mode_is_optional_and_round_trips():
             MuxMemberCloseV1(MuxSelectorV1(name="dev"), "member-1"),
         ),
         (
+            AppOperationV1.MEMBER_CLOSE,
+            MuxMemberCloseV1(MuxSelectorV1(name="dev"), "member-1", delete_history=True),
+        ),
+        (
             AppOperationV1.SESSION_SNAPSHOT,
             SessionSnapshotRequestV1("attachment-1", 2, "member-1"),
         ),

@@ -132,6 +132,41 @@ export default function LocalHostGate() {
     };
   };
 
+  async function deleteChat(path: string, chat: ProjectChat) {
+    const serviceInstanceId = host.serviceInstanceId;
+    if (!serviceInstanceId || workspaceMutation.current || pending.current || host.state !== "running" || host.errorCode) return false;
+    workspaceMutation.current = true;
+    setWorkspacePending(true);
+    const epoch = ++workspaceEpoch.current;
+    const origin = connectionId.current;
+    let resume: (() => void) | undefined;
+    try {
+      resume = await workspaceClients.current.get(path)?.suspend();
+      if (epoch !== workspaceEpoch.current) return false;
+      const { accepted } = await webRequest<{ accepted: boolean }>({
+        operation: "workspace", action: "delete-chat", path, sessionId: chat.id, scope: chat.scope, serviceInstanceId,
+      }, origin);
+      if (accepted !== true || epoch !== workspaceEpoch.current) return false;
+      const withoutChat = (chats: readonly ProjectChat[]) =>
+        chats.filter((item) => item.id !== chat.id || item.scope !== chat.scope);
+      ++workspaceEpoch.current;
+      setDirectory((current) => ({
+        projects: current.projects.map((project) => project.path === path
+          ? { ...project, sessions: withoutChat(project.sessions) } : project),
+        temporarySessions: path === TEMPORARY_WORKSPACE ? withoutChat(current.temporarySessions) : current.temporarySessions,
+      }));
+      setSelection((current) => current?.workspace === path && current.id === chat.id ? null : current);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      resume?.();
+      workspaceMutation.current = false;
+      setWorkspacePending(false);
+      if (origin === connectionId.current) void refreshDirectory().catch(() => {});
+    }
+  }
+
   async function togglePin(chat: ProjectChat) {
     try {
       await webRequest({ operation: "preferences", scope: chat.scope, session: chat.id,
@@ -377,6 +412,7 @@ export default function LocalHostGate() {
         await webRequest({ operation: "workspace", action: "models", path }, connectionId.current),
       ),
       createChat,
+      deleteChat,
       togglePin: (chat) => { void togglePin(chat); },
       select: openConversation,
     }} />

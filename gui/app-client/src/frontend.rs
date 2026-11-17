@@ -260,6 +260,7 @@ impl Backend {
         let operation = match action {
             "navigation" => return self.navigation(target),
             "create-chat" => return create_chat(target, request),
+            "delete-chat" => return delete_chat(target, request),
             "models" => {
                 let path = optional_workspace_path(request)?;
                 let client = AppClient::default();
@@ -531,6 +532,33 @@ fn control_on<T>(
         .try_recv()
         .map_err(|_| "connection_failed")?
         .map_err(|_| "connection_failed".into())
+}
+
+fn delete_chat(target: AppTarget<'_>, input: &Value) -> Result<Value> {
+    let path = field(input, "path")?;
+    let session_id = field(input, "sessionId")?.to_owned();
+    let mux_space_id = field(input, "scope")?
+        .strip_prefix("mux:")
+        .filter(|id| !id.is_empty() && id.len() <= 512)
+        .ok_or("invalid_request")?
+        .to_owned();
+    let instance = field(input, "serviceInstanceId")?;
+    let mux = if path == TEMPORARY {
+        TEMPORARY_MUX.to_owned()
+    } else {
+        mux_name(path)
+    };
+    let accepted = control_on(
+        options(target, &mux, None),
+        Some(instance),
+        &mut None,
+        |reply| ControlCommand::CloseSession {
+            mux_space_id,
+            session_id,
+            reply,
+        },
+    )?;
+    Ok(json!({"accepted": accepted}))
 }
 
 fn create_command(

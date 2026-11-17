@@ -1,6 +1,7 @@
 import { i18n } from "./i18n";
 import { appName } from "./branding";
 import { useTranslation } from "react-i18next";
+import { ContextMenuProvider, useContextMenu } from "./ContextMenu";
 import { CopyButton } from "./CopyButton";
 import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
@@ -788,7 +789,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   } : null;
 
   return (
-    <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
+    <ContextMenuProvider><div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
       onPointerDownCapture={(event) => { event.currentTarget.dataset.inputModality = "pointer"; }}
       onKeyDownCapture={(event) => { event.currentTarget.dataset.inputModality = "keyboard"; }}>
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
@@ -1020,7 +1021,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       </main>
       <SettingsDialog dialogRef={settingsDialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
         markdown={markdown} onMarkdownChange={setMarkdown} />
-    </div>
+    </div></ContextMenuProvider>
   );
 }
 
@@ -1215,6 +1216,7 @@ function SessionButton({ session, title, selected, unread, stale, pinned, onSele
   readonly onTogglePin: () => void;
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  const openMenu = useContextMenu();
   const label = stale ? t("workspace:sidebar.stale", { status: valueLabel(session.status) }) : valueLabel(session.status);
   const pinLabel = t(pinned ? "workspace:sidebar.unpinChat" : "workspace:sidebar.pinChat", { title });
   return (
@@ -1224,7 +1226,9 @@ function SessionButton({ session, title, selected, unread, stale, pinned, onSele
         type="button"
         aria-current={selected ? "page" : undefined}
         aria-label={t("workspace:sidebar.sessionLabel", { title, status: label })}
-        onClick={onSelect}
+        onClick={onSelect} onContextMenu={(event) => openMenu(event, [{
+          label: t(pinned ? "workspace:sidebar.unpin" : "workspace:sidebar.pin"), run: onTogglePin,
+        }])}
       >
         <span className="session-title">{title}</span>
         <StatusMark status={session.status} stale={stale} />

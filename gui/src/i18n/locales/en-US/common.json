@@ -1,5 +1,10 @@
 {
+  "contextMenu": "Context menu",
   "clipboard": {
+    "cut": "Cut",
+    "paste": "Paste",
+    "selectAll": "Select all",
+    "unavailable": "Could not access the clipboard. Try the keyboard shortcut.",
     "copy": "Copy",
     "copyValue": "Copy {{label}}",
     "copied": "Copied",

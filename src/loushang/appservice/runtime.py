@@ -84,6 +84,7 @@ from .managed_mux import (
 )
 from .managed_mux_close import ManagedMuxCloseAdmissionV1, ManagedMuxCloseUseV1
 from .ports import (
+    HostedSessionHistoryDeletionPort,
     HostedSessionPortV1,
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
@@ -1236,6 +1237,20 @@ class AppServiceV1:
 
     async def close_member(self, request: MuxMemberCloseV1) -> MuxSpaceV1:
         self._require_request(request, MuxMemberCloseV1)
+        if not request.delete_history:
+            return await self._close_member(request)
+        owner = self._workspaces
+        if not isinstance(owner, HostedSessionHistoryDeletionPort):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        # Prevent an open from acquiring the selected transcript while it is
+        # being closed and removed by its storage owner.
+        async with self._workspace_lock:
+            return await self._close_member(request, delete_history=owner.delete_session_history)
+
+    async def _close_member(
+        self, request: MuxMemberCloseV1, *,
+        delete_history: Callable[[SessionIdentityV1], Awaitable[None]] | None = None,
+    ) -> MuxSpaceV1:
         if self.continuity_enabled and not request.close_session:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         mux = await self._resolve_mux(request.selector)
@@ -1253,6 +1268,8 @@ class AppServiceV1:
                 )
                 if selected is None:
                     raise _error(AppErrorCodeV1.NOT_FOUND)
+                if delete_history is not None and selected.session.identity.scope_fingerprint in self._workspace_pending:
+                    raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
                 prior_members = tuple(mux.members)
                 staged_members = tuple(
                     item for item in mux.members if item is not selected
@@ -1273,6 +1290,11 @@ class AppServiceV1:
                 projection = mux.projection()
         if request.close_session:
             await self._close_sessions((selected.session,))
+            if delete_history is not None:
+                try:
+                    await delete_history(selected.session.identity)
+                except Exception:
+                    raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE) from None
         elif self._execution_registry is not None and selected.session._execution is not None:
             await self._execution_registry.close_binding(selected.session._execution)
         if cancellation is not None:

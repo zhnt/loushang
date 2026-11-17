@@ -460,6 +460,7 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
         close_value = cast(MuxMemberCloseV1, payload)
         return {
             "closeSession": close_value.close_session,
+            **({"deleteHistory": True} if close_value.delete_history else {}),
             "memberId": close_value.member_id,
             "selector": _encode_selector(close_value.selector),
         }
@@ -550,12 +551,16 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
             session=_decode_open_spec(value["session"]),
         )
     if operation is AppOperationV1.MEMBER_CLOSE:
-        value = _object(raw, {"closeSession", "memberId", "selector"})
+        fields = {"closeSession", "memberId", "selector"}
+        if type(raw) is dict and "deleteHistory" in raw:
+            fields.add("deleteHistory")
+        value = _object(raw, fields)
         return _construct(
             MuxMemberCloseV1,
             selector=_decode_selector(value["selector"]),
             member_id=_string(value["memberId"]),
             close_session=_boolean(value["closeSession"]),
+            delete_history=_boolean(value.get("deleteHistory", False)),
         )
     if operation in {AppOperationV1.SESSION_SNAPSHOT, AppOperationV1.SESSION_MODELS}:
         return _decode_member_operation(SessionSnapshotRequestV1, raw, set())

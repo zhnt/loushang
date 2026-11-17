@@ -1,5 +1,13 @@
 {
   "sidebar": {
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "deleteChat": "Delete conversation",
+    "deleteChatPrompt": "Permanently delete “{{title}}” and its chat history?",
+    "cancelDelete": "Cancel",
+    "confirmDelete": "Delete",
+    "deleteFailed": "Could not confirm that the conversation history was deleted.",
+    "copyProjectPath": "Copy path",
     "navigation": "Workspace and Session navigation",
     "searchUnavailable": "Search unavailable",
     "searchHint": "Search is unavailable in the offline fixture",

@@ -1,5 +1,10 @@
 {
+  "contextMenu": "右键菜单",
   "clipboard": {
+    "cut": "剪切",
+    "paste": "粘贴",
+    "selectAll": "全选",
+    "unavailable": "无法访问剪贴板，请尝试使用键盘快捷键。",
     "copy": "复制",
     "copyValue": "复制{{label}}",
     "copied": "已复制",

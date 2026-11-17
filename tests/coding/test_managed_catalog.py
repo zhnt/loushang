@@ -129,6 +129,27 @@ def test_missing_old_root_never_gets_a_second_initialization_grant(tmp_path, obs
     asyncio.run(scenario())
 
 
+def test_history_deletion_matches_the_hosted_identity(tmp_path):
+    async def scenario():
+        owner = catalog(tmp_path)
+        try:
+            candidate = await owner.create_candidate(_intent(owner.scopes[0]))
+            await candidate.close()
+            identity = candidate._binding.record.identity
+            path = candidate._binding.record.path
+            assert path.is_file()
+            with pytest.raises(CodingHostedCatalogError):
+                await owner.delete_session_history(replace(identity, continuity_id="different"))
+            assert path.is_file()
+            await owner.delete_session_history(identity)
+            assert not path.exists()
+            assert not (await discovery(owner, owner.scopes[0])).candidates
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
 def test_failed_initialization_keeps_sync_owner_without_reissuing_grant(tmp_path, monkeypatch):
     from loushang.harness.journal import _directory_lease as directory_module
 

@@ -613,6 +613,29 @@ async def test_G11_CLOSE_ORDER_member_remove_and_session_close_are_separate() ->
 
 
 @_async_test
+async def test_member_delete_closes_the_owner_and_deletes_its_history() -> None:
+    resolver = _Resolver()
+    deleted = []
+
+    class Workspaces:
+        async def delete_session_history(self, identity):
+            assert resolver.sessions[0].closed == 1
+            deleted.append(identity)
+
+    service = AppServiceV1(product_id="coding", resolver=resolver, workspaces=Workspaces())
+    client = InProcessAppClientV1(service)
+    try:
+        _mux, member = await _mux_with_member(client)
+        remaining = await client.close_member(MuxMemberCloseV1(
+            MuxSelectorV1(name="dev"), member.member_id, delete_history=True,
+        ))
+        assert not remaining.members
+        assert deleted == [member.session]
+    finally:
+        await service.close()
+
+
+@_async_test
 async def test_G11_CLOSE_ORDER_mux_close_settles_attachments_then_sessions() -> None:
     service, client, resolver = await _service()
     await _mux_with_member(client)

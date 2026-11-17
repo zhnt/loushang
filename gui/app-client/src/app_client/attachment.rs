@@ -250,6 +250,7 @@ pub struct ControlAuthority {
     controller_generation: String,
     instance: String,
     mux_name: String,
+    mux_space_id: String,
     members: BTreeMap<String, String>,
     session_templates: BTreeMap<String, SessionTemplate>,
     default_template: Option<SessionTemplate>,
@@ -478,6 +479,7 @@ impl ReadSession {
             controller_generation: self.attachment.controller_generation.get().to_owned(),
             instance: self.instance.clone(),
             mux_name: self.attachment.mux_space.name.clone(),
+            mux_space_id: self.attachment.mux_space.mux_space_id.clone(),
             members,
             session_templates,
             default_template: self.default_template.clone(),
@@ -736,6 +738,47 @@ impl ReadSession {
 }
 
 impl ControlAuthority {
+    pub(crate) fn close_session<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        mux_space_id: &str,
+        session_id: &str,
+        request_id: &str,
+    ) -> Result<bool, ()> {
+        if mux_space_id != self.mux_space_id {
+            return Ok(false);
+        }
+        let Some(member_id) = self.members.get(session_id) else {
+            return Ok(false);
+        };
+        let response = request(
+            channel,
+            "mux/member/close",
+            request_id,
+            json!({
+                "selector": {"muxSpaceId": self.mux_space_id, "name": null},
+                "memberId": member_id,
+                "closeSession": true,
+                "deleteHistory": true,
+            }),
+        )?;
+        if response.result_type != "mux" {
+            return Err(());
+        }
+        let mux: Mux = serde_json::from_str(response.result.get()).map_err(|_| ())?;
+        if mux.mux_space_id != self.mux_space_id || mux.name != self.mux_name {
+            return Err(());
+        }
+        for member in &mux.members {
+            if member.member_id == *member_id
+                || member.value()?["session"]["sessionId"] == session_id
+            {
+                return Err(());
+            }
+        }
+        Ok(true)
+    }
+
     pub(crate) fn create_session<R: Read, W: Write>(
         &self,
         channel: &mut Channel<R, W>,
@@ -1543,6 +1586,7 @@ mod tests {
             controller_generation: "1".into(),
             instance: "instance".into(),
             mux_name: "goal".into(),
+            mux_space_id: "mux".into(),
             members: BTreeMap::from([("session".into(), "member".into())]),
             session_templates: BTreeMap::new(),
             default_template: None,

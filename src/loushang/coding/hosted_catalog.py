@@ -135,8 +135,10 @@ def _scope_fingerprint(scope: SessionScopeV1, root: Path, cwd: str) -> str:
 
 
 def _session_path(root: Path, header: ConversationHeader) -> Path:
-    # This callback only receives the owner's SHA-256 create identity.
-    session_id = header.conversation_id
+    return _hosted_session_path(root, header.conversation_id)
+
+
+def _hosted_session_path(root: Path, session_id: str) -> Path:
     if len(session_id) != 64 or any(
         char not in "0123456789abcdef" for char in session_id
     ):
@@ -609,6 +611,25 @@ class CodingHostedSessionCatalogV1(
 
     async def close(self) -> None:
         return await super().close()
+
+    async def delete_session_history(self, identity: SessionIdentityV1) -> None:
+        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
+
+        async with self._lock:
+            self._accepting()
+            for scope in self.scopes:
+                if scope.scope is identity.scope and scope.fingerprint == identity.scope_fingerprint:
+                    break
+            else:
+                raise CodingHostedCatalogError()
+            path = _hosted_session_path(scope.session_dir, identity.session_id)
+            record = await settled_io(self._read_record, scope, path)
+            if record is None or record.identity != identity or not self._record_compatible(record):
+                raise CodingHostedCatalogError()
+            await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
+            self._records = {
+                key: value for key, value in self._records.items() if value.identity != identity
+            }
 
     async def discover_sessions(
         self,

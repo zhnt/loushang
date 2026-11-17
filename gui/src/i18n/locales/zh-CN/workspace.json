@@ -1,5 +1,13 @@
 {
   "sidebar": {
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "deleteChat": "删除会话",
+    "deleteChatPrompt": "永久删除「{{title}}」及其聊天记录？",
+    "cancelDelete": "取消",
+    "confirmDelete": "删除",
+    "deleteFailed": "未能确认聊天记录已删除。",
+    "copyProjectPath": "复制路径",
     "navigation": "工作区和会话导航",
     "searchUnavailable": "搜索不可用",
     "searchHint": "离线测试模式不支持搜索",

@@ -30,6 +30,7 @@ export interface ProjectNavigationProps {
   readonly hostKey: string;
   readonly register: (path: string) => Promise<boolean>;
   readonly create: (path: string | null) => void;
+  readonly deleteChat?: (path: string, chat: ProjectChat) => Promise<boolean>;
   readonly togglePin: (chat: ProjectChat) => void;
   readonly select: (workspace: string, id: string) => void;
 }
