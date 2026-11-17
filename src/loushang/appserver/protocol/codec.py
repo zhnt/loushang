@@ -64,6 +64,14 @@ from .model import (
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
+from .workspace_preview import (
+    MAX_PREVIEW_ENTRIES,
+    WorkspaceDirectoryPreviewV1,
+    WorkspaceFilePreviewV1,
+    WorkspacePreviewEntryV1,
+    WorkspacePreviewRequestV1,
+    WorkspacePreviewV1,
+)
 
 MAX_MESSAGE_BYTES = 1_048_576
 _T = TypeVar("_T")
@@ -196,7 +204,8 @@ def encode_response(response: AppResponseV1) -> bytes:
     if type(result) is WorkspaceResultV1:
         result_type, value = "workspaces", {"workspaces": [
             {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint,
-             **({"inspection": item.inspection} if item.inspection is not None else {})}
+             **({"inspection": item.inspection} if item.inspection is not None else {}),
+             **({"preview": _encode_workspace_preview(item.preview)} if item.preview is not None else {})}
             for item in result.workspaces]}
     elif type(result) is AckV1:
         result_type, value = "ack", {}
@@ -270,12 +279,13 @@ def decode_response(payload: bytes) -> AppResponseV1:
         workspaces = []
         for row in rows:
             fields = {"path", "scope", "scopeFingerprint"}
-            if isinstance(row, dict) and "inspection" in row:
-                fields.add("inspection")
+            if isinstance(row, dict):
+                fields.update({"inspection", "preview"} & row.keys())
             item = _object(row, fields)
             workspaces.append(_construct(WorkspaceInfoV1, path=_string(item["path"]),
                 scope=_enum(SessionScopeV1, item["scope"]),
-                scope_fingerprint=_string(item["scopeFingerprint"]), inspection=item.get("inspection")))
+                scope_fingerprint=_string(item["scopeFingerprint"]), inspection=item.get("inspection"),
+                preview=_decode_workspace_preview(item["preview"]) if "preview" in item else None))
         result = _construct(WorkspaceResultV1, workspaces=tuple(workspaces))
     elif result_type == "ack":
         _object(raw, set())
@@ -410,13 +420,44 @@ def _decode_event(value: object) -> AttachmentEventV1:
     )
 
 
+def _encode_workspace_preview(preview: WorkspacePreviewV1) -> _Object:
+    if isinstance(preview, WorkspaceFilePreviewV1):
+        return {"kind": "file", "path": preview.path, "text": preview.text}
+    return {
+        "kind": "directory", "path": preview.path, "limited": preview.limited,
+        "entries": [{"name": entry.name, "kind": entry.kind} for entry in preview.entries],
+    }
+
+
+def _decode_workspace_preview(raw: object) -> WorkspacePreviewV1:
+    if isinstance(raw, dict) and raw.get("kind") == "file":
+        value = _object(raw, {"kind", "path", "text"})
+        return _construct(WorkspaceFilePreviewV1, path=_string(value["path"]), text=_string(value["text"]))
+    value = _object(raw, {"kind", "path", "entries", "limited"})
+    if value["kind"] != "directory":
+        raise InvalidAppMessageError()
+    rows = value["entries"]
+    if type(rows) is not list or len(rows) > MAX_PREVIEW_ENTRIES:
+        raise InvalidAppMessageError()
+    entries = []
+    for row in rows:
+        entry = _object(row, {"name", "kind"})
+        entries.append(_construct(WorkspacePreviewEntryV1, name=_string(entry["name"]), kind=_string(entry["kind"])))
+    return _construct(WorkspaceDirectoryPreviewV1, path=_string(value["path"]),
+                      entries=tuple(entries), limited=_boolean(value["limited"]))
+
+
 def _encode_request_payload(request: AppRequestV1) -> _Object:
     payload = request.payload
     operation = request.operation
     if operation is AppOperationV1.WORKSPACE:
         workspace = cast(WorkspaceRequestV1, payload)
         return {"action": workspace.action, "path": workspace.path,
-                **({"sessionId": workspace.session_id} if workspace.session_id is not None else {})}
+                **({"sessionId": workspace.session_id} if workspace.session_id is not None else {}),
+                **({"preview": {
+                    "reference": workspace.preview.reference, "base": workspace.preview.base,
+                    "scopeFingerprint": workspace.preview.scope_fingerprint,
+                }} if workspace.preview is not None else {})}
     if operation is AppOperationV1.WORKSPACE_MODELS:
         return {"path": cast(WorkspaceModelsRequestV1, payload).path}
     if operation is AppOperationV1.MUX_CREATE:
@@ -499,11 +540,17 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
 def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
     if operation is AppOperationV1.WORKSPACE:
         fields = {"action", "path"}
-        if isinstance(raw, dict) and "sessionId" in raw:
-            fields.add("sessionId")
+        if isinstance(raw, dict):
+            fields.update({"sessionId", "preview"} & raw.keys())
         value = _object(raw, fields)
+        preview = None
+        if "preview" in value:
+            spec = _object(value["preview"], {"reference", "base", "scopeFingerprint"})
+            preview = _construct(WorkspacePreviewRequestV1, reference=_string(spec["reference"]),
+                                 base=_string(spec["base"]), scope_fingerprint=_string(spec["scopeFingerprint"]))
         return _construct(WorkspaceRequestV1, action=_string(value["action"]),
-                          path=_optional_string(value["path"]), session_id=_optional_string(value.get("sessionId")))
+                          path=_optional_string(value["path"]), session_id=_optional_string(value.get("sessionId")),
+                          preview=preview)
     if operation is AppOperationV1.WORKSPACE_MODELS:
         value = _object(raw, {"path"})
         return _construct(WorkspaceModelsRequestV1, path=_optional_string(value["path"]))

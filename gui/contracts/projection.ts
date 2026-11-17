@@ -49,7 +49,7 @@ function state(value: unknown) {
     assert(legacy !== null && typeof legacy === "object" && !Array.isArray(legacy));
     if (Object.keys(legacy).length) {
       const error = object(legacy, ["code"]);
-      assert(["invalid_request", "not_found", "already_exists", "already_attached", "product_mismatch", "revision_conflict", "snapshot_required", "stale_attachment", "attachment_lagged", "session_unavailable", "operation_unavailable", "permission_denied", "workspace_registration_failed", "cleanup_incomplete", "service_closed"].includes(error.code as string));
+      assert(["invalid_request", "not_found", "already_exists", "already_attached", "product_mismatch", "revision_conflict", "snapshot_required", "stale_attachment", "attachment_lagged", "session_unavailable", "operation_unavailable", "permission_denied", "workspace_preview_binary", "workspace_preview_too_large", "workspace_registration_failed", "cleanup_incomplete", "service_closed"].includes(error.code as string));
     }
   } else assert.equal(v.outcome, null);
   return v;

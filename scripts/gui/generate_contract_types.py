@@ -24,8 +24,11 @@ SOURCES = (
     "src/loushang/appserver/protocol/model.py",
     "src/loushang/appserver/protocol/errors.py",
     "src/loushang/appserver/protocol/codec.py",
+    "src/loushang/appserver/protocol/workspace_preview.py",
     "src/loushang/appserver/execution/model.py",
     "src/loushang/appserver/execution/codec.py",
+    "src/loushang/appserver/execution/goal_codec.py",
+    "src/loushang/appserver/execution/goal_model.py",
 )
 # Only integer representations are bridge policy. Bounds and cross-field
 # invariants still require independent validators and reference codec evidence.
@@ -177,7 +180,7 @@ def generate() -> dict[str, str]:
                 "    pub command: Option<InteractiveGoalCommandViewV1>,",
             ])
         if cls.__name__ == "ExecutionSessionSnapshotV1":
-            for flag in execution._GOAL_CAPABILITIES:
+            for flag in execution.GOAL_CAPABILITIES:
                 field = execution._camel(flag)
                 ts.append(f"  readonly {field}?: true;")
                 rs.extend([

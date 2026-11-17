@@ -9,6 +9,12 @@ from enum import Enum
 from typing import TypeAlias
 
 from .errors import AppFailureV1
+from .workspace_preview import (
+    WorkspaceDirectoryPreviewV1,
+    WorkspaceFilePreviewV1,
+    WorkspacePreviewRequestV1,
+    WorkspacePreviewV1,
+)
 
 APP_PROTOCOL_VERSION = "loushang.app/v1"
 MAX_TEXT_CHARS = 262_144
@@ -754,10 +760,16 @@ class WorkspaceRequestV1:
     action: str
     path: str | None = None
     session_id: str | None = None
+    preview: WorkspacePreviewRequestV1 | None = None
 
     def __post_init__(self) -> None:
-        if self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary", "inspect"}:
+        if self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary", "inspect", "preview"}:
             raise ValueError("invalid workspace action")
+        if self.action == "preview":
+            if type(self.preview) is not WorkspacePreviewRequestV1:
+                raise ValueError("missing workspace preview request")
+        elif self.preview is not None:
+            raise ValueError("unexpected workspace preview request")
         if self.session_id is not None:
             if self.action != "inspect":
                 raise ValueError("invalid workspace inspection session")
@@ -785,6 +797,7 @@ class WorkspaceInfoV1:
     scope: SessionScopeV1
     scope_fingerprint: str
     inspection: dict[str, object] | None = None
+    preview: WorkspacePreviewV1 | None = None
 
     def __post_init__(self) -> None:
         WorkspaceRequestV1("open", self.path)
@@ -795,6 +808,11 @@ class WorkspaceInfoV1:
             or len(json.dumps(self.inspection, ensure_ascii=False, allow_nan=False).encode()) > 48_000
         ):
             raise ValueError("invalid workspace inspection")
+        if self.preview is not None and (
+            type(self.preview) not in (WorkspaceFilePreviewV1, WorkspaceDirectoryPreviewV1)
+            or self.inspection is not None
+        ):
+            raise ValueError("invalid workspace preview")
 
 
 @dataclass(frozen=True, slots=True)

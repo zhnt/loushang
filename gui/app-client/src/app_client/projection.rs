@@ -226,28 +226,30 @@ impl State {
         {
             return true;
         }
-        serde_json::from_str::<LegacyFailure>(outcome.legacy_result.get()).is_ok_and(|v| {
-            [
-                "invalid_request",
-                "not_found",
-                "already_exists",
-                "already_attached",
-                "product_mismatch",
-                "revision_conflict",
-                "snapshot_required",
-                "stale_attachment",
-                "attachment_lagged",
-                "session_unavailable",
-                "operation_unavailable",
-                "permission_denied",
-                "workspace_registration_failed",
-                "cleanup_incomplete",
-                "service_closed",
-            ]
-            .contains(&v.code.as_str())
-        })
+        serde_json::from_str::<LegacyFailure>(outcome.legacy_result.get())
+            .is_ok_and(|v| APP_ERROR_CODES.contains(&v.code.as_str()))
     }
 }
+const APP_ERROR_CODES: &[&str] = &[
+    "invalid_request",
+    "not_found",
+    "already_exists",
+    "already_attached",
+    "product_mismatch",
+    "revision_conflict",
+    "snapshot_required",
+    "stale_attachment",
+    "attachment_lagged",
+    "session_unavailable",
+    "operation_unavailable",
+    "permission_denied",
+    "workspace_preview_binary",
+    "workspace_preview_too_large",
+    "workspace_registration_failed",
+    "cleanup_incomplete",
+    "service_closed",
+];
+
 fn state_slot(raw: &RawValue, is_terminal: bool) -> bool {
     raw.get() == "null"
         || serde_json::from_str::<State>(raw.get())
@@ -895,24 +897,7 @@ pub fn control_bridge(kind: &str, wire: &str) -> Result<Value, ()> {
             ]
             .contains(&parsed.result.code.as_str())
         } else {
-            [
-                "invalid_request",
-                "not_found",
-                "already_exists",
-                "already_attached",
-                "product_mismatch",
-                "revision_conflict",
-                "snapshot_required",
-                "stale_attachment",
-                "attachment_lagged",
-                "session_unavailable",
-                "operation_unavailable",
-                "permission_denied",
-                "workspace_registration_failed",
-                "cleanup_incomplete",
-                "service_closed",
-            ]
-            .contains(&parsed.result.code.as_str())
+            APP_ERROR_CODES.contains(&parsed.result.code.as_str())
         };
         if !envelope(&parsed, kind) || !allowed {
             return Err(());

@@ -417,3 +417,37 @@ def test_app_snapshot_round_trips_a_session_bound_business_choice():
     wire["result"]["userChoice"]["options"][1]["id"] = "A"
     with pytest.raises(InvalidAppMessageError):
         decode_response(json.dumps(wire).encode())
+
+
+def test_workspace_preview_roundtrips_through_existing_authenticated_operation():
+    from loushang.appserver.protocol.workspace_preview import (
+        WorkspaceDirectoryPreviewV1,
+        WorkspaceFilePreviewV1,
+        WorkspacePreviewEntryV1,
+        WorkspacePreviewRequestV1,
+    )
+
+    request = AppRequestV1(
+        "request-1",
+        AppOperationV1.WORKSPACE,
+        WorkspaceRequestV1("preview", "/project", preview=WorkspacePreviewRequestV1("../README.md", "gui", FINGERPRINT)),
+    )
+    assert decode_request(encode_request(request)) == request
+    for preview in (
+        WorkspaceFilePreviewV1("README.md", "# 工作区"),
+        WorkspaceDirectoryPreviewV1("gui", (WorkspacePreviewEntryV1("README.md", "file"),), True),
+    ):
+        info = WorkspaceInfoV1("/project", SessionScopeV1.CWD, FINGERPRINT, preview=preview)
+        response = AppResponseV1("request-1", WorkspaceResultV1((info,)))
+        assert decode_response(encode_response(response)) == response
+
+
+def test_workspace_preview_requires_a_valid_scope_and_cannot_extend_other_actions():
+    from loushang.appserver.protocol.workspace_preview import WorkspacePreviewRequestV1
+
+    with pytest.raises(ValueError):
+        WorkspacePreviewRequestV1("README.md", "", "invalid")
+    with pytest.raises(ValueError):
+        WorkspaceRequestV1("preview", "/project")
+    with pytest.raises(ValueError):
+        WorkspaceRequestV1("open", "/project", preview=WorkspacePreviewRequestV1("README.md", "", FINGERPRINT))

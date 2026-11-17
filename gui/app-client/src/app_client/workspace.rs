@@ -17,6 +17,13 @@ pub enum WorkspaceRequest<'a> {
         path: &'a str,
         session: Option<&'a str>,
     },
+    Preview {
+        path: &'a str,
+        instance: &'a str,
+        reference: &'a str,
+        base: &'a str,
+        fingerprint: &'a str,
+    },
     Unregister(&'a str),
     AllocateTemporary,
 }
@@ -30,6 +37,7 @@ impl<'a> WorkspaceRequest<'a> {
             Self::Register(path) => ("register", Some(path)),
             Self::Inspect { path, .. } => ("inspect", Some(path)),
             Self::Open(path) => ("open", Some(path)),
+            Self::Preview { path, .. } => ("preview", Some(path)),
             Self::Unregister(path) => ("unregister", Some(path)),
             Self::AllocateTemporary => ("allocate-temporary", None),
         }
@@ -51,6 +59,65 @@ pub struct WorkspaceInfo {
     pub scope_fingerprint: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inspection: Option<WorkspaceInspection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<WorkspacePreview>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WorkspacePreview {
+    File {
+        path: String,
+        text: String,
+    },
+    Directory {
+        path: String,
+        entries: Vec<WorkspacePreviewEntry>,
+        limited: bool,
+    },
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspacePreviewEntry {
+    name: String,
+    kind: WorkspaceEntryKind,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum WorkspaceEntryKind {
+    File,
+    Directory,
+}
+
+impl WorkspacePreview {
+    fn is_valid(&self) -> bool {
+        let path = match self {
+            Self::File { path, text } if text.len() <= 128 * 1024 => path,
+            Self::Directory { path, entries, .. }
+                if entries.len() <= 128
+                    && entries.iter().all(|entry| {
+                        valid_relative(&entry.name, 255)
+                            && !entry.name.contains('/')
+                            && !matches!(entry.name.as_str(), "." | "..")
+                    }) =>
+            {
+                path
+            }
+            _ => return false,
+        };
+        valid_relative(path, 4096)
+    }
+}
+
+fn valid_relative(path: &str, limit: usize) -> bool {
+    !path.is_empty()
+        && path.chars().count() <= limit
+        && !path.starts_with('/')
+        && !path.contains(['\\', ':'])
+        && !path.chars().any(char::is_control)
+        && !path.split('/').any(|component| component == "..")
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -126,6 +193,7 @@ impl WorkspaceInfo {
         !self.path.is_empty()
             && self.path.chars().count() <= 4096
             && !self.path.contains('\0')
+            && self.preview.as_ref().is_none_or(WorkspacePreview::is_valid)
             && self.scope_fingerprint.len() == 64
             && self
                 .scope_fingerprint
@@ -143,6 +211,14 @@ pub(super) fn workspace_request<R: Read, W: Write>(
             session: Some(session),
             ..
         } => json!({"sessionId": session}),
+        WorkspaceRequest::Preview {
+            reference,
+            base,
+            fingerprint,
+            ..
+        } => {
+            json!({"preview":{"reference": reference, "base": base, "scopeFingerprint": fingerprint}})
+        }
         _ => json!({}),
     };
     let (action, path) = operation.wire_fields();

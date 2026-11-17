@@ -539,7 +539,12 @@ impl AppClient {
         timeout: Duration,
         request: WorkspaceRequest<'_>,
     ) -> Result<WorkspaceResult, ()> {
-        self.request_once(target, timeout, |channel, _| {
+        self.request_once(target, timeout, |channel, hello| {
+            if let WorkspaceRequest::Preview { instance, .. } = &request {
+                if *instance != hello.service_instance_id {
+                    return Ok(WorkspaceResult::Rejected("instance_changed".into()));
+                }
+            }
             workspace::workspace_request(channel, request)
         })
     }

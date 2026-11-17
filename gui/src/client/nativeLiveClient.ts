@@ -62,7 +62,7 @@ const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatusV1>([
 const APP_ERROR_CODES = new Set([
   "invalid_request", "not_found", "already_exists", "already_attached", "product_mismatch",
   "revision_conflict", "snapshot_required", "stale_attachment", "attachment_lagged",
-  "session_unavailable", "operation_unavailable", "permission_denied", "workspace_registration_failed", "cleanup_incomplete", "service_closed",
+  "session_unavailable", "operation_unavailable", "permission_denied", "workspace_preview_binary", "workspace_preview_too_large", "workspace_registration_failed", "cleanup_incomplete", "service_closed",
 ]);
 
 export async function nativeLiveAvailable(): Promise<boolean> {

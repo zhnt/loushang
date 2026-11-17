@@ -20,7 +20,11 @@ from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionModelsV1,
     SessionScopeV1,
+    WorkspaceInfoV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
 )
+from loushang.appserver.protocol.workspace_preview import WorkspacePreviewRequestV1
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 
@@ -33,6 +37,7 @@ from .hosted_catalog import (
 from .hosted_models import preview_workspace_models
 from .managed_catalog import CodingManagedSessionCatalogV1
 from .workspace_inspection import inspect_session_changes, inspect_workspace
+from .workspace_preview import read_workspace_preview
 
 
 class CodingWorkspaceCatalog(
@@ -101,8 +106,25 @@ class CodingWorkspaceCatalog(
             current = model_selection_ref(selection)
         return project_session_models(current, choices)
 
-    async def workspace(self, request):
-        from loushang.appserver.protocol import WorkspaceInfoV1, WorkspaceResultV1
+    async def _preview_workspace(self, path: str, request: WorkspacePreviewRequestV1) -> WorkspaceResultV1:
+        if self._closed:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        try:
+            root = await settled_io(self.registry.select, path)
+        except (OSError, ValueError):
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+        catalog = self._catalogs.get(root)
+        if catalog is None or self.registry.is_temporary(root):
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
+        scope = catalog.scopes[0]
+        if root != Path(path) or scope.fingerprint != request.scope_fingerprint:
+            raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
+        result = await settled_io(read_workspace_preview, root, request.reference, request.base)
+        return WorkspaceResultV1((WorkspaceInfoV1(str(root), scope.scope, scope.fingerprint, preview=result),))
+
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        if request.preview is not None and request.path is not None:
+            return await self._preview_workspace(request.path, request.preview)
 
         if request.action == "inspect":
             if self._closed:

@@ -278,15 +278,23 @@ impl Backend {
                 };
                 return match workspaces(target, inspect) {
                     Ok(items) => Ok(json!({"workspaces": items})),
-                    Err(code) if matches!(code.as_str(), "connection_failed" | "invalid_request" | "operation_unavailable") => {
+                    Err(code)
+                        if matches!(
+                            code.as_str(),
+                            "connection_failed" | "invalid_request" | "operation_unavailable"
+                        ) =>
+                    {
                         match workspaces(target, WorkspaceRequest::Projects) {
-                            Ok(items) if items.iter().any(|item| item.path == path) => Err("workspace_inspection_unavailable".into()),
+                            Ok(items) if items.iter().any(|item| item.path == path) => {
+                                Err("workspace_inspection_unavailable".into())
+                            }
                             _ => Err(code),
                         }
                     }
                     Err(code) => Err(code),
                 };
             }
+            "preview" => return preview_workspace(target, request),
             "open" => return self.open(target, field(request, "path")?),
             "list" => WorkspaceRequest::List,
             "projects" => WorkspaceRequest::Projects,
@@ -455,6 +463,27 @@ fn workspaces(target: AppTarget<'_>, request: WorkspaceRequest<'_>) -> Result<Ve
 fn single(items: Vec<WorkspaceInfo>) -> Result<WorkspaceInfo> {
     let [workspace]: [WorkspaceInfo; 1] = items.try_into().map_err(|_| "invalid_host_reply")?;
     Ok(workspace)
+}
+
+fn preview_workspace(target: AppTarget<'_>, request: &Value) -> Result<Value> {
+    let path = field(request, "path")?;
+    let fingerprint = field(request, "fingerprint")?;
+    let operation = WorkspaceRequest::Preview {
+        path,
+        fingerprint,
+        instance: field(request, "serviceInstanceId")?,
+        reference: field(request, "reference")?,
+        base: request
+            .get("base")
+            .and_then(Value::as_str)
+            .ok_or("invalid_request")?,
+    };
+    let workspace = single(workspaces(target, operation)?)?;
+    if workspace.path != path || workspace.scope_fingerprint != fingerprint {
+        return Err("invalid_host_reply".into());
+    }
+    let preview = workspace.preview.ok_or("workspace_preview_unavailable")?;
+    serde_json::to_value(preview).map_err(|_| "invalid_host_reply".into())
 }
 
 fn open_workspace(target: AppTarget<'_>, path: &str) -> Result<WorkspaceInfo> {

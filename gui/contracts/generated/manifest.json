@@ -42,13 +42,16 @@
     "MuxAttachV1.mailbox_capacity"
   ],
   "scope": "execution nested values plus attachment model shapes; not complete envelopes or auth",
-  "sourceDigest": "9626130dcd43952414942d43072a7413f11c2235a79311083088b2120de26875",
+  "sourceDigest": "f74a5e42d8c1a0f3781dd22d0272256358418c398cedfd36b72f1c054750b8a0",
   "sources": {
-    "src/loushang/appserver/execution/codec.py": "60d1c1c32e0bbddda12b5dc3d30a1416c77e16820adae5926e1005fa5eb7ecfc",
-    "src/loushang/appserver/execution/model.py": "52c01d679c5227255f241f3385760bd1bd4bfd8bd03928000960700579966847",
-    "src/loushang/appserver/protocol/codec.py": "172d29b2d2a813bd64f1fa3982bf7c199582e86423b680a00a26e22453e0430e",
-    "src/loushang/appserver/protocol/errors.py": "614abb6e0df0e9f29ff152de9d794e681f3cd3b9e1b334f961eda503959c25f9",
-    "src/loushang/appserver/protocol/model.py": "f21314904c91710ad5b8c16764a540eb52ecbffab296c1e99979c8891a4b990f"
+    "src/loushang/appserver/execution/codec.py": "854d113ac73c5f3ab9039003c75d279484f632fb7cb70a13456bcb0529d435bc",
+    "src/loushang/appserver/execution/goal_codec.py": "8b6d7069b4545eefbcee860f9daf6f183cf4126c23b9edda5da6de5df2285598",
+    "src/loushang/appserver/execution/goal_model.py": "00e66722106bcf9a7869e411fb59070e77bce5ff6f8101ce7f160038439bc988",
+    "src/loushang/appserver/execution/model.py": "3b5278faf3c649c61e27345bdf3c31030a5dd763fa76f7f0fe2627a5061a0e75",
+    "src/loushang/appserver/protocol/codec.py": "693a5a565c42c39c95c8d5b93e4b80016c996b833635efd02b1fcc5305d7cfd9",
+    "src/loushang/appserver/protocol/errors.py": "9bfbdefed62b67ddd9597fe9896cd97b0635c33e5cd27ef39c26d5d42107867d",
+    "src/loushang/appserver/protocol/model.py": "c81d7f10e8a2b8b500354e7de9b1b8c6f06886c0767a28be92d71619c85a8683",
+    "src/loushang/appserver/protocol/workspace_preview.py": "e2110f170148527dbf2747dc865ece53695d070d0535f32f1d8fe2d8ae158bf0"
   },
   "status": "candidate"
 }

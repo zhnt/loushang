@@ -133,6 +133,8 @@ async fn dispatch(routed: Routed) -> Result<Value> {
             let creating_workspace = body["operation"] == "workspace" && body["action"] == "create";
             let inspecting_workspace =
                 body["operation"] == "workspace" && body["action"] == "inspect";
+            let previewing_workspace =
+                body["operation"] == "workspace" && body["action"] == "preview";
             if body["operation"] == "open-project-path" {
                 if tunnel.is_some() || id != "local" {
                     return Err("operation_unavailable");
@@ -149,6 +151,16 @@ async fn dispatch(routed: Routed) -> Result<Value> {
                 .map_err(|code| {
                     if inspecting_workspace && code == "workspace_inspection_unavailable" {
                         "workspace_inspection_unavailable"
+                    } else if previewing_workspace {
+                        match code.as_str() {
+                            "not_found" => "not_found",
+                            "permission_denied" => "permission_denied",
+                            "invalid_request" => "invalid_request",
+                            "instance_changed" => "instance_changed",
+                            "workspace_preview_binary" => "workspace_preview_binary",
+                            "workspace_preview_too_large" => "workspace_preview_too_large",
+                            _ => "workspace_preview_unavailable",
+                        }
                     } else {
                         workspace_error(creating_workspace, &code)
                     }

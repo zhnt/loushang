@@ -17,6 +17,8 @@
         "session_unavailable",
         "operation_unavailable",
         "permission_denied",
+        "workspace_preview_binary",
+        "workspace_preview_too_large",
         "workspace_registration_failed",
         "cleanup_incomplete",
         "service_closed"
