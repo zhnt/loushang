@@ -84,7 +84,7 @@ test("expanded translations keep the primary action reachable", async ({ page })
   const pane = (await page.locator(".conversation-pane").boundingBox())!;
   const environment = (await page.locator(".work-dock").boundingBox())!;
   expect(environment.x).toBeGreaterThanOrEqual(pane.x + pane.width - 1);
-  for (const selector of [".composer", ".change-card", ".activity-summary"]) {
+  for (const selector of [".composer", ".change-card", ".execution-summary"]) {
     const box = (await page.locator(selector).boundingBox())!;
     expect(box.x + box.width, selector).toBeLessThanOrEqual(pane.x + pane.width + 1);
   }

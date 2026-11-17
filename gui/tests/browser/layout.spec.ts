@@ -27,7 +27,7 @@ async function verifyLayout(page: Page, info: TestInfo, mode: string) {
       message: rect(".message.assistant"), changes: rect(".change-card"),
       playback: rect(".playback-strip"), pane: rect(".conversation-pane"),
       header: rect(".conversation-header"), headerActions: rect(".header-actions"),
-      right: document.querySelector(".work-dock") ? rect(".work-dock") : null,
+      right: document.querySelector(".work-dock:not([hidden])") ? rect(".work-dock:not([hidden])") : null,
       stacked: document.querySelector("main")!.classList.contains("right-stacked"),
       viewport: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth,
     };
@@ -93,7 +93,7 @@ for (const scenario of scenarios) {
       await page.getByRole("button", { name: "Open Work Dock" }).click();
       await verifyLayout(page, info, "work-panel");
       await page.getByRole("button", { name: "Toggle environment" }).click();
-      await expect(page.getByLabel("Work Dock", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("complementary", { name: "Work Dock", exact: true })).toHaveCount(0);
       await verifyLayout(page, info, "environment-restored");
       expect(errors).toEqual([]);
     } finally {

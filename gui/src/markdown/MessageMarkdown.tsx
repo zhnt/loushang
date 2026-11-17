@@ -1,4 +1,6 @@
 import { memo, type ReactNode } from "react";
+import type { ElementContent } from "hast";
+import { CopyButton } from "../CopyButton";
 import { useTranslation } from "react-i18next";
 import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -7,10 +9,18 @@ import "./markdown.css";
 
 const languagePrefix = "language-";
 
-function CodeBlock({ language, children }: { language?: string; children: ReactNode }) {
+function codeText(node: ElementContent): string {
+  if (node.type === "text") return node.value;
+  return node.type === "element" ? node.children.map(codeText).join("") : "";
+}
+
+function CodeBlock({ language, source, children }: { language?: string; source: string; children: ReactNode }) {
   const { t } = useTranslation("session");
   return <div className="markdown-code-block">
-    <div className="markdown-code-label">{language ?? t("transcript.plainTextCode")}</div>
+    <div className="markdown-code-label">
+      <span>{language ?? t("transcript.plainTextCode")}</span>
+      <CopyButton text={source} label={t("transcript.copyCode")} />
+    </div>
     <pre tabIndex={0}>{children}</pre>
   </div>;
 }
@@ -27,7 +37,7 @@ const components: Components = {
     const language = Array.isArray(classes)
       ? classes.find((value): value is string => typeof value === "string" && value.startsWith(languagePrefix))?.slice(languagePrefix.length)
       : undefined;
-    return <CodeBlock language={language}>{children}</CodeBlock>;
+    return <CodeBlock language={language} source={code ? codeText(code) : ""}>{children}</CodeBlock>;
   },
 };
 

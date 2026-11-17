@@ -329,8 +329,8 @@ export default function LocalHostGate() {
             <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
           {host.state === "running" ? <>
             <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
-            {host.manageable && host.instanceId && <><button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
-            <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button></>}
+            {host.manageable && host.instanceId && <><button className="host-danger" disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
+            <button className="host-danger" disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button></>}
           </> : null}
         </div>
       </div>
@@ -345,10 +345,18 @@ export default function LocalHostGate() {
         </dl> : <p>{t("localHost.identityUnavailable")}</p>}
       </section>
     </section>
-    {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true" aria-label={t("localHost.confirmTitle")} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); } }}>
-      <div><strong>{t("localHost.confirmTitle")}</strong><p>{t("localHost.confirmStop")}</p>
+    {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true"
+      aria-labelledby="host-confirm-title" aria-describedby="host-confirm-impact"
+      onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); } }}>
+      <div>
+        <strong id="host-confirm-title">{t(confirmation.action === "restart" ? "localHost.restartTitle" : "localHost.confirmTitle")}</strong>
+        <p id="host-confirm-impact">{t(confirmation.action === "restart" ? "localHost.confirmRestart" : "localHost.confirmStop")}</p>
         <button autoFocus onClick={() => setConfirmation(null)}>{t("localHost.cancel")}</button>
-        <button onClick={() => { const selected = confirmation; setConfirmation(null); void perform(selected.action, selected.workspace, selected.instanceId); }}>{t("localHost.confirm")}</button>
+        <button className="host-danger" onClick={() => {
+          const selected = confirmation;
+          setConfirmation(null);
+          void perform(selected.action, selected.workspace, selected.instanceId);
+        }}>{t(confirmation.action === "restart" ? "localHost.restart" : "localHost.confirm")}</button>
       </div>
     </div> : null}
   </>;

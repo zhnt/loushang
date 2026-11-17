@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CopyButton } from "./CopyButton";
 import { UiIcon } from "./UiIcon";
 import type { OfflineAccount } from "./client/offlineAccount";
 
@@ -58,9 +59,11 @@ export function AccountMenu({ compact = false, account, onSettings }: {
     {open ? <div id={id} className="account-popover">
       {account ? <section className="account-popover-profile" aria-label={t("offlineAccount")}>
         <div className="account-label"><strong>{account.name}</strong><small>{t("offlineAccount")}</small></div>
-        {account.id ? <dl>
-          <dt>{t("accountId")}</dt><dd><code>{account.id}</code></dd>
-        </dl> : null}
+        {account.id ? <details className="account-technical">
+          <summary>{t("accountDetails")}</summary>
+          <dl><dt>{t("accountId")}</dt><dd><code>{account.id}</code></dd></dl>
+          <CopyButton text={account.id} label={t("copyAccountId")} />
+        </details> : null}
       </section> : null}
       <button ref={settings} type="button" onClick={() => { dismiss(); onSettings(); }}>
         <UiIcon name="settings" />

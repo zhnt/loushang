@@ -152,6 +152,20 @@ describe("desktop frame", () => {
     expect(screen.getByLabelText("Environment summary")).toBeVisible();
   });
 
+  it("restores the panel tab and open state per conversation", async () => {
+    const user = userEvent.setup();
+    render(<HarnessGui client={createMockAppClient()} />);
+    await screen.findByRole("heading", { name: "GUI development" });
+    await user.click(screen.getByRole("button", { name: "Close environment" }));
+    await user.click(screen.getByRole("button", { name: /^Operational ontology ·/ }));
+    await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Tasks" }));
+    await user.click(screen.getByRole("button", { name: /^GUI development ·/ }));
+    expect(screen.queryByRole("complementary", { name: /Work Dock|Environment summary/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Operational ontology ·/ }));
+    expect(within(screen.getByRole("complementary", { name: "Work Dock" })).getByRole("button", { name: "Tasks" }))
+      .toHaveAttribute("aria-pressed", "true");
+  });
+
   it("replaces native decorations and grants only scoped window commands", () => {
     expect(config.app.windows[0].decorations).toBe(false);
     expect(capability.windows).toEqual(["main"]);

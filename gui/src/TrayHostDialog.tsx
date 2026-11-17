@@ -28,7 +28,7 @@ export function TrayHostDialog({ details, error, onClose, onConfirm }: {
     {error || state?.errorCode ? <p role="alert">{t("localHost.errors.unknown")} <code>{error ?? state?.errorCode}</code></p> : null}
     <footer>
       <button autoFocus onClick={onClose}>{details?.confirm ? t("localHost.cancel") : t("shell:close")}</button>
-      {details?.confirm ? <button onClick={onConfirm}>{t("localHost.confirm")}</button> : null}
+      {details?.confirm ? <button className="host-danger" onClick={onConfirm}>{t("localHost.confirm")}</button> : null}
     </footer>
   </dialog>;
 }

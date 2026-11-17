@@ -60,7 +60,8 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
     void readStatus();
   }, [readStatus, session.execution?.id, session.execution?.status, session.status, session.title]);
 
-  const view = observation?.scope === scope ? observation?.view : undefined;
+  const view = observation?.scope === scope || !scope ? observation?.view : undefined;
+  const lastKnown = !scope && Boolean(view);
   const availability = view?.availability;
   const creating = Boolean(scope && pending.current === scope);
   const sendingCommand = Boolean(scope && commandPending.current === scope);
@@ -136,7 +137,8 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
       : view === null || !scope ? t("interactiveGoal.unavailable")
       : view === undefined ? t("interactiveGoal.loading") : null;
   return <section className="execution-detail interactive-goal" aria-label={t("interactiveGoal.title")}>
-    {note && (!unknown || availability) ? <p role="status">{note}</p> : null}
+    {lastKnown ? <p role="status">{t("goalProgress.lastConfirmed")}</p> : null}
+    {note && !lastKnown && (!unknown || availability) ? <p role="status">{note}</p> : null}
     {unknown ? <p role="status">{t("interactiveGoal.unknown")}</p> : null}
     {view?.availability === "present" ? <dl>
       <dt>{t("goalProgress.status")}</dt><dd>{t(`goalProgress.states.${view.status ?? "unknown"}`)}</dd>

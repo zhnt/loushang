@@ -94,3 +94,6 @@
 }
 .markdown-body th { background: var(--md-surface); font-weight: 600; }
 .markdown-body tbody tr { border-block-start: 1px solid var(--md-border); }
+
+.markdown-body .markdown-code-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.markdown-code-label .secondary-button { padding: 3px 7px; }

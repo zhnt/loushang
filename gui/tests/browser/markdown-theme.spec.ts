@@ -95,7 +95,7 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   const border = await composer.evaluate((element) => getComputedStyle(element).borderColor);
   await input.click();
   await expect(input).toBeFocused();
-  await expect(composer).toHaveCSS("border-color", border);
+  await expect(composer).not.toHaveCSS("border-color", border);
   await expect(model).toBeEnabled();
   await expect(model).toHaveCSS("font-weight", "600");
   await expect(model.locator("[data-icon=chevron-down]")).toBeVisible();
@@ -119,6 +119,10 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("margin-block-start", "24px");
   await expect(body.getByRole("columnheader").first()).toHaveCSS("background-color", "rgb(245, 245, 244)");
   await expect(body.locator("pre")).toHaveCSS("font-size", "13.5px");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await body.getByRole("button", { name: "Copy code" }).click();
+  await expect(body.getByText("Copied", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await body.locator("pre").textContent());
   await expect(reading).toHaveCSS("padding-bottom", "40px");
   expect((await body.boundingBox())!.width).toBeCloseTo(760, 0);
   await reading.evaluate((element) => { element.scrollTop = 0; });

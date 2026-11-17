@@ -84,7 +84,9 @@
     "instanceId": "Host 实例 ID",
     "serviceInstanceId": "服务实例 ID",
     "intro": "选择本地工作空间并查看 Host 状态；未运行时可启动并连接。关闭窗口不会停止 Host。",
-    "confirmStop": "停止或重启 Host 会中断所有项目和临时会话中所有运行任务，会话历史会保留。是否继续？",
+    "confirmStop": "停止会中断所有项目和临时会话中正在运行的任务。会话历史会保留。",
+    "restartTitle": "重启 AppHost？",
+    "confirmRestart": "重启会中断所有项目和临时会话中正在运行的任务。会话历史会保留，Host 就绪后此窗口会重新连接。",
     "states": {
       "unknown": "状态无法确认",
       "notRunning": "Host 未运行",

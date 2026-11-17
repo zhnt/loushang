@@ -170,8 +170,10 @@ describe("local managed Host presentation", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Workspace" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
-    const profile = within(await screen.findByRole("region", { name: "Offline account" }));
+    const profile = within(await screen.findByRole("region", { name: "Local account" }));
     expect(profile.getByText("desktop-user")).toBeVisible();
+    expect(profile.getByText("local-test-id")).not.toBeVisible();
+    fireEvent.click(profile.getByText("Technical details"));
     expect(profile.getByText("local-test-id")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     const settings = within(screen.getByRole("dialog", { name: "Settings" }));

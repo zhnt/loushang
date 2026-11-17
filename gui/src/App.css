@@ -372,16 +372,16 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
   .desktop-layout > .conversation-pane { min-height: 0; }
 }
 
-.settings-dialog { width: min(720px, calc(100% - 32px)); height: min(500px, calc(100dvh - 32px)); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: 0 18px 60px #0003; }
+.settings-dialog { width: min(720px, calc(100% - 32px)); height: min(410px, calc(100dvh - 32px)); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: 0 18px 60px #0003; }
 .settings-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .settings-dialog::backdrop { background: var(--dialog-backdrop); }
-.settings-header { background: var(--paper); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+.settings-header { background: var(--paper); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
 .settings-header h2 { margin: 0; font-size: 18px; }
 .settings-layout { display: grid; grid-template-columns: minmax(104px, 156px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; }
 .settings-nav { display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; background: var(--sidebar); border-inline-end: 1px solid var(--line); }
 .settings-nav button { display: flex; align-items: center; gap: 8px; padding: 8px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; text-align: start; }
 .settings-nav button[aria-current="page"] { background: var(--line); font-weight: 650; }
-.settings-content { min-width: 0; overflow: auto; overscroll-behavior: contain; padding: 20px 24px 24px; }
+.settings-content { min-width: 0; overflow: auto; overscroll-behavior: contain; padding: 16px 20px; }
 .settings-content h3 { margin: 0 0 14px; font-size: 17px; }
 .settings-preferences { border: 1px solid var(--line); border-radius: 10px; }
 .settings-preference { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 168px); align-items: center; gap: 8px 16px; min-height: 60px; padding: 12px 14px; }
@@ -522,3 +522,10 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .environment-technical { margin-top: 16px; }
 .environment-technical summary { margin-bottom: 10px; cursor: pointer; }
 .copy-action { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+
+
+.account-technical { margin-top: 6px; }
+.account-technical summary { color: var(--ink-secondary); font-size: 12px; cursor: pointer; }
+.account-technical .copy-action { margin-top: 6px; }
+.project-navigation .session-row.selected { border-inline-start: 2px solid var(--accent); }
+.project-navigation .session-row { border-inline-start: 2px solid transparent; }

@@ -757,6 +757,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
         {conversationOpen || (attachedClient && !fixture) ? <SessionHeader
           title={conversationOpen ? conversationTitle : undefined}
+          contextLabel={workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats")
+            : selected ? projectContext : undefined}
           sessionReady={Boolean(selected)}
           connection={liveConnecting ? "connecting" : state.remote.connection}
           dockOpen={panelOpen}
@@ -904,7 +906,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
         {selected ? (
           <WorkDock key={JSON.stringify([selectionKey, selected.id])}
-            open={rightVisible} tab={state.local.dockTab}
+            open={rightVisible} stale={!fixture && !connected} tab={state.local.dockTab}
             state={state} session={selected} workspacePath={workspaceContext ?? undefined} selectedDocument={selectedDocument}
             goalControls={<>
               <GoalStart {...goalStart} />
@@ -1193,10 +1195,11 @@ function ExecutionDetail({ execution, stale }: {
   );
 }
 
-function SessionHeader({ title, sessionReady, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment, goalPanel }: {
+function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment, goalPanel }: {
   readonly environmentOpen: boolean;
   readonly onEnvironment: () => void;
   readonly title?: string;
+  readonly contextLabel?: string;
   readonly sessionReady: boolean;
   readonly connection: ConnectionState | "connecting";
   readonly dockOpen: boolean;
@@ -1210,8 +1213,7 @@ function SessionHeader({ title, sessionReady, connection, dockOpen, onOpenDock, 
       <div className="session-heading">
         {title !== undefined ? <>
           <UiIcon name="folder" />
-          <div><h1>{title}</h1></div>
-          <button type="button" disabled={!sessionReady} aria-label={t("panels:header.actions")}><span aria-hidden="true">⋯</span></button>
+          <div><h1>{title}</h1>{contextLabel ? <p>{contextLabel}</p> : null}</div>
         </> : null}
       </div>
       <div className="header-actions" data-conversation-open={title !== undefined}>
@@ -1304,6 +1306,7 @@ function QuickLook({ document, onClose, onOpenReview }: {
 
 interface WorkDockProps {
   readonly open: boolean;
+  readonly stale: boolean;
   readonly workspacePath?: string;
   readonly goalControls: ReactNode;
   readonly goalProgress: ReactNode;
@@ -1321,10 +1324,11 @@ interface WorkDockProps {
 
 function WorkDock(props: WorkDockProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
-  const { open, tab, state, session, selectedDocument, goalControls, goalProgress,
+  const { open, stale, tab, state, session, selectedDocument, goalControls, goalProgress,
     onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
   const facet = tab === "environment" ? "workspace" : tab === "review" ? "changes" : tab;
   const available = hasCapability(state, facet);
+  const showTasks = tab === "tasks" && open;
   const visibleRun = session.run ? {
     ...session.run,
     tasks: hasCapability(state, "tasks") ? session.run.tasks : [],
@@ -1345,21 +1349,21 @@ function WorkDock(props: WorkDockProps) {
       </nav>
       <div className="dock-content">
         <div className="dock-task-content" hidden={tab !== "tasks"}>
-          {open && tab === "tasks" && (session.execution ? <p className="task-summary">
-            {t(isStale(state) ? "panels:execution.lastKnownStatus" : "panels:execution.status",
+          {showTasks && (session.execution ? <p className="task-summary">
+            {t(stale ? "panels:execution.lastKnownStatus" : "panels:execution.status",
               { status: valueLabel(session.execution.status) })}
           </p> : visibleRun && hasCapability(state, "tasks") ? <p className="task-summary">{visibleRun.title}</p> : null)}
           {goalControls}
-          {visibleRun && hasCapability(state, "tasks") ? <>
+          {showTasks && (visibleRun && hasCapability(state, "tasks") ? <>
             <RunActivity run={visibleRun} expanded={Boolean(state.local.expandedActivities[visibleRun.id])}
               onToggle={() => props.onToggleActivity(visibleRun.id)} onSelectTask={onSelectTask} />
             <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId}
               onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
           </> : !session.execution && !session.supportsInteractiveGoal && !session.supportsInteractiveGoalRecovery
             ? <UnavailablePanel label={hasCapability(state, "tasks") ? t("panels:tasks.projection")
-              : t("workspace:capability.missing", { capability: capabilityLabel("tasks") })} /> : null}
+              : t("workspace:capability.missing", { capability: capabilityLabel("tasks") })} /> : null)}
           {goalProgress}
-          {open && tab === "tasks" && session.execution ? <ExecutionDetail execution={session.execution} stale={isStale(state)} /> : null}
+          {showTasks && session.execution ? <ExecutionDetail execution={session.execution} stale={stale} /> : null}
         </div>
         {tab === "tasks" ? null : !available ? tab === "environment" && state.remote.source.kind === "live"
           ? <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} />

@@ -214,8 +214,10 @@ test("General and Host share a fixed dialog with scrollable content in a short w
   await simulateDesktop(page, true);
   await page.goto("/");
   await page.getByRole("button", { name: "Account menu" }).click();
-  const account = page.getByRole("region", { name: "Offline account" });
+  const account = page.getByRole("region", { name: "Local account" });
   await expect(account.getByText("desktop-user")).toBeVisible();
+  await expect(account.getByText("local-preview-account")).toBeHidden();
+  await account.getByText("Technical details").click();
   await expect(account.getByText("local-preview-account")).toBeVisible();
   await page.screenshot({ path: info.outputPath("account-menu.png") });
   await page.getByRole("button", { name: "Settings", exact: true }).click();

@@ -84,7 +84,9 @@
     "instanceId": "Host instance ID",
     "serviceInstanceId": "Service instance ID",
     "intro": "Select a local workspace and check its Host. Start and connect when it is not running. Closing this window does not stop the Host.",
-    "confirmStop": "Stopping or restarting this Host interrupts all running tasks across all projects and temporary chats. Session history is retained. Continue?",
+    "confirmStop": "Stopping interrupts running tasks in all projects and temporary chats. Session history is retained.",
+    "restartTitle": "Restart AppHost?",
+    "confirmRestart": "Restarting interrupts running tasks in all projects and temporary chats. Session history is retained, and this window reconnects when the Host is ready.",
     "states": {
       "unknown": "Status unconfirmed",
       "notRunning": "Host not running",

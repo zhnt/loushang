@@ -1241,6 +1241,10 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
   };
   const interactiveGoalStatus = vi.fn<Status>().mockImplementation(async () => observed);
   const controlInteractiveGoal = vi.fn<Control>().mockImplementation(async (input) => {
+    if (input.action === "step" || input.action === "resume") {
+      return observed = { ...observed!, status: "active",
+        command: { commandId: input.commandId, action: input.action, status: "finished" } };
+    }
     if (input.action === "run") {
       observed = { ...observed!, command: { commandId: input.commandId, action: "run", status: "running" } };
       throw new Error("Lost reply");
@@ -1267,10 +1271,12 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
   const entry = await screen.findByRole("button", { name: "Development goal" });
   fireEvent.click(entry);
   const goal = within(await screen.findByRole("region", { name: "Development goal" }));
+  fireEvent.click(await goal.findByRole("button", { name: "Step" }));
+  expect(await goal.findByText("Goal command finished")).toBeVisible();
   const run = await goal.findByRole("button", { name: /^Run$/ });
   act(() => { fireEvent.click(run); fireEvent.click(run); });
   expect(await goal.findByText("Goal command running")).toBeVisible();
-  expect(controlInteractiveGoal).toHaveBeenCalledExactlyOnceWith({
+  expect(controlInteractiveGoal).toHaveBeenLastCalledWith({
     goalId: "original-goal", commandId: expect.stringMatching(/^gui-/), action: "run",
     sessionId: session.id, serviceInstanceId: "goal-host", connectionEpoch: "1",
   });
@@ -1287,8 +1293,9 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
   expect(await goal.findByText("Cancellation requested. Waiting for current Work to settle.")).toBeVisible();
   observed = { ...observed!, command: { ...observed!.command!, status: "finished" } };
   fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
-  expect(await goal.findByRole("button", { name: "Resume" })).toBeEnabled();
-  expect(controlInteractiveGoal).toHaveBeenCalledTimes(3);
+  fireEvent.click(await goal.findByRole("button", { name: "Resume" }));
+  await waitFor(() => expect(controlInteractiveGoal.mock.calls.map(([input]) => input.action))
+    .toEqual(["step", "run", "pause", "cancel", "resume"]));
 });
 
 it("offers Goal review only for a current candidate and gates acceptance on check evidence", async () => {
