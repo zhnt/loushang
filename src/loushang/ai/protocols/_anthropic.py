@@ -155,18 +155,27 @@ class AnthropicMessagesProtocol:
 
         if block_type == "thinking":
             thinking = getattr(block, "thinking", "")
-            if not isinstance(thinking, str) or not thinking.strip():
+            if not isinstance(thinking, str):
                 return None
 
             signature = getattr(block, "thinking_signature", None)
             redacted = getattr(block, "redacted", False)
+            has_signature = isinstance(signature, str) and bool(signature.strip())
+
+            if not thinking.strip():
+                # Adaptive thinking with display="omitted" returns an empty `thinking`
+                # plus the signature. Anthropic requires those blocks to be replayed
+                # unchanged, so dropping them makes the next tool-use turn invalid.
+                if has_signature and not redacted:
+                    return {"type": "thinking", "thinking": "", "signature": signature}
+                return None
 
             if redacted:
-                if isinstance(signature, str) and signature.strip():
+                if has_signature:
                     return {"type": "redacted_thinking", "data": signature}
                 return {"type": "text", "text": sanitize_surrogates(thinking)}
 
-            if isinstance(signature, str) and signature.strip():
+            if has_signature:
                 return {
                     "type": "thinking",
                     "thinking": sanitize_surrogates(thinking),
