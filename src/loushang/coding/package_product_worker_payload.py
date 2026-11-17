@@ -14,7 +14,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import cast
 
-import loushang.harness.worker.payload._recovery as _recovery
+from loushang.harness.package_product._linux_worker_recovery import (
+    PosixProductWorkerPayloadCustody,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -37,9 +39,6 @@ from loushang.harness.worker.payload._records import (
 )
 from loushang.harness.worker.payload._selected_payload import (
     PendingPayloadMethods,
-    bind_selected_payload_request,
-    materialize_selected_payload,
-    plan_selected_payload_launch,
 )
 from loushang.harness.worker.payload._storage import (
     _COMPLETE_REPAIR_PREFIX as _COMPLETE_REPAIR_PREFIX,
@@ -197,17 +196,7 @@ def review_coding_product_worker_payload_recovery(
     An absent or failed/fenced attempt does not establish process settlement.
     This review does not authorize deleting the payload or restarting a Worker.
     """
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        plan, record = _recovery.review_complete(
-            _STORAGE,
-            root_fd,
-            attempt_id=attempt_id,
-            supervisor=lambda: open_coding_product_worker_supervisor_journal(product),
-        )
-        return CodingWorkerPayloadRecoveryReviewV1(
-            plan=cast("CodingWorkerPayloadDebtPlanV1", plan), attempt_record=record
-        )
+    return _PAYLOAD_CUSTODY.review_complete(product, attempt_id=attempt_id)
 
 
 @contextmanager
@@ -222,23 +211,8 @@ def materialize_coding_product_worker_payload(
         raise TypeError("Coding Worker Product receipt owner is required")
     if not isinstance(attempt_id, str) or _ATTEMPT.fullmatch(attempt_id) is None:
         raise ValueError("Coding Worker attempt identity is invalid")
-    product = receipt_owner.product_owner
-    state_root = product.state_root
-    with materialize_selected_payload(
-        _STORAGE,
-        root=state_root,
-        authority=receipt_owner,
-        receipt=receipt,
-        attempt_id=attempt_id,
-        guard=lambda write: (
-            product.gc_gate.guard(require_write=True)
-            if write
-            else product.gc_gate.guard()
-        ),
-        assert_current=lambda: product.assert_root_gc_authority_current(),
-        supervisor=lambda: open_coding_product_worker_supervisor_journal(product),
-        lease_factory=CodingProductWorkerPayloadLeaseV1,
-        error_prefix="coding_worker_payload",
+    with _PAYLOAD_CUSTODY.materialize(
+        receipt_owner=receipt_owner, receipt=receipt, attempt_id=attempt_id
     ) as lease:
         yield lease
 
@@ -257,21 +231,8 @@ def plan_coding_product_worker_pending_launch(
         or (_ATTEMPT.fullmatch(attempt_id) is None)
     ):
         raise TypeError("Coding Worker pending launch requires Product evidence")
-    product = receipt_owner.product_owner
-    return plan_selected_payload_launch(
-        _STORAGE,
-        authority=receipt_owner,
-        receipt=receipt,
-        attempt_id=attempt_id,
-        guard=lambda write: (
-            product.gc_gate.guard(require_write=True)
-            if write
-            else product.gc_gate.guard()
-        ),
-        assert_current=lambda: product.assert_root_gc_authority_current(),
-        supervisor=lambda: open_coding_product_worker_supervisor_journal(product),
-        pending_factory=CodingProductWorkerPendingLaunchV1,
-        error_prefix="coding_worker_payload",
+    return _PAYLOAD_CUSTODY.plan(
+        receipt_owner=receipt_owner, receipt=receipt, attempt_id=attempt_id
     )
 
 
@@ -288,35 +249,16 @@ def bind_coding_product_worker_launch_request(
         not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
         or not isinstance(receipt, ProductWorkerActivationReceiptV1)
         or (not isinstance(payload_lease, CodingProductWorkerPayloadLeaseV1))
-        or (payload_lease.receipt_fingerprint != receipt.fingerprint)
-        or (
-            payload_lease.runtime.package_root
-            != receipt_owner.product_owner.state_root
-            / f"worker-payload-{payload_lease.attempt_id}"
-        )
     ):
         raise CodingWorkerPayloadMaterializationError(
             "coding_worker_payload_binding_mismatch"
         )
-    return bind_selected_payload_request(
-        _STORAGE,
-        authority=receipt_owner,
+    return _PAYLOAD_CUSTODY.bind(
+        receipt_owner=receipt_owner,
         receipt=receipt,
         payload_lease=payload_lease,
         supervisor_epoch=supervisor_epoch,
         pending_launch=pending_launch,
-        pending_type=CodingProductWorkerPendingLaunchV1,
-        guard=lambda write: (
-            receipt_owner.product_owner.gc_gate.guard(require_write=True)
-            if write
-            else receipt_owner.product_owner.gc_gate.guard()
-        ),
-        supervisor=lambda: open_coding_product_worker_supervisor_journal(
-            receipt_owner.product_owner
-        ),
-        receipt_error_type=CodingWorkerReceiptError,
-        stale_message="Coding Product Worker selection changed",
-        error_prefix="coding_worker_payload",
     )
 
 
@@ -344,50 +286,21 @@ def preview_coding_product_worker_payload_debt(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerPayloadDebtPlanV1:
     """Read a complete abandoned stage only while Product Sessions are absent."""
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "CodingWorkerPayloadDebtPlanV1",
-            _recovery.preview_complete(_STORAGE, root_fd, attempt_id=attempt_id),
-        )
+    return _PAYLOAD_CUSTODY.preview_complete(product, attempt_id=attempt_id)
 
 
 def preview_coding_product_worker_empty_payload_debt(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerEmptyPayloadDebtPlanV1:
     """Review only an empty stage with no durable Supervisor claim."""
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "CodingWorkerEmptyPayloadDebtPlanV1",
-            _recovery.preview_empty(
-                _STORAGE,
-                root_fd,
-                attempt_id=attempt_id,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.preview_empty(product, attempt_id=attempt_id)
 
 
 def review_coding_product_worker_unmarked_payload_debt(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerUnmarkedPayloadDebtReviewV1:
     """Inspect a nonempty pre-marker stage without granting cleanup authority."""
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "CodingWorkerUnmarkedPayloadDebtReviewV1",
-            _recovery.review_unmarked(
-                _STORAGE,
-                root_fd,
-                attempt_id=attempt_id,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.review_unmarked(product, attempt_id=attempt_id)
 
 
 def repair_coding_product_worker_unmarked_payload_debt(
@@ -396,81 +309,30 @@ def repair_coding_product_worker_unmarked_payload_debt(
     expected_review: CodingWorkerUnmarkedPayloadDebtReviewV1,
 ) -> CodingWorkerUnmarkedPayloadDebtReviewV1:
     """Remove an exact pre-marker stage under offline, unclaimed authority."""
-
     if not isinstance(expected_review, CodingWorkerUnmarkedPayloadDebtReviewV1):
         raise TypeError("Coding Worker unmarked payload review is required")
-    with (
-        _offline(product, require_write=True),
-        _STORAGE.open_root(lambda: product.state_root) as root_fd,
-    ):
-        return cast(
-            "CodingWorkerUnmarkedPayloadDebtReviewV1",
-            _recovery.repair_unmarked(
-                _STORAGE,
-                root_fd,
-                expected_review=expected_review,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.repair_unmarked(product, expected_review=expected_review)
 
 
 def reopen_coding_product_worker_unmarked_payload_repair(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerUnmarkedPayloadDebtReviewV1 | None:
     """Reopen a published, completed pre-marker cleanup after a process crash."""
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "CodingWorkerUnmarkedPayloadDebtReviewV1 | None",
-            _recovery.reopen_unmarked(
-                _STORAGE,
-                root_fd,
-                attempt_id=attempt_id,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.reopen_unmarked(product, attempt_id=attempt_id)
 
 
 def read_coding_product_worker_unmarked_payload_repair_intent(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerUnmarkedPayloadDebtReviewV1 | None:
     """Read a durable cleanup intent even when its exact stage remains."""
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "CodingWorkerUnmarkedPayloadDebtReviewV1 | None",
-            _recovery.read_unmarked_intent(
-                _STORAGE,
-                root_fd,
-                attempt_id=attempt_id,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.read_unmarked_intent(product, attempt_id=attempt_id)
 
 
 def reopen_coding_product_worker_empty_payload_repair(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerEmptyPayloadDebtPlanV1 | None:
     """Read a durable repair result only after its exact stage disappeared."""
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "CodingWorkerEmptyPayloadDebtPlanV1 | None",
-            _recovery.reopen_empty(
-                _STORAGE,
-                root_fd,
-                attempt_id=attempt_id,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.reopen_empty(product, attempt_id=attempt_id)
 
 
 def list_coding_product_worker_payload_debts(
@@ -481,12 +343,7 @@ def list_coding_product_worker_payload_debts(
     A malformed stage name or body makes the whole inventory unavailable. GC
     and recovery callers must not infer that an unreadable attempt is absent.
     """
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "tuple[CodingWorkerPayloadDebtPlanV1, ...]",
-            _recovery.list_complete(_STORAGE, root_fd),
-        )
+    return _PAYLOAD_CUSTODY.list_complete(product)
 
 
 def repair_coding_product_worker_payload_debt(
@@ -495,62 +352,23 @@ def repair_coding_product_worker_payload_debt(
     expected_plan: CodingWorkerPayloadDebtPlanV1,
 ) -> CodingWorkerPayloadDebtPlanV1:
     """Delete an exact stage only after its Supervisor recorded process exit."""
-
     if not isinstance(expected_plan, CodingWorkerPayloadDebtPlanV1):
         raise TypeError("Coding Worker payload debt plan is required")
-    with (
-        _offline(product, require_write=True),
-        _STORAGE.open_root(lambda: product.state_root) as root_fd,
-    ):
-        return cast(
-            "CodingWorkerPayloadDebtPlanV1",
-            _recovery.repair_complete(
-                _STORAGE,
-                root_fd,
-                expected_plan=expected_plan,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.repair_complete(product, expected_plan=expected_plan)
 
 
 def reopen_coding_product_worker_payload_repair(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerPayloadDebtPlanV1 | None:
     """Read one completed, exact payload repair without accepting stage debt."""
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "CodingWorkerPayloadDebtPlanV1 | None",
-            _recovery.reopen_complete(
-                _STORAGE,
-                root_fd,
-                attempt_id=attempt_id,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.reopen_complete(product, attempt_id=attempt_id)
 
 
 def read_coding_product_worker_payload_repair_intent(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerPayloadDebtPlanV1 | None:
     """Read a durable settled cleanup intent while its stage may remain."""
-
-    with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return cast(
-            "CodingWorkerPayloadDebtPlanV1 | None",
-            _recovery.read_complete_intent(
-                _STORAGE,
-                root_fd,
-                attempt_id=attempt_id,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.read_complete_intent(product, attempt_id=attempt_id)
 
 
 def repair_coding_product_worker_empty_payload_debt(
@@ -559,24 +377,9 @@ def repair_coding_product_worker_empty_payload_debt(
     expected_plan: CodingWorkerEmptyPayloadDebtPlanV1,
 ) -> CodingWorkerEmptyPayloadDebtPlanV1:
     """Remove an exact empty stage only when Supervisor never claimed it."""
-
     if not isinstance(expected_plan, CodingWorkerEmptyPayloadDebtPlanV1):
         raise TypeError("Coding Worker empty payload debt plan is required")
-    with (
-        _offline(product, require_write=True),
-        _STORAGE.open_root(lambda: product.state_root) as root_fd,
-    ):
-        return cast(
-            "CodingWorkerEmptyPayloadDebtPlanV1",
-            _recovery.repair_empty(
-                _STORAGE,
-                root_fd,
-                expected_plan=expected_plan,
-                supervisor=lambda: open_coding_product_worker_supervisor_journal(
-                    product
-                ),
-            ),
-        )
+    return _PAYLOAD_CUSTODY.repair_empty(product, expected_plan=expected_plan)
 
 
 _read_repair_file = _STORAGE._read_repair_file
@@ -594,24 +397,26 @@ _stage_exists = _STORAGE._stage_exists
 _remove_empty_stage = _STORAGE._remove_empty_stage
 
 
-@contextmanager
-def _offline(
-    product: PosixLocalWheelProductSessionOwner, *, require_write: bool = False
-) -> Iterator[None]:
-    if not isinstance(product, PosixLocalWheelProductSessionOwner):
-        raise TypeError("Coding Worker Product owner is required")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_runtime_active"
-            )
-        product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=require_write):
-            yield
-        product.assert_root_gc_authority_current()
+_PAYLOAD_CUSTODY = PosixProductWorkerPayloadCustody[
+    CodingWorkerPayloadDebtPlanV1,
+    CodingWorkerEmptyPayloadDebtPlanV1,
+    CodingWorkerUnmarkedPayloadDebtReviewV1,
+    CodingWorkerPayloadRecoveryReviewV1,
+    CodingProductWorkerPayloadLeaseV1,
+    CodingProductWorkerPendingLaunchV1,
+](
+    storage=_STORAGE,
+    supervisor=open_coding_product_worker_supervisor_journal,
+    recovery_type=CodingWorkerPayloadRecoveryReviewV1,
+    lease_type=CodingProductWorkerPayloadLeaseV1,
+    pending_type=CodingProductWorkerPendingLaunchV1,
+    receipt_error_type=CodingWorkerReceiptError,
+    error_prefix="coding_worker_payload",
+    stale_message="Coding Product Worker selection changed",
+    product_required_message="Coding Worker Product owner is required",
+)
+
+_offline = _PAYLOAD_CUSTODY.offline
 
 
 def _verify_debt(root_fd: int, attempt_id: str) -> CodingWorkerPayloadDebtPlanV1:

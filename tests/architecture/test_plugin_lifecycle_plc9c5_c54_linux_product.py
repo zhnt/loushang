@@ -119,9 +119,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_start_gate.py": {
-        "loushang.harness.worker._native_profile_bridge",
         "loushang.harness.worker.contracts",
-        "loushang.harness.worker.gated_start",
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_start_gate_journal.py": {
@@ -150,7 +148,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._native_approval"
     },
     CODING_ROOT / "package_product_worker_payload.py": {
-        "loushang.harness.worker.payload._recovery",
         'loushang.harness.worker.contracts',
         'loushang.harness.worker.journal',
         'loushang.harness.worker.payload._records',

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
-from typing import ClassVar, Generic, Protocol, TypeVar
+from typing import ClassVar, Generic, Literal, Protocol, TypeVar, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
@@ -50,9 +51,14 @@ from loushang.harness.resources.plugins.declarations import (
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker._native_profile_bridge import (
     _plan_windows_lpac_product_worker_profile,
+    _require_exact_binding,
     _WindowsLpacProductWorkerProfilePlan,
 )
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
+from loushang.harness.worker.gated_start import (
+    WorkerGatedStartWitnessV1,
+    WorkerNativeProcessIdentityV1,
+)
 from loushang.harness.worker.history._opt_in import (
     CurrentOptIn,
     _OptInDecisionMethods,
@@ -899,3 +905,161 @@ class ClosedProductWorkerCrashRecoveryAuthority(Generic[_CrashProductT]):
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:
         raise ValueError(self._admission_error)
+
+
+class _GateJournalAppender(Protocol):
+    def append(
+        self,
+        *,
+        phase: Literal["intent", "bound"],
+        attempt_id: str,
+        worker_identity_fingerprint: str,
+        receipt_fingerprint: str,
+        policy_fingerprint: str,
+        scope_id: str,
+        native_closure_digest: str,
+        identity: WorkerNativeProcessIdentityV1 | None = None,
+    ) -> object: ...
+
+
+class _GateClosureDocument(Protocol):
+    def to_dict(self) -> dict[str, object]: ...
+
+
+class _StartGateReceiptAuthority(Protocol):
+    @property
+    def product_owner(self) -> PosixLocalWheelProductSessionOwner: ...
+    def current_witness(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> ActivationWitness: ...
+    def current_native_launch_material(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> ProductWorkerNativeLaunchMaterialFacts: ...
+
+
+class PosixProductWorkerStartGate:
+    """Original pipe/Journal/release transaction; no additional custody state."""
+
+    _error_type: type[RuntimeError]
+    _error_prefix: str
+    _journal_type: Callable[[PosixLocalWheelProductSessionOwner], _GateJournalAppender]
+    _receipt_owner: _StartGateReceiptAuthority
+
+    def _initialize(
+        self,
+        *,
+        receipt_owner: _StartGateReceiptAuthority,
+        receipt: ProductWorkerActivationReceiptV1,
+        worker_request: ManagedWorkerLaunchRequestV1,
+        attempt_id: str,
+    ) -> None:
+        _require_exact_binding(receipt=receipt, worker_request=worker_request)
+        if attempt_id != worker_request.identity.attempt_id:
+            raise self._error_type(self._error_prefix + "_attempt_mismatch")
+        product = receipt_owner.product_owner
+        self._read_fd = -1
+        self._write_fd = -1
+        self._released = False
+        self._receipt_owner = receipt_owner
+        self._receipt = receipt
+        self._worker_identity_fingerprint = worker_request.identity.fingerprint
+        self._attempt_id = attempt_id
+        self._journal = self._journal_type(product)
+        with product.gc_gate.guard(require_write=True):
+            self._recheck()
+            self._native_closure_digest = self._current_closure_digest()
+            read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
+            self._read_fd, self._write_fd = (read_fd, write_fd)
+            try:
+                os.set_blocking(write_fd, False)
+                self._journal.append(
+                    phase="intent",
+                    attempt_id=attempt_id,
+                    worker_identity_fingerprint=self._worker_identity_fingerprint,
+                    receipt_fingerprint=receipt.fingerprint,
+                    policy_fingerprint=receipt.policy.fingerprint,
+                    scope_id=receipt.policy.product_scope_id,
+                    native_closure_digest=self._native_closure_digest,
+                )
+            except BaseException:
+                self.close()
+                raise
+
+    @property
+    def start_gate_read_fd(self) -> int:
+        if self._read_fd < 0 or self._write_fd < 0 or self._released:
+            raise self._error_type(self._error_prefix + "_closed")
+        return self._read_fd
+
+    @property
+    def receipt_owner(
+        self,
+    ) -> _StartGateReceiptAuthority:
+        return self._receipt_owner
+
+    @property
+    def receipt_fingerprint(self) -> str:
+        return self._receipt.fingerprint
+
+    @property
+    def worker_identity_fingerprint(self) -> str:
+        return self._worker_identity_fingerprint
+
+    @property
+    def attempt_id(self) -> str:
+        return self._attempt_id
+
+    def release(self, witness: WorkerGatedStartWitnessV1) -> None:
+        """Persist exact native identity before allowing the captured child to exec."""
+        if self._read_fd < 0 or self._write_fd < 0 or self._released:
+            raise self._error_type(self._error_prefix + "_closed")
+        try:
+            with self._receipt_owner.product_owner.gc_gate.guard(require_write=True):
+                self._recheck()
+                if self._current_closure_digest() != self._native_closure_digest:
+                    raise self._error_type(
+                        self._error_prefix + "_native_closure_changed"
+                    )
+                if type(witness) is not WorkerGatedStartWitnessV1:
+                    raise self._error_type(self._error_prefix + "_witness_invalid")
+                gate = os.fstat(self._read_fd)
+                if (witness.gate_device, witness.gate_inode) != (
+                    gate.st_dev,
+                    gate.st_ino,
+                ):
+                    raise self._error_type(self._error_prefix + "_child_mismatch")
+                self._journal.append(
+                    phase="bound",
+                    attempt_id=self._attempt_id,
+                    worker_identity_fingerprint=self._worker_identity_fingerprint,
+                    receipt_fingerprint=self._receipt.fingerprint,
+                    policy_fingerprint=self._receipt.policy.fingerprint,
+                    scope_id=self._receipt.policy.product_scope_id,
+                    native_closure_digest=self._native_closure_digest,
+                    identity=witness.native_identity,
+                )
+                if os.write(self._write_fd, b"S") != 1:
+                    raise self._error_type(self._error_prefix + "_release_failed")
+                self._released = True
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        for name in ("_write_fd", "_read_fd"):
+            descriptor = getattr(self, name, -1)
+            if descriptor >= 0:
+                setattr(self, name, -1)
+                os.close(descriptor)
+
+    def _recheck(self) -> None:
+        if (
+            self._receipt_owner.current_witness(self._receipt)
+            != self._receipt.authority_witness
+        ):
+            raise self._error_type(self._error_prefix + "_receipt_stale")
+
+    def _current_closure_digest(self) -> str:
+        material = self._receipt_owner.current_native_launch_material(self._receipt)
+        return sha256(
+            canonical_json_bytes(cast(_GateClosureDocument, material.closure).to_dict())
+        ).hexdigest()

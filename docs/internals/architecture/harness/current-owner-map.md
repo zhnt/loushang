@@ -71,7 +71,7 @@ PackageProduct also owns the six-base read/publication transaction, crash
 Supervisor/native/C5 settlement, no-effect reservation settlement and pinned-stage
 lease repair. Worker owns the read-only cleanup evidence join. Coding keeps trust
 identities, Product admission and nominal records. Recovery orchestration and
-POSIX offline payload/start-gate custody remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
+start-gate activation-history/gated settlement remain unfinished parts of the [C07 bulk migration](c07-worker-bulk-migration.md);
 this slice does not complete that chain or its majority-exit target.
 
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
@@ -173,6 +173,12 @@ history paths to these owners. Worker.payload now also owns the original physica
 payload checks, named repair publication and precise remainder deletion. It reuses
 Journal write loops and Resources file consumption; Product authorization and
 Hosting process custody remain with their original owners.
+PackageProduct now also owns the original POSIX payload quiescence/GC/root scopes
+and complete planning/materialization/binding/recovery operations over those same
+Worker programs. Its existing Product authority owner holds the POSIX start-gate
+pipe, intent/bound Journal handoff, release and close sequence; Coding retains the
+nominal class, Product admission and error Profile. No second gate runtime or
+parallel payload recovery engine is introduced.
 Coding retains its public value facades, exact Product admission and a narrow
 access adapter; the original Product/GC and Hosting authorities remain separate.
 Other Worker profiles, Product evidence/preflight and broader cleanup coordination remain

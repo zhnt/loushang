@@ -26,6 +26,7 @@ import pytest
 
 from loushang.coding import package_product_worker_payload as code
 from loushang.coding.package_product_worker_history_read_v2 import _HISTORY_READER
+from loushang.harness.package_product import _linux_worker_recovery as payload_custody
 from loushang.harness.worker.history._rooted_supervisor import RootedSupervisorJournal
 from loushang.harness.worker.payload._repair import RepairJournal
 from loushang.harness.worker.payload._storage import PayloadStorage
@@ -228,6 +229,7 @@ def observe(name, base, patch):
 
     product = Product()
     patch.setattr(code, "PosixLocalWheelProductSessionOwner", Product)
+    patch.setattr(payload_custody, "PosixLocalWheelProductSessionOwner", Product)
 
     class Access:
         scope_id = "session-one"
@@ -411,7 +413,7 @@ def observe(name, base, patch):
             fault()
         return result
 
-    if hasattr(code, "_recovery"):
+    if hasattr(code, "_recovery") or hasattr(payload_custody, "_recovery"):
 
         def method(self, *args, **kwargs):
             return remove(*args, **kwargs)

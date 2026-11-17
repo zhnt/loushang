@@ -10,12 +10,14 @@ from __future__ import annotations
 import os
 import re
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, TypeVar, cast
 
+import loushang.harness.worker.payload._recovery as _recovery
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -28,6 +30,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.history._activation import _RetainedAttemptFields
 from loushang.harness.worker.history._activation_store import SegmentedActivationJournal
 from loushang.harness.worker.history._no_effect import is_no_effect_closure
@@ -39,12 +42,27 @@ from loushang.harness.worker.history._retention import (
     registered_repair_matches_no_effect_closure,
 )
 from loushang.harness.worker.history._start_gate import _StartGateRecordMethods
-from loushang.harness.worker.journal import WorkerAttemptRecordV1
-from loushang.harness.worker.payload._records import PayloadPlan
+from loushang.harness.worker.journal import (
+    WorkerAttemptRecordV1,
+    WorkerSupervisorJournal,
+)
+from loushang.harness.worker.payload._records import (
+    EmptyPayloadPlan,
+    PayloadPlan,
+    PayloadReview,
+)
 from loushang.harness.worker.payload._repair import RepairJournal
-from loushang.harness.worker.payload._storage import _DIR_FLAGS
+from loushang.harness.worker.payload._selected_payload import (
+    _MaterializedPayload,
+    _PendingPayload,
+    bind_selected_payload_request,
+    materialize_selected_payload,
+    plan_selected_payload_launch,
+)
+from loushang.harness.worker.payload._storage import _DIR_FLAGS, PayloadStorage
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
+    ProductWorkerActivationReceiptV1,
     WorkerCleanupDebtV1,
     WorkerCleanupSettlementV1,
     _CleanupDebtReason,
@@ -60,7 +78,14 @@ from ._linux_worker_history import (
     review_history,
     review_history_under_guard,
 )
-from ._worker_product_authority import ClosedProductWorkerCrashRecoveryAuthority
+from ._worker_product_authority import (
+    ClosedProductWorkerCrashRecoveryAuthority,
+    _PosixWorkerProductReceiptAuthority,
+)
+from .product_worker_candidate import (
+    ProductWorkerNativeLaunchMaterialFacts,
+    ProductWorkerSelectedPayloadFacts,
+)
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
@@ -1377,3 +1402,349 @@ def _settle_crash_c5_under_guard(
             f"{bindings.history.product_id}_worker_crash_c5_settlement_unverified"
         )
     return settled
+
+
+_PayloadResultT = TypeVar("_PayloadResultT")
+_PayloadPlanT = TypeVar("_PayloadPlanT", bound=PayloadPlan)
+_EmptyPlanT = TypeVar("_EmptyPlanT", bound=EmptyPayloadPlan)
+_UnmarkedReviewT = TypeVar("_UnmarkedReviewT", bound=PayloadReview)
+_PayloadReviewT = TypeVar("_PayloadReviewT")
+_PosixLeaseT = TypeVar(
+    "_PosixLeaseT", bound=_MaterializedPayload[ProductWorkerNativeLaunchMaterialFacts]
+)
+_PosixPendingT = TypeVar("_PosixPendingT", bound=_PendingPayload)
+_ReceiptT = TypeVar("_ReceiptT", bound=_ReceiptRecordMethods)
+_SelectedT = TypeVar("_SelectedT", bound=ProductWorkerSelectedPayloadFacts)
+_NativeT = TypeVar("_NativeT", bound=ProductWorkerNativeLaunchMaterialFacts)
+
+
+@dataclass(frozen=True, slots=True)
+class PosixProductWorkerPayloadCustody(
+    Generic[
+        _PayloadPlanT,
+        _EmptyPlanT,
+        _UnmarkedReviewT,
+        _PayloadReviewT,
+        _PosixLeaseT,
+        _PosixPendingT,
+    ]
+):
+    """Fixed complete Product operations over original payload/storage owners."""
+
+    storage: PayloadStorage
+    supervisor: Callable[[PosixLocalWheelProductSessionOwner], WorkerSupervisorJournal]
+    recovery_type: Callable[..., _PayloadReviewT]
+    lease_type: Callable[..., _PosixLeaseT]
+    pending_type: type[_PosixPendingT]
+    receipt_error_type: type[Exception]
+    error_prefix: str
+    stale_message: str
+    product_required_message: str
+
+    def review_complete(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _PayloadReviewT:
+        """Correlate an exact Product stage with its canonical Supervisor journal.
+
+        An absent or failed/fenced attempt does not establish process settlement.
+        This review does not authorize deleting the payload or restarting a Worker.
+        """
+        with (
+            self.offline(product),
+            self.storage.open_root(lambda: product.state_root) as root_fd,
+        ):
+            plan, record = _recovery.review_complete(
+                self.storage,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            )
+            return self.recovery_type(
+                plan=cast("_PayloadPlanT", plan), attempt_record=record
+            )
+
+    @contextmanager
+    def materialize(
+        self,
+        *,
+        receipt_owner: _PosixWorkerProductReceiptAuthority[
+            _ReceiptT, _SelectedT, _NativeT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+    ) -> Iterator[_PosixLeaseT]:
+        product = receipt_owner.product_owner
+        state_root = product.state_root
+        with materialize_selected_payload(
+            self.storage,
+            root=state_root,
+            authority=receipt_owner,
+            receipt=receipt,
+            attempt_id=attempt_id,
+            guard=lambda write: (
+                product.gc_gate.guard(require_write=True)
+                if write
+                else product.gc_gate.guard()
+            ),
+            assert_current=lambda: product.assert_root_gc_authority_current(),
+            supervisor=lambda: self.supervisor(product),
+            lease_factory=self.lease_type,
+            error_prefix=self.error_prefix,
+        ) as lease:
+            yield lease
+
+    def plan(
+        self,
+        *,
+        receipt_owner: _PosixWorkerProductReceiptAuthority[
+            _ReceiptT, _SelectedT, _NativeT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+    ) -> _PosixPendingT:
+        product = receipt_owner.product_owner
+        return plan_selected_payload_launch(
+            self.storage,
+            authority=receipt_owner,
+            receipt=receipt,
+            attempt_id=attempt_id,
+            guard=lambda write: (
+                product.gc_gate.guard(require_write=True)
+                if write
+                else product.gc_gate.guard()
+            ),
+            assert_current=lambda: product.assert_root_gc_authority_current(),
+            supervisor=lambda: self.supervisor(product),
+            pending_factory=cast(Callable[..., _PosixPendingT], self.pending_type),
+            error_prefix=self.error_prefix,
+        )
+
+    def bind(
+        self,
+        *,
+        receipt_owner: _PosixWorkerProductReceiptAuthority[
+            _ReceiptT, _SelectedT, _NativeT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        payload_lease: _PosixLeaseT,
+        supervisor_epoch: int,
+        pending_launch: _PosixPendingT | None = None,
+    ) -> ManagedWorkerLaunchRequestV1:
+        if (
+            payload_lease.receipt_fingerprint != receipt.fingerprint
+            or payload_lease.runtime.package_root
+            != receipt_owner.product_owner.state_root
+            / f"worker-payload-{payload_lease.attempt_id}"
+        ):
+            raise self.storage.error_type(self.error_prefix + "_binding_mismatch")
+        return bind_selected_payload_request(
+            self.storage,
+            authority=receipt_owner,
+            receipt=receipt,
+            payload_lease=payload_lease,
+            supervisor_epoch=supervisor_epoch,
+            pending_launch=pending_launch,
+            pending_type=self.pending_type,
+            guard=lambda write: (
+                receipt_owner.product_owner.gc_gate.guard(require_write=True)
+                if write
+                else receipt_owner.product_owner.gc_gate.guard()
+            ),
+            supervisor=lambda: self.supervisor(receipt_owner.product_owner),
+            receipt_error_type=self.receipt_error_type,
+            stale_message=self.stale_message,
+            error_prefix=self.error_prefix,
+        )
+
+    def preview_complete(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _PayloadPlanT:
+        return cast(
+            "_PayloadPlanT",
+            self._under_payload_root(
+                product, _recovery.preview_complete, attempt_id=attempt_id
+            ),
+        )
+
+    def preview_empty(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _EmptyPlanT:
+        return cast(
+            "_EmptyPlanT",
+            self._under_payload_root(
+                product,
+                _recovery.preview_empty,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def review_unmarked(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _UnmarkedReviewT:
+        return cast(
+            "_UnmarkedReviewT",
+            self._under_payload_root(
+                product,
+                _recovery.review_unmarked,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def repair_unmarked(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        expected_review: _UnmarkedReviewT,
+    ) -> _UnmarkedReviewT:
+        return cast(
+            "_UnmarkedReviewT",
+            self._under_payload_root(
+                product,
+                _recovery.repair_unmarked,
+                require_write=True,
+                expected_review=expected_review,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def reopen_unmarked(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _UnmarkedReviewT | None:
+        return cast(
+            "_UnmarkedReviewT | None",
+            self._under_payload_root(
+                product,
+                _recovery.reopen_unmarked,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def read_unmarked_intent(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _UnmarkedReviewT | None:
+        return cast(
+            "_UnmarkedReviewT | None",
+            self._under_payload_root(
+                product,
+                _recovery.read_unmarked_intent,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def reopen_empty(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _EmptyPlanT | None:
+        return cast(
+            "_EmptyPlanT | None",
+            self._under_payload_root(
+                product,
+                _recovery.reopen_empty,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def list_complete(
+        self, product: PosixLocalWheelProductSessionOwner
+    ) -> tuple[_PayloadPlanT, ...]:
+        return cast(
+            "tuple[_PayloadPlanT, ...]",
+            self._under_payload_root(product, _recovery.list_complete),
+        )
+
+    def repair_complete(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        expected_plan: _PayloadPlanT,
+    ) -> _PayloadPlanT:
+        return cast(
+            "_PayloadPlanT",
+            self._under_payload_root(
+                product,
+                _recovery.repair_complete,
+                require_write=True,
+                expected_plan=expected_plan,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def reopen_complete(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _PayloadPlanT | None:
+        return cast(
+            "_PayloadPlanT | None",
+            self._under_payload_root(
+                product,
+                _recovery.reopen_complete,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def read_complete_intent(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _PayloadPlanT | None:
+        return cast(
+            "_PayloadPlanT | None",
+            self._under_payload_root(
+                product,
+                _recovery.read_complete_intent,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def repair_empty(
+        self, product: PosixLocalWheelProductSessionOwner, *, expected_plan: _EmptyPlanT
+    ) -> _EmptyPlanT:
+        return cast(
+            "_EmptyPlanT",
+            self._under_payload_root(
+                product,
+                _recovery.repair_empty,
+                require_write=True,
+                expected_plan=expected_plan,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    @contextmanager
+    def offline(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        require_write: bool = False,
+    ) -> Iterator[None]:
+        if not isinstance(product, PosixLocalWheelProductSessionOwner):
+            raise TypeError(self.product_required_message)
+        registry = product.epoch_runtime.registry
+        with registry.exclusive_runtime_quiescence(
+            store_id=registry.store_id
+        ) as quiescence:
+            if quiescence.active_runtime_lease_ids:
+                raise self.storage.error_type(self.error_prefix + "_runtime_active")
+            product.assert_root_gc_authority_current()
+            with product.gc_gate.guard(require_write=require_write):
+                yield
+            product.assert_root_gc_authority_current()
+
+    def _under_payload_root(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        operation: Callable[..., _PayloadResultT],
+        *,
+        require_write: bool = False,
+        **arguments: object,
+    ) -> _PayloadResultT:
+        # Only the fixed named methods select a complete existing Worker program.
+        # No caller supplies individual stages, facts, cleanup or publication.
+        with (
+            self.offline(product, require_write=require_write),
+            self.storage.open_root(lambda: product.state_root) as root_fd,
+        ):
+            return operation(self.storage, root_fd, **arguments)
