@@ -311,6 +311,18 @@ Scoped mypy 初次发现公共 Windows ctor 原有的 optional Session 值不再
 
 本批 Coding −45、Harness +73、Hosting／其他生产0，系统生产 +28 行；累计 Coding −5,782、Harness +8,823、系统生产仍 +3,041 行。测试仍 +70，文档单列。通用绑定完整方法与真实消费者归位，但新增兼容公开转发和明确错误边界仍有成本；不将其算作系统净删减。C07 剩余14,484行，距过半退出还差4,352行；全部112文件最终处置、原生 Windows／H6 和正确 PR 基线整组交付验证仍未完成。
 
+## 完整 Product Capability authority 归现有 owner
+
+原 Package Product _worker_product_authority 接管完整 Capability authority：request／receipt／binding／owner policy 的身份闭合→保存原五个引用字段→原虚拟 current_authority 检查；后续每次 currentness 仍先执行 request validator、再核实 receipt witness／Worker owner、再读取实际 facet owner；facet 发行仍先核对当前 authority，再委托原 CapabilityWorkerFacetOwnerPolicy 取得原 grant 和固定 decoder。原调用／异常作用域和失败优先级保持。Code 的公开类、构造签名及完整闭合名义准入保留，原准确 owner policy 仍由产品提供；不搬走批准决策。Provider Host、operator query、composition 和准备适配仍引用同一 Code 公共类，真实候选已接通原操作。
+
+通用方法位于原 Product owner，而非给底层 Worker facet owner 增加 Product 生命周期依赖；既有 C51 consumer 边界保持，未修改白名单。实例只是原 Code 对象，新增泛型方法基类进入 MRO，原五项字段／引用、dict／weakref offsets、公开 getter／方法签名和 Code 类 pickle 路径不变。一个固定静态错误工厂在原失败点读取 Code 错误类型；没有按阶段或字段注入 callback、额外 authority 容器或生命周期管理器。初次 mypy 指出 ClassVar Callable 的描述符推断不符合 staticmethod，已改为准确的静态方法契约，未压制检查。
+
+既有完整候选（test-facts）、Capability query 与 import／C50／C51／C54 为204 passed、7 skipped；跳过的 host-runtime 路线不计作原生验证。最终两源 mypy、Ruff 及59份 Code 公开声明／字段、原测试入口／断言和用户改动哈希检查通过。固定错误工厂展开后，完整构造机制、getter、currentness 和 facet 发行 AST 与旧实现一致；原 Code 名义 guard、其他 Code 声明／__all__ 和全部原 Product owner 程序 AST 不变。
+
+原／当前1080组对照覆盖两种真实 Code receipt-owner 名义类型及30种准入／身份／currentness／facet 情形，162组实际触发故障、36组构造成功；每个成功对象连续调用 currentness 与发行两轮。真实 receipt／runtime／request／binding／grant 值和固定 decoder，受控整项 receipt／facet-policy 命令；比较事件、错误图、原五项引用及布局、公开签名和原 protocol4／5 authority pickle 字节，一致。探针使用名义 owner／policy envelope，不具有实际准入或执行效果；原生 Windows／H6 仍未执行。
+
+本批 Coding −73、Harness +102、Hosting／其他生产0，系统生产 +29 行；累计 Coding −5,855、Harness +8,925、系统生产仍 +3,070 行。测试仍 +70，文档单列。完整通用 authority 机制归位，Code 的名义准入及兼容构造入口和明确静态错误契约仍有适配成本，没有系统净删减收益。C07 剩余14,411行，距过半退出还差4,279行；全部112文件最终处置和正确 PR 基线全量交付验证未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

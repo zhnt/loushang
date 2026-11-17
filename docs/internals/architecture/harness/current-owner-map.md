@@ -423,6 +423,14 @@ errors. One private method base joins the MRO; the original four fields, instanc
 dictionary, lock and coordinator remain. [C07 binding evidence](c07-worker-bulk-migration.md#resume-结算绑定归原-c5-组件)
 records real lock-race checks, unchanged public shape and the remaining costs.
 
+The existing Product Worker authority owns complete Capability identity closure,
+Product currentness and facet grant/decoder handoff on the same Code object.
+Code keeps closed nominal admission and supplies the real facet-owner policy;
+that original policy still grants each facet. The original five references and
+Code pickle path remain; a typed generic method base joins the MRO without a
+second authority container. [C07 authority evidence](c07-worker-bulk-migration.md#完整-product-capability-authority-归现有-owner)
+records complete consumer coverage, original/current behavior and the costs.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding
