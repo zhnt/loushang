@@ -2,7 +2,7 @@
 
 - Authority: descriptive audit / execution evidence
 - Design status: accepted — implementation-owner review within C07 scope
-- Implementation status: implemented; applicable local assertions validated, remote delivery pending
+- Implementation status: delivered — task PR #894 and integration PR #895 merged; CI, synchronization and cleanup verified
 - Owner: Coding / Harness Worker / Package Product / Hosting
 - 执行基线：`cb54b4b6d13e82d7cb9043862ab67c20293e7b9f`；开始时 fetch 后 main 与 lane/harness 相同。
 - 方法查阅：本机 archmethod clean `master`，`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`；不声称与方法上游同步。
@@ -14,7 +14,7 @@
 引用是模块名静态匹配，不证明动态消费者不存在。函数体精确 AST 匹配未发现长度至少 13 行的完全相同体；这不排除带类型、错误标签、平台或步骤差异的语义重复。
 
 本轮验收范围为全部 C07，不以先完成某一链代替整组完成。先前迁移均是基线；已有 Worker storage/history、Package Product authority 和 Hosting 原生执行不重计收益。
-每个文件均已给出具体保留或退出理由；本地适用断言已验证。Windows 原生及未选中的平台路线未执行，见最终验证限制；远端交付尚未完成。
+每个文件均已给出具体保留或退出理由；本地适用断言已验证。Windows 原生及未选中的平台路线未执行，见最终验证限制；远端交付已由 PR #894/#895 完成。
 
 | 要求 | 完成证据 | 当前状态 |
 | --- | --- | --- |
@@ -24,7 +24,7 @@
 | 无平行框架或大量回调搬运 | 原 owner 接入与新增成本复核 | 四批及保留项已审查和本地验证；未新增框架/Protocol/账本 |
 | 系统成本与纯去重分别报告 | Coding/Harness/Hosting/其他/总量，测试和文档单列 | 已记录迁移/去重成本，累计生产 +42 |
 | 正常、失败、恢复、退休兼容 | 现有适用本地检查及远端平台实际结果 | 本地适用断言已验证；未执行的原生平台路线单列 |
-| PR→lane/harness→main、同步、清理、暂停 | 已合并 PR、提交树、分支和 Goal 返回状态 | 尚未交付 |
+| PR→lane/harness→main、同步与清理 | 已合并 PR、实际 CI、提交树及清理核验 | PR #894/#895 已合并；本地与远端已同步，原实现任务 worktree 已清理 |
 
 ## 实施顺序与已有 owner
 
@@ -68,7 +68,7 @@ Windows payload 的直接函数搬迁尚未采用：该模块目前 498 行，�
 - 仓库外原场景故障差分：34 组观察一致，其中 19 组实际触发故障；五个原作用域对照 70 组一致，覆盖活跃租约、正文返回及锁/正文/退出故障，五个产品政策体 AST 未变。
 - 原 native 测试仅调整 mock/故障注入目标，既有断言语义保留；没有将模拟结果当作 Windows 原生执行证据。
 
-此处为首批验证快照；整组最终本地结果见下文，远端交付仍待完成。
+此处为首批验证快照；整组本地结果及实际远端交付证据见下文。
 
 ## 第二批：复用既有删除 owner，退出重复目录程序
 
@@ -98,7 +98,7 @@ Windows payload 的直接函数搬迁尚未采用：该模块目前 498 行，�
 - 现有 publication compatibility 与 import boundaries：173 passed。两组结果有覆盖重叠，不相加声称独立用例总数。
 - 仓库外对照精确基线原程序：114 组比较一致，其中 72 组实际注入故障。六操作的事件/异常链、真实 rooted fixture 文件字节、两次重试及剩余文件一致；覆盖 runtime/GC/root/bind/写入/删除/退出故障、活跃租约、非法 cutoff、已提交 owner 重试和中途配额改变。锁及 review 事实使用现有合成模型，不替代原生平台验证。
 - 112 个模块的公开函数签名、公开类完整 AST 和显式 `__all__` 保持基线。两个改动测试文件的 46 条既有 assert、14 个测试函数的签名/参数化完全未变，只调整故障注入目标及 fake 的 bindings 参数。
-- 六个生产源 scoped mypy、八文件 Ruff 通过；最终适用完整回归和远端平台检查尚未完成。
+- 六个生产源 scoped mypy、八文件 Ruff 通过；此处为当批快照，整组本地回归与实际远端 CI 结果见最终验证记录。
 
 ## 第四批：直接复用、重复读取程序与无效胶水退出
 
@@ -127,7 +127,7 @@ semantic 捕获函数只返回一个延迟的纯名义值构造器，没有外�
 - 112 模块的公开函数签名、显式 __all__ 和公开类声明保持基线；唯一有意的方法体变化是 empty-debt fingerprint，已单独与精确原类对照。其他公开类完整 AST 未变。
 - 10 个变更生产源 scoped mypy、Ruff 和依赖事实检查通过；empty codec 后单源 mypy 通过。真实 Linux Product 事务 1 passed；该组合中 Windows 原生 42 skipped、host-runtime 7 deselected，明确不计为原生平台通过。
 
-## 最终本地验证与交付边界
+## 最终验证、交付与平台限制
 
 生产候选为 `e0a382e27c8682b958537cf176e3c9891000903c`；后续收尾只同步架构清单和文档，生产源码字节未变。按同一基线重新生成的现有检查计划未增加路线、平台或门禁。
 
@@ -144,9 +144,9 @@ semantic 捕获函数只返回一个延迟的纯名义值构造器，没有外�
 
 支持的 `python -m loushang.coding.cli --help` smoke 已通过；完整 Coding 回归包含既有真实 Session/tool/persistence/resume 等行为。原实现差分及名义契约核对是补充证据，不代替这些实际消费者。
 
-平台限制：本机未运行 Windows 原生 LPAC、Job/句柄和真实崩溃路线；`harness_native`、`host_runtime`、`windows_shell` 需所属平台/Actions。当前既有 fast 计划实际选中 architecture/units 工作流，未选相应 reusable 平台工作流；没有扩大门禁或额外 dispatch 不相关路线。Linux 真实 Product 事务已通过，Windows 合成模型/跳过项目不记作原生验证。
+平台限制：本机未运行 Windows Worker 原生 LPAC、Job/句柄和真实崩溃路线；`harness_native`、`host_runtime`、`windows_shell` 对应平台路线未选中。PR #894/#895 的现有 CI 均实际通过 architecture、Coding/Harness/Hosting 模块回归及 Ubuntu/Windows/macOS Resume E2E，没有扩大门禁或额外 dispatch。Linux 真实 Product 事务已通过；三平台 Resume、Windows 合成模型及跳过项目不代替 Worker 原生验证。
 
-远端交付仍待任务 PR→lane/harness、集成 PR→main、合并、本地同步及任务 worktree 安全清理；以上本地结果不冒充这些交付动作。最终 Goal 按用户指令在交付后暂停。
+交付证据：[任务 PR #894](https://github.com/zhnt/loushang/pull/894) 合入 `lane/harness`（`2209e8bbdac19ecfb33ec78e82969c78c90ae457`），[集成 PR #895](https://github.com/zhnt/loushang/pull/895) 于 2026-11-17 合入 `main`（`0e116370f748dd730bcca6bd9cf32348a567d475`）；两者全部现有检查通过。原交付时本地/远端 main 与 lane/harness 均同步到该提交，三处用户改动的差异哈希不变；原实现的两个任务 worktree 及本地分支在 clean、无独有提交核验后安全清理。
 
 ## 原 17 项 mixed 的职责处置与保留成本
 
@@ -158,11 +158,11 @@ Codex 实现 owner 按本任务第5项接受下列具体保留边界；不是用
 - **Windows preparation/checkpoint/bases/cutover/reference/source**：重复的来源捕获合一；全部底层 IO 仍复用既有 receipt/source/attempt owner。六种 Code base、native approval/Desired/backup 承诺及不切换 authority 的批准是具体产品模型。Linux V2 owner-index/segment 发布与这些 Windows 历史格式不同，不能直接拿来接管；也不另建平行 publication 框架。
 - **Windows payload 与 recovery inventory**：物理 stage 创建/验证及多源 inventory/admission 已在原 Harness。保留私有铸造请求、跨 Code receipt/backup 的批准和准确错误/类型适配；单 scope 包装实测系统 +38 已否决。更多 factories/多源 bindings 没有额外中性消费者，不为减少 Coding 行数增加装配层。
 
-后续可因新的真实消费者或协议需求重新评估这些保留项；本轮不预设迁移比例，也不承诺对原公开名义格式做破坏式压缩。本轮没有未处置的源码职责项；本地完整路线与受影响检查已验证，未执行的平台路线和远端 PR 交付另列。
+后续可因新的真实消费者或协议需求重新评估这些保留项；本轮不预设迁移比例，也不承诺对原公开名义格式做破坏式压缩。本轮没有未处置的源码职责项；本地完整路线与受影响检查已验证，未执行的平台路线和实际远端 PR 交付证据另列。
 
 ## 逐文件源码职责清点
 
-下表记录基线实物，所属链仅用于复核排序。全部文件已静态清点，112 个已完成源码职责复核，0 个待复核；原 17 项 mixed 已逐项给出处置及必要产品边界/适配保留理由。保留结论依据实际委托、名义/格式/产品职责及消费者；不因为文件短而保留，也不据静态无引用删除。源码职责复核与本地回归已完成；原生平台限制及待交付事项见最终验证记录。
+下表记录基线实物，所属链仅用于复核排序。全部文件已静态清点，112 个已完成源码职责复核，0 个待复核；原 17 项 mixed 已逐项给出处置及必要产品边界/适配保留理由。保留结论依据实际委托、名义/格式/产品职责及消费者；不因为文件短而保留，也不据静态无引用删除。源码职责复核与本地回归已完成；原生平台限制及实际交付证据见最终验证记录。
 
 | 文件（相对 Coding） | 基线行 | 源码引用文件 | 测试引用文件 | 复核链 | 当前语义处置 |
 | --- | ---: | ---: | ---: | --- | --- |

@@ -2,7 +2,7 @@
 
 本轮 C09 最新审计与候选实现见 [C09 收敛记录](c09-legacy-convergence.md)。
 C09 已完成本地验证与 PR #892/#893 合并交付，34 文件当前 7,624 行；详见收敛记录。
-C07 本轮已完成112文件职责处置与适用本地验证，当前20,266行；Coding −267、Harness +309、生产系统 +42，尚待远端交付；见 [C07 收敛记录](c07-worker-convergence.md)。
+C07 已通过 PR #894/#895 合并交付，112文件职责已处置，当前20,266行；Coding −267、Harness +309、生产系统 +42；实际 CI、同步清理与平台限制见 [C07 收敛记录](c07-worker-convergence.md)。
 
 
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
