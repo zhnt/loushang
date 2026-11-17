@@ -491,3 +491,13 @@ class RegisteredPayloadRepairIntentMethods:
             boot_identity=value["bootIdentity"],
             owner_generation=value["ownerGeneration"],
         )
+
+    @classmethod
+    def from_repair_record(cls, body: bytes, attempt_id: str) -> Self:
+        intent = cls.from_dict(json.loads(body))
+        if (
+            intent.attempt_id != attempt_id
+            or body != canonical_json_bytes(intent.to_dict()) + b"\n"
+        ):
+            raise ValueError("Registered Worker payload repair changed")
+        return intent

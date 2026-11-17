@@ -472,6 +472,18 @@ POSIX／Windows opt-in owner 不再各声明 current／allow／revoke 的同参�
 
 本批 Coding −29、Harness +31，系统生产 +2行，Hosting／其他生产／测试0，文档单列。累计 Coding −6,430、Harness +9,464、系统生产仍 +3,034行，C07余13,836行，距过半退出还差3,704行。收益是完整通用入口校验与既有执行 owner 合并，不重复计算此前已共享的编译流程。固定7f7dce52b的Hosting已517 passed／56 skipped，Harness整批仍在独立工作树运行；它们不验证本批后续源码，最终正确 base 的完整候选检查和全部112文件／过半验收仍待完成。
 
+## 注册修复记录完整解码与 opt-in Journal 复用
+
+原 Code _decode_repair_record 的 JSON 读取、虚拟 from_dict、attempt 关联、规范字节比较和错误完整归现有 RegisteredPayloadRepairIntentMethods.from_repair_record。Code 私有名称直接绑定该类方法，原 RepairJournal 消费者接线不变；原 JSON／canonical 原语已存在于该 H owner，不新增框架、状态、Protocol 或修复协调器。Code 名义记录的字段、slots、所有原公开方法和具体签名保持；57个原值／API／codec 观察及15组真实虚拟钩子故障／取消对照一致。四条原函数和 Journal protocol4／5 pickle 路由继续加载并解码真实 Code 值，正常记录 pickle 保持；探针首次因 AST 位置字段缺失未执行，修正探针后通过，未改 Product 或测试。
+
+私有解码器的 module／qualname／运行时注解、错误参数绑定前缀及新 callback pickle 发出格式随 bound classmethod 改变；receiver 为固定 Code 名义类，不承诺替换该模块类变量后仍重选 receiver。原类的 from_dict／to_dict／attempt_id 覆盖保持虚拟调用。当前执行代理在已授权职责内接受这一项私有 alias 变化；全局 callable 精确例外由25项增为26项，本批新增项仅为本解码器，不扩大公开记录／SDK 兼容例外。无实际消费者的两个旧 import 同步退出。
+
+CodingWorkerOptInJournal.change 的单次 super 转调也退出，直接继承原 OptInJournal 完整写入／重放操作。具体静态结果仍为 Code decision，原构造签名、调用参数形状、两份旧 bound-method pickle 字节及六组普通／MRO／失败／取消分派一致；原 H 程序、Code Profile 和数据声明不变。该 internal leaf 的反射 module／qualname／泛型运行时注解／class.__dict__ 归属变化在本次接受范围内；三个 registered review 属性与修复 intent 公开方法仍受原 API golden 精确约束，不能类推删除。
+
+既有 registered recovery／历史公开值1082 passed；opt-in／V2／append-tail／private binding87 passed，原断言与 fixtures 未改。四源 mypy及 journal／具体返回类型断言二源 mypy、Ruff、依赖图通过。两组测试覆盖有交叠，不相加；模型与纯值证据不替代原生 Windows。
+
+本批 Coding −30、Harness +10，系统生产净 −20行；Hosting／其他生产／测试0，文档单列。累计 Coding −6,460、Harness +9,474、系统生产仍 +3,014行；C07余13,806行，距过半退出仍差3,674行。完整 decoder 迁移与原有写机制的重复转调删除分别计数，不将旧 H 操作再次算作迁移收益；全组与最终完整候选验证未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

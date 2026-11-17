@@ -6,7 +6,6 @@ settled Supervisor fingerprint when the start gate remains an intent.
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from typing import cast
@@ -23,9 +22,6 @@ from loushang.harness.package_product._linux_worker_recovery import (
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.worker.history._retention import (
     registered_repair_matches_no_effect_closure,
@@ -166,16 +162,7 @@ __all__ = [
 ]
 
 
-def _decode_repair_record(
-    body: bytes, attempt_id: str
-) -> CodingWorkerRegisteredPayloadRepairIntentV1:
-    intent = CodingWorkerRegisteredPayloadRepairIntentV1.from_dict(json.loads(body))
-    if (
-        intent.attempt_id != attempt_id
-        or body != canonical_json_bytes(intent.to_dict()) + b"\n"
-    ):
-        raise ValueError("Registered Worker payload repair changed")
-    return intent
+_decode_repair_record = CodingWorkerRegisteredPayloadRepairIntentV1.from_repair_record
 
 
 def _repair_journal() -> RepairJournal[CodingWorkerRegisteredPayloadRepairIntentV1]:
