@@ -73,33 +73,13 @@ class CodingWorkerOptInV1(ProductWorkerOptInFacts):
     require_worker: bool
 
     def __post_init__(self) -> None:
-        for value in (self.plugin_id, self.contribution_id, self.owner_id):
-            if (
-                not isinstance(value, str)
-                or len(value) > _MAX_TEXT
-                or _IDENTIFIER.fullmatch(value) is None
-            ):
-                raise ValueError("Coding Worker opt-in identity is invalid")
-        if (
-            not isinstance(self.artifact_digest, str)
-            or _DIGEST.fullmatch(self.artifact_digest) is None
-        ):
-            raise ValueError("Coding Worker opt-in digest is invalid")
-        if (
-            not isinstance(self.native_platform, str)
-            or self.native_platform not in _NATIVE_PROFILES
-        ):
-            raise ValueError("Coding Worker opt-in platform is unsupported")
-        if (
-            type(self.owner_selection_generation) is not int
-            or self.owner_selection_generation < 1
-            or type(self.kill_switch_generation) is not int
-            or self.kill_switch_generation < 0
-            or type(self.require_worker) is not bool
-        ):
-            raise ValueError(
-                "Coding Worker opt-in generation or requiredness is invalid"
-            )
+        self._validate_opt_in(
+            max_text=_MAX_TEXT,
+            identifier=_IDENTIFIER,
+            digest=_DIGEST,
+            native_profiles=_NATIVE_PROFILES,
+            label="Coding Worker",
+        )
 
     def to_dict(self) -> dict[str, object]:
         return _OPT_IN_ENCODE_SCHEMA.encode(self)
@@ -128,20 +108,13 @@ class CodingWorkerNativeClosureV1(ProductWorkerNativeClosureFacts):
     containment_profile_digest: str
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.native_platform, str)
-            or self.native_platform not in _NATIVE_PROFILES
-            or not isinstance(self.native_profile_catalog_revision, str)
-            or len(self.native_profile_catalog_revision) > _MAX_TEXT
-            or _OPAQUE.fullmatch(self.native_profile_catalog_revision) is None
-        ):
-            raise ValueError("Coding Worker native closure identity is invalid")
-        for value in (
-            self.containment_launcher_digest,
-            self.containment_profile_digest,
-        ):
-            if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
-                raise ValueError("Coding Worker native closure digest is invalid")
+        self._validate_native_closure(
+            max_text=_MAX_TEXT,
+            opaque=_OPAQUE,
+            digest=_DIGEST,
+            native_profiles=_NATIVE_PROFILES,
+            label="Coding Worker",
+        )
 
     def to_dict(self) -> dict[str, object]:
         return _NATIVE_CLOSURE_SCHEMA.encode(self)

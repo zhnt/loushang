@@ -467,6 +467,14 @@ removes duplicate dispatch only; prior shared mechanisms are not counted again.
 records the exact callable metadata/binding delta, old global pickle lookups,
 consumer evidence and net system reduction.
 
+The existing Product Worker opt-in and native-closure facts also own their
+complete ordered value validators. Code retains its nominal dataclasses, slots,
+wire codecs and Product platform/identity rules, bound once per validation;
+there are no callbacks or extra validation objects. Before-call rule overrides
+and live platform mapping are retained, while private module pattern rebinding
+mid-validation is outside this boundary. [C07 fact validation evidence](c07-worker-bulk-migration.md#批准输入与原生闭合事实的完整校验归原-facts)
+records original data/pickle behavior, failure order and explicit system cost.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding

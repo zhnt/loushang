@@ -371,6 +371,16 @@ Code 的真实构造函数、字段和 MRO 不变，公开 Product-native 入口
 
 本批 Coding −87、Harness／Hosting／其他生产0，系统生产净 −87 行，所有原操作说明已经保留在真实 Harness owner，不靠删注释取得收益；测试无新增。累计 Coding −6,171、Harness +9,241、系统生产仍 +3,070 行，测试仍 +70，文档单列。C07 剩余14,095行，距过半退出还差3,963行；这不是整链或整组完成，全部112文件最终语义处置和正确 PR 基线全量交付验证仍未完成。原生 Windows／H6 未执行。
 
+## 批准输入与原生闭合事实的完整校验归原 facts
+
+已有 ProductWorkerOptInFacts 与 ProductWorkerNativeClosureFacts 接管两项完整值校验。批准输入依次核实三个身份、artifact digest、平台、owner／kill-switch generation 与 bool requiredness；原生闭合事实依次核实平台／catalog identity 和两个 digest。原短路顺序与错误文本保持。Coding 保留原名义 frozen dataclass、全部字段／slots／MRO／构造和公开方法签名、原 RecordSchema 编解码、平台 profile 清单及规则／错误标签，__post_init__ 只调用既有 facts 上的对应完整校验。未新增类、Protocol、callbacks、Schema 或第二份校验状态，也不向普通 H facts 自动注入构造准入；只由原 Code 构造显式调用。这些是 authority-free 数据，不授予启动或批准权。
+
+当前执行代理在已授权 Product／Harness 范围内接受一次构造内固定规则引用的边界：私有 max-text／regex 引用从原 Code 每一步全局查找改为每次校验调用时绑定，调用前覆盖仍生效；平台映射仍是原 live 对象。无需支持验证中途替换私有模块标量／pattern 来改变剩余步骤；不声称此类模块重绑定完全等价。实际顺序、pattern／membership 故障和取消仍在原字段检查点触发，不引入更早的规则有效性校验或平台写权限。保留这项明确差异，避免为几个私有常量引入字段 suppliers。
+
+固定规则展开后，两项原完整校验体 AST 一致；其余 Code 程序、类型声明、公开函数签名、字段和 H 原 facts／candidate／生命周期程序不变，既有25项内部 callable 例外范围没有增加。原／当前6174组构造对照中5915组为无效输入、259组成功，覆盖调用前文本限额／regex／平台映射覆盖及组合错误优先级；另20组 pattern／membership 事件对照中12组实际故障或取消，一致。两个真实 Code 记录的字段元数据、slots、MRO、构造签名、wire 及四份原 protocol4／5 pickle 字节与读取一致。模型只验证数据，不作为平台原生证据。既有 opt-in／Windows semantic base／backend DTO／真实候选为43 passed、7 skipped，六个实际生产／消费源 mypy 和 Ruff 通过。
+
+本批 Coding −27、Harness +60、Hosting／其他生产0，系统生产 +33 行，含明确的校验入口类型和 Code 规则适配成本。累计 Coding −6,198、Harness +9,301、系统生产仍 +3,103 行；测试仍 +70，文档单列。C07 剩余14,068行，距过半退出还差3,936行；两个完整校验归位不等于完整执行链验收或整组完成，全部112文件最终处置与整组交付验证继续保留。原生 Windows／H6 未执行。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
