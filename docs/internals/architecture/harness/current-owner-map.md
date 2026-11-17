@@ -475,6 +475,15 @@ and live platform mapping are retained, while private module pattern rebinding
 mid-validation is outside this boundary. [C07 fact validation evidence](c07-worker-bulk-migration.md#批准输入与原生闭合事实的完整校验归原-facts)
 records original data/pickle behavior, failure order and explicit system cost.
 
+The original WindowsWorkerCleanupEvidence also owns complete crash-evidence
+construction from the original readonly Product review and exact receipt,
+Supervisor/fingerprint/payload relation. Code retains the public factory and
+OS/Product/nominal admission, normal/enrollment bindings and identity policy.
+The same Code object, empty base slots and virtual setter failure points remain;
+no new recovery/evidence owner or cleanup right is introduced.
+[C07 crash factory evidence](c07-worker-bulk-migration.md#崩溃清理证据的完整历史工厂归原-evidence-owner)
+records full source expansion, fault/partial-state retry checks and system cost.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding

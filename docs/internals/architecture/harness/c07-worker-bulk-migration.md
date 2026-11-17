@@ -381,6 +381,16 @@ Code 的真实构造函数、字段和 MRO 不变，公开 Product-native 入口
 
 本批 Coding −27、Harness +60、Hosting／其他生产0，系统生产 +33 行，含明确的校验入口类型和 Code 规则适配成本。累计 Coding −6,198、Harness +9,301、系统生产仍 +3,103 行；测试仍 +70，文档单列。C07 剩余14,068行，距过半退出还差3,936行；两个完整校验归位不等于完整执行链验收或整组完成，全部112文件最终处置与整组交付验证继续保留。原生 Windows／H6 未执行。
 
+## 崩溃清理证据的完整历史工厂归原 evidence owner
+
+既有 WindowsWorkerCleanupEvidence 接管完整 crash factory：调用原只读 orphan-runtime review→关联原 receipt→检查 request／identity fingerprints、Supervisor 的严格 True/process_settled 及 payload 已退出→分配同一个 Code authority→按原顺序保存原七项字段。一次完整 review 命令仍由原 Product reader 执行，未拆成字段 suppliers。Code 的 for_crash_recovery 公开 classmethod、原 OS／准确 Product／receipt 类型／product-id 准入和错误顺序保留，既有恢复程序继续调用同一 Code 入口。没有新恢复器、evidence class、生命周期或持久状态；H 只保存原 Product 不透明引用，没有导入 Product 层或获得原生／删除权限。
+
+正常构造和 Resume enrollment 当前保留：它们的准入后主体主要是必要字段绑定，单独移动字段不是本批机制收益。原 host／boot identity 域、current_tree_witness 接线及 changed-boot／expired-lease 返回 False 的边界不变。H 的空 slots、Code 字段／实例布局／MRO／公开签名／pickle 路径保留；Code 正常构造仅补同一 Product 引用的准确类型注解。初次 mypy 指出 Self 工厂不能直接向空 slots 抽象基类写入子类字段，已使用七个固定 builtin setattr，保留原虚拟 __setattr__ 调度、顺序和失败行为；没有移除 slots、使用 object.__setattr__ 绕过 setter 或压制类型检查。
+
+源码完整展开新工厂并规范化固定 setattr 后，原 Code 全模块 AST 一致（另一个差异仅为上述局部类型注解）；全部原 H 算法、准入、构造与读取程序不变。现有25项内部别名例外没有扩大，其余66份 Code 声明／名义字段、原测试入口／断言和用户改动保持。540组原／当前对照中150组实际触发读取／字段／分配／setter 故障或取消，每组两次调用；实际 Code/Product/receipt/review/attempt/record 名义 envelope 的读取、错误、部分对象字段和重试轨迹一致。原 Code authority 的 dict／weakref offsets、MRO、公开 classmethod 签名和两份原 protocol4／5 pickle 字节／读取一致。完整 Product review IO 与 Product 构造受控，不能代替真实准入或原生 Windows。
+
+既有 Windows cleanup／crash cleanup／native settlement／Supervisor settlement／C5／Resume 为17 passed、1 skipped，三个实际 owner／消费源 mypy 和 Ruff 通过。本批 Coding −16、Harness +36、Hosting／其他生产0，系统生产 +20 行；累计 Coding −6,214、Harness +9,337、系统生产仍 +3,123 行。测试仍 +70，文档单列；C07 剩余14,052行，距过半退出还差3,920行，全部112文件最终处置与完整交付验证仍未完成。原生 Windows／H6 未执行，不把本工厂完成视为整条生命周期或整组完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

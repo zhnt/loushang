@@ -92,7 +92,9 @@ class CodingWindowsWorkerCleanupEvidenceAuthority(
         ):
             raise ValueError("Windows C5 cleanup requires one bound Product attempt")
         receipt_owner.product_owner.assert_root_gc_authority_current()
-        self._product = receipt_owner.product_owner
+        self._product: WindowsLocalWheelProductSessionOwner = (
+            receipt_owner.product_owner
+        )
         self._receipt = receipt
         self._attempt_id = request.identity.attempt_id
         self._owner_generation = request.identity.owner_generation
@@ -149,30 +151,12 @@ class CodingWindowsWorkerCleanupEvidenceAuthority(
             or type(receipt) is not ProductWorkerActivationReceiptV1
         ):
             raise ValueError("Windows C5 crash recovery requires an exact Product")
-        review = review_coding_windows_product_worker_orphan_runtime(
-            product, attempt_id=attempt_id
+        return cls._from_crash_recovery(
+            product=product,
+            receipt=receipt,
+            attempt_id=attempt_id,
+            review_runtime=review_coding_windows_product_worker_orphan_runtime,
         )
-        attempt = review.attempt
-        if (
-            attempt is None
-            or review.receipt_record is None
-            or review.receipt_record.receipt != receipt
-            or attempt.launch_request_fingerprint is None
-            or attempt.launch_identity_fingerprint is None
-            or attempt.supervisor_process_settled is not True
-            or attempt.supervisor_phase != "process_settled"
-            or attempt.payload_directory_identity is not None
-        ):
-            raise ValueError("Windows C5 crash recovery history is incomplete")
-        authority = cls.__new__(cls)
-        authority._product = product
-        authority._receipt = receipt
-        authority._attempt_id = attempt_id
-        authority._owner_generation = receipt.policy.owner_selection_generation
-        authority._request_fingerprint = attempt.launch_request_fingerprint
-        authority._identity_fingerprint = attempt.launch_identity_fingerprint
-        authority._mode = "crash"
-        return authority
 
     @property
     def host_identity(self) -> str:

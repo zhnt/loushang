@@ -6,7 +6,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar, cast
+from typing import Generic, Protocol, Self, TypeVar, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeLeaseV1,
@@ -868,6 +868,7 @@ class WindowsWorkerCleanupEvidence(ABC, Generic[_LiveReviewT]):
 
     __slots__ = ()
     _review_type: type[_LiveReviewT]
+    _product: object
     _receipt: ProductWorkerActivationReceiptV1
     _attempt_id: str
     _owner_generation: int
@@ -887,6 +888,41 @@ class WindowsWorkerCleanupEvidence(ABC, Generic[_LiveReviewT]):
 
     @abstractmethod
     def current_tree_witness(self, *, attempt_id: str) -> _LiveReviewT: ...
+
+    @classmethod
+    def _from_crash_recovery(
+        cls,
+        *,
+        product: object,
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+        review_runtime: Callable[..., _WindowsOrphanRuntimeReviewMethods],
+    ) -> Self:
+        """Bind a dead Session only from its persisted recovery join."""
+        review = review_runtime(product, attempt_id=attempt_id)
+        attempt = review.attempt
+        if (
+            attempt is None
+            or review.receipt_record is None
+            or review.receipt_record.receipt != receipt
+            or attempt.launch_request_fingerprint is None
+            or attempt.launch_identity_fingerprint is None
+            or attempt.supervisor_process_settled is not True
+            or attempt.supervisor_phase != "process_settled"
+            or attempt.payload_directory_identity is not None
+        ):
+            raise ValueError("Windows C5 crash recovery history is incomplete")
+        authority = cls.__new__(cls)
+        setattr(authority, "_product", product)
+        setattr(authority, "_receipt", receipt)
+        setattr(authority, "_attempt_id", attempt_id)
+        setattr(
+            authority, "_owner_generation", receipt.policy.owner_selection_generation
+        )
+        setattr(authority, "_request_fingerprint", attempt.launch_request_fingerprint)
+        setattr(authority, "_identity_fingerprint", attempt.launch_identity_fingerprint)
+        setattr(authority, "_mode", "crash")
+        return authority
 
     def _current_review_matches(
         self, *, witness: object, attempt_id: str
