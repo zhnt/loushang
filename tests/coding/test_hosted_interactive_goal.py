@@ -814,3 +814,160 @@ def test_hosted_review_checks_authority_and_required_evidence_then_joins_review_
             assert not binding._goal_commands.running and owner._closed and owner._scope.closed
 
     asyncio.run(asyncio.wait_for(scenario(), 45))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Managed-owned transcript fixture")
+@pytest.mark.parametrize("accept", [False, True], ids=["review-required", "completed"])
+def test_hosted_goal_cold_projection_preserves_original_journals(tmp_path, monkeypatch, accept):
+    from loushang.coding import hosted_goal_recovery
+    from loushang.coding.adapters._goal_store import goal_journal_path
+    from loushang.coding.hosted_goal_recovery import read_interactive_goal_recovery
+
+    async def scenario():
+        async with _managed(tmp_path) as (_, client, _, address, hosted, adapter, session_id):
+            binding = hosted._product_binding
+            directory = binding.control.session_manager.get_session_file().parent
+            absent = read_interactive_goal_recovery(directory, session_id)
+            assert absent.presence == "absent"
+            await _activate(client, address, hosted, adapter)
+            created = await binding.create_interactive_goal("Write a greeting in note.txt")
+            owner = binding._interactive_goal_owner
+            await run_goal(owner, created.goal_id)
+            if accept:
+                await owner.accept(created.goal_id, await owner.review_basis(created.goal_id))
+            state = owner.controller.query(created.goal_id)
+            assert state.status == ("completed" if accept else "paused")
+            if not accept:
+                assert state.reason == "review_required"
+            count = len(owner.controller.history.batches)
+            await binding.close_interactive_goal()
+            journal = goal_journal_path(directory, session_id)
+            work = journal.with_suffix(".work.jsonl")
+            original = (journal.read_bytes(), work.read_bytes(), adapter.calls)
+            result = read_interactive_goal_recovery(directory, session_id)
+            assert (result.goal_id, result.goal_status, result.revision, result.epoch) == (
+                state.id, state.status, state.revision, state.epoch,
+            )
+            assert result.read_only and result.reason_code == state.reason
+            assert result.batch_count == result.completed_count == count
+            assert not result.execution_unresolved
+            assert original == (journal.read_bytes(), work.read_bytes(), adapter.calls)
+            assert binding._interactive_goal_owner is None
+
+            original_read = hosted_goal_recovery._read
+
+            def change_work_during_read(path, stamp):
+                data = original_read(path, stamp)
+                if path == work:
+                    work.write_bytes(original[1] + b"\n")
+                return data
+
+            with monkeypatch.context() as patch:
+                patch.setattr(hosted_goal_recovery, "_read", change_work_during_read)
+                changed = read_interactive_goal_recovery(directory, session_id)
+                assert changed.reason_code == "source_changed" and changed.goal_id is None
+            work.write_bytes(original[1])
+
+            # Keep complete committed lines, stopping just before the last Work terminal fact.
+            lines = original[1].splitlines(keepends=True)
+            assert json.loads(lines[-1])["payload"]["kind"] == "WorkRunCompleted"
+            prefix = b"".join(lines[:-1])
+            work.write_bytes(prefix)
+            orphaned = read_interactive_goal_recovery(directory, session_id)
+            assert orphaned.presence == "present" and orphaned.goal_status == state.status
+            assert orphaned.orphaned_count == 1 and orphaned.completed_count == count - 1
+            assert orphaned.execution_unresolved and work.read_bytes() == prefix
+
+            first = json.loads(lines[0])
+            first["session_id"] = "different-session"
+            corrupt_log = json.dumps(first).encode() + b"\n" + b"".join(lines[1:])
+            work.write_bytes(corrupt_log)
+            bad = read_interactive_goal_recovery(directory, session_id)
+            assert bad.presence == "unavailable" and bad.reason_code == "work_log_invalid"
+            assert work.read_bytes() == corrupt_log
+
+            work.unlink()
+            missing = read_interactive_goal_recovery(directory, session_id)
+            assert missing.presence == "present" and missing.execution_unresolved
+            assert missing.completed_count == missing.orphaned_count == 0
+            assert not work.exists()
+            work.write_bytes(original[1])
+
+            header, *records = original[0].splitlines(keepends=True)
+            wrong_identity = json.loads(header) | {"session_id": "different-session"}
+            journal.write_bytes(json.dumps(wrong_identity).encode() + b"\n" + b"".join(records))
+            assert read_interactive_goal_recovery(directory, session_id).reason_code == "goal_journal_invalid"
+
+            alias = directory.parent / "unauthorized-alias"
+            alias.symlink_to(directory, target_is_directory=True)
+            assert read_interactive_goal_recovery(alias, session_id).reason_code == "source_changed"
+
+            truncated = original[0] + b'{"uncommitted":'
+            journal.write_bytes(truncated)
+            invalid = read_interactive_goal_recovery(directory, session_id)
+            assert invalid.presence == "unavailable" and invalid.reason_code == "goal_journal_invalid"
+            assert invalid.goal_id is None and invalid.execution_unresolved
+            assert journal.read_bytes() == truncated
+
+    asyncio.run(asyncio.wait_for(scenario(), 35))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Managed-owned transcript fixture")
+def test_managed_reopens_original_goal_session_read_only(tmp_path, monkeypatch):
+    from loushang.appserver.execution.model import InteractiveGoalCommandV1
+    from loushang.harnesswork.integrations.goal_store import _GoalWriter
+
+    async def scenario():
+        async with _managed(tmp_path) as (app, client, selector, address, hosted, adapter, session_id):
+            await _activate(client, address, hosted, adapter)
+            binding = hosted._product_binding
+            goal = await binding.create_interactive_goal("Write a greeting in note.txt")
+            await run_goal(binding._interactive_goal_owner, goal.goal_id)
+            state = binding._interactive_goal_owner.controller.query(goal.goal_id)
+            await client.close()
+            await app.close()
+
+        workspace = tmp_path / "workspace"
+        launch = CodingManagedApplicationLaunchV1(
+            workspace, tmp_path / "app-manifest", "coding.dynamic-goal", tmp_path / "transcripts",
+        )
+        attempt = create_coding_managed_attempt(launch, model=_model())
+        try:
+            app = await attempt.open()
+            app.enable_client_scopes()
+            client = app.open_client_scope()
+            attachment = await client.attach_mux(MuxAttachV1(selector))
+            member, = attachment.mux_space.members
+            assert member.session.session_id == session_id
+            address = SessionSnapshotRequestV1(
+                attachment.attachment_id, attachment.controller_generation, member.member_id,
+            )
+            hosted = (await client._session(
+                address.attachment_id, address.controller_generation, address.member_id,
+            ))._port
+            binding = hosted._product_binding
+            assert type(binding) is CodingDeferredHostedSessionV1 and binding._active is None
+            execution = client.execution_client
+            instance = execution.service_instance_id
+            snapshot = await execution.snapshot_execution_session(address, instance)
+            assert snapshot.supports_interactive_goal_recovery and not snapshot.supports_interactive_goal
+
+            def forbidden_lease(*args, **kwargs):
+                pytest.fail("history observation acquired a Goal Writer lease")
+
+            monkeypatch.setattr(_GoalWriter, "acquire", forbidden_lease)
+            observed = await execution.interactive_goal_recovery(address, instance)
+            assert (observed.goal_id, observed.goal_status, observed.revision, observed.epoch) == (
+                state.id, "paused", state.revision, state.epoch,
+            )
+            assert observed.reason_code == "review_required"
+            with pytest.raises(AppServiceError) as old_command:
+                await execution.control_interactive_goal(address, instance, InteractiveGoalCommandV1(
+                    state.id, "old-run", "run",
+                ))
+            assert old_command.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+            assert binding._active is None and not execution._registry._records
+        finally:
+            await attempt.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 35))

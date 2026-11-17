@@ -1,5 +1,19 @@
 {
   "interactiveGoal": {
+    "recovery": {
+      "title": "Historical Goal",
+      "readOnly": "Read-only history",
+      "loading": "Reading Goal history…",
+      "unavailable": "Goal history is unavailable.",
+      "active": "Active when last recorded",
+      "reason": "Recorded reason",
+      "batches": "Work batches",
+      "completed": "Completed Work",
+      "failed": "Failed Work",
+      "cancelled": "Cancelled Work",
+      "orphaned": "Orphaned Work",
+      "unresolved": "Some execution results are unconfirmed. Inspect the original workspace."
+    },
     "review": {
       "open": "Review result",
       "loading": "Reading current candidate…",

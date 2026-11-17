@@ -27,6 +27,13 @@
     "ExecutionSessionViewV1.revision",
     "ExecutionStateV1.revision",
     "ExecutionUpdateV1.revision",
+    "InteractiveGoalRecoveryV1.batch_count",
+    "InteractiveGoalRecoveryV1.cancelled_count",
+    "InteractiveGoalRecoveryV1.completed_count",
+    "InteractiveGoalRecoveryV1.epoch",
+    "InteractiveGoalRecoveryV1.failed_count",
+    "InteractiveGoalRecoveryV1.orphaned_count",
+    "InteractiveGoalRecoveryV1.revision",
     "InteractiveGoalReviewV1.check_count",
     "InteractiveGoalReviewV1.epoch",
     "InteractiveGoalReviewV1.revision",
@@ -35,10 +42,10 @@
     "MuxAttachV1.mailbox_capacity"
   ],
   "scope": "execution nested values plus attachment model shapes; not complete envelopes or auth",
-  "sourceDigest": "ad362ed8b7114d115af04a18bc5154c02640ea19e93b59f12fcb1511fd72f247",
+  "sourceDigest": "9626130dcd43952414942d43072a7413f11c2235a79311083088b2120de26875",
   "sources": {
-    "src/loushang/appserver/execution/codec.py": "efc01ca4252631f46b4707ec3dda2598189fdb666506ecdb192c10231ec65c17",
-    "src/loushang/appserver/execution/model.py": "f9269ea0de8521b6808f89439d733673f443552bd87c87b19ecb92b39915fdff",
+    "src/loushang/appserver/execution/codec.py": "60d1c1c32e0bbddda12b5dc3d30a1416c77e16820adae5926e1005fa5eb7ecfc",
+    "src/loushang/appserver/execution/model.py": "52c01d679c5227255f241f3385760bd1bd4bfd8bd03928000960700579966847",
     "src/loushang/appserver/protocol/codec.py": "172d29b2d2a813bd64f1fa3982bf7c199582e86423b680a00a26e22453e0430e",
     "src/loushang/appserver/protocol/errors.py": "614abb6e0df0e9f29ff152de9d794e681f3cd3b9e1b334f961eda503959c25f9",
     "src/loushang/appserver/protocol/model.py": "f21314904c91710ad5b8c16764a540eb52ecbffab296c1e99979c8891a4b990f"

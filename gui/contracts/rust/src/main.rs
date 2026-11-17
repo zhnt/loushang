@@ -74,6 +74,7 @@ fn bridge(kind: &str, wire: &str, profile: Option<&str>) -> Result<Value, ()> {
     } else if kind == "goal_progress"
         || kind == "interactive_goal"
         || kind == "interactive_goal_review"
+        || kind == "interactive_goal_recovery"
     {
         projection::control_bridge(kind, wire)
     } else if kind == "hello" {

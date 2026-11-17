@@ -12,6 +12,7 @@ from .model import (
     ExecutionSessionSnapshotV1,
     ExecutionUpdateV1,
     InteractiveGoalCommandV1,
+    InteractiveGoalRecoveryV1,
     InteractiveGoalReviewSubmissionV1,
     InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
@@ -101,6 +102,13 @@ class InteractiveGoalReviewClientPortV1(Protocol):
     async def submit_interactive_goal_review(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str, command: InteractiveGoalReviewSubmissionV1,
     ) -> InteractiveGoalViewV1: ...
+
+
+@runtime_checkable
+class InteractiveGoalRecoveryClientPortV1(Protocol):
+    async def interactive_goal_recovery(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+    ) -> InteractiveGoalRecoveryV1: ...
 
 
 ExecutionPortV1 = ExecutionClientV1

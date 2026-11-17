@@ -7,6 +7,7 @@ from typing import Protocol, runtime_checkable
 
 from loushang.appserver.execution.model import (
     InteractiveGoalCommandV1,
+    InteractiveGoalRecoveryV1,
     InteractiveGoalReviewSubmissionV1,
     InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
@@ -100,3 +101,11 @@ class HostedInteractiveGoalReviewPortV1(HostedInteractiveGoalCommandPortV1, Prot
     async def interactive_goal_review(
         self, goal_id: str, *, check_current: Callable[[], None],
     ) -> InteractiveGoalReviewV1: ...
+
+
+@runtime_checkable
+class HostedInteractiveGoalRecoveryPortV1(Protocol):
+    @property
+    def supports_interactive_goal_recovery(self) -> bool: ...
+
+    async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1: ...

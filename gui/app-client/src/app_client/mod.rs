@@ -124,6 +124,10 @@ pub enum ControlCommand {
         command: InteractiveGoalCommand,
         reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
     },
+    ReadInteractiveGoalRecovery {
+        session_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
     ReadInteractiveGoalReview {
         session_id: String,
         goal_id: String,
@@ -290,6 +294,7 @@ fn open_channel(
     stop: Option<&super::read_stop::ReadStop>,
     attempt: &connection_epoch::Attempt,
     request_thinking: bool,
+    request_goal_recovery: bool,
 ) -> Result<OpenChannel, ()> {
     client.1.set("connection_failed");
     let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
@@ -337,8 +342,14 @@ fn open_channel(
     if request_thinking {
         let mut capabilities = serde_json::to_value(&hello).map_err(|_| ())?;
         capabilities["sessionThinking"] = serde_json::Value::Bool(true);
+        if request_goal_recovery {
+            capabilities["interactiveGoalRecovery"] = serde_json::Value::Bool(true);
+        }
         let echo = serde_json::to_vec(&capabilities).map_err(|_| ())?;
         channel.send(&echo)?;
+        if request_goal_recovery {
+            client.1.set("goal_recovery_negotiation");
+        }
         if channel.receive()? != echo {
             return Err(());
         }
@@ -376,17 +387,30 @@ fn run_attempt(
     if cancel == Some(Duration::ZERO) {
         return Err(());
     }
-    let (stream, _cancel_owner, mut channel, hello) = open_channel(
-        client,
-        &record,
-        &profile,
-        address,
-        &deadline,
-        cancel,
-        stop.as_ref(),
-        &attempt,
-        control_commands.is_some(),
-    )?;
+    let interactive = control_commands.is_some();
+    let open = |recovery| {
+        open_channel(
+            client,
+            &record,
+            &profile,
+            address,
+            &deadline,
+            cancel,
+            stop.as_ref(),
+            &attempt,
+            interactive,
+            recovery,
+        )
+    };
+    let (stream, _cancel_owner, mut channel, hello) = open(interactive).or_else(|()| {
+        if interactive && client.1.get() == "goal_recovery_negotiation" {
+            // Old Hosts close on an unrecognized echo. Try their original shape
+            // on a fresh authenticated channel with the same startup deadline.
+            open(false)
+        } else {
+            Err(())
+        }
+    })?;
     let instance = &hello.service_instance_id;
     if attach {
         client.1.set("attachment_unavailable");
@@ -555,7 +579,7 @@ impl AppClient {
         let attempt = self.0.begin()?;
         let (record, profile, address) = self.load_record(target)?;
         let (stream, _cancel, mut channel, hello) = open_channel(
-            self, &record, &profile, address, &deadline, None, None, &attempt, false,
+            self, &record, &profile, address, &deadline, None, None, &attempt, false, false,
         )?;
         let result = operation(&mut channel, &hello);
         let _ = stream.shutdown(Shutdown::Both);
@@ -700,6 +724,12 @@ fn process_controls<R: Read, W: Write>(
             } => {
                 let result =
                     authority.control_interactive_goal(channel, &session_id, command, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ReadInteractiveGoalRecovery { session_id, reply } => {
+                let result = authority.interactive_goal_recovery(channel, &session_id, &request_id);
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

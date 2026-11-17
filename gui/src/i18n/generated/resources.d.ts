@@ -179,6 +179,20 @@ export default interface Resources {
       "loading": "Checking goal status…",
       "not_ready": "Send an ordinary message to prepare the Coding tools before creating a goal.",
       "open": "Create development goal",
+      "recovery": {
+        "active": "Active when last recorded",
+        "batches": "Work batches",
+        "cancelled": "Cancelled Work",
+        "completed": "Completed Work",
+        "failed": "Failed Work",
+        "loading": "Reading Goal history…",
+        "orphaned": "Orphaned Work",
+        "readOnly": "Read-only history",
+        "reason": "Recorded reason",
+        "title": "Historical Goal",
+        "unavailable": "Goal history is unavailable.",
+        "unresolved": "Some execution results are unconfirmed. Inspect the original workspace."
+      },
       "review": {
         "accept": "Accept result",
         "checksMissing": "Current passing evidence is missing for one or more of the {{total}} configured checks.",

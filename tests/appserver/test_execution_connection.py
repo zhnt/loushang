@@ -275,3 +275,55 @@ async def test_execution_requires_explicit_profile_and_injected_capability():
     with pytest.raises(ValueError):
         AppServerConnectionV1(first, AppFramedStreamV1(right), execution=first.execution_client)
     await service.close()
+
+
+@pytest.mark.parametrize("extensions", [None, "thinking", "recovery"])
+def test_cold_goal_recovery_capability_is_fenced_by_the_hello_echo(extensions):
+    from loushang.appserver.execution.model import InteractiveGoalRecoveryV1
+
+    async def run():
+        service, _, first, _, _, control, product = await fixture()
+        product.supports_interactive_goal_recovery = True
+        expected = InteractiveGoalRecoveryV1("absent", "no_goal")
+        calls = []
+
+        async def observe():
+            calls.append(control)
+            return expected
+
+        product.interactive_goal_recovery = observe
+        left, right = _pair()
+        frames = AppFramedStreamV1(left)
+        server = AppServerConnectionV1(
+            first, AppFramedStreamV1(right), profile=AppConnectionProfileV1.LOCAL_EXECUTION,
+            execution=first.execution_client,
+        )
+        serving = asyncio.create_task(server.serve())
+        enabled = extensions == "recovery"
+        try:
+            hello = await frames.receive()
+            echo = _loads(hello)
+            if extensions:
+                echo["sessionThinking"] = True
+            if enabled:
+                echo["interactiveGoalRecovery"] = True
+            await frames.send(_dumps(echo))
+            if extensions:
+                assert await frames.receive() == _dumps(echo)
+            await frames.send(encode_call(ExecutionCallV1(
+                "1", ExecutionOperationV1.SNAPSHOT, control, "instance",
+            )))
+            snapshot = await frames.receive()
+            assert ("supportsInteractiveGoalRecovery" in _loads(snapshot)["result"]) == enabled
+            await frames.send(encode_call(ExecutionCallV1(
+                "2", ExecutionOperationV1.INTERACTIVE_GOAL_RECOVERY, control, "instance",
+            )))
+            result = decode_execution_response(await frames.receive()).result
+            assert result == (expected if enabled else AppFailureV1(AppErrorCodeV1.OPERATION_UNAVAILABLE))
+            assert calls == ([control] if enabled else [])
+        finally:
+            await frames.close()
+            await serving
+            await service.close()
+
+    asyncio.run(run())

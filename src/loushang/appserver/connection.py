@@ -18,6 +18,7 @@ from .execution.model import (
     ExecutionResponseV1,
     ExecutionResultV1,
     ExecutionServiceErrorV1,
+    ExecutionSessionSnapshotV1,
 )
 from .framing import (
     AppConnectionClosedError,
@@ -96,6 +97,7 @@ class AppServerConnectionV1:
             self._hello = connection_hello(profile)
         self._execution = execution
         self._session_thinking = False
+        self._goal_recovery = False
         if supports_managed_mux(profile) != (managed_mux is not None):
             raise ValueError("managed profile requires its explicit capability")
         self._managed_mux = managed_mux
@@ -128,11 +130,12 @@ class AppServerConnectionV1:
                 if echo != self._hello:
                     # Legacy peers exchange the exact original hello and keep
                     # the original model result shape on this connection.
-                    if self._execution is None or echo != _dumps({
-                        **_loads(self._hello), "sessionThinking": True,
-                    }):
+                    thinking = {**_loads(self._hello), "sessionThinking": True}
+                    recovery = {**thinking, "interactiveGoalRecovery": True}
+                    if self._execution is None or echo not in (_dumps(thinking), _dumps(recovery)):
                         raise InvalidAppMessageError()
                     self._session_thinking = True
+                    self._goal_recovery = echo == _dumps(recovery)
                     await self._stream.send(echo)
             self._receiver = asyncio.create_task(self._receive_requests())
             completed, _ = await asyncio.wait(
@@ -172,7 +175,7 @@ class AppServerConnectionV1:
             control = request.operation in CONTROL_OPERATIONS or request.operation in {
                 ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GET, ExecutionOperationV1.FIND,
                 ExecutionOperationV1.RESUME_INPUT_LOOKUP, ExecutionOperationV1.INTERACTIVE_GOAL_STATUS,
-                ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND,
+                ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND, ExecutionOperationV1.INTERACTIVE_GOAL_RECOVERY,
                 ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW, ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT,
             } or isinstance(request, ManagedMuxCloseCallV1) and request.read_result
             maximum = MAX_CONTROL_REQUESTS if control else MAX_ORDINARY_REQUESTS
@@ -271,7 +274,11 @@ class AppServerConnectionV1:
                 and not supports_resume_input_lookup(self._profile)
             ):
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            if request.operation is ExecutionOperationV1.INTERACTIVE_GOAL_RECOVERY and not self._goal_recovery:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             result = await dispatch_execution(self._execution, request)
+            if isinstance(result, ExecutionSessionSnapshotV1) and result.supports_interactive_goal_recovery and not self._goal_recovery:
+                result = replace(result, supports_interactive_goal_recovery=False)
         except ExecutionServiceErrorV1 as error:
             result = ExecutionFailureV1(error.code)
         except AppServiceError as error:

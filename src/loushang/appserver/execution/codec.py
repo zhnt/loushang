@@ -42,6 +42,7 @@ from .model import (
     ExecutionUpdateV1,
     InteractiveGoalCommandV1,
     InteractiveGoalCommandViewV1,
+    InteractiveGoalRecoveryV1,
     InteractiveGoalReviewSubmissionV1,
     InteractiveGoalReviewV1,
     InteractiveGoalViewV1,
@@ -77,6 +78,11 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ),
     InteractiveGoalCommandV1: ("goal_id", "command_id", "action"),
     InteractiveGoalCommandViewV1: ("command_id", "action", "status"),
+    InteractiveGoalRecoveryV1: (
+        "presence", "reason_code", "goal_id", "goal_status", "revision", "epoch",
+        "batch_count", "completed_count", "failed_count", "cancelled_count", "orphaned_count",
+        "execution_unresolved", "read_only",
+    ),
     InteractiveGoalReviewSubmissionV1: ("goal_id", "review_token", "command_id", "decision", "reason"),
     InteractiveGoalReviewV1: ("goal_id", "revision", "epoch", "review_token", "changed_files",
                               "files_truncated", "check_count", "checks_satisfied"),
@@ -90,7 +96,7 @@ _FIELDS: dict[type, tuple[str, ...]] = {
 }
 _GOAL_CAPABILITIES = (
     "supports_goal_progress", "supports_goal_start", "supports_interactive_goal",
-    "supports_interactive_goal_commands",
+    "supports_interactive_goal_commands", "supports_interactive_goal_recovery",
 )
 _REVIEW_SUBMISSION_KEYS = {"goalId", "reviewToken", "commandId", "decision", "reason"}
 _GOAL_COMMAND_KEYS = {"goalId", "commandId", "action"}
@@ -100,6 +106,7 @@ _KINDS: dict[str, type] = {
     "goal_progress": ExecutionGoalProgressV1,
     "interactive_goal": InteractiveGoalViewV1,
     "interactive_goal_review": InteractiveGoalReviewV1,
+    "interactive_goal_recovery": InteractiveGoalRecoveryV1,
     "record": ExecutionRecordV1, "snapshot": ExecutionSessionSnapshotV1,
     "events": ExecutionEventsV1, "failure": ExecutionFailureV1,
     "app_failure": AppFailureV1,

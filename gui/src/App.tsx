@@ -8,6 +8,7 @@ import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
 import { GoalProgress } from "./GoalProgress";
+import { InteractiveGoalRecovery } from "./InteractiveGoalRecovery";
 import { InteractiveGoal } from "./InteractiveGoal";
 import { GoalStart, useGoalStart } from "./GoalStart";
 import { ToolApproval } from "./ToolApproval";
@@ -735,7 +736,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   enabled={Boolean(submitAllowed && selected.status !== "running")}
                   onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
                 <GoalStart {...goalStart} />
-                {selected.supportsInteractiveGoal && client.createInteractiveGoal && client.interactiveGoalStatus && state.remote.source.kind === "live" ? (
+                {selected.supportsInteractiveGoalRecovery && client.interactiveGoalRecovery && state.remote.source.kind === "live" ? (
+                  <InteractiveGoalRecovery
+                    key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
+                      state.remote.source.muxSpaceId, state.remote.source.connectionEpoch, selected.id])}
+                    client={client} sessionId={selected.id} instanceId={state.remote.source.serviceInstanceId}
+                    epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null} />
+                ) : null}
+                {!selected.supportsInteractiveGoalRecovery && selected.supportsInteractiveGoal && client.createInteractiveGoal && client.interactiveGoalStatus && state.remote.source.kind === "live" ? (
                   <InteractiveGoal
                     key={JSON.stringify([state.remote.source.connectionId, state.remote.source.serviceInstanceId,
                       state.remote.source.muxSpaceId, selected.id])}

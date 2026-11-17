@@ -627,6 +627,17 @@ pub(crate) async fn live_interactive_goal_command(
 }
 
 #[tauri::command]
+pub(crate) async fn live_interactive_goal_recovery(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractiveGoalInput,
+) -> Result<Option<serde_json::Value>, String> {
+    send_interactive_goal(&state, input, |session_id, reply| {
+        ControlCommand::ReadInteractiveGoalRecovery { session_id, reply }
+    })
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn live_interactive_goal_review(
     state: tauri::State<'_, LiveLaunchState>,
     input: LiveInteractiveGoalReviewInput,
