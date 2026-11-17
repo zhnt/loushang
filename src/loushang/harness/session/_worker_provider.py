@@ -479,8 +479,39 @@ def _prepare_worker_session_inputs(
     ],
     error_type: type[RuntimeError],
     error_prefix: str,
+    receipt_owner_types: tuple[type[object], ...],
+    capability_authority_type: type[object],
+    invalid_inputs_message: str,
 ) -> SessionCapabilityCompositionInputs:
     """Rejoin exact Worker facts and compile the existing Session request."""
+    if (
+        not isinstance(resolved_providers, ResolvedCapabilityProviderSet)
+        or not isinstance(provider_owner, CapabilityProviderOwnerAuthority)
+        or type(receipt_owner) not in receipt_owner_types
+        or (not isinstance(receipt, ProductWorkerActivationReceiptV1))
+        or (not isinstance(worker_admission, CapabilityWorkerAdmissionV1))
+        or (type(evaluated_at) is not int)
+        or (evaluated_at < 0)
+        or (not callable(clock))
+        or (
+            deferred_prepare is None
+            and (
+                not isinstance(capability_authority, capability_authority_type)
+                or not isinstance(adapter, CapabilityQueryWorkerAdapter)
+                or (not callable(release_attempt))
+            )
+        )
+        or (
+            deferred_prepare is not None
+            and (
+                not callable(deferred_prepare)
+                or capability_authority is not None
+                or adapter is not None
+                or (release_attempt is not None)
+            )
+        )
+    ):
+        raise TypeError(invalid_inputs_message)
     if (
         len(resolved_providers.entries) != 1
         or resolved_providers.roots != (resolved_providers.entries[0].capability_id,)

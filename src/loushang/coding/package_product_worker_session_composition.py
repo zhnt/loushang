@@ -104,6 +104,7 @@ _PREPARE_WORKER_SESSION_INPUTS = partial(
     consumer_requirements=_coding_worker_session_consumer_requirements,
     error_type=CodingWorkerSessionCompositionError,
     error_prefix="coding_worker",
+    invalid_inputs_message="Coding Worker Session composition inputs are invalid",
 )
 
 
@@ -133,42 +134,12 @@ def prepare_coding_product_worker_session_inputs(
     its own; its prepared attempt is released on graph abort or disposal.
     """
 
-    if (
-        not isinstance(resolved_providers, ResolvedCapabilityProviderSet)
-        or not isinstance(provider_owner, CapabilityProviderOwnerAuthority)
-        or type(receipt_owner)
-        not in (
+    return _PREPARE_WORKER_SESSION_INPUTS(
+        receipt_owner_types=(
             CodingWorkerProductReceiptOwner,
             CodingWindowsWorkerProductReceiptOwner,
-        )
-        or not isinstance(receipt, ProductWorkerActivationReceiptV1)
-        or not isinstance(worker_admission, CapabilityWorkerAdmissionV1)
-        or type(evaluated_at) is not int
-        or evaluated_at < 0
-        or not callable(clock)
-        or (
-            deferred_prepare is None
-            and (
-                not isinstance(
-                    capability_authority, CodingProductWorkerCapabilityAuthority
-                )
-                or not isinstance(adapter, CapabilityQueryWorkerAdapter)
-                or not callable(release_attempt)
-            )
-        )
-        or (
-            deferred_prepare is not None
-            and (
-                not callable(deferred_prepare)
-                or capability_authority is not None
-                or adapter is not None
-                or release_attempt is not None
-            )
-        )
-    ):
-        raise TypeError("Coding Worker Session composition inputs are invalid")
-
-    return _PREPARE_WORKER_SESSION_INPUTS(
+        ),
+        capability_authority_type=CodingProductWorkerCapabilityAuthority,
         resolved_providers=resolved_providers,
         provider_owner=provider_owner,
         receipt_owner=receipt_owner,

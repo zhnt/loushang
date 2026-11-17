@@ -464,6 +464,14 @@ POSIX／Windows opt-in owner 不再各声明 current／allow／revoke 的同参�
 
 两项原失败测试在后续提交上定向重跑2 passed；完整受影响 Harness 与此前未执行的 Hosting 路线仍待通过。该修正仅改变测试库存与验证记录，不计为迁移或生产代码删减收益；C07仍余13,865行，系统生产仍净增3,032行。
 
+## Session Worker 完整入口校验并入编译 owner
+
+原 prepare_coding_product_worker_session_inputs 的整段类型／时钟／直接与 deferred 输入形状校验已进入现有 Session _prepare_worker_session_inputs，紧接其后执行原 provider 闭合、当前选择复读和图编译。Code 保留实际允许的 receipt-owner／capability-authority 名义类、错误文案、查询 owner 政策与公开入口；名义类在每次公开调用时传入，不增加持久状态、Protocol、阶段回调或新的校验器。原 Code 数据声明、公开参数／返回类型、图关系／选中证据验证及所有原 H 执行体保持。通用类型名由所属 H 模块解析，不承诺继续支持 monkeypatch Code 对这些通用类型的导入别名；实际类型对象与数据身份不变。
+
+61项既有 composition golden、Supervisor／graph handoff 和 Resume 消费者通过，五源 mypy 和 Ruff 通过；未改用例、断言或 fixtures。与原完整公开操作2112组对照一致，包含2074个错误、38次成功请求及470组实际故障／取消，比较真实 resolver／admission／compiler／请求事实、事件顺序、cause／context 及两个 async graph generation。受控 native／Product 端口不作为原生平台证据。源码审计证明原整段 guard 仅替换 Code 名义类／错误文案为 Policy 参数，原共享编译体及其他 Code／H 声明不变；当前执行代理在已授权职责内接受该归属与限定类型别名变化。
+
+本批 Coding −29、Harness +31，系统生产 +2行，Hosting／其他生产／测试0，文档单列。累计 Coding −6,430、Harness +9,464、系统生产仍 +3,034行，C07余13,836行，距过半退出还差3,704行。收益是完整通用入口校验与既有执行 owner 合并，不重复计算此前已共享的编译流程。固定7f7dce52b的Hosting已517 passed／56 skipped，Harness整批仍在独立工作树运行；它们不验证本批后续源码，最终正确 base 的完整候选检查和全部112文件／过半验收仍待完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
