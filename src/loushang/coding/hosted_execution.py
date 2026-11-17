@@ -12,13 +12,6 @@ from uuid import uuid4
 from loushang.ai.model import normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
-from loushang.appserver.execution.model import (
-    InteractiveGoalCommandV1,
-    InteractiveGoalRecoveryV1,
-    InteractiveGoalReviewSubmissionV1,
-    InteractiveGoalReviewV1,
-    InteractiveGoalViewV1,
-)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -66,6 +59,7 @@ from .appservice_adapter import (
     CodingHostedSessionBindingV1,
     CodingHostedSessionV1,
 )
+from .hosted_execution_goal import _HostedExecutionGoal
 from .hosted_resume import CodingDeferredHostedSessionV1
 from .hosted_session import CodingHostedHistoryBindingV1, CodingRealHostedSessionV1
 
@@ -127,7 +121,7 @@ def _owns_execution_projection(owner: _LeasedCodingHostedBinding, binding: objec
     )
 
 
-class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
+class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal):
     """Own the optional capability and the legacy surface on one real binding.
 
     The caller transfers exclusive binding ownership. No second Hosted adapter
@@ -140,10 +134,7 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
         *,
         owner: CodingHostedSessionBindingV1 | None = None,
     ) -> None:
-        if type(binding) not in {
-            CodingRealHostedSessionV1,
-            CodingDeferredHostedSessionV1,
-        }:
+        if type(binding) not in {CodingRealHostedSessionV1, CodingDeferredHostedSessionV1}:
             raise TypeError("execution requires a Coding Product binding")
         if owner is not None:
             from .hosted_application import _LeasedCodingHostedBinding
@@ -176,90 +167,8 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     def execution_state(self) -> ExecutionStateV1 | None:
         return self._guard.state
 
-    @property
-    def supports_interactive_goal(self) -> bool:
-        return type(self) is CodingHostedExecutionSessionV1 and type(self._product_binding) is CodingRealHostedSessionV1
-
-    @property
-    def supports_interactive_goal_recovery(self) -> bool:
-        binding = self._product_binding
-        return (type(self) is CodingHostedExecutionSessionV1
-                and isinstance(binding, CodingDeferredHostedSessionV1)
-                and binding.supports_interactive_goal_recovery)
-
-    async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1:
-        self._require_execution_open()
-        binding = self._product_binding
-        if not self.supports_interactive_goal_recovery or not isinstance(binding, CodingDeferredHostedSessionV1):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return await binding.interactive_goal_recovery()
-
-    def _interactive_goal_binding(self) -> CodingRealHostedSessionV1:
-        self._require_execution_open()
-        binding = self._product_binding
-        if not self.supports_interactive_goal or not isinstance(binding, CodingRealHostedSessionV1):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return binding
-
-    async def interactive_goal_status(self) -> InteractiveGoalViewV1:
-        return await self._interactive_goal_binding().interactive_goal_view()
-
-    async def create_interactive_goal(
-        self, target: str, *, check_current: Callable[[], None],
-    ) -> InteractiveGoalViewV1:
-        from loushang.harness.session.execution_admission import (
-            SessionExecutionUnavailable,
-        )
-        from loushang.harnesswork.goal import GoalError
-
-        from .adapters.goal import GoalConstructionError
-
-        binding = self._interactive_goal_binding()
-        view = await binding.interactive_goal_view()
-        check_current()
-        if view.availability != "ready":
-            return view
-        try:
-            await binding.create_interactive_goal(target, check_current=check_current)
-        except (GoalError, GoalConstructionError, SessionExecutionUnavailable):
-            check_current()
-            view = await binding.interactive_goal_view()
-            if view.availability == "ready":
-                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
-            return view
-        return await binding.interactive_goal_view()
-
-    def control_interactive_goal(
-        self, command: InteractiveGoalCommandV1 | InteractiveGoalReviewSubmissionV1, *, check_current: Callable[[], None],
-    ) -> InteractiveGoalViewV1:
-        from loushang.harness.session.execution_admission import (
-            SessionExecutionUnavailable,
-        )
-        from loushang.harnesswork.goal import GoalError
-
-        try:
-            return self._interactive_goal_binding().control_interactive_goal(command, check_current=check_current)
-        except (GoalError, SessionExecutionUnavailable):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
-
-    async def interactive_goal_review(
-        self, goal_id: str, *, check_current: Callable[[], None],
-    ) -> InteractiveGoalReviewV1:
-        from loushang.harness.session.execution_admission import (
-            SessionExecutionUnavailable,
-        )
-        from loushang.harnesswork.goal import GoalError
-
-        try:
-            return await self._interactive_goal_binding().interactive_goal_review(goal_id, check_current=check_current)
-        except (GoalError, SessionExecutionUnavailable):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
-
-    def _idle_for_interactive_goal(self) -> bool:
-        if type(self) is not CodingHostedExecutionSessionV1 or self._closing or self._model_lock.locked():
-            return False
-        state = self._guard.state
-        return state is None or state.status.terminal
+    def _allows_interactive_goal(self) -> bool:
+        return type(self) is CodingHostedExecutionSessionV1
 
     def require_submission_ready(self) -> None:
         self._require_execution_open()

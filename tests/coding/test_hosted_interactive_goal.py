@@ -138,7 +138,7 @@ def test_managed_goal_uses_original_session_and_tool_policy(tmp_path, blocked, m
             assert session.work_execution_backend is None
             with pytest.raises(GoalError, match="requires original file tools"):
                 await binding.create_interactive_goal("Unavailable before original file tools are published")
-            assert binding._interactive_goal_owner is None
+            assert binding._goal._interactive_goal_owner is None
             if not blocked:
                 hosted.start_execution(ExecutionRequestV1("pending-chat", "Prepare original tools"))
                 with pytest.raises(GoalError, match="busy"):
@@ -161,7 +161,7 @@ def test_managed_goal_uses_original_session_and_tool_policy(tmp_path, blocked, m
             assert created == binding.interactive_goal_status()
             assert created.status == "active" and created.revision == created.epoch == 1
             assert not created.execution_unresolved
-            owner = binding._interactive_goal_owner
+            owner = binding._goal._interactive_goal_owner
             assert owner._session is session and owner._sdk is None
             assert owner.controller.header.session_id == session.session_id
             assert owner.controller.query(created.goal_id).requirements[0].text == "Write a greeting in note.txt"
@@ -169,7 +169,7 @@ def test_managed_goal_uses_original_session_and_tool_policy(tmp_path, blocked, m
             assert list(contract["checks"]) == [] and contract["method"] is None and contract["max_model_calls"] == 8
             with pytest.raises(GoalError, match="already"):
                 await binding.create_interactive_goal("Another target")
-            assert binding._interactive_goal_owner is owner
+            assert binding._goal._interactive_goal_owner is owner
 
             await client.close()
             backend = session.work_execution_backend
@@ -244,7 +244,7 @@ def test_failed_goal_construction_keeps_cleanup_owner(tmp_path, monkeypatch, fai
                 with pytest.raises(GoalConstructionError) as error:
                     await binding.create_interactive_goal("Target")
                 owner = error.value.owner
-                assert binding._interactive_goal_owner is owner
+                assert binding._goal._interactive_goal_owner is owner
                 with pytest.raises(GoalError, match="cleanup is pending"):
                     binding.interactive_goal_status()
                 execution = client.execution_client
@@ -257,12 +257,12 @@ def test_failed_goal_construction_keeps_cleanup_owner(tmp_path, monkeypatch, fai
                 with pytest.raises(CleanupIncompleteError) as incomplete:
                     await hosted.close()
                 assert incomplete.value.cleanup_debt_count >= 1
-                assert binding._interactive_goal_owner is owner
+                assert binding._goal._interactive_goal_owner is owner
                 assert not session.runtime.execution_admission.closed
             finally:
                 broken = False
             await hosted.close()
-            assert binding._interactive_goal_owner is None
+            assert binding._goal._interactive_goal_owner is None
             assert owner._closed and owner._scope.closed
             assert session.runtime.execution_admission.closed
 
@@ -289,7 +289,7 @@ def test_closing_parent_fences_goal_creation_before_publication(tmp_path, monkey
             creation = asyncio.create_task(binding.create_interactive_goal("Unpublished target"))
             try:
                 await asyncio.wait_for(entered.wait(), 10)
-                owner = binding._interactive_goal_owner
+                owner = binding._goal._interactive_goal_owner
                 closing = asyncio.create_task(hosted.close())
                 await asyncio.sleep(0)
                 assert not closing.done()
@@ -300,7 +300,7 @@ def test_closing_parent_fences_goal_creation_before_publication(tmp_path, monkey
             await closing
             assert not owner.controller.history.goals
             assert owner._closed and not adapter.calls
-            assert binding._interactive_goal_owner is None
+            assert binding._goal._interactive_goal_owner is None
 
     asyncio.run(asyncio.wait_for(scenario(), 40))
 
@@ -313,7 +313,7 @@ def test_parent_close_joins_active_goal_work(tmp_path):
             binding = hosted._product_binding
             session = binding.control
             created = await binding.create_interactive_goal("Target")
-            owner = binding._interactive_goal_owner
+            owner = binding._goal._interactive_goal_owner
             adapter.blocked = True
             running = asyncio.create_task(run_goal(owner, created.goal_id, steps=2))
             try:
@@ -324,7 +324,7 @@ def test_parent_close_joins_active_goal_work(tmp_path):
                 assert busy.value.code is AppErrorCodeV1.SESSION_UNAVAILABLE
                 await hosted.close()
                 assert running.done()
-                assert binding._interactive_goal_owner is None
+                assert binding._goal._interactive_goal_owner is None
                 assert owner._closed and owner._scope.closed
                 assert session.runtime.execution_admission.closed
                 assert session.work_execution_backend is None
@@ -391,7 +391,7 @@ def test_scoped_goal_create_rechecks_controller_at_journal_publication(tmp_path,
                     await asyncio.wait_for(entered.wait(), 10)
                     assert (await status()).availability == "creating"
                     assert (await create()).availability == "creating"
-                    old_owner = hosted._product_binding._interactive_goal_owner
+                    old_owner = hosted._product_binding._goal._interactive_goal_owner
                     await client.close()
                     second = app.open_client_scope()
                     attached = await second.attach_mux(MuxAttachV1(selector))
@@ -405,7 +405,7 @@ def test_scoped_goal_create_rechecks_controller_at_journal_publication(tmp_path,
                 assert not old_owner.controller.history.goals
             assert (await status(second.execution_client, address2)).availability == "ready"
             created = await create(second.execution_client, address2)
-            owner = hosted._product_binding._interactive_goal_owner
+            owner = hosted._product_binding._goal._interactive_goal_owner
             assert created.availability == "present"
             assert owner.session_id == session_id
             state = owner.controller.query(created.goal_id)
@@ -438,7 +438,7 @@ def test_hosted_goal_commands_keep_the_original_run_after_client_disconnect(tmp_
             instance = port.service_instance_id
             created = await port.create_interactive_goal(address, instance, "Write a greeting in note.txt")
             goal_id = created.goal_id
-            owner = hosted._product_binding._interactive_goal_owner
+            owner = hosted._product_binding._goal._interactive_goal_owner
 
             async def control(action, command_id=None):
                 return await dispatch_execution(port, ExecutionCallV1(
@@ -570,7 +570,7 @@ def test_hosted_goal_admission_covers_command_gaps_and_close_retry(tmp_path, mon
             instance = port.service_instance_id
             created = await port.create_interactive_goal(address, instance, "Write a greeting in note.txt")
             binding = hosted._product_binding
-            owner = binding._interactive_goal_owner
+            owner = binding._goal._interactive_goal_owner
             start = InteractiveGoalCommandV1(created.goal_id, "run", "run")
 
             # The registry accepted a chat, but the Product execution has not started.
@@ -629,10 +629,10 @@ def test_hosted_goal_admission_covers_command_gaps_and_close_retry(tmp_path, mon
                 patch.setattr(owner, "close", fail_close)
                 with pytest.raises(CleanupIncompleteError):
                     await hosted.close()
-                assert binding._interactive_goal_owner is owner
-                assert not binding._goal_commands.running and not owner.controller.facts().busy
+                assert binding._goal._interactive_goal_owner is owner
+                assert not binding._goal._goal_commands.running and not owner.controller.facts().busy
             await hosted.close()
-            assert owner._closed and binding._interactive_goal_owner is None
+            assert owner._closed and binding._goal._interactive_goal_owner is None
 
     asyncio.run(asyncio.wait_for(scenario(), 40))
 
@@ -651,7 +651,7 @@ def test_hosted_review_rechecks_candidate_and_records_decisions(tmp_path):
             instance = port.service_instance_id
             created = await port.create_interactive_goal(address, instance, "Write a greeting in note.txt")
             gid = created.goal_id
-            owner = hosted._product_binding._interactive_goal_owner
+            owner = hosted._product_binding._goal._interactive_goal_owner
 
             async def terminal(command_id):
                 async with asyncio.timeout(10):
@@ -726,7 +726,7 @@ def test_hosted_review_checks_authority_and_required_evidence_then_joins_review_
                 created = await port.create_interactive_goal(address, instance, "Write a greeting in note.txt")
             gid = created.goal_id
             binding = hosted._product_binding
-            owner = binding._interactive_goal_owner
+            owner = binding._goal._interactive_goal_owner
 
             async def terminal(command_id):
                 async with asyncio.timeout(12):
@@ -811,7 +811,7 @@ def test_hosted_review_checks_authority_and_required_evidence_then_joins_review_
             with pytest.raises(AppServiceError):
                 await port.control_interactive_goal(address, instance, InteractiveGoalCommandV1(gid, "extra", "run"))
             await hosted.close()
-            assert not binding._goal_commands.running and owner._closed and owner._scope.closed
+            assert not binding._goal._goal_commands.running and owner._closed and owner._scope.closed
 
     asyncio.run(asyncio.wait_for(scenario(), 45))
 
@@ -831,7 +831,7 @@ def test_hosted_goal_cold_projection_preserves_original_journals(tmp_path, monke
             assert absent.presence == "absent"
             await _activate(client, address, hosted, adapter)
             created = await binding.create_interactive_goal("Write a greeting in note.txt")
-            owner = binding._interactive_goal_owner
+            owner = binding._goal._interactive_goal_owner
             await run_goal(owner, created.goal_id)
             if accept:
                 await owner.accept(created.goal_id, await owner.review_basis(created.goal_id))
@@ -852,7 +852,7 @@ def test_hosted_goal_cold_projection_preserves_original_journals(tmp_path, monke
             assert result.batch_count == result.completed_count == count
             assert not result.execution_unresolved
             assert original == (journal.read_bytes(), work.read_bytes(), adapter.calls)
-            assert binding._interactive_goal_owner is None
+            assert binding._goal._interactive_goal_owner is None
 
             original_read = hosted_goal_recovery._read
 
@@ -922,8 +922,8 @@ def test_managed_reopens_original_goal_session_read_only(tmp_path, monkeypatch):
             await _activate(client, address, hosted, adapter)
             binding = hosted._product_binding
             goal = await binding.create_interactive_goal("Write a greeting in note.txt")
-            await run_goal(binding._interactive_goal_owner, goal.goal_id)
-            state = binding._interactive_goal_owner.controller.query(goal.goal_id)
+            await run_goal(binding._goal._interactive_goal_owner, goal.goal_id)
+            state = binding._goal._interactive_goal_owner.controller.query(goal.goal_id)
             await client.close()
             await app.close()
 

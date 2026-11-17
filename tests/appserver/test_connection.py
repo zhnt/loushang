@@ -6,7 +6,11 @@ from unittest.mock import create_autospec
 
 import pytest
 
-from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
+from loushang.appserver.client import (
+    AppClientV1,
+    SessionDiscoveryClientV1,
+    WorkspaceModelsPortV1,
+)
 from loushang.appserver.connection import AppServerConnectionV1
 from loushang.appserver.framing import (
     AppConnectionClosedError,
@@ -207,7 +211,10 @@ def test_G14_WIRE_every_client_method_reaches_its_exact_semantic_target() -> Non
         }
         assert optional_names == {"list_sessions"}
         assert not method_names.intersection(optional_names)
-        assert len(method_names | optional_names | {"workspace"}) == len(AppOperationV1)
+        workspace_models = {name for name in vars(WorkspaceModelsPortV1) if not name.startswith("_")}
+        assert workspace_models == {"workspace_models"}
+        assert not method_names.intersection(workspace_models)
+        assert len(method_names | optional_names | workspace_models | {"workspace"}) == len(AppOperationV1)
         semantic = create_autospec(AppClientV1, instance=True)
         for name, _, result in calls:
             getattr(semantic, name).return_value = result

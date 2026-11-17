@@ -112,8 +112,8 @@ def test_stop_or_abort_before_commit_fences_child(owners, first):
     assert journal.read() == stopped
 
 
-@pytest.mark.parametrize("partial", [(True, True, False), (True, False, True)])
-def test_restart_requires_all_three_facts_and_old_generation_cannot_mutate_new(owners, partial):
+@pytest.mark.parametrize("partial", [(False, True, False), (True, True, False)])
+def test_restart_requires_settled_native_scope_and_fences_old_generation(owners, partial):
     _, journal, _, _ = owners
     first = journal.prepare("c" * 32, expected=None)
     reference = first.handoff.instance

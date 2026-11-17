@@ -2169,6 +2169,11 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         ), path
 
     apphost_file_primitives = {
+        Path("src/loushang/apphost/managed/workspaces.py"): {
+            "loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine": {
+                "open_windows_directory",
+            },
+        },
         Path("src/loushang/apphost/managed/_files.py"): {
             "loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine": {
                 "open_windows_directory", "windows_final_directory_path",

@@ -85,6 +85,7 @@ CURRENT_SOURCE_SEAMS = (
     APPHOST_SOURCE / "managed/_database.py",
     APPHOST_SOURCE / "managed/registry.py",
     APPHOST_SOURCE / "managed/workspaces.py",
+    APPHOST_SOURCE / "workspace_registry.py",
     APPHOST_SOURCE / "managed/storage_budget.py",
     APPHOST_SOURCE / "managed/event_log.py",
     APPHOST_SOURCE / "managed/_capture_native.py",
@@ -536,6 +537,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "managed/_database.py",
         "managed/registry.py",
         "managed/workspaces.py",
+        "workspace_registry.py",
         "managed/storage_budget.py",
         "managed/event_log.py",
         "managed/_capture_native.py",
@@ -593,6 +595,12 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "protocol/stdio_profile.py",
         "protocol/connection_profile.py",
         "execution/__init__.py",
+        "execution/_validation.py",
+        "execution/goal_client.py",
+        "execution/goal_codec.py",
+        "execution/goal_dispatch.py",
+        "execution/goal_model.py",
+        "execution/operation.py",
         "execution/model.py",
         "execution/codec.py",
         "execution/client.py",
@@ -626,6 +634,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "execution_notifications.py",
         "execution_registry.py",
         "execution_service.py",
+        "execution_goal.py",
         "method_work.py",
         "goal.py",  # COD-KD-HG-001: local SDK data/bridge, no wire activation.
         "managed_mux.py",
@@ -747,7 +756,7 @@ def test_optional_execution_contract_has_bounded_modules_and_no_activation() -> 
         path = APPSERVICE_SOURCE / f"{name}.py"
         assert len(_read(path).splitlines()) <= 250
         expected = {"loushang.appserver.protocol"}
-        if name == "execution_contract":
+        if name in {"execution_contract", "execution_ports"}:
             expected.add("loushang.appserver.execution.model")
         assert {item for item in _imports(path) if item.startswith("loushang.")} == expected
     for path in (
@@ -764,14 +773,22 @@ def test_execution_service_and_transport_have_separate_bounded_owners() -> None:
     # Product helper budgets. See execution-service-delivery.md.
     for name, maximum in {
         "execution_notifications": 60, "execution_registry": 400, "execution_service": 250,
+        "execution_goal": 160,
     }.items():
         path = APPSERVICE_SOURCE / f"{name}.py"
         assert len(_read(path).splitlines()) <= maximum
         assert all(not item.startswith(("loushang.coding", "loushang.harness", "loushang.apphost"))
                    for item in _imports(path))
     transport = tuple((APPSERVER_SOURCE / "execution").glob("*.py"))
-    assert sum(len(_read(path).splitlines()) for path in transport) <= 1200
-    assert all(len(_read(path).splitlines()) <= 400 for path in transport)
+    goal_limits = {"goal_model.py": 320, "goal_client.py": 75, "goal_codec.py": 120, "goal_dispatch.py": 45}
+    goal_transport = {path.name: path for path in transport if path.name in goal_limits}
+    base_transport = tuple(path for path in transport if path.name not in goal_limits)
+    assert goal_transport.keys() == goal_limits.keys()
+    assert sum(len(_read(path).splitlines()) for path in base_transport) <= 1200
+    assert all(len(_read(path).splitlines()) <= 400 for path in base_transport)
+    assert sum(len(_read(path).splitlines()) for path in goal_transport.values()) <= 560
+    for name, path in goal_transport.items():
+        assert len(_read(path).splitlines()) <= goal_limits[name], path
     assert all(not item.startswith(("loushang.appservice", "loushang.coding", "loushang.apphost"))
                for path in transport for item in _imports(path))
 

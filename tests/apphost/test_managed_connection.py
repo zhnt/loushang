@@ -373,8 +373,7 @@ def test_observer_reopen_failure_retains_only_actual_cleanup_debt(
     state = committed(owners)
     owner = lease(owners, state.handoff.instance)
     error = HostingError(HostingFailureCategory.PREPARATION_FAILED, "service_observer_preparation_failed")
-    if rollback_incomplete:
-        error.add_note("service_observer_cleanup_incomplete")
+    error.cleanup_incomplete = rollback_incomplete
 
     def fail(_identity):
         raise error

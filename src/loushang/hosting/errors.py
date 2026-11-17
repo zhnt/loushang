@@ -35,6 +35,8 @@ class HostingError(RuntimeError):
         if not isinstance(message, str) or not message:
             raise TypeError("message must be non-empty text")
         self.category = category
+        # Set by the native owner when it cannot confirm rollback.
+        self.cleanup_incomplete: bool = False
         super().__init__(message)
 
 

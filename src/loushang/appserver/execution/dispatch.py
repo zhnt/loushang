@@ -8,18 +8,13 @@ from .client import (
     ExecutionGoalControlPortV1,
     ExecutionObservationPortV1,
     ExecutionPortV1,
-    InteractiveGoalClientPortV1,
-    InteractiveGoalCommandClientPortV1,
-    InteractiveGoalRecoveryClientPortV1,
-    InteractiveGoalReviewClientPortV1,
 )
+from .goal_dispatch import dispatch_goal
 from .model import (
     ExecutionCallV1,
     ExecutionEventsV1,
     ExecutionOperationV1,
     ExecutionResultV1,
-    InteractiveGoalCommandV1,
-    InteractiveGoalReviewSubmissionV1,
 )
 
 
@@ -42,26 +37,8 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
                 return await client.goal_find(*args, cast(str, call.submission_id))
             case ExecutionOperationV1.INTERRUPT:
                 return await client.goal_interrupt(*args, cast(str, call.execution_id))
-    if call.operation in {ExecutionOperationV1.INTERACTIVE_GOAL_CREATE, ExecutionOperationV1.INTERACTIVE_GOAL_STATUS}:
-        if not isinstance(client, InteractiveGoalClientPortV1):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        if call.operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE:
-            return await client.create_interactive_goal(*args, cast(str, call.goal_target))
-        return await client.interactive_goal_status(*args)
-    if call.operation is ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND:
-        if not isinstance(client, InteractiveGoalCommandClientPortV1):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return await client.control_interactive_goal(*args, cast(InteractiveGoalCommandV1, call.goal_command))
-    if call.operation in {ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW, ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT}:
-        if not isinstance(client, InteractiveGoalReviewClientPortV1):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        if call.operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW:
-            return await client.interactive_goal_review(*args, cast(str, call.review_goal_id))
-        return await client.submit_interactive_goal_review(*args, cast(InteractiveGoalReviewSubmissionV1, call.review_submission))
-    if call.operation is ExecutionOperationV1.INTERACTIVE_GOAL_RECOVERY:
-        if not isinstance(client, InteractiveGoalRecoveryClientPortV1):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return await client.interactive_goal_recovery(*args)
+    if call.operation.value.startswith("session/interactive_goal_"):
+        return await dispatch_goal(client, call)
     if not isinstance(client, ExecutionPortV1):
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     match call.operation:

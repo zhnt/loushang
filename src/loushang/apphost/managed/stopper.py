@@ -126,7 +126,7 @@ class ManagedServiceStopOperationV1:
         except HostingError as error:
             # Hosting reports incomplete rollback explicitly when it acquired
             # a native handle and could not close it.
-            self._native_uncertain = "service_observer_cleanup_incomplete" in getattr(error, "__notes__", ())
+            self._native_uncertain = error.cleanup_incomplete
             raise
         self._native_uncertain = False
         if isinstance(self._observer, WindowsServiceObserverV1):

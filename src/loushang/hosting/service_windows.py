@@ -111,7 +111,10 @@ class WindowsServiceObserverV1:
         except BaseException as error:
             failure = _error(HostingFailureCategory.PREPARATION_FAILED) if isinstance(error, OSError) else error
             if not kernel.CloseHandle(handle):
-                failure.add_note("service_observer_cleanup_incomplete")
+                if isinstance(failure, HostingError):
+                    failure.cleanup_incomplete = True
+                else:
+                    failure.add_note("service_observer_cleanup_incomplete")
             if failure is not error:
                 raise failure from None
             raise

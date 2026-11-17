@@ -1,5 +1,40 @@
 # Execution Service Delivery — #576
 
+## GUI Goal integration review
+
+Codex, as the implementation agent, reviewed the Workspace and native
+recovery seams on the GUI integration baseline `ea580afcd`. AppHost owns the
+Workspace registry port and its implementation. Hosting reports unconfirmed
+native observer rollback through `HostingError.cleanup_incomplete` while
+preserving the original error category. AppHost retains the connection or
+stop operation's cleanup debt when that flag is set. Lifecycle recovery reads
+only native process-scope observations from Hosting before attempting journal
+retirement. The checked dependency lists name those paths and imports exactly.
+The optional Goal port consumes the existing AppServer wire types directly.
+
+Codex accepts the Workspace registry, native cleanup status, and Goal split
+design in the implementation-agent role for this task. The reviewed candidate
+is the task worktree diff against `ea580afcd` for AppHost, Hosting, AppServer,
+AppService and Coding. The split preserves negotiated operations, exact value
+types and the original attachment and Session owners. Goal has its own budgets.
+The Linux capture and Hosted recovery regressions, ownership assertions, and
+Python, Rust and TypeScript contract probe verify these boundaries.
+
+| Owner | GUI baseline and existing budget | Measured split and limits |
+| --- | --- | --- |
+| AppServer | Execution transport 1,580 / 1,200 lines, with `model.py` 709 / 400 | Base transport 1,196 / 1,200 and model 398 / 400. Goal values, codec, client contracts and dispatch are counted separately, 547 / 560, with individual ceilings. |
+| AppService | `execution_service.py` 349 / 250 lines | Base service 246 / 250. Scoped Goal handler 151 / 160. The handler uses the same Session resolver, current-controller check and registry. |
+| Coding | G14 group 2,173 / 2,109 lines, with `hosted_session.py` 916 / 714 | G14 is 1,959 / 2,109; Session is 702 / 714 and the execution adapter is 354 / 354. Goal coordination, execution adaptation, commands, review and recovery are counted once in a separate group, 749 / 765. |
+
+Transport and Coding inventories count each file exactly once. AppService
+keeps its base service and optional handler separately bounded. The existing
+G11 protocol and core owners also account for the unrelated GUI business
+choice, Workspace model query and history deletion delta: 126 protocol/client
+lines and 48 scoped AppService lines relative to main. Cold Goal recovery
+continues to project persisted facts without obtaining authority to resume.
+Linux contract probes cover Python, Rust and TypeScript. Windows native
+observer evidence remains a separate platform check.
+
 ## GUI integration review (2026-11-12)
 
 Codex, acting as the implementation agent for PR #889, reviewed the managed

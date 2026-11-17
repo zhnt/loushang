@@ -8,6 +8,7 @@ from time import monotonic
 
 import pytest
 
+from loushang.apphost.managed import lifecycle
 from loushang.apphost.managed._files import ManagedStorageError
 from loushang.apphost.managed.coordinator import ManagedServiceCoordinatorV1
 from loushang.appserver.client import AppConnectionClosedError
@@ -16,6 +17,13 @@ from tests.apphost.test_managed_connection import committed
 from tests.apphost.test_managed_starter import owners as owners
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux managed coordinator")
+
+
+@pytest.fixture(autouse=True)
+def observed_service_group(monkeypatch):
+    # Coordinator tests exercise the journal and fake connections. The pytest
+    # process is not the leader of an isolated managed service group.
+    monkeypatch.setattr(lifecycle, "linux_service_group_recovery_status", lambda _: "present")
 
 
 def coordinator(owners):
