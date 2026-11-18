@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import plistlib
 import subprocess
 import tempfile
@@ -23,7 +24,11 @@ def main() -> None:
     parser.add_argument("--evidence", type=Path, required=True)
     evidence = parser.parse_args().evidence.resolve()
     evidence.mkdir(parents=True, exist_ok=True)
-    report: dict[str, object] = {"buildHost": os.uname().release, "macOS12ActuallyTested": False}
+    macos_version = platform.mac_ver()[0]
+    report: dict[str, object] = {
+        "buildHost": platform.platform(), "macOSVersion": macos_version,
+        "macOS12ActuallyTested": macos_version.split(".")[0] == "12",
+    }
     info = plistlib.loads((APP / "Contents/Info.plist").read_bytes())
     assert info["LSMinimumSystemVersion"] == "12.0", info
     with tempfile.TemporaryDirectory(prefix="loushang-installed-mac-") as temporary:
