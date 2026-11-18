@@ -149,7 +149,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         'loushang.harness.worker.payload._records',
         'loushang.harness.worker.payload._selected_payload',
         'loushang.harness.worker.payload._storage',
-        'loushang.harness.worker.product_activation',
     },
     CODING_ROOT / "package_product_worker_capability.py": {
         "loushang.harness.worker.capability_query",

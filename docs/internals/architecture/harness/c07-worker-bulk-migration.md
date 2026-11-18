@@ -622,6 +622,18 @@ Coding 保留原名义 live review dataclass、三个字段／slots、authority 
 
 本批 Coding −101、Harness +142、Hosting／其它生产0，系统生产 +41行；测试净−2行，文档单列。这是完整证据绑定职责迁移，接收侧增加了泛型、类型和固定 Profile 接线成本，没有重复算法删除收益，也不是系统净精简。累计归属 C07：Coding −7,263、Harness +10,095、系统生产 +2,832行；C07余13,003行，距离多数退出仍差2,871行。全量逐文件当前行／SHA重新核对442份 Coding 源码，当前100,662行；Harness379,342／Hosting14,235／其它154,008，共648,247生产 Python 行。
 
+## POSIX 六个载荷入口直接复用原 custody
+
+物化、pending 规划、请求绑定及完整／空／未标记三种修复入口，现直接接入原 `PosixProductWorkerPayloadCustody`。六个 Code 函数外壳和多余 imports 退出；原名义值类与字段、容量及错误 Profile 留 Code。仅用一个零 slots 的固定产品子类绑定原 receipt owner 类型和产品文案，不增加 Protocol、回调、实例字段、账本或生命周期 owner。已有 custody 的物化、锁内复核、实际 IO、恢复与清理执行体 AST 保持，不重复计为新迁移。
+
+六处原入口准入移到相同操作之前：仍保留 receipt／lease／repair-plan 的 `isinstance` 语义、规划只接受精确 str 而物化接受 str 子类，以及相同错误身份／文案和检查顺序。物化仍在进入 context 时才校验和执行；退出少一层原 Code 转发 context，不承诺 traceback 帧一致。当前执行代理按已授权职责接受函数转 bound method、定义归属／泛型运行时 hints／参数绑定错误前缀和新 callable pickle 格式变化，不承诺重绑旧 Code 私有 aliases。
+
+42组精确原类／函数重建对照通过，覆盖相关名义类／子类、非法输入、进入时机、失败和取消，并另断言有效路线成功。12份修改前全局 callable pickle 加载路径、12次当前入口往返（同方法、等值 Profile）及20份既有 bound 操作加载与重新序列化通过；原 custody 的 fields／slots／实例 offsets 和全部 Code 名义记录 AST 保持。初次外置断言把两个等值 Profile 上的 bound method 当作同一 callable，已按实际同方法／等值 Profile 合同纠正，原失败日志保留。
+
+原载荷恢复／修复固定 golden 两文件153 passed（8.99秒），保留原 IO、字节、异常及失败交接断言；116源限定 mypy及六入口具体返回断言通过。Code payload 唯一退出的直接 Worker 边为 `product_activation`，只删除 C54 对应精确库存项，其余扫描与相等断言逐字不变，原节点1 passed（45.85秒）。原 wheel 完整消费者35 passed／14 skipped／1 deselected（303.69秒），保留原 host-runtime selectors；依赖事实与文档检查通过。本批为本地候选，尚未合并；未执行原生 containment、真实进程崩溃或 reboot，不用受控探针替代这些证据。
+
+本批 Coding −87、Harness +47、Hosting／其它生产0，系统生产净−40行；测试−1行、文档单列。收益是同一已有 owner 接管六个完整入口、原重复外壳退出，没有把原物化／修复算法重计为新下沉。连同前一本地清理证据提交，本阶段 Coding −188／Harness +189／系统生产 +1行。自原 Goal 切点归属 C07 累计 Coding −7,350、Harness +10,142、系统生产 +2,792行；C07余12,916行，距多数退出仍差2,784行，整组仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

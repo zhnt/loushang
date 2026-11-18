@@ -1441,6 +1441,9 @@ class PosixProductWorkerPayloadCustody(
 ):
     """Fixed complete Product operations over original payload/storage owners."""
 
+    _entry_receipt_owner_type = cast(type[object] | None, None)
+    _entry_label = "Worker"
+
     storage: PayloadStorage
     supervisor: Callable[[PosixLocalWheelProductSessionOwner], WorkerSupervisorJournal]
     recovery_type: Callable[..., _PayloadReviewT]
@@ -1483,6 +1486,17 @@ class PosixProductWorkerPayloadCustody(
         receipt: ProductWorkerActivationReceiptV1,
         attempt_id: str,
     ) -> Iterator[_PosixLeaseT]:
+        """Copy a current Product selection into one private, exact attempt root."""
+        if self._entry_receipt_owner_type is not None:
+            if not isinstance(receipt_owner, self._entry_receipt_owner_type):
+                raise TypeError(
+                    f"{self._entry_label} Product receipt owner is required"
+                )
+            if (
+                not isinstance(attempt_id, str)
+                or _ATTEMPT.fullmatch(attempt_id) is None
+            ):
+                raise ValueError(f"{self._entry_label} attempt identity is invalid")
         product = receipt_owner.product_owner
         state_root = product.state_root
         with materialize_selected_payload(
@@ -1512,6 +1526,16 @@ class PosixProductWorkerPayloadCustody(
         receipt: ProductWorkerActivationReceiptV1,
         attempt_id: str,
     ) -> _PosixPendingT:
+        """Read current Product authority without creating a payload or Worker."""
+        if self._entry_receipt_owner_type is not None and (
+            not isinstance(receipt_owner, self._entry_receipt_owner_type)
+            or not isinstance(receipt, ProductWorkerActivationReceiptV1)
+            or type(attempt_id) is not str
+            or _ATTEMPT.fullmatch(attempt_id) is None
+        ):
+            raise TypeError(
+                f"{self._entry_label} pending launch requires Product evidence"
+            )
         product = receipt_owner.product_owner
         return plan_selected_payload_launch(
             self.storage,
@@ -1540,6 +1564,13 @@ class PosixProductWorkerPayloadCustody(
         supervisor_epoch: int,
         pending_launch: _PosixPendingT | None = None,
     ) -> ManagedWorkerLaunchRequestV1:
+        """Bind the Product receipt and live payload copy to one supervised attempt."""
+        if self._entry_receipt_owner_type is not None and (
+            not isinstance(receipt_owner, self._entry_receipt_owner_type)
+            or not isinstance(receipt, ProductWorkerActivationReceiptV1)
+            or not isinstance(payload_lease, cast(type[_PosixLeaseT], self.lease_type))
+        ):
+            raise self.storage.error_type(self.error_prefix + "_binding_mismatch")
         if (
             payload_lease.receipt_fingerprint != receipt.fingerprint
             or payload_lease.runtime.package_root
@@ -1611,6 +1642,12 @@ class PosixProductWorkerPayloadCustody(
         *,
         expected_review: _UnmarkedReviewT,
     ) -> _UnmarkedReviewT:
+        """Remove an exact pre-marker stage under offline, unclaimed authority."""
+        if self._entry_receipt_owner_type is not None and not isinstance(
+            expected_review,
+            cast(type[_UnmarkedReviewT], self.storage.values.review_type),
+        ):
+            raise TypeError(f"{self._entry_label} unmarked payload review is required")
         return cast(
             "_UnmarkedReviewT",
             self._under_payload_root(
@@ -1683,6 +1720,11 @@ class PosixProductWorkerPayloadCustody(
         *,
         expected_plan: _PayloadPlanT,
     ) -> _PayloadPlanT:
+        """Delete an exact stage only after its Supervisor recorded process exit."""
+        if self._entry_receipt_owner_type is not None and not isinstance(
+            expected_plan, cast(type[_PayloadPlanT], self.storage.values.plan_type)
+        ):
+            raise TypeError(f"{self._entry_label} payload debt plan is required")
         return cast(
             "_PayloadPlanT",
             self._under_payload_root(
@@ -1725,6 +1767,11 @@ class PosixProductWorkerPayloadCustody(
     def repair_empty(
         self, product: PosixLocalWheelProductSessionOwner, *, expected_plan: _EmptyPlanT
     ) -> _EmptyPlanT:
+        """Remove an exact empty stage only when Supervisor never claimed it."""
+        if self._entry_receipt_owner_type is not None and not isinstance(
+            expected_plan, cast(type[_EmptyPlanT], self.storage.values.empty_type)
+        ):
+            raise TypeError(f"{self._entry_label} empty payload debt plan is required")
         return cast(
             "_EmptyPlanT",
             self._under_payload_root(

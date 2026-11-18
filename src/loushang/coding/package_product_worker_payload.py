@@ -8,9 +8,6 @@ an exact attempt name as debt and a replay refuses to reuse it.
 
 from __future__ import annotations
 
-import re
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import cast
 
@@ -21,7 +18,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.worker.contracts import (
-    ManagedWorkerLaunchRequestV1,
     WorkerLaunchIdentityV1,
     WorkerRuntimeBindingV1,
 )
@@ -75,7 +71,6 @@ from loushang.harness.worker.payload._storage import (
     _UNMARKED_REPAIR_PREFIX as _UNMARKED_REPAIR_PREFIX,
 )
 from loushang.harness.worker.payload._storage import PayloadStorage
-from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 from .package_product_worker_installed_native import CodingWorkerNativeLaunchMaterialV1
 from .package_product_worker_receipt import (
@@ -85,8 +80,6 @@ from .package_product_worker_receipt import (
 from .package_product_worker_supervisor_journal import (
     CodingProductWorkerSupervisorJournal,
 )
-
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 
 
 class CodingWorkerPayloadMaterializationError(RuntimeError):
@@ -192,69 +185,6 @@ class CodingWorkerPayloadRecoveryReviewV1:
         return self.attempt_record is not None and self.attempt_record.process_settled
 
 
-@contextmanager
-def materialize_coding_product_worker_payload(
-    *,
-    receipt_owner: CodingWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    attempt_id: str,
-) -> Iterator[CodingProductWorkerPayloadLeaseV1]:
-    """Copy a current Product selection into one private, exact attempt root."""
-    if not isinstance(receipt_owner, CodingWorkerProductReceiptOwner):
-        raise TypeError("Coding Worker Product receipt owner is required")
-    if not isinstance(attempt_id, str) or _ATTEMPT.fullmatch(attempt_id) is None:
-        raise ValueError("Coding Worker attempt identity is invalid")
-    with _PAYLOAD_CUSTODY.materialize(
-        receipt_owner=receipt_owner, receipt=receipt, attempt_id=attempt_id
-    ) as lease:
-        yield lease
-
-
-def plan_coding_product_worker_pending_launch(
-    *,
-    receipt_owner: CodingWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    attempt_id: str,
-) -> CodingProductWorkerPendingLaunchV1:
-    """Read current Product authority without creating a payload or Worker."""
-    if (
-        not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
-        or not isinstance(receipt, ProductWorkerActivationReceiptV1)
-        or type(attempt_id) is not str
-        or (_ATTEMPT.fullmatch(attempt_id) is None)
-    ):
-        raise TypeError("Coding Worker pending launch requires Product evidence")
-    return _PAYLOAD_CUSTODY.plan(
-        receipt_owner=receipt_owner, receipt=receipt, attempt_id=attempt_id
-    )
-
-
-def bind_coding_product_worker_launch_request(
-    *,
-    receipt_owner: CodingWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    payload_lease: CodingProductWorkerPayloadLeaseV1,
-    supervisor_epoch: int,
-    pending_launch: CodingProductWorkerPendingLaunchV1 | None = None,
-) -> ManagedWorkerLaunchRequestV1:
-    """Bind the Product receipt and live payload copy to one supervised attempt."""
-    if (
-        not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
-        or not isinstance(receipt, ProductWorkerActivationReceiptV1)
-        or (not isinstance(payload_lease, CodingProductWorkerPayloadLeaseV1))
-    ):
-        raise CodingWorkerPayloadMaterializationError(
-            "coding_worker_payload_binding_mismatch"
-        )
-    return _PAYLOAD_CUSTODY.bind(
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        payload_lease=payload_lease,
-        supervisor_epoch=supervisor_epoch,
-        pending_launch=pending_launch,
-    )
-
-
 _STORAGE = PayloadStorage(
     PayloadValueTypes(
         CodingWorkerPayloadDebtPlanV1,
@@ -271,39 +201,6 @@ _write_payload = _STORAGE._write_payload
 _write_marker = _STORAGE._write_marker
 
 
-def repair_coding_product_worker_unmarked_payload_debt(
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    expected_review: CodingWorkerUnmarkedPayloadDebtReviewV1,
-) -> CodingWorkerUnmarkedPayloadDebtReviewV1:
-    """Remove an exact pre-marker stage under offline, unclaimed authority."""
-    if not isinstance(expected_review, CodingWorkerUnmarkedPayloadDebtReviewV1):
-        raise TypeError("Coding Worker unmarked payload review is required")
-    return _PAYLOAD_CUSTODY.repair_unmarked(product, expected_review=expected_review)
-
-
-def repair_coding_product_worker_payload_debt(
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    expected_plan: CodingWorkerPayloadDebtPlanV1,
-) -> CodingWorkerPayloadDebtPlanV1:
-    """Delete an exact stage only after its Supervisor recorded process exit."""
-    if not isinstance(expected_plan, CodingWorkerPayloadDebtPlanV1):
-        raise TypeError("Coding Worker payload debt plan is required")
-    return _PAYLOAD_CUSTODY.repair_complete(product, expected_plan=expected_plan)
-
-
-def repair_coding_product_worker_empty_payload_debt(
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    expected_plan: CodingWorkerEmptyPayloadDebtPlanV1,
-) -> CodingWorkerEmptyPayloadDebtPlanV1:
-    """Remove an exact empty stage only when Supervisor never claimed it."""
-    if not isinstance(expected_plan, CodingWorkerEmptyPayloadDebtPlanV1):
-        raise TypeError("Coding Worker empty payload debt plan is required")
-    return _PAYLOAD_CUSTODY.repair_empty(product, expected_plan=expected_plan)
-
-
 _read_repair_file = _STORAGE._read_repair_file
 
 
@@ -313,14 +210,22 @@ _stage_exists = _STORAGE._stage_exists
 _remove_empty_stage = _STORAGE._remove_empty_stage
 
 
-_PAYLOAD_CUSTODY = PosixProductWorkerPayloadCustody[
-    CodingWorkerPayloadDebtPlanV1,
-    CodingWorkerEmptyPayloadDebtPlanV1,
-    CodingWorkerUnmarkedPayloadDebtReviewV1,
-    CodingWorkerPayloadRecoveryReviewV1,
-    CodingProductWorkerPayloadLeaseV1,
-    CodingProductWorkerPendingLaunchV1,
-](
+class _CodingPosixPayloadCustody(
+    PosixProductWorkerPayloadCustody[
+        CodingWorkerPayloadDebtPlanV1,
+        CodingWorkerEmptyPayloadDebtPlanV1,
+        CodingWorkerUnmarkedPayloadDebtReviewV1,
+        CodingWorkerPayloadRecoveryReviewV1,
+        CodingProductWorkerPayloadLeaseV1,
+        CodingProductWorkerPendingLaunchV1,
+    ]
+):
+    __slots__ = ()
+    _entry_receipt_owner_type = CodingWorkerProductReceiptOwner
+    _entry_label = "Coding Worker"
+
+
+_PAYLOAD_CUSTODY = _CodingPosixPayloadCustody(
     storage=_STORAGE,
     supervisor=open_coding_product_worker_supervisor_journal,
     recovery_type=CodingWorkerPayloadRecoveryReviewV1,
@@ -331,6 +236,14 @@ _PAYLOAD_CUSTODY = PosixProductWorkerPayloadCustody[
     stale_message="Coding Product Worker selection changed",
     product_required_message="Coding Worker Product owner is required",
 )
+
+materialize_coding_product_worker_payload = _PAYLOAD_CUSTODY.materialize
+plan_coding_product_worker_pending_launch = _PAYLOAD_CUSTODY.plan
+bind_coding_product_worker_launch_request = _PAYLOAD_CUSTODY.bind
+repair_coding_product_worker_unmarked_payload_debt = _PAYLOAD_CUSTODY.repair_unmarked
+repair_coding_product_worker_payload_debt = _PAYLOAD_CUSTODY.repair_complete
+repair_coding_product_worker_empty_payload_debt = _PAYLOAD_CUSTODY.repair_empty
+
 
 _offline = _PAYLOAD_CUSTODY.offline
 
