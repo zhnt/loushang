@@ -7,11 +7,6 @@ on:
   schedule:
     - cron: "17 20 * * *"
   workflow_dispatch:
-    inputs:
-      macos_package:
-        description: Build the macOS Intel package only
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -24,7 +19,6 @@ concurrency:
 
 jobs:
   changes:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.macos_package }}
     runs-on: ubuntu-latest
     outputs:
       plan: ${{ steps.select.outputs.plan }}
@@ -171,7 +165,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Require every selected workflow
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.macos_package }}
         env:
           CI_PLAN: ${{ needs.changes.outputs.plan }}
           CI_NEEDS: ${{ toJSON(needs) }}
@@ -194,9 +187,3 @@ jobs:
           path: pr-quality-evidence.json
           if-no-files-found: error
           retention-days: 7
-
-  macos-package:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.macos_package }}
-    uses: ./.github/workflows/macos-package.yml
-    with:
-      source_ref: ${{ github.sha }}

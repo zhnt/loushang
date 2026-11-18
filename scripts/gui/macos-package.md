@@ -32,25 +32,19 @@ Close the GUI and stop the Host before replacing this test installation.
 
 ## GitHub Actions
 
-The `macOS Intel Package` workflow supports manual builds with a `source_ref`.
-It uploads the installer, checksum, manifest and native acceptance evidence as
-`loushang-macos12-intel`. It does not run for pull requests or branch pushes.
+Actions packaging is paused. The recipe is retained as
+`.github/workflows/macos-package.yml.disabled`, which GitHub Actions does not
+load. The `macos_package` input and package job have also been removed from
+`Change-aware Quality`. Local build and installed verification scripts remain
+available. Restore the workflow's `.yml` filename only when remote packaging
+is explicitly resumed.
 
-Before that new workflow is present on the default branch, the existing
-`Change-aware Quality` dispatch entry can run the package job from this task
-branch without merging the GUI into main:
-
-```sh
-gh workflow run quality.yml --ref feature/gui-macos-intel-package -f macos_package=true
-gh run list --workflow quality.yml --branch feature/gui-macos-intel-package
-gh run view <run-id>
-gh run download <run-id> -n loushang-macos12-intel
-```
-
-Once the standalone workflow entry is on the default branch:
+The previously built installer and evidence remain downloadable from
+[run 44276006846](https://github.com/zhnt/loushang/actions/runs/44276006846)
+while its artifacts are retained:
 
 ```sh
-gh workflow run macos-package.yml -f source_ref=lane/gui
+gh run download 44276006846 -n loushang-macos12-intel
 ```
 
 No existing PR checks, trigger paths or required runner matrices are expanded.
