@@ -186,9 +186,8 @@ describe("local managed Host presentation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
     const profile = within(await screen.findByRole("region", { name: "Local account" }));
     expect(profile.getByText("desktop-user")).toBeVisible();
-    expect(profile.getByText("local-test-id")).not.toBeVisible();
-    fireEvent.click(profile.getByText("Technical details"));
-    expect(profile.getByText("local-test-id")).toBeVisible();
+    expect(screen.queryByText("local-test-id")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy local account ID" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     const settings = within(screen.getByRole("dialog", { name: "Settings" }));
     expect(settings.queryByText("local-test-id")).toBeNull();

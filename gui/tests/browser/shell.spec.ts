@@ -224,10 +224,12 @@ test("General and Host share a fixed dialog with scrollable content in a short w
   await page.getByRole("button", { name: "Account menu" }).click();
   const account = page.getByRole("region", { name: "Local account" });
   await expect(account.getByText("desktop-user")).toBeVisible();
-  await expect(account.getByText("local-preview-account")).toBeHidden();
-  await account.getByText("Technical details").click();
-  await expect(account.getByText("local-preview-account")).toBeVisible();
+  await expect(page.getByText("local-preview-account")).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("account-menu.png") });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy local account ID" }).click();
+  await expect(page.locator(".account-popover").getByRole("status")).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("local-preview-account");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   const generalBounds = await settings.boundingBox();

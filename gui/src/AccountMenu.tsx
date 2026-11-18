@@ -59,16 +59,12 @@ export function AccountMenu({ compact = false, account, onSettings }: {
     {open ? <div id={id} className="account-popover">
       {account ? <section className="account-popover-profile" aria-label={t("offlineAccount")}>
         <div className="account-label"><strong>{account.name}</strong><small>{t("offlineAccount")}</small></div>
-        {account.id ? <details className="account-technical">
-          <summary>{t("accountDetails")}</summary>
-          <dl><dt>{t("accountId")}</dt><dd><code>{account.id}</code></dd></dl>
-          <CopyButton text={account.id} label={t("copyAccountId")} />
-        </details> : null}
       </section> : null}
       <button ref={settings} type="button" onClick={() => { dismiss(); onSettings(); }}>
         <UiIcon name="settings" />
         {t("settings")}
       </button>
+      {account?.id ? <CopyButton text={account.id} label={t("copyAccountId")} icon showLabel feedbackMs={2500} /> : null}
     </div> : null}
   </div>;
 }
