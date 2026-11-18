@@ -3,7 +3,7 @@
 本轮 C09 最新审计与候选实现见 [C09 收敛记录](c09-legacy-convergence.md)。
 C09 已完成本地验证与 PR #892/#893 合并交付，34 文件当前 7,624 行；详见收敛记录。
 C07 上轮通过 PR #894/#895 交付时为112文件、20,266行，Coding −267、Harness +309、生产系统 +42；历史验证与限制见 [C07 收敛记录](c07-worker-convergence.md)。
-本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；后续分支已合入 main `f3e75c93b`，含历史源提交 `06eba4e85` 及当前 Provisioning 候选。C07为112文件、13,104行，归属本任务的累计 Coding −7,162、Harness +9,953、系统生产 +2,791；多数退出仍差2,972行，尚未完成或合并本批，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
+本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；上批已由 PR #901/#902 合入 main `4100b4f65`，交付时 C07为112文件、13,104行。当前 Windows 清理证据绑定候选再 Coding −101、Harness +142、系统生产 +41；候选 C07余13,003行，归属本任务的累计 Coding −7,263、Harness +10,095、系统生产 +2,832；多数退出仍差2,871行。本批为本地候选，尚未合并，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
 
 
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
@@ -405,7 +405,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_base_files.py](../../../../src/loushang/coding/package_product_worker_windows_base_files.py) | C07 | 25 | M | C07 插件 Worker 执行/持久化/恢复 | f3ca6e786327 | 22 | 3c3f23a900fc |
 | [package_product_worker_windows_c5_base.py](../../../../src/loushang/coding/package_product_worker_windows_c5_base.py) | C07 | 304 | M | C07 插件 Worker 执行/持久化/恢复 | 04ec1ac725a7 | 80 | 912da0052caf |
 | [package_product_worker_windows_checkpoint.py](../../../../src/loushang/coding/package_product_worker_windows_checkpoint.py) | C07 | 489 | M | C07 插件 Worker 执行/持久化/恢复 | a1a050765f52 | 212 | 126124650844 |
-| [package_product_worker_windows_cleanup_evidence.py](../../../../src/loushang/coding/package_product_worker_windows_cleanup_evidence.py) | C07 | 398 | M | C07 插件 Worker 执行/持久化/恢复 | 3989304c1e98 | 197 | 5301b309c6bb |
+| [package_product_worker_windows_cleanup_evidence.py](../../../../src/loushang/coding/package_product_worker_windows_cleanup_evidence.py) | C07 | 398 | M | 完整正常／Resume登记／崩溃绑定及只读证据关联归原Harness恢复owner；保原名义review、身份与禁止离线清理政策 | 3989304c1e98 | 96 | 01b6bf1cdc30 |
 | [package_product_worker_windows_crash_c5_settlement.py](../../../../src/loushang/coding/package_product_worker_windows_crash_c5_settlement.py) | C07 | 180 | M | C07 插件 Worker 执行/持久化/恢复 | c96cfa786752 | 28 | 79ff4f646931 |
 | [package_product_worker_windows_crash_cleanup_review.py](../../../../src/loushang/coding/package_product_worker_windows_crash_cleanup_review.py) | C07 | 309 | M | C07 插件 Worker 执行/持久化/恢复 | a07396c100de | 84 | f2ac01e142f4 |
 | [package_product_worker_windows_crash_lease_repair.py](../../../../src/loushang/coding/package_product_worker_windows_crash_lease_repair.py) | C07 | 199 | M | C07 插件 Worker 执行/持久化/恢复 | b9282c6937f1 | 60 | a5034a833a62 |
@@ -544,7 +544,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-18：逐文件当前行／SHA和下表重新对齐合入 `f3e75c93b` 的 `7079ad0ba` 加 Provisioning 候选，共442文件、100,763物理行；原审计列、历史批次数字与建议处置保留。清单旧C07汇总20,533行包含本轮基线前已交付的267行差异，本轮收益仍严格从主线20,266行计算，不重复计入。上游新增8份 Coding 文件及其余功能变化单列，不算 C07 成本或收益。当前计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
+2026-11-18：逐文件当前行／SHA和下表重新核对 main `4100b4f65` 加 Windows 清理证据绑定候选，共442文件、100,662物理行；原审计列、历史批次数字与建议处置保留。清单旧C07汇总20,533行包含本轮基线前已交付的267行差异，本轮收益仍严格从主线20,266行计算，不重复计入。上游新增8份 Coding 文件及其余功能变化单列，不算 C07 成本或收益。当前计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
 
 A215完整捕获资源族五源形状−111/+276/系统+165未采用，全部2063生产源保持A214
 实物SHA/行数；候选成本不进入下列当前列，公共字段与该族不据此成为最终领域下界。
@@ -570,7 +570,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,809 |
 | C05 | 6 | 3,417 |
 | C06 | 27 | 4,640 |
-| C07 | 112 | 13,104 |
+| C07 | 112 | 13,003 |
 | C08 | 31 | 6,593 |
 | C09 | 34 | 7,624 |
 | C10 | 12 | 5,185 |
@@ -592,7 +592,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 442 | 100,763 |
+| 合计 | 442 | 100,662 |
 
 A217计量口径：2063源账本661370含31份GUI测试/support4524行，生产2032源656846；
 Code108032/Harness367396/AppHost20629，系统本批raw+14，不作净减。

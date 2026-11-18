@@ -1001,7 +1001,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_pending_host.py",
         CODING_ROOT / "package_product_worker_windows_pending_host.py",
         CODING_ROOT / "package_product_worker_windows_activation_state_journal.py",
-        CODING_ROOT / "package_product_worker_windows_cleanup_evidence.py",
         CODING_ROOT / "package_product_worker_windows_c5_base.py",
         CODING_ROOT / "package_product_worker_session_composition.py",
         CODING_ROOT / "package_product_worker_receipt.py",

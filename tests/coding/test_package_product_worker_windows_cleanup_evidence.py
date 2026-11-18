@@ -9,7 +9,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_worker_windows_cleanup_evidence as cleanup_module
 from loushang.coding.package_product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
@@ -160,7 +159,9 @@ def test_windows_c5_cleanup_review_requires_exact_settled_product_join(
     )
     assert not fenced_attempt.clean_exit_settled
     assert fenced_attempt.fenced_exit_settled
-    fenced_review = replace(review, runtime=replace(review.runtime, attempt=fenced_attempt))
+    fenced_review = replace(
+        review, runtime=replace(review.runtime, attempt=fenced_attempt)
+    )
     assert authority._review_matches(fenced_review)
     assert not authority._review_matches(
         replace(
@@ -205,22 +206,26 @@ def test_windows_c5_cleanup_read_preserves_registry_orphan_lease(
     authority._product.gc_gate = SimpleNamespace(guard=nullcontext)
     authority._product.assert_root_gc_authority_current = lambda: None
     monkeypatch.setattr(
-        cleanup_module,
-        "_review_under_gc_guard",
-        lambda product, *, attempt_id, orphans: replace(
-            review.runtime, orphan_leases=orphans
+        CodingWindowsWorkerCleanupEvidenceAuthority,
+        "_cleanup_review_under_guard",
+        staticmethod(
+            lambda product, *, attempt_id, orphans: replace(
+                review.runtime, orphan_leases=orphans
+            )
         ),
     )
     monkeypatch.setattr(
-        cleanup_module,
-        "inspect_coding_windows_product_worker_provisioning_attempts",
-        lambda product: (review.native,),
+        CodingWindowsWorkerCleanupEvidenceAuthority,
+        "_cleanup_inspect_native",
+        staticmethod(lambda product: (review.native,)),
     )
     monkeypatch.setattr(
-        cleanup_module,
-        "CodingWindowsWorkerActivationStateJournal",
-        lambda product: SimpleNamespace(
-            retained_attempts_read_only=lambda: (review.activation,)
+        CodingWindowsWorkerCleanupEvidenceAuthority,
+        "_cleanup_activation_journal",
+        staticmethod(
+            lambda product: SimpleNamespace(
+                retained_attempts_read_only=lambda: (review.activation,)
+            )
         ),
     )
     fresh = authority.current_tree_witness(attempt_id=review.runtime.attempt_id)

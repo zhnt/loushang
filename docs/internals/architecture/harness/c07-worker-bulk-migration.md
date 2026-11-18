@@ -604,6 +604,24 @@ Harness 首轮静态检查通过（mypy 916源文件），测试6,354 passed／1
 
 计量口径继续采用 tracked `src/loushang/**/*.py` 物理行，含空行／注释；测试、文档和 GUI Rust／TS 不在这一生产 Python 数字内。最新候选实际为 Coding 100,763／Harness 379,200／Hosting 14,235／其它154,008，共648,206行。相对原 Goal 切点的实际整树变化分别为 −5,667／+10,022／+32／+1,808，共+6,195；其中上游 PR #900 等功能变化为 +1,495／+69／+32／+1,808，共+3,404，明确排除于 C07 迁移收益和成本之外，不隐去实际整树增长。
 
+## Windows C5 清理证据完整绑定归既有恢复 owner
+
+上批历史源／Provisioning 已通过任务 PR #901、集成 PR #902 合入 main `4100b4f65`，本地同步完成。本批以该提交为阶段基线，原 Goal 的 `06f8a3f6`／20,266行基线不变。
+
+现有 Package Product Windows recovery 组件接管正常、Resume 父级登记、崩溃三种绑定，以及完整 current-tree 证据关联。新产品集成基类继承原 `WindowsWorkerCleanupEvidence`，直接使用原 crash history join 和 `capture_windows_product_worker_cleanup`；不另建恢复器、账本、锁、原生观察或清理权限。四个原 Code 方法的执行体退出；原 Harness 捕获、读历史、锁序、缺失／歧义处理和 settlement 证明执行体保持 AST 不变，不重复计为新迁移。
+
+Coding 保留原名义 live review dataclass、三个字段／slots、authority ID／fingerprint、产品身份前缀，以及 changed-boot／registered-lease-expired 两项返回 False 的政策。固定 Profile 只接入原 receipt 类型、三个读取组件和原 orphan reader。仍先读取 registry orphan，再进入原 GC guard、current 复核、runtime／native／activation 只读读取、第二次 current 复核后释放；无法观察或多个匹配继续不构成唯一证据。没有把只读检查变成修复、删除或启动授权。
+
+当前执行代理按已授权内部实施职责接受继承层级、方法定义归属、module／qualname、泛型运行时 hints 和参数绑定错误前缀随 Harness 改变；不承诺运行中重绑旧 Code 私有 import aliases。四个方法的参数名／种类／默认值、文档和具体静态返回类型保持。真实实例 basicsize／dict／weakref offsets、名义记录布局保持，八份修改前 protocol4／5 callable 路由和当前八次 callable pickle 往返通过；另以精确原类 AST 重建的旧实例验证两种协议的前向加载，不将重建字节称为修改前采样或任意存量对象兼容证明。
+
+38组原／新实现受控对照覆盖三种绑定、精确 receipt owner／子类、平台门、失效 current、缺少 crash 历史、缺失／歧义关联、读取失败和取消。有效路径另断言确实成功及完整读锁事件序列，避免同样失败被误判兼容。这些使用真实 receipt／request／名义 review 和原 Harness capture 程序，Product current／读取端口受控，不替代原生 Windows。外置脚本首次因临时子目录未创建失败，修正探针目录准备后通过，未为此修改产品实现。
+
+原有清理／崩溃恢复八份业务文件37 passed（5.28秒）；首次注入迁移前的旧 module alias 产生的1个失败，已将同一测试的三个原 lambda 改接实际固定 Profile，以 staticmethod 保持调用形状，其余测试 AST、断言、参数和 selectors 不变。导入／C50／C51／C54 首轮189 passed／3 failed（204.57秒）；三项均只因同一 Code 模块已退出直接 Worker 依赖而固定库存未同步。仅删除三份清单的对应精确项，原扫描和集合相等断言不变，三个节点复核3 passed（48.50秒）；限定源码对照通过。原失败保留，不将首轮记为全通过。
+
+112份 C07 源码、一个修改的 Harness owner 和具体返回断言共114源限定 mypy通过；Ruff／format、生成依赖事实及文档检查通过。未运行本候选的全量 Coding／Harness 回归或原生 Windows LPAC／Job、真实 crash／reboot 路线，不沿用上批全量通过来宣称当前候选已满足最终交付检查。本批为本地候选，尚未合并，整组验收未完成。
+
+本批 Coding −101、Harness +142、Hosting／其它生产0，系统生产 +41行；测试净−2行，文档单列。这是完整证据绑定职责迁移，接收侧增加了泛型、类型和固定 Profile 接线成本，没有重复算法删除收益，也不是系统净精简。累计归属 C07：Coding −7,263、Harness +10,095、系统生产 +2,832行；C07余13,003行，距离多数退出仍差2,871行。全量逐文件当前行／SHA重新核对442份 Coding 源码，当前100,662行；Harness379,342／Hosting14,235／其它154,008，共648,247生产 Python 行。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
