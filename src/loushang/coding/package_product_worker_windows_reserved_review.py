@@ -10,8 +10,10 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from hashlib import sha256
 
+from loushang.harness.package_product._windows_worker_recovery import (
+    review_windows_product_worker_no_effect_under_guard,
+)
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_stage,
     review_windows_product_worker_offline,
@@ -19,19 +21,8 @@ from loushang.harness.package_product._worker_windows_attempt import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
-from loushang.harness.resources.plugins.locators import (
-    canonical_plugin_relative_path,
-)
-from loushang.harness.worker.history._windows_semantic_contracts import (
-    launch_matches_intent,
-    native_matches_intent,
-    no_effect_history_matches,
-)
 from loushang.harness.worker.history._windows_stage_review_wire import (
-    _WindowsStageReviewWireMethods,
+    _WindowsReservedStageReviewMethods,
 )
 
 from .package_product_worker_windows_launch_intent import (
@@ -48,25 +39,12 @@ from .package_product_worker_windows_stage_retirement import (
 from .package_product_worker_windows_stage_review import (
     FileIdentity,
     _inspection,
-    _valid_identity,
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 _MAX_REVIEW_BYTES = 32768
-_RESERVED_DEBTS = (
-    "payload_retained",
-    "launch_intent_retained",
-    "native_unsettled",
-    "supervisor_history_missing",
-)
 
-_SETTLED_DEBTS = (
-    "payload_retained",
-    "launch_intent_retained",
-    "supervisor_history_missing",
-)
 _RESERVED_HISTORY_ERROR = "coding_worker_reserved_history_unverified"
 _UNLAUNCHED_HISTORY_ERROR = "coding_worker_unlaunched_history_unverified"
 
@@ -78,7 +56,10 @@ class CodingWindowsWorkerReservedReviewError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsStageReviewWireMethods):
+class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsReservedStageReviewMethods):
+    _fingerprint_domain = b"loushang.coding-windows-worker-reserved-review/v1\x00"
+    _attempt_type = CodingWindowsWorkerRecoveryAttemptV1
+    _intent_type = CodingWindowsWorkerLaunchIntentV1
     _record_kind = "reserved"
     _record_error = CodingWindowsWorkerReservedReviewError
     _record_error_code = "coding_worker_reserved_review_invalid"
@@ -98,103 +79,9 @@ class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsStageReviewWireMethods
     executable_digest: str
     entrypoint: str
 
-    def __post_init__(self) -> None:
-        try:
-            path = canonical_plugin_relative_path(self.entrypoint)
-        except ValueError as exc:
-            raise ValueError("Windows Worker reserved entrypoint is invalid") from exc
-        if (
-            type(self.attempt_id) is not str
-            or _ATTEMPT.fullmatch(self.attempt_id) is None
-            or any(
-                type(value) is not str or _DIGEST.fullmatch(value) is None
-                for value in (self.intent_fingerprint, self.executable_digest)
-            )
-            or type(self.lease_owner_revision) is not int
-            or self.lease_owner_revision < 1
-            or type(self.native_revision) is not int
-            or self.native_revision not in (1, 2)
-            or path.as_posix() != self.entrypoint
-            or not _valid_identity(self.stage_identity)
-            or not _valid_identity(self.marker_identity)
-            or not _valid_identity(self.executable_identity)
-            or not 0 < self.executable_identity[3] <= _MAX_PAYLOAD_BYTES
-            or type(self.directory_identities) is not tuple
-            or len(self.directory_identities) != len(path.parts) - 1
-            or any(
-                type(member) is not tuple
-                or len(member) != 2
-                or member[0] != "/".join(path.parts[: index + 1])
-                or not _valid_identity(member[1])
-                for index, member in enumerate(self.directory_identities)
-            )
-        ):
-            raise ValueError("Windows Worker reserved review is invalid")
-
-    def to_bytes(self) -> bytes:
-        return canonical_json_bytes(
-            {
-                "attemptId": self.attempt_id,
-                "directoryIdentities": [
-                    [path, list(identity)]
-                    for path, identity in self.directory_identities
-                ],
-                "entrypoint": self.entrypoint,
-                "executableDigest": self.executable_digest,
-                "executableIdentity": list(self.executable_identity),
-                "intentFingerprint": self.intent_fingerprint,
-                "leaseOwnerRevision": self.lease_owner_revision,
-                "markerIdentity": list(self.marker_identity),
-                "nativeRevision": self.native_revision,
-                "stageIdentity": list(self.stage_identity),
-                "version": 1,
-            }
-        )
-
-    @property
-    def fingerprint(self) -> str:
-        return sha256(
-            b"loushang.coding-windows-worker-reserved-review/v1\0" + self.to_bytes()
-        ).hexdigest()
-
-
-def _require_no_effect_candidate(
-    attempt: CodingWindowsWorkerRecoveryAttemptV1,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-    *,
-    settled: bool,
-    history_error: str,
-) -> None:
-    if (
-        type(attempt) is not CodingWindowsWorkerRecoveryAttemptV1
-        or type(intent) is not CodingWindowsWorkerLaunchIntentV1
-        or attempt.attempt_id != intent.attempt_id
-        or attempt.observed_debts != (_SETTLED_DEBTS if settled else _RESERVED_DEBTS)
-        or attempt.payload_directory_identity != intent.stage_identity
-        or not no_effect_history_matches(attempt, settled=settled)
-        or not native_matches_intent(attempt, intent)
-        or not launch_matches_intent(attempt, intent)
-        or attempt.launch_stage_identity != intent.stage_identity
-    ):
-        raise CodingWindowsWorkerReservedReviewError(history_error)
-
-
-def _require_reserved_no_effect_candidate(
-    attempt: CodingWindowsWorkerRecoveryAttemptV1,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-) -> None:
-    _require_no_effect_candidate(
-        attempt, intent, settled=False, history_error=_RESERVED_HISTORY_ERROR
-    )
-
-
-def _require_settled_no_effect_candidate(
-    attempt: CodingWindowsWorkerRecoveryAttemptV1,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-) -> None:
-    _require_no_effect_candidate(
-        attempt, intent, settled=True, history_error=_UNLAUNCHED_HISTORY_ERROR
-    )
+    @classmethod
+    def _payload_maximum(cls) -> int:
+        return _MAX_PAYLOAD_BYTES
 
 
 def review_coding_windows_product_worker_reserved_no_effect(
@@ -262,32 +149,18 @@ def _review_no_effect_under_gc_guard(
     lease_owner_revision: int,
     settled: bool,
 ) -> CodingWindowsWorkerReservedNoEffectReviewV1:
-    product.assert_root_gc_authority_current()
-    inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
-    matches = tuple(item for item in inventory if item.attempt_id == attempt_id)
-    intent = _read_intent_under_gc_guard(product, attempt_id)
-    if (
-        len(matches) != 1
-        or intent is None
-        or attempt_id in _inspect_retirement_attempt_ids_under_gc_guard(product)
-    ):
-        raise CodingWindowsWorkerReservedReviewError(
-            _UNLAUNCHED_HISTORY_ERROR if settled else _RESERVED_HISTORY_ERROR
-        )
-    validate = (
-        _require_settled_no_effect_candidate
-        if settled
-        else _require_reserved_no_effect_candidate
-    )
-    validate(matches[0], intent)
-    review = _capture_reserved_stage(
+    return review_windows_product_worker_no_effect_under_guard(
         product,
-        intent=intent,
-        native_revision=matches[0].native_revision,
+        attempt_id=attempt_id,
         lease_owner_revision=lease_owner_revision,
+        settled=settled,
+        record_type=CodingWindowsWorkerReservedNoEffectReviewV1,
+        inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
+        read_intent=_read_intent_under_gc_guard,
+        inspect_retirements=_inspect_retirement_attempt_ids_under_gc_guard,
+        capture_reserved=_capture_reserved_stage,
+        history_error=_UNLAUNCHED_HISTORY_ERROR if settled else _RESERVED_HISTORY_ERROR,
     )
-    product.assert_root_gc_authority_current()
-    return review
 
 
 def _capture_reserved_stage(

@@ -30,6 +30,7 @@ from .._segmented_history import (
     read_coding_worker_segmented_history,
 )
 from ..gated_start import WorkerNativeProcessIdentityV1
+from ._activation_store import SegmentedActivationJournal
 from ._checkpoint import _CheckpointMethods
 from ._checkpoint_history import _CodedFailure
 from ._read_v2 import RetainedHistoryReader
@@ -467,3 +468,46 @@ class StartGateHistory(Generic[_RecordT]):
             return records, history
         except (JournalCodecError, UnicodeError, ValueError) as exc:
             raise self._error_type("coding_worker_start_gate_corrupt") from exc
+
+    _activation_missing_code: str
+
+    def _activation_journal(self) -> SegmentedActivationJournal:
+        raise NotImplementedError("the original activation journal owner is required")
+
+    def _append_with_activation_history(
+        self,
+        *,
+        phase: Literal["intent", "bound"],
+        attempt_id: str,
+        worker_identity_fingerprint: str,
+        receipt_fingerprint: str,
+        policy_fingerprint: str,
+        scope_id: str,
+        native_closure_digest: str,
+        identity: WorkerNativeProcessIdentityV1 | None = None,
+    ) -> _RecordT:
+        with self._append_position(
+            phase=phase,
+            attempt_id=attempt_id,
+            worker_identity_fingerprint=worker_identity_fingerprint,
+            receipt_fingerprint=receipt_fingerprint,
+            policy_fingerprint=policy_fingerprint,
+            scope_id=scope_id,
+            native_closure_digest=native_closure_digest,
+        ) as position:
+            activation = self._activation_journal()
+            if not activation.initialized_read_only():
+                if position.has_records:
+                    raise self._error_type(self._activation_missing_code)
+                activation.load()
+            return self._append_record(
+                position,
+                phase=phase,
+                attempt_id=attempt_id,
+                worker_identity_fingerprint=worker_identity_fingerprint,
+                receipt_fingerprint=receipt_fingerprint,
+                policy_fingerprint=policy_fingerprint,
+                scope_id=scope_id,
+                native_closure_digest=native_closure_digest,
+                identity=identity,
+            )

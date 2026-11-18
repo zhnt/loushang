@@ -50,10 +50,5 @@ class CodingWindowsWorkerActivationStateJournal(
             product.state_root / _NAME, access=_CodingWindowsHistoryAccess(product)
         )
 
-    def retained_attempts_read_only(
-        self,
-    ) -> tuple[CodingProductWorkerRetainedAttemptV1, ...]:
-        return super().retained_attempts_read_only()
-
 
 __all__ = ["CodingWindowsWorkerActivationStateJournal"]

@@ -16,7 +16,7 @@ from .package_product_worker_history_checkpoint_anchor import (
     CodingWorkerCheckpointAnchorV1,
 )
 from .package_product_worker_history_segments import (
-    CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentedHistoryV1 as CodingWorkerSegmentedHistoryV1,
 )
 from .package_product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
@@ -47,21 +47,9 @@ class CodingWorkerStreamRetirementPreviewV2(_PreviewMethods):
     _error_type = CodingWorkerRetirementPreviewError
 
 
-def preview_first_coding_worker_stream_retirement_v2(
-    *,
-    checkpoint: CodingWorkerHistoryCheckpointV1,
-    anchor: CodingWorkerCheckpointAnchorV1,
-    history: CodingWorkerSegmentedHistoryV1,
-    stem: str,
-    first_retained_generation: int,
-) -> CodingWorkerStreamRetirementPreviewV2:
-    return CodingWorkerStreamRetirementPreviewV2._from_sources(
-        checkpoint=checkpoint,
-        anchor=anchor,
-        history=history,
-        stem=stem,
-        first_retained_generation=first_retained_generation,
-    )
+preview_first_coding_worker_stream_retirement_v2 = (
+    CodingWorkerStreamRetirementPreviewV2._from_sources
+)
 
 
 __all__ = [

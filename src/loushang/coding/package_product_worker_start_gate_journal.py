@@ -102,6 +102,8 @@ _CODEC: FunctionalJournalRecordCodec[CodingWorkerStartGateRecordV1] = (
 class CodingWorkerStartGateJournal(StartGateHistory[CodingWorkerStartGateRecordV1]):
     """Coding admission and activation coordination over shared gate history."""
 
+    _activation_missing_code = "coding_worker_start_gate_activation_history_missing"
+
     def __init__(self, product: PosixLocalWheelProductSessionOwner) -> None:
         if (
             not isinstance(product, PosixLocalWheelProductSessionOwner)
@@ -150,11 +152,13 @@ class CodingWorkerStartGateJournal(StartGateHistory[CodingWorkerStartGateRecordV
         identity: WorkerNativeProcessIdentityV1 | None = None,
     ) -> CodingWorkerStartGateRecordV1:
         if not any(
-            binding.source_trust_class == "local-worker-candidate"
-            for binding in self._product.policy.bindings
+            (
+                binding.source_trust_class == "local-worker-candidate"
+                for binding in self._product.policy.bindings
+            )
         ):
             raise ValueError("Coding Worker candidate Product owner is required")
-        with self._append_position(
+        return self._append_with_activation_history(
             phase=phase,
             attempt_id=attempt_id,
             worker_identity_fingerprint=worker_identity_fingerprint,
@@ -162,27 +166,13 @@ class CodingWorkerStartGateJournal(StartGateHistory[CodingWorkerStartGateRecordV
             policy_fingerprint=policy_fingerprint,
             scope_id=scope_id,
             native_closure_digest=native_closure_digest,
-        ) as position:
-            activation = CodingProductWorkerActivationStateJournal(
-                self._product.state_root / "worker-activation-state.jsonl"
-            )
-            if not activation.initialized_read_only():
-                if position.has_records:
-                    raise CodingWorkerStartGateJournalError(
-                        "coding_worker_start_gate_activation_history_missing"
-                    )
-                activation.load()
-            return self._append_record(
-                position,
-                phase=phase,
-                attempt_id=attempt_id,
-                worker_identity_fingerprint=worker_identity_fingerprint,
-                receipt_fingerprint=receipt_fingerprint,
-                policy_fingerprint=policy_fingerprint,
-                scope_id=scope_id,
-                native_closure_digest=native_closure_digest,
-                identity=identity,
-            )
+            identity=identity,
+        )
+
+    def _activation_journal(self) -> CodingProductWorkerActivationStateJournal:
+        return CodingProductWorkerActivationStateJournal(
+            self._product.state_root / "worker-activation-state.jsonl"
+        )
 
     def _checkpoint_writer_fence(
         self, rooted: RootedFile

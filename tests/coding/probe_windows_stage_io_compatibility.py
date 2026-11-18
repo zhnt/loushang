@@ -278,6 +278,16 @@ class NativeModel:
             write_windows_private_receipt=self.receipt_write,
         )
         modules = [full, partial, unlaunched, crash, review_module, payload]
+        modules.append(
+            importlib.import_module(
+                "loushang.harness.package_product._windows_worker_retirement"
+            )
+        )
+        patch.setattr(
+            type(full._receipt_io),
+            "write_private_receipt",
+            lambda _io, *args, **kwargs: self.receipt_write(*args, **kwargs),
+        )
         for name in ("_windows_stage_io", "_windows_stage_retirement"):
             module_name = "loushang.harness.worker.payload." + name
             try:
@@ -508,7 +518,7 @@ def observe_bytes(case, patch):
             def action():
                 return value.append(
                     list(
-                        review_module._read_checked_file(
+                        review_module._inspection().read_checked_file(
                             fs.directory and fs.handle(fs.directory),
                             "worker.exe",
                             type(
@@ -558,7 +568,7 @@ def observe_bytes(case, patch):
 
             def action():
                 return value.append(
-                    review_module._verify_marker(
+                    review_module._inspection().verify_marker(
                         body, intent=intent, stage_identity=(1, 10)
                     )
                 )

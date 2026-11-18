@@ -6,10 +6,6 @@ from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.worker.history._windows_record_journals import (
     WindowsReceiptRecords,
 )
-from loushang.harness.worker.product_activation import (
-    ProductWorkerActivationPolicyV1,
-    ProductWorkerActivationReceiptV1,
-)
 
 from .package_product_worker_receipt import (
     CodingWorkerReceiptError,
@@ -46,24 +42,6 @@ class CodingWindowsWorkerReceiptJournal(
     _append_error = "Windows Worker receipt append made no progress"
     _root_error = "Windows Worker receipt requires a pinned Product root"
     _record_type = CodingWorkerReceiptRecordV1
-
-    def records(self, *, directory_fd: int) -> tuple[CodingWorkerReceiptRecordV1, ...]:
-        "Read without creating any journal or lock state."
-        return super().records(directory_fd=directory_fd)
-
-    def issue(
-        self,
-        *,
-        directory_fd: int,
-        policy: ProductWorkerActivationPolicyV1,
-        opt_in_decision_digest: str,
-    ) -> ProductWorkerActivationReceiptV1:
-        "Append or return an exact current policy receipt under one lock."
-        return super().issue(
-            directory_fd=directory_fd,
-            policy=policy,
-            opt_in_decision_digest=opt_in_decision_digest,
-        )
 
 
 __all__ = ["CodingWindowsWorkerReceiptJournal"]

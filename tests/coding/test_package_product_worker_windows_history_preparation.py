@@ -15,7 +15,6 @@ import pytest
 from loushang.coding import (
     package_product_worker_windows_history_preparation as preparation,
 )
-from loushang.coding import package_product_worker_windows_history_sources as sources
 from loushang.coding.package_product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
@@ -32,6 +31,7 @@ from loushang.coding.package_product_worker_windows_provisioning_journal import 
 from loushang.coding.package_product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
 )
+from loushang.harness.package_product import _windows_worker_history as history_owner
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.worker.activation_state_journal import _StateRecord
 from loushang.harness.worker.product_activation import _initial_state
@@ -210,15 +210,19 @@ def test_windows_worker_preparation_rechecks_before_staged_publication() -> None
     with (
         patch.object(preparation, "os", SimpleNamespace(name="nt")),
         patch.object(preparation, "WindowsLocalWheelProductSessionOwner", FakeProduct),
-        patch.object(preparation, "read_windows_private_receipt", read_receipt),
         patch.object(
-            preparation,
-            "write_windows_private_receipt",
+            type(preparation._receipt_io),
+            "read_private_receipt",
+            side_effect=read_receipt,
+        ),
+        patch.object(
+            type(preparation._receipt_io),
+            "write_private_receipt",
             side_effect=lambda _path, raw, **_kw: writes.append(raw),
         ),
         patch.object(
-            sources,
-            "_capture_coding_windows_worker_history_sources_under_gc_guard",
+            history_owner,
+            "capture_windows_product_worker_sources_under_guard",
             changed_source,
         ),
     ):

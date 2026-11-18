@@ -8,7 +8,6 @@ grant process recovery authority.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
 
 from loushang.harness.package_product._linux_worker_recovery import (
     ProductActivationStateStore,
@@ -47,20 +46,6 @@ class CodingProductWorkerActivationStateStore(ProductActivationStateStore):
                 scope_id=product.policy.project_scope_id,
                 store_id=product.epoch_runtime.registry.store_id,
             ),
-        )
-
-    @property
-    def path(self) -> Path:
-        return super().path
-
-    def load(self) -> Mapping[str, object] | None:
-        return super().load()
-
-    def compare_and_swap(
-        self, *, expected_revision: int, document: Mapping[str, object]
-    ) -> bool:
-        return super().compare_and_swap(
-            expected_revision=expected_revision, document=document
         )
 
 

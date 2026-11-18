@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 import loushang.coding.package_product_worker_windows_crash_stage_review as stage_review
+import loushang.harness.package_product._windows_worker_recovery as recovery_owner
 from loushang.coding.package_product_worker_windows_crash_stage_review import (
     CodingWindowsWorkerCrashStageReviewV1,
 )
@@ -145,13 +146,13 @@ def test_windows_crash_stage_review_requires_quiescence_and_current_native_ident
         def assert_root_gc_authority_current(self) -> None:
             events.append("root.check")
 
-    monkeypatch.setattr(stage_review, "WindowsLocalWheelProductSessionOwner", Product)
-    monkeypatch.setattr(stage_review, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(recovery_owner, "WindowsLocalWheelProductSessionOwner", Product)
+    monkeypatch.setattr(recovery_owner, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(
         stage_review, "_review_under_gc_guard", lambda *_a, **_k: joined
     )
     monkeypatch.setattr(
-        stage_review,
+        recovery_owner,
         "_crash_settled_history_matches",
         lambda _r, *, repaired_lease: repaired_lease,
     )
@@ -162,7 +163,7 @@ def test_windows_crash_stage_review_requires_quiescence_and_current_native_ident
         lambda _p: (state["native"],),
     )
     monkeypatch.setattr(
-        stage_review,
+        recovery_owner,
         "_rebuild_windows_lpac_cleanup_spec",
         lambda **_k: events.append("spec.check"),
     )

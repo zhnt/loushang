@@ -33,7 +33,7 @@ from .package_product_worker_history_retirement_preview import (
     CodingWorkerStreamRetirementPreviewV2,
 )
 from .package_product_worker_history_segments import (
-    CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentedHistoryV1 as CodingWorkerSegmentedHistoryV1,
 )
 from .package_product_worker_no_effect_archive_v2 import (
     CodingWorkerNoEffectArchiveV2,
@@ -41,7 +41,9 @@ from .package_product_worker_no_effect_archive_v2 import (
 from .package_product_worker_opt_in_base_v2 import (
     CodingWorkerOptInSemanticBaseV2,
 )
-from .package_product_worker_receipt import CodingWorkerReceiptRecordV1
+from .package_product_worker_receipt import (
+    CodingWorkerReceiptRecordV1 as CodingWorkerReceiptRecordV1,
+)
 from .package_product_worker_receipt_base_v2 import (
     CodingWorkerReceiptSemanticBaseV2,
 )
@@ -61,28 +63,7 @@ CodingWorkerTypedBasesV2 = tuple[
 ]
 
 
-def require_coding_worker_v2_retained_reference_closure(
-    *,
-    opt_in_base: CodingWorkerOptInSemanticBaseV2,
-    opt_in_segments: tuple[bytes, ...],
-    retained_receipts: tuple[CodingWorkerReceiptRecordV1, ...],
-) -> None:
-    return require_retained_reference_closure(
-        opt_in_base=opt_in_base,
-        opt_in_segments=opt_in_segments,
-        retained_receipts=retained_receipts,
-    )
-
-
-def require_coding_worker_no_effect_archive_sources(
-    *,
-    archive: CodingWorkerNoEffectArchiveV2,
-    histories: tuple[CodingWorkerSegmentedHistoryV1, ...],
-    retired_attempt_ids: tuple[str, ...],
-) -> tuple[str, ...]:
-    return CodingWorkerPreparedProductCutoverV2._require_archive_sources(
-        archive=archive, histories=histories, retired_attempt_ids=retired_attempt_ids
-    )
+require_coding_worker_v2_retained_reference_closure = require_retained_reference_closure
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +84,11 @@ class CodingWorkerPreparedProductCutoverV2(_PreparedMethods):
     _stream_type = CodingWorkerStreamCutoverV2
     _preview_type = CodingWorkerStreamRetirementPreviewV2
     _supervisor_type = CodingWorkerSupervisorSemanticBaseV2
+
+
+require_coding_worker_no_effect_archive_sources = (
+    CodingWorkerPreparedProductCutoverV2._require_archive_sources
+)
 
 
 __all__ = [

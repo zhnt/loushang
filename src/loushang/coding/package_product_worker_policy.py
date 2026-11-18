@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
-from typing import Literal
 
+from loushang.harness.package_product._worker_product_authority import (
+    _derive_product_selected_worker_policy,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
@@ -20,13 +23,9 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.package_product.product_worker_candidate import (
     ProductWorkerNativeClosureFacts,
     ProductWorkerOptInFacts,
-    verify_product_selected_worker_candidate,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordSchema,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
@@ -74,33 +73,13 @@ class CodingWorkerOptInV1(ProductWorkerOptInFacts):
     require_worker: bool
 
     def __post_init__(self) -> None:
-        for value in (self.plugin_id, self.contribution_id, self.owner_id):
-            if (
-                not isinstance(value, str)
-                or len(value) > _MAX_TEXT
-                or _IDENTIFIER.fullmatch(value) is None
-            ):
-                raise ValueError("Coding Worker opt-in identity is invalid")
-        if (
-            not isinstance(self.artifact_digest, str)
-            or _DIGEST.fullmatch(self.artifact_digest) is None
-        ):
-            raise ValueError("Coding Worker opt-in digest is invalid")
-        if (
-            not isinstance(self.native_platform, str)
-            or self.native_platform not in _NATIVE_PROFILES
-        ):
-            raise ValueError("Coding Worker opt-in platform is unsupported")
-        if (
-            type(self.owner_selection_generation) is not int
-            or self.owner_selection_generation < 1
-            or type(self.kill_switch_generation) is not int
-            or self.kill_switch_generation < 0
-            or type(self.require_worker) is not bool
-        ):
-            raise ValueError(
-                "Coding Worker opt-in generation or requiredness is invalid"
-            )
+        self._validate_opt_in(
+            max_text=_MAX_TEXT,
+            identifier=_IDENTIFIER,
+            digest=_DIGEST,
+            native_profiles=_NATIVE_PROFILES,
+            label="Coding Worker",
+        )
 
     def to_dict(self) -> dict[str, object]:
         return _OPT_IN_ENCODE_SCHEMA.encode(self)
@@ -129,20 +108,13 @@ class CodingWorkerNativeClosureV1(ProductWorkerNativeClosureFacts):
     containment_profile_digest: str
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.native_platform, str)
-            or self.native_platform not in _NATIVE_PROFILES
-            or not isinstance(self.native_profile_catalog_revision, str)
-            or len(self.native_profile_catalog_revision) > _MAX_TEXT
-            or _OPAQUE.fullmatch(self.native_profile_catalog_revision) is None
-        ):
-            raise ValueError("Coding Worker native closure identity is invalid")
-        for value in (
-            self.containment_launcher_digest,
-            self.containment_profile_digest,
-        ):
-            if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
-                raise ValueError("Coding Worker native closure digest is invalid")
+        self._validate_native_closure(
+            max_text=_MAX_TEXT,
+            opaque=_OPAQUE,
+            digest=_DIGEST,
+            native_profiles=_NATIVE_PROFILES,
+            label="Coding Worker",
+        )
 
     def to_dict(self) -> dict[str, object]:
         return _NATIVE_CLOSURE_SCHEMA.encode(self)
@@ -166,6 +138,28 @@ def coding_worker_session_scope_id(session_id: str) -> str:
     )
 
 
+_DERIVE_SELECTED_WORKER_POLICY = partial(
+    _derive_product_selected_worker_policy,
+    product_id="coding",
+    source_trust_class="local-worker-candidate",
+    opt_in_type=CodingWorkerOptInV1,
+    native_closure_type=CodingWorkerNativeClosureV1,
+    native_profiles=_NATIVE_PROFILES,
+    session_scope_id=coding_worker_session_scope_id,
+    session_fingerprint=coding_product_worker_session_fingerprint,
+    activation_policy=partial(
+        ProductWorkerActivationPolicyV1,
+        product_id="coding",
+        enabled=True,
+        allowed_product_ids=("coding",),
+        requested_owner="hosting",
+        no_fallback=True,
+    ),
+    error_type=CodingWorkerPolicySelectionError,
+    error_prefix="coding_worker_",
+)
+
+
 def derive_coding_selected_worker_policy(
     *,
     runtime: PackageProductRuntimeBindingV1,
@@ -179,134 +173,15 @@ def derive_coding_selected_worker_policy(
 ) -> ProductWorkerActivationPolicyV1 | None:
     """Recheck Product selection and derive one explicit, authority-free policy."""
 
-    if opt_in is None:
-        return None
-    if (
-        not isinstance(runtime, PackageProductRuntimeBindingV1)
-        or not isinstance(product_policy, PackageProductLocalWheelPolicy)
-        or not isinstance(selected, PackageProductSelectedPluginManifestV1)
-        or not isinstance(opt_in, CodingWorkerOptInV1)
-        or not isinstance(native_closure, CodingWorkerNativeClosureV1)
-        or opt_in.native_platform != native_closure.native_platform
-        or runtime.product_id != "coding"
-        or runtime.session_id != session_id
-        or runtime.product_runtime_id != product_runtime_id
-        or product_policy.product_id != "coding"
-        or selected.snapshot.installation_key.product_id != "coding"
-        or selected.snapshot.installation_key.scope_id
-        != product_policy.project_scope_id
-        or selected.snapshot.installation_key.plugin_id != opt_in.plugin_id
-        or selected.snapshot.root_ref.artifact_digest != opt_in.artifact_digest
-        or not isinstance(session_id, str)
-        or not session_id
-        or not isinstance(product_runtime_id, str)
-        or not product_runtime_id
-    ):
-        raise CodingWorkerPolicySelectionError(
-            "coding_worker_product_selection_invalid"
-        )
-    trust = selected.source_trust_snapshot
-    if selected.snapshot.committed_record.closure_lock.node_count != 1:
-        raise CodingWorkerPolicySelectionError(
-            "coding_worker_dependency_activation_unsupported"
-        )
-    if (
-        trust is None
-        or not trust.trusted
-        or trust.source_trust_class != "local-worker-candidate"
-        or trust.source_trust_policy_revision != product_policy.authority_revision
-    ):
-        raise CodingWorkerPolicySelectionError("coding_worker_product_trust_changed")
-    bindings = tuple(
-        binding
-        for binding in product_policy.bindings
-        if binding.plugin_id == opt_in.plugin_id
-        and binding.source_identity
-        == selected.snapshot.package_revision.package_source_identity
-        and binding.artifact_digest == opt_in.artifact_digest
-        and binding.source_trust_class == "local-worker-candidate"
-    )
-    if len(bindings) != 1:
-        raise CodingWorkerPolicySelectionError("coding_worker_product_binding_changed")
-    admitted = bindings[0].worker_admission
-    if (
-        admitted is None
-        or admitted.contribution_id != opt_in.contribution_id
-        or admitted.owner_id != opt_in.owner_id
-        or admitted.native_platform != opt_in.native_platform
-    ):
-        raise CodingWorkerPolicySelectionError("coding_worker_product_binding_changed")
-    candidate = verify_product_selected_worker_candidate(
-        selected,
-        contribution_id=opt_in.contribution_id,
-        native_platform=admitted.native_platform,
-    )
-    if candidate.owner_id != opt_in.owner_id:
-        raise CodingWorkerPolicySelectionError("coding_worker_product_binding_changed")
-    session_route: Literal["new", "selected"]
-    if session_discovery is None:
-        session_route = "new"
-        locator_fingerprint = None
-        locator_revision = "new-session-v1"
-    else:
-        if (
-            not isinstance(session_discovery, SessionDiscoveryMetadata)
-            or not session_discovery.resumable
-            or session_discovery.conflicts
-            or session_discovery.locator.conversation_id != session_id
-        ):
-            raise CodingWorkerPolicySelectionError("coding_worker_session_invalid")
-        session_route = "selected"
-        locator_fingerprint = coding_product_worker_session_fingerprint(
-            session_discovery
-        )
-        locator_revision = session_discovery.locator.revision
-    runtime.assert_selected_plugin_manifest_current(selected)
-    native_profile_id = _NATIVE_PROFILES[opt_in.native_platform]
-    closure = ProductWorkerActivationPolicyV1.native_policy_closure_fingerprint(
-        native_profile_catalog_revision=native_closure.native_profile_catalog_revision,
-        native_profile_id=native_profile_id,
-        payload_sha256=candidate.executable_digest,
-        containment_launcher_sha256=native_closure.containment_launcher_digest,
-        containment_profile_sha256=native_closure.containment_profile_digest,
-    )
-    policy_revision = sha256(
-        canonical_json_bytes(
-            {
-                "packagePolicy": product_policy.authority_revision,
-                "optIn": opt_in.to_dict(),
-                "nativeClosure": native_closure.to_dict(),
-            }
-        )
-    ).hexdigest()
-    return ProductWorkerActivationPolicyV1(
-        product_id="coding",
-        product_runtime_id=product_runtime_id,
-        product_scope_id=coding_worker_session_scope_id(session_id),
+    return _DERIVE_SELECTED_WORKER_POLICY(
+        runtime=runtime,
+        product_policy=product_policy,
+        selected=selected,
         session_id=session_id,
-        session_route=session_route,
-        selected_locator_fingerprint=locator_fingerprint,
-        selected_locator_revision=locator_revision,
-        plugin_id=candidate.plugin_id,
-        plugin_revision_digest=selected.snapshot.root_ref.artifact_digest,
-        contribution_id=candidate.contribution_id,
-        reservation_fingerprint=candidate.reservation_fingerprint,
-        declaration_fingerprint=candidate.declaration_fingerprint,
-        worker_configuration_fingerprint=candidate.worker_configuration_fingerprint,
-        declared_required=candidate.declared_required,
-        effective_required=candidate.declared_required or opt_in.require_worker,
-        enabled=True,
-        allowed_product_ids=("coding",),
-        allowed_contribution_ids=(candidate.contribution_id,),
-        requested_owner="hosting",
-        owner_selection_generation=opt_in.owner_selection_generation,
-        no_fallback=True,
-        native_profile_id=native_profile_id,
-        native_profile_catalog_revision=native_closure.native_profile_catalog_revision,
-        allowed_native_profile_ids=(native_profile_id,),
-        expected_native_policy_closure_fingerprint=closure,
-        product_policy_revision=policy_revision,
-        kill_switch_generation=opt_in.kill_switch_generation,
+        product_runtime_id=product_runtime_id,
+        opt_in=opt_in,
+        native_closure=native_closure,
+        session_discovery=session_discovery,
     )
 
 

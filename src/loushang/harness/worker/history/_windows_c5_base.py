@@ -20,6 +20,9 @@ from loushang.harness.worker.history._activation import (
     project_retained_attempts,
 )
 from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
+from loushang.harness.worker.history._windows_prepared import (
+    _WindowsPreparedSourceMethods,
+)
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _ATTEMPT,
     _DIGEST,
@@ -29,7 +32,7 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsC5BaseMethods(_SourceBoundBaseWireMethods):
+class _WindowsC5BaseMethods(_WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods):
     __slots__ = ()
     scope_id: str
     store_id: str
@@ -81,13 +84,7 @@ class _WindowsC5BaseMethods(_SourceBoundBaseWireMethods):
         except (KeyError, RecursionError, TypeError, ValueError) as exc:
             raise ValueError("Windows Worker C5 semantic base is invalid") from exc
         if (
-            type(self.scope_id) is not str
-            or not self.scope_id
-            or len(self.scope_id) > 128
-            or type(self.store_id) is not str
-            or not self.store_id
-            or len(self.store_id) > 128
-            or type(self.source_snapshot_digest) is not str
+            self._source_identity_invalid()
             or _DIGEST.fullmatch(self.source_snapshot_digest) is None
             or type(self.owner_present) is not bool
             or type(self.cutoff_revision) is not int

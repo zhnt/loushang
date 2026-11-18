@@ -170,23 +170,6 @@ class CodingWorkerOptInJournal(
     def _max_history_records(self) -> int:
         return _MAX_EVENTS
 
-    def change(
-        self,
-        *,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        action: Literal["allow", "revoke"],
-        opt_in: CodingWorkerOptInV1 | None,
-    ) -> CodingWorkerOptInDecisionV1:
-        return super().change(
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-            action=action,
-            opt_in=opt_in,
-        )
-
 
 _opt_in_line = opt_in_line
 

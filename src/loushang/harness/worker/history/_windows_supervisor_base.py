@@ -11,6 +11,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
+from loushang.harness.worker.history._windows_prepared import (
+    _WindowsPreparedSourceMethods,
+)
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _ATTEMPT,
     _DIGEST,
@@ -25,7 +28,9 @@ from loushang.harness.worker.journal import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsSupervisorBaseMethods(_SourceBoundBaseWireMethods):
+class _WindowsSupervisorBaseMethods(
+    _WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods
+):
     __slots__ = ()
     scope_id: str
     store_id: str
@@ -39,13 +44,7 @@ class _WindowsSupervisorBaseMethods(_SourceBoundBaseWireMethods):
 
     def __post_init__(self) -> None:
         if (
-            type(self.scope_id) is not str
-            or not self.scope_id
-            or len(self.scope_id) > 128
-            or type(self.store_id) is not str
-            or not self.store_id
-            or len(self.store_id) > 128
-            or type(self.source_snapshot_digest) is not str
+            self._source_identity_invalid()
             or _DIGEST.fullmatch(self.source_snapshot_digest) is None
             or type(self.cutoff_revision) is not int
             or self.cutoff_revision < 0

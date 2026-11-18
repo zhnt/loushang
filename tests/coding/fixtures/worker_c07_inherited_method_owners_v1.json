@@ -1,0 +1,180 @@
+{
+  "scope": "Exact inherited implementation-owner metadata only. Original fields/value/wire/error/pickle fixtures are unchanged; original reflected method-name set still checked, no inherited API extension. Parameters/defaults and concrete static results verified separately.",
+  "registered_api_methods": {
+    "loushang.coding.package_product_worker_activation_state": {
+      "CodingProductWorkerActivationStateStore": {
+        "path": {
+          "signature": "(self) -> 'Path'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "ProductActivationStateStore.path",
+          "annotations": {
+            "return": "Path"
+          }
+        },
+        "load": {
+          "signature": "(self) -> 'Mapping[str, object] | None'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "ProductActivationStateStore.load",
+          "annotations": {
+            "return": "Mapping[str, object] | None"
+          }
+        },
+        "compare_and_swap": {
+          "signature": "(self, *, expected_revision: 'int', document: 'Mapping[str, object]') -> 'bool'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "ProductActivationStateStore.compare_and_swap",
+          "annotations": {
+            "expected_revision": "int",
+            "document": "Mapping[str, object]",
+            "return": "bool"
+          }
+        }
+      }
+    },
+    "loushang.coding.package_product_worker_cleanup_evidence": {
+      "CodingPosixWorkerCleanupEvidenceAuthority": {
+        "host_identity": {
+          "signature": "(self) -> 'str'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "CleanupEvidenceAuthority.host_identity",
+          "annotations": {
+            "return": "str"
+          }
+        },
+        "boot_identity": {
+          "signature": "(self) -> 'str'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "CleanupEvidenceAuthority.boot_identity",
+          "annotations": {
+            "return": "str"
+          }
+        },
+        "verify_tree_settlement": {
+          "signature": "(self, *, receipt_fingerprint: 'str', attempt_id: 'str', owner_generation: 'int', host_identity: 'str', boot_identity: 'str', witness: 'object', evidence_authority_id: 'str', evidence_authority_fingerprint: 'str') -> 'bool'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "CleanupEvidenceAuthority.verify_tree_settlement",
+          "annotations": {
+            "receipt_fingerprint": "str",
+            "attempt_id": "str",
+            "owner_generation": "int",
+            "host_identity": "str",
+            "boot_identity": "str",
+            "witness": "object",
+            "evidence_authority_id": "str",
+            "evidence_authority_fingerprint": "str",
+            "return": "bool"
+          }
+        },
+        "verify_changed_boot_absence": {
+          "signature": "(self, *, receipt_fingerprint: 'str', attempt_id: 'str', owner_generation: 'int', host_identity: 'str', boot_identity: 'str', current_boot_identity: 'str', witness: 'object', evidence_authority_id: 'str', evidence_authority_fingerprint: 'str') -> 'bool'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "CleanupEvidenceAuthority.verify_changed_boot_absence",
+          "annotations": {
+            "receipt_fingerprint": "str",
+            "attempt_id": "str",
+            "owner_generation": "int",
+            "host_identity": "str",
+            "boot_identity": "str",
+            "current_boot_identity": "str",
+            "witness": "object",
+            "evidence_authority_id": "str",
+            "evidence_authority_fingerprint": "str",
+            "return": "bool"
+          }
+        },
+        "verify_registered_lease_expired": {
+          "signature": "(self, **_arguments: 'object') -> 'bool'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "CleanupEvidenceAuthority.verify_registered_lease_expired",
+          "annotations": {
+            "_arguments": "object",
+            "return": "bool"
+          }
+        },
+        "current_tree_witness": {
+          "signature": "(self, *, attempt_id: 'str') -> 'HistoryT'",
+          "module": "loushang.harness.package_product._linux_worker_recovery",
+          "qualname": "CleanupEvidenceAuthority.current_tree_witness",
+          "annotations": {
+            "attempt_id": "str",
+            "return": "HistoryT"
+          }
+        }
+      }
+    },
+    "loushang.coding.package_product_worker_registered_payload_repair": {
+      "CodingWorkerRegisteredPayloadRepairIntentV1": {
+        "from_dict": {
+          "signature": "(value: 'object') -> 'Self'",
+          "module": "loushang.harness.worker.payload._records",
+          "qualname": "RegisteredPayloadRepairIntentMethods.from_dict",
+          "annotations": {
+            "value": "object",
+            "return": "Self"
+          }
+        },
+        "attempt_id": {
+          "signature": "(self) -> 'str'",
+          "module": "loushang.harness.worker.payload._records",
+          "qualname": "RegisteredPayloadRepairIntentMethods.attempt_id",
+          "annotations": {
+            "return": "str"
+          }
+        },
+        "to_dict": {
+          "signature": "(self) -> 'dict[str, object]'",
+          "module": "loushang.harness.worker.payload._records",
+          "qualname": "RegisteredPayloadRepairIntentMethods.to_dict",
+          "annotations": {
+            "return": "dict[str, object]"
+          }
+        }
+      }
+    },
+    "loushang.coding.package_product_worker_registered_recovery": {
+      "CodingWorkerRegisteredOrphanReviewV1": {
+        "registered_candidate": {
+          "signature": "(self) -> 'bool'",
+          "module": "loushang.harness.worker.history._retention",
+          "qualname": "RegisteredOrphanReviewMethods.registered_candidate",
+          "annotations": {
+            "return": "bool"
+          }
+        },
+        "repair_candidate": {
+          "signature": "(self) -> 'bool'",
+          "module": "loushang.harness.worker.history._retention",
+          "qualname": "RegisteredOrphanReviewMethods.repair_candidate",
+          "annotations": {
+            "return": "bool"
+          }
+        },
+        "payload_repair_candidate": {
+          "signature": "(self) -> 'bool'",
+          "module": "loushang.harness.worker.history._retention",
+          "qualname": "RegisteredOrphanReviewMethods.payload_repair_candidate",
+          "annotations": {
+            "return": "bool"
+          }
+        }
+      }
+    }
+  },
+  "native_value_method_signatures": {
+    "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeReleaseApprovalV1": {
+      "from_dict": "(value: 'object') -> 'Self'"
+    },
+    "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeReleaseReviewV1": {
+      "create": "(*, scope_id: 'str', product_policy_revision: 'str', approval: '_ApprovalT') -> 'Self'"
+    },
+    "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalDecisionV1": {
+      "create": "(*, journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: '_ApprovalT | None') -> 'Self'",
+      "from_dict": "(value: 'object') -> 'Self'"
+    }
+  },
+  "retention_property_signatures": {
+    "attempt_reference": "(self) -> 'ReferenceT | None'",
+    "no_effect_closure": "(self) -> 'bool'",
+    "missing_proofs": "(self) -> 'tuple[str, ...]'"
+  }
+}

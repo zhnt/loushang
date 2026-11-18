@@ -55,6 +55,74 @@ ReceiptIO and history-name rules; Coding retains concrete value/semantic codecs,
 entry admission and quiescence/GC acquisition. The result is read evidence,
 without cutover or deletion authority. See [A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct).
 
+For Windows pre-cutover preparation/checkpoints, PackageProduct now coordinates
+the original quiescence/GC guards, exact staged retry and read-back over the existing
+private ReceiptIO. Worker History owns their canonical record proofs; Coding keeps
+Product admission and nominal wire facades. PackageProduct also owns source custody,
+Desired capture, reference/checkpoint input assembly and persisted/cutover candidate
+rechecks over original readers. Worker owns the shared six-stream reconstruction
+and persisted/cutover proofs. PackageProduct now also owns GC settlement/offline
+history capture, attempt reference/GC observations and full/partial/no-effect stage
+read coordination, plus crash identity/spec rechecks and guarded orphan repair.
+Its four fixed stage-retirement commands use the original record IO and
+physical deletion owners through history proof, intent/replay/publication and
+completed-history validation, with Code nominal Profile and Product admission.
+PackageProduct also owns the six-base read/publication transaction, crash
+Supervisor/native/C5 settlement, no-effect reservation settlement and pinned-stage
+lease repair. Worker owns the read-only cleanup evidence join. Coding keeps trust
+identities, Product admission and nominal records. Existing recovery also owns gated/orphan review, lease repair and Supervisor
+settlement; StartGateHistory holds the original append/C5 initialization scope.
+Coding retains nominal values, Product/type admission and late Journal binding.
+The existing Windows lease owner now also holds the complete crash-recovery
+command and its Supervisor/native/C5 programs. It reuses the original
+retirement owner, journals and fact readers; Code supplies nominal/Profile
+bindings rather than eight action callbacks. Remaining dispositions and the
+majority-exit target of the [C07 bulk migration](c07-worker-bulk-migration.md)
+are unfinished.
+
+The same Package Product authority family owns opt-in replay/generation planning
+for both platforms and the complete POSIX current/allow/revoke operations over
+the original journal, selected candidate and installed-native reader. Windows
+retains its original pinned-root and currentness scopes. Coding keeps actual
+Product/trust construction, nominal values/errors, requiredness policy and public
+entries. This moves the previously shared Code planner once; it does not claim
+two duplicate planners were removed. No second journal or lifecycle owner exists.
+
+Package Product's existing receipt/activation authority component also owns the
+complete authority-free policy derivation: selected/runtime/opt-in correlation,
+trust and binding proof, native candidate verification, Session locator correlation,
+currentness recheck and exact policy/native closure fingerprints. Coding binds its
+actual nominal input types, Product/trust identity, native profiles, Session scope
+and fingerprint rules, and explicit enabled/owner/no-fallback constructor policy.
+Both platform receipt authorities continue through the same public Coding entry.
+No activation, native preparation or cleanup authority is added by this value.
+
+The existing Session Worker Provider component owns the complete selected-Worker
+input join, exact candidate/trust/admission/time proof, original compiler and
+request construction, and immediate/deferred prepare closure. It reuses the
+actual receipt owner's complete manifest reader and existing Query/Prepared
+contracts. Coding retains the original nominal guard and query Consumer policy,
+invoked after staleness validation and before compilation. Both pending Hosts and
+the operator query use the same public entry. Existing select/compose/validate
+and Provider cleanup programs remain their sole mechanisms; no second runtime
+or callback lifecycle exists.
+
+Worker payload method providers reuse the existing read-only PayloadPlan,
+EmptyPayloadPlan, PayloadMember and PayloadReview fact contracts, with no second
+copy of their field declarations. Concrete Code dataclasses retain fields/slots
+and their original MRO. Canonical owner-byte and payload repair/marker encoders
+are called directly by their existing owners; retired Code forwards and an unused
+opt-in reader Protocol have exited. Active decoder, quota and fault seams remain.
+
+The existing Transcript attached-discovery component also owns complete reader
+construction, original state/codec initialization and attached-owner capture.
+Coding binds its fixed nominal gate/Session types, error and live read limit over
+the original public constructor. Package Product owns the shared selected-Session
+file/header/workspace/catalog proof over the same borrowed owners; each platform
+retains its original later runtime checks. Read-only port methods reuse actual
+Session operations. No additional reader, record, lifecycle or repair permission
+is introduced.
+
 Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
 including POSIX/Windows file custody and strict decoding after cleanup. It directly
 uses Resources' existing file consumer. Coding retains Source policy, original
@@ -154,6 +222,25 @@ history paths to these owners. Worker.payload now also owns the original physica
 payload checks, named repair publication and precise remainder deletion. It reuses
 Journal write loops and Resources file consumption; Product authorization and
 Hosting process custody remain with their original owners.
+PackageProduct now also owns the original POSIX payload quiescence/GC/root scopes
+and complete planning/materialization/binding/recovery operations over those same
+Worker programs. Its existing Product authority owner holds the POSIX start-gate
+pipe, intent/bound Journal handoff, release and close sequence; Coding retains the
+nominal class, Product admission and error Profile. No second gate runtime or
+parallel payload recovery engine is introduced.
+Registered/no-effect review predicates and the repair intent codec also use
+the original Worker retention/payload owners; complete and registered repair
+reuse the same plan field constructor while retaining their version/error order.
+Coding retains the original reflective method entries and nominal record slots.
+The original Product Worker receipt authority also owns Provider candidate proof:
+serialized Base/receipt freshness, manifest/payload capture, exact candidate and
+Provider correlation, inert envelope construction, and final receipt recheck.
+It uses the same platform owners; Coding retains nominal admission and its
+query/Base policy. The existing Session Worker integration now also owns
+the full Host input correlation using its original QueryAuthority interface;
+Code binds nominal admission, candidate/platform policy and error identity.
+Capability authority and broader Session preparation remain in progress,
+and this input proof provides no publication or facet authority.
 Coding retains its public value facades, exact Product admission and a narrow
 access adapter; the original Product/GC and Hosting authorities remain separate.
 Other Worker profiles, Product evidence/preflight and broader cleanup coordination remain
@@ -190,19 +277,22 @@ strict history and single-record journal validation remain distinct. This adds
 no IO, native cleanup authority or new state; see
 [A40](key-designs/windows-worker-semantic-convergence.md#17-a40恢复证明合同澄清与纯历史判据实际归位).
 
-Worker.history also supplies pure reading of the four existing Windows stage-review
-record formats using Resources' original RecordSchema. Coding retains the original
-public dataclasses, own fields, semantic admission, fingerprints and all encoders.
-There is no new I/O, authority or Product coordinator; MRO/private schema metadata
-changes are explicit. Future dataclass field changes require wire-format review.
-See [A43](key-designs/windows-worker-semantic-convergence.md#20-a43四类windows记录读取去重).
+Worker.history owns reading, semantic proofs, canonical encoding and fingerprints
+for the four existing Windows stage-review formats, using Resources' original
+RecordSchema. Coding retains the original dataclasses/slots/fields, public errors,
+fingerprint domains and dynamic quota Profile. Ordinary zero-slot method bases
+preserve the nominal dataclass metadata. There is no new native authority or IO
+in these value methods. See the current [C07 migration](c07-worker-bulk-migration.md)
+and the earlier [A43 reader slice](key-designs/windows-worker-semantic-convergence.md#20-a43四类windows记录读取去重).
 
 The existing canonical record reader also serves checkpoint, preparation,
 cutover, launch-intent and stage-retirement values. Coding keeps each original
-concrete class, own fields, encoders and semantic admission; Resources supplies
-the original schema traversal. Original error/limit/shape differences remain
-explicit policy, and the same reader's 15 existing families retain their default
-contracts. See [A45](key-designs/windows-worker-semantic-convergence.md#21-a45其余五类canonical记录复用既有reader).
+concrete class, fields and wire Profile; Resources supplies schema traversal,
+and Worker owns the migrated preparation/checkpoint/cutover proofs and encoders.
+Windows launch-intent proof/encoding and generic binding now belong to Worker
+and PackageProduct. Coding retains the nominal record, Profile and true Product
+admission; stage-retirement receipt proof and all four transactions are shared. Original errors, bounds and shapes remain compatible; the same reader's
+15 existing families retain their default contracts. See [A45](key-designs/windows-worker-semantic-convergence.md#21-a45其余五类canonical记录复用既有reader).
 
 The same Worker history owner now supplies complete Windows Supervisor and C5
 journal custody over the existing state engine, activation replay/projection and
@@ -211,6 +301,13 @@ access adapter to the original guard, currentness and borrowed-root authorities.
 Supervisor marker/history and C5 per-revision committed-head protocols remain
 distinct; no repair, additional root ownership or second history is introduced.
 See [A32](key-designs/windows-worker-semantic-convergence.md#14-a32supervisor-与-c5-的完整-windows-托管路径).
+
+PackageProduct now also owns complete Windows pending planning, payload
+materialization, live request binding and intent construction over the original
+stage/Journal/receipt owners. The original weak request registry has one shared
+owner. Worker payload values own the migrated debt proofs and both pending
+validators, preserving platform type differences. Coding keeps Product admission,
+nominal fields and dynamic limits; existing POSIX physical programs are unchanged.
 
 Worker.payload also supplies Windows stage marker/read/direct checks and common
 physical member retirement over the existing Resources native APIs and ACL.
@@ -302,6 +399,98 @@ values at the original scope boundaries; no new runtime state or manager exists.
 Coding retains Product admission/budgets, public DTOs/Reader/closure and independent
 approval/revocation decisions. [A93](key-designs/windows-backend-release-custody-convergence.md)
 records full costs, old pickle evidence and the separate pre-existing H5 mismatch.
+
+The existing Windows backend owner also holds complete approve/revoke write
+custody, including the original GC gate, root pin, journal change and both
+currentness checks. It reads actual owner/review fields at their original guarded
+points and calls the real public journal override. Coding keeps Wheel review,
+review-ID approval and public owner identity; no journal or lifecycle manager is
+added. [C07 transaction evidence](c07-worker-bulk-migration.md#windows-原生批准写事务归现有-backend-owner)
+records costs and the remaining native-platform verification gap.
+
+The existing source-bound wire owner provides the common seven-predicate source
+identity prefix for five Windows semantic base streams. Each stream keeps its
+original digest pattern, crypto and history validation; opt-in keeps its stricter
+scope order. Intent and retirement callers directly use the original Harness
+bound-request/root verifiers, so two obsolete private Code forwarders have exited.
+[C07 reuse evidence](c07-worker-bulk-migration.md#源身份校验复用与退出的-windows-私有转发)
+records the actual system net reduction and unchanged persisted value contracts.
+
+The original Worker C5 component owns the Resume binding's generic constructor,
+matching, locked owner binding and settlement-currentness methods on the same
+Code object. Code keeps exact v2 intent/effect-owner membership and its original
+errors. One private method base joins the MRO; the original four fields, instance
+dictionary, lock and coordinator remain. [C07 binding evidence](c07-worker-bulk-migration.md#resume-结算绑定归原-c5-组件)
+records real lock-race checks, unchanged public shape and the remaining costs.
+
+The existing Product Worker authority owns complete Capability identity closure,
+Product currentness and facet grant/decoder handoff on the same Code object.
+Code keeps closed nominal admission and supplies the real facet-owner policy;
+that original policy still grants each facet. The original five references and
+Code pickle path remain; a typed generic method base joins the MRO without a
+second authority container. [C07 authority evidence](c07-worker-bulk-migration.md#完整-product-capability-authority-归现有-owner)
+records actual consumer checks, original/current behavior and the costs.
+
+The existing Product authority also owns the complete locked Base selection and
+Worker receipt recheck, plus fresh selected Worker/startup revision correlation.
+It borrows the same compilation and receipt owner; both concrete platform runtime
+getters retain their programs. Code keeps exact Base identity/scope admission,
+query/Consumer decisions and platform wiring in their original order. The original
+frozen Code binding keeps its fields, slots and pickle path over an empty-slot
+method base. [C07 proof evidence](c07-worker-bulk-migration.md#base-当前性与完整启动版本关联归原-product-owner)
+records complete-program equivalence, bounded runtime models and costs.
+
+The same existing receipt authorities now hold complete selected-owner creation:
+Session-file proof, original platform runtime/root association, bounded manifest
+capture and opt-in/discovery/receipt-owner construction. Code keeps nominal
+constructors and approved native-release selection. The two leaf names directly
+bind these class methods; old global pickle lookup and parameter shape remain,
+while internal callable reflection follows Harness. Five lazy nominal type getters
+retain original lookup order; no operation state or new lifecycle owner is added.
+[C07 creation evidence](c07-worker-bulk-migration.md#两平台完整回执创建归现有-authority)
+records the distinct platform checks, bounded proofs and system growth.
+
+Ten internal Code payload recovery names bind directly to methods of the same
+existing Product custody instance. Their duplicate function layer has exited;
+nominal admission, materialization and repair guards remain. No read route gains
+write options. The stable root Coding SDK and data record contracts remain;
+internal callable reflection follows the Harness method. [C07 direct reuse evidence](c07-worker-bulk-migration.md#载荷内部入口直接复用已有方法)
+records the explicit metadata delta, historical global pickle lookups and actual
+system net reduction; pre-existing payload mechanisms are not counted again.
+
+Thirteen additional internal history/GC/crash names directly reuse existing
+CheckpointHistory, RetainedHistoryReader, Prepared/Preview and pure history
+operations. Code keeps every original name, module import binding and nominal
+record. Three explicitly frozen signature entries retain their wrappers. This
+removes duplicate dispatch only; prior shared mechanisms are not counted again.
+[C07 history reuse evidence](c07-worker-bulk-migration.md#历史与恢复内部入口直接复用)
+records the exact callable metadata/binding delta, old global pickle lookups,
+consumer evidence and net system reduction.
+
+The existing Product Worker opt-in and native-closure facts also own their
+complete ordered value validators. Code retains its nominal dataclasses, slots,
+wire codecs and Product platform/identity rules, bound once per validation;
+there are no callbacks or extra validation objects. Before-call rule overrides
+and live platform mapping are retained, while private module pattern rebinding
+mid-validation is outside this boundary. [C07 fact validation evidence](c07-worker-bulk-migration.md#批准输入与原生闭合事实的完整校验归原-facts)
+records original data/pickle behavior, failure order and explicit system cost.
+
+The original WindowsWorkerCleanupEvidence also owns complete crash-evidence
+construction from the original readonly Product review and exact receipt,
+Supervisor/fingerprint/payload relation. Code retains the public factory and
+OS/Product/nominal admission, normal/enrollment bindings and identity policy.
+The same Code object, empty base slots and virtual setter failure points remain;
+no new recovery/evidence owner or cleanup right is introduced.
+[C07 crash factory evidence](c07-worker-bulk-migration.md#崩溃清理证据的完整历史工厂归原-evidence-owner)
+records full source expansion, fault/partial-state retry checks and system cost.
+
+The existing common Windows prepared-source base owns the public creation
+entry for all six semantic base families. Code keeps its nominal records and
+profiles; one inherited method retains virtual cls._from_prepared_history
+dispatch, including Code subclass overrides. Constructor/data identity and
+parameter shape remain, while method reflection follows the shared owner.
+[C07 shared factory evidence](c07-worker-bulk-migration.md#六流-semantic-base-创建入口复用公共-owner)
+records the exact six-method scope and original wire/pickle checks.
 
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
@@ -707,12 +896,15 @@ including live root/ACL/handle lifetime at completion. No second file engine is
 introduced. Product checks and selection remain at their original call points.
 
 The existing [Package Product boundary](../../../../src/loushang/harness/package_product/_worker_windows_attempt.py)
-now owns fixed Windows intent read/inventory/commit, provisioning load/CAS and
+now owns fixed Windows intent read/inventory/commit, complete provisioning
+binding/intent validation/load/CAS and retained native-cleanup rechecks, plus
 the outer cleanup-fact acquisition sequence under the original GC/currentness
 scope. It uses the same original Resources receipt writer, Journal, C5 and
 Hosting authorities. It adds no writer, journal, retained descriptor or fact
-index. Coding retains exact receipt/request/selection policy, error and layout
-bindings, and real public record/Prepared dataclasses with their own fields.
+index. Provisioning uses the same payload recovery inventory, completed-retirement
+proof and admission owner; Coding retains exact platform/type/active Product
+admission, scope and layout bindings. Public record/Prepared dataclasses keep
+their original nominal fields.
 
 The same Package Product boundary also owns the fixed inner orphan/runtime
 join, recovery-fact acquisition and retirement-root observation. Both payload

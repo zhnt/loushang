@@ -43,7 +43,6 @@ from loushang.harness.plugin_management.package_gc_reservation import (
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
-    PackageProductSelectedRootReader,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
@@ -83,7 +82,6 @@ from .package_product_worker_installed_native import (
     open_coding_product_installed_worker_release_reader,
 )
 from .package_product_worker_opt_in import (
-    CodingWorkerOptInDecisionV1,
     CodingWorkerOptInJournal,
 )
 from .package_product_worker_policy import (
@@ -197,16 +195,15 @@ class _CodingReceiptHistory(ReceiptHistory[CodingWorkerReceiptRecordV1]):
         return _MAX_RECEIPT_SEGMENT_BYTES
 
 
-class _WorkerOptInReader(Protocol):
-    def current(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None: ...
-
-
 class _CodingWorkerReceiptAuthority(
     _ProductWorkerReceiptAuthority[CodingWorkerSelectedPayloadV1]
 ):
     _receipt_error = CodingWorkerReceiptError
     _error_prefix = "coding_worker_"
     _product_id = "coding"
+    _receipt_session_label = "Coding Session owner"
+    _receipt_manifest_max_files = 16
+    _receipt_manifest_max_bytes = 16 * 1024 * 1024
     _max_files = 64
     _max_total_bytes = 16 * 1024 * 1024
     _opt_in_type = CodingWorkerOptInV1
@@ -258,12 +255,23 @@ class CodingWorkerProductReceiptOwner(
     _native_reader_type = CodingProductInstalledWorkerReleaseReader
     _native_error = CodingWorkerNativeClosureReadError
 
+    _receipt_factory_label = "Coding Worker"
+    _receipt_session_type = staticmethod(lambda: SessionManager)
+    _receipt_discovery_type = staticmethod(
+        lambda: CodingWorkerTranscriptDiscoveryReader
+    )
+    _receipt_opt_in_journal_type = staticmethod(lambda: CodingWorkerOptInJournal)
+
     _stale_derivation_errors = (
         CodingWorkerPolicySelectionError,
         CodingWorkerNativeClosureReadError,
         PackageProductRuntimeActivationError,
         PackageProductRuntimeReadError,
     )
+
+    _opt_in: CodingWorkerOptInJournal
+    _receipt_history_initialize = _CodingReceiptHistory.__init__
+    _receipt_history_access = staticmethod(_CodingHistoryAccess)
 
     def __init__(
         self,
@@ -275,46 +283,14 @@ class CodingWorkerProductReceiptOwner(
         native_closure_reader: CodingWorkerNativeClosureReadPort,
         session_discovery_reader: CodingWorkerSessionDiscoveryReadPort | None = None,
     ) -> None:
-        if (
-            not isinstance(product_owner, PosixLocalWheelProductSessionOwner)
-            or not isinstance(runtime, PackageProductRuntimeBindingV1)
-            or not isinstance(selected, PackageProductSelectedPluginManifestV1)
-            or not isinstance(opt_in_journal, CodingWorkerOptInJournal)
-            or not callable(getattr(native_closure_reader, "current_closure", None))
-            or getattr(native_closure_reader, "gc_gate", None)
-            is not product_owner.gc_gate
-            or (
-                session_discovery_reader is not None
-                and (
-                    getattr(session_discovery_reader, "gc_gate", None)
-                    is not product_owner.gc_gate
-                    or getattr(session_discovery_reader, "session_id", None)
-                    != runtime.session_id
-                    or not callable(
-                        getattr(session_discovery_reader, "current_discovery", None)
-                    )
-                )
-            )
-            or product_owner.policy.product_id != "coding"
-            or runtime.product_id != "coding"
-            or runtime.session_id is None
-            or runtime.product_runtime_id is None
-            or selected.snapshot.installation_key.scope_id
-            != product_owner.policy.project_scope_id
-            or opt_in_journal.path != product_owner.state_root / "worker-opt-in.jsonl"
-            or opt_in_journal.gc_gate is not product_owner.gc_gate
-            or opt_in_journal.scope_id != product_owner.policy.project_scope_id
-        ):
-            raise ValueError("Coding Worker Product receipt owners changed")
-        self._product: PosixLocalWheelProductSessionOwner = product_owner
-        self._runtime = runtime
-        self._selected = selected
-        self._opt_in: CodingWorkerOptInJournal = opt_in_journal
-        self._native_closure_reader = native_closure_reader
-        self._session_discovery_reader = session_discovery_reader
-        super().__init__(
-            product_owner.state_root / "worker-activation-receipts.jsonl",
-            access=_CodingHistoryAccess(product_owner),
+        _PosixWorkerProductReceiptAuthority._initialize_receipt_owner(
+            self,
+            product_owner=product_owner,
+            runtime=runtime,
+            selected=selected,
+            opt_in_journal=opt_in_journal,
+            native_closure_reader=native_closure_reader,
+            session_discovery_reader=session_discovery_reader,
         )
 
     def _checkpoint_writer_fence(
@@ -369,31 +345,6 @@ class CodingWorkerProductReceiptOwner(
         self, product: PosixLocalWheelProductSessionOwner
     ) -> ReceiptHistory[CodingWorkerReceiptRecordV1]:
         return _receipt_history_for_product(product)
-
-    def current_native_launch_material(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerNativeLaunchMaterialV1:
-        """Join an issued selected-Worker receipt to Product-owned Linux H6 bytes.
-
-        The result only locates material for Hosting's descriptor capture. The
-        activation coordinator must still hold admission through first effect.
-        """
-
-        return super().current_native_launch_material(receipt)
-
-    def current_selected_payload(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerSelectedPayloadV1:
-        """Reread the selected Store executable under the receipt/GC gate."""
-
-        return super().current_selected_payload(receipt)
-
-    def current_runtime_binding(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> tuple[CodingWorkerSelectedPayloadV1, CodingWorkerNativeLaunchMaterialV1, str]:
-        """Capture one coherent selected payload, native release, and owner."""
-
-        return super().current_runtime_binding(receipt)
 
 
 def read_coding_product_worker_receipt_record(
@@ -467,89 +418,9 @@ def _parse_receipt_segment(
     )
 
 
-def open_coding_selected_worker_receipt_owner(
-    *,
-    product_owner: PosixLocalWheelProductSessionOwner,
-    runtime: PackageProductRuntimeBindingV1,
-    plugin_id: str,
-    native_closure_reader: CodingWorkerNativeClosureReadPort,
-    transcript_directory: AgentTranscriptDirectoryRuntime,
-    session_manager: SessionManager,
-    active_session: bool = False,
-) -> CodingWorkerProductReceiptOwner:
-    """Bind one Product candidate to its exact Coding Session owner.
-
-    An attached active Session owns subsequent transcript appends. Detached
-    selection retains the discovery locator revision as an exact snapshot.
-    """
-
-    if not isinstance(product_owner, PosixLocalWheelProductSessionOwner):
-        raise TypeError("Coding Worker requires a Product owner")
-    if not isinstance(runtime, PackageProductRuntimeBindingV1):
-        raise TypeError("Coding Worker requires an active Product runtime")
-    if (
-        not isinstance(plugin_id, str)
-        or not plugin_id
-        or plugin_id != plugin_id.strip()
-    ):
-        raise ValueError("Coding Worker Plugin identity is invalid")
-    if runtime.session_id is None:
-        raise ValueError("Coding Worker Session identity is unavailable")
-    if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
-        raise TypeError("Coding Worker requires a Transcript directory owner")
-    if not isinstance(session_manager, SessionManager):
-        raise TypeError("Coding Worker requires a Coding Session owner")
-    selected_session_file = session_manager.get_session_file()
-    if (
-        not session_manager.is_persisted()
-        or selected_session_file is None
-        or session_manager.get_header().conversation_id != runtime.session_id
-        or Path(session_manager.get_cwd()).resolve(strict=True)
-        != product_owner.workspace
-        or not (
-            transcript_directory.is_authority_session_file(selected_session_file)
-            or transcript_directory.is_discovery_session_file(selected_session_file)
-        )
-    ):
-        raise ValueError("Coding Worker selected Session owner changed")
-    root_reader = runtime._selected_root_reader
-    manifest_reader = runtime._selected_manifest_reader
-    if not isinstance(root_reader, PackageProductSelectedRootReader):
-        raise ValueError("Coding Worker Product runtime owners changed")
-    bound_root = cast(PackageProductSelectedRootReader, root_reader)
-    if (
-        getattr(manifest_reader, "root_reader", None) is not bound_root
-        or bound_root.desired_state is not product_owner.desired_state
-        or bound_root.bindings is not product_owner.gc_bindings
-        or bound_root.gc_gate is not product_owner.gc_gate
-        or bound_root.product_id != product_owner.policy.product_id
-        or bound_root.scope_id != product_owner.policy.project_scope_id
-    ):
-        raise ValueError("Coding Worker Product runtime owners changed")
-    selected = runtime.capture_selected_plugin_manifest_for(
-        plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
-    )
-    opt_in = CodingWorkerOptInJournal(
-        product_owner.state_root / "worker-opt-in.jsonl",
-        scope_id=product_owner.policy.project_scope_id,
-        gc_gate=product_owner.gc_gate,
-        store_id=product_owner.epoch_runtime.registry.store_id,
-    )
-    discovery = CodingWorkerTranscriptDiscoveryReader(
-        directory=transcript_directory,
-        gc_gate=product_owner.gc_gate,
-        session_id=runtime.session_id,
-        selected_session_file=selected_session_file,
-        attached_session=session_manager if active_session else None,
-    )
-    return CodingWorkerProductReceiptOwner(
-        product_owner=product_owner,
-        runtime=runtime,
-        selected=selected,
-        opt_in_journal=opt_in,
-        native_closure_reader=native_closure_reader,
-        session_discovery_reader=discovery,
-    )
+open_coding_selected_worker_receipt_owner = (
+    CodingWorkerProductReceiptOwner._open_selected
+)
 
 
 def open_coding_product_selected_worker_receipt_owner(

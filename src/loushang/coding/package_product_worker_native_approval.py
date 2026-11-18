@@ -47,10 +47,6 @@ class CodingWorkerNativeReleaseApprovalV1(_NativeApprovalMethods):
     launcher_sha256: str
     profile_sha256: str
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingWorkerNativeReleaseApprovalV1:
-        return super(CodingWorkerNativeReleaseApprovalV1, cls).from_dict(value)
-
 
 @dataclass(frozen=True, slots=True)
 class CodingWorkerNativeReleaseReviewV1(
@@ -65,20 +61,6 @@ class CodingWorkerNativeReleaseReviewV1(
     review_version: int = 1
 
     _approval_type = CodingWorkerNativeReleaseApprovalV1
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        scope_id: str,
-        product_policy_revision: str,
-        approval: CodingWorkerNativeReleaseApprovalV1,
-    ) -> CodingWorkerNativeReleaseReviewV1:
-        return super(CodingWorkerNativeReleaseReviewV1, cls).create(
-            scope_id=scope_id,
-            product_policy_revision=product_policy_revision,
-            approval=approval,
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,30 +77,6 @@ class CodingWorkerNativeApprovalDecisionV1(
     record_version: int = 1
 
     _approval_type = CodingWorkerNativeReleaseApprovalV1
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        journal_revision: int,
-        scope_id: str,
-        operation_id: str,
-        generation: int,
-        action: Literal["approve", "revoke"],
-        approval: CodingWorkerNativeReleaseApprovalV1 | None,
-    ) -> CodingWorkerNativeApprovalDecisionV1:
-        return super(CodingWorkerNativeApprovalDecisionV1, cls).create(
-            journal_revision=journal_revision,
-            scope_id=scope_id,
-            operation_id=operation_id,
-            generation=generation,
-            action=action,
-            approval=approval,
-        )
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingWorkerNativeApprovalDecisionV1:
-        return super(CodingWorkerNativeApprovalDecisionV1, cls).from_dict(value)
 
 
 def _decode(value: object) -> CodingWorkerNativeApprovalDecisionV1:
