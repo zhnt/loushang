@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from time import monotonic, sleep
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -96,8 +97,11 @@ def main() -> None:
                         request = Request(url + "/api/loushang", data=json.dumps({
                             "operation": operation, **fields,
                         }).encode(), headers={"Content-Type": "application/json", "X-Loushang-Client": "1"})
-                        with urlopen(request, timeout=60) as response:
-                            return json.load(response)["result"]
+                        try:
+                            with urlopen(request, timeout=60) as response:
+                                return json.load(response)["result"]
+                        except HTTPError as error:
+                            raise AssertionError((operation, fields, error.code, error.read().decode())) from error
 
                     with urlopen(url, timeout=10) as response:
                         assert "text/html" in response.headers["Content-Type"]
