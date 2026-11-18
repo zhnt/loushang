@@ -562,6 +562,8 @@ C51 首轮10 passed／1 failed，失败仅为 Windows receipt 已退出直接 ac
 
 本批 Coding −70、Harness +43、Hosting／其它生产／测试0，系统生产 −27行；文档单列。多数收益是既有完整操作入口接管和原重复外壳退出，不把原 H 物化／恢复 body 再计为新迁移。累计 Coding −7,035、Harness +9,850，系统生产仍 +2,815行；C07余13,231行，距离过半退出仍差3,099行。此交付是明确未完成的阶段成果，整组验收目标不降低。
 
+发布兼容补查发现，六条旧全局 callable 加载路由通过，并不能证明新 bound 入口仍可序列化：原限额 lambda 会使当前三个入口 pickle 失败。已将这一纯 Profile 限额绑定改为模块函数，保留同一时点读取两项 Code 限额；三入口的六次 protocol4／5 当前 pickle 往返、同一执行方法／等值 Profile、恢复后的动态限额及原 registry／lock 身份复核通过。原执行体、记录和测试不变。该修复 Code／系统 +4行，累计 Coding −7,031、Harness +9,850、系统生产仍 +2,819行；C07余13,235行，距过半退出还差3,103行。此前候选的并发检查出现 Session 一秒／两秒 deadline 失败，其中原 compaction 失败节点单独复跑通过；这些初始失败保留，不能当作最终完整候选通过。最终修复按原检查路线串行验证，不扩大 timeout、selector 或门禁。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

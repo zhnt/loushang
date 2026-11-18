@@ -129,6 +129,10 @@ __all__ = [
 ]
 
 
+def _payload_limits() -> tuple[int, int]:
+    return _MAX_PAYLOAD_BYTES, _MAX_RETAINED_ATTEMPTS
+
+
 _PAYLOAD_PROGRAM: WindowsProductWorkerPayload[
     CodingWindowsWorkerPayloadLeaseV1,
     CodingWindowsProductWorkerPendingLaunchV1,
@@ -142,7 +146,7 @@ _PAYLOAD_PROGRAM: WindowsProductWorkerPayload[
     inspect_payload=inspect_windows_worker_payload_stages,
     supervisor_journal=open_coding_windows_product_worker_supervisor_journal,
     admission=_RECOVERY_ADMISSION,
-    limits=lambda: (_MAX_PAYLOAD_BYTES, _MAX_RETAINED_ATTEMPTS),
+    limits=_payload_limits,
     marker_name=_MARKER,
     error_type=CodingWindowsWorkerPayloadMaterializationError,
     error_prefix="coding_worker_payload",
