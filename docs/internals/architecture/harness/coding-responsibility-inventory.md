@@ -3,7 +3,7 @@
 本轮 C09 最新审计与候选实现见 [C09 收敛记录](c09-legacy-convergence.md)。
 C09 上轮由 PR #892/#893 合并交付时为34文件、7,624行；本组合候选因 C07 名义回执接线增加4行，当前7,628行，这4行计入 C07 适配成本，详见收敛记录。
 C07 上轮通过 PR #894/#895 交付时为112文件、20,266行，Coding −267、Harness +309、生产系统 +42；历史验证与限制见 [C07 收敛记录](c07-worker-convergence.md)。
-本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；退休入口已由 PR #907/#908 交付至 main `ca7091aa8`，已交付 C07 为112文件、12,675行。其后的 C5恢复资格、Provider Profile 复用及公开 Receipt 注解修复候选相对该 main 合计 Coding −23、Harness0、系统 Python 生产 −23；当前 C07 原文件12,652行，加邻组名义回执适配4行，有效剩余12,656行。C07 归因累计 Coding −7,610、Harness +10,474、系统 +2,864，多数退出仍差2,524行。112模块／349项公开反射找出的两个 NameError已在独立候选修复；父 Provider完整回归出现失败标记，检查尚未终结，不据局部通过交付。同期其它主线变化分开核账，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
+本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；退休入口已由 PR #907/#908 交付至 main `ca7091aa8`，已交付 C07 为112文件、12,675行。其后的 C5恢复资格、Provider Profile 复用及公开 Receipt 注解修复候选相对该 main 合计 Coding −23、Harness0、系统 Python 生产 −23；当前 C07 原文件12,652行，加邻组名义回执适配4行，有效剩余12,656行。C07 归因累计 Coding −7,610、Harness +10,474、系统 +2,864，多数退出仍差2,524行。112模块／349项公开反射找出的两个 NameError已在独立候选修复；父 Provider完整回归出现4个超时并正常中断，迁移前冻结版本亦复现等待验证子进程超时；待串行完整复核，不据局部通过交付。同期其它主线变化分开核账，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
 
 
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
