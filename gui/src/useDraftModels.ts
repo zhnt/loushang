@@ -9,6 +9,14 @@ function draftModelLabel(load: DraftTarget["loadModels"], loaded: boolean, model
   return models.models.length === 0 ? "empty" : "choose";
 }
 
+async function loadDraftCatalog(load: NonNullable<DraftTarget["loadModels"]>): Promise<SessionModels> {
+  const catalog = await load();
+  const selected = catalog.models.find((model) => model.id === catalog.currentId);
+  if (!selected?.supportsThinking || catalog.thinking) return catalog;
+  const preview = await load(selected.id).catch(() => null);
+  return preview?.currentId === selected.id ? { ...catalog, thinking: preview.thinking } : catalog;
+}
+
 export function useDraftModels(
   target: DraftTarget | undefined, available: boolean, preferredId?: string, thinking?: SessionModels["thinking"],
 ) {
@@ -21,7 +29,7 @@ export function useDraftModels(
     }
     let active = true;
     setResult(undefined);
-    void load().then((models) => {
+    void loadDraftCatalog(load).then((models) => {
       if (active) setResult({ target, models });
     }, () => {
       if (active) setResult({ target, models: null });

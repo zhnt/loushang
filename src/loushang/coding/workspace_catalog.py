@@ -116,7 +116,8 @@ class CodingWorkspaceCatalog(
                 workspace = await settled_io(self.registry.select, path)
             except (OSError, ValueError):
                 raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
-        active, choices = await settled_io(preview_workspace_models, workspace, self._model)
+        active, choices, default_level = await settled_io(preview_workspace_models, workspace, self._model)
+        default_selection = normalize_model_selection(active)
         if model_id is not None:
             active = next((
                 model for model in choices
@@ -132,7 +133,8 @@ class CodingWorkspaceCatalog(
         # A model-specific preview opts in to reasoning. Older draft clients
         # reuse the initial catalog across selections and expect no settings.
         levels = available_thinking_levels(active) if model_id is not None and active is not None else ()
-        return project_session_models(current, choices, SessionThinkingV1(None, levels) if levels else None)
+        level = default_level if selection == default_selection and default_level in levels else None
+        return project_session_models(current, choices, SessionThinkingV1(level, levels) if levels else None)
 
     async def _preview_workspace(self, path: str, request: WorkspacePreviewRequestV1) -> WorkspaceResultV1:
         if self._closed:

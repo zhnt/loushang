@@ -238,7 +238,7 @@ class SettingsManager:
         *,
         scope: SettingsScope = "session",
         default_model: ModelSelection | None | Unset = UNSET,
-        thinking_level: ThinkingLevel | Unset = UNSET,
+        thinking_level: ThinkingLevel | None | Unset = UNSET,
         steering_mode: QueueMode | Unset = UNSET,
         follow_up_mode: QueueMode | Unset = UNSET,
         theme: str | None | Unset = UNSET,

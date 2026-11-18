@@ -7,8 +7,9 @@ import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
+from loushang.ai.model import ModelSelection
 from loushang.apphost import SessionDiscoveryScope, SessionIdentityEnvelopeV1
 from loushang.apphost.integrations.session_control import _SessionServiceAdapter
 from loushang.appserver.protocol import (
@@ -17,6 +18,7 @@ from loushang.appserver.protocol import (
     SessionEventKindV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionModelsV1,
     SessionOpenSpecV1,
     TranscriptRecordV1,
     UserChoicePromptV1,
@@ -26,12 +28,14 @@ from loushang.appservice.resume_ports import (
     ResumeInputLookupQueryV1,
     ResumeInputLookupResultV1,
 )
+from loushang.foundation.reasoning import ThinkingLevel
+from loushang.harness.config.agent import SettingsManager
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.session import (
     SessionControlPort,
 )
 
-from .model_selection import apply_model_selection
 from .product_plan import CODING_PRODUCT_ID
 
 
@@ -128,10 +132,18 @@ class CodingHostedSessionV1(
     ) -> None:
         super().__init__(binding, execution_submission=execution_submission)
 
-    async def _apply_selected_model(self, control: SessionControlPort | None, selected: object) -> None:
-        result = await apply_model_selection(control, selected)
-        if result.persistence_error is not None:
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from result.persistence_error
+    async def _select_model(self, model_id: str, thinking_level: str | None) -> SessionModelsV1:
+        result = await super()._select_model(model_id, thinking_level)
+        settings = getattr(self._binding.control, "settings_manager", None)
+        if isinstance(settings, SettingsManager) and result.current_id == model_id:
+            choice = next(model for model in result.models if model.id == model_id)
+            selection = ModelSelection(choice.provider, choice.endpoint_id, choice.model_id)
+            level = cast(ThinkingLevel | None, result.thinking.current_level if result.thinking else None)
+            try:
+                await settled_io(settings.update_settings, scope="global", default_model=selection, thinking_level=level)
+            except Exception as error:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from error
+        return result
 
     async def lookup_resume_input(
         self, query: ResumeInputLookupQueryV1,

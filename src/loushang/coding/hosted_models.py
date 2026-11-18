@@ -6,6 +6,7 @@ from loushang.ai.model import (
     Model,
     ModelSelection,
 )
+from loushang.foundation.reasoning import ThinkingLevel
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.session.model_resolution import resolve_session_model
 
@@ -25,19 +26,20 @@ def create_hosted_services(workspace: Path | None) -> BootstrapServices:
 
 def preview_workspace_models(
     workspace: Path | None, explicit: Model | ModelSelection | None,
-) -> tuple[Model | None, list[Model]]:
+) -> tuple[Model | None, list[Model], ThinkingLevel | None]:
     services = create_hosted_services(workspace)
     if workspace is not None:
         load_workspace_models(services, workspace)
     catalog = services.model_registry
+    settings = services.settings_manager.get_settings()
     active = resolve_session_model(
-        explicit, default_selection=services.settings_manager.get_settings().default_model,
+        explicit, default_selection=settings.default_model,
         build_model=catalog.build_model,
     )
     details = catalog.ai_registry.list_models()
     if active is not None:
         details.append(active)
-    return active, details
+    return active, details, settings.thinking_level
 
 
 def load_workspace_models(services: BootstrapServices, workspace: Path) -> None:
