@@ -704,6 +704,18 @@ C07 归因与上述全局变化之间的同期主线差额为 Coding +1,495、Ha
 
 整个 Python 生产代码从原 Goal 切点到本工作树为 Coding 106,430→100,315（−6,115）、Harness 369,178→379,725（+10,547）、Hosting +32、其它 Python 生产 +1,808，总量642,011→648,283（+6,272）。其中 C07 任务归因系统 +2,868，同期其它主线差额 +3,404；GUI 前端／Rust 等其它语言不在该 Python 表内。上节表保留上一个组合切点，不当成本切片当前总量。
 
+## 全部 C07 公开接口反射复核与 Receipt 注解修复候选
+
+从原 Goal 提交独立提取完整 `src`，逐一匹配原112份 C07 源码哈希，再分别在原始源码和冻结候选中导入同一112模块、观察349个原公开入口。所有模块的实际来源路径均已核对；没有构造 Product、执行原生操作或调用公开工厂。原始快照保留，未以候选重新生成旧期望。
+
+参数名／kind／default、dataclass 字段与元数据、slots、match_args及导出未发现差异。迁移引入的44处 MRO、82处 callable 定义身份及泛型注解差异仍按各批兼容证据接受，本次反射不自动批准这些变化，也不替代 pickle、wire、锁序、异常优先级和原生平台验证。两个 frozenset 的 repr 顺序经仅解析字面字符串集合归一化后内容一致，不当作行为差异。
+
+复核发现两个公开 Receipt 工厂的新缺陷：原实现可解析运行时注解，迁移后的 bound entry 调用 `get_type_hints()` 则因 `_AttachedTranscriptReadPort` 仅在 `TYPE_CHECKING` 内导入而抛出 NameError。独立候选将已有 Transcript read port 改为普通导入，无新增类型、状态或 IO。修复后349项再次反射，无新增解析错误；对比修复前，仅两项 hints 由错误变为可解析，其余公开观察保持。
+
+两个平台公开工厂的纯反射回归及既有 Receipt checkpoint 用例合计3 passed（36.26秒），两源 mypy、Ruff／format／diff通过。没有新增 workflow、job、selector、平台或合并条件。父 Provider 候选的完整回归已出现失败标记但尚未结束，本修复不消除或解释该失败，两个原检查工作树继续冻结。本候选完整 change-aware 检查和交付均未完成。
+
+本修复 Coding／Hosting／其它生产0，Harness及系统 Python 生产 −4行；新增回归测试单列，文档另计。这是兼容缺陷修复，不计任何新的 C07 迁移退出。当前 Coding100,315／Harness379,721／Hosting14,235／其它154,008，生产 Python共648,279行；相对已交付 main `ca7091aa8` 的 C5／Provider／本修复候选合计 Coding−23、Harness0、系统−23。原 Goal 归因 Coding−7,610、Harness+10,474、系统+2,864；同期其它主线+3,404仍另计，整库 Python较原基线+6,268。C07有效剩余12,656，多数目标仍差2,524，不因349项反射通过宣称整组完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

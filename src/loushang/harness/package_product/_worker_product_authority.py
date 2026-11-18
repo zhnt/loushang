@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 from typing import (
-    TYPE_CHECKING,
     ClassVar,
     Generic,
     Literal,
@@ -67,6 +66,9 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
 from loushang.harness.resources.plugins.declarations import (
     PluginLocalWorkerConfiguration,
 )
+from loushang.harness.transcript._attached_discovery import (
+    _AttachedTranscriptReadPort,
+)
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker._native_profile_bridge import (
@@ -115,12 +117,6 @@ from loushang.hosting.windows_backend_material import (
 )
 
 from ._windows_worker_backend_release import _WindowsBackendInstalledMethods
-
-if TYPE_CHECKING:
-    from loushang.harness.transcript._attached_discovery import (
-        _AttachedTranscriptReadPort,
-    )
-
 
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 R = TypeVar("R", bound=_ReceiptRecordMethods)
