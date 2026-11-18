@@ -16,6 +16,8 @@ pub(super) fn executable() -> Option<PathBuf> {
         let binary = std::env::current_exe().ok()?;
         if cfg!(windows) {
             binary.with_file_name("loushang-mux.exe")
+        } else if cfg!(target_os = "macos") {
+            binary.with_file_name("loushang-mux")
         } else {
             binary.parent()?.parent()?.join("loushang-mux")
         }

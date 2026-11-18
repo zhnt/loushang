@@ -1500,6 +1500,16 @@ class WorkflowContractTests(unittest.TestCase):
         for path in (ROOT / ".github/workflows").glob("*.yml"):
             if path.name == "quality.yml":
                 continue
+            if path.name == "macos-package.yml":
+                # This is a manually invoked delivery workflow, not a quality
+                # route. It must stay outside the PR aggregate and its needs.
+                text = path.read_text()
+                self.assertIn("  workflow_dispatch:", text)
+                quality = (ROOT / ".github/workflows/quality.yml").read_text()
+                package = quality.split("\n  macos-package:\n", 1)[1]
+                self.assertIn("github.event_name == 'workflow_dispatch'", package)
+                self.assertIn("inputs.macos_package", package)
+                continue
             text = path.read_text()
             jobs = {
                 job: f"{section}.{scope}" if section != "checks" else scope
