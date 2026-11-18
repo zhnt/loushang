@@ -39,8 +39,8 @@
 `STEPFUN_API_KEY`。具体 endpoint 声明以 `models.json` 为准。
 
 OpenAI 的 `openai-responses` 与 `coding-responses` catalog 路由均列出
-`gpt-6-sol`、`gpt-6-astra`、`gpt-6.1-sol` 和 `gpt-6-luna`。例如可用
-`get_model("openai", "openai-responses", "gpt-6.1-sol")` 获取标准 API 模型。
+`gpt-6.2-sol`、`gpt-6.2-astra`、`gpt-6.1-terra` 和 `gpt-6-luna`。例如可用
+`get_model("openai", "openai-responses", "gpt-6.2-sol")` 获取标准 API 模型。
 `coding-responses` 使用 ChatGPT OAuth，实际可用模型仍由账号权限决定。
 
 运行全部离线示例：
@@ -54,7 +54,7 @@ uv run python scripts/ai/check_examples.py
 ```python
 from loushang.ai import ApiKeyAuth, CallOptions, complete, get_model
 
-model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+model = get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 message = await complete(
     model,
     {"messages": [{"role": "user", "content": "Hello"}]},
@@ -94,7 +94,7 @@ register_api_adapter(custom_adapter)
 ## OpenAI Codex live validation
 
 真实的上层应用验证位于 `examples/auth/openai_codex_live_example.py`。它选择
-`openai:coding-responses:gpt-5.5`，调用公共 `auth.get_auth(model)`，再把认证显式传给
+`openai:coding-responses:gpt-6.2-sol`，调用公共 `auth.get_auth(model)`，再把认证显式传给
 公共 `stream()`。示例不读取 token 文件，也不直接调用 credential source。
 
 ## Live tests

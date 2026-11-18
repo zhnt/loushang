@@ -89,7 +89,7 @@ def test_provider_request_defensively_copies_and_hides_headers() -> None:
 
 def test_builtin_openai_style_model_resolves_its_bound_facts() -> None:
     model = load_builtin_model_registry().get_model(
-        "moonshot", "openai-completions", "kimi-k2.7-code"
+        "moonshot", "openai-completions", "kimi-k3.1-pro"
     )
 
     resolved = resolve_request_for_model(
@@ -102,8 +102,8 @@ def test_builtin_openai_style_model_resolves_its_bound_facts() -> None:
     assert resolved.model.endpoint_id == "openai-completions"
     assert resolved.base_url == "https://api.moonshot.cn/v1"
     assert isinstance(resolved.model.adapter, OpenAICompletionsConfig)
-    assert resolved.model.adapter.reasoning_format == "moonshot"
-    assert (resolved.model.upstream_id or resolved.model.id) == "kimi-k2.7-code"
+    assert resolved.model.adapter.reasoning_format == "openai"
+    assert (resolved.model.upstream_id or resolved.model.id) == "kimi-k3.1-pro"
 
 
 def test_resolver_rejects_concrete_model_without_base_url() -> None:

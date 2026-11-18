@@ -977,7 +977,7 @@ def test_openai_completions_builtin_moonshot_uses_system_role_not_developer(
     _fake_openai_module(monkeypatch)
     monkeypatch.setenv("MOONSHOT_API_KEY", "test-key")
     provider = OpenAIChatCompletionsAdapter()
-    model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+    model = get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 
     asyncio.run(
         _collect_parts(

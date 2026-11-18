@@ -31,7 +31,7 @@ from loushang.ai import (
 Choose a concrete model before invocation:
 
 ```python
-model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+model = get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 ```
 
 The tuple is always `provider:endpoint:model`. The selected `Model` already
@@ -216,7 +216,7 @@ credential source directly; it calls `get_auth(model)` and passes the result to
 the request before calling:
 
 ```python
-get_model("openai", "coding-responses", "gpt-5.5")
+get_model("openai", "coding-responses", "gpt-6.2-sol")
 ```
 
 See

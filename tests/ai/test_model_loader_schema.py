@@ -781,7 +781,7 @@ def test_layered_registry_rejects_user_duplicate_of_builtin_model(
     assert isinstance(endpoint, dict)
     models = endpoint["models"]
     assert isinstance(models, dict)
-    models["gpt-5.5"] = models.pop("test-model")
+    models["gpt-6.2-sol"] = models.pop("test-model")
     user_file = user_dir / "openai.json"
     user_file.write_text(json.dumps(raw), encoding="utf-8")
 

@@ -1,7 +1,7 @@
 """loushang-agent example with Moonshot Kimi model via OpenAI Chat Completions.
 
 Demonstrates:
-- Basic conversation with kimi-k2.6
+- Basic conversation with kimi-k3.1-pro
 - Streaming events for typewriter effect
 - Simple tool execution (calculator)
 - Chinese interaction
@@ -32,7 +32,7 @@ from loushang.ai import (
 )
 
 BASE_URL = "https://api.moonshot.cn/v1"
-MODEL_ID = "kimi-k2.6"
+MODEL_ID = "kimi-k3.1-pro"
 
 
 @dataclass
@@ -110,7 +110,7 @@ async def main() -> None:
                 "你更擅长中文和英文的对话，会为用户提供安全、有帮助、准确的回答。"
             ),
             model=model,
-            thinking_level="off",
+            thinking_level="high",
             tools=[CalcTool()],
         ),
         call_options=CallOptions(auth=ApiKeyAuth(_resolve_api_key())),

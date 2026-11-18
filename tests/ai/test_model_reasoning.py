@@ -75,3 +75,55 @@ def test_known_effort_list_rejects_unsupported_generic_level() -> None:
     )
     with pytest.raises(ValueError, match="does not support reasoning effort"):
         validate_reasoning_request(model, enabled=True, effort="ultra")
+
+
+@pytest.mark.parametrize(
+    ("provider", "endpoint", "model_id", "level", "native_effort"),
+    [
+        ("deepseek", "openai-completions", "deepseek-flash", "low", "low"),
+        (
+            "volcano-ark",
+            "openai-completions-cn-beijing",
+            "doubao-seed-evolving",
+            "off",
+            "none",
+        ),
+        ("zai", "openai-completions", "glm-5.3-flash", "xhigh", "max"),
+    ],
+)
+def test_current_chat_models_send_the_documented_effort(
+    provider: str, endpoint: str, model_id: str, level: str, native_effort: str
+) -> None:
+    model = load_builtin_model_registry().get_model(provider, endpoint, model_id)
+    assert level in available_thinking_levels(model)
+
+    request = resolve_request_for_model(
+        model,
+        options=CallOptions(
+            auth=ApiKeyAuth("secret"),
+            reasoning=ReasoningOptions(
+                enabled=level != "off", effort=None if level == "off" else level
+            ),
+        ),
+    )
+    payload = OpenAIChatCompletionsAdapter().prepare_request(request).payload
+    assert payload["reasoning_effort"] == native_effort
+    if provider == "zai":
+        assert "thinking" not in payload
+
+
+def test_minimax_flash_sends_selected_effort_through_messages_adapter() -> None:
+    model = load_builtin_model_registry().get_model(
+        "minimax", "anthropic-messages", "MiniMax-M3.1-Flash"
+    )
+    request = resolve_request_for_model(
+        model,
+        options=CallOptions(
+            auth=ApiKeyAuth("secret"),
+            reasoning=ReasoningOptions(enabled=True, effort="low"),
+        ),
+    )
+
+    payload = AnthropicMessagesAdapter().prepare_request(request).payload
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"] == {"effort": "low"}

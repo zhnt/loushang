@@ -29,7 +29,7 @@ from loushang.ai import (
 调用前选择具体模型：
 
 ```python
-model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+model = get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 ```
 
 模型始终用 `provider:endpoint:model` 三元组定位。返回的 `Model` 已包含有效 API、
@@ -202,13 +202,15 @@ credential，不执行 ChatGPT OAuth login。live 示例不解析 token 文件�
 实验 credential source；它调用 `get_auth(model)`，把结果传给请求，然后调用：
 
 ```python
-get_model("openai", "coding-responses", "gpt-5.5")
+get_model("openai", "coding-responses", "gpt-6.2-sol")
 ```
 
 详见
 [openai_codex_live_example.py](../../../examples/auth/openai_codex_live_example.py)。
 
 ## 自定义 Catalog
+
+升级后，若已保存的模型 ID 从内置目录移除，可在模型选择器中切换到当前型号。如需继续使用服务商仍提供的旧 ID，可通过自定义 catalog 恢复该条目。详见[推理档位来源与旧模型恢复](../../internals/architecture/ai/model-reasoning-effort-sources.md)。
 
 内置 catalog 是 `src/loushang/ai/model/models.json`。自定义文件使用同一严格形状：
 

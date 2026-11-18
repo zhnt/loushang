@@ -9,7 +9,7 @@ from loushang.ai import AssistantMessage, CallOptions, TextPart, get_model
 
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"
-MODEL_ID = "kimi-k2.6"
+MODEL_ID = "kimi-k3.1-pro"
 SYSTEM_PROMPT = "You are an example assistant."
 USER_PROMPT = "请用两句话介绍你自己，并说明 1 + 1 等于几。"
 MAX_TOKENS = 256

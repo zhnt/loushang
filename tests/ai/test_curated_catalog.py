@@ -76,63 +76,57 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
 
     assert actual == {
         ("anthropic", "anthropic-messages"): {
-            "claude-fable-5",
-            "claude-opus-5",
-            "claude-sonnet-5",
-            "claude-haiku-4-5",
+            "claude-fable-5-2",
+            "claude-haiku-5-5",
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
         },
-        ("baidu-qianfan", "openai-completions-cn"): {"ernie-5.1"},
-        ("dashscope", "openai-responses"): {"qwen3.7-max", "qwen3.7-plus"},
-        ("deepseek", "openai-completions"): {
-            "deepseek-flash",
-            "deepseek-v4-flash",
-            "deepseek-v4-pro",
+        ("baidu-qianfan", "openai-completions-cn"): {
+            "ernie-5.1",
+            "ernie-5.5-flash-preview",
+            "ernie-light-dt-1.0",
         },
-        ("minimax", "anthropic-messages"): {"MiniMax-M3", "MiniMax-M2.7"},
-        ("moonshot", "openai-completions"): {
-            "kimi-k2.6",
-            "kimi-k2.7-code",
-            "kimi-k3.1-pro",
-            "kimi-k3.1-pro-highspeed",
-            "kimi-k3",
+        ("dashscope", "openai-responses"): {
+            "qwen3.7-plus",
+            "qwen3.8-flash",
+            "qwen4-max",
         },
+        ("deepseek", "openai-completions"): {"deepseek-flash", "deepseek-v4-pro"},
         ("kimi-code", "kimi-code-openai"): {
             "k3.1-pro",
             "k3.1-pro-highspeed",
-            "k3",
             "kimi-for-coding",
         },
         ("kimi-code", "kimi-code-anthropic"): {
             "k3.1-pro",
             "k3.1-pro-highspeed",
-            "k3",
             "kimi-for-coding",
         },
+        ("minimax", "anthropic-messages"): {"MiniMax-M3", "MiniMax-M3.1-Flash"},
+        ("moonshot", "openai-completions"): {
+            "kimi-k3.1-pro",
+            "kimi-k3.1-pro-highspeed",
+        },
         ("openai", "openai-responses"): {
-            "gpt-5.5",
-            "gpt-5.4-mini",
-            "gpt-6-sol",
-            "gpt-6-astra",
-            "gpt-6.1-sol",
-            "gpt-6.1-terra",
             "gpt-6-luna",
+            "gpt-6.1-terra",
+            "gpt-6.2-astra",
+            "gpt-6.2-sol",
         },
         ("openai", "coding-responses"): {
-            "gpt-5.5",
-            "gpt-6-sol",
-            "gpt-6-astra",
-            "gpt-6.1-sol",
-            "gpt-6.1-terra",
             "gpt-6-luna",
+            "gpt-6.1-terra",
+            "gpt-6.2-astra",
+            "gpt-6.2-sol",
         },
-        ("stepfun", "openai-completions"): {"step-3.7-flash"},
-        ("tencent-hunyuan", "openai-responses"): {"hy3"},
+        ("stepfun", "openai-completions"): {"step-3.7-flash", "step-5-preview"},
+        ("tencent-hunyuan", "openai-responses"): {"hy4", "hy4-flash"},
         ("volcano-ark", "openai-completions-cn-beijing"): {
+            "doubao-seed-2-1-lite-260915",
+            "doubao-seed-2-1-pro-260915",
             "doubao-seed-evolving",
-            "doubao-seed-2-1-pro-260628",
-            "doubao-seed-2-1-turbo-260628",
         },
-        ("zai", "openai-completions"): {"glm-5.2", "glm-4.7"},
+        ("zai", "openai-completions"): {"glm-5.3", "glm-5.3-flash", "glm-5.3-flashx"},
     }
 
 
@@ -183,8 +177,6 @@ def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> N
     openai_model = registry.get_model(
         "kimi-code", "kimi-code-openai", "kimi-for-coding"
     )
-    anthropic_k3 = registry.get_model("kimi-code", "kimi-code-anthropic", "k3")
-    openai_k3 = registry.get_model("kimi-code", "kimi-code-openai", "k3")
 
     assert provider is not None
     assert anthropic_endpoint is not None
@@ -200,10 +192,7 @@ def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> N
         assert model.capabilities.input == ("text", "image")
     assert anthropic_endpoint.base_url == "https://api.kimi.com/coding"
     assert openai_endpoint.base_url == "https://api.kimi.com/coding/v1"
-    for model in (anthropic_k3, openai_k3):
-        assert model.name == "Kimi Code K3"
-        assert model.upstream_id is None
-        assert model.defaults["reasoningEffort"] == "high"
+    assert anthropic_model.name == openai_model.name == "Kimi Code K2.8 Preview"
 
 
 def test_kimi_k31_catalog_uses_distinct_api_ids_and_effort_defaults() -> None:
@@ -258,53 +247,29 @@ def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:
             assert endpoint.get("adapter"), (provider_id, endpoint_id)
 
 
-def test_curated_catalog_keeps_key_model_defaults() -> None:
-    registry = _load_curated_registry()
-    kimi = registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
-    kimi_code = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
-    minimax = registry.get_model("minimax", "anthropic-messages", "MiniMax-M3")
-    gpt = registry.get_model("openai", "openai-responses", "gpt-5.5")
-    coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
-    claude = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-5")
+def test_deepseek_flash_has_current_vision_and_effort_metadata() -> None:
+    model = _load_curated_registry().get_model(
+        "deepseek", "openai-completions", "deepseek-flash"
+    )
 
-    assert kimi.supports_temperature is False
-    assert kimi_code.defaults["maxOutputTokens"] == 32000
-    assert kimi_code.defaults["reasoningEffort"] == "medium"
-    assert minimax.pricing is None
-    assert gpt.capabilities.context_window == 1050000
-    assert coding.capabilities.context_window == 400000
-    assert coding.defaults["reasoningEffort"] == "medium"
-    assert coding.pricing is None
-    assert claude.pricing is not None
-    assert claude.pricing.output == 15
-
-
-def test_deepseek_flash_current_and_legacy_ids_share_vision_capability() -> None:
-    registry = _load_curated_registry()
-    current = registry.get_model("deepseek", "openai-completions", "deepseek-flash")
-    legacy = registry.get_model("deepseek", "openai-completions", "deepseek-v4-flash")
-
-    assert current.alias == "fast-chat"
-    assert legacy.alias is None
-    for model in (current, legacy):
-        assert model.capabilities.context_window == 1048576
-        assert model.capabilities.max_tokens == 393216
-        assert model.capabilities.input == ("text", "image")
-        assert model.capabilities.reasoning_efforts == ("none", "low", "high", "max")
-        assert model.pricing is not None
-        assert (model.pricing.input, model.pricing.output, model.pricing.cache_read) == (
-            0.3,
-            1.2,
-            0.006,
-        )
+    assert model.alias == "fast-chat"
+    assert model.capabilities.context_window == 1048576
+    assert model.capabilities.max_tokens == 393216
+    assert model.capabilities.input == ("text", "image")
+    assert model.capabilities.reasoning_efforts == ("low", "high", "max")
+    assert model.pricing is not None
+    assert (model.pricing.input, model.pricing.output, model.pricing.cache_read) == (
+        0.3,
+        1.2,
+        0.006,
+    )
 
 
 def test_gpt_6_models_resolve_on_both_openai_responses_routes() -> None:
     registry = _load_curated_registry()
     expected_prices = {
-        "gpt-6-sol": (2, 10, 0.2),
-        "gpt-6-astra": (10, 50, 1),
-        "gpt-6.1-sol": (2, 10, 0.1),
+        "gpt-6.2-astra": (8, 40, 0.4),
+        "gpt-6.2-sol": (2, 10, 0.1),
         "gpt-6.1-terra": (1, 5, 0.05),
         "gpt-6-luna": (0.1, 0.5, 0.01),
     }
@@ -349,31 +314,15 @@ def test_curated_catalog_keeps_corrected_base_pricing() -> None:
             18,
             None,
         ),
-        ("moonshot", "openai-completions", "kimi-k2.6"): ("CNY", 6.5, 27, 1.1),
-        ("moonshot", "openai-completions", "kimi-k2.7-code"): (
-            "CNY",
-            6.5,
-            27,
-            1.3,
+        ("minimax", "anthropic-messages", "MiniMax-M3.1-Flash"): (
+            "USD",
+            0.15,
+            0.6,
+            0.015,
         ),
-        ("moonshot", "openai-completions", "kimi-k3"): ("CNY", 20, 100, 2),
-        ("tencent-hunyuan", "openai-responses", "hy3"): ("CNY", 1, 4, 0.25),
-        (
-            "volcano-ark",
-            "openai-completions-cn-beijing",
-            "doubao-seed-evolving",
-        ): ("CNY", 6, 30, 1.2),
-        (
-            "volcano-ark",
-            "openai-completions-cn-beijing",
-            "doubao-seed-2-1-pro-260628",
-        ): ("CNY", 6, 30, 1.2),
-        (
-            "volcano-ark",
-            "openai-completions-cn-beijing",
-            "doubao-seed-2-1-turbo-260628",
-        ): ("CNY", 3, 15, 0.6),
-        ("zai", "openai-completions", "glm-4.7"): ("USD", 0.6, 2.2, 0.11),
+        ("zai", "openai-completions", "glm-5.3"): ("USD", 1.4, 4.4, 0.26),
+        ("zai", "openai-completions", "glm-5.3-flash"): ("USD", 0.15, 0.5, 0.03),
+        ("anthropic", "anthropic-messages", "claude-sonnet-5-5"): ("USD", 2, 10, 0.2),
     }
 
     for model_ref, pricing_values in expected.items():
@@ -391,7 +340,7 @@ def test_coding_route_is_oauth_openai_responses_without_product_adapter() -> Non
     registry = _load_curated_registry()
     provider = registry.get_provider("openai")
     endpoint = registry.get_endpoint("openai", "coding-responses")
-    model = registry.get_model("openai", "coding-responses", "gpt-5.5")
+    model = registry.get_model("openai", "coding-responses", "gpt-6.2-sol")
 
     assert provider is not None
     assert provider.auth is None
@@ -416,7 +365,7 @@ def test_coding_route_is_oauth_openai_responses_without_product_adapter() -> Non
 def test_openai_api_key_auth_is_scoped_to_the_public_api_endpoint() -> None:
     registry = _load_curated_registry()
     endpoint = registry.get_endpoint("openai", "openai-responses")
-    model = registry.get_model("openai", "openai-responses", "gpt-5.5")
+    model = registry.get_model("openai", "openai-responses", "gpt-6.2-sol")
 
     assert endpoint is not None
     assert endpoint.auth is not None

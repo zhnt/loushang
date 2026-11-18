@@ -16,7 +16,7 @@ def inspect_error_serialization() -> dict[str, object]:
             retryable=False,
             provider="moonshot",
             endpoint="openai-completions",
-            model="kimi-k2.6",
+            model="kimi-k3.1-pro",
             details={
                 "hint": "Set MOONSHOT_API_KEY.",
                 "Authorization": "Bearer secret-token",

@@ -27,7 +27,7 @@ The resolved request object is passed explicitly to the model call:
 ```python
 import loushang.ai as ai
 
-model = ai.get_model("moonshot", "openai-completions", "kimi-k2.6")
+model = ai.get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 request_auth = await ai.auth.get_auth(model)
 message = await ai.complete(model, context, auth=request_auth)
 ```
