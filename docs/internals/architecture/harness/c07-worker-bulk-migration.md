@@ -578,6 +578,32 @@ Harness 首轮静态检查通过（mypy 916源文件），测试6,354 passed／1
 
 任务 PR #898 首次 Linux 定向原生检查47 passed／2 failed／1 deselected：清理竞态仍访问已经退出的 Code `os` 别名，GC 互斥证据仍注入旧 preflight 工厂而非当前 staging 入口。测试改为替换同一实际标准库 `os.unlink`，并在当前 staging 适配入口注入原 history bindings；实际 Harness 存储和锁内读取程序不改。限定 AST 对照证明只变更这两个既有注入位置及对应 import，所有断言、场景、标记、等待时限和其它测试 AST 保持；未恢复无消费者 Code 别名或增加故障 hook。受影响文件保留原非 live／skip-host-runtime 选择器，本地35 passed／14 skipped／1 deselected；原生结果按既有 PR 路线复核，不将本地跳过视为原生通过。
 
+## 历史源读取六个入口由原 Package Product 统一持有
+
+以已交付 `1a0aaa6ca` 为本批基线，原 Windows history 模块通过不可变配置 `WindowsProductWorkerHistorySources` 持有捕获、静止结算审阅、语义读取及锁内两个捕获操作。Coding 六个原函数直接绑定该组件；原平台、精确 Product 类型和产品身份校验在原时点执行。四个 Coding 名义记录的完整 AST、字段、slots、容量 getter、wire 和导出保持；无字段迁移、新 Protocol、账本、恢复器或平行生命周期组件。
+
+删除同一 Harness 私有模块中被替代的三个函数 `capture_windows_product_worker_history_sources`、`read_windows_product_worker_history_semantics`、`capture_windows_product_worker_history_semantics_under_guard`，将其原执行体直接纳入同一组件。原底层 source IO 函数及其它历史程序保持；读取、锁、恢复关联、Desired 校验和 guard 退出后构造的顺序不变。不把已经在 Harness 的执行体重复计为新迁移；本批收益是操作归属收敛和重复转接退出。
+
+当前执行代理在已授权 Coding／Harness 内部职责内接受这六个非顶层 SDK 入口由函数变为 bound method，以及其 module／qualname、泛型运行时 hints、新 callable pickle 格式和固定组件接线的变化；不承诺重绑旧 Coding 私有 import aliases 后更换 owner。参数名称、位置／关键字限制、默认值和操作文档保持，六个具体静态返回类型通过检查。十二条旧 protocol4／5 全局 callable 路由可加载，十二次当前 bound callable 往返保持同一操作和等值配置，容量仍读取原实时 getter。四份原记录布局和原 IO golden 不变；此接受不扩大其它公开数据契约的例外。
+
+原 IO 契约探针只把 GC 故障注入从旧 Coding 工厂 alias 移到实际既有 GC 组件的构造和 require_settled 方法，原场景、断言、标记和固定 golden 保持。既有消费者30 passed／1个原生 Windows skipped，原 IO 探针31 passed；三段操作体的限定 AST 等价及其它 Harness 程序、四个 Coding 类的原 AST 通过。六个具体返回断言的 scoped mypy 和 Ruff 通过。本机未执行原生 Windows；模型和源码证据不代替原生验证，没有新增或扩大 PR 门禁。
+
+本批 Coding −95、Harness +67、Hosting／其它生产0，系统生产净 −28行；测试 +2行，文档单列。累计从原 Goal 基线 Coding −7,126、Harness +9,917、系统生产仍 +2,791行，C07余13,140行，距多数退出仍差3,008行。该候选尚未合并，整组目标保持未完成。
+
+## Provisioning 准入与绑定由原 owner 完整持有
+
+后续任务分支以历史源提交 `06eba4e85` 为起点，无冲突合入远端 main `f3e75c93b`，合并点为 `7079ad0ba`；前一 worktree 的固定候选回归因候选已被新主线及实际断链修复取代而主动中断，实际退出2、已执行1,416 passed／7 skipped／76 deselected，整套未完成，不计为完整通过；原输入、日志与中断原因保留。控制目录的三份用户改动未进入任务分支。
+
+原 Coding Windows Provisioning 构造器的精确平台／类型、runtime 活动与 Session／incarnation 关联校验，现直接由既有 `WindowsProductWorkerProvisioningAccess.__init__` 执行，并继续原 `_bind_provisioning_attempt`，随后使用原 intent 校验、Journal CAS 和 stale cleanup。唯一通用化是原 `coding` runtime 身份使用已有 `_product_id` Profile。没有新增字段、Protocol、callback 或生命周期组件；Code 名义子类、原 Profile、恢复 owner 接线及公开 factory 保持。
+
+当前执行代理按已授权 Coding／Harness 职责接受构造方法的继承归属、module／qualname 和 Python 参数绑定错误前缀变化；构造参数形状及解析后的全部类型注解相同，原两条 unbound callable pickle 加载及当前两次往返通过。10,206组受控原／新准入与交接对照覆盖平台、精确类／子类、runtime 身份与活动、下游失败／取消；原绑定／CAS／IO 程序 AST 保持。该探针不执行 Product 或原生 Windows，也不代替原生验证。
+
+扩展静态检查发现前一载荷迁移留下两处真实断链：launch intent 发布和 provisioning stale recovery 仍 lazy-import 已删除的 `_payload_program`。已改为直接使用当前 `_PAYLOAD_PROGRAM`，与规划、物化和 request 绑定共用同一实际 owner；未恢复旧工厂或增加转发。新增两项回归在修复前固定源码上均复现 ImportError，修复后原 launch-intent 文件8项通过，既有 provisioning／intent 消费者首次8项通过。原两项故障日志保留；初次 scoped mypy 的缺失符号错误已修正，全部112份 C07 加两个 Harness owner 的 mypy（114源）通过。进一步将 owner 断言限定为同一对象身份后，两项回归再次通过。最新主线候选架构边界181 passed，依赖事实与文档检查通过；原路由、平台选择器和 PR 门禁未扩大，原生 Windows 当前未在本机执行，交付前的完整候选回归仍待执行。
+
+本批 Coding −36、Harness +36、Hosting／其它生产0，系统生产净0；测试 +30行、文档 +23行单列。加上未交付历史源批，较最新上游 main 的任务差异为 Coding −131、Harness +103、系统生产 −28行。从原 Goal 切点归属 C07 的累计差异为 Coding −7,162、Harness +9,953、系统生产 +2,791行；C07余13,104行，多数退出仍差2,972行，目标没有降低。
+
+计量口径继续采用 tracked `src/loushang/**/*.py` 物理行，含空行／注释；测试、文档和 GUI Rust／TS 不在这一生产 Python 数字内。最新候选实际为 Coding 100,763／Harness 379,200／Hosting 14,235／其它154,008，共648,206行。相对原 Goal 切点的实际整树变化分别为 −5,667／+10,022／+32／+1,808，共+6,195；其中上游 PR #900 等功能变化为 +1,495／+69／+32／+1,808，共+3,404，明确排除于 C07 迁移收益和成本之外，不隐去实际整树增长。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

@@ -278,7 +278,9 @@ def observe_sources(case, directory, patch):
             "loushang.harness.package_product._windows_worker_history"
         )
         bound.setattr(history_owner, "WindowsPrivateDirectoryAcl", Acl)
-        bound.setattr(sources, "CodingWindowsWorkerGcHistoryAuthority", Gc)
+        gc_type = sources.CodingWindowsWorkerGcHistoryAuthority
+        bound.setattr(gc_type, "__init__", Gc.__init__)
+        bound.setattr(gc_type, "require_settled", Gc.require_settled)
         bound.setattr(os, "fstat", fstat)
         bound.setattr(os, "fdopen", fdopen)
         if case == "file-count":
