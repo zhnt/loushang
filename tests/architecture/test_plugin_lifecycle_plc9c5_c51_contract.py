@@ -668,7 +668,6 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         *relocated_consumers,
         Path("src/loushang/coding/package_product_worker_capability.py"),
         Path("src/loushang/coding/package_product_worker_crash_c5_settlement.py"),
-        Path("src/loushang/coding/package_product_worker_payload.py"),
         Path("src/loushang/coding/package_product_worker_operator_query.py"),
         Path("src/loushang/coding/package_product_worker_pending_host.py"),
         Path("src/loushang/coding/package_product_worker_windows_pending_host.py"),

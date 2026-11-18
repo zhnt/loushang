@@ -3603,7 +3603,7 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert after.retained_activation_attempts == (c5_settled,)
         assert after.native_job_absence == ((attempt_id, True),)
         with patch(
-            "loushang.coding.package_product_worker_windows_recovery_inventory.observe_windows_worker_job_absent",
+            "loushang.harness.package_product._windows_worker_recovery.observe_windows_worker_job_absent",
             side_effect=OSError("native Job observation unavailable"),
         ):
             unknown_job = inspect_coding_windows_product_worker_offline_recovery(

@@ -634,6 +634,20 @@ Coding 保留原名义 live review dataclass、三个字段／slots、authority 
 
 本批 Coding −87、Harness +47、Hosting／其它生产0，系统生产净−40行；测试−1行、文档单列。收益是同一已有 owner 接管六个完整入口、原重复外壳退出，没有把原物化／修复算法重计为新下沉。连同前一本地清理证据提交，本阶段 Coding −188／Harness +189／系统生产 +1行。自原 Goal 切点归属 C07 累计 Coding −7,350、Harness +10,142、系统生产 +2,792行；C07余12,916行，距多数退出仍差2,784行，整组仍未完成。
 
+## Windows 恢复读取族统一由原 Journal family 接管
+
+原 `WindowsProductWorkerHistoryJournals` 接管库存、引用、GC 观察及离线快照四条公开读取链，连同 guarded 入口和 Job 观察共八个 Code 函数退出。真实调用方直接绑定该组件的操作；原读取／关联／快照内核、锁序和原 Code 退休验证绑定 AST 保持，不重复计为新的大块事务迁移。Code 保名义事实类型、错误命名空间及固定产品组件选择；现有四个 TypeVar 与只读 reference Protocol 仅重排使用，没有新增 Protocol、恢复器、账本或生命周期状态。
+
+Codex 实施者按已授权职责接受这条只读组件边界及固定接线。内部 Journal 配置从5字段扩展到17字段，新增12项为产品标识、名义工厂和原读取组件等配置，不是迁出的 Code DTO 字段，也不计为迁移收益。公开 Code 入口参数形状、操作文档及具体静态返回类型保持；函数变 bound method、定义归属／泛型运行时 hints／参数绑定错误前缀及固定组件导入时绑定属于已记录的内部变化。不承诺任意旧5字段内部配置实例的构造／pickle 兼容，必要 Code 名义记录的字段／slots／历史 wire 不变。
+
+八个原／新执行体在固定组件替换和统一 Product guard 展开后 AST 一致；全部旧 Harness 内核及 Code 记录／退休绑定 AST 保持。16份修改前全局 callable 路径和16次当前往返通过；重建原全局回调的六份历史源 bound callable 加载及重新序列化通过，后者不是修改前采样。40组原／新入口对照覆盖类型／平台／产品短路、只读锁边界、失败及同步注入的取消、active runtime、未知／不存在 Job 和未提供／显式空 native 事实；有效路径另断言成功。这些受控读取端口证据不代替真实 Product、原生 IO、Task.cancel 或 crash／reboot。
+
+原库存／值／查询消费者首轮121 passed／9 failed，失败均为旧 module alias 注入点已退出；仅将两个平台口及四个读取工厂接到实际 owner，保原 lambda、固定预期和断言，复核130 passed（9.37秒）。历史源／准备／检查点／引用／持久 bases 八文件67 passed／1 skipped（5.32秒）。导入／C50／C51／C54首轮190 passed／2 failed；一条是本批退出的 Hosting 观察依赖，另一条为上批 `b66447096` 退出的 POSIX activation 依赖。只删对应精确库存项，原扫描和集合相等断言不变，两节点复核2 passed（22.40秒）。五份测试的限定源码变换已逐项核对；原 native pre-B 脚本仅更换一个观察注入路径，本机未执行该原生路线。
+
+117源限定 mypy含八入口具体返回断言通过；三种冷导入顺序、Ruff／format及依赖事实通过。首轮类型检查暴露离线读取的宽协议返回，已将原 Code cast 随固定 snapshot 工厂绑定移入 Harness；外置 AST 探针仅归一化函数移入类导致的多行文档缩进，操作文档另逐项比对。原失败日志保留。最新 fetch 后 origin/main 仍为 `4100b4f65`，GUI lane 更新未混入本任务；本批为本地候选，完整交付检查和原生平台验证仍待完成，整组未验收。
+
+本批 Coding −117、Harness +173、Hosting／其它生产0，系统生产 +56行；测试+4行、文档单列。增长包含全部固定配置、泛型及入口接线成本；收益是已有组件的读取族与入口归位，不宣称重复算法删除或系统净精简。自原 Goal 切点累计 Coding −7,467、Harness +10,315、系统生产 +2,848行；C07余12,799行，距多数退出仍差2,667行，目标不降低。逐文件当前行／SHA再次核对442份 Coding 源码，当前100,458行；Harness379,562／Hosting14,235／其它154,008，生产 Python 共648,263行。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

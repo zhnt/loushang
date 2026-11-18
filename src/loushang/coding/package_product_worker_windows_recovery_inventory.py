@@ -6,26 +6,15 @@ delete a payload, release a Package lease, or admit a fresh Worker attempt.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal
 
 from loushang.harness.package_product._windows_worker_recovery import (
     WindowsProductWorkerHistoryJournals,
-    capture_windows_product_worker_offline_recovery_under_guard,
     current_windows_worker_attempts_after_verified_retirements,
-    read_windows_product_worker_attempt_gc_observations,
-    read_windows_product_worker_attempt_references_under_guard,
-    read_windows_product_worker_offline_recovery,
-)
-from loushang.harness.package_product._worker_windows_attempt import (
-    inspect_windows_product_worker_recovery_inventory,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
-)
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationSnapshotV1,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.worker.activation_state_journal import _StateRecord
@@ -36,7 +25,6 @@ from loushang.harness.worker.history._windows_recovery import (
 )
 from loushang.harness.worker.journal import WorkerAttemptPhase as WorkerAttemptPhase
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
-from loushang.hosting import observe_windows_worker_job_absent
 
 from .package_product_backup_types import (
     CodingWorkerBackupReferenceObservationV1,
@@ -72,17 +60,6 @@ from .package_product_worker_windows_receipt_journal import (
 from .package_product_worker_windows_supervisor_journal import (
     open_coding_windows_product_worker_supervisor_journal,
 )
-
-
-def _observe_native_job_absence(job_name: str | None) -> bool | None:
-    """Keep an unavailable native observation distinct from proven absence."""
-
-    if job_name is None:
-        return None
-    try:
-        return observe_windows_worker_job_absent(job_name)
-    except OSError:
-        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,144 +169,6 @@ def _current_after_verified_retirements_under_gc_guard(
     )
 
 
-def inspect_coding_windows_product_worker_recovery_inventory(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> tuple[CodingWindowsWorkerRecoveryAttemptV1, ...]:
-    """Join all observed attempt IDs under one no-create Product GC read guard."""
-
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
-        raise OSError("Windows Worker recovery inventory requires a Product owner")
-    with product.gc_gate.read_guard():
-        return _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
-
-
-def inspect_coding_windows_product_worker_attempt_references(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> tuple[CodingWindowsWorkerAttemptReferenceV1, ...]:
-    """Project every durable launch intent with its retained Product receipt.
-
-    Partial stages without an intent remain recovery debts, not references.
-    An observed native or Supervisor effect without an intent refuses the whole
-    projection. No runtime quiescence or state mutation is needed for this read.
-    """
-
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
-        raise OSError("Windows Worker attempt references require a Product owner")
-    with product.gc_gate.read_guard():
-        return _inspect_windows_worker_attempt_references_under_gc_guard(product)
-
-
-def inspect_coding_windows_product_worker_attempt_gc_observations(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> tuple[CodingWindowsWorkerAttemptGcObservationV1, ...]:
-    """Join retained launch references to active GC reservations under one gate."""
-
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
-        raise OSError("Windows Worker GC observations require a Product owner")
-    return read_windows_product_worker_attempt_gc_observations(
-        product,
-        read_references=_inspect_windows_worker_attempt_references_under_gc_guard,
-        observe_backup=observe_coding_worker_backup_references_under_gc_guard,
-        observation_type=CodingWindowsWorkerAttemptGcObservationV1,
-    )
-
-
-def _inspect_windows_worker_attempt_references_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> tuple[CodingWindowsWorkerAttemptReferenceV1, ...]:
-    return read_windows_product_worker_attempt_references_under_guard(
-        product,
-        journals=_windows_history_journals(),
-        inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
-        reference_type=CodingWindowsWorkerAttemptReferenceV1,
-        product_id="coding",
-        error_type=CodingWindowsWorkerRecoveryAdmissionError,
-        error_prefix="coding_worker_attempt_reference_",
-    )
-
-
-def inspect_coding_windows_product_worker_offline_recovery(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> CodingWindowsWorkerOfflineRecoverySnapshotV1:
-    """Hold Package runtime quiescence while joining every Product attempt."""
-
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
-        raise OSError("Windows Worker offline recovery requires a Product owner")
-    return cast(
-        CodingWindowsWorkerOfflineRecoverySnapshotV1,
-        read_windows_product_worker_offline_recovery(
-            product,
-            read_under_guard=_inspect_coding_windows_product_worker_offline_recovery_under_gc_guard,
-            active_error=CodingWindowsWorkerRecoveryAdmissionError,
-            active_code="coding_worker_offline_recovery_runtime_active",
-        ),
-    )
-
-
-def _inspect_coding_windows_product_worker_offline_recovery_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    store_id: str,
-    lease_owner_revision: int,
-    gc_snapshot: PluginPackageGcReservationSnapshotV1,
-) -> CodingWindowsWorkerOfflineRecoverySnapshotV1:
-    """Join semantic histories under an already held Product quiescence/gate."""
-
-    return capture_windows_product_worker_offline_recovery_under_guard(
-        product,
-        journals=_windows_history_journals(),
-        snapshot_type=CodingWindowsWorkerOfflineRecoverySnapshotV1,
-        inspect_native=inspect_coding_windows_product_worker_provisioning_attempts,
-        inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
-        inspect_intents=_inspect_intents_under_gc_guard,
-        observe_job_absence=_observe_native_job_absence,
-        observe_backup=observe_coding_worker_backup_references_under_gc_guard,
-        store_id=store_id,
-        lease_owner_revision=lease_owner_revision,
-        gc_snapshot=gc_snapshot,
-    )
-
-
-def _inspect_windows_worker_recovery_inventory_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    native_attempts: tuple[WindowsWorkerProvisioningAttemptV1, ...] | None = None,
-) -> tuple[CodingWindowsWorkerRecoveryAttemptV1, ...]:
-    """Reuse one already-held Product GC gate for a pre-effect admission check."""
-    if os.name != "nt" or type(product) is not WindowsLocalWheelProductSessionOwner:
-        raise OSError("Windows Worker recovery inventory requires a Product owner")
-    return inspect_windows_product_worker_recovery_inventory(
-        product,
-        inspect_retirements=_recovery_retirement_attempt_ids,
-        inspect_payloads=inspect_coding_windows_product_worker_payload_attempts,
-        inspect_intents=_inspect_intents_under_gc_guard,
-        inspect_native=inspect_coding_windows_product_worker_provisioning_attempts,
-        inspect_supervisor=lambda current: (
-            open_coding_windows_product_worker_supervisor_journal(
-                current
-            ).inspect_records()
-        ),
-        record_type=CodingWindowsWorkerRecoveryAttemptV1,
-        native_attempts=native_attempts,
-    )
-
-
 def _recovery_retirement_attempt_ids(
     product: WindowsLocalWheelProductSessionOwner,
 ) -> frozenset[str]:
@@ -370,11 +209,55 @@ require_coding_windows_worker_terminal_cleanup_attempt = (
 )
 
 
+_HISTORY_INVENTORY = WindowsProductWorkerHistoryJournals[
+    CodingWindowsWorkerRecoveryAttemptV1,
+    CodingWindowsWorkerOfflineRecoverySnapshotV1,
+    CodingWindowsWorkerAttemptReferenceV1,
+    CodingWindowsWorkerAttemptGcObservationV1,
+](
+    opt_in=CodingWindowsWorkerOptInJournal,
+    receipt=CodingWindowsWorkerReceiptJournal,
+    activation=CodingWindowsWorkerActivationStateJournal,
+    supervisor=open_coding_windows_product_worker_supervisor_journal,
+    retained_type=CodingProductWorkerRetainedAttemptV1,
+    product_id="coding",
+    attempt_type=CodingWindowsWorkerRecoveryAttemptV1,
+    snapshot_type=CodingWindowsWorkerOfflineRecoverySnapshotV1,
+    reference_type=CodingWindowsWorkerAttemptReferenceV1,
+    observation_type=CodingWindowsWorkerAttemptGcObservationV1,
+    inspect_retirements=_recovery_retirement_attempt_ids,
+    inspect_payloads=inspect_coding_windows_product_worker_payload_attempts,
+    inspect_intents=_inspect_intents_under_gc_guard,
+    inspect_native=inspect_coding_windows_product_worker_provisioning_attempts,
+    observe_backup=observe_coding_worker_backup_references_under_gc_guard,
+    error_type=CodingWindowsWorkerRecoveryAdmissionError,
+    error_prefix="coding_worker",
+)
+
+
 def _windows_history_journals() -> WindowsProductWorkerHistoryJournals:
-    return WindowsProductWorkerHistoryJournals(
-        opt_in=CodingWindowsWorkerOptInJournal,
-        receipt=CodingWindowsWorkerReceiptJournal,
-        activation=CodingWindowsWorkerActivationStateJournal,
-        supervisor=open_coding_windows_product_worker_supervisor_journal,
-        retained_type=CodingProductWorkerRetainedAttemptV1,
-    )
+    return _HISTORY_INVENTORY
+
+
+_observe_native_job_absence = _HISTORY_INVENTORY.observe_job_absence
+inspect_coding_windows_product_worker_recovery_inventory = (
+    _HISTORY_INVENTORY.inspect_inventory
+)
+_inspect_windows_worker_recovery_inventory_under_gc_guard = (
+    _HISTORY_INVENTORY.inspect_inventory_under_guard
+)
+inspect_coding_windows_product_worker_attempt_references = (
+    _HISTORY_INVENTORY.inspect_references
+)
+_inspect_windows_worker_attempt_references_under_gc_guard = (
+    _HISTORY_INVENTORY.inspect_references_under_guard
+)
+inspect_coding_windows_product_worker_attempt_gc_observations = (
+    _HISTORY_INVENTORY.inspect_gc_observations
+)
+inspect_coding_windows_product_worker_offline_recovery = (
+    _HISTORY_INVENTORY.inspect_offline
+)
+_inspect_coding_windows_product_worker_offline_recovery_under_gc_guard = (
+    _HISTORY_INVENTORY.inspect_offline_under_guard
+)
