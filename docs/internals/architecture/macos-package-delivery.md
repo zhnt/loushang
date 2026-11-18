@@ -1,7 +1,8 @@
 # macOS Intel full-package delivery
 
-Status: implementation candidate; native acceptance is recorded by the manual
-Actions artifact. Scope: macOS 12+ Intel packaging and launchd integration.
+Status: accepted for Intel packaging and native macOS 15 runner operation;
+actual macOS 12 installation acceptance remains pending. Scope: macOS 12+
+Intel packaging and launchd integration.
 
 The full installer places `loushang-gui.app` in `/Applications`. The native GUI,
 frozen `loushang` TUI, Rust Web listener, Mux launcher and foreground Host entry
@@ -10,7 +11,7 @@ in `Contents/Resources`. `/usr/local/bin` provides the five command names.
 The GUI bridge remains Rust/TypeScript; there is no Python connection helper.
 
 `loushang-mux service` delegates macOS process ownership to launchd's per-user
-domain. A label derived from the configured product home isolates installations
+domain with the explicit Background session type. A label derived from the configured product home isolates installations
 and test homes. Start/stop/restart serialize under a private local control lock;
 an expected instance rejects stale shutdown requests. The service is not
 registered for automatic login startup. Exiting the GUI leaves the Host alive.
@@ -47,5 +48,23 @@ that runtime tested.
 Internal review: the implementation agent reviewed the Coding launch adapter,
 AppService managed-Mux admission contract, continuity ownership, private
 workspace storage, GUI resource lookup and manual-only CI boundaries. The
-candidate does not change wire schemas or add PR blocking jobs. Native runner
-findings must be resolved before accepting this delivery candidate.
+delivery does not change wire schemas or add PR blocking jobs. Native runner
+findings were resolved before accepting the implementation within this scope.
+
+## Native acceptance record
+
+The implementation agent accepted the reviewed implementation after the full
+installer from source commit `e9f93e919286d6d31056c07f4a65d3cd1d75a1a6` passed
+[Actions run 44276006846](https://github.com/zhnt/loushang/actions/runs/44276006846)
+on macOS 15.7.9 Intel. Evidence is in the `loushang-macos12-intel` artifact.
+
+The actual `.pkg` installed successfully. Installed TUI/Host command entry
+points, bundled Python imports, native GUI startup, Host persistence after GUI
+exit, Web assets with source assets hidden, workspace navigation, model listing,
+session snapshots, identity preservation across Host restart, and stale-instance
+stop rejection all passed. Package contents also passed Intel/minimum-version
+auditing and deep signature verification. Temporary diagnostic jobs are removed
+from the final workflow; final acceptance used the freshly built installer.
+
+This record does not assert a live provider conversation, visual layout
+acceptance, macOS 12 runtime acceptance, Developer ID signing or notarization.
