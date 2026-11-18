@@ -64,7 +64,7 @@ def create_standard_agent_bootstrap_services(
     diagnostics_service: DiagnosticsService | None = None,
     exec_service: ExecService | None = None,
     default_model: ModelSelection | None = None,
-    thinking_level: ThinkingLevel = "off",
+    thinking_level: ThinkingLevel | None = None,
     system_prompt: str = "",
 ) -> BootstrapServices[
     SettingsManager,

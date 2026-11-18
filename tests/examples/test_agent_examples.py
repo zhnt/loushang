@@ -25,7 +25,7 @@ def test_kimi_agent_example_builds_public_model() -> None:
 
     assert model.provider_id == "moonshot"
     assert model.endpoint_id == "openai-completions"
-    assert model.id == "kimi-k2.6"
+    assert model.id == "kimi-k3.1-pro"
 
 
 def test_kimi_agent_openai_example_builds_public_model() -> None:
@@ -38,4 +38,4 @@ def test_kimi_agent_openai_example_builds_public_model() -> None:
 
     assert model.provider_id == "moonshot"
     assert model.endpoint_id == "openai-completions"
-    assert model.id == "kimi-k2.6"
+    assert model.id == "kimi-k3.1-pro"

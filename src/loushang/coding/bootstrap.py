@@ -310,7 +310,7 @@ def create_services(
     settings_manager: SettingsManager | None = None,
     exec_service: ExecService | None = None,
     default_model: ModelSelection | None = None,
-    thinking_level: ThinkingLevel = "off",
+    thinking_level: ThinkingLevel | None = None,
     system_prompt: str = "",
 ) -> BootstrapServices:
     return create_standard_agent_bootstrap_services(
@@ -382,7 +382,7 @@ def _create_agent_session_services(
     settings_manager: SettingsManager | None = None,
     exec_service: ExecService | None = None,
     default_model: ModelSelection | None = None,
-    thinking_level: ThinkingLevel = "off",
+    thinking_level: ThinkingLevel | None = None,
     system_prompt: str = "",
     global_settings_path: str | Path | None = None,
     project_settings_path: str | Path | None = None,
@@ -478,7 +478,7 @@ def create_agent_session_services(
     settings_manager: SettingsManager | None = None,
     exec_service: ExecService | None = None,
     default_model: ModelSelection | None = None,
-    thinking_level: ThinkingLevel = "off",
+    thinking_level: ThinkingLevel | None = None,
     system_prompt: str = "",
     global_settings_path: str | Path | None = None,
     project_settings_path: str | Path | None = None,

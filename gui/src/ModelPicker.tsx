@@ -67,7 +67,7 @@ export function ModelPicker({ models, emptyLabel, disabled, busy, onSelect }: {
     if (busy) return;
     const result = id === current?.id ? models : await onSelect(id);
     if (!result) return;
-    if ((result.thinking?.availableLevels.length ?? 0) > 1) {
+    if ((result.thinking?.availableLevels.length ?? 0) > 0) {
       setStage((previous) => previous === "model" ? "thinking" : previous);
     } else {
       close();
@@ -95,7 +95,7 @@ export function ModelPicker({ models, emptyLabel, disabled, busy, onSelect }: {
       }}>
       <span id="model-current-label" className="model-current-label">
         <span>{currentLabel}</span>
-        {thinking ? <span className="thinking-badge">{t(`models.levels.${thinking.currentLevel}`)}</span> : null}
+        {thinking ? <span className="thinking-badge">{t(`models.levels.${thinking.currentLevel ?? "default"}`)}</span> : null}
       </span>
       {!disabled ? <UiIcon name="chevron-down" /> : null}
     </button>

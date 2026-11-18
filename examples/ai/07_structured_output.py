@@ -25,7 +25,7 @@ def _offline_message() -> AssistantMessage:
         api="openai-responses",
         provider="openai",
         endpoint="openai-responses",
-        model="gpt-5.4-mini",
+        model="gpt-6-luna",
         response_id="structured-demo",
         usage=None,
         stop_reason="stop",

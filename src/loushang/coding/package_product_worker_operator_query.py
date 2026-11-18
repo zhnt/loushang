@@ -245,7 +245,7 @@ class _CodingOperatorQueryPolicy:
                             max_tokens=4_096,
                         ),
                     ),
-                    "thinking_level": "off",
+                    "thinking_level": None,
                 }
             ),
             session_manager=self.manager,

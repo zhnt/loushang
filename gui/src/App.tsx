@@ -494,7 +494,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     : sessionModels.models.length === 0 ? "empty" : "choose";
   const canChangeModel = Boolean(client.selectModel && sessionModels && (
     sessionModels.models.some((model) => model.id !== sessionModels.currentId)
-    || (sessionModels.thinking?.availableLevels.length ?? 0) > 1
+    || (sessionModels.thinking?.availableLevels.length ?? 0) > 0
   ));
   useEffect(() => {
     if (!modelScope || !selectedId || modelRunning || !client.sessionModels) return;

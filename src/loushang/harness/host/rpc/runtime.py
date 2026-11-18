@@ -426,7 +426,7 @@ class RpcHost(ModeAdapter):
         except Exception:
             return {
                 "sessionId": "",
-                "thinkingLevel": "off",
+                "thinkingLevel": None,
                 "isStreaming": False,
                 "isCompacting": False,
                 "steeringMode": "one-at-a-time",

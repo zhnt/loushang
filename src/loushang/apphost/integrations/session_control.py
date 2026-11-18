@@ -486,12 +486,12 @@ def project_session_models(
 def _thinking_settings(control: object) -> SessionThinkingV1 | None:
     getter = getattr(control, 'get_available_thinking_levels', None)
     current = getattr(control, 'thinking_level', None)
-    if not callable(getter) or not isinstance(current, str):
+    if not callable(getter):
         return None
     levels = tuple(getter())
-    if current not in levels or levels == ('off',):
+    if not levels:
         return None
-    return SessionThinkingV1(current, levels)
+    return SessionThinkingV1(current if current in levels else None, levels)
 
 
 class _HostedAgentExecutionWork:

@@ -82,12 +82,14 @@
     "thinking": "Reasoning effort",
     "back": "Models",
     "levels": {
-      "off": "Default",
+      "default": "Default",
+      "off": "Off",
       "minimal": "Minimal",
       "low": "Low",
       "medium": "Medium",
       "high": "High",
-      "xhigh": "Extra high"
+      "xhigh": "Extra high",
+      "max": "Maximum"
     }
   },
   "transcript": {

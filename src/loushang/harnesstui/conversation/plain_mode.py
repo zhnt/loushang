@@ -434,7 +434,7 @@ def _serialize_print_mode_state(session: Any) -> ModeState:
     session_file = _safe_getattr(session, "session_file", None)
     steering = _safe_list(getattr(state, "steering", None))
     follow_up = _safe_list(getattr(state, "follow_up", None))
-    thinking = getattr(state, "thinking_level", "off") if state is not None else "off"
+    thinking = getattr(state, "thinking_level", None)
     is_compacting = bool(
         _safe_getattr(state, "is_compacting", False) if state is not None else False
     )
@@ -444,7 +444,7 @@ def _serialize_print_mode_state(session: Any) -> ModeState:
     payload: ModeState = {
         "sessionId": str(session_id),
         "model": model,
-        "thinkingLevel": str(thinking),
+        "thinkingLevel": thinking if isinstance(thinking, str) else None,
         "isStreaming": run_status == "running",
         "isCompacting": is_compacting,
         "steeringMode": _queue_mode(session, "steering_mode"),

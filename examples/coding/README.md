@@ -179,7 +179,7 @@ uv run python examples/coding/run.py list --count
 **3 秒判断：默认/显式**
 - 默认走 `kimi-code/kimi-code-anthropic`（Anthropic 兼容协议）。
 - 显式指定 `kimi-code-openai` 时走 OpenAI 兼容协议。
-- Kimi Code 两条协议都支持 `k3`（当前旗舰）和 `kimi-for-coding`（K2.7）；示例 profile 暂时固定 `kimi-for-coding` 以保持可复现。
+- Kimi Code 两条协议都支持 `k3.1-pro`（当前旗舰）和 `kimi-for-coding`（K2.8 Preview）；示例 profile 暂时固定 `kimi-for-coding` 以保持可复现。
 - `KIMI_MODEL_NAME` 仅作为模型名提示变量；在示例缺省路径里不会强制切换 endpoint。
 
 说明：`provider:endpoint:model` 中的 `endpoint` 只接受 registry 中的 endpoint id。
@@ -188,7 +188,7 @@ Kimi Code 在内置 catalog 中提供 `kimi-code-openai` 与 `kimi-code-anthropi
 未指定 `--model-catalog` 时，示例只读取内置 catalog。仓库不再提供会遮蔽内置配置的
 Kimi Code 示例 catalog。
 
-补充：Kimi Code 使用自己的模型 ID：当前旗舰写 `k3`，K2.7 coding 路线写 `kimi-for-coding`，不要写 Moonshot 平台的 `kimi-k3` 或旧的 `kimi-k2.5`。
+补充：Kimi Code 使用自己的模型 ID：当前旗舰写 `k3.1-pro`，K2.8 Preview 路线写 `kimi-for-coding`，不要写 Moonshot 平台的 `kimi-k3` 或旧的 `kimi-k2.5`。
 
 ### Kimi 环境变量模板（按你这个模型名）
 
@@ -272,7 +272,7 @@ python examples/coding/run.py run legacy-014 --model-catalog examples/coding/mod
 
 来使用；默认仍为 `src/loushang/ai/model/models.json`。
 
-Kimi Code 的 provider、两条兼容协议路由以及 `k3`、`kimi-for-coding` 模型都由内置
+Kimi Code 的 provider、两条兼容协议路由以及 `k3.1-pro`、`kimi-for-coding` 模型都由内置
 catalog 维护。`init_examples_env.py --copy-model-catalog` 仅复制该内置文件作为用户
 定制快照，不会再叠加示例目录中的 provider 模板。
 

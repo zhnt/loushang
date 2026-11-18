@@ -324,7 +324,7 @@ def test_opaque_and_excluded_command_are_invisible_and_state_neutral() -> None:
     context = profile.replay((opaque, hidden_command))
 
     assert context.messages == ()
-    assert context.thinking_level == "off"
+    assert context.thinking_level is None
     assert not profile.record_is_visible(opaque)
     assert not profile.record_is_visible(hidden_command)
 

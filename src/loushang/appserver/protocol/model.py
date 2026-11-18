@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TypeAlias
 
+from loushang.foundation.reasoning import THINKING_LEVELS
+
 from .errors import AppFailureV1
 from .workspace_preview import (
     WorkspaceDirectoryPreviewV1,
@@ -628,21 +630,21 @@ class SessionModelChoiceV1:
 
 @dataclass(frozen=True, slots=True)
 class SessionThinkingV1:
-    current_level: str
+    current_level: str | None
     available_levels: tuple[str, ...]
 
     def __post_init__(self) -> None:
         levels = self.available_levels
         if (
-            type(levels) is not tuple or not 1 <= len(levels) <= len(_THINKING_LEVELS)
-            or any(type(level) is not str or level not in _THINKING_LEVELS for level in levels)
+            type(levels) is not tuple or not 1 <= len(levels) <= MAX_THINKING_LEVELS
+            or any(type(level) is not str or level not in THINKING_LEVELS for level in levels)
             or len(set(levels)) != len(levels)
-            or type(self.current_level) is not str or self.current_level not in levels
+            or (self.current_level is not None and self.current_level not in levels)
         ):
             raise ValueError("invalid session thinking settings")
 
 
-_THINKING_LEVELS = frozenset(("off", "minimal", "low", "medium", "high", "xhigh"))
+MAX_THINKING_LEVELS = len(THINKING_LEVELS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -681,7 +683,7 @@ class SessionModelSelectV1:
         )
         _require_text(self.model_id, field="model id", maximum=512, empty=False)
         if self.thinking_level is not None and (
-            type(self.thinking_level) is not str or self.thinking_level not in _THINKING_LEVELS
+            type(self.thinking_level) is not str or self.thinking_level not in THINKING_LEVELS
         ):
             raise ValueError("invalid session thinking level")
 

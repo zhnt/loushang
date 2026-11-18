@@ -809,7 +809,7 @@ def test_openai_completions_explicit_zai_thinking_object_format(
         )
     )
 
-    assert _FakeAsyncOpenAI.last_create_kwargs["thinking"] == {"type": "enabled"}
+    assert _FakeAsyncOpenAI.last_create_kwargs["extra_body"]["thinking"] == {"type": "enabled"}
     assert "enable_thinking" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "store" not in _FakeAsyncOpenAI.last_create_kwargs
@@ -977,7 +977,7 @@ def test_openai_completions_builtin_moonshot_uses_system_role_not_developer(
     _fake_openai_module(monkeypatch)
     monkeypatch.setenv("MOONSHOT_API_KEY", "test-key")
     provider = OpenAIChatCompletionsAdapter()
-    model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+    model = get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 
     asyncio.run(
         _collect_parts(

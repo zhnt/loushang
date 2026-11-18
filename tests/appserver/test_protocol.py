@@ -243,7 +243,7 @@ def test_G11_CONTRACT_STRICT_request_round_trip(
                     True,
                 ),
             ),
-            SessionThinkingV1("high", ("low", "high")),
+            SessionThinkingV1(None, ("off", "minimal", "low", "medium", "high", "xhigh", "max")),
         ),
     ),
 )

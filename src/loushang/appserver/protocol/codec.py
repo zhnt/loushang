@@ -12,6 +12,7 @@ from .errors import AppErrorCodeV1, AppFailureV1, InvalidAppMessageError
 from .model import (
     APP_PROTOCOL_VERSION,
     MAX_DISCOVERY_PAGE,
+    MAX_THINKING_LEVELS,
     USER_CHOICE_MAX_OPTIONS,
     AckV1,
     AppOperationV1,
@@ -323,10 +324,10 @@ def decode_response(payload: bytes) -> AppResponseV1:
         if "thinking" in fields:
             settings = _object(value["thinking"], {"currentLevel", "availableLevels"})
             levels = settings["availableLevels"]
-            if type(levels) is not list or len(levels) > 6:
+            if type(levels) is not list or len(levels) > MAX_THINKING_LEVELS:
                 raise InvalidAppMessageError()
             thinking = _construct(
-                SessionThinkingV1, current_level=_string(settings["currentLevel"]),
+                SessionThinkingV1, current_level=_optional_string(settings["currentLevel"]),
                 available_levels=tuple(_string(level) for level in levels),
             )
         result = _construct(

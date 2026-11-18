@@ -27,7 +27,7 @@ from loushang.ai.errors import AIAuthenticationError
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。
 API_KEY = ""
-MODEL_ID = "kimi-k2.6"
+MODEL_ID = "kimi-k3.1-pro"
 SYSTEM_PROMPT = "你是 Kimi，由 Moonshot AI 提供。回答要简洁、准确，优先使用中文。"
 USER_PROMPT = "请用两句话介绍你自己，并说明 1 + 1 等于几。"
 MAX_TOKENS = 256

@@ -13,6 +13,7 @@ import pytest
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
+    AnthropicMessagesConfig,
     Capabilities,
     Endpoint,
     Model,
@@ -313,8 +314,12 @@ def _model() -> Model:
         name="Faux",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
+        adapter=AnthropicMessagesConfig(thinking_mode="adaptive"),
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_required=False,
+            reasoning_efforts=("low", "medium", "high", "xhigh", "max"),
             input=("text",),
             context_window=128000,
             max_tokens=4096,
@@ -2682,8 +2687,10 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
         name="Alt",
         provider="alt",
         endpoint="responses",
+        api="openai-responses",
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_efforts=("none", "low", "medium", "high"),
             input=("text",),
             context_window=64000,
             max_tokens=2048,
@@ -2942,8 +2949,10 @@ def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
         name="Alt",
         provider="alt",
         endpoint="responses",
+        api="openai-responses",
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_efforts=("none", "low", "medium", "high"),
             input=("text",),
             context_window=64000,
             max_tokens=2048,
@@ -3320,8 +3329,10 @@ def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) ->
         name="Alt",
         provider="alt",
         endpoint="responses",
+        api="openai-responses",
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_efforts=("none", "low", "medium", "high"),
             input=("text",),
             context_window=64000,
             max_tokens=2048,
@@ -3383,25 +3394,7 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
     asyncio.run(session.session_manager.append_message(_user_message("hello")))
 
     assert session.supports_thinking() is True
-    assert session.supports_thinking() is True
-    assert session.supports_thinking() is True
-    assert session.supports_thinking() is True
-    assert session.get_available_thinking_levels() == [
-        "off",
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-    ]
-    assert session.get_available_thinking_levels() == [
-        "off",
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-    ]
+    assert session.get_available_thinking_levels() == ["off", "low", "medium", "high", "xhigh", "max"]
     assert asyncio.run(session.cycle_thinking_level()) == "medium"
     assert session.get_context_usage()["messageCount"] == 1
 
@@ -3420,13 +3413,9 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
     asyncio.run(session.set_model(non_reasoning))
 
     assert session.supports_thinking() is False
-    assert session.supports_thinking() is False
-    assert session.supports_thinking() is False
-    assert session.supports_thinking() is False
-    assert session.get_available_thinking_levels() == ["off"]
-    assert session.get_available_thinking_levels() == ["off"]
+    assert session.get_available_thinking_levels() == []
     assert asyncio.run(session.cycle_thinking_level()) is None
-    assert session.thinking_level == "off"
+    assert session.thinking_level is None
 
 
 def test_agent_session_exposes_standard_runtime_facades(tmp_path) -> None:

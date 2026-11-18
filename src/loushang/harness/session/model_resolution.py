@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from loushang.ai.model import Model, ModelSelection
+from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.diagnostics.service import DiagnosticsService
 
 ModelBuilder = Callable[[ModelSelection], Model]
@@ -124,7 +125,7 @@ def split_model_thinking_pattern(pattern: str) -> tuple[str, str | None]:
     name, separator, suffix = pattern.rpartition(":")
     if (
         separator
-        and suffix in {"off", "minimal", "low", "medium", "high", "xhigh"}
+        and suffix in THINKING_LEVELS
         and name
     ):
         return name, suffix

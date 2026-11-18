@@ -24,7 +24,7 @@ PROVIDER_EXAMPLES = (
     ProviderExample(
         "anthropic",
         "anthropic-messages",
-        "claude-sonnet-5",
+        "claude-sonnet-5-5",
         ("ANTHROPIC_API_KEY",),
     ),
     ProviderExample(
@@ -54,13 +54,13 @@ PROVIDER_EXAMPLES = (
     ProviderExample(
         "moonshot",
         "openai-completions",
-        "kimi-k2.6",
+        "kimi-k3.1-pro",
         ("MOONSHOT_API_KEY",),
     ),
     ProviderExample(
         "openai",
         "openai-responses",
-        "gpt-5.4-mini",
+        "gpt-6-luna",
         ("OPENAI_API_KEY",),
     ),
     ProviderExample(
@@ -72,19 +72,19 @@ PROVIDER_EXAMPLES = (
     ProviderExample(
         "tencent-hunyuan",
         "openai-responses",
-        "hy3",
+        "hy4",
         ("HUNYUAN_API_KEY",),
     ),
     ProviderExample(
         "volcano-ark",
         "openai-completions-cn-beijing",
-        "doubao-seed-2-1-turbo-260628",
+        "doubao-seed-2-1-lite-260915",
         ("ARK_API_KEY",),
     ),
     ProviderExample(
         "zai",
         "openai-completions",
-        "glm-5.2",
+        "glm-5.3",
         ("ZAI_API_KEY",),
     ),
 )
