@@ -714,7 +714,11 @@ C07 归因与上述全局变化之间的同期主线差额为 Coding +1,495、Ha
 
 复核发现两个公开 Receipt 工厂的新缺陷：原实现可解析运行时注解，迁移后的 bound entry 调用 `get_type_hints()` 则因 `_AttachedTranscriptReadPort` 仅在 `TYPE_CHECKING` 内导入而抛出 NameError。独立候选将已有 Transcript read port 改为普通导入，无新增类型、状态或 IO。修复后349项再次反射，无新增解析错误；对比修复前，仅两项 hints 由错误变为可解析，其余公开观察保持。
 
-两个平台公开工厂的纯反射回归及既有 Receipt checkpoint 用例合计3 passed（36.26秒），两源 mypy、Ruff／format／diff通过。没有新增 workflow、job、selector、平台或合并条件。父 Provider 候选的完整 Coding 回归出现4个超时失败；为正常退出已确认失败的调用并释放并发资源，发送一次 SIGINT，最终保留4 failed／2,442 passed／15 skipped／77 deselected（4,230.23秒）的中断结果，不作完整通过。4个失败节点单独复现为2个20秒等待评审超时、2项通过；未含 Provider 迁移的冻结 C5 版本同一用例也超时，任务栈仍在 verification 子进程等待，尚未进入 review。该对照不能证明具体资源成因，也不能据此认定 Provider 已通过。本修复不消除该失败；C5 原检查继续冻结，后续 Provider 与本修复合并候选等待 C5 完整终结后串行复核，保持原超时、选择器和门禁。本候选完整 change-aware 检查和交付均未完成。
+两个平台公开工厂的纯反射回归及既有 Receipt checkpoint 用例合计3 passed（36.26秒），两源 mypy、Ruff／format／diff通过。没有新增 workflow、job、selector、平台或合并条件。父 Provider 候选的完整 Coding 回归出现4个超时失败；为正常退出已确认失败的调用并释放并发资源，发送一次 SIGINT，最终保留4 failed／2,442 passed／15 skipped／77 deselected（4,230.23秒）的中断结果，不作完整通过。4个失败节点单独复现为2个20秒等待评审超时、2项通过；未含 Provider 迁移的冻结 C5 版本同一用例也超时，任务栈仍在 verification 子进程等待，尚未进入 review。该对照不能证明具体资源成因，也不能据此认定 Provider 已通过。本修复不消除该失败。C5 原检查其后也以C54库存不同步失败终结，精确补记及7项复核见上段。三项未交付改动现合为同一串行完整候选，旧失败结果归档；保持原超时、选择器和门禁。本候选完整 change-aware 检查和交付均未完成。
+
+补充原公开引用对照：335项类／callable（含别名）在 protocol4／5下共670条旧路径，原版自身对照及当前候选的加载、保存和往返均通过，未发现恢复后的配置字段缺失。引用可能指向相同实现，不当作670个独立机制或活动 Product 序列化证明。首轮对同一 GenericAlias 的2项对象身份断言在原版自身也失败，且原／新别名声明 AST相同；保留两份失败证据后，仅将该别名改为精确类型、origin和名义参数比较，真实类／函数身份断言不变，旧 pickle 字节不重新采样。
+
+旧并发检查全部终结后，合并候选单独串行复核原4个超时用例、3项 Receipt 回归、完整C54的7项及原5项交接探针，19 passed（82.11秒），原10／20秒期限、断言和选择器均未改。该结果说明本次串行条件下未复现原超时，不将资源竞争推测写成已证根因；完整选中检查仍须执行。最新 fetch 后 main／origin/main／lane/harness／origin/lane/harness仍同为 `ca7091aa8`，原三份用户改动的二进制 diff哈希保持。
 
 本修复 Coding／Hosting／其它生产0，Harness及系统 Python 生产 −4行；新增回归测试单列，文档另计。这是兼容缺陷修复，不计任何新的 C07 迁移退出。当前 Coding100,315／Harness379,721／Hosting14,235／其它154,008，生产 Python共648,279行；相对已交付 main `ca7091aa8` 的 C5／Provider／本修复候选合计 Coding−23、Harness0、系统−23。原 Goal 归因 Coding−7,610、Harness+10,474、系统+2,864；同期其它主线+3,404仍另计，整库 Python较原基线+6,268。C07有效剩余12,656，多数目标仍差2,524，不因349项反射通过宣称整组完成。
 
