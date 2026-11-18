@@ -568,3 +568,86 @@ _decode_document = partial(
         code="unsupported_plugin_retirement_record_version",
     ),
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RemovedInstallationEpoch:
+    """An inert proof over decoded Desired transitions, with no mutation authority."""
+
+    install: PluginDesiredStateTransitionV1
+    head: PluginDesiredStateTransitionV1 | PluginDesiredStateUpdateTransitionV2
+    removal: PluginDesiredStateTransitionV1
+    package_revision: PluginPackageRevisionRefV1
+
+    @property
+    def head_transition_kind(self) -> Literal["install", "update"]:
+        return (
+            "update"
+            if isinstance(self.head, PluginDesiredStateUpdateTransitionV2)
+            else "install"
+        )
+
+
+def inspect_removed_installation_epoch(
+    history: tuple[PluginDesiredStateJournalTransition, ...],
+    *,
+    error_type: type[Exception],
+    label: str,
+    mismatch_message: str,
+) -> RemovedInstallationEpoch:
+    """Bind the last install/update epoch to its final removal, without replaying IO.
+
+    The caller supplies the already verified history for one Installation and
+    retains Source selection/admission. This proof neither classifies old formats nor
+    accepts a binding merely because its final Desired row is absent.
+    """
+    if len(history) < 2 or any(
+        not isinstance(
+            item,
+            (PluginDesiredStateTransitionV1, PluginDesiredStateUpdateTransitionV2),
+        )
+        for item in history
+    ):
+        raise error_type(f"{label} history is incomplete")
+    last = history[-1]
+    installs = tuple(
+        item
+        for item in history[:-1]
+        if item.transition_kind == "install"
+        and isinstance(item, PluginDesiredStateTransitionV1)
+    )
+    if not installs:
+        raise error_type(f"{label} has no final install epoch")
+    head_install = installs[-1]
+    head_index = history.index(head_install)
+    installed = head_install.committed_state.selection.package_revision
+    if (
+        head_install.previous_state.selection.desired_state != "absent"
+        or head_install.committed_state.selection.desired_state
+        not in {"installed_disabled", "installed_enabled"}
+        or installed is None
+        or not isinstance(last, PluginDesiredStateTransitionV1)
+        or last.transition_kind != "remove"
+        or last.committed_state.selection.desired_state != "absent"
+    ):
+        raise error_type(mismatch_message)
+    head: PluginDesiredStateTransitionV1 | PluginDesiredStateUpdateTransitionV2 = (
+        head_install
+    )
+    for item in history[head_index + 1 : -1]:
+        if item.previous_state.selection.package_revision != installed:
+            raise error_type(f"{label} revision chain changed")
+        if isinstance(item, PluginDesiredStateUpdateTransitionV2):
+            installed = item.committed_state.selection.package_revision
+            head = item
+        elif (
+            isinstance(item, PluginDesiredStateTransitionV1)
+            and item.transition_kind in {"enable", "disable"}
+            and item.committed_state.selection.package_revision == installed
+        ):
+            continue
+        else:
+            raise error_type(f"{label} history is unsupported")
+    if installed is None or last.previous_state.selection.package_revision != installed:
+        raise error_type(mismatch_message)
+    return RemovedInstallationEpoch(head_install, head, last, installed)

@@ -832,10 +832,10 @@ def test_plc9b_effect_inventory_freezes_owner_and_bypass_capabilities() -> None:
     documented = _documented_effect_counts()
     actual = _package_effect_scope_counts()
 
-    assert len(documented) == 143
-    assert sum(documented.values()) == 159
+    assert len(documented) == 146
+    assert sum(documented.values()) == 163
     assert actual == documented
-    assert "143 effect/capability rows\nwith 159 occurrences" in inventory
+    assert "146 effect/capability rows\nwith 163 occurrences" in inventory
     for required in (
         (
             PACKAGE_OPERATIONS,
@@ -2168,6 +2168,31 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             for forbidden in forbidden_modules
         ), path
 
+    apphost_file_primitives = {
+        Path("src/loushang/apphost/managed/workspaces.py"): {
+            "loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine": {
+                "open_windows_directory",
+            },
+        },
+        Path("src/loushang/apphost/managed/_files.py"): {
+            "loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine": {
+                "open_windows_directory", "windows_final_directory_path",
+                "windows_flush_directory", "windows_rename_at", "windows_stat_at",
+                "windows_unlink_at",
+            },
+        },
+        Path("src/loushang/apphost/managed/_windows_files.py"): {
+            "loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine": {
+                "open_windows_directory", "open_windows_regular_file_at",
+                "windows_directory_stream_names", "windows_regular_file_stream_names",
+            },
+        },
+        Path("src/loushang/apphost/managed/_database.py"): {
+            "loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine": {
+                "windows_final_directory_path",
+            },
+        },
+    }
     production_importers: list[Path] = []
     for path in SOURCE_ROOT.rglob("*.py"):
         if path.is_relative_to(OWNER_KERNEL_ROOT):
@@ -2205,6 +2230,8 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
                     "open_windows_regular_file_at", "windows_stat_at",
                 },
             })
+        elif path in apphost_file_primitives:
+            _require_package_kernel_imports(path, apphost_file_primitives[path])
         elif path.is_relative_to(Path("src/loushang/coding")):
             assert path.name.startswith("package_") or path.name in {
                 "_plugin_lifecycle.py",

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Protocol, TextIO
+from typing import Any, ClassVar, Protocol, TextIO
 
 from loushang.harnesstui.conversation.control import ConversationActionHost
 from loushang.harnesstui.conversation.host import (
@@ -270,6 +271,129 @@ async def run_prepared_plain_conversation(
         )
     finally:
         run_context.close()
+
+
+class _ScreenSdkPreparation:
+    """Screen-owned after-ready SDK waiter/hint lifecycle on a Product instance.
+
+    The Product supplies current built-in selection, loaded/load leaves and
+    diagnostics. Actual SDK import Task ownership stays with the SDK loader;
+    closing this visible waiter remains synchronous and never joins that Task.
+    """
+
+    _sdk_preparation_task_name: ClassVar[str]
+    _selection_failure_event: ClassVar[str]
+    _load_failure_event: ClassVar[str]
+
+    def __init__(self, *, app: ScreenConversationApp) -> None:
+        self.app = app
+        self._task: asyncio.Task[None] | None = None
+        self._timer: asyncio.TimerHandle | None = None
+        self._active_package: str | None = None
+        self._desired: tuple[str, str] | None = None
+        self._completed: set[str] = set()
+        self._failed: set[str] = set()
+        self._closed = False
+
+    def _select_sdk_preparation(self) -> tuple[str, str] | None:
+        raise NotImplementedError
+
+    def _sdk_preparation_loaded(self, package: str) -> bool:
+        raise NotImplementedError
+
+    def _load_sdk_preparation(self, api: str) -> Awaitable[object]:
+        raise NotImplementedError
+
+    def _record_sdk_preparation_failure(self, event: str, error: Exception) -> None:
+        raise NotImplementedError
+
+    async def run_prepared(
+        self,
+        prepared: Any,
+        *,
+        run: Callable[..., Awaitable[int]],
+        stdin: TextIO,
+        stdout: TextIO,
+        screen_runner: ActionHostScreenRunner,
+    ) -> int:
+        self.app.notify_session_ready()
+        try:
+            return await run(
+                prepared, stdin=stdin, stdout=stdout, screen_runner=screen_runner
+            )
+        finally:
+            self.close()
+            self.app.on_session_ready = None
+
+    def after_ready(self) -> None:
+        if self._closed or self._timer is not None:
+            return
+        # Let the admitted idle frame flush before cold imports contend for CPU.
+        self._timer = asyncio.get_running_loop().call_later(0.05, self.observe_current)
+
+    def observe_current(self) -> None:
+        self._timer = None
+        if self._closed or self.app.state.startup_pending:
+            return
+        try:
+            selected = self._select_sdk_preparation()
+        except Exception as error:
+            self._record_sdk_preparation_failure(self._selection_failure_event, error)
+            selected = None
+        self._desired = selected
+        self._start_desired()
+
+    def _start_desired(self) -> None:
+        selected = self._desired
+        if self._closed or selected is None:
+            self._show_preparing(False)
+            return
+        api, package = selected
+        if self._task is not None and not self._task.done():
+            # A running Python import cannot be stopped. Finish it before
+            # starting another SDK; only the current model earns a hint.
+            self._show_preparing(self._active_package == package)
+            return
+        if package in self._completed or self._sdk_preparation_loaded(package):
+            self._completed.add(package)
+            self._show_preparing(False)
+            return
+        if package in self._failed:
+            self._show_preparing(False)
+            return
+        self._active_package = package
+        self._show_preparing(True)
+
+        async def warm() -> None:
+            try:
+                await self._load_sdk_preparation(api)
+                self._completed.add(package)
+            except Exception as error:
+                self._failed.add(package)
+                self._record_sdk_preparation_failure(self._load_failure_event, error)
+            finally:
+                self._task = None
+                self._active_package = None
+                if not self._closed:
+                    self._start_desired()
+
+        self._task = asyncio.create_task(warm(), name=self._sdk_preparation_task_name)
+
+    def _show_preparing(self, preparing: bool) -> None:
+        if self.app.state.sdk_preparing != preparing:
+            self.app.state.sdk_preparing = preparing
+            self.app.request_render("product")
+
+    def close(self) -> None:
+        self._closed = True
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+        self._desired = None
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+        self._active_package = None
+        self.app.state.sdk_preparing = False
 
 
 __all__ = [

@@ -1,9 +1,18 @@
 {
+  "approval": {
+    "processed": "审批已处理",
+    "scope": "作用范围 · {{scope}}",
+    "title": "工具执行审批",
+    "approve": "允许一次",
+    "deny": "拒绝",
+    "cancel": "取消操作",
+    "submitting": "正在提交审批结果…",
+    "unavailable": "此审批已不可操作。"
+  },
   "notice": {
     "loading": "正在加载快照…",
     "fixtureReady": "测试快照已加载，未运行后端。",
     "liveReady": "已连接到 AppHost。",
-    "created": "已创建并连接新会话。",
     "liveUpdated": "AppHost 事件已更新。",
     "modelsUnavailable": "无法获取 AppHost 模型列表。",
     "emptyPrompt": "发送前请输入消息。",
@@ -17,7 +26,13 @@
     "interruptRejected": "中断请求未被接受。",
     "interruptFailed": "中断失败，请重新同步后重试。",
     "modelRejected": "模型切换被拒绝，会话仍使用原模型。",
-    "creating": "已创建新会话，正在重新连接更新后的工作区…",
+    "creating": "正在创建会话…",
+    "sending": "正在发送首条消息…",
+    "waitingForReply": "正在等待回复…",
+    "createUnknown": "会话创建结果待确认，草稿已保留。",
+    "firstSubmissionUnknown": "首条消息的提交结果待确认，草稿已保留。",
+    "firstModelUnavailable": "无法应用选中的模型，已保留草稿。",
+    "firstSubmitRejected": "首条消息被拒绝，草稿已保留。",
     "createFailed": "无法创建新会话。",
     "createSyncFailed": "新会话已创建，暂时无法显示。",
     "rejected": "提交被拒绝。",
@@ -27,7 +42,21 @@
     "thinkingChanged": "已更新推理强度。",
     "thinkingRejected": "无法更改推理强度。"
   },
+  "choice": {
+    "title": "选择业务方向",
+    "notes": "补充说明（可选）",
+    "confirm": "确认选择",
+    "selected": "已选择",
+    "accepted": "回答已受理，正在等待会话更新。",
+    "unknown": "暂时无法确认回答的提交结果，已保留你的选择。",
+    "rejected": "回答未被接受，已保留你的选择。",
+    "answer": "问题：{{question}}\n已选选项 {{id}}：{{label}}",
+    "answerNotes": "补充说明：{{notes}}"
+  },
   "composer": {
+    "checkConversation": "核对会话",
+    "dismissNotice": "关闭提示",
+    "checkCreation": "检查创建状态",
     "fixturePlaceholder": "输入测试提示词…",
     "livePlaceholder": "向在线智能体发送消息…",
     "attachUnavailable": "无法添加附件",
@@ -41,6 +70,7 @@
     "messageFor": "发送给 {{title}} 的消息"
   },
   "models": {
+    "default": "默认模型",
     "label": "会话模型",
     "unavailable": "模型列表不可用",
     "none": "模型信息不可用",
@@ -61,6 +91,8 @@
     }
   },
   "transcript": {
+    "copyCode": "复制代码",
+    "copyReply": "复制回复",
     "label": "会话记录",
     "you": "你",
     "harness": "Harness",
@@ -92,6 +124,7 @@
     "title": "同步已中断，请重新同步后继续。",
     "details": "诊断详情"
   },
+  "welcome": "今天想做什么？",
   "emptySession": "没有可用的会话。",
   "opening": "正在打开 {{appName}}…"
 }

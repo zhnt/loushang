@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import stat
-import subprocess
 from pathlib import Path
 
+from loushang.harness.workspace.git import observe_git_inventory
 from loushang.harnesswork.goal import GoalError, Requirement
 
 
@@ -18,24 +17,7 @@ def digest(value: bytes) -> str:
 
 def inventory(root: Path) -> dict[str, str]:
     """Include tracked and nonignored new files, preserving symlink identity."""
-    names = (
-        subprocess.check_output(
-            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-            cwd=root,
-        )
-        .decode()
-        .split("\0")
-    )
-    result = {}
-    for name in sorted(set(names) - {""}):
-        path = root / name
-        if path.is_symlink():
-            result[name] = "symlink:" + os.readlink(path)
-        elif path.is_file():
-            result[name] = digest(path.read_bytes())
-        else:
-            result[name] = "missing"
-    return result
+    return observe_git_inventory(root)
 
 
 class RepositoryTask:

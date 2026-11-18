@@ -640,6 +640,7 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
             APPHOST / "managed/lifecycle.py": {
                 "loushang.hosting.errors",
                 "loushang.hosting.service",
+                "loushang.hosting.service_group",
                 "loushang.hosting.service_windows",
             },
             APPHOST / "managed/bootstrap.py": {
@@ -657,11 +658,12 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
                 "loushang.hosting.service_windows",
             },
             APPHOST / "managed/stopper.py": {
+                "loushang.hosting.errors",
                 "loushang.hosting.service",
                 "loushang.hosting.service_group",
                 "loushang.hosting.service_windows",
             },
-            APPHOST / "managed/connection.py": {"loushang.hosting.service"},
+            APPHOST / "managed/connection.py": {"loushang.hosting.errors", "loushang.hosting.service"},
             APPHOST / "managed/defaults.py": {
                 "loushang.hosting.errors",
                 "loushang.hosting.machine_identity",

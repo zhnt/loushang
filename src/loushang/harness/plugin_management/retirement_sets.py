@@ -1183,3 +1183,13 @@ _decode_document = partial(
         code="unsupported_plugin_retirement_set_record_version",
     ),
 )
+
+
+class RetirementCaptureFields:
+    """Raw frozen capture inputs; no paths are opened and no authority is granted."""
+
+    __slots__ = ()
+    intents_raw: bytes
+    sets_raw: bytes
+    intents_path: Path
+    sets_path: Path

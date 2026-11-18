@@ -34,7 +34,7 @@ async def seed_hosted_history(
         if owns_catalog:
             cleanup.push_async_callback(catalog.close)
         factory = CodingRealHostedSessionFactoryV1(
-            services_factory=lambda cwd: hosted_bootstrap._services(cwd),
+            services_factory=lambda cwd: hosted_bootstrap.create_hosted_services(cwd),
             model=model,
             tools=tools,
         )

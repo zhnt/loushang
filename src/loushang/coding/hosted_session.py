@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import sys
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import replace
 from functools import cached_property
 from pathlib import Path
@@ -18,6 +17,7 @@ from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.ai.types import AssistantMessage, ToolCall, UserMessage
 from loushang.apphost import SessionBindingKeyV1
+from loushang.apphost.integrations.session_control import _HostedApprovalPresentation
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -62,11 +62,20 @@ from .appservice_adapter import (
     CodingHostedSessionBindingV1,
     CodingHostedSnapshotProjectionV1,
 )
-from .bootstrap import BootstrapServices, create_agent_session
+from .bootstrap import BootstrapServices
+from .bootstrap import (
+    _create_agent_session_with_model_policy as create_agent_session,
+)
 from .hosted_catalog import (
     CodingHostedCandidateBindingV1,
     CodingHostedCatalogError,
     CodingHostedHistoryCandidateBindingV1,
+)
+from .hosted_session_goal import HostedSessionGoal
+from .hosted_user_choice import (
+    ASK_USER,
+    HostedUserChoice,
+    pending_choice_from_transcript,
 )
 from .package_product_runtime import (
     CodingFencedProductApplicationSelection,
@@ -135,6 +144,7 @@ class CodingHostedHistoryBindingV1:
             title=_session_title(title, (entry.payload for entry in history.records)),
             revision=0, running=False, records=tuple(records),
             truncated=omitted,
+            user_choice=pending_choice_from_transcript(history.selected_records, identity.session_id),
         )
 
     @property
@@ -176,12 +186,23 @@ class CodingHostedHistoryBindingV1:
         self._closed = True
 
 
-class CodingRealHostedSessionV1:
+class CodingRealHostedSessionV1(_HostedApprovalPresentation):
+    _approval_action = "Tool approval"
+    _approval_limit = staticmethod(lambda: _MAX_INTERACTIONS)
+    _approval_text_limit = staticmethod(lambda: _TEXT_LIMIT)
+    _approval_id = staticmethod(lambda: token_hex(16))
+    _approval_publish_rollback = True
+
+    def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
+        return self._session.runtime.dispatch_event
+
     def __init__(
         self,
         session: AgentSession,
         identity: SessionIdentityV1,
         approval: InteractiveApprovalResolver,
+        *,
+        workspace: Path | None = None,
     ) -> None:
         self._session = session
         self.identity = identity
@@ -191,7 +212,20 @@ class CodingRealHostedSessionV1:
         self._revision = 0
         self._close_task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
-        self._execution_claimed = False
+        self._execution_idle_for_goal: Callable[[], bool] | None = None
+        self._goal = HostedSessionGoal(
+            session, identity, workspace if workspace is not None else Path(session.session_manager.get_cwd()).resolve(),
+            closing=lambda: self._close_task is not None,
+            execution_idle=lambda: self._execution_idle_for_goal is None or self._execution_idle_for_goal(),
+            title_pending=lambda: self._title_task is not None and not self._title_task.done(),
+        )
+        self.create_interactive_goal = self._goal.create_interactive_goal
+        self.interactive_goal_review = self._goal.interactive_goal_review
+        self.control_interactive_goal = self._goal.control_interactive_goal
+        self.interactive_goal_view = self._goal.interactive_goal_view
+        self.interactive_goal_status = self._goal.interactive_goal_status
+        self.close_interactive_goal = self._goal.close_interactive_goal
+        self._user_choice = HostedUserChoice()
         session.set_approval_presenter(
             self._present_approval, dismisser=self._dismiss_approval
         )
@@ -200,21 +234,24 @@ class CodingRealHostedSessionV1:
     def control(self) -> SessionControlPort:
         return self._session
 
+    def enable_user_choice(self) -> None:
+        self._user_choice.install(self._session)
+
     @property
     def current_model(self) -> Model:
         return self._session.agent.model
 
     @property
     def execution_claimed(self) -> bool:
-        return self._execution_claimed
+        return self._execution_idle_for_goal is not None
 
-    def claim_execution(self) -> None:
-        if self._execution_claimed or self._close_task is not None:
+    def claim_execution(self, idle_for_goal: Callable[[], bool]) -> None:
+        if self.execution_claimed or self._close_task is not None:
             raise ValueError("Coding Session already has an execution owner")
-        self._execution_claimed = True
+        self._execution_idle_for_goal = idle_for_goal
 
     def release_failed_execution_claim(self) -> None:
-        self._execution_claimed = False
+        self._execution_idle_for_goal = None
 
     async def lookup_resume_input(
         self, query: CodingResumeInputLookupQueryV1,
@@ -262,6 +299,7 @@ class CodingRealHostedSessionV1:
             running=self._session.is_streaming,
             records=tuple(records),
             truncated=omitted or truncated,
+            user_choice=self._user_choice.pending,
         )
 
     def project_event(
@@ -291,6 +329,9 @@ class CodingRealHostedSessionV1:
                 and message.stop_reason == "aborted"
             ):
                 self._interrupted = True
+            if isinstance(message, UserMessage):
+                # Publish the consumed question with the next actual user message.
+                self._user_choice.clear()
             record = _message_record(message)
             if record is not None:
                 return CodingHostedEventProjectionV1(
@@ -322,52 +363,6 @@ class CodingRealHostedSessionV1:
             )
         return None
 
-    async def _present_approval(self, request: dict[str, object]) -> None:
-        action_id = request.get("action_id")
-        if (
-            not isinstance(action_id, str)
-            or len(self._interactions) >= _MAX_INTERACTIONS
-        ):
-            raise RuntimeError("hosted_approval_unavailable")
-        # Publish only once the existing ApprovalBroker has registered its waiter.
-        text = "\n".join(
-            (
-                str(request.get("action", "Tool approval")),
-                str(request.get("risk", "")),
-                json.dumps(
-                    request.get("arguments", {}), ensure_ascii=False, sort_keys=True
-                ),
-            )
-        )
-        if len(text) > _TEXT_LIMIT:
-            raise RuntimeError("hosted_approval_too_large")
-        interaction_id = token_hex(16)
-        self._interactions[interaction_id] = action_id
-        try:
-            await self._session.runtime.dispatch_event(
-                {
-                    "type": "tool_approval_requested",
-                    "hosted_presentation": True,
-                    "interaction_id": interaction_id,
-                    "text": text,
-                }
-            )
-        except BaseException:
-            self._interactions.pop(interaction_id, None)
-            raise
-
-    async def _dismiss_approval(self, action_id: str) -> None:
-        for interaction_id, pending in tuple(self._interactions.items()):
-            if pending == action_id:
-                self._interactions.pop(interaction_id, None)
-                await self._session.runtime.dispatch_event(
-                    {
-                        "type": "tool_approval_resolved",
-                        "hosted_presentation": True,
-                        "interaction_id": interaction_id,
-                    }
-                )
-
     async def respond_interaction(self, interaction_id: str, outcome: str) -> bool:
         action_id = self._interactions.get(interaction_id)
         if action_id is None or outcome not in {"allow_once", "deny", "abort"}:
@@ -390,6 +385,8 @@ class CodingRealHostedSessionV1:
         await asyncio.shield(task)
 
     async def _close_once(self) -> None:
+        await self.close_interactive_goal()
+        self._user_choice.clear()
         self._approval.end_session()
         if self._title_task is not None:
             self._title_task.cancel()
@@ -398,8 +395,12 @@ class CodingRealHostedSessionV1:
         self._interactions.clear()
 
     @property
+    def goal_command_running(self) -> bool:
+        return self._goal.goal_command_running
+
+    @property
     def execution_available(self) -> bool:
-        return self._session.execution_available
+        return self._goal.execution_available
 
     def create_execution_work(
         self, text: str, cancel_requested: Callable[[], bool],
@@ -462,6 +463,9 @@ class CodingRealHostedSessionFactoryV1:
         self._session_tool_policy = session_tool_policy
         self._session_active_tools = session_active_tools
         self._session_allowed_tools = session_allowed_tools
+        self._user_choice_enabled = (
+            session_active_tools is None or ASK_USER in session_active_tools
+        ) and (session_allowed_tools is None or ASK_USER in session_allowed_tools)
         self._session_system_prompt = session_system_prompt
         self._output_capture_factory = output_capture_factory
         self._package_product_runtime_factory_for_session = (
@@ -525,6 +529,7 @@ class CodingRealHostedSessionFactoryV1:
                     model=self._model,
                     stream_fn=self._stream_fn,
                     tools=self._tools,
+                    user_choice_enabled=self._user_choice_enabled,
                     output_capture_factory=self._output_capture_factory,
                     product_owner_selection=self._product_owner_selection,
                 )
@@ -579,7 +584,11 @@ class CodingRealHostedSessionFactoryV1:
                 await manager.append_model_change(
                     selection.provider, selection.model_id, endpoint_id=selection.endpoint_id,
                 )
-            real_binding = CodingRealHostedSessionV1(session, identity, approval)
+            real_binding = CodingRealHostedSessionV1(
+                session, identity, approval, workspace=opaque_session_binding.record.scope.cwd,
+            )
+            if self._user_choice_enabled:
+                real_binding.enable_user_choice()
             opaque_session_binding.take_manager()
             return real_binding
         except BaseException:
@@ -609,7 +618,7 @@ def _bounded(text: str, *, limit: int = _TEXT_LIMIT) -> str:
 
 
 def _uses_automatic_title(identity: SessionIdentityV1) -> bool:
-    return identity.continuity_id.startswith(("gui-new-", "gui-default-"))
+    return identity.continuity_id.startswith(("gui-new-", "gui-default-", "gui-draft-"))
 
 
 def _title_messages(session: AgentSession) -> Iterable[object]:

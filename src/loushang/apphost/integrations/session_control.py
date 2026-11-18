@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable
+import json
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
@@ -30,6 +31,7 @@ from loushang.appserver.protocol import (
     SessionSubmissionModeV1,
     SessionThinkingV1,
     TranscriptRecordV1,
+    UserChoicePromptV1,
 )
 from loushang.appservice import HostedSessionEventListenerV1
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
@@ -63,6 +65,8 @@ class _SnapshotProjection(Protocol):
     def running(self) -> bool: ...
     @property
     def records(self) -> tuple[TranscriptRecordV1, ...]: ...
+    @property
+    def user_choice(self) -> UserChoicePromptV1 | None: ...
 
 
 class _EventProjection(Protocol):
@@ -177,6 +181,7 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
             running=projection.running,
             records=projection.records,
             submission_mode=self._submission_mode,
+            user_choice=projection.user_choice,
         )
 
     def subscribe(
@@ -248,28 +253,8 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
         details = await iter_available_model_details(control)
         if selection is not None:
             details.append(active_model)
-        models: list[SessionModelChoiceV1] = []
-        for choice in model_choice_data_from_details(details):
-            reference = normalize_model_selection(choice.selection)
-            if reference is None or not is_usable_model_selection(reference):
-                continue
-            models.append(SessionModelChoiceV1(
-                id=choice.value,
-                provider=reference.provider,
-                endpoint_id=reference.endpoint_id,
-                model_id=reference.model_id,
-                label=choice.label,
-                supports_thinking=bool(
-                    getattr(choice.selection, "supports_thinking", False)
-                    or getattr(choice.selection, "reasoning", False)
-                ),
-            ))
-        visible = models[:256]
-        active_choice = next((model for model in models[256:] if model.id == current), None)
-        if active_choice is not None:
-            visible[-1] = active_choice
-        return SessionModelsV1(
-            current, tuple(visible), _thinking_settings(control) if current is not None else None
+        return project_session_models(
+            current, details, _thinking_settings(control) if current is not None else None
         )
 
 
@@ -472,6 +457,32 @@ def _validate_foreground_binding(
             raise TypeError(f"{label} hosted Session control is invalid")
 
 
+def project_session_models(
+    current: str | None, details: list[object], thinking: SessionThinkingV1 | None = None,
+) -> SessionModelsV1:
+    models: list[SessionModelChoiceV1] = []
+    for choice in model_choice_data_from_details(details):
+        reference = normalize_model_selection(choice.selection)
+        if reference is None or not is_usable_model_selection(reference):
+            continue
+        models.append(SessionModelChoiceV1(
+            id=choice.value,
+            provider=reference.provider,
+            endpoint_id=reference.endpoint_id,
+            model_id=reference.model_id,
+            label=choice.label,
+            supports_thinking=bool(
+                getattr(choice.selection, "supports_thinking", False)
+                or getattr(choice.selection, "reasoning", False)
+            ),
+        ))
+    visible = models[:256]
+    active_choice = next((model for model in models[256:] if model.id == current), None)
+    if active_choice is not None:
+        visible[-1] = active_choice
+    return SessionModelsV1(current, tuple(visible), thinking)
+
+
 def _thinking_settings(control: object) -> SessionThinkingV1 | None:
     getter = getattr(control, 'get_available_thinking_levels', None)
     current = getattr(control, 'thinking_level', None)
@@ -590,3 +601,182 @@ def _assistant_outcome(message: AssistantMessage) -> ExecutionOutcomeV1:
             ExecutionStatusV1.FAILED, error_code="assistant_response_error"
         )
     return ExecutionOutcomeV1(ExecutionStatusV1.SUCCEEDED)
+
+
+class _DeferredSessionControl:
+    """Keep one control identity across deferred subscription and activation."""
+
+    def __init__(
+        self,
+        *,
+        closed_message: str,
+        invalid_activation: Callable[[], Exception],
+    ) -> None:
+        self._delegate: SessionControlPort | None = None
+        self._listeners: set[Callable[[RuntimeEvent[object]], object]] = set()
+        self._unsubscribe: Callable[[], None] | None = None
+        self._closed = False
+        self._closed_message = closed_message
+        self._invalid_activation = invalid_activation
+
+    @property
+    def session_id(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def session_name(self) -> str | None:
+        return None if self._delegate is None else self._delegate.session_name
+
+    async def set_session_name(self, name: str | None) -> None:
+        await self._require_active().set_session_name(name)
+
+    def subscribe_runtime_events(
+        self,
+        listener: Callable[[RuntimeEvent[object]], object],
+    ) -> Callable[[], None]:
+        if self._closed or not callable(listener):
+            raise RuntimeError(self._closed_message)
+        self._listeners.add(listener)
+        return lambda: self._listeners.discard(listener)
+
+    async def emit(self, event: RuntimeEvent[object]) -> None:
+        for listener in tuple(self._listeners):
+            try:
+                result = listener(event)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:
+                self._listeners.discard(listener)
+
+    def activate(self, control: SessionControlPort) -> None:
+        if self._closed or self._delegate is not None:
+            raise self._invalid_activation()
+        if control.session_id != self.session_id:
+            raise self._invalid_activation()
+
+        async def relay(event: RuntimeEvent[object]) -> None:
+            await self.emit(event)
+
+        unsubscribe = control.subscribe_runtime_events(relay)
+        if not callable(unsubscribe):
+            raise self._invalid_activation()
+        self._delegate = control
+        self._unsubscribe = unsubscribe
+
+    async def prompt(self, user_input: str, images=None, **kwargs) -> None:
+        await self._require_active().prompt(user_input, images=images, **kwargs)
+
+    def steer(self, user_input: str, images=None) -> None:
+        self._require_active().steer(user_input, images=images)
+
+    def follow_up(self, user_input: str, images=None) -> None:
+        self._require_active().follow_up(user_input, images=images)
+
+    async def wait_for_idle(self) -> None:
+        await self._require_active().wait_for_idle()
+
+    def abort(self) -> bool:
+        return False if self._delegate is None else self._delegate.abort()
+
+    @property
+    def is_streaming(self) -> bool:
+        return bool(getattr(self._delegate, "is_streaming", False))
+
+    @property
+    def thinking_level(self) -> object:
+        return getattr(self._delegate, "thinking_level", None)
+
+    def get_available_thinking_levels(self) -> tuple[str, ...]:
+        getter = getattr(self._delegate, "get_available_thinking_levels", None)
+        return tuple(getter()) if callable(getter) else ()
+
+    async def set_thinking_level(self, level: str) -> None:
+        setter = getattr(self._require_active(), "set_thinking_level", None)
+        if not callable(setter):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        await setter(level)
+
+    def close(self) -> None:
+        self._closed = True
+        if self._unsubscribe is not None:
+            self._unsubscribe()
+            self._unsubscribe = None
+        self._listeners.clear()
+
+    def _require_active(self) -> SessionControlPort:
+        if self._closed:
+            raise RuntimeError(self._closed_message)
+        if self._delegate is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return self._delegate
+
+
+# Presentation aliases are independent of the existing approval broker authority.
+class _HostedApprovalPresentation:
+    _interactions: dict[str, str]
+    _approval_action: ClassVar[str]
+    _approval_limit: ClassVar[Callable[[], int]]
+    _approval_text_limit: ClassVar[Callable[[], int]]
+    _approval_id: ClassVar[Callable[[], str]]
+    _approval_publish_rollback: ClassVar[bool]
+
+    def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
+        raise NotImplementedError
+
+    async def _present_approval(self, request: dict[str, object]) -> None:
+        action_id = request.get("action_id")
+        if (
+            not isinstance(action_id, str)
+            or len(self._interactions) >= type(self)._approval_limit()
+        ):
+            raise RuntimeError("hosted_approval_unavailable")
+        text = "\n".join(
+            (
+                str(request.get("action", self._approval_action)),
+                str(request.get("risk", "")),
+                json.dumps(
+                    request.get("arguments", {}), ensure_ascii=False, sort_keys=True
+                ),
+            )
+        )
+        if len(text) > type(self)._approval_text_limit():
+            raise RuntimeError("hosted_approval_too_large")
+        interaction_id = type(self)._approval_id()
+        self._interactions[interaction_id] = action_id
+        if self._approval_publish_rollback:
+            try:
+                await self._publish_approval(interaction_id, text)
+            except BaseException:
+                self._interactions.pop(interaction_id, None)
+                raise
+        else:
+            await self._publish_approval(interaction_id, text)
+
+    async def _publish_approval(self, interaction_id: str, text: str) -> None:
+        # Resolve the real dispatcher only after inserting the original alias.
+        await self._approval_dispatcher()(
+            cast(
+                RuntimeEvent[object],
+                {
+                    "type": "tool_approval_requested",
+                    "hosted_presentation": True,
+                    "interaction_id": interaction_id,
+                    "text": text,
+                },
+            )
+        )
+
+    async def _dismiss_approval(self, action_id: str) -> None:
+        for interaction_id, pending in tuple(self._interactions.items()):
+            if pending == action_id:
+                self._interactions.pop(interaction_id, None)
+                await self._approval_dispatcher()(
+                    cast(
+                        RuntimeEvent[object],
+                        {
+                            "type": "tool_approval_resolved",
+                            "hosted_presentation": True,
+                            "interaction_id": interaction_id,
+                        },
+                    )
+                )

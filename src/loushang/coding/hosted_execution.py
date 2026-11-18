@@ -59,6 +59,7 @@ from .appservice_adapter import (
     CodingHostedSessionBindingV1,
     CodingHostedSessionV1,
 )
+from .hosted_execution_goal import _HostedExecutionGoal
 from .hosted_resume import CodingDeferredHostedSessionV1
 from .hosted_session import CodingHostedHistoryBindingV1, CodingRealHostedSessionV1
 
@@ -120,7 +121,7 @@ def _owns_execution_projection(owner: _LeasedCodingHostedBinding, binding: objec
     )
 
 
-class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
+class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal):
     """Own the optional capability and the legacy surface on one real binding.
 
     The caller transfers exclusive binding ownership. No second Hosted adapter
@@ -133,10 +134,7 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
         *,
         owner: CodingHostedSessionBindingV1 | None = None,
     ) -> None:
-        if type(binding) not in {
-            CodingRealHostedSessionV1,
-            CodingDeferredHostedSessionV1,
-        }:
+        if type(binding) not in {CodingRealHostedSessionV1, CodingDeferredHostedSessionV1}:
             raise TypeError("execution requires a Coding Product binding")
         if owner is not None:
             from .hosted_application import _LeasedCodingHostedBinding
@@ -155,7 +153,7 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
         self._closing = False
         self._execution_close_task: asyncio.Task[None] | None = None
         if type(binding) is CodingRealHostedSessionV1:
-            binding.claim_execution()
+            binding.claim_execution(self._idle_for_interactive_goal)
         try:
             super().__init__(binding if owner is None else owner, execution_submission=type(binding) is CodingDeferredHostedSessionV1)
         except BaseException:
@@ -168,6 +166,9 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     @property
     def execution_state(self) -> ExecutionStateV1 | None:
         return self._guard.state
+
+    def _allows_interactive_goal(self) -> bool:
+        return type(self) is CodingHostedExecutionSessionV1
 
     def require_submission_ready(self) -> None:
         self._require_execution_open()
@@ -193,7 +194,10 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     async def _select_model(
         self, model_id: str, thinking_level: str | None = None,
     ) -> SessionModelsV1:
-        await self._product_binding.wait_for_title()
+        binding = self._product_binding
+        if isinstance(binding, CodingRealHostedSessionV1) and binding.goal_command_running:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        await binding.wait_for_title()
         return await super()._select_model(model_id, thinking_level)
 
     def subscribe_execution_observation(
@@ -234,6 +238,7 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
                 revision=projection.revision,
                 running=observation.status is ExecutionStatusV1.RUNNING,
                 records=projection.records,
+                user_choice=projection.user_choice,
             ),
             observation=observation,
             draft=self._draft

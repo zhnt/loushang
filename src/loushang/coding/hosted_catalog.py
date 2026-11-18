@@ -50,8 +50,10 @@ from loushang.harness.transcript import (
     AgentTranscriptSessionFactory,
     _canonical_header,
 )
+from loushang.harness.transcript.jsonl_file import AgentTranscriptFileLayout
 from loushang.harness.transcript.product_session import ProductTranscriptSession
 
+from .adapters._goal_store import is_goal_journal_filename
 from .appservice_adapter import CodingHostedSessionBindingV1
 from .composition_provenance import composition_header_metadata
 from .composition_sets import resolve_coding_composition_set
@@ -133,8 +135,10 @@ def _scope_fingerprint(scope: SessionScopeV1, root: Path, cwd: str) -> str:
 
 
 def _session_path(root: Path, header: ConversationHeader) -> Path:
-    # This callback only receives the owner's SHA-256 create identity.
-    session_id = header.conversation_id
+    return _hosted_session_path(root, header.conversation_id)
+
+
+def _hosted_session_path(root: Path, session_id: str) -> Path:
     if len(session_id) != 64 or any(
         char not in "0123456789abcdef" for char in session_id
     ):
@@ -448,6 +452,9 @@ class CodingHostedSessionCatalogV1(
     def _compatibility_id(self) -> str:
         return CODING_HOSTED_COMPATIBILITY_ID
 
+    def _candidate_layout(self, directory: Path) -> AgentTranscriptFileLayout:
+        return AgentTranscriptFileLayout(directory, excluded_candidate_name=is_goal_journal_filename)
+
     def _maximum_candidates(self) -> int:
         return _MAX_CANDIDATES
 
@@ -604,6 +611,25 @@ class CodingHostedSessionCatalogV1(
 
     async def close(self) -> None:
         return await super().close()
+
+    async def delete_session_history(self, identity: SessionIdentityV1) -> None:
+        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
+
+        async with self._lock:
+            self._accepting()
+            for scope in self.scopes:
+                if scope.scope is identity.scope and scope.fingerprint == identity.scope_fingerprint:
+                    break
+            else:
+                raise CodingHostedCatalogError()
+            path = _hosted_session_path(scope.session_dir, identity.session_id)
+            record = await settled_io(self._read_record, scope, path)
+            if record is None or record.identity != identity or not self._record_compatible(record):
+                raise CodingHostedCatalogError()
+            await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
+            self._records = {
+                key: value for key, value in self._records.items() if value.identity != identity
+            }
 
     async def discover_sessions(
         self,

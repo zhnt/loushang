@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { describe, expect, it, vi } from "vitest";
 import { createNativeLiveClient, projectNativeEventRound, projectNativeInitialSnapshot } from "../src/client/nativeLiveClient";
 
@@ -64,8 +65,10 @@ describe("native live initial snapshot", () => {
   it("keeps runtime notices distinct from assistant messages", () => {
     const snapshot = nativeSnapshot();
     snapshot.sessions[0].source.source.records.push({ kind: "status", text: "Sending a message resumes the session runtime." });
-    expect(projectNativeInitialSnapshot(snapshot).sessions[0].messages.map(({ role }) => role))
-      .toEqual(["user", "assistant", "status"]);
+    const messages = projectNativeInitialSnapshot(snapshot).sessions[0].messages;
+    expect(messages.map(({ role }) => role)).toEqual(["user", "assistant", "status"]);
+    expect(messages[2].systemNotice).toBe("resumesRuntime");
+    expect(messages[2].content).toBe("Sending a message resumes the session runtime.");
   });
   it("accepts restored execution submission mode and rejects noncanonical values", () => {
     const snapshot = nativeSnapshot();
@@ -327,4 +330,58 @@ describe("native live initial snapshot", () => {
     };
     expect(() => projectNativeInitialSnapshot(malformedExecution)).toThrow();
   });
+});
+
+it("projects the pending approvals for the current attachment", () => {
+  const snapshot = nativeSnapshot();
+  snapshot.sessions[0].pendingApprovals = [{ interactionId: "approval-1", text: "Preview\nreview\n{}" }];
+  expect(projectNativeInitialSnapshot(snapshot).sessions[0].pendingApprovals).toEqual([
+    { sessionId: "session-1", interactionId: "approval-1", text: "Preview\nreview\n{}", status: "pending" },
+  ]);
+  snapshot.sessions[0].pendingApprovals.push(snapshot.sessions[0].pendingApprovals[0]);
+  expect(() => projectNativeInitialSnapshot(snapshot)).toThrow("duplicate approval");
+});
+
+it("sends one explicit decision and fences it when the attachment goes away", async () => {
+  nativeEvents.clear();
+  vi.mocked(invoke).mockClear();
+  const client = createNativeLiveClient();
+  const changes = vi.fn();
+  client.subscribeSnapshots!(changes);
+  const initial = nativeSnapshot();
+  initial.sessions[0].pendingApprovals = [{ interactionId: "approval-1", text: "Preview" }];
+  const snapshot = client.snapshot();
+  await vi.waitFor(() => expect(nativeEvents.has("gui://live-connection-failed")).toBe(true));
+  nativeEvents.get("gui://live-initial-snapshot")!({ payload: initial });
+  await snapshot;
+
+  let finish!: (receipt: { accepted: boolean }) => void;
+  vi.mocked(invoke).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  expect(await client.respondInteraction!("other-session", "approval-1", "approve")).toMatchObject({ accepted: false });
+  expect(await client.respondInteraction!("session-1", "other-approval", "approve")).toMatchObject({ accepted: false });
+  const response = client.respondInteraction!("session-1", "approval-1", "approve");
+  expect(changes.mock.lastCall?.[0].sessions[0].pendingApprovals[0].status).toBe("submitting");
+  expect(await client.respondInteraction!("session-1", "approval-1", "deny")).toMatchObject({ accepted: false });
+  expect(vi.mocked(invoke).mock.calls.filter(([name]) => name === "live_respond_interaction")).toEqual([
+    ["live_respond_interaction", { input: {
+      sessionId: "session-1", interactionId: "approval-1", outcome: "approve", connectionEpoch: "1",
+    } }],
+  ]);
+
+  nativeEvents.get("gui://live-connection-state")!({ payload: { state: "disconnected", connectionEpoch: "1" } });
+  expect(await client.respondInteraction!("session-1", "approval-1", "cancel")).toMatchObject({ accepted: false });
+  const replacement = { ...initial, connectionEpoch: "2", sessions: [{ ...initial.sessions[0], pendingApprovals: [] }] };
+  nativeEvents.get("gui://live-initial-snapshot")!({ payload: replacement });
+  const publications = changes.mock.calls.length;
+  finish({ accepted: false });
+  await response;
+  expect(changes).toHaveBeenCalledTimes(publications);
+  expect(changes.mock.lastCall?.[0].sessions[0].pendingApprovals).toEqual([]);
+
+  const next = { ...initial, connectionEpoch: "3" };
+  nativeEvents.get("gui://live-initial-snapshot")!({ payload: next });
+  vi.mocked(invoke).mockRejectedValueOnce(new Error("stale attachment"));
+  expect(await client.respondInteraction!("session-1", "approval-1", "cancel")).toMatchObject({ accepted: false });
+  expect(changes.mock.lastCall?.[0].sessions[0].pendingApprovals[0].status).toBe("unavailable");
+  expect(await client.respondInteraction!("session-1", "approval-1", "approve")).toMatchObject({ accepted: false });
 });

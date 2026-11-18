@@ -14,6 +14,9 @@ from loushang.harness.package_product._linux_worker_native_release import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from loushang.harness.package_product.product_worker_candidate import (
+    ProductWorkerNativeLaunchMaterialFacts,
+)
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
@@ -32,7 +35,7 @@ from .package_product_worker_policy import CodingWorkerNativeClosureV1
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerNativeLaunchMaterialV1:
+class CodingWorkerNativeLaunchMaterialV1(ProductWorkerNativeLaunchMaterialFacts):
     """Verified Product locator for Hosting's descriptor-sealing capture.
 
     This is not a launch capability. Hosting must capture and verify the

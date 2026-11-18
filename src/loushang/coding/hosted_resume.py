@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import inspect
-import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,7 +15,12 @@ from typing import cast
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
-from loushang.apphost.integrations.session_control import _HostedAgentExecutionWork
+from loushang.apphost.integrations.session_control import (
+    _DeferredSessionControl,
+    _HostedAgentExecutionWork,
+    _HostedApprovalPresentation,
+)
+from loushang.appserver.execution.model import InteractiveGoalRecoveryV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -54,6 +57,8 @@ from .appservice_adapter import (
 from .bootstrap import BootstrapServices
 from .composition_sets import resolve_coding_composition_set
 from .hosted_catalog import CodingHostedCatalogError, CodingHostedResumeSourceV1
+from .hosted_goal_recovery import read_interactive_goal_recovery, unavailable_recovery
+from .hosted_models import load_workspace_models
 from .hosted_session import (
     _MAX_INTERACTIONS,
     _TEXT_LIMIT,
@@ -72,77 +77,20 @@ from .runtime.resume_planning import ResumePlanningSlot
 from .session.agent_session import AgentSession
 
 
-class _DeferredHostedControlV1:
+class _DeferredHostedControlV1(_DeferredSessionControl):
     """Stable control identity that later relays the activated Session."""
 
     def __init__(self, binding: CodingDeferredHostedSessionV1) -> None:
         self._binding = binding
-        self._delegate: SessionControlPort | None = None
-        self._listeners: set[Callable[[RuntimeEvent[object]], object]] = set()
-        self._unsubscribe: Callable[[], None] | None = None
-        self._closed = False
+        _DeferredSessionControl.__init__(
+            self,
+            closed_message="coding_hosted_session_closed",
+            invalid_activation=lambda: CodingHostedCatalogError(),
+        )
 
     @property
     def session_id(self) -> str:
         return self._binding.identity.session_id
-
-    @property
-    def session_name(self) -> str | None:
-        return None if self._delegate is None else self._delegate.session_name
-
-    async def set_session_name(self, name: str | None) -> None:
-        await self._require_active().set_session_name(name)
-
-    def subscribe_runtime_events(
-        self, listener: Callable[[RuntimeEvent[object]], object],
-    ) -> Callable[[], None]:
-        if self._closed or not callable(listener):
-            raise RuntimeError("coding_hosted_session_closed")
-        self._listeners.add(listener)
-        return lambda: self._listeners.discard(listener)
-
-    async def emit(self, event: RuntimeEvent[object]) -> None:
-        for listener in tuple(self._listeners):
-            try:
-                result = listener(event)
-                if inspect.isawaitable(result):
-                    await result
-            except Exception:
-                self._listeners.discard(listener)
-
-    def activate(self, control: SessionControlPort) -> None:
-        if self._closed or self._delegate is not None:
-            raise CodingHostedCatalogError()
-        if control.session_id != self.session_id:
-            raise CodingHostedCatalogError()
-
-        async def relay(event: RuntimeEvent[object]) -> None:
-            await self.emit(event)
-
-        unsubscribe = control.subscribe_runtime_events(relay)
-        if not callable(unsubscribe):
-            raise CodingHostedCatalogError()
-        self._delegate = control
-        self._unsubscribe = unsubscribe
-
-    async def prompt(self, user_input: str, images=None, **kwargs) -> None:
-        await self._require_active().prompt(user_input, images=images, **kwargs)
-
-    def steer(self, user_input: str, images=None) -> None:
-        self._require_active().steer(user_input, images=images)
-
-    def follow_up(self, user_input: str, images=None) -> None:
-        self._require_active().follow_up(user_input, images=images)
-
-    async def wait_for_idle(self) -> None:
-        await self._require_active().wait_for_idle()
-
-    def abort(self) -> bool:
-        return False if self._delegate is None else self._delegate.abort()
-
-    @property
-    def is_streaming(self) -> bool:
-        return bool(getattr(self._delegate, "is_streaming", False))
 
     @property
     def settings_manager(self) -> SettingsManager:
@@ -159,37 +107,18 @@ class _DeferredHostedControlV1:
     async def set_model(self, selection: ModelSelection) -> None:
         await self._binding.set_model(selection)
 
-    @property
-    def thinking_level(self) -> object:
-        return getattr(self._delegate, "thinking_level", None)
 
-    def get_available_thinking_levels(self) -> tuple[str, ...]:
-        getter = getattr(self._delegate, "get_available_thinking_levels", None)
-        return tuple(getter()) if callable(getter) else ()
-
-    async def set_thinking_level(self, level: str) -> None:
-        setter = getattr(self._require_active(), "set_thinking_level", None)
-        if not callable(setter):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        await setter(level)
-
-    def close(self) -> None:
-        self._closed = True
-        if self._unsubscribe is not None:
-            self._unsubscribe()
-            self._unsubscribe = None
-        self._listeners.clear()
-
-    def _require_active(self) -> SessionControlPort:
-        if self._closed:
-            raise RuntimeError("coding_hosted_session_closed")
-        if self._delegate is None:
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return self._delegate
-
-
-class CodingDeferredHostedSessionV1:
+class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     """One AppHost binding from detached history through first activation."""
+
+    _approval_action = "Resume approval"
+    _approval_limit = staticmethod(lambda: _MAX_INTERACTIONS)
+    _approval_text_limit = staticmethod(lambda: _TEXT_LIMIT)
+    _approval_id = staticmethod(lambda: token_hex(16))
+    _approval_publish_rollback = False
+
+    def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
+        return self._control.emit
 
     def __init__(
         self,
@@ -201,6 +130,7 @@ class CodingDeferredHostedSessionV1:
         tools: list[ToolDefinition] | None,
         output_capture_factory: ExecCaptureFactory | None,
         product_owner_selection: CodingFencedProductApplicationSelection,
+        user_choice_enabled: bool = False,
     ) -> None:
         self._source = source
         self.identity = source.record.identity
@@ -208,6 +138,7 @@ class CodingDeferredHostedSessionV1:
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
+        self._user_choice_enabled = user_choice_enabled
         self._output_capture_factory = output_capture_factory
         self._product_owner_selection = product_owner_selection
         self._approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
@@ -230,6 +161,32 @@ class CodingDeferredHostedSessionV1:
     @property
     def execution_available(self) -> bool:
         return self._close_task is None
+
+    @property
+    def supports_interactive_goal_recovery(self) -> bool:
+        return self._active is None and self._close_task is None
+
+    async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1:
+        source = self._source
+        record = source.record
+        try:
+            history = source.history
+            source.require_current_source()
+            if (not self.supports_interactive_goal_recovery or self._activation_lock.locked()
+                    or self.identity != record.identity
+                    or history.header_preview.header != record.header
+                    or record.header.conversation_id != self.identity.session_id
+                    or record.scope.fingerprint != self.identity.scope_fingerprint
+                    or record.path.parent != record.scope.session_dir):
+                return unavailable_recovery("source_changed")
+            result = await settled_io(read_interactive_goal_recovery, record.scope.session_dir, self.identity.session_id)
+            if (not self.supports_interactive_goal_recovery or self._activation_lock.locked()
+                    or source.history is not history):
+                return unavailable_recovery("source_changed")
+            source.require_current_source()
+            return result
+        except (CodingHostedCatalogError, OSError, ValueError):
+            return unavailable_recovery("source_changed")
 
     @property
     def current_model(self) -> Model | None:
@@ -323,21 +280,9 @@ class CodingDeferredHostedSessionV1:
             raise CodingResumeRecoveryRequired("input.plan_unavailable")
         return plan
 
-    def _load_model_catalog(self) -> None:
-        cwd = self._source.record.scope.cwd
-        inputs = self._services.resource_loader.preview_catalog_input_receipt(cwd)
-        # Match the ordinary bootstrap's nearest project context, then user context.
-        roots_with_context = {fact.root for fact in inputs.context_file_facts if fact.status == "file"}
-        roots = (*inputs.user_resource_roots, *inputs.project_context_roots)
-        project_root = next((root for root in reversed(roots) if root in roots_with_context), cwd)
-        self._services.model_registry.reload_if_project_layer(
-            user_dir=Path.home() / ".loushang" / "models",
-            project_dir=project_root / ".loushang" / "models",
-        )
-
     async def start_background_planning(self) -> None:
         self._source.require_current_source()
-        await settled_io(self._load_model_catalog)
+        await settled_io(load_workspace_models, self._services, self._source.record.scope.cwd)
         self._source.require_current_source()
         policy = workspace_tool_runtime_settings(self._services.settings_manager)
         raw_policy_engine = policy.policy_engine
@@ -484,36 +429,6 @@ class CodingDeferredHostedSessionV1:
         if action_id is None or mapped is None:
             return False
         return await self._approval.handle_result(action_id, outcome=mapped)
-
-    async def _present_approval(self, request: dict[str, object]) -> None:
-        action_id = request.get("action_id")
-        if not isinstance(action_id, str) or len(self._interactions) >= _MAX_INTERACTIONS:
-            raise RuntimeError("hosted_approval_unavailable")
-        text = "\n".join((
-            str(request.get("action", "Resume approval")),
-            str(request.get("risk", "")),
-            json.dumps(request.get("arguments", {}), ensure_ascii=False, sort_keys=True),
-        ))
-        if len(text) > _TEXT_LIMIT:
-            raise RuntimeError("hosted_approval_too_large")
-        interaction_id = token_hex(16)
-        self._interactions[interaction_id] = action_id
-        await self._control.emit(cast(RuntimeEvent[object], {
-            "type": "tool_approval_requested",
-            "hosted_presentation": True,
-            "interaction_id": interaction_id,
-            "text": text,
-        }))
-
-    async def _dismiss_approval(self, action_id: str) -> None:
-        for interaction_id, pending in tuple(self._interactions.items()):
-            if pending == action_id:
-                self._interactions.pop(interaction_id, None)
-                await self._control.emit(cast(RuntimeEvent[object], {
-                    "type": "tool_approval_resolved",
-                    "hosted_presentation": True,
-                    "interaction_id": interaction_id,
-                }))
 
     async def activate(
         self,
@@ -683,6 +598,8 @@ class CodingDeferredHostedSessionV1:
                 real = CodingRealHostedSessionV1(
                     continuation.session, self.identity, self._approval
                 )
+                if self._user_choice_enabled:
+                    real.enable_user_choice()
                 self._control.activate(real.control)
                 self._active = real
                 # The input was durably committed while the real adapter did
@@ -789,5 +706,6 @@ class _HostedResumeExecutionWorkV1(_HostedAgentExecutionWork):
             and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
         ):
             self._binding.start_title_if_unnamed()
+
 
 __all__ = ["CodingDeferredHostedSessionV1"]

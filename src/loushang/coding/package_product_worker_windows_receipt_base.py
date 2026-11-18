@@ -51,14 +51,6 @@ class CodingWindowsWorkerReceiptSemanticBaseV1(_WindowsReceiptBaseMethods):
     _product_id = "coding"
     _native_platform = "windows-amd64"
 
-    scope_id: str
-    store_id: str
-    source_snapshot_digest: str
-    last_issue_sequence: int
-    retired_receipt_fingerprints: tuple[str, ...]
-    record_digest: str
-    version: int = 1
-
     @classmethod
     def from_semantic_read(
         cls,

@@ -22,14 +22,6 @@ class CodingWorkerActivationReplayV2(_ActivationReplayFields):
 
 @dataclass(frozen=True, slots=True)
 class CodingWorkerActivationSemanticBaseV2(_ActivationBaseMethods):
-    scope_id: str
-    first_retained_generation: int
-    cutoff_revision: int
-    retired_sealed_digest: str
-    last_record: _StateRecord
-    retired_attempt_ids: tuple[str, ...]
-    version: int = 2
-
     _replay_type = CodingWorkerActivationReplayV2
 
 

@@ -49,8 +49,8 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
     try { await getCurrentWindow()[action](); setError(null); }
     catch { setError("actionFailed"); }
   }
-  async function quit() {
-    try { await invoke("quit_app"); }
+  async function invokeFrameAction(command: "quit_app" | "open_devtools") {
+    try { await invoke(command); setError(null); }
     catch { setError("actionFailed"); }
   }
   if (!native) return null;
@@ -58,7 +58,9 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
     <header className="native-frame" aria-label={t("applicationMenu")}>
       <button className="frame-icon" aria-label={t("back")} title={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
       <button className="frame-icon" aria-label={t("forward")} title={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
-      <FrameMenu {...actions} onBack={onBack} onForward={onForward} onClose={() => { void control("close"); }} onQuit={() => { void quit(); }} />
+      <FrameMenu {...actions} onBack={onBack} onForward={onForward}
+        onClose={() => void control("close")} onQuit={() => void invokeFrameAction("quit_app")}
+        onOpenDevtools={() => void invokeFrameAction("open_devtools")} />
       <div className="window-drag-region" data-tauri-drag-region title={t("dragWindow")} />
       <div className="window-controls">
         <button aria-label={t("minimize")} disabled={!native} onClick={() => void control("minimize")}><WindowIcon action="minimize" /></button>

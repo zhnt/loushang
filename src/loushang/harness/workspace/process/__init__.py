@@ -1,5 +1,6 @@
 """Hosted-process contracts for long-lived workspace capabilities."""
 
+from .lifecycle import wait_for_process_exit
 from .types import (
     AuthorizedProcessLauncher,
     ProcessExit,
@@ -14,4 +15,5 @@ __all__ = [
     "ProcessHandle",
     "ProcessLaunchRequest",
     "ProcessStderrTail",
+    "wait_for_process_exit",
 ]

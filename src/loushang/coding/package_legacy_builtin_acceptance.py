@@ -3,26 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
-    JournalCodecError,
-    JournalLoadPolicy,
-    decode_jsonl,
-    encode_jsonl_record,
-    journal_file_lock,
-    journal_file_read_lock,
 )
-from loushang.harness.journal._rooted_io import publish_private_bytes
-from loushang.harness.plugin_management.ledger import (
-    decode_plugin_desired_state_snapshot,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+from loushang.harness.package_product._legacy_local_migration import (
+    _FirstAcceptanceEnvelope,
+    _FirstAcceptanceJournal,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -38,20 +27,24 @@ from .package_legacy_builtin_review import (
     review_coding_first_b_builtin_only,
 )
 from .package_legacy_disabled_acceptance import (
-    _read_private_acceptance,
-    _require_empty_product_desired,
+    CodingLegacyDisabledOnlyAcceptanceError,
 )
 from .package_legacy_windows_receipt import (
-    read_windows_private_receipt,
-    read_windows_product_desired_bytes,
+    _receipt_io,
     write_windows_private_receipt,
 )
-
-_MAX_WINDOWS_ACCEPTANCE_BYTES = 1024 * 1024
 
 
 class CodingLegacyBuiltinOnlyAcceptanceError(RuntimeError):
     """The reviewed builtin-only Product acceptance is inconsistent."""
+
+
+_envelope = _FirstAcceptanceEnvelope(
+    invalid_message="Invalid Coding builtin-only acceptance",
+    invalid_code="coding_builtin_acceptance_invalid",
+    version_error="Unsupported builtin-only acceptance version",
+    identity_error="Builtin-only acceptance identity changed",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,9 +59,7 @@ class CodingLegacyBuiltinOnlyAcceptanceV1:
     ) -> CodingLegacyBuiltinOnlyAcceptanceV1:
         if not isinstance(review, CodingLegacyBuiltinOnlyReviewV1):
             raise TypeError("Coding builtin-only review is required")
-        acceptance_id = sha256(
-            canonical_json_bytes({"acceptanceVersion": 1, "reviewId": review.review_id})
-        ).hexdigest()
+        acceptance_id = _envelope.identity(review.review_id)
         return cls(review=review, acceptance_id=acceptance_id)
 
     def to_dict(self) -> dict[str, object]:
@@ -80,37 +71,27 @@ class CodingLegacyBuiltinOnlyAcceptanceV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyBuiltinOnlyAcceptanceV1:
-        if type(value) is not dict or set(value) != {
-            "acceptanceId",
-            "acceptanceVersion",
-            "review",
-        }:
-            raise JournalCodecError(
-                "Invalid Coding builtin-only acceptance",
-                code="coding_builtin_acceptance_invalid",
-            )
-        try:
-            if (
-                type(value["acceptanceVersion"]) is not int
-                or value["acceptanceVersion"] != 1
-            ):
-                raise ValueError("Unsupported builtin-only acceptance version")
-            record = cls.create(
-                CodingLegacyBuiltinOnlyReviewV1.from_dict(value["review"])
-            )
-            if record.acceptance_id != value["acceptanceId"]:
-                raise ValueError("Builtin-only acceptance identity changed")
-            return record
-        except (TypeError, ValueError) as exc:
-            raise JournalCodecError(
-                "Invalid Coding builtin-only acceptance",
-                code="coding_builtin_acceptance_invalid",
-            ) from exc
+        return _envelope.decode(
+            value, CodingLegacyBuiltinOnlyReviewV1.from_dict, cls.create
+        )
 
 
 _CODEC = FunctionalJournalRecordCodec(
     encoder=CodingLegacyBuiltinOnlyAcceptanceV1.to_dict,
     decoder=CodingLegacyBuiltinOnlyAcceptanceV1.from_dict,
+)
+
+_acceptance_journal = _FirstAcceptanceJournal(
+    filename="legacy-builtin-acceptance.jsonl",
+    codec=_CODEC,
+    error_type=CodingLegacyBuiltinOnlyAcceptanceError,
+    directory_label="Builtin-only Product state directory",
+    posix_read_error_type=CodingLegacyDisabledOnlyAcceptanceError,
+    posix_read_label="Disabled-only Product",
+    untouched_message="Disabled-only adoption requires an untouched Product Desired State",
+    windows_receipts=_receipt_io,
+    windows_untouched_message="Builtin-only adoption requires untouched Windows Product Desired State",
+    check_replay_epoch=True,
 )
 
 
@@ -134,30 +115,11 @@ def accept_coding_first_b_builtin_only(
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     if epoch_runtime.registry.store_id != epoch.store_id:
         raise CodingLegacyBuiltinOnlyAcceptanceError("Product Store changed")
-    path = (
-        epoch_runtime.prepare_product_state_root() / "legacy-builtin-acceptance.jsonl"
+    return _acceptance_journal.accept(
+        epoch_runtime,
+        proposed,
+        conflict_message="Builtin-only acceptance conflicts with prior review",
     )
-    with journal_file_lock(path, "exclusive"):
-        epoch_runtime.assert_current()
-        raw = _read_builtin_acceptance(path, epoch_runtime, allow_windows_stage=True)
-        records = _decode(raw, path=path)
-        if records:
-            if len(records) != 1 or records[0] != proposed:
-                raise CodingLegacyBuiltinOnlyAcceptanceError(
-                    "Builtin-only acceptance conflicts with prior review"
-                )
-            epoch_runtime.assert_current()
-            return records[0]
-        desired_path = path.parent / "desired-state.jsonl"
-        with journal_file_lock(desired_path, "exclusive"):
-            if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
-                _require_empty_windows_product_desired(desired_path)
-                _write_windows_builtin_acceptance(path, proposed)
-            else:
-                _require_empty_product_desired(desired_path)
-                _write_private_acceptance(path, proposed)
-        epoch_runtime.assert_current()
-        return proposed
 
 
 def read_coding_first_b_builtin_only_acceptance(
@@ -177,8 +139,10 @@ def read_coding_first_b_builtin_only_acceptance(
     path = (
         epoch_runtime.control_root / "product-state" / "legacy-builtin-acceptance.jsonl"
     )
-    with journal_file_read_lock(path, "shared", create_lock=False):
-        records = _decode(_read_builtin_acceptance(path, epoch_runtime), path=path)
+    records = _acceptance_journal.records(
+        path,
+        windows=isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner),
+    )
     if not records:
         epoch_runtime.assert_current()
         return None
@@ -195,76 +159,16 @@ def read_coding_first_b_builtin_only_acceptance(
     return records[0]
 
 
-def _read_builtin_acceptance(
-    path: Path,
-    epoch_runtime: (
-        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
-    ),
-    *,
-    allow_windows_stage: bool = False,
-) -> str | None:
-    if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
-        raw = read_windows_private_receipt(
-            path,
-            maximum_bytes=_MAX_WINDOWS_ACCEPTANCE_BYTES,
-            allow_unpublished_stage=allow_windows_stage,
-        )
-        return None if raw is None else raw.decode("utf-8")
-    return _read_private_acceptance(path)
-
-
-def _require_empty_windows_product_desired(path: Path) -> None:
-    """Require the same untouched Product Desired revision as the POSIX route."""
-
-    raw = read_windows_product_desired_bytes(path)
-    if raw is None:
-        return
-    if raw and not raw.endswith(b"\n"):
-        raise CodingLegacyBuiltinOnlyAcceptanceError(
-            "Windows Product Desired State journal is incomplete"
-        )
-    snapshot = decode_plugin_desired_state_snapshot(raw.decode("utf-8"), path=path)
-    if snapshot.inventory_revision != 0:
-        raise CodingLegacyBuiltinOnlyAcceptanceError(
-            "Builtin-only adoption requires untouched Windows Product Desired State"
-        )
-
-
 def _write_windows_builtin_acceptance(
     path: Path, record: CodingLegacyBuiltinOnlyAcceptanceV1
 ) -> None:
-    payload = encode_jsonl_record(
-        record, record_codec=_CODEC, format_profile=SORTED_UNICODE_JSONL_FORMAT
-    )
-    write_windows_private_receipt(path, payload)
-
-
-def _decode(
-    raw: str | None, *, path: Path
-) -> tuple[CodingLegacyBuiltinOnlyAcceptanceV1, ...]:
-    if raw is None:
-        return ()
-    return decode_jsonl(
-        raw,
-        target=path,
-        record_codec=_CODEC,
-        load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
-    ).records
+    write_windows_private_receipt(path, _acceptance_journal.encode(record))
 
 
 def _write_private_acceptance(
     path: Path, record: CodingLegacyBuiltinOnlyAcceptanceV1
 ) -> None:
-    payload = encode_jsonl_record(
-        record, record_codec=_CODEC, format_profile=SORTED_UNICODE_JSONL_FORMAT
-    )
-    publish_private_bytes(
-        path, payload,
-        error_type=CodingLegacyBuiltinOnlyAcceptanceError,
-        directory_label="Builtin-only Product state directory",
-    )
-
-
+    _acceptance_journal.publish(path, record)
 
 
 __all__ = [

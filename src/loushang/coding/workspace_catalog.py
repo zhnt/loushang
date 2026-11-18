@@ -1,26 +1,57 @@
-"""Coding Session catalogs selected by Host-owned canonical workspace paths."""
+"""Coding Session construction and open policy for Host-owned workspaces."""
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import os
 import sys
 from pathlib import Path
 
-from loushang.apphost.managed.workspaces import WorkspaceRegistry
-from loushang.appserver.protocol import SessionScopeV1
+from loushang.ai.model import Model, ModelSelection, model_selection_ref
+from loushang.ai.model.selection import is_usable_model_selection
+from loushang.apphost.integrations._canonical_transcript_catalog import (
+    _WorkspaceTranscriptCatalogMethods,
+)
+from loushang.apphost.integrations.session_control import project_session_models
+from loushang.apphost.workspace_registry import (
+    HostWorkspaceRegistryPort,
+    WorkspaceFileRead,
+    WorkspacePreviewError,
+)
+from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
+    SessionIdentityV1,
+    SessionModelsV1,
+    SessionScopeV1,
+    WorkspaceInfoV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
+)
+from loushang.appserver.protocol.workspace_preview import (
+    WorkspaceDirectoryPreviewV1,
+    WorkspaceFilePreviewV1,
+    WorkspacePreviewEntryV1,
+    WorkspacePreviewRequestV1,
+    WorkspacePreviewV1,
+)
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 
 from .hosted_catalog import (
     _MAX_TRANSCRIPT_BYTES,
+    CodingHostedCatalogError,
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
 )
+from .hosted_models import preview_workspace_models
 from .managed_catalog import CodingManagedSessionCatalogV1
+from .workspace_inspection import inspect_session_changes, inspect_workspace
 
 
-class CodingWorkspaceCatalog:
+class CodingWorkspaceCatalog(
+    _WorkspaceTranscriptCatalogMethods[CodingHostedSessionCatalogV1]
+):
     """One AppHost identity catalog, with independently owned transcript stores.
 
     Registration prepares catalog metadata only. Product/Harness construction
@@ -28,156 +59,138 @@ class CodingWorkspaceCatalog:
     AppService, Registry or additional AppHost is constructed here.
     """
 
-    def __init__(self, registry: WorkspaceRegistry, session_root: Path,
-                 store_state_root: Path):
+    def __init__(
+        self, registry: HostWorkspaceRegistryPort, session_root: Path, store_state_root: Path,
+        *, model: Model | ModelSelection | None = None,
+    ):
         self.registry = registry
+        self._model = model
         self._root = session_root
         self._state = store_state_root
         self._catalogs: dict[Path, CodingHostedSessionCatalogV1] = {}
         self._loaded = False
         self._closed = False
 
-    async def workspace(self, request):
-        from loushang.appserver.protocol import WorkspaceInfoV1, WorkspaceResultV1
-
-        if request.action == "register":
-            await self.register(request.path)
-        elif request.action == "allocate-temporary":
-            path = await asyncio.to_thread(self.registry.allocate_temporary)
-            self._add(path)
-        elif request.action == "open":
-            selected = await self.select(request.path)
-        elif request.action == "unregister":
-            path = Path(request.path)
-            catalog = self._catalogs.get(path)
-            if catalog is not None:
-                await catalog.close()
-            await asyncio.to_thread(self.registry.unregister, request.path)
-            self._catalogs.pop(path, None)
-        entries = self._catalogs.items()
-        if request.action == "open":
-            entries = ((selected.cwd, self._catalogs[selected.cwd]),)
-        elif request.action == "allocate-temporary":
-            entries = ((path, self._catalogs[path]),)
-        elif request.action == "projects":
-            entries = ((root, catalog) for root, catalog in entries if not self.registry.is_temporary(root))
-        return WorkspaceResultV1(tuple(
-            WorkspaceInfoV1(str(path), catalog.scopes[0].scope, catalog.scopes[0].fingerprint)
-            for path, catalog in entries
-        ))
-
-    async def load(self) -> None:
-        if not self._loaded:
-            for path in await asyncio.to_thread(self._load_paths):
-                self._add(path)
-            self._loaded = True
-
-    def _load_paths(self) -> tuple[Path, ...]:
-        self.registry.open()
-        return self.registry.list()
-
-    @property
-    def scopes(self):
-        return tuple(catalog.scopes[0] for catalog in self._catalogs.values())
-
-    @property
-    def pending_sessions(self):
-        return tuple(session for catalog in self._catalogs.values() for session in catalog.pending_sessions)
-
-    def _add(self, path: Path) -> CodingHostedSessionCatalogV1:
-        if self._closed:
-            raise ValueError("workspace_catalog_closed")
-        if path not in self._catalogs:
-            self._catalogs[path] = self._create_catalog(path)
-        return self._catalogs[path]
-
     def _create_catalog(self, path: Path) -> CodingHostedSessionCatalogV1:
         leaf = hashlib.sha256(str(path).encode()).hexdigest()
         root = self._root / "workspaces" / leaf
         if sys.platform == "win32":
             # Use the native hosted Session writer with separate scope roots.
-            return CodingHostedSessionCatalogV1(tuple(
-                CodingHostedScopeV1(scope, root / scope.value, path)
-                for scope in (SessionScopeV1.CWD, SessionScopeV1.USER_HOME)
-            ))
+            return CodingHostedSessionCatalogV1(
+                tuple(
+                    CodingHostedScopeV1(scope, root / scope.value, path)
+                    for scope in (SessionScopeV1.CWD, SessionScopeV1.USER_HOME)
+                )
+            )
         previous = self._root / leaf
-        witness = TranscriptStoreAdmission(previous, state_root=self._state).witness_root
+        witness = TranscriptStoreAdmission(
+            previous, state_root=self._state
+        ).witness_root
         # A surviving witness identifies the original store even if its data
         # directory is missing. New stores use the workspaces family.
         if os.path.lexists(previous) or os.path.lexists(witness):
             root = previous
         return CodingManagedSessionCatalogV1(
-            session_root=root, workspace=path, store_state_root=self._state,
+            session_root=root,
+            workspace=path,
+            store_state_root=self._state,
         )
 
-    async def register(self, value: str) -> Path:
-        path = await asyncio.to_thread(self.registry.register, value)
-        self._add(path)
-        return path
+    async def delete_session_history(self, identity: SessionIdentityV1) -> None:
+        catalog = self._find(lambda scope: scope.fingerprint == identity.scope_fingerprint)
+        await catalog.delete_session_history(identity)
 
-    async def select(self, value: str):
-        path = await asyncio.to_thread(self.registry.select, value)
-        return self._add(path).scopes[0]
+    async def workspace_models(self, path: str | None) -> SessionModelsV1:
+        if self._closed:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        workspace = None
+        if path is not None:
+            try:
+                workspace = await settled_io(self.registry.select, path)
+            except (OSError, ValueError):
+                raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+        selection, choices = await settled_io(preview_workspace_models, workspace, self._model)
+        current = None
+        if selection is not None and is_usable_model_selection(selection):
+            current = model_selection_ref(selection)
+        return project_session_models(current, choices)
+
+    async def _preview_workspace(self, path: str, request: WorkspacePreviewRequestV1) -> WorkspaceResultV1:
+        if self._closed:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        try:
+            root = await settled_io(self.registry.select, path)
+        except (OSError, ValueError):
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+        catalog = self._catalogs.get(root)
+        if catalog is None:
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
+        scope = catalog.scopes[0]
+        if root != Path(path) or scope.fingerprint != request.scope_fingerprint:
+            raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
+        try:
+            opened = await settled_io(self.registry.preview, root, request.reference, request.base)
+        except WorkspacePreviewError as exc:
+            raise AppServiceError(AppErrorCodeV1(exc.code)) from None
+        preview: WorkspacePreviewV1
+        if isinstance(opened, WorkspaceFileRead):
+            preview = WorkspaceFilePreviewV1(opened.path, opened.text)
+        else:
+            entries = tuple(WorkspacePreviewEntryV1(name, kind) for name, kind in opened.entries)
+            preview = WorkspaceDirectoryPreviewV1(opened.path, entries, opened.limited)
+        return WorkspaceResultV1((WorkspaceInfoV1(str(root), scope.scope, scope.fingerprint, preview=preview),))
+
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        if request.preview is not None and request.path is not None:
+            return await self._preview_workspace(request.path, request.preview)
+
+        if request.action == "inspect":
+            if self._closed:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            try:
+                path = await settled_io(self.registry.select, request.path)
+            except (OSError, ValueError):
+                raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+            catalog = self._catalogs.get(path)
+            if catalog is None or self.registry.is_temporary(path):
+                raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
+            scope = catalog.scopes[0]
+            report = await settled_io(inspect_workspace, path)
+            if report["git"] is None and request.session_id:
+                try:
+                    candidates = await catalog.list_identities((scope.discovery_scope,), limit=128)
+                    matches = [item.reference for item in candidates
+                               if item.envelope is not None and item.envelope.session_id == request.session_id]
+                    if len(matches) == 1:
+                        history = await catalog.preview_history_snapshot(matches[0], max_bytes=_MAX_TRANSCRIPT_BYTES)
+                        report.update(inspect_session_changes(path, (entry.payload for entry in history.selected_records)))
+                except (CodingHostedCatalogError, OSError, ValueError):
+                    report["limited"] = True
+            return WorkspaceResultV1((WorkspaceInfoV1(str(path), scope.scope, scope.fingerprint, report),))
+
+        entries = await self._workspace_entries(request)
+        return WorkspaceResultV1(
+            tuple(
+                WorkspaceInfoV1(
+                    str(path), catalog.scopes[0].scope, catalog.scopes[0].fingerprint
+                )
+                for path, catalog in entries
+            )
+        )
 
     def admits(self, scope) -> bool:
         return not self._closed and any(
-            scope.product_id == "coding" and item.scope is scope.scope
-            and item.fingerprint == scope.scope_fingerprint for item in self.scopes
+            scope.product_id == "coding"
+            and item.scope is scope.scope
+            and item.fingerprint == scope.scope_fingerprint
+            for item in self.scopes
         )
 
-    def _for_create(self, request):
-        return self._find(lambda scope: scope.fingerprint == request.creator_scope_id)
-
-    def _for_reference(self, reference):
-        return self._find(lambda scope: scope.source_id == reference.source_id)
-
-    def _find(self, matches):
-        if not self._closed:
-            for catalog in self._catalogs.values():
-                if any(matches(scope) for scope in catalog.scopes):
-                    return catalog
-        raise ValueError("workspace_not_registered")
-
-    async def discover_sessions(self, scope, *, stop):
-        catalog = self._find(lambda item: item.scope is scope.scope
-                             and item.fingerprint == scope.scope_fingerprint)
-        return await catalog.discover_sessions(scope, stop=stop)
-
-    async def workspace_identities(self, fingerprint, scope, *, limit):
-        catalog = self._find(lambda item: item.fingerprint == fingerprint
-                             and item.discovery_scope is scope)
-        return await catalog.list_identities((scope,), limit=limit)
-
-    async def list_identities(self, scopes, *, limit):
-        result = []
-        for catalog in self._catalogs.values():
-            result.extend(await catalog.list_identities(scopes, limit=limit))
-            if len(result) > limit:
-                raise ValueError("session_catalog_limit")
-        return tuple(result)
-
-    async def open_candidate(self, reference):
-        catalog = self._for_reference(reference)
+    async def _open_workspace_candidate(
+        self, catalog: CodingHostedSessionCatalogV1, reference
+    ):
         if sys.platform == "win32":
             return await catalog.open_candidate(reference)
-        return await catalog.open_history_candidate(reference, max_bytes=_MAX_TRANSCRIPT_BYTES)
-
-    async def find_created_candidate(self, request):
-        return await self._for_create(request).find_created_candidate(request)
-
-    async def create_candidate(self, intent):
-        return await self._for_create(intent.request).create_candidate(intent)
-
-    def fence(self) -> None:
-        self._closed = True
-        for catalog in self._catalogs.values():
-            catalog.fence()
-
-    async def close(self) -> None:
-        self.fence()
-        results = await asyncio.gather(*(c.close() for c in self._catalogs.values()),
-                                       return_exceptions=True)
-        failures = [result for result in results if isinstance(result, BaseException)]
-        if failures:
-            raise BaseExceptionGroup("workspace_cleanup_incomplete", failures)
-        await asyncio.to_thread(self.registry.close)
+        return await catalog.open_history_candidate(
+            reference, max_bytes=_MAX_TRANSCRIPT_BYTES
+        )

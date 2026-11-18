@@ -175,6 +175,13 @@ def test_plc9a1_cli_uses_only_the_common_application_binding() -> None:
 def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> None:
     adapter = _source(CODING_BINDING)
     compatibility = _source(CODING_COMPATIBILITY)
+    # Follow the complete registry only once it leaves the historical Code site.
+    # Historical passing shapes need no new module or additional source scan.
+    old_projection_site = "self.projections[writer.layout] = projection"
+    if old_projection_site not in compatibility:
+        registry = SETTINGS_MANAGER.with_name("_legacy_compatibility.py")
+        if registry.exists():
+            compatibility += _source(registry)
     lifecycle = _source(CODING_LIFECYCLE)
     capture = _source(ENABLEMENT_CAPTURE)
     private_directory = _source(PRIVATE_DIRECTORY)
@@ -231,7 +238,10 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "self._legacy_plugin_guard_authority" in settings
     assert "if self._legacy_plugin_guard_authority is not authority" in settings
     assert "_CodingPluginEnablementCompatibilityRegistry" in compatibility
-    assert "self.projections[writer.layout] = projection" in compatibility
+    assert (
+        old_projection_site in compatibility
+        or "self.projections[self._writer_layout(writer)] = projection" in compatibility
+    )
     assert "with self._config.transaction():" in settings
     assert "config_file_transaction_lock(path)" in config_engine
     assert "entered_transaction" in config_engine
@@ -275,8 +285,12 @@ def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
     assert continuity.index("compatibility.reconcile()") < continuity.index(
         "if existing is not None:"
     )
-    assert "coding_plugin_compatibility_fence_unavailable" in _source(
-        CODING_COMPATIBILITY
+    compatibility = _source(CODING_COMPATIBILITY)
+    registry = SETTINGS_MANAGER.with_name("_legacy_compatibility.py")
+    assert "coding_plugin_compatibility_fence_unavailable" in compatibility or (
+        'error_prefix="coding_plugin_compatibility"' in compatibility
+        and registry.exists()
+        and 'f"{error_prefix}_fence_unavailable"' in _source(registry)
     )
     assert "_LAST_READY_STATUS_ATTRIBUTE" in continuity
     assert "_restore_ready_status(runtime, diagnostics_service)" in continuity

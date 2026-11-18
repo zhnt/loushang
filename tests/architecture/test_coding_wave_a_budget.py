@@ -16,6 +16,11 @@ G13_PRODUCT_SLICE = frozenset({"hosted_continuity.py"})
 G14_PRODUCT_SLICE = frozenset(
     {"cli/hosted.py", "hosted_catalog.py", "hosted_session.py"}
 )
+GOAL_PRODUCT_LIMITS = {
+    "hosted_session_goal.py": 265, "hosted_goal_commands.py": 195,
+    "hosted_goal_review.py": 60, "hosted_goal_recovery.py": 120,
+    "hosted_execution_goal.py": 125,
+}
 G16_PRODUCT_SLICE = frozenset({"hosted_bootstrap.py", "hosted_local.py", "cli/mux.py"})
 G17_PRODUCT_SLICE = frozenset({"cli/hosted_client.py"})
 G18_FACADE_SLICE = frozenset({"__init__.py"})
@@ -31,6 +36,7 @@ APPROVED_SLICES = {
     "g12": G12_PRODUCT_SLICE,
     "g13": G13_PRODUCT_SLICE,
     "g14": G14_PRODUCT_SLICE,
+    "goal": frozenset(GOAL_PRODUCT_LIMITS),
     "g16": G16_PRODUCT_SLICE,
     "g17": G17_PRODUCT_SLICE,
     "g18": G18_FACADE_SLICE,
@@ -103,6 +109,9 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
         "hosted_session.py": 714,
     }.items():
         assert groups["g14"][path] <= limit, (path, groups["g14"][path], limit)
+    assert sum(groups["goal"].values()) <= 765, groups["goal"]
+    for path, limit in GOAL_PRODUCT_LIMITS.items():
+        assert groups["goal"][path] <= limit, (path, groups["goal"][path], limit)
     # R2.1 extends the existing detachable owners with explicit execution
     # composition and admitted owned-root preparation. Exact net delta from
     # current main: mux +1, bootstrap +37 and local command +15.

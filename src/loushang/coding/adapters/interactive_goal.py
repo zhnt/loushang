@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import re
-import subprocess
+from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -17,6 +15,7 @@ from uuid import uuid4
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.policy import ToolPolicySubject
 from loushang.harness.session.call_allowance import ModelCallAllowance
+from loushang.harness.workspace.git import observe_workspace_inventory
 from loushang.harnesswork import WorkOperation, WorkRunSpec, WorkStepSpec
 from loushang.harnesswork.goal import (
     GoalBasis,
@@ -50,7 +49,7 @@ from ._goal_planning_shared import BatchPlanningPolicy
 from ._goal_planning_work import PlanningToolPolicy, ScopedSessionWork, publish_report
 from ._goal_proposal import Action, ProposalRejected, parse_proposal
 from ._verification_work import inspect_verification
-from .goal import CodingGoal
+from .goal import CodingGoal, _ordinary_goal_transport, _validate_goal_session
 from .harnesswork import CODING_WORK_PROFILE, project_coding_runtime_event
 
 ACTION_EVIDENCE = {
@@ -64,68 +63,17 @@ ACTION_EVIDENCE = {
 
 def workspace_snapshot(root: Path):
     """Bounded identity, including dirty and new files; never used by progress."""
-    query = subprocess.run(
-        [
-            "git",
-            "-c",
-            "core.fsmonitor=false",
-            "ls-files",
-            "-z",
-            "--stage",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-        ],
-        cwd=root,
-        capture_output=True,
-        timeout=2,
+    return observe_workspace_inventory(
+        root,
+        max_files=10000,
+        max_bytes=128 * 1024 * 1024,
+        ignored_directories=frozenset({".git", ".venv", "node_modules", "__pycache__"}),
+        error_type=GoalError,
+        submodule_error="interactive Goal snapshot does not support Git submodules",
+        file_limit_error="workspace snapshot exceeds 10000 files",
+        external_link_error="workspace snapshot contains an external link",
+        byte_limit_error="workspace snapshot exceeds 128 MiB",
     )
-    names: list[str]
-    if query.returncode == 0:
-        selected_names: set[str] = set()
-        for entry in query.stdout.split(b"\0"):
-            if not entry:
-                continue
-            header, separator, raw_name = entry.partition(b"\t")
-            if separator and re.fullmatch(rb"[0-7]{6} [0-9a-f]{40,64} [0-3]", header):
-                if header.startswith(b"160000 "):
-                    raise GoalError(
-                        "interactive Goal snapshot does not support Git submodules"
-                    )
-                selected_names.add(os.fsdecode(raw_name))
-            else:
-                selected_names.add(os.fsdecode(entry))
-        names = sorted(selected_names)
-    else:
-        names = []
-        for parent, dirs, files in os.walk(root, followlinks=False):
-            dirs[:] = [
-                d
-                for d in dirs
-                if d not in {".git", ".venv", "node_modules", "__pycache__"}
-            ]
-            names.extend(
-                (Path(parent) / name).relative_to(root).as_posix() for name in files
-            )
-            if len(names) > 10000:
-                raise GoalError("workspace snapshot exceeds 10000 files")
-    if len(names) > 10000:
-        raise GoalError("workspace snapshot exceeds 10000 files")
-    result, size = {}, 0
-    for name in names:
-        path = root / name
-        if not path.resolve().is_relative_to(root):
-            raise GoalError("workspace snapshot contains an external link")
-        if path.is_symlink():
-            result[name] = "symlink:" + os.readlink(path)
-        elif path.is_file():
-            size += path.stat().st_size
-            if size > 128 * 1024 * 1024:
-                raise GoalError("workspace snapshot exceeds 128 MiB")
-            result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-        else:
-            result[name] = "missing"
-    return result
 
 
 class _TaskAllowance(PlanningCallAllowance):
@@ -521,6 +469,11 @@ class InteractiveGoal(CodingGoal):
 
     _allowances: dict[str, _TaskAllowance]
 
+    @staticmethod
+    def require_session_tools(session, workspace: Path) -> None:
+        _ordinary_goal_transport(session)
+        _validate_goal_session(session, workspace, True, ordinary=True)
+
     @classmethod
     async def attach(cls, *, session, **limits):
         owner = await cls._attach(session=session, profile=_PROFILE, **limits)
@@ -528,13 +481,17 @@ class InteractiveGoal(CodingGoal):
         owner._policy._facts = owner.controller.facts
         return owner
 
-    async def create_task(self, task: GoalTask):
+    async def create_task(
+        self, task: GoalTask, *, check_current: Callable[[], None] | None = None,
+    ) -> str:
         async def create():
             admission = self._session.runtime.execution_admission
             reservation = admission.reserve_candidate()
             try:
                 await self._policy.refresh()
                 admission.validate_reservation(reservation, require_operation=False)
+                if check_current is not None:
+                    check_current()
                 return self._create_task(task)
             finally:
                 reservation.release()
@@ -610,6 +567,17 @@ class InteractiveGoal(CodingGoal):
 
         return await self._observations.invoke(inspect)
 
+    def review_check_status(self, goal_id, snapshot) -> tuple[int, bool]:
+        """Observe exactly the required check evidence used by review admission."""
+        core = self.controller
+        basis = GoalBasis(core.header, core.query(goal_id), core.history.sequence)
+        count = len(self._policy.contract(basis)["checks"])
+        try:
+            self._policy.review_dependencies(basis, snapshot)
+        except GoalError:
+            return count, False
+        return count, True
+
     async def accept(self, goal_id, identity):
         return await self.review(
             goal_id, identity, approved=True, reason="user accepted current result"
@@ -653,7 +621,7 @@ class InteractiveGoal(CodingGoal):
             self._policy.pending_review = None
 
 
-def read_task_history(session):
+def read_task_history(session, *, missing_ok: bool = False):
     """Read the original store without obtaining a new execution owner."""
     from loushang.harnesswork.goal import GoalHeader
     from loushang.harnesswork.goal.records import replay
@@ -665,7 +633,12 @@ def read_task_history(session):
         Path(session.session_manager.get_session_dir()), header, read_only=True
     )
     try:
-        store.open()
+        try:
+            store.open()
+        except GoalError as error:
+            if missing_ok and str(error) == "unknown Goal: Session has no Goal journal":
+                return None
+            raise
         actual, records = store.load()
         return replay(actual, records)
     finally:

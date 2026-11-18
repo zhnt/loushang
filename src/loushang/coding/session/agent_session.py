@@ -1902,115 +1902,20 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             )
 
     async def _dispose_session_runtime_profile(self) -> None:
-        primary_error: BaseException | None = None
-        deferred_lsp = getattr(self, "_deferred_lsp_slot", None)
-        if deferred_lsp is not None:
-            # The child borrows parent Workspace/Resource capabilities. Keep
-            # those owners and the original retirement handles alive if close
-            # fails; the slot fences activation and retries the same candidate.
-            # Session disposal has already stopped new work before this hook.
-            await deferred_lsp.close()
-            self._lsp_access = None
-            deferred_cleanup = self._deferred_lsp_management_cleanup
-            if deferred_cleanup is not None:
-                deferred_cleanup()
-        worker_tool_lease = getattr(self, "_coding_worker_turn_tool_lease", None)
-        if worker_tool_lease is not None:
-            try:
-                result = (
-                    worker_tool_lease.rollback_registration()
-                    if worker_tool_lease.state == "staged"
-                    else await worker_tool_lease.dispose()
-                )
-                if result.state not in {"removed", "already_removed"}:
-                    raise RuntimeError(
-                        "Coding Worker turn Tool retirement failed: "
-                        f"{result.diagnostic_code or result.state}"
-                    )
-            except BaseException as exc:
-                if primary_error is None:
-                    primary_error = exc
-                else:
-                    primary_error.add_note(
-                        f"Coding Worker turn Tool retirement also failed: {exc}"
-                    )
-        try:
-            await super()._dispose_session_runtime_profile()
-        except BaseException as exc:
-            if primary_error is None:
-                primary_error = exc
-            else:
-                primary_error.add_note(f"Session runtime retirement also failed: {exc}")
-        base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
-        base_publication = getattr(self, "_coding_base_owner_publication", None)
-        if (
-            primary_error is None
-            and base_plugin_assembly is not None
-            and base_plugin_assembly.management_lease is not None
-            and base_publication is not None
-            and base_publication.receipts
-            and not base_publication.retired
-        ):
-            primary_error = run_cleanup_steps(
-                primary_error,
-                (
-                    (
-                        "Coding base owner-generation retirement",
-                        base_publication.retire_after_graph,
-                    ),
-                ),
-            )
-        plugin_assembly = getattr(
-            self,
-            "_coding_capability_plugin_assembly",
-            None,
+        await self._retire_session_profile_owners(
+            deferred_slot_attribute="_deferred_lsp_slot",
+            worker_tool_lease_attribute="_coding_worker_turn_tool_lease",
+            base_plugin_assembly_attribute="_coding_base_plugin_assembly",
+            base_owner_publication_attribute="_coding_base_owner_publication",
+            capability_plugin_assembly_attribute="_coding_capability_plugin_assembly",
+            capability_owner_publication_attribute="_coding_capability_owner_publication",
+            diagnostic_prefix="Coding",
         )
-        if plugin_assembly is not None:
-            primary_error = run_cleanup_steps(
-                primary_error,
-                (("Coding Capability Plugin evidence cleanup", plugin_assembly.close),),
-            )
-            if primary_error is None:
-                try:
-                    publication = self._coding_capability_owner_publication
-                    if publication is not None:
-                        publication.retire_after_graph()
-                    plugin_assembly.confirm_runtime_retirement(
-                        graph_closed=self._capability_graph_runtime.is_closed,
-                        runtime_was_published=(
-                            publication is not None and publication.prepared
-                        ),
-                        graph_has_pending_retirements=(
-                            self._capability_graph_runtime.has_pending_retirements
-                        ),
-                        owner_generations_remaining=bool(
-                            self._capability_owner_generations
-                        ),
-                        component_generations_remaining=bool(
-                            self._pending_capability_components
-                        ),
-                    )
-                    plugin_assembly.release_management()
-                    plugin_assembly.cleanup_private_state()
-                except BaseException as error:
-                    primary_error = error
-                else:
-                    self._coding_lsp_plugin_capture = None
-                    self._lsp_access = None
-        if base_plugin_assembly is not None:
-            primary_error = run_cleanup_steps(
-                primary_error,
-                (("Coding base Plugin evidence cleanup", base_plugin_assembly.close),),
-            )
-        if self._sandbox_runtime is not None:
-            try:
-                await self._sandbox_runtime.close()
-            except BaseException as cleanup_error:
-                if primary_error is None:
-                    primary_error = cleanup_error
-                else:
-                    primary_error.add_note(
-                        f"process host or sandbox cleanup also failed: {cleanup_error}"
-                    )
-        if primary_error is not None:
-            raise primary_error
+
+    def _clear_deferred_profile_access(self) -> Callable[[], None] | None:
+        self._lsp_access = None
+        return self._deferred_lsp_management_cleanup
+
+    def _clear_retired_profile_access(self) -> None:
+        self._coding_lsp_plugin_capture = None
+        self._lsp_access = None

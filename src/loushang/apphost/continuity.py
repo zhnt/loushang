@@ -8,7 +8,7 @@ import re
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
 from loushang.appservice import (
@@ -391,8 +391,78 @@ class HostedApplicationContinuityRuntimeV1:
         return "completed"
 
 
-class HostedApplicationContinuityAttemptV1:
+# Concrete attempt subclasses retain their original slot storage.
+_CONTINUITY_ATTEMPT_SLOTS: tuple[str, ...] = ()
+
+
+class _ContinuityAttemptLifecycle:
+    __slots__ = _CONTINUITY_ATTEMPT_SLOTS
+    _attempt_closed_error: ClassVar[str]
+    _open_lock: asyncio.Lock
+    _close_lock: asyncio.Lock
+    _open_task: asyncio.Task[HostedApplicationContinuityRuntimeV1] | None
+    _close_task: asyncio.Task[None] | None
+    _closed: bool
+    _settled: bool
+    _transferred: bool
+
+    @property
+    def _published_runtime(self) -> HostedApplicationContinuityRuntimeV1 | None:
+        return None
+
+    def _publish_runtime(self, runtime: HostedApplicationContinuityRuntimeV1) -> None:
+        pass
+
+    @property
+    def cleanup_pending(self) -> bool:
+        return not self._transferred and (not self._settled)
+
+    async def open(self) -> HostedApplicationContinuityRuntimeV1:
+        async with self._open_lock:
+            if self._closed:
+                raise HostedApplicationError(self._attempt_closed_error)
+            if self._published_runtime is not None:
+                self._transferred = True
+                return self._published_runtime
+            task = self._open_task
+            if task is None or _runtime_task_needs_retry(task):
+                task = asyncio.create_task(self._open_once())
+                task.add_done_callback(_observe_background_result)
+                self._open_task = task
+        runtime = await _join_runtime(task)
+        async with self._open_lock:
+            rejected = self._closed
+            if not rejected:
+                self._publish_runtime(runtime)
+                self._transferred = True
+        if rejected:
+            await self.close()
+            raise HostedApplicationError(self._attempt_closed_error)
+        return runtime
+
+    async def close(self) -> None:
+        async with self._close_lock:
+            if self._settled or self._transferred:
+                return
+            self._closed = True
+            task = self._close_task
+            if task is None or _void_task_needs_retry(task):
+                task = asyncio.create_task(self._close_once())
+                task.add_done_callback(_observe_background_result)
+                self._close_task = task
+        await _join_preserving_cancellation(task)
+
+    async def _open_once(self) -> HostedApplicationContinuityRuntimeV1:
+        raise NotImplementedError
+
+    async def _close_once(self) -> None:
+        raise NotImplementedError
+
+
+class HostedApplicationContinuityAttemptV1(_ContinuityAttemptLifecycle):
     """Published owner for G12 dependencies, recovery debt, and the G13 lease."""
+
+    _attempt_closed_error = "hosted_continuity_attempt_closed"
 
     __slots__ = (
         "_application",
@@ -434,43 +504,11 @@ class HostedApplicationContinuityAttemptV1:
         self._settled = False
 
     @property
-    def cleanup_pending(self) -> bool:
-        return not self._transferred and not self._settled
+    def _published_runtime(self) -> HostedApplicationContinuityRuntimeV1 | None:
+        return self._runtime
 
-    async def open(self) -> HostedApplicationContinuityRuntimeV1:
-        async with self._open_lock:
-            if self._closed:
-                raise HostedApplicationError("hosted_continuity_attempt_closed")
-            if self._runtime is not None:
-                self._transferred = True
-                return self._runtime
-            task = self._open_task
-            if task is None or _runtime_task_needs_retry(task):
-                task = asyncio.create_task(self._open_once())
-                task.add_done_callback(_observe_background_result)
-                self._open_task = task
-        runtime = await _join_runtime(task)
-        async with self._open_lock:
-            rejected = self._closed
-            if not rejected:
-                self._runtime = runtime
-                self._transferred = True
-        if rejected:
-            await self.close()
-            raise HostedApplicationError("hosted_continuity_attempt_closed")
-        return runtime
-
-    async def close(self) -> None:
-        async with self._close_lock:
-            if self._settled or self._transferred:
-                return
-            self._closed = True
-            task = self._close_task
-            if task is None or _void_task_needs_retry(task):
-                task = asyncio.create_task(self._close_once())
-                task.add_done_callback(_observe_background_result)
-                self._close_task = task
-        await _join_void(task)
+    def _publish_runtime(self, runtime: HostedApplicationContinuityRuntimeV1) -> None:
+        self._runtime = runtime
 
     async def _open_once(self) -> HostedApplicationContinuityRuntimeV1:
         if self._lease is None:
@@ -602,21 +640,6 @@ _join_report = _join_preserving_cancellation
 
 
 _join_runtime = _join_preserving_cancellation
-
-
-async def _join_void(task: asyncio.Task[None]) -> None:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                break
-            cancellation = error
-    task.result()
-    if cancellation is not None:
-        raise cancellation
 
 
 def _report_task_needs_retry(

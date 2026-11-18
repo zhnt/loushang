@@ -281,25 +281,9 @@ class ExactProductSourceFiles:
             )
         )
         files[f"{spec.dist_info}/WHEEL"] = recipe.wheel_metadata
-        record = io.StringIO(newline="")
-        writer = csv.writer(record, lineterminator="\n")
-        for name, body in sorted(files.items()):
-            digest = (
-                urlsafe_b64encode(sha256(body).digest()).rstrip(b"=").decode("ascii")
-            )
-            writer.writerow((name, f"sha256={digest}", str(len(body))))
-        record_name = f"{spec.dist_info}/RECORD"
-        writer.writerow((record_name, "", ""))
-        files[record_name] = record.getvalue().encode("utf-8")
-        output = io.BytesIO()
-        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
-            for name, body in sorted(files.items()):
-                member = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-                member.create_system = 3
-                member.external_attr = (stat.S_IFREG | 420) << 16
-                member.compress_type = zipfile.ZIP_STORED
-                archive.writestr(member, body)
-        return output.getvalue()
+        return _pack_product_wheel_members(
+            files, get_record_name=lambda: f"{spec.dist_info}/RECORD"
+        )
 
     def read_installed_member(
         self, root: Path, relative: str, *, maximum_bytes: Callable[[], int]
@@ -354,3 +338,38 @@ def _installed_member_is_reparse(metadata: os.stat_result) -> bool:
         or getattr(metadata, "st_file_attributes", 0)
         & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
     )
+
+
+def _pack_product_wheel_members(
+    files: dict[str, bytes],
+    *,
+    get_record_name: Callable[[], str],
+    executable_source: tuple[str, Path] | None = None,
+) -> bytes:
+    """Preserve deterministic RECORD/ZIP bytes and late legacy executable modes."""
+    record = io.StringIO(newline="")
+    writer = csv.writer(record, lineterminator="\n")
+    for name, body in sorted(files.items()):
+        digest = urlsafe_b64encode(sha256(body).digest()).rstrip(b"=").decode("ascii")
+        writer.writerow((name, f"sha256={digest}", str(len(body))))
+    record_name = get_record_name()
+    writer.writerow((record_name, "", ""))
+    files[record_name] = record.getvalue().encode("utf-8")
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+        for name, body in sorted(files.items()):
+            executable = False
+            if executable_source is not None:
+                prefix, executable_root = executable_source
+                relative = name.removeprefix(f"{prefix}/")
+                executable = name.startswith(f"{prefix}/") and bool(
+                    (executable_root / relative).lstat().st_mode & 0o111
+                )
+            member = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            member.create_system = 3
+            member.external_attr = (
+                stat.S_IFREG | (0o755 if executable else 0o644)
+            ) << 16
+            member.compress_type = zipfile.ZIP_STORED
+            archive.writestr(member, body)
+    return output.getvalue()

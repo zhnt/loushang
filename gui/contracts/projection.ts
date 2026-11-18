@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { validateUserChoice } from "./userChoice.ts";
 
 function object(value: unknown, fields: string[]): Record<string, unknown> {
   assert(value !== null && typeof value === "object" && !Array.isArray(value));
@@ -48,7 +49,7 @@ function state(value: unknown) {
     assert(legacy !== null && typeof legacy === "object" && !Array.isArray(legacy));
     if (Object.keys(legacy).length) {
       const error = object(legacy, ["code"]);
-      assert(["invalid_request", "not_found", "already_exists", "already_attached", "product_mismatch", "revision_conflict", "snapshot_required", "stale_attachment", "attachment_lagged", "session_unavailable", "operation_unavailable", "cleanup_incomplete", "service_closed"].includes(error.code as string));
+      assert(["invalid_request", "not_found", "already_exists", "already_attached", "product_mismatch", "revision_conflict", "snapshot_required", "stale_attachment", "attachment_lagged", "session_unavailable", "operation_unavailable", "permission_denied", "workspace_preview_binary", "workspace_preview_too_large", "workspace_registration_failed", "cleanup_incomplete", "service_closed"].includes(error.code as string));
     }
   } else assert.equal(v.outcome, null);
   return v;
@@ -58,12 +59,20 @@ export function validateProjection(kind: string, value: unknown) {
   assert.equal(root.protocolVersion, "loushang.execution/v1");
   assert.equal(root.resultType, kind); id(root.requestId, 128);
   if (kind === "snapshot") {
-    const result = object(root.result, ["serviceInstanceId", "source", "executions"]);
+    const goalCapabilities = ["supportsGoalProgress", "supportsGoalStart", "supportsInteractiveGoal", "supportsInteractiveGoalCommands", "supportsInteractiveGoalRecovery"].filter(
+      (field) => root.result !== null && typeof root.result === "object" && field in root.result,
+    );
+    const result = object(root.result, ["serviceInstanceId", "source", "executions", ...goalCapabilities]);
+    for (const flag of goalCapabilities) assert.equal(result[flag], true);
+    if (result.supportsInteractiveGoalCommands) assert.equal(result.supportsInteractiveGoal, true);
     id(result.serviceInstanceId, 128);
     const source = object(result.source, ["source", "observation", "draft", "truncated"]);
-    const hasMode = source.source !== null && typeof source.source === "object" && "submissionMode" in source.source;
-    const s = object(source.source, ["identity", "title", "cursor", "revision", "running", "records", ...(hasMode ? ["submissionMode"] : [])]);
-    if (hasMode) assert.equal(s.submissionMode, "execution");
+    const optionalFields = ["submissionMode", "userChoice"].filter(
+      (field) => source.source !== null && typeof source.source === "object" && field in source.source,
+    );
+    const s = object(source.source, ["identity", "title", "cursor", "revision", "running", "records", ...optionalFields]);
+    if ("submissionMode" in s) assert.equal(s.submissionMode, "execution");
+    if ("userChoice" in s) validateUserChoice(s.userChoice);
     identity(s.identity); counter(s.cursor); counter(s.revision);
     assert(typeof s.title === "string" && s.title.trim() && [...s.title].length <= 256);
     assert(typeof s.running === "boolean" && typeof source.truncated === "boolean");

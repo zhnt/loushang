@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
@@ -38,9 +38,6 @@ from loushang.harness.worker.history._opt_in import (
 from loushang.harness.worker.history._opt_in_store import OptInJournal
 
 from .package_product_worker_policy import CodingWorkerOptInV1
-
-if TYPE_CHECKING:
-    pass
 
 _STEM = "worker-opt-in"
 
@@ -100,12 +97,6 @@ def _decode_coding_worker_opt_in_history(
         max_events=_MAX_EVENTS,
         max_segment_bytes=_MAX_SEGMENT_BYTES,
     )
-
-
-def _validate_opt_in_events(
-    events: tuple[CodingWorkerOptInDecisionV1, ...], *, scope_id: str
-) -> None:
-    _fold_opt_in_events(events, scope_id=scope_id)
 
 
 def _fold_opt_in_events(

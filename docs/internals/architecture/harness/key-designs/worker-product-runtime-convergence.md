@@ -951,3 +951,14 @@ SHA断言，不夸称其有该自守卫。所有原期待只读，下一步不�
 已回收终态后，接受本三源及明确+196成本；运行报告读取时尚pending的类型/
 existing结果由Root按上述真实终态关闭，不改写旧报告时点。正式处分为树外
 `final-code-acceptance.json`，仅本片有界采用，不替代完整Goal验收或用户KD011图审。
+
+
+## A204 Receipt Authority Implementation
+
+The complete Product receipt and adjacent Windows opt-in coordinator now executes
+in the existing Package Product family. Actual Code values, constructors, policy
+and necessary public nominal facades remain Code; original Worker History and
+native programs are reused. This bounded implementation does not expand default
+Worker/native gates. See [receipt authority convergence](worker-receipt-authority-convergence.md)
+for ownership, the A178 historical cost decision, complete A204 costs and finite
+behavior/data validation limits.

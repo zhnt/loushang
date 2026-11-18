@@ -348,3 +348,45 @@ and AI barrier evidence remains
 - no persistence of provider credentials or arbitrary runtime objects;
 - no forced migration of v1 compaction records; and
 - no PR9 explain/diff/DOT or multi-Product aggregation work.
+
+## Bound Product Profile Retirement (A176)
+
+`AgentProductSession._retire_session_profile_owners` owns the complete optional
+profile retirement program. Coding's existing override supplies six literal
+attribute-name bindings and its diagnostic label. The program reads the same
+owner references at their original points; it does not capture an early context
+or introduce a registry, Task, phase grammar, mirror state or default Core rule.
+The default Core constructor and original profile-close method remain unchanged.
+
+The original Core method still owns its model-call/Graph retirement Task and
+cancellation-atomic join. The new program calls that actual method through
+`AgentProductSession._dispose_session_runtime_profile(self)` at the original
+late point. A lexical `super()` from this new location would skip that wrapper;
+a virtual call on `self` would recurse into the Product adapter. Neither is used.
+The current concrete MRO and existing Core class-method patch seam are preserved;
+arbitrary new multiple inheritance and private reflection locations are outside
+this implementation-placement proof.
+
+The existing deferred slot closes before any parent retirement. Failed child
+close retains every later dependency. After successful child close, a narrow
+Coding hook clears its access field and returns the existing management cleanup;
+Core invokes that callback at the original point, and a cleanup failure still
+stops later retirement. Worker registration rollback/disposal then precedes the
+original Core close. Worker/Core errors retain identity and notes, while the
+remaining evidence and Sandbox cleanup follow their original failure barriers.
+
+Base publication retirement requires no prior failure and the original lease,
+receipt and retirement predicates. Capability evidence closes even with a prior
+failure, but publication/qualification/management/private-state release requires
+a clean result. Only after all of those succeed does the second Coding hook
+clear the two original domain access/capture fields. Base evidence and Sandbox
+are still attempted after later failures. Qualification reads the live Core
+Graph and owner-generation fields at the original point.
+
+The actual RegistrationLease, OwnerPublication, published-composition cleanup,
+Graph and Sandbox owners are reused. One readonly base-evidence role contains
+only management-lease presence and close. Deferred-slot typing erases its
+candidate parameter locally only for `close`; no candidate is read, written,
+activated or newly admitted. Coding's BaseAssembly `close` implementation remains
+an existing dependency and is not credited as migrated by A176. The broader
+P1–P4 convergence and its remaining domain/owner boundaries stay open.

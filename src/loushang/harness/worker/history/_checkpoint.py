@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
@@ -21,6 +22,7 @@ def _sorted_unique(values: tuple[str, ...]) -> bool:
     return type(values) is tuple and values == tuple(sorted(set(values)))
 
 
+@dataclass(frozen=True, init=False, repr=False, eq=False)
 class _CheckpointMethods:
     __slots__ = ()
 

@@ -116,7 +116,7 @@ def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies
                 project_imports.add("loushang.coding.hosted_bootstrap")
             elif node.module.startswith("loushang."):
                 project_imports.add(node.module)
-    assert project_imports == {
+    expected_imports = {
         "loushang.apphost.launcher", "loushang.appserver.protocol",
         "loushang.appserver.protocol.connection_profile",
         "loushang.hosting.contracts", "loushang.hosting.runtime",
@@ -125,6 +125,11 @@ def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies
         "loushang.harnesstui.conversation.theme",
         "loushang.coding.hosted_bootstrap",
     }
+    # A180: accept the migrated exact imports as well as the original source.
+    control = "loushang.apphost.integrations._foreground_client_control"
+    if control in project_imports:
+        expected_imports |= {control, "loushang.appserver.client"}
+    assert project_imports == expected_imports
     for entry in (
         "src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py", "src/loushang/coding/ui/cli.py",
         "src/loushang/coding/__init__.py", "src/loushang/coding/cli/__init__.py",

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import sys
 
-from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
+from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.package_product._linux_worker_history import (
+    retire_product_history,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -22,9 +25,6 @@ from loushang.harness.worker.history._read_v2 import (
 from .package_product_worker_history_read_v2 import (
     _HISTORY_READER,
 )
-from .package_product_worker_history_v2_names import (
-    DELETION_LEDGER_NAME,
-)
 
 _HISTORY_PUBLICATION = HistoryPublication(_HISTORY_READER)
 
@@ -35,13 +35,10 @@ class CodingWorkerV2RetirementError(RuntimeError):
         self.code = code
 
 
-def retire_coding_worker_v2_history_under_guard(rooted: RootedFile) -> bool:
-    """Write exact deletion debt before unlinking any retired source bytes."""
+def _retirement_limits() -> dict[str, int]:
     from . import package_product_worker_history_stage_v2 as preparation
 
-    return _HISTORY_PUBLICATION.retire_under_guard(
-        rooted,
-        error_type=CodingWorkerV2RetirementError,
+    return dict(
         max_segment_bytes=_MAX_SEGMENT_BYTES,
         max_head_bytes=_MAX_HEAD_BYTES,
         max_ledger_bytes=_MAX_LEDGER_BYTES,
@@ -49,6 +46,13 @@ def retire_coding_worker_v2_history_under_guard(rooted: RootedFile) -> bool:
         max_base_bytes=preparation._MAX_BASE_BYTES,
         max_stream_bytes=preparation._MAX_STREAM_BYTES,
         max_index_bytes=preparation._MAX_INDEX_BYTES,
+    )
+
+
+def retire_coding_worker_v2_history_under_guard(rooted: RootedFile) -> bool:
+    """Write exact deletion debt before unlinking any retired source bytes."""
+    return _HISTORY_PUBLICATION.retire_under_guard(
+        rooted, error_type=CodingWorkerV2RetirementError, **_retirement_limits()
     )
 
 
@@ -63,22 +67,12 @@ def retire_coding_product_worker_v2_history(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Coding Worker V2 retirement requires its Linux Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise CodingWorkerV2RetirementError("coding_worker_v2_runtime_active")
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with product.pinned_state_root_gc_read() as root_fd:
-                with RootedFileIO(product.state_root, root_fd) as file_io:
-                    with file_io.bind(
-                        product.state_root / DELETION_LEDGER_NAME, durable=True
-                    ) as rooted:
-                        result = retire_coding_worker_v2_history_under_guard(rooted)
-            product.assert_root_gc_authority_current()
-            return result
+    return retire_product_history(
+        product,
+        publication=_HISTORY_PUBLICATION,
+        error_type=CodingWorkerV2RetirementError,
+        limits=_retirement_limits,
+    )
 
 
 __all__ = [

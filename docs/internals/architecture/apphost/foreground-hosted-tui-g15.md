@@ -52,13 +52,16 @@ the baseline separately from planned files:
   loop alongside the state, reducer, controller and shared conversation view.
   Its installed `loushang-mux attach` borrows an independently connected client;
   this is not a G15 launch owner.
-- G17 composes AppHost A0.5's optional launch owner into the foreground client;
-  entry re-review passed and native acceptance remains pending. Existing `loushang`
-  and `loushang-tui` remain Embedded routes.
+- G17 composes AppHost A0.5's optional launch owner into the foreground client.
+  A180 places its complete client control and Runner recovery in an optional
+  AppHost integration; Code keeps admission and thin Product/UI bindings.
+  Existing `loushang` and `loushang-tui` remain Embedded routes.
 - AppClient's legacy required surface has no resumable-Session listing operation.
   G17 adds the separate optional discovery contract, codec and profile checks,
   Product catalog reads, AppService discovery views and the client picker.
-  Their local gates pass; installed foreground workflow evidence is pending.
+  Historical installed/native acceptance is recorded in the
+  [G17 acceptance record](hosted-session-workflow-g17-acceptance-record.md);
+  A180's local refactor checks do not renew that platform evidence.
 
 The older named-mux proposal informs UI behavior, not current implementation
 status. In particular its detachable lifetime cannot be applied to G14 pipes.

@@ -36,6 +36,9 @@ from .package_private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
     CodingArchPrivateDataDeletionJournal,
 )
+from .package_private_data_deletion_journal import (
+    _tombstone_name as _tombstone_name,
+)
 from .package_private_data_deletion_preview import (
     CodingArchPrivateDataDeletionPreview,
     _capture_target_snapshot,
@@ -114,33 +117,19 @@ class CodingArchPrivateDataDeletionOwner:
                 != "absent"
             ):
                 raise ValueError("Coding Arch Installation must be removed first")
-            replay = self.journal.receipt_for(plan, confirmation)
-            if replay is not None:
-                return replay
-            started = self.journal.current_start()
-            if started is None:
-                target = _capture_target_snapshot(
+            return self.journal.execute_deletion(
+                plan,
+                confirmation,
+                capture_target=lambda: _capture_target_snapshot(
                     root, private_base=self.layout.private_data_base
-                )
-                if plan.target_id != target.target_id:
-                    raise ValueError("Coding Arch private-data deletion plan is stale")
-                started = self.journal.record_start(plan, confirmation, target)
-            elif started.plan != plan or started.confirmation != confirmation:
-                raise ValueError("Another private-data deletion is unfinished")
-            disposition, terminal_start = _delete_started(
-                root, started, self.layout.private_data_base, self.journal
+                ),
+                remove_started=lambda started: _delete_started(
+                    root, started, self.layout.private_data_base, self.journal
+                ),
+                receipt_id=lambda: _receipt_id(plan, confirmation),
+                stale_message="Coding Arch private-data deletion plan is stale",
+                unfinished_message="Another private-data deletion is unfinished",
             )
-            receipt = PluginPrivateDataDeletionReceiptV1(
-                installation_key=plan.installation_key,
-                owner_id=plan.owner_id,
-                target_id=plan.target_id,
-                plan_fingerprint=plan.fingerprint,
-                confirmation_id=confirmation.confirmation_id,
-                receipt_id=_receipt_id(plan, confirmation),
-                disposition=disposition,
-            )
-            self.journal.record_completion(terminal_start, receipt)
-            return receipt
 
     @property
     def _preview(self) -> CodingArchPrivateDataDeletionPreview:
@@ -161,16 +150,6 @@ def _delete_started(
         make_tombstone_name=lambda: _tombstone_name(started),
         record_renamed=journal.record_renamed,
     )
-
-
-def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:
-    digest = sha256(
-        b"loushang.coding-arch-private-data-tombstone/v1\0"
-        + started.plan.fingerprint.encode("ascii")
-        + b"\0"
-        + started.confirmation.confirmation_id.encode("utf-8")
-    ).hexdigest()
-    return ".deleting-" + digest
 
 
 def _receipt_id(

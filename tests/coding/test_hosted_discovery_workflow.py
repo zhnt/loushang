@@ -48,7 +48,7 @@ def test_hosted_resume_activates_once_from_stable_execution_input(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
     monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(tmp_path / "runtime"))
     monkeypatch.setattr(
-        "loushang.coding.hosted_bootstrap._services",
+        "loushang.coding.hosted_bootstrap.create_hosted_services",
         lambda cwd: create_services(
             settings_manager=SettingsManager(
                 global_settings_path=tmp_path / "settings.json",
@@ -248,7 +248,7 @@ def test_hosted_execution_profile_preserves_cross_platform_legacy_resume(
 def test_G17_PRODUCT_discover_resume_interact_and_recover_without_replay(
     tmp_path, monkeypatch, kind, scoped,
 ):
-    monkeypatch.setattr("loushang.coding.hosted_bootstrap._services", lambda cwd: create_services(
+    monkeypatch.setattr("loushang.coding.hosted_bootstrap.create_hosted_services", lambda cwd: create_services(
         settings_manager=SettingsManager(
             global_settings_path=tmp_path / "settings.json",
             project_settings_path=cwd / ".loushang" / "settings.json",

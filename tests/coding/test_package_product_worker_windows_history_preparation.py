@@ -15,6 +15,7 @@ import pytest
 from loushang.coding import (
     package_product_worker_windows_history_preparation as preparation,
 )
+from loushang.coding import package_product_worker_windows_history_sources as sources
 from loushang.coding.package_product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
@@ -216,7 +217,7 @@ def test_windows_worker_preparation_rechecks_before_staged_publication() -> None
             side_effect=lambda _path, raw, **_kw: writes.append(raw),
         ),
         patch.object(
-            preparation,
+            sources,
             "_capture_coding_windows_worker_history_sources_under_gc_guard",
             changed_source,
         ),

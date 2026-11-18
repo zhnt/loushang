@@ -90,13 +90,25 @@ def test_G13_DEPENDENCY_DIRECTION_keeps_core_and_mechanism_owners_independent() 
     assert not _has(facade, "loushang.apphost.application")
     assert not _has(facade, "loushang.apphost.continuity")
 
-    coding_tree = ast.parse(_read(CODING_CONTINUITY))
+    open_path = CODING_CONTINUITY
+    coding_tree = ast.parse(_read(open_path))
     open_once = next(
-        node
-        for node in ast.walk(coding_tree)
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_open_once"
+        (
+            node
+            for node in ast.walk(coding_tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "_open_once"
+        ),
+        None,
     )
-    open_source = ast.get_source_segment(_read(CODING_CONTINUITY), open_once)
+    if open_once is None:
+        open_path = APPHOST / "integrations/_continuity_preparation.py"
+        owner_tree = ast.parse(_read(open_path))
+        open_once = next(
+            node
+            for node in ast.walk(owner_tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "_open_once"
+        )
+    open_source = ast.get_source_segment(_read(open_path), open_once)
     assert open_source is not None
     assert open_source.index("self._request.store.acquire(") < open_source.index(
         "AppHostCatalogV1.admit("

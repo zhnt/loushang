@@ -9,7 +9,7 @@ const markdown = [
   "",
   "## 表格与代码",
   "",
-  "> 引用使用柔和的底色与左侧分隔线。",
+  "> 引用使用左侧引导线。",
   "",
   `| ${columns.join(" | ")} |`,
   `| ${columns.map(() => "---").join(" | ")} |`,
@@ -24,6 +24,11 @@ const markdown = [
   "",
   "- 列表项有独立的行间距。",
   "- 输入框上方保留可滚动的留白。",
+  "  - Nested lists keep their own indentation.",
+  "",
+  "The current Workspace determines which files the assistant can reference. ".repeat(12),
+  "",
+  "中英文混排需要保留正文的阅读节奏，代码和路径也需要在窄窗口里换行。".repeat(12),
 ].join("\n");
 
 async function showSample(page: Page) {
@@ -53,6 +58,10 @@ async function showSample(page: Page) {
               status: "idle",
               run: null,
               changeSet: null,
+              execution: {
+                id: "preview-execution", status: "succeeded", revision: 1, interruptRequested: false,
+                sourceStatus: "succeeded", finalCursor: null, truncated: false,
+              },
               messages: [
                 { id: "preview-short", role: "user", content: "介绍北京天气", phase: "complete" },
                 { id: "preview-long", role: "user", content: ${JSON.stringify(longPrompt)}, phase: "complete" },
@@ -78,11 +87,11 @@ async function openSettings(page: Page) {
 }
 
 test("app appearance includes the shell, settings, and Markdown while preserving the reading layout", async ({ page }, info) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 2300, height: 900 });
   await page.emulateMedia({ colorScheme: "light" });
   await showSample(page);
   await page.getByRole("button", { name: "Toggle sidebar" }).click();
-  await page.getByRole("button", { name: "Toggle environment" }).click();
+  await page.getByRole("button", { name: "Open Work Dock" }).click();
   const body = page.locator(".markdown-body");
   const reading = page.locator(".markdown-reading");
   const composer = page.locator(".composer");
@@ -106,20 +115,61 @@ test("app appearance includes the shell, settings, and Markdown while preserving
     has: page.getByText("介绍北京天气", { exact: true }),
   });
   const longBubble = page.getByRole("article", { name: "user message" }).filter({ hasText: longPrompt });
-  const [shortBox, longBox, composerBox] = await Promise.all([shortBubble.boundingBox(), longBubble.boundingBox(), composer.boundingBox()]);
+  const status = reading.locator(".execution-summary");
+  await expect(status).toHaveAccessibleName("Execution succeeded");
+  const [shortBox, longBox, composerBox, replyBox, statusBox] = await Promise.all([
+    shortBubble.boundingBox(), longBubble.boundingBox(), composer.boundingBox(), body.boundingBox(), status.boundingBox(),
+  ]);
+  expect(Math.abs(statusBox!.x - replyBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(composerBox!.x - replyBox!.x)).toBeLessThanOrEqual(1);
   expect(shortBox!.width).toBeLessThan(200);
   expect(longBox!.width).toBeLessThanOrEqual(composerBox!.width * 0.74 + 1);
   expect(longBox!.height).toBeGreaterThan(shortBox!.height);
   for (const box of [shortBox!, longBox!]) {
     expect(Math.abs(box.x + box.width - (composerBox!.x + composerBox!.width))).toBeLessThanOrEqual(1);
   }
-  await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
-  await expect(body).toHaveCSS("font-size", "15px");
-  await expect(body.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "22px");
-  await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("margin-block-start", "24px");
-  await expect(body.getByRole("columnheader").first()).toHaveCSS("background-color", "rgb(245, 245, 244)");
+  await expect(body).toHaveCSS("color", "rgb(37, 39, 42)");
+  await expect(body).toHaveCSS("font-size", "14px");
+  await expect(body).toHaveCSS("line-height", "23px");
+  await expect(body.locator("strong")).toHaveCSS("font-weight", "500");
+  await expect(body.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "20px");
+  await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("margin-block-start", "22px");
+  await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("border-block-end-width", "0px");
+  await expect(body.getByRole("columnheader").first()).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(body.locator("pre")).toHaveCSS("font-size", "13.5px");
-  await expect(reading).toHaveCSS("padding-bottom", "40px");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await body.getByRole("button", { name: "Copy code" }).click();
+  await expect(body.getByText("Copied", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await body.locator("pre").textContent());
+  const toolbar = reading.locator(".reply-actions");
+  const copyReply = toolbar.getByRole("button", { name: "Copy reply" });
+  await expect(toolbar).toHaveCSS("position", "absolute");
+  const [toolbarBox, contentBox] = await Promise.all([toolbar.boundingBox(), body.boundingBox()]);
+  expect(toolbarBox!.x).toBeGreaterThanOrEqual(contentBox!.x + contentBox!.width - 1);
+  expect(toolbarBox!.y + toolbarBox!.height).toBeCloseTo(contentBox!.y + contentBox!.height, 0);
+  await input.focus();
+  await composer.hover();
+  await expect(toolbar).toHaveCSS("opacity", "0");
+  await body.hover();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  await copyReply.focus();
+  await composer.hover();
+  await expect(toolbar).toHaveCSS("opacity", "1");
+  await copyReply.press("Enter");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(markdown);
+  await expect(toolbar.getByRole("status")).toHaveText("Copied");
+  await expect(toolbar.getByRole("status")).toHaveText("");
+  await page.evaluate(() => Object.defineProperty(navigator.clipboard, "writeText", {
+    value: () => Promise.reject(new Error("Clipboard unavailable")), configurable: true,
+  }));
+  await body.getByRole("button", { name: "Copy code" }).click();
+  await expect(body.getByRole("status")).toHaveText("Could not copy");
+  await page.evaluate(() => Reflect.deleteProperty(navigator.clipboard, "writeText"));
+  await reading.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const lastParagraph = body.locator(":scope > p").last();
+  await expect(lastParagraph).toBeInViewport({ ratio: 1 });
+  const lastLineBox = (await lastParagraph.boundingBox())!;
+  expect(lastLineBox.y + lastLineBox.height).toBeLessThan((await composer.boundingBox())!.y);
   expect((await body.boundingBox())!.width).toBeCloseTo(760, 0);
   await reading.evaluate((element) => { element.scrollTop = 0; });
   await page.screenshot({ path: info.outputPath("loushang-minimal-light.png"), fullPage: true });
@@ -160,18 +210,18 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await expect(appearance).toHaveText("Dark");
   await selectAppearance("Follow system");
   await page.keyboard.press("Escape");
-  await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
+  await expect(body).toHaveCSS("color", "rgb(37, 39, 42)");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
   await openSettings(page);
   await selectAppearance("Light");
-  await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
+  await expect(body).toHaveCSS("color", "rgb(37, 39, 42)");
   await selectAppearance("Follow system");
   await page.keyboard.press("Escape");
 
   await page.setViewportSize({ width: 700, height: 900 });
   await page.getByRole("button", { name: "Toggle sidebar" }).click();
-  await page.getByRole("button", { name: "Toggle environment" }).click();
+  await page.getByRole("button", { name: "Open Work Dock" }).click();
   for (const block of [body.locator(".markdown-table"), body.locator("pre")]) {
     expect(await block.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     await block.evaluate((element) => { element.scrollLeft = 64; });
@@ -191,4 +241,20 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await expect(reading).toHaveAttribute("data-markdown-theme", "loushang-minimal");
   await expect(page.locator("html")).toHaveAttribute("data-appearance", "system");
   await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
+});
+
+test.describe("touch reading", () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 700, height: 900 } });
+
+  test("keeps the reply copy action available without hover", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await showSample(page);
+    const toolbar = page.locator(".reply-actions");
+    const copy = toolbar.getByRole("button", { name: "Copy reply" });
+    await expect(toolbar).toHaveCSS("opacity", "1");
+    expect((await copy.boundingBox())!.height).toBeGreaterThanOrEqual(36);
+    await copy.tap();
+    await expect(toolbar.getByRole("status")).toHaveText("Copied");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(markdown);
+  });
 });

@@ -6,12 +6,9 @@ Capability publication, and public Worker authoring remain separate gates.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
@@ -24,17 +21,22 @@ from loushang.harness.journal import (
 from loushang.harness.journal._rooted_io import (
     RootedFile,
 )
+from loushang.harness.package_product._worker_product_authority import (
+    _PosixWorkerProductReceiptAuthority,
+    _ProductWorkerReceiptAuthority,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductSessionOwner,
-    WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeActivationError,
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.package_product.product_worker_candidate import (
-    verify_product_selected_worker_candidate,
+    ProductWorkerNativeClosureFacts,
+    ProductWorkerOptInFacts,
+    ProductWorkerSelectedPayloadFacts,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
@@ -43,11 +45,8 @@ from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
     PackageProductSelectedRootReader,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
-    PackagePhysicalStagingError,
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWheelPolicy,
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginLocalWorkerConfiguration,
@@ -132,7 +131,7 @@ class CodingWorkerReceiptError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerSelectedPayloadV1:
+class CodingWorkerSelectedPayloadV1(ProductWorkerSelectedPayloadFacts):
     """Fresh Product Store bytes for one receipt; no executable authority."""
 
     configuration: PluginLocalWorkerConfiguration
@@ -202,81 +201,62 @@ class _WorkerOptInReader(Protocol):
     def current(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None: ...
 
 
-class _CodingWorkerReceiptAuthority:
-    """Check the current Coding receipt and its operator-approved owner."""
+class _CodingWorkerReceiptAuthority(
+    _ProductWorkerReceiptAuthority[CodingWorkerSelectedPayloadV1]
+):
+    _receipt_error = CodingWorkerReceiptError
+    _error_prefix = "coding_worker_"
+    _product_id = "coding"
+    _max_files = 64
+    _max_total_bytes = 16 * 1024 * 1024
+    _opt_in_type = CodingWorkerOptInV1
+    _native_closure_type = CodingWorkerNativeClosureV1
+    _native_profile_id = CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
 
-    _product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
-    _runtime: PackageProductRuntimeBindingV1
-    _selected: PackageProductSelectedPluginManifestV1
-    _opt_in: _WorkerOptInReader
-    _stale_derivation_errors: ClassVar[tuple[type[Exception], ...]]
+    def _make_payload(
+        self, *, configuration: PluginLocalWorkerConfiguration, body: bytes, digest: str
+    ) -> CodingWorkerSelectedPayloadV1:
+        return CodingWorkerSelectedPayloadV1(
+            configuration=configuration, body=body, digest=digest
+        )
 
-    def _read_current_receipt_record(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerReceiptRecordV1 | None:
-        raise NotImplementedError
-
-    def _derive(self, opt_in: object) -> ProductWorkerActivationPolicyV1 | None:
-        raise NotImplementedError
-
-    def current_witness(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> ActivationWitness:
-        """Reject fabricated, replaced, revoked, or stale Product receipts."""
-
-        with self._product.gc_gate.guard():
-            if (
-                not isinstance(receipt, ProductWorkerActivationReceiptV1)
-                or receipt.policy.session_id != self._runtime.session_id
-                or receipt.policy.product_runtime_id != self._runtime.product_runtime_id
-                or receipt.policy.plugin_id
-                != self._selected.snapshot.installation_key.plugin_id
-            ):
-                return _STALE_WITNESS
-            record = self._read_current_receipt_record(receipt)
-            if record is None or record.receipt != receipt:
-                return _STALE_WITNESS
-            decision = self._opt_in.current(receipt.policy.plugin_id)
-            if (
-                decision is None
-                or decision.action != "allow"
-                or decision.decision_digest != record.opt_in_decision_digest
-            ):
-                return _STALE_WITNESS
-            try:
-                current_policy = self._derive(decision.opt_in)
-            except self._stale_derivation_errors:
-                return _STALE_WITNESS
-            if (
-                current_policy is None
-                or current_policy.fingerprint != receipt.policy.fingerprint
-            ):
-                return _STALE_WITNESS
-            return receipt.authority_witness
-
-    def current_worker_owner_id(self, receipt: ProductWorkerActivationReceiptV1) -> str:
-        """Resolve the accepted domain owner without accepting caller input."""
-
-        with self._product.gc_gate.guard():
-            if (
-                not isinstance(receipt, ProductWorkerActivationReceiptV1)
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            decision = self._opt_in.current(receipt.policy.plugin_id)
-            if (
-                decision is None
-                or decision.action != "allow"
-                or not isinstance(decision.opt_in, CodingWorkerOptInV1)
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            return decision.opt_in.owner_id
+    def _derive_domain_policy(
+        self,
+        *,
+        runtime: PackageProductRuntimeBindingV1,
+        product_policy: PackageProductLocalWheelPolicy,
+        selected: PackageProductSelectedPluginManifestV1,
+        session_id: str,
+        product_runtime_id: str,
+        opt_in: ProductWorkerOptInFacts,
+        native_closure: ProductWorkerNativeClosureFacts,
+        session_discovery: SessionDiscoveryMetadata | None,
+    ) -> ProductWorkerActivationPolicyV1 | None:
+        return derive_coding_selected_worker_policy(
+            runtime=runtime,
+            product_policy=product_policy,
+            selected=selected,
+            session_id=session_id,
+            product_runtime_id=product_runtime_id,
+            opt_in=cast(CodingWorkerOptInV1, opt_in),
+            native_closure=cast(CodingWorkerNativeClosureV1, native_closure),
+            session_discovery=session_discovery,
+        )
 
 
 class CodingWorkerProductReceiptOwner(
-    _CodingReceiptHistory, _CodingWorkerReceiptAuthority
+    _CodingReceiptHistory,
+    _PosixWorkerProductReceiptAuthority[
+        CodingWorkerReceiptRecordV1,
+        CodingWorkerSelectedPayloadV1,
+        CodingWorkerNativeLaunchMaterialV1,
+    ],
+    _CodingWorkerReceiptAuthority,
 ):
-    """Issue and recheck one Product-owned receipt under the GC/Desired gate."""
+    """Issue/recheck through the original storage and Core authority."""
+
+    _native_reader_type = CodingProductInstalledWorkerReleaseReader
+    _native_error = CodingWorkerNativeClosureReadError
 
     _stale_derivation_errors = (
         CodingWorkerPolicySelectionError,
@@ -337,35 +317,6 @@ class CodingWorkerProductReceiptOwner(
             access=_CodingHistoryAccess(product_owner),
         )
 
-    @property
-    def path(self) -> Path:
-        return self._path
-
-    @property
-    def product_owner(self) -> PosixLocalWheelProductSessionOwner:
-        return self._product
-
-    @property
-    def product_runtime(self) -> PackageProductRuntimeBindingV1:
-        """The exact selected Product runtime bound when this receipt was issued."""
-
-        return self._runtime
-
-    def issue(self) -> ProductWorkerActivationReceiptV1 | None:
-        """Return Current on absent opt-in; otherwise issue one durable receipt."""
-
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            decision = self._opt_in.current(
-                self._selected.snapshot.installation_key.plugin_id
-            )
-            if decision is None or decision.action != "allow":
-                return None
-            policy = self._derive(decision.opt_in)
-            if policy is None:
-                return None
-            return self._issue_recorded_receipt(policy, decision)
-
     def _checkpoint_writer_fence(
         self, rooted: RootedFile
     ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
@@ -400,23 +351,24 @@ class CodingWorkerProductReceiptOwner(
             error_type=CodingWorkerReceiptError,
         )
 
-    @contextmanager
-    def serialized_admission(self) -> Iterator[None]:
-        """Hold the same Product selection gate through Worker first effect."""
-
-        with self._product.gc_gate.guard(require_write=True):
-            yield
-
-    def _read_current_receipt_record(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerReceiptRecordV1 | None:
-        self._product.assert_root_gc_authority_current()
-        return self._latest(
-            read_coding_product_worker_receipt_records(
-                self._product, retained_only=True
+    def latch_kill_switch(self, *, expected_generation: int) -> int:
+        """Persist revocation before the coordinator retires future requests."""
+        return self._latch_kill_switch(
+            expected_generation=expected_generation,
+            invalid_generation_message="Coding Worker kill-switch generation is invalid",
+            revoke=lambda plugin_id, operation_id, decision: self._opt_in.change(
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                expected_generation=decision.generation,
+                action="revoke",
+                opt_in=None,
             ),
-            receipt.policy,
         )
+
+    def _history_for_product(
+        self, product: PosixLocalWheelProductSessionOwner
+    ) -> ReceiptHistory[CodingWorkerReceiptRecordV1]:
+        return _receipt_history_for_product(product)
 
     def current_native_launch_material(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -427,251 +379,21 @@ class CodingWorkerProductReceiptOwner(
         activation coordinator must still hold admission through first effect.
         """
 
-        reader = self._native_closure_reader
-        if (
-            not isinstance(reader, CodingProductInstalledWorkerReleaseReader)
-            or reader.product_owner is not self._product
-        ):
-            raise CodingWorkerReceiptError("coding_worker_native_launch_unbound")
-        if (
-            not isinstance(receipt, ProductWorkerActivationReceiptV1)
-            or receipt.policy.native_profile_id
-            != CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
-        ):
-            raise CodingWorkerReceiptError("coding_worker_native_launch_unsupported")
-        with self._product.gc_gate.guard():
-            if self.current_witness(receipt) != receipt.authority_witness:
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            try:
-                material = reader.current_launch_material()
-            except CodingWorkerNativeClosureReadError as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_native_launch_material_stale"
-                ) from exc
-            if (
-                material.closure.native_profile_catalog_revision
-                != receipt.policy.native_profile_catalog_revision
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            return material
+        return super().current_native_launch_material(receipt)
 
     def current_selected_payload(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> CodingWorkerSelectedPayloadV1:
         """Reread the selected Store executable under the receipt/GC gate."""
 
-        with self._product.gc_gate.guard():
-            material = self.current_native_launch_material(receipt)
-            selected = self.current_selected_manifest(receipt)
-            candidate = verify_product_selected_worker_candidate(
-                selected,
-                contribution_id=receipt.policy.contribution_id,
-                native_platform="linux-x86_64",
-            )
-            manifest = selected.verified_manifest()
-            configuration = manifest.contribution_index.items[0].worker_configuration
-            assert configuration is not None
-            root = manifest.root_relative_path.as_posix()
-            prefix = "" if root == "." else f"{root}/"
-            body = dict(selected.snapshot.files).get(
-                f"{prefix}{configuration.entrypoint}"
-            )
-            if (
-                body is None
-                or material.closure.native_platform != "linux-x86_64"
-                or candidate.executable_digest != sha256(body).hexdigest()
-                or candidate.worker_configuration_fingerprint
-                != receipt.policy.worker_configuration_fingerprint
-                or selected.snapshot.root_ref.artifact_digest
-                != receipt.policy.plugin_revision_digest
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-            return CodingWorkerSelectedPayloadV1(
-                configuration=configuration,
-                body=body,
-                digest=candidate.executable_digest,
-            )
+        return super().current_selected_payload(receipt)
 
     def current_runtime_binding(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> tuple[CodingWorkerSelectedPayloadV1, CodingWorkerNativeLaunchMaterialV1, str]:
         """Capture one coherent selected payload, native release, and owner."""
 
-        reader = self._native_closure_reader
-        if (
-            not isinstance(reader, CodingProductInstalledWorkerReleaseReader)
-            or reader.product_owner is not self._product
-        ):
-            raise CodingWorkerReceiptError("coding_worker_native_launch_unbound")
-        if (
-            not isinstance(receipt, ProductWorkerActivationReceiptV1)
-            or receipt.policy.native_profile_id
-            != CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
-        ):
-            raise CodingWorkerReceiptError("coding_worker_native_launch_unsupported")
-        with self._product.gc_gate.guard():
-            if self.current_witness(receipt) != receipt.authority_witness:
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            try:
-                material = reader.current_launch_material()
-            except CodingWorkerNativeClosureReadError as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_native_launch_material_stale"
-                ) from exc
-            try:
-                selected = self._runtime.capture_selected_plugin_manifest_for(
-                    receipt.policy.plugin_id,
-                    max_files=64,
-                    max_total_bytes=16 * 1024 * 1024,
-                )
-            except (
-                PackagePhysicalStagingError,
-                PackageProductRuntimeActivationError,
-                PackageProductRuntimeReadError,
-            ) as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_selected_payload_stale"
-                ) from exc
-            if selected != self._selected:
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-            candidate = verify_product_selected_worker_candidate(
-                selected,
-                contribution_id=receipt.policy.contribution_id,
-                native_platform="linux-x86_64",
-            )
-            manifest = selected.verified_manifest()
-            configuration = manifest.contribution_index.items[0].worker_configuration
-            assert configuration is not None
-            root = manifest.root_relative_path.as_posix()
-            prefix = "" if root == "." else f"{root}/"
-            body = dict(selected.snapshot.files).get(
-                f"{prefix}{configuration.entrypoint}"
-            )
-            decision = self._opt_in.current(receipt.policy.plugin_id)
-            if (
-                body is None
-                or material.closure.native_platform != "linux-x86_64"
-                or material.closure.native_profile_catalog_revision
-                != receipt.policy.native_profile_catalog_revision
-                or candidate.executable_digest != sha256(body).hexdigest()
-                or candidate.worker_configuration_fingerprint
-                != receipt.policy.worker_configuration_fingerprint
-                or selected.snapshot.root_ref.artifact_digest
-                != receipt.policy.plugin_revision_digest
-                or decision is None
-                or decision.action != "allow"
-                or not isinstance(decision.opt_in, CodingWorkerOptInV1)
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-            return (
-                CodingWorkerSelectedPayloadV1(
-                    configuration=configuration,
-                    body=body,
-                    digest=candidate.executable_digest,
-                ),
-                material,
-                decision.opt_in.owner_id,
-            )
-
-    def current_selected_manifest(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> PackageProductSelectedPluginManifestV1:
-        """Reread the exact selected manifest under the receipt/GC gate."""
-
-        with self._product.gc_gate.guard():
-            if self.current_witness(receipt) != receipt.authority_witness:
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            try:
-                selected = self._runtime.capture_selected_plugin_manifest_for(
-                    receipt.policy.plugin_id,
-                    max_files=64,
-                    max_total_bytes=16 * 1024 * 1024,
-                )
-            except (
-                PackagePhysicalStagingError,
-                PackageProductRuntimeActivationError,
-                PackageProductRuntimeReadError,
-            ) as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_selected_payload_stale"
-                ) from exc
-            if selected != self._selected:
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-            return selected
-
-    def latch_kill_switch(self, *, expected_generation: int) -> int:
-        """Persist revocation before the coordinator retires future requests."""
-
-        if type(expected_generation) is not int or expected_generation < 0:
-            raise ValueError("Coding Worker kill-switch generation is invalid")
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            plugin_id = self._selected.snapshot.installation_key.plugin_id
-            decision = self._opt_in.current(plugin_id)
-            if decision is None:
-                raise CodingWorkerReceiptError("coding_worker_kill_switch_absent")
-            if (
-                decision.action == "revoke"
-                and decision.kill_switch_generation == expected_generation + 1
-            ):
-                return decision.kill_switch_generation
-            if (
-                decision.action != "allow"
-                or decision.kill_switch_generation != expected_generation
-            ):
-                raise CodingWorkerReceiptError("coding_worker_kill_switch_stale")
-            operation_id = (
-                "worker-kill-"
-                + sha256(
-                    canonical_json_bytes(
-                        {
-                            "scopeId": self._product.policy.project_scope_id,
-                            "pluginId": plugin_id,
-                            "expectedGeneration": expected_generation,
-                        }
-                    )
-                ).hexdigest()
-            )
-            revoked = self._opt_in.change(
-                plugin_id=plugin_id,
-                operation_id=operation_id,
-                expected_generation=decision.generation,
-                action="revoke",
-                opt_in=None,
-            )
-            return revoked.kill_switch_generation
-
-    def _derive(self, opt_in: object) -> ProductWorkerActivationPolicyV1 | None:
-        if not isinstance(opt_in, CodingWorkerOptInV1):
-            return None
-        session_id = self._runtime.session_id
-        runtime_id = self._runtime.product_runtime_id
-        assert session_id is not None and runtime_id is not None
-        native_closure = self._native_closure_reader.current_closure()
-        if not isinstance(native_closure, CodingWorkerNativeClosureV1):
-            raise CodingWorkerReceiptError("coding_worker_native_closure_invalid")
-        session_discovery = (
-            None
-            if self._session_discovery_reader is None
-            else self._session_discovery_reader.current_discovery()
-        )
-        if self._session_discovery_reader is not None and not isinstance(
-            session_discovery, SessionDiscoveryMetadata
-        ):
-            raise CodingWorkerReceiptError("coding_worker_session_discovery_invalid")
-        return derive_coding_selected_worker_policy(
-            runtime=self._runtime,
-            product_policy=self._product.policy,
-            selected=self._selected,
-            session_id=session_id,
-            product_runtime_id=runtime_id,
-            opt_in=opt_in,
-            native_closure=native_closure,
-            session_discovery=session_discovery,
-        )
+        return super().current_runtime_binding(receipt)
 
 
 def read_coding_product_worker_receipt_record(

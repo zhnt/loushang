@@ -86,11 +86,26 @@ move continuity authority into Hosting or AppServer.
 | --- | --- | --- |
 | `loushang.appservice.continuity` | immutable desired-state values, strict codec, store/lease ports, exact-root JSON adapter and record listing | Product generation, Session storage, AppHost routing, process/service records, attachments or UI |
 | `loushang.appservice.runtime` | optional commit-before-publish coordination, all-or-nothing restore, process-local live MuxSpace/Session owners | path discovery, file-lock mechanics, Product lookup, process continuity or transport |
-| `loushang.apphost.continuity` optional G13 edge | continuity activation, published recovery-attempt owner, lease lifetime, recoverable AppService construction and settlement after G12 owners | record schema, Product recovery policy, Hosting, listener or presentation |
+| `loushang.apphost.continuity` and private `integrations._continuity_preparation` optional G13 edge | continuity activation, published catalog-preparation/recovery attempts, shared fixed attempt control, lease lifetime and dependency-ordered settlement | record schema, Product recovery policy, Hosting, listener or presentation |
 | Product integration edge | current Product generation admission plus canonical resume implementation | generic continuity schema, mux policy, store path resolution or daemon control |
 | Product/Harness Session owner | transcript, Blob, Session and execution recovery truth | MuxSpace/application registry or store lease |
 | AppServer | future connection/listener owner | continuity store, recovery orchestration or process lifetime |
 | Hosting | future process/service mechanism | application record, AppService recovery or Session truth |
+
+A179 keeps the Product catalog-preparation and application-recovery attempts as
+two resource scopes on their original instances. The private optional
+`apphost.integrations._continuity_preparation` implements the preparation scope;
+it adds no owner instance, and `continuity` does not import it. The actual
+Runtime, inner attempt and shared fixed open/close controls remain in
+`continuity`. Product profiles retain exact request admission,
+workspace-readiness qualification and registration/resolver construction. The
+Core `_ownership` primitive settles complete failed construction; optional
+callers explicitly supply the original failure-first borrowed-Task join. Core
+retains its standard-library-only dependency boundary, and both concrete
+attempts retain their original fourteen slots and public signatures.
+The existing application/continuity module budgets and core dependency boundary
+remain unchanged. The old private Core void-join loop now uses the original
+Foundation cancellation-preserving primitive directly through shared close.
 
 The persistent directory is a catalog of desired records, not a service
 locator or a live application registry. “Several applications” means several
@@ -380,10 +395,11 @@ contract/evidence views found eight medium risks across the implementation
 pass and retained platform gate. All were fixed before closure:
 
 - **Architecture and authority:** the first Coding composition admitted its
-  AppHost catalog before acquiring the application lease. Coding now acquires
-  the exact lease as its first effect and transfers that capability into the
+  AppHost catalog before acquiring the application lease. The preparation owner
+  now acquires the exact lease before catalog admission and transfers it into the
   Product-neutral AppHost continuity attempt; Session recovery and every
-  mutation therefore occur only behind the one-writer fence.
+  application mutation therefore occur behind the one-writer fence. Workspace
+  metadata readiness can precede this lease and remains a separate owner call.
 - **Architecture and authority:** the continuity runtime constructor could be
   invoked without passing the explicit activation-bearing attempt. Runtime
   construction is now token-guarded, while AppHost's core facade, Hosting,

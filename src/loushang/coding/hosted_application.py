@@ -40,6 +40,7 @@ from loushang.apphost import (
 from loushang.apphost import (
     ScopedProductRuntimeV1 as ScopedProductRuntimeV1,
 )
+from loushang.apphost._ownership import _settle_failed_product_construction
 from loushang.apphost.application import (
     HostedApplicationActivationV1,
     HostedApplicationRequestV1,
@@ -224,7 +225,6 @@ class CodingForegroundProductFactoryV1(_ForegroundProductFactory[CodingHostedSes
 
     def __init__(self, factory: CodingForegroundSessionFactoryV1, *, session_owner: CodingHostedSessionOwnerV1 | None = None) -> None:
         super().__init__(factory, session_owner=session_owner)
-
 
 
 class _HostedProfileLease:
@@ -652,27 +652,13 @@ async def _settle_failed_construction(
     catalog: AppHostCatalogV1 | None,
     product_factory: CodingForegroundProductFactoryV1,
 ) -> None:
-    async def settle() -> None:
-        failures: list[BaseException] = []
-        if runtime is not None:
-            try:
-                await runtime.close()
-            except BaseException as error:
-                failures.append(error)
-        elif catalog is not None:
-            try:
-                await catalog.close()
-            except BaseException as error:
-                failures.append(error)
-        try:
-            await product_factory.close()
-        except BaseException as error:
-            failures.append(error)
-        if failures:
-            raise RuntimeError("coding_foreground_cleanup_incomplete") from None
-
-    task = asyncio.create_task(settle())
-    await await_owned_task(task)
+    await _settle_failed_product_construction(
+        runtime,
+        catalog,
+        product_factory,
+        error_code="coding_foreground_cleanup_incomplete",
+        join_owned=await_owned_task,
+    )
 
 
 async def _close_rejected_lease(
@@ -764,11 +750,13 @@ def _require_async_method(value: object, name: str) -> None:
 __all__ = [
     "CodingHostedSessionOwnerV1",
     "CODING_HOSTED_APPLICATION_MAX_CANDIDATES",
-    "CODING_HOSTED_APPLICATION_PROFILE_ID", "CODING_HOSTED_APPLICATION_PROFILE_VERSION",
+    "CODING_HOSTED_APPLICATION_PROFILE_ID",
+    "CODING_HOSTED_APPLICATION_PROFILE_VERSION",
     "CODING_MANAGED_APPLICATION_PROFILE_ID",
     "CodingAppHostHostedSessionResolverV1",
     "CodingForegroundHostedApplicationRequestV1",
-    "CodingForegroundProductFactoryV1", "CodingForegroundSessionFactoryV1",
+    "CodingForegroundProductFactoryV1",
+    "CodingForegroundSessionFactoryV1",
     "CodingHostedProfileFactoryV1",
     "create_coding_foreground_hosted_application",
 ]

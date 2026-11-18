@@ -10,12 +10,13 @@ from __future__ import annotations
 import os
 import re
 import stat
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from hashlib import sha256
 from pathlib import Path
-from typing import Generic, Protocol, Self, TypeVar
+from typing import Generic, Protocol, Self, TypeVar, cast
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -43,6 +44,10 @@ from loushang.harness.resources.plugins.declarations import (
     PluginLocalWorkerConfiguration,
 )
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
+from loushang.harness.worker._native_profile_bridge import (
+    _rebuild_windows_lpac_cleanup_spec,
+    _recover_windows_lpac_containment_cleanup,
+)
 from loushang.harness.worker._windows_provisioning_journal import (
     WindowsWorkerProvisioningAttemptV1,
     WindowsWorkerProvisioningStateJournal,
@@ -72,6 +77,12 @@ from loushang.harness.worker.payload._windows_stage_io import (
 from loushang.harness.worker.payload._windows_stage_io import identity as _file_identity
 from loushang.harness.worker.payload._windows_stage_retirement import close_opened
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
+from loushang.hosting import observe_windows_worker_job_absent
+from loushang.hosting.windows_backend_material import (
+    WINDOWS_LPAC_PLATFORM_IMPORTS,
+    WindowsBackendMaterialExpectationV1,
+    verify_windows_backend_material_expectation,
+)
 
 _PersistedCheckpointT = TypeVar("_PersistedCheckpointT")
 _PersistedBasesT = TypeVar("_PersistedBasesT")
@@ -1124,3 +1135,113 @@ def capture_windows_product_worker_partial_stage(
                     close_opened(opened)
             finally:
                 os.close(stage)
+
+
+class _PinnedRecoveryStore:
+    def __init__(self, journal: WindowsWorkerProvisioningStateJournal, root: int) -> None:
+        self._journal = journal
+        self._root = root
+
+    def load(self) -> Mapping[str, object] | None:
+        return self._journal.load(directory_fd=self._root)
+
+    def compare_and_swap(
+        self, *, expected_revision: int, document: Mapping[str, object]
+    ) -> bool:
+        return self._journal.compare_and_swap(
+            expected_revision=expected_revision,
+            document=document,
+            directory_fd=self._root,
+        )
+
+
+def settle_windows_product_worker_native_cleanup(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    stage_name: str,
+    attempt_id: str,
+    identity: Mapping[str, object],
+    expected_stage_identity: tuple[int, int],
+    material_expectation: WindowsBackendMaterialExpectationV1,
+    settlement_type: Callable[..., _ReviewT],
+) -> _ReviewT:
+    """Settle native debt only after the caller joins its Product recovery proof.
+
+    The caller retains its Package orphan guard and writable GC guard. Keep
+    the stage and pinned journal alive through final authority recheck and
+    nominal result construction; no launch, lease repair or stage deletion.
+    """
+    verify_windows_backend_material_expectation(material_expectation)
+    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+        stage = open_windows_directory(
+            stage_name,
+            dir_fd=root,
+            share_delete=False,
+            writable=False,
+            read_control=True,
+        )
+        try:
+            observed = os.fstat(stage)
+            visible = windows_stat_at(root, stage_name)
+            if (
+                (observed.st_dev, observed.st_ino)
+                != expected_stage_identity
+                or not os.path.samestat(observed, visible)
+            ):
+                raise ValueError("Windows Worker crash payload stage changed")
+            spec = _rebuild_windows_lpac_cleanup_spec(
+                identity=identity,
+                runtime_root=product.state_root / stage_name,
+                platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
+                owner_private_ancestors=True,
+            )
+            if observe_windows_worker_job_absent(
+                cast(str, identity["jobObjectName"])
+            ) is not True:
+                raise ValueError("Windows Worker crash Job is still present")
+            journal = WindowsWorkerProvisioningStateJournal(
+                product.state_root
+                / f"worker-native-provisioning-{attempt_id}.jsonl",
+                identity=identity,
+            )
+            _recover_windows_lpac_containment_cleanup(
+                identity=identity,
+                provision_spec=spec,
+                provisioning_state_store=_PinnedRecoveryStore(journal, root),
+            )
+            latest = journal.load(directory_fd=root)
+            if (
+                latest is None
+                or latest["phase"] != "settled"
+                or not isinstance(latest["witness"], dict)
+                or latest["witness"]["state"] != "SETTLED"
+            ):
+                raise ValueError("Windows Worker native cleanup did not settle")
+            product.assert_root_gc_authority_current()
+            return settlement_type(
+                attempt_id=attempt_id,
+                native_revision=cast(int, latest["stateRevision"]),
+                spec_fingerprint=cast(str, identity["specFingerprint"]),
+            )
+        finally:
+            os.close(stage)
+
+
+
+@contextmanager
+def windows_product_worker_offline_write(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    active_error: type[Exception],
+    active_message: str,
+) -> Iterator[PackageWindowsRuntimeQuiescenceV1]:
+    """Hold Package quiescence then writable GC for an admitted mutation."""
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as quiescence:
+        if quiescence.active_runtime_lease_ids:
+            raise active_error(active_message)
+        with product.gc_gate.guard(require_write=True):
+            product.assert_root_gc_authority_current()
+            yield quiescence

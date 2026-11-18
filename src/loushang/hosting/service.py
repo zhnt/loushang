@@ -298,10 +298,18 @@ def _close_fd(descriptor: int, *, primary: BaseException | None = None) -> None:
     try:
         os.close(descriptor)
     except BaseException as error:
-        if primary is not None:
+        if isinstance(primary, HostingError):
+            primary.cleanup_incomplete = True
+        elif isinstance(primary, (OSError, UnicodeError)):
+            failure = _error(HostingFailureCategory.PREPARATION_FAILED)
+            failure.cleanup_incomplete = True
+            raise failure from None
+        elif primary is not None:
             primary.add_note("service_observer_cleanup_incomplete")
         elif isinstance(error, Exception):
-            raise _error(HostingFailureCategory.CLEANUP_FAILED) from None
+            failure = _error(HostingFailureCategory.CLEANUP_FAILED)
+            failure.cleanup_incomplete = True
+            raise failure from None
         else:
             raise
 

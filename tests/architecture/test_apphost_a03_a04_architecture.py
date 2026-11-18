@@ -43,6 +43,7 @@ def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
         FOREGROUND,
         APPHOST / "local.py",
         APPHOST / "launcher.py",
+        APPHOST / "workspace_registry.py",
     }
     for path in CORE:
         for imported in _imports(path):
@@ -133,6 +134,14 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == Path("src/loushang/coding/_hosted_method_config.py")
             # COD-KD-HG-001: Goal values and shared safe Work projection.
             or consumer == Path("src/loushang/coding/hosted_goal.py")
+            or consumer in {
+                Path("src/loushang/coding/hosted_execution_goal.py"),
+                Path("src/loushang/coding/hosted_goal_commands.py"),
+                Path("src/loushang/coding/hosted_goal_recovery.py"),
+                Path("src/loushang/coding/hosted_goal_review.py"),
+                Path("src/loushang/coding/hosted_session_goal.py"),
+                Path("src/loushang/coding/hosted_user_choice.py"),
+            }
             or consumer == Path("src/loushang/coding/_hosted_work_observation.py")
             # Retained native execution and original subject borrow, no binder.
             or consumer == Path("src/loushang/coding/_hosted_execution_work.py")
@@ -148,6 +157,9 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == APPHOST / "local.py"
             or consumer == APPHOST / "launcher.py"
             or consumer == APPHOST / "integrations/session_control.py"
+            # A180: optional complete foreground control; no core facade edge.
+            or consumer == APPHOST / "integrations/_foreground_client_control.py"
+            or consumer == APPHOST / "integrations/_managed_mux_command.py"
             or consumer == APPHOST / "managed/connection.py"
             or consumer == APPHOST / "managed/coordinator.py"
             or consumer == APPHOST / "managed/mux_creation.py"
@@ -165,6 +177,8 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
                     or name.startswith("loushang.appserver.")
                 } <= {
                     "loushang.appserver.protocol",
+                    "loushang.appserver.protocol.AppErrorCodeV1",
+                    "loushang.appserver.protocol.AppServiceError",
                     "loushang.appserver.protocol.SessionAvailabilityV1",
                     "loushang.appserver.protocol.SessionCompatibilityV1",
                     "loushang.appserver.protocol.SessionDiscoveryCandidateV1",

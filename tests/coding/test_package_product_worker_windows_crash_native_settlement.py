@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 import loushang.coding.package_product_worker_windows_crash_native_settlement as settlement
+import loushang.harness.package_product._worker_windows_attempt as native_cleanup
 from loushang.coding.package_product_worker_windows_crash_cleanup_review import (
     CodingWindowsWorkerCrashCleanupReviewV1,
 )
@@ -124,7 +125,7 @@ def test_windows_crash_native_effect_requires_package_then_product_guards(
             return state["latest"]
 
     def native_effect(**arguments: object) -> None:
-        assert isinstance(arguments["provisioning_state_store"], settlement._PinnedRecoveryStore)
+        assert isinstance(arguments["provisioning_state_store"], native_cleanup._PinnedRecoveryStore)
         events.append("native.effect")
         state["latest"] = {
             "phase": "settled",
@@ -143,6 +144,7 @@ def test_windows_crash_native_effect_requires_package_then_product_guards(
             close=lambda _fd: events.append("stage.close"),
         ),
     )
+    monkeypatch.setattr(native_cleanup, "os", settlement.os)
     monkeypatch.setattr(settlement, "_review_under_gc_guard", lambda *_a, **_k: state["review"])
     monkeypatch.setattr(settlement, "_crash_cleanup_history_matches", lambda _r: True)
     monkeypatch.setattr(
@@ -151,27 +153,27 @@ def test_windows_crash_native_effect_requires_package_then_product_guards(
         lambda _p: (provisioned,),
     )
     monkeypatch.setattr(
-        settlement,
+        native_cleanup,
         "open_windows_directory",
         lambda *_a, **_k: events.append("stage.open") or 11,
     )
     monkeypatch.setattr(
-        settlement, "windows_stat_at", lambda *_a: SimpleNamespace(st_dev=1, st_ino=2)
+        native_cleanup, "windows_stat_at", lambda *_a: SimpleNamespace(st_dev=1, st_ino=2)
     )
-    monkeypatch.setattr(settlement, "_rebuild_windows_lpac_cleanup_spec", lambda **_k: object())
-    monkeypatch.setattr(settlement, "observe_windows_worker_job_absent", lambda _n: True)
+    monkeypatch.setattr(native_cleanup, "_rebuild_windows_lpac_cleanup_spec", lambda **_k: object())
+    monkeypatch.setattr(native_cleanup, "observe_windows_worker_job_absent", lambda _n: True)
     monkeypatch.setattr(
         settlement,
         "read_coding_windows_worker_installed_backend_release",
         lambda _p: SimpleNamespace(expectation="reviewed-backend"),
     )
     monkeypatch.setattr(
-        settlement,
+        native_cleanup,
         "verify_windows_backend_material_expectation",
         lambda value: events.append("backend.verify") if value == "reviewed-backend" else None,
     )
-    monkeypatch.setattr(settlement, "WindowsWorkerProvisioningStateJournal", Journal)
-    monkeypatch.setattr(settlement, "_recover_windows_lpac_containment_cleanup", native_effect)
+    monkeypatch.setattr(native_cleanup, "WindowsWorkerProvisioningStateJournal", Journal)
+    monkeypatch.setattr(native_cleanup, "_recover_windows_lpac_containment_cleanup", native_effect)
 
     product = Product()
     state["review"] = SimpleNamespace(attempt_id="changed")

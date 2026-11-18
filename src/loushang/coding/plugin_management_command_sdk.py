@@ -23,6 +23,7 @@ from loushang.harness.plugin_management.desired_command import (
     resume_plugin_desired_operation,
     submit_plugin_desired_command,
 )
+from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
 from ._plugin_lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -147,23 +148,14 @@ class CodingPluginManagementCommandClientV1:
         return ports
 
     def _assert_workspace_identity(self) -> None:
-        try:
-            metadata = self.workspace.lstat()
-            current = self.workspace.resolve(strict=True)
-        except OSError as exc:
-            raise CodingPluginManagementCommandSdkError(
+        assert_workspace_directory_identity(
+            self.workspace,
+            self.workspace_identity,
+            changed=lambda: CodingPluginManagementCommandSdkError(
                 "Coding management workspace changed",
                 code="coding_management_workspace_changed",
-            ) from exc
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or current != self.workspace
-            or (metadata.st_dev, metadata.st_ino) != self.workspace_identity
-        ):
-            raise CodingPluginManagementCommandSdkError(
-                "Coding management workspace changed",
-                code="coding_management_workspace_changed",
-            )
+            ),
+        )
 
     def _authority(self) -> PluginDesiredCommandAuthorityV1:
         actor_id, policy_revision = {

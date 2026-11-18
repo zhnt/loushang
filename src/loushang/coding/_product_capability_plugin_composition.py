@@ -19,6 +19,11 @@ from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.machine_resources.control_plane import (
     prepare_private_directory_chain,
 )
+from loushang.harness.package_product._selected_plugin_revisions import (
+    SelectedProductPreparationScope,
+    selected_runtime_recheck,
+    validate_preparation_lineage,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
@@ -180,7 +185,6 @@ def prepare_coding_builtin_product_composition(
     resume_parents: CodingResumePluginParents | None = None,
 ) -> CodingBuiltinProductCompositionPreparation:
     """Compile all first-party Product selections before binding host Providers."""
-
     if not isinstance(base_compilation, CodingBaseProductCompilation):
         raise TypeError("Coding Product base compilation is invalid")
     if not isinstance(session_id, str) or not session_id.strip():
@@ -189,28 +193,27 @@ def prepare_coding_builtin_product_composition(
         raise ValueError("Coding Product Capability configuration is invalid")
     specs = ordered_coding_capability_plugin_specs(configurations)
     if any(
-        not isinstance(configurations[spec.plugin_id], spec.configuration_type)
-        for spec in specs
+        (
+            not isinstance(configurations[spec.plugin_id], spec.configuration_type)
+            for spec in specs
+        )
     ):
         raise TypeError("Coding Product Capability configuration type is invalid")
     _read_clock(clock)
     root = _prepare_product_approval_state_root(state_root)
-
-    runtime = open_coding_product_builtin_resolution(
-        product_runtime,
-        capability_plugin_ids=tuple(spec.plugin_id for spec in specs),
-        external_data_plugin_ids=external_data_plugin_ids,
-    )
-    try:
-        selected = tuple(
-            product_runtime.capture_selected_plugin_manifest_for(
-                package.manifest.name,
-                max_files=_MAX_FILES,
-                max_total_bytes=_MAX_BYTES,
-            )
-            for package in runtime.packages
-        )
-        _validate_product_lineage(runtime, selected)
+    with SelectedProductPreparationScope(
+        product_runtime=product_runtime,
+        open_runtime=lambda: open_coding_product_builtin_resolution(
+            product_runtime,
+            capability_plugin_ids=tuple((spec.plugin_id for spec in specs)),
+            external_data_plugin_ids=external_data_plugin_ids,
+        ),
+        selection_id=lambda package: package.manifest.name,
+        selection_items=lambda runtime: runtime.packages,
+        maximum_files=lambda: _MAX_FILES,
+        maximum_bytes=lambda: _MAX_BYTES,
+        label="Coding Product Capability",
+    ) as (runtime, selected):
         by_id = {item.manifest.name: item for item in selected}
         base = by_id["coding.base"]
         if (
@@ -263,16 +266,12 @@ def prepare_coding_builtin_product_composition(
                 owner_candidates=_selected_store_owner_candidates(
                     selection,
                     base=base,
-                    selected=tuple(by_id[item] for item in external_data_plugin_ids),
+                    selected=tuple((by_id[item] for item in external_data_plugin_ids)),
                 ),
             ),
             evaluated_at=_read_clock(clock),
         )
-
-        def recheck_selected_revisions() -> None:
-            for package in runtime.packages:
-                package.revision_handle.verify()
-
+        recheck_selected_revisions = selected_runtime_recheck(runtime)
         capability_preparation = CodingCapabilityPluginCompositionPreparation(
             request=request,
             runtime=runtime,
@@ -294,23 +293,20 @@ def prepare_coding_builtin_product_composition(
                 base,
                 product.product_composition,
                 external_selected=tuple(
-                    by_id[plugin_id] for plugin_id in external_data_plugin_ids
+                    (by_id[plugin_id] for plugin_id in external_data_plugin_ids)
                 ),
             ),
             selected_capability_manifests=tuple(
-                by_id[plugin_id] for plugin_id in sorted(plugin_ids)
+                (by_id[plugin_id] for plugin_id in sorted(plugin_ids))
             ),
             selected_external_data_manifests=tuple(
-                by_id[plugin_id] for plugin_id in external_data_plugin_ids
+                (by_id[plugin_id] for plugin_id in external_data_plugin_ids)
             ),
         )
         return CodingBuiltinProductCompositionPreparation(
             base_compilation=combined_base,
             capability_preparation=capability_preparation,
         )
-    except BaseException:
-        runtime.close()
-        raise
 
 
 def prepare_coding_product_capability_plugin_composition(
@@ -329,35 +325,33 @@ def prepare_coding_product_capability_plugin_composition(
     owns only verified revision handles and Approval journals; activation still
     requires the normal host-Provider binding and Session graph publication.
     """
-
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError("Coding Product Capability Session id is invalid")
     if not isinstance(configurations, Mapping) or not configurations:
         raise ValueError("Coding Product Capability configuration is invalid")
     specs = ordered_coding_capability_plugin_specs(configurations)
     if any(
-        not isinstance(configurations[spec.plugin_id], spec.configuration_type)
-        for spec in specs
+        (
+            not isinstance(configurations[spec.plugin_id], spec.configuration_type)
+            for spec in specs
+        )
     ):
         raise TypeError("Coding Product Capability configuration type is invalid")
     if not isinstance(product_policy_revision, str) or not product_policy_revision:
         raise ValueError("Coding Product Capability policy revision is invalid")
     _read_clock(clock)
     root = _prepare_product_approval_state_root(state_root)
-
-    runtime = open_coding_product_capability_resolution(
-        product_runtime, plugin_ids=tuple(spec.plugin_id for spec in specs)
-    )
-    try:
-        selected = tuple(
-            product_runtime.capture_selected_plugin_manifest_for(
-                spec.plugin_id,
-                max_files=_MAX_FILES,
-                max_total_bytes=_MAX_BYTES,
-            )
-            for spec in specs
-        )
-        _validate_product_lineage(runtime, selected)
+    with SelectedProductPreparationScope(
+        product_runtime=product_runtime,
+        open_runtime=lambda: open_coding_product_capability_resolution(
+            product_runtime, plugin_ids=tuple((spec.plugin_id for spec in specs))
+        ),
+        selection_id=lambda spec: spec.plugin_id,
+        selection_items=lambda runtime: specs,
+        maximum_files=lambda: _MAX_FILES,
+        maximum_bytes=lambda: _MAX_BYTES,
+        label="Coding Product Capability",
+    ) as (runtime, selected):
         trust_revisions = {
             item.source_trust_snapshot.source_trust_policy_revision
             for item in selected
@@ -403,11 +397,7 @@ def prepare_coding_product_capability_plugin_composition(
             ),
             evaluated_at=_read_clock(clock),
         )
-
-        def recheck_selected_revisions() -> None:
-            for package in runtime.packages:
-                package.revision_handle.verify()
-
+        recheck_selected_revisions = selected_runtime_recheck(runtime)
         return CodingCapabilityPluginCompositionPreparation(
             request=request,
             runtime=runtime,
@@ -420,36 +410,13 @@ def prepare_coding_product_capability_plugin_composition(
             selection_recheck=recheck_selected_revisions,
             resume_parents=resume_parents,
         )
-    except BaseException:
-        runtime.close()
-        raise
 
 
 def _validate_product_lineage(
     runtime: PluginRuntimeResolution,
     selected: tuple[PackageProductSelectedPluginManifestV1, ...],
 ) -> None:
-    if len(runtime.packages) != len(selected):
-        raise ValueError("Coding Product Capability selection is incomplete")
-    for package, binding, item in zip(
-        runtime.packages, runtime.bindings, selected, strict=True
-    ):
-        verified = item.verified_manifest()
-        if (
-            package.manifest.name != verified.name
-            or package.manifest.version != verified.version
-            or package.manifest.metadata != verified.metadata
-            or package.manifest_digest != verified.manifest_digest
-            or package.contribution_index != verified.contribution_index
-            or not package.manifest.enabled
-            or not package.source.enabled
-            or package.content_digest != item.snapshot.root_ref.artifact_digest
-            or binding.source_identity
-            != item.snapshot.package_revision.package_source_identity
-            or item.source_trust_snapshot is None
-        ):
-            raise ValueError("Coding Product Capability revision changed")
-        package.revision_handle.verify()
+    validate_preparation_lineage(runtime, selected, label="Coding Product Capability")
 
 
 def _product_plan_seed(

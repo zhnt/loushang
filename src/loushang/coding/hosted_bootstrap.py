@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from importlib.metadata import version
 from pathlib import Path
 from secrets import token_hex
+from typing import TYPE_CHECKING
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
@@ -31,17 +32,11 @@ from loushang.appservice.discovery_ports import (
     HostedSessionDiscoveryScopeV1,
 )
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
-from loushang.harness.config.agent import SettingsManager
 from loushang.harness.machine_resources import prepare_private_directory_chain
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
-from .bootstrap import BootstrapServices, create_services
-from .control.settings_store import (
-    default_global_settings_path,
-    default_project_settings_path,
-)
 from .hosted_application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     CodingForegroundHostedApplicationRequestV1,
@@ -58,10 +53,14 @@ from .hosted_continuity import (
     CodingHostedContinuityRequestV1,
     create_coding_hosted_continuity_attempt,
 )
+from .hosted_models import create_hosted_services
 from .hosted_session import (
     CodingHostedProductRuntimeFactoryForSession,
     CodingRealHostedSessionFactoryV1,
 )
+
+if TYPE_CHECKING:
+    from .workspace_catalog import CodingWorkspaceCatalog
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,7 +190,7 @@ def prepare_coding_hosted_session_roots(launch: CodingHostedLaunchV1) -> None:
 
 
 def _create_coding_attempt(
-    *, application_root: Path, application_id: str, catalog: CodingHostedSessionCatalogV1,
+    *, application_root: Path, application_id: str, catalog: CodingHostedSessionCatalogV1 | CodingWorkspaceCatalog,
     generation: str, model: Model | ModelSelection | None, stream_fn: StreamFn | None,
     tools: list[ToolDefinition] | None, session_discovery: bool, owned_transcripts: bool,
     profile_id: str, resume_history: bool = False, managed_selection: bool = False,
@@ -222,7 +221,7 @@ def _create_coding_attempt(
 
 
 def _coding_foreground_request(
-    *, application_id: str, catalog: CodingHostedSessionCatalogV1,
+    *, application_id: str, catalog: CodingHostedSessionCatalogV1 | CodingWorkspaceCatalog,
     generation: str, model: Model | ModelSelection | None, stream_fn: StreamFn | None,
     tools: list[ToolDefinition] | None, session_discovery: bool, owned_transcripts: bool,
     profile_id: str, resume_history: bool = False, managed_selection: bool = False,
@@ -254,6 +253,7 @@ def _coding_foreground_request(
         CodingHostedResumeCatalogV1(catalog)
         if (
             resume_history
+            and isinstance(catalog, CodingHostedSessionCatalogV1)
             and not managed_selection
             and package_product_runtime_factory_for_session is None
         )
@@ -286,7 +286,7 @@ def _coding_foreground_request(
         admitted_scopes=admitted_scopes,
         execution=execution,
         session_factory=CodingRealHostedSessionFactoryV1(
-            services_factory=_services,
+            services_factory=create_hosted_services,
             model=model,
             stream_fn=stream_fn,
             tools=tools,
@@ -305,16 +305,6 @@ def _coding_foreground_request(
         managed_selection=managed_selection,
         managed_mux=managed_mux,
     )
-
-
-def _services(cwd: Path) -> BootstrapServices:
-    return create_services(
-        settings_manager=SettingsManager(
-            global_settings_path=default_global_settings_path(),
-            project_settings_path=default_project_settings_path(cwd),
-        )
-    )
-
 
 __all__ = [
     "CodingHostedLaunchV1",

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import os
 
+from loushang.harness.package_product._worker_windows_attempt import (
+    windows_product_worker_offline_write,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -68,89 +71,84 @@ def retire_coding_windows_product_worker_partial_stage(
         or type(expected_review) is not CodingWindowsWorkerPartialStageReviewV1
     ):
         raise OSError("Windows Worker partial retirement requires a Product review")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
+    with windows_product_worker_offline_write(
+        product,
+        active_error=CodingWindowsWorkerPartialStageRetirementError,
+        active_message='coding_worker_partial_retirement_runtime_active',
     ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise CodingWindowsWorkerPartialStageRetirementError(
-                "coding_worker_partial_retirement_runtime_active"
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            _require_retirement_root(
+                product,
+                root,
+                CodingWindowsWorkerPartialStageRetirementError,
+                "coding_worker_partial_retirement_root_changed",
             )
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                _require_retirement_root(
-                    product,
-                    root,
-                    CodingWindowsWorkerPartialStageRetirementError,
-                    "coding_worker_partial_retirement_root_changed",
+            start = _read_start(product, expected_review.attempt_id)
+            completed = _read_receipt(product, expected_review.attempt_id)
+            if start is None:
+                if completed is not None:
+                    raise CodingWindowsWorkerPartialStageRetirementError(
+                        "coding_worker_partial_retirement_start_missing"
+                    )
+                _require_partial_history(
+                    product, expected_review, stage_present=True
                 )
-                start = _read_start(product, expected_review.attempt_id)
-                completed = _read_receipt(product, expected_review.attempt_id)
-                if start is None:
-                    if completed is not None:
-                        raise CodingWindowsWorkerPartialStageRetirementError(
-                            "coding_worker_partial_retirement_start_missing"
-                        )
-                    _require_partial_history(
-                        product, expected_review, stage_present=True
-                    )
-                    current = _review_partial_tree(
-                        product,
-                        attempt_id=expected_review.attempt_id,
-                        expected_stage=expected_review.stage_identity[:2],
-                        lease_owner_revision=quiescence.owner_revision,
-                    )
-                    if current != expected_review:
-                        raise CodingWindowsWorkerPartialStageRetirementError(
-                            "coding_worker_partial_retirement_review_stale"
-                        )
-                    write_windows_private_receipt(
-                        _start_path(product, expected_review.attempt_id),
-                        expected_review.to_bytes(),
-                        maximum_bytes=_MAX_REVIEW_BYTES,
-                    )
-                    start = _read_start(product, expected_review.attempt_id)
-                if start != expected_review:
+                current = _review_partial_tree(
+                    product,
+                    attempt_id=expected_review.attempt_id,
+                    expected_stage=expected_review.stage_identity[:2],
+                    lease_owner_revision=quiescence.owner_revision,
+                )
+                if current != expected_review:
                     raise CodingWindowsWorkerPartialStageRetirementError(
                         "coding_worker_partial_retirement_review_stale"
                     )
-                receipt = CodingWindowsWorkerStageRetirementReceiptV1(
-                    attempt_id=start.attempt_id,
-                    review_fingerprint=start.fingerprint,
-                    stage_identity=start.stage_identity[:2],
+                write_windows_private_receipt(
+                    _start_path(product, expected_review.attempt_id),
+                    expected_review.to_bytes(),
+                    maximum_bytes=_MAX_REVIEW_BYTES,
                 )
-                root_intent = _read_root_intent(product, start.attempt_id)
-                if root_intent is not None and root_intent != receipt:
-                    raise CodingWindowsWorkerPartialStageRetirementError(
-                        "coding_worker_partial_retirement_root_intent_changed"
-                    )
-                stage_present = _stage_exists(root, start.attempt_id)
-                _require_partial_history(product, start, stage_present=stage_present)
-                if completed is not None:
-                    if completed != receipt or root_intent != receipt or stage_present:
-                        raise CodingWindowsWorkerPartialStageRetirementError(
-                            "coding_worker_partial_retirement_completed_changed"
-                        )
-                    return completed
-                if not stage_present and root_intent is None:
-                    raise CodingWindowsWorkerPartialStageRetirementError(
-                        "coding_worker_partial_retirement_stage_disappeared"
-                    )
-                _remove_remaining_stage(product, root, start, receipt)
-                if _stage_exists(root, start.attempt_id):
-                    raise CodingWindowsWorkerPartialStageRetirementError(
-                        "coding_worker_partial_retirement_stage_retained"
-                    )
-                _records.publish_receipt(
-                    product,
-                    start,
-                    receipt,
-                    write=write_windows_private_receipt,
-                    read=_read_receipt,
-                    changed_message="coding_worker_partial_retirement_publication_changed",
+                start = _read_start(product, expected_review.attempt_id)
+            if start != expected_review:
+                raise CodingWindowsWorkerPartialStageRetirementError(
+                    "coding_worker_partial_retirement_review_stale"
                 )
-                return receipt
+            receipt = CodingWindowsWorkerStageRetirementReceiptV1(
+                attempt_id=start.attempt_id,
+                review_fingerprint=start.fingerprint,
+                stage_identity=start.stage_identity[:2],
+            )
+            root_intent = _read_root_intent(product, start.attempt_id)
+            if root_intent is not None and root_intent != receipt:
+                raise CodingWindowsWorkerPartialStageRetirementError(
+                    "coding_worker_partial_retirement_root_intent_changed"
+                )
+            stage_present = _stage_exists(root, start.attempt_id)
+            _require_partial_history(product, start, stage_present=stage_present)
+            if completed is not None:
+                if completed != receipt or root_intent != receipt or stage_present:
+                    raise CodingWindowsWorkerPartialStageRetirementError(
+                        "coding_worker_partial_retirement_completed_changed"
+                    )
+                return completed
+            if not stage_present and root_intent is None:
+                raise CodingWindowsWorkerPartialStageRetirementError(
+                    "coding_worker_partial_retirement_stage_disappeared"
+                )
+            _remove_remaining_stage(product, root, start, receipt)
+            if _stage_exists(root, start.attempt_id):
+                raise CodingWindowsWorkerPartialStageRetirementError(
+                    "coding_worker_partial_retirement_stage_retained"
+                )
+            _records.publish_receipt(
+                product,
+                start,
+                receipt,
+                write=write_windows_private_receipt,
+                read=_read_receipt,
+                changed_message="coding_worker_partial_retirement_publication_changed",
+            )
+            return receipt
 
 
 def _require_partial_history(

@@ -30,11 +30,7 @@ from .package_legacy_windows_receipt import (
 from .package_product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
-    _capture_coding_windows_worker_desired_history_under_gc_guard,
-    _capture_coding_windows_worker_history_sources_under_gc_guard,
-)
-from .package_product_worker_windows_recovery_inventory import (
-    _inspect_coding_windows_product_worker_offline_recovery_under_gc_guard,
+    _capture_coding_windows_worker_semantics_under_gc_guard,
 )
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -200,44 +196,13 @@ def prepare_coding_windows_worker_history(
             )
             if staged is not None:
                 CodingWindowsWorkerHistoryPreparationV1.from_bytes(staged)
-            source_snapshot = (
-                _capture_coding_windows_worker_history_sources_under_gc_guard(
-                    product,
-                    store_id=registry.store_id,
-                    lease_owner_revision=quiescence.owner_revision,
-                    require_settled_history=True,
-                    allow_preparation_stage=staged is not None,
-                )
-            )
-            offline_recovery = (
-                _inspect_coding_windows_product_worker_offline_recovery_under_gc_guard(
-                    product,
-                    store_id=registry.store_id,
-                    lease_owner_revision=quiescence.owner_revision,
-                    gc_snapshot=gc_snapshot,
-                )
-            )
-            desired_snapshot, desired_transitions, desired_digest = (
-                _capture_coding_windows_worker_desired_history_under_gc_guard(product)
-            )
-            if source_snapshot != (
-                _capture_coding_windows_worker_history_sources_under_gc_guard(
-                    product,
-                    store_id=registry.store_id,
-                    lease_owner_revision=quiescence.owner_revision,
-                    require_settled_history=False,
-                    allow_preparation_stage=staged is not None,
-                )
-            ):
-                raise ValueError("Windows Worker history sources changed")
-            semantic = CodingWindowsWorkerHistorySemanticReadV1(
-                source_snapshot=source_snapshot,
-                offline_recovery=offline_recovery,
-                desired_inventory_revision=desired_snapshot.inventory_revision,
-                desired_history_digest=desired_digest,
-                desired_snapshot=desired_snapshot,
-                desired_transitions=desired_transitions,
-            )
+            semantic = _capture_coding_windows_worker_semantics_under_gc_guard(
+                product,
+                store=registry,
+                quiescence=quiescence,
+                gc_snapshot=gc_snapshot,
+                allow_preparation_stage=staged is not None,
+            )()
             prepared = CodingWindowsWorkerHistoryPreparationV1.create(semantic)
             for existing in (published, staged):
                 if existing is not None:

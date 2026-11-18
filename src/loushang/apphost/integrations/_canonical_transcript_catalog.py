@@ -8,22 +8,27 @@ hooks project values or name actual constructors; none reborrow Code IO programs
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from loushang.apphost.contracts import (
     SessionCandidateRefV1,
     SessionCreateIntentV1,
     SessionCreateRequestV1,
     SessionDiscoveryScope,
+    SessionIdentityCatalogPortV1,
     SessionIdentityProjectionV1,
 )
+from loushang.apphost.workspace_registry import WorkspaceRegistrationError
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
     SessionAvailabilityV1,
     SessionCompatibilityV1,
     SessionDiscoveryCandidateV1,
@@ -52,6 +57,22 @@ from loushang.harness.transcript.session_catalog import SessionDiscoveryReadBudg
 from loushang.harness.transcript.store_admission import (
     _TranscriptStoreCatalogObservations,
 )
+
+if TYPE_CHECKING:
+    from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
+
+
+_WORKSPACE_CREATE_ERRORS: dict[int | None, AppErrorCodeV1] = {
+    errno.ENOENT: AppErrorCodeV1.NOT_FOUND,
+    errno.EEXIST: AppErrorCodeV1.ALREADY_EXISTS,
+    errno.ENOTDIR: AppErrorCodeV1.INVALID_REQUEST,
+    errno.ELOOP: AppErrorCodeV1.INVALID_REQUEST,
+    errno.EINVAL: AppErrorCodeV1.INVALID_REQUEST,
+    errno.ENAMETOOLONG: AppErrorCodeV1.INVALID_REQUEST,
+    errno.EACCES: AppErrorCodeV1.PERMISSION_DENIED,
+    errno.EPERM: AppErrorCodeV1.PERMISSION_DENIED,
+    errno.EROFS: AppErrorCodeV1.PERMISSION_DENIED,
+}
 
 
 class CanonicalTranscriptScope(Protocol):
@@ -191,6 +212,9 @@ class _CanonicalTranscriptCatalogMethods(
     ) -> RecordT | None:
         raise NotImplementedError
 
+    def _candidate_layout(self, directory: Path) -> AgentTranscriptFileLayout:
+        return AgentTranscriptFileLayout(directory)
+
     def _header_read_context(self) -> tuple[bool, threading.Event | None]:
         return self._owned_factory is not None, None
 
@@ -306,7 +330,9 @@ class _CanonicalTranscriptCatalogMethods(
             self._validate_open_record(record)
             with session.sync_operation_scope():
                 pass
-            candidate = self._candidate_from_manager(record, manager, created=expected is None)
+            candidate = self._candidate_from_manager(
+                record, manager, created=expected is None
+            )
             self._accepting()
             self._pending_sessions.pop(id(session))
             return candidate
@@ -411,7 +437,7 @@ class _CanonicalTranscriptCatalogMethods(
         before = self._directory_revision(admitted.session_dir)
         if before is None:
             return HostedSessionDiscoverySnapshotV1(scope, (), True)
-        layout = AgentTranscriptFileLayout(admitted.session_dir)
+        layout = self._candidate_layout(admitted.session_dir)
         scan = layout.scan_candidate_path_snapshot(
             layout.namespace,
             max_candidates=self._maximum_candidates(),
@@ -489,7 +515,7 @@ class _CanonicalTranscriptCatalogMethods(
                 before = self._directory_revision(scope.session_dir)
                 if before is None:
                     continue
-                layout = AgentTranscriptFileLayout(scope.session_dir)
+                layout = self._candidate_layout(scope.session_dir)
                 snapshot = layout.scan_candidate_path_snapshot(
                     layout.namespace,
                     max_candidates=self._maximum_candidates(),
@@ -713,3 +739,181 @@ class _CanonicalTranscriptCandidateMethods(
         self._closed = True
         if not self._claimed:
             await self._binding.close()
+
+
+class _WorkspaceSessionCatalogPort(SessionIdentityCatalogPortV1, Protocol):
+    @property
+    def scopes(self) -> tuple[CanonicalTranscriptScope, ...]: ...
+    @property
+    def pending_sessions(self) -> tuple[object, ...]: ...
+    async def discover_sessions(
+        self, scope: HostedSessionDiscoveryScopeV1, *, stop: Callable[[], bool]
+    ) -> HostedSessionDiscoverySnapshotV1: ...
+    def fence(self) -> None: ...
+    async def close(self) -> None: ...
+
+
+WorkspaceCatalogT = TypeVar("WorkspaceCatalogT", bound=_WorkspaceSessionCatalogPort)
+
+
+class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
+    """Retain workspace catalogs and route their existing transcript owners.
+
+    Product adapters supply actual catalog construction and candidate-open
+    policy. The adapter remains the sole collection object; Registry and child
+    catalogs retain their existing native storage and Session lifetimes.
+    """
+
+    registry: HostWorkspaceRegistryPort
+    _catalogs: dict[Path, WorkspaceCatalogT]
+    _loaded: bool
+    _closed: bool
+
+    def _create_catalog(self, path: Path) -> WorkspaceCatalogT:
+        raise NotImplementedError
+
+    async def _open_workspace_candidate(self, catalog: WorkspaceCatalogT, reference):
+        raise NotImplementedError
+
+    async def _workspace_entries(self, request):
+        if request.action == "register":
+            await self.register(request.path)
+        elif request.action == "create":
+            path = await self._create_workspace(request.path)
+            return ((path, self._add(path)),)
+        elif request.action == "allocate-temporary":
+            path = await asyncio.to_thread(self.registry.allocate_temporary)
+            self._add(path)
+        elif request.action == "open":
+            selected = await self.select(request.path)
+        elif request.action == "unregister":
+            path = Path(request.path)
+            catalog = self._catalogs.get(path)
+            if catalog is not None:
+                await catalog.close()
+            await asyncio.to_thread(self.registry.unregister, request.path)
+            self._catalogs.pop(path, None)
+        entries = self._catalogs.items()
+        if request.action == "open":
+            entries = ((selected.cwd, self._catalogs[selected.cwd]),)
+        elif request.action == "allocate-temporary":
+            entries = ((path, self._catalogs[path]),)
+        elif request.action == "projects":
+            entries = (
+                (root, catalog)
+                for root, catalog in entries
+                if not self.registry.is_temporary(root)
+            )
+        return entries
+
+    async def load(self) -> None:
+        if not self._loaded:
+            for path in await asyncio.to_thread(self._load_paths):
+                self._add(path)
+            self._loaded = True
+
+    def _load_paths(self) -> tuple[Path, ...]:
+        self.registry.open()
+        return self.registry.list()
+
+    @property
+    def scopes(self):
+        return tuple(catalog.scopes[0] for catalog in self._catalogs.values())
+
+    @property
+    def pending_sessions(self):
+        return tuple(
+            session
+            for catalog in self._catalogs.values()
+            for session in catalog.pending_sessions
+        )
+
+    def _add(self, path: Path) -> WorkspaceCatalogT:
+        if self._closed:
+            raise ValueError("workspace_catalog_closed")
+        if path not in self._catalogs:
+            self._catalogs[path] = self._create_catalog(path)
+        return self._catalogs[path]
+
+    async def _create_workspace(self, value: str) -> Path:
+        try:
+            return await asyncio.to_thread(self.registry.create, value)
+        except WorkspaceRegistrationError as exc:
+            raise AppServiceError(AppErrorCodeV1.WORKSPACE_REGISTRATION_FAILED) from exc
+        except ValueError as exc:
+            raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST) from exc
+        except OSError as exc:
+            code = _WORKSPACE_CREATE_ERRORS.get(exc.errno, AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            raise AppServiceError(code) from exc
+
+    async def register(self, value: str) -> Path:
+        path = await asyncio.to_thread(self.registry.register, value)
+        self._add(path)
+        return path
+
+    async def select(self, value: str):
+        path = await asyncio.to_thread(self.registry.select, value)
+        return self._add(path).scopes[0]
+
+    def _for_create(self, request):
+        return self._find(lambda scope: scope.fingerprint == request.creator_scope_id)
+
+    def _for_reference(self, reference):
+        return self._find(lambda scope: scope.source_id == reference.source_id)
+
+    def _find(self, matches):
+        if not self._closed:
+            for catalog in self._catalogs.values():
+                if any(matches(scope) for scope in catalog.scopes):
+                    return catalog
+        raise ValueError("workspace_not_registered")
+
+    async def discover_sessions(self, scope, *, stop):
+        catalog = self._find(
+            lambda item: (
+                item.scope is scope.scope
+                and item.fingerprint == scope.scope_fingerprint
+            )
+        )
+        return await catalog.discover_sessions(scope, stop=stop)
+
+    async def workspace_identities(self, fingerprint, scope, *, limit):
+        catalog = self._find(
+            lambda item: (
+                item.fingerprint == fingerprint and item.discovery_scope is scope
+            )
+        )
+        return await catalog.list_identities((scope,), limit=limit)
+
+    async def list_identities(self, scopes, *, limit):
+        result = []
+        for catalog in self._catalogs.values():
+            result.extend(await catalog.list_identities(scopes, limit=limit))
+            if len(result) > limit:
+                raise ValueError("session_catalog_limit")
+        return tuple(result)
+
+    async def open_candidate(self, reference):
+        catalog = self._for_reference(reference)
+        return await self._open_workspace_candidate(catalog, reference)
+
+    async def find_created_candidate(self, request):
+        return await self._for_create(request).find_created_candidate(request)
+
+    async def create_candidate(self, intent):
+        return await self._for_create(intent.request).create_candidate(intent)
+
+    def fence(self) -> None:
+        self._closed = True
+        for catalog in self._catalogs.values():
+            catalog.fence()
+
+    async def close(self) -> None:
+        self.fence()
+        results = await asyncio.gather(
+            *(c.close() for c in self._catalogs.values()), return_exceptions=True
+        )
+        failures = [result for result in results if isinstance(result, BaseException)]
+        if failures:
+            raise BaseExceptionGroup("workspace_cleanup_incomplete", failures)
+        await asyncio.to_thread(self.registry.close)

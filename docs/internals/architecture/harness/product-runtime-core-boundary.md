@@ -77,6 +77,13 @@ or rebind failure propagates after the candidate becomes current, matching the
 accepted Coding contract. Concurrent replacement operations are serialized;
 callbacks may safely re-enter the same transition scope.
 
+A206 places complete Session-owned Product factory delivery, bound release and
+application-owned borrowing in the existing Package Product local Wheel runtime
+family. Coding retains nominal dataclasses and storage/selection policy; the
+fixed factory program directly uses original native factories and selection
+capabilities. See [factory ownership](key-designs/session-product-factory-ownership-convergence.md)
+for serial cleanup, Windows registry identity and bounded local validation.
+
 ## Product Ownership
 
 Coding and future Product adapters retain:

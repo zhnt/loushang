@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 import os
-import stat
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from loushang.coding.package_epoch_layout import (
@@ -28,30 +26,23 @@ from loushang.coding.package_product_runtime import (
     require_fresh_coding_product_inputs,
 )
 from loushang.coding.package_source_snapshot import (
+    _PROJECTION_NAME,
     hold_coding_pre_b_source_configuration,
-    hold_coding_windows_private_cutover_directory,
     require_coding_fresh_settings_without_writes,
 )
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.private_directory import create_private_directory_chain
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
-    _PinnedWindowsAuthority,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_regular_file_at,
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackagePosixEpochCutoverResultV1,
     PackageProductPosixCutoverAttemptV1,
     PackageProductPreBSnapshotOwner,
     PackageProductPreBSnapshotSharedMemberV1,
+    hold_legacy_product_projection_root,
+    prepare_legacy_product_cutover_root,
+    read_legacy_product_projection,
     reopen_posix_product_cutover,
-)
-from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    prepare_windows_product_control_root,
 )
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
     PackageProductWindowsCutoverAttemptV1,
@@ -97,7 +88,9 @@ def prepare_coding_package_cutover_roots(
             (lifecycle.package_root, lifecycle.private_data_base),
             (epoch.epochs_root, lifecycle.private_data_base),
         ):
-            _prepare_windows_private_cutover_root(root, private_base=private_base)
+            prepare_legacy_product_cutover_root(
+                root, private_base=private_base, windows=True, label="Coding Package"
+            )
         return epoch
     for root, private_base in (
         (lifecycle.root, lifecycle.private_state_base),
@@ -106,7 +99,9 @@ def prepare_coding_package_cutover_roots(
         (lifecycle.package_root, lifecycle.private_data_base),
         (epoch.epochs_root, lifecycle.private_data_base),
     ):
-        _prepare_private_cutover_root(root, private_base=private_base)
+        prepare_legacy_product_cutover_root(
+            root, private_base=private_base, windows=False, label="Coding Package"
+        )
     return epoch
 
 
@@ -159,49 +154,22 @@ def _windows_projection_root(
     return lifecycle.root.parent / f"{lifecycle.root.name}.pre-b-projections"
 
 
-def _prepare_windows_private_cutover_root(root: Path, *, private_base: Path) -> None:
-    if not private_base.is_absolute() or not root.is_absolute():
-        raise ValueError("Coding Package cutover roots must be absolute")
-    try:
-        root.relative_to(private_base)
-    except ValueError:
-        raise ValueError(
-            "Coding Package cutover root is outside its private base"
-        ) from None
-    create_private_directory_chain(root.parent)
-    prepare_windows_product_control_root(root)
-
-
 @contextmanager
 def _hold_projection_parent(
     lifecycle: CodingPluginLifecycleStateLayout,
 ) -> Iterator[Path]:
-    if os.name == "nt":
-        with hold_coding_windows_private_cutover_directory(
-            _windows_projection_root(lifecycle),
-            prefix="coding-pre-b-projection-",
-        ) as root:
-            yield root
-    else:
-        with TemporaryDirectory(
-            prefix="coding-pre-b-projection-", dir=lifecycle.root.parent
-        ) as raw:
-            yield Path(raw)
-
-
-@contextmanager
-def _hold_pointer_root(projection_parent: Path) -> Iterator[Path]:
-    if os.name == "nt":
-        with hold_coding_windows_private_cutover_directory(
-            projection_parent,
-            prefix="coding-pre-b-legacy-pointer-",
-        ) as root:
-            yield root
-    else:
-        with TemporaryDirectory(
-            prefix="coding-pre-b-legacy-pointer-", dir=projection_parent
-        ) as raw:
-            yield Path(raw)
+    parent = (
+        _windows_projection_root(lifecycle)
+        if os.name == "nt"
+        else lifecycle.root.parent
+    )
+    with hold_legacy_product_projection_root(
+        parent,
+        prefix="coding-pre-b-projection-",
+        projection_name=_PROJECTION_NAME,
+        projection_label="Coding Source projection",
+    ) as root:
+        yield root
 
 
 def cutover_and_bootstrap_coding_package_product(
@@ -250,34 +218,6 @@ def cutover_and_bootstrap_coding_package_product(
         require_current_admission=require_current_admission,
     )
     return cutover
-
-
-def _prepare_private_cutover_root(root: Path, *, private_base: Path) -> None:
-    if not private_base.is_absolute() or not root.is_absolute():
-        raise ValueError("Coding Package cutover roots must be absolute")
-    try:
-        relative = root.relative_to(private_base)
-    except ValueError:
-        raise ValueError(
-            "Coding Package cutover root is outside its private base"
-        ) from None
-    create_private_directory_chain(private_base)
-    current = private_base
-    _require_private_cutover_directory(current)
-    for part in relative.parts:
-        current /= part
-        create_private_directory_chain(current)
-        _require_private_cutover_directory(current)
-
-
-def _require_private_cutover_directory(path: Path) -> None:
-    metadata = path.lstat()
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or stat.S_IMODE(metadata.st_mode) & 0o077
-        or metadata.st_uid != os.geteuid()
-    ):
-        raise ValueError("Coding Package cutover directory is not private")
 
 
 def reopen_coding_package_cutover(
@@ -365,10 +305,17 @@ def hold_coding_pre_b_snapshot_owner(
         project_settings_path=project_path,
         projection_parent=projection_parent,
     ) as source_root:
-        with _hold_pointer_root(projection_parent) as pointer_root:
+        with hold_legacy_product_projection_root(
+            projection_parent,
+            prefix="coding-pre-b-legacy-pointer-",
+            projection_name=_PROJECTION_NAME,
+            projection_label="Coding Source projection",
+        ) as pointer_root:
             package = resolve_coding_package_pre_b_store_members(lifecycle)
             state = resolve_coding_lifecycle_pre_b_members(lifecycle)
-            source_projection = json.loads(_read_source_projection(source_root))
+            source_projection = json.loads(
+                read_legacy_product_projection(source_root, name=_PROJECTION_NAME)
+            )
             legacy_classification = classify_coding_legacy_workspace(
                 source_projection,
                 lifecycle=state,
@@ -419,21 +366,6 @@ def hold_coding_pre_b_snapshot_owner(
                 source_configuration_root=source_root,
                 legacy_classification=legacy_classification,
             )
-
-
-def _read_source_projection(source_root: Path) -> bytes:
-    name = "coding-source-configuration.json"
-    if os.name != "nt":
-        return (source_root / name).read_bytes()
-    pinned = _PinnedWindowsAuthority.open(source_root, read_control=True)
-    try:
-        descriptor = open_windows_regular_file_at(
-            pinned.descriptor, name, create_new=False, write=False,
-        )
-        with os.fdopen(descriptor, "rb") as stream:
-            return stream.read()
-    finally:
-        pinned.close()
 
 
 __all__ = [

@@ -8,7 +8,7 @@ import os
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from hashlib import sha256
 from importlib.metadata import version
 from pathlib import Path
@@ -27,12 +27,11 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductRuntimeFactory,
     WindowsLocalWheelProductSessionOwner,
+    _ApplicationWorkerProductRuntimeFactory,
     _repair_ordinary_posix_runtime_leases,
     _repair_ordinary_windows_runtime_leases,
-)
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeBindingV1,
-    PackageProductRuntimeRequestV1,
+    _SessionOwnedProductRuntimeFactory,
+    _SessionProductRuntimeRelease,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
@@ -728,25 +727,18 @@ class CodingFencedProductApplicationSelection:
 
 
 @dataclass(slots=True)
-class _CodingSessionProductRuntimeRelease:
+class _CodingSessionProductRuntimeRelease(_SessionProductRuntimeRelease):
     """Keep the original lease identity visible through Session disposal."""
 
     release: Callable[[], None]
     selection: CodingFencedProductApplicationSelection
 
-    @property
-    def registry(self) -> object:
-        lease = getattr(self.release, "__self__", None)
-        return getattr(lease, "registry", None)
-
-    def dispose(self) -> None:
-        self.release()
-        self.selection.close()
-
 
 @dataclass(slots=True)
-class CodingSessionOwnedProductRuntimeFactory:
+class CodingSessionOwnedProductRuntimeFactory(_SessionOwnedProductRuntimeFactory):
     """Transfer a one-Session Product owner to the runtime binding's disposal."""
+
+    _product_label = "Coding"
 
     factory: (
         PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory
@@ -755,77 +747,22 @@ class CodingSessionOwnedProductRuntimeFactory:
     _binding_issued: bool = False
     _lock: Lock = field(default_factory=Lock, repr=False)
 
-    def product_owner_for_worker(
-        self,
-    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner:
-        owner = self.selection.product_owner_for_factory(self.factory)
-        if not isinstance(
-            owner,
-            (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
-        ):
-            raise TypeError("Coding Worker Product Session owner changed platform")
-        return owner
-
-    def create(
-        self, request: PackageProductRuntimeRequestV1
-    ) -> PackageProductRuntimeBindingV1:
-        with self._lock:
-            if self._binding_issued:
-                raise ValueError("Coding Product Session factory already used")
-            binding = self.factory.create(request)
-            try:
-                release = binding.on_dispose
-                if release is None:
-                    raise ValueError("Coding Product runtime release is missing")
-                owned = replace(binding, on_dispose=self._dispose_binding(release))
-            except BaseException as error:
-                try:
-                    binding.dispose_runtime()
-                    self.selection.close()
-                except BaseException:
-                    error.add_note("Coding Product Session owner cleanup also failed")
-                raise
-            self._binding_issued = True
-            return owned
-
-    def dispose_unbound_runtime(self) -> None:
-        with self._lock:
-            if self._binding_issued:
-                return
-            self.factory.dispose_unbound_runtime()
-            self.selection.close()
-
     def _dispose_binding(self, release: Callable[[], None]) -> Callable[[], None]:
         return _CodingSessionProductRuntimeRelease(release, self.selection).dispose
 
 
 @dataclass(frozen=True, slots=True)
-class CodingApplicationWorkerProductRuntimeFactory:
+class CodingApplicationWorkerProductRuntimeFactory(
+    _ApplicationWorkerProductRuntimeFactory
+):
     """Expose one app-owned Product factory to an explicit Worker Session."""
+
+    _product_label = "Coding"
 
     factory: (
         PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory
     )
     selection: CodingFencedProductApplicationSelection
-
-    def product_owner_for_worker(
-        self,
-    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner:
-        owner = self.selection.product_owner_for_factory(self.factory)
-        if not isinstance(
-            owner,
-            (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
-        ):
-            raise TypeError("Coding Worker Product Session owner changed platform")
-        return owner
-
-    def create(
-        self, request: PackageProductRuntimeRequestV1
-    ) -> PackageProductRuntimeBindingV1:
-        return self.factory.create(request)
-
-    def dispose_unbound_runtime(self) -> None:
-        self.factory.dispose_unbound_runtime()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1282,10 +1219,6 @@ def _fresh_coding_product_namespace_id(store_id: str) -> str:
     return sha256(
         b"loushang.coding-fresh-product-epoch/v1\0" + store_id.encode()
     ).hexdigest()
-
-
-def _coding_builtin_bootstrap_operation_id(store_id: str, plugin_id: str) -> str:
-    return _CODING_BUILTIN_BOOTSTRAP_POLICY.operation_id(store_id, plugin_id)
 
 
 def _fresh_coding_builtin_bootstrap_completed(

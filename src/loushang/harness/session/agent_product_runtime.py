@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -52,6 +52,13 @@ from loushang.harness.transcript import ProductTranscriptSession
 from loushang.harness.transcript.session_catalog import (
     session_file_authority_fingerprint,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
+    from loushang.harness.transcript.session_factory import (
+        AgentTranscriptSessionFactory,
+    )
+
 
 SessionT = TypeVar("SessionT")
 TranscriptT = TypeVar("TranscriptT", bound=ProductTranscriptSession)
@@ -396,11 +403,28 @@ def build_agent_product_session_runtime_ports(
     )
 
 
+class _SessionRuntimeSelectionOwner(Protocol):
+    def fence(self) -> None: ...
+    def close(self) -> None: ...
+
+
+class _SessionRuntimePlanningOwner(Protocol):
+    async def close(self) -> None: ...
+
+
 class AgentProductSessionRuntime(
     ProductSessionRuntime[SessionT, TranscriptT, str],
     Generic[SessionT, TranscriptT],
 ):
     """Standard Agent conventions bound to the shared Product session runtime."""
+
+    _resume_shutdown_error_prefix: ClassVar[str] = "session_resume"
+    _owned_transcript_factory: (
+        AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]
+        | None
+    )
+    _product_owner_selection: _SessionRuntimeSelectionOwner | None
+    _resume_planning: _SessionRuntimePlanningOwner
 
     def __init__(
         self,
@@ -448,6 +472,100 @@ class AgentProductSessionRuntime(
         )
         if current_session is not None:
             prepare_current_agent_session(current_session, self)
+
+    async def _dispose_session_runtime_dependencies(
+        self,
+        shutdown_continuity: Callable[[object], Awaitable[None]],
+        *,
+        metadata: dict[str, object] | None = None,
+    ) -> None:
+        if (
+            self._resume_history_reads
+            and self._resume_history_loop is not asyncio.get_running_loop()
+        ):
+            raise RuntimeError(
+                f"{self._resume_shutdown_error_prefix}_history_loop_changed"
+            )
+        failure: BaseException | None = None
+        self._resume_history_closed = True
+        factory = self._owned_transcript_factory
+        product_selection = self._product_owner_selection
+        if product_selection is not None:
+            product_selection.fence()
+        if factory is not None:
+            factory._on_loop()
+            try:
+                factory.fence()
+            except BaseException as error:
+                failure = error
+        # Preparation holds the native transition lock. Settle it and original
+        # undelivered candidates before closing their dependent owner factories.
+        await self._drain_resume_activations()
+        try:
+            await super().dispose_session_runtime(metadata=metadata)
+        except BaseException as error:
+            if failure is None:
+                failure = error
+            else:
+                failure.add_note(f"Session cleanup retained: {type(error).__name__}")
+            # The original lifecycle/construction owner retains failed Session
+            # retirement. Its dependent factories must wait for that retry.
+            raise failure
+        try:
+            await self._resume_planning.close()
+        except BaseException as error:
+            if failure is None:
+                failure = error
+            else:
+                failure.add_note(
+                    f"Resume planning cleanup retained: {type(error).__name__}"
+                )
+        try:
+            await self._drain_resume_history_reads()
+        except BaseException as error:
+            if failure is None:
+                failure = error
+            else:
+                failure.add_note(
+                    f"history read settlement retained: {type(error).__name__}"
+                )
+        if factory is not None:
+            try:
+                await factory.close()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note(
+                        f"transcript factory cleanup retained: {type(error).__name__}"
+                    )
+        try:
+            await shutdown_continuity(self)
+        except BaseException as error:
+            if failure is None:
+                failure = error
+            else:
+                failure.add_note(f"continuity cleanup retained: {type(error).__name__}")
+        if product_selection is not None:
+            try:
+                product_selection.close()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note(
+                        f"Product owner cleanup retained: {type(error).__name__}"
+                    )
+        if failure is not None:
+            raise failure
+
+    async def _drain_resume_activations(self) -> None:
+        await self.lifecycle.drain_retained_preparations(
+            error_prefix=self._resume_shutdown_error_prefix
+        )
+
+    async def _drain_resume_history_reads(self) -> None:
+        await self._drain_session_history_reads()
 
     def _initialize_session_history_reads(self) -> None:
         self._resume_history_reads: set[asyncio.Task[_SessionHistoryPreview]] = set()

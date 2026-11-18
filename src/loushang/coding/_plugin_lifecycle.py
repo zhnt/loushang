@@ -33,7 +33,6 @@ from loushang.harness.journal import (
 from loushang.harness.package_product import _legacy_runtime
 from loushang.harness.plugin_management import (
     PluginDesiredStateLedger,
-    PluginDesiredStateMutationV1,
     PluginEnablementCompatibilityProjectionV1,
     PluginEnablementMigrationCoordinator,
     PluginEnablementMigrationRequestV1,
@@ -44,7 +43,6 @@ from loushang.harness.plugin_management import (
     PluginInstanceRuntimeLedger,
     PluginManagementApplicationPorts,
     PluginManagementCommandApplication,
-    PluginManagementCommandV1,
     PluginManagementReadModelProjector,
     PluginManagementService,
     PluginPackageLifecycleLedger,
@@ -56,6 +54,8 @@ from loushang.harness.plugin_management import (
     decode_plugin_enablement_migration_snapshots,
 )
 from loushang.harness.plugin_management.assembly import (
+    _FirstPartyDefaultBootstrap,
+    _FirstPartyDefaultPolicy,
     _gc_writer_epoch_ready,
     _prepare_gc_writer_epoch,
     _SettledHostRetirementPolicy,
@@ -465,12 +465,13 @@ def _coding_membership_policy() -> _MembershipPolicy[CodingPluginLifecycleStateL
 
 @dataclass(slots=True)
 class CodingPluginLifecycle(
+    _FirstPartyDefaultBootstrap,
     _PluginSessionLifecycle[
         CodingPluginLifecycleStateLayout,
         CodingOwnerGenerationEvidenceEventV1,
         CodingOwnerGenerationFamilyEvidence,
         _ProcessSessionOwnerLease,
-    ]
+    ],
 ):
     """Installed common Harness authorities bound to Coding Product policy."""
 
@@ -486,6 +487,17 @@ class CodingPluginLifecycle(
     security: PluginInstanceSecurityRetirementJournal = field(repr=False)
     owner_evidence: CodingOwnerGenerationEvidenceLedger = field(repr=False)
     _owns_process_startup_lease: bool = field(repr=False)
+
+    _first_party_default_policy = _FirstPartyDefaultPolicy(
+        product_id=CODING_PRODUCT_ID,
+        product_label="Coding",
+        actor_id="product:coding",
+        policy_revision=_PRODUCT_POLICY_REVISION,
+        approval_reference=_DEFAULT_APPROVAL_REFERENCE,
+        operation_id_prefix="coding-default:",
+        error_code_prefix="coding_plugin",
+        make_error=_lifecycle_error,
+    )
 
     _owner_lease_type = _ProcessSessionOwnerLease
     _membership_policy = _coding_membership_policy()
@@ -560,109 +572,6 @@ class CodingPluginLifecycle(
             )
         )
 
-    def bootstrap_first_party_default(
-        self,
-        key: PluginInstallationKeyV1,
-        package_revision: PluginPackageRevisionRefV1,
-    ) -> None:
-        """Install+enable only a truly unseen first-party Installation.
-
-        An absent record retained after remove is deliberately *seen* and is
-        therefore never resurrected by Product composition.
-        """
-
-        if (
-            not isinstance(key, PluginInstallationKeyV1)
-            or key.product_id != CODING_PRODUCT_ID
-            or key.installation_scope != "workspace"
-            or key.scope_id != self.layout.scope_id
-        ):
-            raise CodingPluginLifecycleError(
-                "First-party default Installation is outside this Coding scope",
-                code="coding_plugin_default_bootstrap_scope_mismatch",
-            )
-        if (
-            not isinstance(package_revision, PluginPackageRevisionRefV1)
-            or package_revision.plugin_id != key.plugin_id
-        ):
-            raise CodingPluginLifecycleError(
-                "First-party default Package Revision changed Plugin identity",
-                code="coding_plugin_default_bootstrap_revision_mismatch",
-            )
-        # The two management commands are individually durable.  This loop is
-        # the Product transaction coordinator: it resumes only its own exact
-        # default install, stops at any operator-authored state, and retries a
-        # CAS race with a fresh operation identity.
-        for _attempt in range(32):
-            snapshot = self.desired.snapshot()
-            state = snapshot.installation(key)
-            seen = any(item.installation_key == key for item in snapshot.installations)
-            if not seen:
-                error = self._submit_default(
-                    key,
-                    action="install",
-                    desired_state="installed_disabled",
-                    package_revision=package_revision,
-                    expected_inventory_revision=snapshot.inventory_revision,
-                )
-                if error == "plugin_inventory_revision_conflict":
-                    continue
-                if error is not None:
-                    raise CodingPluginLifecycleError(
-                        "First-party Plugin bootstrap install failed",
-                        code=error,
-                    )
-                continue
-            if state.selection.desired_state == "installed_enabled":
-                return
-            if not self._is_own_default_install(
-                key,
-                package_revision=package_revision,
-            ):
-                return
-            error = self._submit_default(
-                key,
-                action="enable",
-                desired_state="installed_enabled",
-                package_revision=None,
-                expected_inventory_revision=snapshot.inventory_revision,
-            )
-            if error == "plugin_inventory_revision_conflict":
-                continue
-            if error is not None:
-                raise CodingPluginLifecycleError(
-                    "First-party Plugin bootstrap enable failed",
-                    code=error,
-                )
-            return
-        raise CodingPluginLifecycleError(
-            "First-party Plugin bootstrap could not linearize",
-            code="coding_plugin_default_bootstrap_busy",
-        )
-
-    def _is_own_default_install(
-        self,
-        key: PluginInstallationKeyV1,
-        *,
-        package_revision: PluginPackageRevisionRefV1,
-    ) -> bool:
-        matching = tuple(
-            transition
-            for transition in self.desired.transitions()
-            if transition.mutation.installation_key == key
-        )
-        if not matching:
-            return False
-        mutation = matching[-1].mutation
-        return (
-            isinstance(mutation, PluginDesiredStateMutationV1)
-            and mutation.desired_state == "installed_disabled"
-            and mutation.package_revision == package_revision
-            and mutation.actor_id == "product:coding"
-            and mutation.policy_revision == _PRODUCT_POLICY_REVISION
-            and mutation.approval_reference == _DEFAULT_APPROVAL_REFERENCE
-        )
-
     def acquire_session(
         self,
         key: PluginInstallationKeyV1,
@@ -689,43 +598,6 @@ class CodingPluginLifecycle(
                 owner_contributions=owners,
                 _session_owner_lease=owner_lease,
             )
-
-    def _submit_default(
-        self,
-        key: PluginInstallationKeyV1,
-        *,
-        action: Literal["install", "enable"],
-        desired_state: Literal["installed_disabled", "installed_enabled"],
-        package_revision: PluginPackageRevisionRefV1 | None,
-        expected_inventory_revision: int,
-    ) -> str | None:
-        identity = hashlib.sha256(
-            repr((key, action, package_revision, expected_inventory_revision)).encode(
-                "utf-8"
-            )
-        ).hexdigest()
-        event = self.management.submit(
-            PluginManagementCommandV1(
-                action=action,
-                mutation=PluginDesiredStateMutationV1(
-                    operation_id=f"coding-default:{identity}",
-                    idempotency_key=f"coding-default:{identity}",
-                    expected_inventory_revision=expected_inventory_revision,
-                    installation_key=key,
-                    desired_state=desired_state,
-                    package_revision=package_revision,
-                    actor_id="product:coding",
-                    policy_revision=_PRODUCT_POLICY_REVISION,
-                    approval_reference=_DEFAULT_APPROVAL_REFERENCE,
-                ),
-            )
-        )
-        result = getattr(event, "result", None)
-        if result is None:
-            return "coding_plugin_default_management_failed"
-        if result.disposition != "succeeded":
-            return result.error_code or "coding_plugin_default_management_failed"
-        return None
 
 
 @dataclass(slots=True)

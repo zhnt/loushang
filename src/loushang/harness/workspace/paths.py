@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import stat
 import unicodedata
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -99,3 +100,23 @@ def _macos_screenshot_path_variant(path: str) -> str:
 
 def _curly_quote_path_variant(path: str) -> str:
     return path.replace("'", "\u2019")
+
+
+def assert_workspace_directory_identity(
+    workspace: Path,
+    identity: tuple[int, int],
+    *,
+    changed: Callable[[], Exception],
+) -> None:
+    """Recheck one previously captured workspace directory, without recapture."""
+    try:
+        metadata = workspace.lstat()
+        current = workspace.resolve(strict=True)
+    except OSError as exc:
+        raise changed() from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or current != workspace
+        or (metadata.st_dev, metadata.st_ino) != identity
+    ):
+        raise changed()

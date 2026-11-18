@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from collections.abc import Awaitable, Callable
-from typing import Any, TextIO
 
 from loushang.ai.sdk_import import load_sdk_symbols, sdk_package_for_api
 from loushang.foundation.observability import get_log
-from loushang.harnesstui.conversation.application_host import ActionHostScreenRunner
+from loushang.harnesstui.conversation.application_host import _ScreenSdkPreparation
 from loushang.harnesstui.conversation.screen_app import ScreenConversationApp
 
 _log = get_log(__name__).bind(component="CodingSdkWarmup")
@@ -63,8 +61,12 @@ def _current_builtin_sdk(session: object) -> tuple[str, str] | None:
     return api, package
 
 
-class CodingSdkWarmup:
+class CodingSdkWarmup(_ScreenSdkPreparation):
     """Own one visible preparation task for a live Coding screen."""
+
+    _sdk_preparation_task_name = "coding-sdk-warmup"
+    _selection_failure_event = "sdk_warmup.selection_failed"
+    _load_failure_event = "sdk_warmup.failed"
 
     def __init__(
         self,
@@ -72,15 +74,8 @@ class CodingSdkWarmup:
         app: ScreenConversationApp,
         session_provider: Callable[[], object],
     ) -> None:
-        self.app = app
+        super().__init__(app=app)
         self.session_provider = session_provider
-        self._task: asyncio.Task[None] | None = None
-        self._timer: asyncio.TimerHandle | None = None
-        self._active_package: str | None = None
-        self._desired: tuple[str, str] | None = None
-        self._completed: set[str] = set()
-        self._failed: set[str] = set()
-        self._closed = False
 
     @classmethod
     def attach(
@@ -90,95 +85,17 @@ class CodingSdkWarmup:
         app.on_session_ready = warmup.after_ready
         return warmup
 
-    async def run_prepared(
-        self,
-        prepared: Any,
-        *,
-        run: Callable[..., Awaitable[int]],
-        stdin: TextIO,
-        stdout: TextIO,
-        screen_runner: ActionHostScreenRunner,
-    ) -> int:
-        self.app.notify_session_ready()
-        try:
-            return await run(
-                prepared, stdin=stdin, stdout=stdout, screen_runner=screen_runner
-            )
-        finally:
-            self.close()
-            self.app.on_session_ready = None
+    def _select_sdk_preparation(self) -> tuple[str, str] | None:
+        return _current_builtin_sdk(self.session_provider())
 
-    def after_ready(self) -> None:
-        if self._closed or self._timer is not None:
-            return
-        # Let the admitted idle frame flush before cold imports contend for CPU.
-        self._timer = asyncio.get_running_loop().call_later(0.05, self.observe_current)
+    def _sdk_preparation_loaded(self, package: str) -> bool:
+        return _sdk_loaded(package)
 
-    def observe_current(self) -> None:
-        self._timer = None
-        if self._closed or self.app.state.startup_pending:
-            return
-        try:
-            selected = _current_builtin_sdk(self.session_provider())
-        except Exception as error:
-            _log.debug_event("tui", "sdk_warmup.selection_failed", exceptionType=type(error).__name__)
-            selected = None
-        self._desired = selected
-        self._start_desired()
+    def _load_sdk_preparation(self, api: str) -> Awaitable[object]:
+        return load_sdk_symbols(api)
 
-    def _start_desired(self) -> None:
-        selected = self._desired
-        if self._closed or selected is None:
-            self._show_preparing(False)
-            return
-        api, package = selected
-        if self._task is not None and not self._task.done():
-            # A running Python import cannot be stopped. Finish it before
-            # starting another SDK; only the current model earns a hint.
-            self._show_preparing(self._active_package == package)
-            return
-        if package in self._completed or _sdk_loaded(package):
-            self._completed.add(package)
-            self._show_preparing(False)
-            return
-        if package in self._failed:
-            self._show_preparing(False)
-            return
-        self._active_package = package
-        self._show_preparing(True)
-
-        async def warm() -> None:
-            try:
-                await load_sdk_symbols(api)
-                self._completed.add(package)
-            except Exception as error:
-                self._failed.add(package)
-                _log.debug_event(
-                    "tui", "sdk_warmup.failed", exceptionType=type(error).__name__
-                )
-            finally:
-                self._task = None
-                self._active_package = None
-                if not self._closed:
-                    self._start_desired()
-
-        self._task = asyncio.create_task(warm(), name="coding-sdk-warmup")
-
-    def _show_preparing(self, preparing: bool) -> None:
-        if self.app.state.sdk_preparing != preparing:
-            self.app.state.sdk_preparing = preparing
-            self.app.request_render("product")
-
-    def close(self) -> None:
-        self._closed = True
-        if self._timer is not None:
-            self._timer.cancel()
-            self._timer = None
-        self._desired = None
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-        self._active_package = None
-        self.app.state.sdk_preparing = False
+    def _record_sdk_preparation_failure(self, event: str, error: Exception) -> None:
+        _log.debug_event("tui", event, exceptionType=type(error).__name__)
 
 
 __all__ = ["CodingSdkWarmup"]

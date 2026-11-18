@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Protocol, Self, cast
 
@@ -30,6 +31,7 @@ class _ReceiptOptInFacts(Protocol):
     def require_worker(self) -> bool: ...
 
 
+@dataclass(frozen=True, init=False, repr=False, eq=False)
 class _WindowsReceiptBaseMethods(_SourceBoundBaseWireMethods):
     __slots__ = ()
     scope_id: str
@@ -38,7 +40,7 @@ class _WindowsReceiptBaseMethods(_SourceBoundBaseWireMethods):
     last_issue_sequence: int
     retired_receipt_fingerprints: tuple[str, ...]
     record_digest: str
-    version: int
+    version: int = 1
     _decision_type: ClassVar[type[_OptInDecisionMethods]]
     _record_type: ClassVar[type[_ReceiptRecordMethods]]
     _replay_type: ClassVar[Callable[..., object]]

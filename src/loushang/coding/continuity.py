@@ -6,10 +6,9 @@ import asyncio
 import os
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from loushang.ai.types import AssistantMessage, UserMessage
 from loushang.foundation.platform_paths import resolve_platform_paths
@@ -37,6 +36,13 @@ from loushang.harness.continuity import (
     ProviderQuery,
     build_continuity_hub,
     compose_experience_continuity,
+)
+from loushang.harness.continuity._binding_lifetime import (
+    _ContinuityBindingReservationLifetime,
+    _ContinuityCompositionLifetime,
+    delete_runtime_binding_if,
+    retry_bound_continuity_reservation,
+    shutdown_bound_continuity,
 )
 from loushang.harness.continuity._payload_staging import (
     _ContinuityPayloadStaging,
@@ -71,7 +77,6 @@ from loushang.harness.runtime import (
     RuntimeProfileLayerGrant,
     RuntimeProfileResolver,
     SessionOperationResult,
-    await_owned_task,
 )
 from loushang.harness.transcript import (
     AgentTranscriptSessionCatalog,
@@ -190,43 +195,17 @@ class CodingContinuityActivationBridge:
             raise ValueError("Coding continuity activation source does not own target")
         if payload.byte_size > self._max_bytes:
             raise ValueError("Coding continuity activation exceeds Product limit")
-        staged = await _write_private_continuity_payload_atomic(
-            self._temporary_root,
-            payload,
-        )
-        try:
-            prepared = await self._runtime.prepare_restore_session_operation(
-                staged.path,
+        return await CallbackPreparedActivationLease._from_staged_payload(
+            target=target,
+            payload=payload,
+            staging=_CONTINUITY_PAYLOAD_STAGING,
+            root=self._temporary_root,
+            prepare=lambda path: self._runtime.prepare_restore_session_operation(
+                path,
                 fallback_cwd=self._fallback_cwd,
                 missing_cwd="fallback" if self._fallback_cwd is not None else "error",
-            )
-        except BaseException as operation_error:
-            try:
-                await _remove_private_continuity_payload_atomic(staged)
-            except BaseException as cleanup_error:
-                operation_error.add_note(
-                    "Coding continuity temporary cleanup also failed: "
-                    f"{cleanup_error!r}"
-                )
-            raise
-        try:
-            await _remove_private_continuity_payload_atomic(staged)
-        except BaseException as cleanup_error:
-            try:
-                abort_task = asyncio.create_task(prepared.abort())
-                await await_owned_task(abort_task)
-            except BaseException as abort_error:
-                cleanup_error.add_note(
-                    "Coding continuity prepared-operation abort also failed: "
-                    f"{abort_error!r}"
-                )
-            raise
-        settlement = _CodingPreparedSessionSettlement(prepared)
-        return CallbackPreparedActivationLease(
-            target=target,
-            disposition="in_place",
-            consume=settlement.consume,
-            abort=settlement.abort,
+            ),
+            settlement_error_label="Coding prepared Session",
         )
 
 
@@ -748,7 +727,7 @@ def _same_session_reference(
 
 
 @dataclass
-class CodingContinuityComposition:
+class CodingContinuityComposition(_ContinuityCompositionLifetime):
     binding: RuntimeProfileBinding
     binder: RuntimeProfileBinder
     hub: ContinuityHub
@@ -761,36 +740,6 @@ class CodingContinuityComposition:
     _core_shutdown: bool = False
     _owned_cleanup_complete: bool = False
     _shutdown: bool = False
-
-    async def dispose(self) -> None:
-        """Release a caller view; the process-scoped runtime remains bound."""
-
-        if not self.runtime_owned:
-            await self.shutdown()
-
-    async def shutdown(self) -> None:
-        """Close the authority, then dispose the process-scoped binding.
-
-        Close-then-record: shutdown completion is recorded only after the hub
-        has staled references, aborted outstanding activation leases, joined
-        in-flight operations, and the binding has been disposed.  A failed or
-        cancelled close leaves the composition unrecorded and retryable.
-        """
-
-        if self._shutdown:
-            return
-        if not self._core_shutdown:
-            if self.plugin_publication is None:
-                await self.hub.close()
-            else:
-                await self.plugin_publication.shutdown()
-            await self.binder.dispose(self.binding)
-            self._core_shutdown = True
-        if not self._owned_cleanup_complete:
-            if self.owned_cleanup is not None:
-                self.owned_cleanup()
-            self._owned_cleanup_complete = True
-        self._shutdown = True
 
 
 async def resolve_coding_continuity_history_source(
@@ -818,40 +767,13 @@ async def resolve_coding_continuity_history_source(
 
 
 @dataclass
-class _CodingContinuityBindingReservation:
+class _CodingContinuityBindingReservation(_ContinuityBindingReservationLifetime):
+    _base_cleanup_code: ClassVar[str] = "coding_continuity_base_cleanup_retryable"
     binder: RuntimeProfileBinder | None = None
     binding: RuntimeProfileBinding | None = None
     generation: ContinuityPluginGeneration | None = None
     construction_cleanup: ContinuityPluginPendingCleanup | None = None
     generation_authority: ContinuityPluginGenerationAuthority | None = None
-
-    async def retry_cleanup(self) -> tuple[str, ...]:
-        codes: list[str] = []
-        construction_cleanup = self.construction_cleanup
-        if construction_cleanup is not None:
-            try:
-                await construction_cleanup.retry()
-            except BaseException:
-                codes.append("continuity_provider_construction_cleanup_retryable")
-            else:
-                self.construction_cleanup = None
-        generation = self.generation
-        if generation is not None:
-            try:
-                await generation.dispose()
-            except BaseException:
-                codes.append("continuity_provider_generation_cleanup_retryable")
-            else:
-                self.generation = None
-        if self.binder is not None and self.binding is not None:
-            try:
-                await self.binder.dispose(self.binding)
-            except BaseException:
-                codes.append("coding_continuity_base_cleanup_retryable")
-            else:
-                self.binder = None
-                self.binding = None
-        return tuple(codes)
 
 
 def bind_coding_continuity(
@@ -1095,41 +1017,6 @@ def _canonical_continuity_cwd(cwd: str | Path | None) -> str | None:
     )
 
 
-@dataclass(slots=True)
-class _CodingPreparedSessionSettlement:
-    prepared: CodingPreparedSessionOperation
-    _abort_complete: bool = False
-
-    async def consume(self) -> object:
-        try:
-            return await self.prepared.consume()
-        except BaseException as operation_error:
-            try:
-                await self.abort()
-            except BaseException as abort_error:
-                operation_error.add_note(
-                    "Coding prepared Session abort also failed: "
-                    f"{type(abort_error).__name__}"
-                )
-            raise
-
-    async def abort(self) -> None:
-        if self._abort_complete:
-            return
-        abort_task = asyncio.create_task(self.prepared.abort())
-        try:
-            await await_owned_task(abort_task)
-        except BaseException:
-            if _task_completed_successfully(abort_task):
-                self._abort_complete = True
-            raise
-        self._abort_complete = True
-
-
-def _task_completed_successfully(task: asyncio.Task[object]) -> bool:
-    return task.done() and not task.cancelled() and task.exception() is None
-
-
 _CONTINUITY_PAYLOAD_STAGING = _ContinuityPayloadStaging(label="Coding continuity")
 _write_private_continuity_payload = _CONTINUITY_PAYLOAD_STAGING.write
 _remove_private_continuity_payload = _CONTINUITY_PAYLOAD_STAGING.remove
@@ -1144,53 +1031,20 @@ async def _retry_coding_continuity_reservation_atomic(
     runtime: object,
     reservation: _CodingContinuityBindingReservation,
 ) -> tuple[str, ...]:
-    cleanup_task = asyncio.create_task(reservation.retry_cleanup())
-    try:
-        return await await_owned_task(cleanup_task)
-    except asyncio.CancelledError:
-        if cleanup_task.done() and not cleanup_task.cancelled():
-            try:
-                codes = cleanup_task.result()
-            except BaseException:
-                pass
-            else:
-                if not codes:
-                    _delete_runtime_binding_if(runtime, reservation)
-        raise
+    return await retry_bound_continuity_reservation(
+        runtime, reservation, binding_attribute=_RUNTIME_BINDING_ATTRIBUTE
+    )
 
 
 async def shutdown_coding_continuity(runtime: object) -> None:
-    composition = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
-    if isinstance(composition, _CodingContinuityBindingReservation):
-        codes = await _retry_coding_continuity_reservation_atomic(
-            runtime,
-            composition,
-        )
-        if codes:
-            error = ContinuityPluginLifecycleError(
-                "Coding continuity binding cleanup remains retryable.",
-                code="coding_continuity_binding_cleanup_retryable",
-            )
-            for code in codes:
-                error.add_note(code)
-            raise error
-        _delete_runtime_binding_if(runtime, composition)
-        return
-    if not isinstance(composition, CodingContinuityComposition):
-        return
-    shutdown_task = asyncio.create_task(composition.shutdown())
-    try:
-        await await_owned_task(shutdown_task)
-    except asyncio.CancelledError:
-        if shutdown_task.done() and not shutdown_task.cancelled():
-            try:
-                shutdown_task.result()
-            except BaseException:
-                pass
-            else:
-                _delete_runtime_binding_if(runtime, composition)
-        raise
-    _delete_runtime_binding_if(runtime, composition)
+    await shutdown_bound_continuity(
+        runtime,
+        binding_attribute=_RUNTIME_BINDING_ATTRIBUTE,
+        composition_type=CodingContinuityComposition,
+        reservation_type=_CodingContinuityBindingReservation,
+        cleanup_error_message="Coding continuity binding cleanup remains retryable.",
+        cleanup_error_code="coding_continuity_binding_cleanup_retryable",
+    )
 
 
 def get_coding_continuity_composition(
@@ -1209,10 +1063,9 @@ def supports_coding_continuity_secure_staging() -> bool:
 
 
 def _delete_runtime_binding_if(runtime: object, expected: object) -> None:
-    if getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None) is not expected:
-        return
-    with suppress(AttributeError):
-        delattr(runtime, _RUNTIME_BINDING_ATTRIBUTE)
+    delete_runtime_binding_if(
+        runtime, expected, binding_attribute=_RUNTIME_BINDING_ATTRIBUTE
+    )
 
 
 def _require_runtime(value: object | None) -> CodingContinuityRuntimePort:

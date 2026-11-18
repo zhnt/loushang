@@ -1,4 +1,4 @@
-"""Original legacy Product startup registration and inactivity observation."""
+"""Legacy Product runtime registration and authenticated old-state observation."""
 
 from __future__ import annotations
 
@@ -10,12 +10,135 @@ from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol, TypeVar
 
 from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
 from loushang.harness.resources.packages._private_directory import (
     prepare_private_directory_tree,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
+    PackageLegacyStateEvidenceV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
+    PackagePosixEpochSnapshotEvidenceStore,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PackageOfflineRestoreSnapshotEvidenceV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_snapshot import (
+    PackageWindowsEpochSnapshotEvidenceStore,
+)
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
+)
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    PackagePosixEpochCutoverResultV1,
+    read_posix_product_pre_b_snapshot,
+)
+from loushang.harness.resources.packages.product_windows_epoch_guard import (
+    PackageProductWindowsFencedRuntimeOwner,
+)
+from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
+    PackageWindowsEpochCutoverResultV1,
+    read_windows_product_pre_b_snapshot,
+)
+
+_FencedRuntime = (
+    PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
+)
+_SnapshotStore = (
+    PackagePosixEpochSnapshotEvidenceStore | PackageWindowsEpochSnapshotEvidenceStore
+)
+
+
+@dataclass(frozen=True)
+class _LegacyFirstSnapshot:
+    """Borrow one fenced runtime to read its authenticated, immutable first snapshot."""
+
+    runtime: _FencedRuntime
+    snapshots: _SnapshotStore
+    receipt_id: str
+    evidence: PackageOfflineRestoreSnapshotEvidenceV1
+    error_type: type[Exception]
+    label: str
+
+    @classmethod
+    def open(
+        cls,
+        runtime: _FencedRuntime,
+        *,
+        store_id: str,
+        control_root: Path,
+        snapshot_root: Path,
+        error_type: type[Exception],
+        label: str,
+    ) -> _LegacyFirstSnapshot:
+        runtime.assert_current()
+        fence = runtime.cutover_result.fence
+        if (
+            runtime.registry.store_id != store_id
+            or runtime.control_root != control_root
+            or fence is None
+            or fence.store_id != store_id
+            or fence.epoch != 1
+            or fence.request.prior_epoch != 0
+        ):
+            raise error_type(f"{label} first fence is unsupported")
+        snapshot_owner = (
+            PackageWindowsEpochSnapshotEvidenceStore
+            if isinstance(runtime, PackageProductWindowsFencedRuntimeOwner)
+            else PackagePosixEpochSnapshotEvidenceStore
+        )
+        snapshots = snapshot_owner(snapshot_root, store_id=store_id)
+        receipt_id = fence.request.snapshot_receipt_id
+        evidence = snapshots.snapshot(receipt_id)
+        if (
+            evidence is None
+            or evidence.snapshot.receipt_id != receipt_id
+            or evidence.snapshot.legacy_root_identity
+            != fence.request.legacy_root_identity
+        ):
+            raise error_type(f"{label} snapshot is unavailable")
+        return cls(runtime, snapshots, receipt_id, evidence, error_type, label)
+
+    def read_member(
+        self, *, domain: str, member_name: str, maximum_bytes: int
+    ) -> bytes | None:
+        raw = self.snapshots.read_regular_member(
+            self.receipt_id,
+            domain=domain,
+            member_name=member_name,
+            maximum_bytes=maximum_bytes,
+        )
+        self.runtime.assert_current()
+        return raw
+
+    def list_members(self, *, domain: str) -> tuple[str, ...]:
+        members = self.snapshots.list_domain_members(self.receipt_id, domain=domain)
+        if members is None:
+            raise self.error_type(f"{self.label} snapshot disappeared")
+        self.runtime.assert_current()
+        return members
+
+    def observe(
+        self, *, store_id: str, legacy_root_identity: str
+    ) -> PackageLegacyStateEvidenceV1:
+        fence = self.runtime.cutover_result.fence
+        if (
+            fence is None
+            or store_id != fence.store_id
+            or legacy_root_identity != fence.request.legacy_root_identity
+            or self.evidence.snapshot.store_id != store_id
+        ):
+            raise self.error_type(f"{self.label} observation authority changed")
+        self.runtime.assert_current()
+        return PackageLegacyStateEvidenceV1.create(
+            store_id=store_id,
+            legacy_root_identity=legacy_root_identity,
+            state_digest=self.evidence.snapshot_tree_digest,
+            entry_count=self.evidence.snapshot.entry_count,
+            byte_count=self.evidence.snapshot.byte_count,
+        )
 
 
 class _LegacyStateRoots(Protocol):
@@ -245,3 +368,122 @@ def _startup_lease_is_inactive(
             f"{policy.product_label} Plugin startup liveness evidence is invalid",
             f"{policy.error_code_prefix}_startup_evidence_invalid",
         ) from exc
+
+
+LegacyCutoverBackupStatus = Literal["retained", "unknown"]
+LegacyCutoverBackupReason = Literal[
+    "snapshot_verified",
+    "snapshot_evidence_missing",
+    "snapshot_owner_unavailable",
+]
+_BackupRecordT = TypeVar("_BackupRecordT")
+
+
+class _LegacyCutoverBackupFacts:
+    """Shared value invariants without slots or nominal Product record ownership."""
+
+    __slots__ = ()
+    _backup_label = "Product"
+
+    store_id: str
+    namespace_id: str
+    snapshot_receipt_id: str
+    status: LegacyCutoverBackupStatus
+    reason: LegacyCutoverBackupReason
+    evidence_id: str | None
+    entry_count: int | None
+    byte_count: int | None
+    status_version: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.status_version) is not int
+            or self.status_version != 1
+            or not all((self.store_id, self.namespace_id, self.snapshot_receipt_id))
+        ):
+            raise ValueError(
+                f"{self._backup_label} cutover backup status identity is invalid"
+            )
+        if self.status == "retained":
+            if (
+                self.reason != "snapshot_verified"
+                or self.evidence_id is None
+                or self.entry_count is None
+                or self.byte_count is None
+            ):
+                raise ValueError("Retained cutover backup requires owner evidence")
+        elif self.status == "unknown":
+            if (
+                self.reason
+                not in {"snapshot_evidence_missing", "snapshot_owner_unavailable"}
+                or self.evidence_id is not None
+                or self.entry_count is not None
+                or self.byte_count is not None
+            ):
+                raise ValueError("Unknown cutover backup cannot claim evidence")
+        else:
+            raise ValueError("Unsupported cutover backup status")
+
+
+def inspect_legacy_cutover_backup(
+    cutover: PackagePosixEpochCutoverResultV1 | PackageWindowsEpochCutoverResultV1,
+    *,
+    snapshot_root: Path,
+    store_id: str,
+    status_factory: Callable[..., _BackupRecordT],
+    product_label: str,
+) -> _BackupRecordT:
+    """Correlate the current native fence, switch and retained snapshot owner."""
+    if cutover.disposition != "fenced" or cutover.fence is None:
+        raise RuntimeError(f"{product_label} Package Product fence is unavailable")
+    fence = cutover.fence
+    receipt_id = fence.request.snapshot_receipt_id
+    reason: LegacyCutoverBackupReason
+    snapshot_reader = (
+        read_windows_product_pre_b_snapshot
+        if os.name == "nt"
+        else read_posix_product_pre_b_snapshot
+    )
+    try:
+        evidence = snapshot_reader(
+            snapshot_root=snapshot_root,
+            store_id=store_id,
+            snapshot_receipt_id=receipt_id,
+        )
+    except FileNotFoundError:
+        evidence = None
+        reason = "snapshot_owner_unavailable"
+    else:
+        reason = "snapshot_evidence_missing"
+    if evidence is None:
+        return status_factory(
+            store_id=store_id,
+            namespace_id=fence.request.namespace_id,
+            snapshot_receipt_id=receipt_id,
+            status="unknown",
+            reason=reason,
+            evidence_id=None,
+            entry_count=None,
+            byte_count=None,
+        )
+    snapshot = evidence.snapshot
+    if (
+        snapshot.store_id != store_id
+        or snapshot.legacy_root_identity != fence.request.legacy_root_identity
+        or snapshot.quiescence_receipt_id != fence.request.quiescence_receipt_id
+        or cutover.switch_receipt is None
+        or cutover.switch_receipt.snapshot_receipt_id != receipt_id
+    ):
+        raise ValueError(
+            f"{product_label} cutover backup does not match the current fence"
+        )
+    return status_factory(
+        store_id=store_id,
+        namespace_id=fence.request.namespace_id,
+        snapshot_receipt_id=receipt_id,
+        status="retained",
+        reason="snapshot_verified",
+        evidence_id=evidence.evidence_id,
+        entry_count=snapshot.entry_count,
+        byte_count=snapshot.byte_count,
+    )

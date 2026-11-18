@@ -47,16 +47,6 @@ class CodingWindowsWorkerC5SemanticBaseV1(_WindowsC5BaseMethods):
     _replay_type = CodingWindowsWorkerC5ReplayV1
     _retained_attempt_type = CodingProductWorkerRetainedAttemptV1
 
-    scope_id: str
-    store_id: str
-    source_snapshot_digest: str
-    owner_present: bool
-    cutoff_revision: int
-    last_record: _StateRecord | None
-    retired_attempt_ids: tuple[str, ...]
-    record_digest: str
-    version: int = 1
-
     @classmethod
     def from_semantic_read(
         cls,

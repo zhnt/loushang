@@ -48,13 +48,7 @@ class CodingWindowsWorkerLaunchIntentSemanticBaseV1(_WindowsLaunchIntentBaseMeth
     _intent_type = CodingWindowsWorkerLaunchIntentV1
     _replay_type = CodingWindowsWorkerLaunchIntentReplayV1
 
-    scope_id: str
-    store_id: str
-    source_snapshot_digest: str
     retained_intents: tuple[CodingWindowsWorkerLaunchIntentV1, ...]
-    intent_attempt_ids: tuple[str, ...]
-    record_digest: str
-    version: int = 1
 
     @classmethod
     def from_semantic_read(

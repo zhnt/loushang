@@ -39,11 +39,7 @@ from .package_product_worker_windows_history_preparation import (
 )
 from .package_product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
-    _capture_coding_windows_worker_desired_history_under_gc_guard,
-    _capture_coding_windows_worker_history_sources_under_gc_guard,
-)
-from .package_product_worker_windows_recovery_inventory import (
-    _inspect_coding_windows_product_worker_offline_recovery_under_gc_guard,
+    _capture_coding_windows_worker_semantics_under_gc_guard,
 )
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -279,40 +275,14 @@ def _review_coding_windows_worker_package_references_under_guard(
     if gc_snapshot.active:
         raise ValueError("Windows Worker GC reservation remains active")
     product.assert_root_gc_authority_current()
-    source = _capture_coding_windows_worker_history_sources_under_gc_guard(
+    semantic = _capture_coding_windows_worker_semantics_under_gc_guard(
         product,
-        store_id=quiescence.store_id,
-        lease_owner_revision=quiescence.owner_revision,
-        require_settled_history=True,
-        allow_checkpoint_stage=allow_checkpoint_stage,
-        allow_base_stage=allow_base_stage,
-    )
-    recovery = _inspect_coding_windows_product_worker_offline_recovery_under_gc_guard(
-        product,
-        store_id=quiescence.store_id,
-        lease_owner_revision=quiescence.owner_revision,
+        store=quiescence,
+        quiescence=quiescence,
         gc_snapshot=gc_snapshot,
-    )
-    desired_snapshot, desired_transitions, desired_digest = (
-        _capture_coding_windows_worker_desired_history_under_gc_guard(product)
-    )
-    if source != _capture_coding_windows_worker_history_sources_under_gc_guard(
-        product,
-        store_id=quiescence.store_id,
-        lease_owner_revision=quiescence.owner_revision,
-        require_settled_history=False,
         allow_checkpoint_stage=allow_checkpoint_stage,
         allow_base_stage=allow_base_stage,
-    ):
-        raise ValueError("Windows Worker history sources changed")
-    semantic = CodingWindowsWorkerHistorySemanticReadV1(
-        source_snapshot=source,
-        offline_recovery=recovery,
-        desired_inventory_revision=desired_snapshot.inventory_revision,
-        desired_history_digest=desired_digest,
-        desired_snapshot=desired_snapshot,
-        desired_transitions=desired_transitions,
-    )
+    )()
     prepared = CodingWindowsWorkerHistoryPreparationV1.create(semantic)
     backup_topology = observe_coding_worker_backup_references_under_gc_guard(
         product, attempt_id="0" * 32

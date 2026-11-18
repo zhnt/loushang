@@ -1,145 +1,30 @@
-"""Shared connection configuration and Host-owned navigation state access."""
+"""Coding client request policy over Host-owned connections and navigation."""
 
 from __future__ import annotations
 
-import json
-import os
-import re
-import sqlite3
 import sys
-import tempfile
 from pathlib import Path
-from urllib.parse import urlsplit
 
-from loushang.apphost.client_preferences import ClientPreferences
-from loushang.foundation.platform_paths import resolve_platform_home
+from loushang.apphost.client_preferences import (
+    ClientPreferences,
+)
+from loushang.apphost.client_preferences import (
+    connection_list as connection_list,
+)
+from loushang.apphost.client_preferences import (
+    connections as connections,
+)
+from loushang.apphost.client_preferences import (
+    mutate_connections as mutate_connections,
+)
+from loushang.apphost.client_preferences import (
+    remember_workspace as remember_workspace,
+)
+from loushang.apphost.client_preferences import (
+    write_connections as write_connections,
+)
 
 TEMPORARY_WORKSPACE = "@temporary"
-
-
-def connections() -> dict:
-    path = resolve_platform_home() / "connections.json"
-    if not path.exists():
-        return {"version": 1, "lastWorkspace": "", "servers": []}
-    value = json.loads(path.read_text())
-    if not isinstance(value, dict) or value.get("version") != 1:
-        raise ValueError("invalid_connections")
-    servers = value.get("servers")
-    if not isinstance(servers, list) or len(servers) > 128:
-        raise ValueError("invalid_connections")
-    ids = set()
-    for server in servers:
-        if not isinstance(server, dict):
-            raise ValueError("invalid_connection")
-        identifier = server.get("id")
-        if (
-            not isinstance(identifier, str)
-            or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", identifier)
-            or identifier == "local"
-            or identifier in ids
-        ):
-            raise ValueError("invalid_connection_id")
-        ids.add(identifier)
-        port = server.get("tunnelPort")
-        if type(port) is not int or not 1 <= port <= 65535:
-            raise ValueError("invalid_tunnel_port")
-        url = server.get("webUrl")
-        if url is not None:
-            if not isinstance(url, str) or len(url) > 4096:
-                raise ValueError("invalid_server_url")
-            parsed = urlsplit(url)
-            if (
-                not parsed.hostname
-                or "@" in parsed.netloc
-                or parsed.query
-                or parsed.fragment
-                or parsed.scheme not in {"http", "https"}
-            ):
-                raise ValueError("invalid_server_url")
-    if value.get("defaultConnection") and value["defaultConnection"] not in ids:
-        raise ValueError("unknown_connection")
-    return value
-
-
-def remember_workspace(workspace: str) -> None:
-    home = resolve_platform_home()
-    home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    mutate_connections(lambda value: value.update(lastWorkspace=workspace))
-
-
-def mutate_connections(change) -> None:
-    home = resolve_platform_home()
-    home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    state = home / "state"
-    state.mkdir(mode=0o700, exist_ok=True)
-    with sqlite3.connect(state / "connection-config-lock.sqlite3", timeout=10) as lock:
-        lock.execute("BEGIN IMMEDIATE")
-        value = connections()
-        change(value)
-        write_connections(value)
-
-
-def write_connections(value: dict) -> None:
-    home = resolve_platform_home()
-    home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(dir=home, prefix=".connections-")
-    try:
-        with os.fdopen(fd, "w") as output:
-            json.dump(value, output)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(name, home / "connections.json")
-    finally:
-        Path(name).unlink(missing_ok=True)
-
-
-def connection_list() -> dict:
-    home = resolve_platform_home()
-    value = connections()
-    selected = value.get("defaultConnection") or "local"
-    host_path = home / "host.json"
-    web = json.loads(host_path.read_text()).get("web", {}) if host_path.exists() else {}
-    port = web.get("port", 1422)
-    scheme = "https" if web.get("certificate") else "http"
-    bind = web.get("bind", "127.0.0.1")
-    address = "127.0.0.1" if bind in {"localhost", "0.0.0.0"} else bind
-    web_url = f"{scheme}://{address}:{port}" if port else None
-    endpoint = home / "state" / "web" / "endpoint.json"
-    if endpoint.exists():
-        web_url = json.loads(endpoint.read_text())["url"]
-    if web_url is not None:
-        if not isinstance(web_url, str):
-            raise ValueError("invalid_web_url")
-        parsed = urlsplit(web_url)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or parsed.hostname != address
-            or parsed.username
-            or parsed.password
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise ValueError("invalid_web_url")
-    entries = [
-        {
-            "id": "local",
-            "name": "Local",
-            "kind": "local",
-            "selected": selected == "local",
-            "webUrl": web_url,
-        }
-    ]
-    entries.extend(
-        {
-            "id": item["id"],
-            "name": item.get("name", item["id"]),
-            "kind": "remote",
-            "selected": item["id"] == selected,
-            "webUrl": item.get("webUrl"),
-        }
-        for item in value["servers"]
-    )
-    return {"selectedId": selected, "connections": entries}
 
 
 def settings_request(request: dict):

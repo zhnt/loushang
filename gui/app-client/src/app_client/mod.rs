@@ -10,7 +10,8 @@ mod request_deadline;
 mod transport_auth;
 mod workspace;
 pub use attachment::{
-    ControlAuthority, ControlResult, CreateSessionResult, MemberEvents, ModelControlResult,
+    definitive_create_rejection, ControlAuthority, ControlResult, CreateSessionResult,
+    InteractionOutcome, MemberEvents, ModelControlResult,
 };
 pub use workspace::{WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope};
 
@@ -46,6 +47,41 @@ pub struct LiveEventRound {
     pub sessions: Vec<serde_json::Value>,
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractiveGoalAction {
+    Run,
+    Step,
+    Pause,
+    Resume,
+    Cancel,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InteractiveGoalCommand {
+    pub goal_id: String,
+    pub command_id: String,
+    pub action: InteractiveGoalAction,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InteractiveGoalReviewSubmission {
+    pub goal_id: String,
+    pub review_token: String,
+    pub command_id: String,
+    pub decision: InteractiveGoalReviewDecision,
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractiveGoalReviewDecision {
+    Accept,
+    Reject,
+}
+
 pub enum ControlCommand {
     CreateSession {
         source_session_id: Option<String>,
@@ -53,10 +89,20 @@ pub enum ControlCommand {
         title: String,
         reply: SyncSender<Result<CreateSessionResult, ()>>,
     },
+    CloseSession {
+        mux_space_id: String,
+        session_id: String,
+        reply: SyncSender<Result<bool, ()>>,
+    },
     Submit {
         session_id: String,
         submission_id: String,
         text: String,
+        reply: SyncSender<Result<ControlResult, ()>>,
+    },
+    StartGoal {
+        session_id: String,
+        submission_id: String,
         reply: SyncSender<Result<ControlResult, ()>>,
     },
     FindSubmission {
@@ -69,6 +115,45 @@ pub enum ControlCommand {
         execution_id: String,
         reply: SyncSender<Result<ControlResult, ()>>,
     },
+    CreateInteractiveGoal {
+        session_id: String,
+        target: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    ReadInteractiveGoalStatus {
+        session_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    ControlInteractiveGoal {
+        session_id: String,
+        command: InteractiveGoalCommand,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    ReadInteractiveGoalRecovery {
+        session_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    ReadInteractiveGoalReview {
+        session_id: String,
+        goal_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    SubmitInteractiveGoalReview {
+        session_id: String,
+        review: InteractiveGoalReviewSubmission,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    ObserveGoalProgress {
+        session_id: String,
+        execution_id: String,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    },
+    RespondInteraction {
+        session_id: String,
+        interaction_id: String,
+        outcome: InteractionOutcome,
+        reply: SyncSender<Result<ControlResult, ()>>,
+    },
     ListModels {
         session_id: String,
         reply: SyncSender<Result<ModelControlResult, ()>>,
@@ -79,6 +164,23 @@ pub enum ControlCommand {
         thinking_level: Option<String>,
         reply: SyncSender<Result<ModelControlResult, ()>>,
     },
+}
+
+impl ControlCommand {
+    pub fn interactive_goal(
+        session_id: String,
+        target: Option<String>,
+        reply: SyncSender<Result<Option<serde_json::Value>, ()>>,
+    ) -> Self {
+        match target {
+            Some(target) => Self::CreateInteractiveGoal {
+                session_id,
+                target,
+                reply,
+            },
+            None => Self::ReadInteractiveGoalStatus { session_id, reply },
+        }
+    }
 }
 
 struct DeadlineStream {
@@ -197,6 +299,7 @@ fn open_channel(
     stop: Option<&super::read_stop::ReadStop>,
     attempt: &connection_epoch::Attempt,
     request_thinking: bool,
+    request_goal_recovery: bool,
 ) -> Result<OpenChannel, ()> {
     client.1.set("connection_failed");
     let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
@@ -244,8 +347,14 @@ fn open_channel(
     if request_thinking {
         let mut capabilities = serde_json::to_value(&hello).map_err(|_| ())?;
         capabilities["sessionThinking"] = serde_json::Value::Bool(true);
+        if request_goal_recovery {
+            capabilities["interactiveGoalRecovery"] = serde_json::Value::Bool(true);
+        }
         let echo = serde_json::to_vec(&capabilities).map_err(|_| ())?;
         channel.send(&echo)?;
+        if request_goal_recovery {
+            client.1.set("goal_recovery_negotiation");
+        }
         if channel.receive()? != echo {
             return Err(());
         }
@@ -283,17 +392,30 @@ fn run_attempt(
     if cancel == Some(Duration::ZERO) {
         return Err(());
     }
-    let (stream, _cancel_owner, mut channel, hello) = open_channel(
-        client,
-        &record,
-        &profile,
-        address,
-        &deadline,
-        cancel,
-        stop.as_ref(),
-        &attempt,
-        control_commands.is_some(),
-    )?;
+    let interactive = control_commands.is_some();
+    let open = |recovery| {
+        open_channel(
+            client,
+            &record,
+            &profile,
+            address,
+            &deadline,
+            cancel,
+            stop.as_ref(),
+            &attempt,
+            interactive,
+            recovery,
+        )
+    };
+    let (stream, _cancel_owner, mut channel, hello) = open(interactive).or_else(|()| {
+        if interactive && client.1.get() == "goal_recovery_negotiation" {
+            // Old Hosts close on an unrecognized echo. Try their original shape
+            // on a fresh authenticated channel with the same startup deadline.
+            open(false)
+        } else {
+            Err(())
+        }
+    })?;
     let instance = &hello.service_instance_id;
     if attach {
         client.1.set("attachment_unavailable");
@@ -417,8 +539,31 @@ impl AppClient {
         timeout: Duration,
         request: WorkspaceRequest<'_>,
     ) -> Result<WorkspaceResult, ()> {
-        self.request_once(target, timeout, |channel, _| {
+        self.request_once(target, timeout, |channel, hello| {
+            if let WorkspaceRequest::Preview { instance, .. } = &request {
+                if *instance != hello.service_instance_id {
+                    return Ok(WorkspaceResult::Rejected("instance_changed".into()));
+                }
+            }
             workspace::workspace_request(channel, request)
+        })
+    }
+
+    /// Read a Workspace's model choices without opening it or acquiring an attachment.
+    pub fn workspace_models(
+        &self,
+        target: AppTarget<'_>,
+        timeout: Duration,
+        path: Option<&str>,
+    ) -> Result<ModelControlResult, ()> {
+        self.request_once(target, timeout, |channel, _| {
+            let response = attachment::request(
+                channel,
+                "workspace/models",
+                "1",
+                serde_json::json!({"path": path}),
+            )?;
+            attachment::decode_model_result(&response.result_type, &response.result)
         })
     }
 
@@ -462,7 +607,7 @@ impl AppClient {
         let attempt = self.0.begin()?;
         let (record, profile, address) = self.load_record(target)?;
         let (stream, _cancel, mut channel, hello) = open_channel(
-            self, &record, &profile, address, &deadline, None, None, &attempt, false,
+            self, &record, &profile, address, &deadline, None, None, &attempt, false, false,
         )?;
         let result = operation(&mut channel, &hello);
         let _ = stream.shutdown(Shutdown::Both);
@@ -539,6 +684,17 @@ fn process_controls<R: Read, W: Write>(
                 let _ = reply.send(result);
                 reconnect
             }
+            ControlCommand::CloseSession {
+                mux_space_id,
+                session_id,
+                reply,
+            } => {
+                let result =
+                    authority.close_session(channel, &mux_space_id, &session_id, &request_id);
+                let reconnect = !matches!(result, Ok(false));
+                let _ = reply.send(result);
+                reconnect
+            }
             ControlCommand::Submit {
                 session_id,
                 submission_id,
@@ -547,6 +703,17 @@ fn process_controls<R: Read, W: Write>(
             } => {
                 let result =
                     authority.submit(channel, &session_id, &submission_id, &text, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::StartGoal {
+                session_id,
+                submission_id,
+                reply,
+            } => {
+                let result =
+                    authority.start_goal(channel, &session_id, &submission_id, &request_id);
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed
@@ -568,6 +735,98 @@ fn process_controls<R: Read, W: Write>(
                 reply,
             } => {
                 let result = authority.interrupt(channel, &session_id, &execution_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::CreateInteractiveGoal {
+                session_id,
+                target,
+                reply,
+            } => {
+                let result =
+                    authority.interactive_goal(channel, &session_id, Some(&target), &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ReadInteractiveGoalStatus { session_id, reply } => {
+                let result = authority.interactive_goal(channel, &session_id, None, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ControlInteractiveGoal {
+                session_id,
+                command,
+                reply,
+            } => {
+                let result =
+                    authority.control_interactive_goal(channel, &session_id, command, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ReadInteractiveGoalRecovery { session_id, reply } => {
+                let result = authority.interactive_goal_recovery(channel, &session_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ReadInteractiveGoalReview {
+                session_id,
+                goal_id,
+                reply,
+            } => {
+                let result =
+                    authority.interactive_goal_review(channel, &session_id, &goal_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::SubmitInteractiveGoalReview {
+                session_id,
+                review,
+                reply,
+            } => {
+                let result = authority.submit_interactive_goal_review(
+                    channel,
+                    &session_id,
+                    review,
+                    &request_id,
+                );
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ObserveGoalProgress {
+                session_id,
+                execution_id,
+                reply,
+            } => {
+                let result =
+                    authority.goal_progress(channel, &session_id, &execution_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::RespondInteraction {
+                session_id,
+                interaction_id,
+                outcome,
+                reply,
+            } => {
+                let result = if session.has_approval(&session_id, &interaction_id) {
+                    authority.respond_interaction(
+                        channel,
+                        &session_id,
+                        &interaction_id,
+                        outcome,
+                        &request_id,
+                    )
+                } else {
+                    Ok(ControlResult::Rejected("operation_unavailable".to_owned()))
+                };
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

@@ -16,6 +16,10 @@
         "attachment_lagged",
         "session_unavailable",
         "operation_unavailable",
+        "permission_denied",
+        "workspace_preview_binary",
+        "workspace_preview_too_large",
+        "workspace_registration_failed",
         "cleanup_incomplete",
         "service_closed"
       ]
@@ -43,7 +47,8 @@
         "interaction/respond",
         "attachment/read_events",
         "sessions/list",
-        "workspace/request"
+        "workspace/request",
+        "workspace/models"
       ]
     },
     "payload": {
@@ -67,5 +72,5 @@
   ],
   "title": "Loushang App Request V1 Vocabulary",
   "type": "object",
-  "x-loushang-note": "Payload strictness is enforced by the closed reference codec. sessions/list additionally requires an explicitly admitted discovery connection profile. workspace/request requires a managed profile and an explicit Host Workspace port; codec recognition grants no capability."
+  "x-loushang-note": "Payload strictness is enforced by the closed reference codec. sessions/list additionally requires an explicitly admitted discovery connection profile. workspace/request and workspace/models require a managed profile and an explicit Host Workspace port; codec recognition grants no capability."
 }

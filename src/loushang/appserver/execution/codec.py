@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 from types import UnionType
-from typing import Literal, cast, get_args, get_origin, get_type_hints
+from typing import Literal, Union, cast, get_args, get_origin, get_type_hints
 
 from ..protocol import (
     AckV1,
@@ -16,14 +16,25 @@ from ..protocol import (
     SessionSnapshotV1,
     SessionSubmissionModeV1,
     TranscriptRecordV1,
+    UserChoiceOptionV1,
+    UserChoicePromptV1,
 )
 from ..protocol.codec import _dumps, _loads, _object, _string
 from ..resume_model import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
+from .goal_codec import (
+    GOAL_CAPABILITIES,
+    GOAL_FIELDS,
+    GOAL_KINDS,
+    add_goal_fields,
+    decode_goal_fields,
+    encode_goal_fields,
+)
 from .model import (
     ExecutionCallV1,
     ExecutionContentEventV1,
     ExecutionEventsV1,
     ExecutionFailureV1,
+    ExecutionGoalProgressV1,
     ExecutionInterruptResultV1,
     ExecutionObservationV1,
     ExecutionOperationV1,
@@ -36,6 +47,8 @@ from .model import (
     ExecutionSourceSnapshotV1,
     ExecutionStateV1,
     ExecutionUpdateV1,
+    InteractiveGoalCommandViewV1,
+    InteractiveGoalViewV1,
     _identifier,
 )
 
@@ -49,6 +62,8 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     AckV1: (), AppFailureV1: ("code",), ExecutionFailureV1: ("code",),
     SessionIdentityV1: ("product_id", "continuity_id", "session_id", "scope", "scope_fingerprint"),
     TranscriptRecordV1: ("kind", "text"),
+    UserChoiceOptionV1: ("id", "label", "description"),
+    UserChoicePromptV1: ("question_id", "question", "options"),
     SessionSnapshotV1: ("identity", "title", "cursor", "revision", "running", "records"),
     SessionSnapshotRequestV1: ("attachment_id", "controller_generation", "member_id"),
     SessionEventV1: ("session_id", "cursor", "kind", "text", "interaction_id"),
@@ -57,6 +72,7 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ExecutionObservationV1: ("execution_id", "status", "final_cursor"),
     ExecutionSourceSnapshotV1: ("source", "observation", "draft", "truncated"),
     ExecutionRecordV1: ("service_instance_id", "identity", "submission_id", "state"),
+    **GOAL_FIELDS,
     ExecutionSessionViewV1: ("identity", "revision", "quiescent", "active", "latest_terminal"),
     ExecutionSessionSnapshotV1: ("service_instance_id", "source", "executions"),
     ExecutionContentEventV1: ("source", "execution_id"),
@@ -66,6 +82,7 @@ _FIELDS: dict[type, tuple[str, ...]] = {
 }
 _KINDS: dict[str, type] = {
     "resume_input_lookup": ResumeInputLookupResultV1,
+    **GOAL_KINDS,
     "record": ExecutionRecordV1, "snapshot": ExecutionSessionSnapshotV1,
     "events": ExecutionEventsV1, "failure": ExecutionFailureV1,
     "app_failure": AppFailureV1,
@@ -89,11 +106,20 @@ def _encode(value: object) -> object:
     if fields is None:
         raise InvalidAppMessageError()
     encoded = {_camel(name): _encode(getattr(value, name)) for name in fields}
-    if (
-        type(value) is SessionSnapshotV1
-        and value.submission_mode is SessionSubmissionModeV1.EXECUTION
-    ):
-        encoded["submissionMode"] = value.submission_mode.value
+    if type(value) is SessionSnapshotV1:
+        if value.submission_mode is SessionSubmissionModeV1.EXECUTION:
+            encoded["submissionMode"] = value.submission_mode.value
+        if value.user_choice is not None:
+            encoded["userChoice"] = _encode(value.user_choice)
+    if type(value) is ExecutionSessionSnapshotV1:
+        for flag in GOAL_CAPABILITIES:
+            if getattr(value, flag):
+                encoded[_camel(flag)] = True
+    if type(value) is InteractiveGoalViewV1:
+        if value.command is not None:
+            encoded["command"] = _encode(value.command)
+        if value.review_available:
+            encoded["reviewAvailable"] = True
     return encoded
 
 
@@ -111,7 +137,7 @@ def _decode(expected: object, raw: object) -> object:
         if type(raw) is not str or raw not in args:
             raise InvalidAppMessageError()
         return raw
-    if origin is UnionType:
+    if origin in (UnionType, Union):
         for member in args:
             try:
                 return _decode(member, raw)
@@ -128,8 +154,12 @@ def _decode(expected: object, raw: object) -> object:
         raise InvalidAppMessageError()
     fields = _FIELDS[expected]
     wire_fields = {_camel(name) for name in fields}
-    if expected is SessionSnapshotV1 and type(raw) is dict and "submissionMode" in raw:
-        wire_fields.add("submissionMode")
+    if expected is SessionSnapshotV1 and type(raw) is dict:
+        wire_fields.update({"submissionMode", "userChoice"} & raw.keys())
+    if expected is ExecutionSessionSnapshotV1 and type(raw) is dict:
+        wire_fields.update(_camel(flag) for flag in GOAL_CAPABILITIES if _camel(flag) in raw)
+    if expected is InteractiveGoalViewV1 and type(raw) is dict:
+        wire_fields.update({"command", "reviewAvailable"} & raw.keys())
     value = _object(raw, wire_fields)
     annotations = get_type_hints(expected)
     values = {
@@ -144,6 +174,22 @@ def _decode(expected: object, raw: object) -> object:
         if "submissionMode" in value and mode is not SessionSubmissionModeV1.EXECUTION:
             raise InvalidAppMessageError()
         values["submission_mode"] = mode
+        if "userChoice" in value:
+            values["user_choice"] = _decode(UserChoicePromptV1, value["userChoice"])
+    if expected is ExecutionSessionSnapshotV1:
+        for flag in GOAL_CAPABILITIES:
+            field = _camel(flag)
+            if field in value:
+                if value[field] is not True:
+                    raise InvalidAppMessageError()
+                values[flag] = True
+    if expected is InteractiveGoalViewV1:
+        if "command" in value:
+            values["command"] = _decode(InteractiveGoalCommandViewV1, value["command"])
+        if "reviewAvailable" in value:
+            if value["reviewAvailable"] is not True:
+                raise InvalidAppMessageError()
+            values["review_available"] = True
     return expected(**values)
 
 
@@ -161,6 +207,7 @@ def encode_call(call: ExecutionCallV1) -> bytes:
         body["submissionId"] = call.submission_id
     if call.execution_id is not None:
         body["executionId"] = call.execution_id
+    encode_goal_fields(call, body, _encode)
     if call.text is not None:
         body["text"] = call.text
     if call.resume_query is not None:
@@ -178,15 +225,23 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             raise InvalidAppMessageError()
         operation = ExecutionOperationV1(_string(root["operation"]))
         fields = {"control", "expectedInstanceId"}
-        if operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND}:
+        if operation in {
+            ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND, ExecutionOperationV1.GOAL_START,
+        }:
             fields.add("submissionId")
-        if operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT}:
+        if operation in {
+            ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
+        }:
             fields.add("executionId")
         if operation is ExecutionOperationV1.SUBMIT:
             fields.add("text")
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP:
             fields.add("resumeQuery")
-        body = _object(root["payload"], fields)
+        raw = root["payload"]
+        include_batches = add_goal_fields(operation, raw, fields)
+        body = _object(raw, fields)
+        if include_batches and body["includeBatches"] is not True:
+            raise InvalidAppMessageError()
         return ExecutionCallV1(
             _string(root["requestId"]), operation,
             cast(SessionSnapshotRequestV1, _decode(SessionSnapshotRequestV1, body["control"])),
@@ -196,20 +251,27 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             _string(body["text"]) if "text" in fields else None,
             cast(ResumeInputLookupQueryV1, _decode(ResumeInputLookupQueryV1, body["resumeQuery"]))
             if "resumeQuery" in fields else None,
+            include_goal_batches=include_batches,
+            **decode_goal_fields(operation, body, _decode),
         )
     except (TypeError, ValueError, KeyError, RecursionError):
         raise InvalidAppMessageError() from None
 
 
-def encode_response(response: ExecutionResponseV1) -> bytes:
+def encode_response(response: ExecutionResponseV1, *, include_goal_batches: bool = True) -> bytes:
     if type(response) is not ExecutionResponseV1:
         raise TypeError("invalid execution response")
     kind = "not_found" if response.result is None else next(
         key for key, value in _KINDS.items() if value is type(response.result)
     )
+    result = _encode(response.result)
+    if type(response.result) is ExecutionGoalProgressV1 and not include_goal_batches:
+        # Retain the closed legacy shape for callers that did not request details.
+        assert isinstance(result, dict)
+        del result["batches"]
     return _dumps({
         "protocolVersion": EXECUTION_PROTOCOL_VERSION, "requestId": response.request_id,
-        "resultType": kind, "result": _encode(response.result),
+        "resultType": kind, "result": result,
     })
 
 

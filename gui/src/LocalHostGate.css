@@ -21,3 +21,6 @@
 .local-host-confirm { position: fixed; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--dialog-backdrop); }
 .local-host-confirm > div { max-width: 480px; margin: 24px; padding: 24px; border-radius: 12px; background: var(--paper); overflow-wrap: anywhere; }
 .local-host-confirm button { margin-right: 12px; }
+
+:is(.local-host-actions, .local-host-confirm, .tray-host-dialog) button.host-danger:not(:disabled) { color: var(--red); border-color: var(--red); }
+:is(.local-host-actions, .local-host-confirm, .tray-host-dialog) button.host-danger:not(:disabled):hover { background: var(--red-soft); }

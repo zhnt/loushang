@@ -122,6 +122,15 @@ Exit codes are stable at the CLI boundary:
 | Hosting public process port | Hosting | shell-free native process launch, bounded stdio, wait/terminate/close, backend observations | interpret canary protocol or Product success |
 | Harness JSONL journal | Harness | cross-platform private lock, strict durable append/read mechanics | decide enabled state or selection generation |
 
+Implementation reconciliation (A201): the same Code control object now borrows
+`harness.journal._private_operations` for complete private lock/read/append,
+async acquisition and consumer-lifetime scopes. Code still decides every
+transition, selection generation, history check and admission, and retains its
+original records, snapshots, errors, codec and Product path. The Journal base
+never interprets enabled state or generation. Sync and async exception/exit
+semantics remain distinct; the final admission lock still spans complete run
+settlement. This changes no installed route, default-dark policy or PR gate.
+
 ## Dependency Boundary
 
 ```text

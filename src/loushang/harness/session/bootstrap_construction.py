@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.model import Model
 from loushang.ai.model.selection import ModelSelection
@@ -44,6 +44,7 @@ from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import ResolvedRuntimeProfile
 from loushang.harness.session._cleanup import (
+    ExplicitTemporaryDirectory,
     get_session_construction_cleanup,
     retain_session_construction_failure,
     run_cleanup_steps,
@@ -870,3 +871,117 @@ __all__ = [
     "AgentSessionConstructionRequest",
     "AgentSessionConstructionRuntime",
 ]
+
+
+if TYPE_CHECKING:
+    from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+        _PreparationFailureCleanup,
+        _PreparedCompositionCleanup,
+    )
+
+_PreparationT = TypeVar("_PreparationT", bound="_PreparedCompositionCleanup")
+
+
+@dataclass(slots=True)
+class PreparationRootCustody(Generic[_PreparationT]):
+    """One partial-progress authority for a preparation and its two roots."""
+
+    state_root: ExplicitTemporaryDirectory | None = None
+    private_root: ExplicitTemporaryDirectory | None = None
+    preparation: _PreparationT | None = None
+    started: bool = False
+
+    def begin_once(self, message: str) -> None:
+        if self.started:
+            raise RuntimeError(message)
+        self.started = True
+
+    def prepare_roots(
+        self,
+        *,
+        make_state: Callable[[], ExplicitTemporaryDirectory | None],
+        make_private: Callable[[], ExplicitTemporaryDirectory | None],
+        persistent_root: Callable[[], Path],
+    ) -> Path:
+        self.state_root = make_state()
+        self.private_root = make_private()
+        return (
+            Path(self.state_root.name)
+            if self.state_root is not None
+            else persistent_root()
+        )
+
+    def attach_cleanup(self, preparation: _PreparationT) -> None:
+        preparation.state_cleanup = (
+            self.state_root.cleanup if self.state_root is not None else None
+        )
+        preparation.private_state_cleanup = (
+            self.private_root.cleanup if self.private_root is not None else None
+        )
+
+    def cleanup_roots_sequentially(self) -> None:
+        if self.state_root is not None:
+            self.state_root.cleanup()
+        if self.private_root is not None:
+            self.private_root.cleanup()
+
+    def cleanup_roots_with_notes(
+        self, error: BaseException, *, state_label: str, private_label: str
+    ) -> None:
+        run_cleanup_steps(
+            error,
+            tuple(
+                (name, cleanup)
+                for name, cleanup in (
+                    (
+                        state_label,
+                        self.state_root.cleanup
+                        if self.state_root is not None
+                        else None,
+                    ),
+                    (
+                        private_label,
+                        self.private_root.cleanup
+                        if self.private_root is not None
+                        else None,
+                    ),
+                )
+                if cleanup is not None
+            ),
+        )
+
+    def failure_callbacks(
+        self,
+        *,
+        failure_custodian: _PreparationFailureCleanup | None,
+        management_cleanup: Callable[[], None] | None,
+    ) -> tuple[
+        Callable[[], None] | None, Callable[[], None] | None, Callable[[], None] | None
+    ]:
+        preparation_cleanup: Callable[[], None] | None
+        private_cleanup: Callable[[], None] | None
+        selected_management: Callable[[], None] | None
+        if failure_custodian is not None:
+            # A preparation that acquired lifecycle evidence is its sole cleanup
+            # owner. Retrying that owner preserves lease -> management root ->
+            # private root ordering; naked callbacks would bypass the gate.
+            preparation_cleanup = failure_custodian.close
+            private_cleanup = None
+            selected_management = None
+        else:
+            preparation_cleanup = (
+                self.preparation.close
+                if self.preparation is not None
+                else self.state_root.cleanup
+                if self.state_root is not None
+                else None
+            )
+            private_cleanup = (
+                self.private_root.cleanup
+                if self.preparation is None and self.private_root is not None
+                else None
+            )
+            selected_management = (
+                management_cleanup if self.preparation is None else None
+            )
+        return preparation_cleanup, selected_management, private_cleanup

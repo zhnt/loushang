@@ -44,15 +44,6 @@ class CodingWindowsWorkerSupervisorReplayV1:
 class CodingWindowsWorkerSupervisorSemanticBaseV1(_WindowsSupervisorBaseMethods):
     _replay_type = CodingWindowsWorkerSupervisorReplayV1
 
-    scope_id: str
-    store_id: str
-    source_snapshot_digest: str
-    cutoff_revision: int
-    latest_attempts: tuple[WorkerAttemptRecordV1, ...]
-    retired_attempt_ids: tuple[str, ...]
-    record_digest: str
-    version: int = 1
-
     @classmethod
     def from_semantic_read(
         cls,

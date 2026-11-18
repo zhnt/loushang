@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 from loushang.harness.approval.plugin_execution import (
+    PluginApprovalAuthorizationV1,
     PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
     PluginExecutionJournalScopeKind,
@@ -118,6 +119,9 @@ class PluginDeclarationHost:
         approval_label: str,
         error_code_prefix: str,
         error_factory: Callable[[str, str], RuntimeError],
+        windows_initial_approval_recovery: tuple[
+            PluginApprovalAuthorizationV1, frozenset[str]
+        ] | None = None,
     ) -> PluginSelection:
         """Drive one explicit issuer round without granting or consuming authority.
 
@@ -131,6 +135,11 @@ class PluginDeclarationHost:
             clock=clock,
             required_writer_capabilities=required_writer_capabilities,
         )
+        if windows_initial_approval_recovery is not None:
+            authorization, plugin_ids = windows_initial_approval_recovery
+            journal.archive_windows_duplicate_initial_approvals(
+                authorization=authorization, plugin_ids=plugin_ids,
+            )
         host = cls(
             execution_evaluator=PluginDefinitionEvaluator(
                 decision_journal=journal,

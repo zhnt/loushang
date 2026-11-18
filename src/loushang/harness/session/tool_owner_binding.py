@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import ClassVar, Protocol
 
+from loushang.harness.capabilities.contracts import CapabilityRequirement
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
 )
@@ -174,3 +175,90 @@ def bind_admitted_tool_pack(
         commit=lambda value: require_generation(value).scope.commit(),
         rollback_commit=lambda value: require_generation(value).scope.rollback_commit(),
     )
+
+
+class _ToolOwnerBoundState(Protocol):
+    _bound: bool
+
+
+class _ReservedToolPackOwner:
+    """Validate and bind one reserved Tool pack using its Product's facts."""
+
+    __slots__ = ()
+    admission: OwnerContributionAdmissionRecord
+    authority_gate: SessionCapabilityOwnerAuthorityGate
+    mode: CapabilityMountMode
+    scope_id: str
+    _bound: bool
+    _owner_id: ClassVar[str]
+    _plugin_id: ClassVar[str]
+    _contribution_id: ClassVar[str]
+    _catalog_id: ClassVar[str]
+    _tool_names: ClassVar[tuple[str, ...]]
+    _requirement: ClassVar[CapabilityRequirement]
+    _label: ClassVar[str]
+    _disposal_error: ClassVar[Callable[[], Exception]]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.admission, OwnerContributionAdmissionRecord):
+            raise TypeError(f"{self._label} owner requires an exact admission")
+        admission = self.admission
+        if (
+            admission.owner_id != self._owner_id
+            or admission.contribution_kind != "tool_pack"
+            or admission.plugin_id != self._plugin_id
+            or admission.contribution_id != self._contribution_id
+            or admission.candidate.contribution.collection_id != self._catalog_id
+            or admission.admitted_identities != self._tool_names
+            or admission.requirements != (self._requirement,)
+        ):
+            raise ValueError(f"{self._label} owner admission is not the reserved pack")
+        if not isinstance(self.authority_gate, SessionCapabilityOwnerAuthorityGate):
+            raise TypeError(f"{self._label} owner requires an authority gate")
+        if self.mode not in {"on_demand", "always"}:
+            raise ValueError(f"{self._label} owner requires an enabled mount mode")
+        if not isinstance(self.scope_id, str) or not self.scope_id.strip():
+            raise ValueError(f"{self._label} owner scope id must not be empty")
+        if admission.candidate.scope_id != self.scope_id:
+            raise ValueError(f"{self._label} owner scope does not match admission")
+
+    def _bind_reserved_pack(
+        self,
+        registration: SessionToolRegistrationPort,
+        *,
+        definitions_from_captures: Callable[
+            [tuple[SessionCapabilityConsumerCapture, ...]], tuple[ToolDefinition, ...]
+        ],
+        generation_family: Callable[[], object],
+    ) -> SessionCapabilityOwnerGenerationBinding:
+        if self._bound:
+            raise RuntimeError(f"{self._label} owner was already bound")
+        if not callable(getattr(registration, "stage_runtime_tool", None)):
+            raise TypeError(f"{self._label} owner registration port is invalid")
+        state: _ToolOwnerBoundState = self
+        state._bound = True
+        return bind_admitted_tool_pack(
+            self,
+            self.authority_gate,
+            registration=registration,
+            definitions_from_captures=definitions_from_captures,
+            generation_family=generation_family(),
+            label=self._label,
+            disposal_error=type(self)._disposal_error,
+        )
+
+    def _checked_runtime_capture(
+        self,
+        captures: tuple[SessionCapabilityConsumerCapture, ...],
+    ) -> SessionCapabilityConsumerCapture:
+        if len(captures) != 1:
+            raise ValueError(f"{self._label} owner requires one Consumer capture")
+        [capture] = captures
+        if not isinstance(capture, SessionCapabilityConsumerCapture):
+            raise TypeError(f"{self._label} owner Consumer capture is invalid")
+        if (
+            capture.entry.admission_fingerprint != self.admission.fingerprint
+            or capture.entry.requirement != self._requirement
+        ):
+            raise ValueError(f"{self._label} owner received another Consumer")
+        return capture

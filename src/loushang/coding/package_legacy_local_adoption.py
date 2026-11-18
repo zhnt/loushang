@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.plugin_management.operations import PluginManagementCommandV1
-from loushang.harness.plugin_management.records import (
-    PluginDesiredStateMutationV1,
-    PluginInstallationKeyV1,
+from loushang.harness.package_product._plugin_bootstrap import (
+    bootstrap_reviewed_product_plugins,
+    preserve_removed_product_plugin,
 )
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -55,9 +55,9 @@ from .package_legacy_source_consumption import (
     consume_coding_accepted_legacy_local_source,
 )
 from .package_product_runtime import (
+    _CODING_BUILTIN_BOOTSTRAP_POLICY,
     CODING_PACKAGE_PRODUCT_POLICY_REVISION,
     CodingFencedProductApplicationOwner,
-    _bootstrap_coding_builtin_plugin,
     open_coding_fenced_product_application_owner,
 )
 
@@ -180,8 +180,7 @@ def adopt_coding_legacy_local_data_review(
             item
             for item in product_owner.runtime_owner.product_owner.policy.bindings
             if item.plugin_id == plugin_id
-            and item.source_trust_class
-            in LEGACY_LOCAL_DATA_TRUST_CLASSES
+            and item.source_trust_class in LEGACY_LOCAL_DATA_TRUST_CLASSES
         )
         expected_trust = trust_class_for_legacy_data_resource(resource_kind)
         if bound and (
@@ -251,29 +250,14 @@ def adopt_coding_legacy_local_data_review(
         product = product_owner.runtime_owner.product_owner
         for builtin_id in acceptance.review.removed_builtin_ids:
             _preserve_removed_builtin(product_owner, acceptance, builtin_id)
-        for builtin_id in (
-            "coding.base",
-            "coding.lsp.default",
-            "coding.arch.default",
-        ):
-            if builtin_id in acceptance.review.removed_builtin_ids:
-                continue
-            history = tuple(
-                item
-                for item in product.desired_state.transitions()
-                if item.mutation.installation_key.plugin_id == builtin_id
-            )
-            if (
-                history
-                and getattr(history[-1].mutation, "actor_id", None) != product.actor_id
-            ):
-                # A later operator choice owns this builtin's current state.
-                continue
-            _bootstrap_coding_builtin_plugin(
-                product_owner,
-                builtin_id,
-                enable=builtin_id not in disabled_builtins,
-            )
+        bootstrap_reviewed_product_plugins(
+            product,
+            ("coding.base", "coding.lsp.default", "coding.arch.default"),
+            disabled_ids=disabled_builtins,
+            removed_ids=acceptance.review.removed_builtin_ids,
+            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+            strict_history=False,
+        )
     finally:
         product_owner.close()
     return CodingLegacyLocalSkillAdoptionV1(
@@ -338,39 +322,12 @@ def _preserve_removed_builtin(
         plugin_id=plugin_id,
     )
     operation_id = acceptance.review.removed_builtin_operation_id(plugin_id)
-    history = tuple(
-        item
-        for item in product.desired_state.transitions()
-        if item.mutation.installation_key == key
+    preserve_removed_product_plugin(
+        product,
+        key,
+        operation_id,
+        error_prefix="Coding removed builtin Product",
     )
-    if history:
-        first = history[0]
-        if (
-            first.mutation.operation_id != operation_id
-            or not isinstance(first.mutation, PluginDesiredStateMutationV1)
-            or first.mutation.actor_id != product.actor_id
-            or first.committed_state.selection.desired_state != "absent"
-        ):
-            raise RuntimeError("Coding removed builtin Product history changed")
-        return
-    command = PluginManagementCommandV1(
-        action="remove",
-        mutation=PluginDesiredStateMutationV1(
-            operation_id=operation_id,
-            idempotency_key=operation_id,
-            expected_inventory_revision=(
-                product.desired_state.snapshot().inventory_revision
-            ),
-            installation_key=key,
-            desired_state="absent",
-            package_revision=None,
-            actor_id=product.actor_id,
-            policy_revision=product.desired_policy_revision,
-        ),
-    )
-    result = product.management.submit(command)
-    if result.result is None or result.result.disposition != "succeeded":
-        raise RuntimeError("Coding removed builtin Product tombstone refused")
 
 
 __all__ = [

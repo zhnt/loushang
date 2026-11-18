@@ -5,6 +5,7 @@ import json
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
+from hashlib import sha256
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -53,6 +54,7 @@ from loushang.harness.plugin_management.retirement import (
     PluginRetirementIntentLedger,
     PluginRetirementIntentSnapshotV1,
     PluginRetirementIntentV1,
+    decode_plugin_retirement_intent_capture,
     retirement_intent_for_transition,
 )
 from loushang.harness.plugin_management.retirement_sets import (
@@ -60,6 +62,8 @@ from loushang.harness.plugin_management.retirement_sets import (
     PluginRetirementSetInventorySnapshotV1,
     PluginRetirementSetLedger,
     PluginRetirementSetSnapshotV1,
+    RetirementCaptureFields,
+    decode_plugin_retirement_set_capture,
 )
 from loushang.harness.plugin_management.updates import (
     PLUGIN_UPDATE_TERMINAL_ERROR_CODES,
@@ -251,15 +255,20 @@ class PluginManagementService:
             )
 
     def recover(
-        self, *, before_replay: Callable[[], None] | None = None,
+        self,
+        *,
+        before_replay: Callable[[], None] | None = None,
         require_current_admission: Callable[[], None] | None = None,
     ) -> tuple[PluginManagementOperationEvent, ...]:
         """Recover accepted/running operations in original acceptance order."""
 
         if require_current_admission is not None and (
-            not callable(require_current_admission) or inspect.iscoroutinefunction(require_current_admission)
+            not callable(require_current_admission)
+            or inspect.iscoroutinefunction(require_current_admission)
         ):
-            raise TypeError("Plugin recovery requires a synchronous current admission check")
+            raise TypeError(
+                "Plugin recovery requires a synchronous current admission check"
+            )
 
         def current() -> None:
             if require_current_admission is not None:
@@ -819,7 +828,7 @@ def decode_plugin_management_operation_capture(
 
 
 _unique_operation_json_object = _unique_json_object_hook(
-    lambda: 'Plugin management operation capture has duplicate keys',
+    lambda: "Plugin management operation capture has duplicate keys",
 )
 
 
@@ -863,3 +872,121 @@ __all__ = [
     "PluginRetirementIntentLedgerPort",
     "PluginRetirementSetLedgerPort",
 ]
+
+
+def inspect_settled_management_capture(
+    raw: bytes,
+    *,
+    path: Path,
+    desired_transitions: tuple[PluginDesiredStateJournalTransition, ...],
+    retirements: RetirementCaptureFields | None,
+    maximum_bytes: int,
+    error_type: type[Exception],
+    label: str,
+) -> tuple[str, tuple[str, ...]]:
+    """Join frozen operation, Desired and retirement captures without opening IO.
+
+    Input quota and Product admission are supplied by the caller. Existing
+    decoders retain sole replay ownership; this proof adds no journal or writer.
+    """
+    try:
+        latest = decode_plugin_management_operation_capture(
+            raw.decode("utf-8"), path=path
+        )
+    except (UnicodeError, PluginManagementError) as exc:
+        raise error_type(f"{label} management operation journal is invalid") from exc
+    by_operation = {
+        transition.mutation.operation_id: transition
+        for transition in desired_transitions
+    }
+    terminal = {event.command.operation_id: event for event in latest}
+    for event in latest:
+        if event.status != "terminal" or event.result is None:
+            raise error_type(f"{label} management operation is unsettled")
+        expected = by_operation.get(event.command.operation_id)
+        committed = event.result.disposition in {"succeeded", "restart_required"}
+        if (committed and event.result.transition != expected) or (
+            not committed and expected is not None
+        ):
+            raise error_type(f"{label} management operation differs from Desired state")
+        if event.result.disposition == "restart_required" and not isinstance(
+            expected, PluginDesiredStateUpdateTransitionV2
+        ):
+            raise error_type(f"{label} management restart is not an update")
+    for operation_id in by_operation:
+        if operation_id not in terminal:
+            raise error_type(f"{label} Desired transition has no management operation")
+    updates = tuple(
+        transition
+        for transition in desired_transitions
+        if isinstance(transition, PluginDesiredStateUpdateTransitionV2)
+    )
+    for transition in updates:
+        update_event = terminal.get(transition.mutation.operation_id)
+        if (
+            update_event is None
+            or update_event.status != "terminal"
+            or update_event.result is None
+            or update_event.result.disposition
+            != (
+                "restart_required"
+                if retirement_intent_for_transition(transition) is not None
+                else "succeeded"
+            )
+            or update_event.result.transition != transition
+        ):
+            raise error_type(
+                f"{label} Desired update has no settled management operation"
+            )
+    expected_retirements = {
+        intent.retirement_id: intent
+        for transition in desired_transitions
+        if (intent := retirement_intent_for_transition(transition)) is not None
+    }
+    if retirements is None:
+        if expected_retirements:
+            raise error_type(f"{label} management retirement evidence is required")
+    else:
+        if (
+            not expected_retirements
+            or not isinstance(retirements.intents_raw, bytes)
+            or not isinstance(retirements.sets_raw, bytes)
+            or len(retirements.intents_raw) > maximum_bytes
+            or len(retirements.sets_raw) > maximum_bytes
+            or not isinstance(retirements.intents_path, Path)
+            or not isinstance(retirements.sets_path, Path)
+        ):
+            raise error_type(f"{label} retirement capture is invalid")
+        try:
+            intents = decode_plugin_retirement_intent_capture(
+                retirements.intents_raw.decode("utf-8"),
+                path=retirements.intents_path,
+            )
+            sets = decode_plugin_retirement_set_capture(
+                retirements.sets_raw.decode("utf-8"),
+                path=retirements.sets_path,
+                intents=intents,
+            )
+        except (UnicodeError, PluginRetirementError, PluginRetirementSetError) as exc:
+            raise error_type(f"{label} retirement journals are invalid") from exc
+        if (
+            {item.retirement_id: item for item in intents.intents}
+            != expected_retirements
+            or {item.intent.retirement_id for item in sets.sets}
+            != set(expected_retirements)
+            or any(
+                item.state != "succeeded"
+                or item.plan is None
+                or not item.plan.targets
+                or len(item.latest_outcomes) != len(item.plan.targets)
+                or any(
+                    outcome.disposition != "succeeded"
+                    for outcome in item.latest_outcomes
+                )
+                for item in sets.sets
+            )
+        ):
+            raise error_type(f"{label} retirement evidence is not fully settled")
+    return sha256(raw).hexdigest(), tuple(
+        sorted(item.mutation.operation_id for item in updates)
+    )

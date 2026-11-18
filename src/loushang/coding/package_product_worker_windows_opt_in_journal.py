@@ -57,15 +57,13 @@ class CodingWindowsWorkerOptInJournal(
     def current(
         self, plugin_id: str, *, directory_fd: int
     ) -> CodingWorkerOptInDecisionV1 | None:
-        self._require_plugin_id(plugin_id)
-        events = self.history_read_only(directory_fd=directory_fd)
-        return self._latest(events, plugin_id)
+        return super().current(plugin_id, directory_fd=directory_fd)
 
     def history_read_only(
         self, *, directory_fd: int
     ) -> tuple[CodingWorkerOptInDecisionV1, ...]:
         "Read every retained operation without creating a journal or lock."
-        return self._read_records(directory_fd=directory_fd)
+        return super().history_read_only(directory_fd=directory_fd)
 
     def change(
         self,
@@ -77,7 +75,7 @@ class CodingWindowsWorkerOptInJournal(
         action: Literal["allow", "revoke"],
         opt_in: CodingWorkerOptInV1 | None,
     ) -> CodingWorkerOptInDecisionV1:
-        return self._change(
+        return super().change(
             directory_fd=directory_fd,
             plugin_id=plugin_id,
             operation_id=operation_id,

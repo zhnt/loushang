@@ -23,6 +23,7 @@ from loushang.harness.resources.packages._file_consumption import closing_descri
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
 from ._plugin_lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -267,17 +268,11 @@ class CodingArchPrivateDataReadOwner:
 
 
 def _assert_workspace(workspace: Path, identity: tuple[int, int]) -> None:
-    try:
-        metadata = workspace.lstat()
-        resolved = workspace.resolve(strict=True)
-    except OSError as error:
-        raise ValueError("Coding Arch read workspace changed") from error
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or resolved != workspace
-        or (metadata.st_dev, metadata.st_ino) != identity
-    ):
-        raise ValueError("Coding Arch read workspace changed")
+    assert_workspace_directory_identity(
+        workspace,
+        identity,
+        changed=lambda: ValueError("Coding Arch read workspace changed"),
+    )
 
 
 __all__ = ["CodingArchPrivateDataReadOwner"]

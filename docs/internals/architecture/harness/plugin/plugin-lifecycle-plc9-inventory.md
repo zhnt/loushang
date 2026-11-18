@@ -651,7 +651,8 @@ implemented.
 | Enablement migration receipt | `src/loushang/harness/plugin_management/enablement_migration.py::PluginEnablementMigrationJournal` | A1-2 owns the durable migration receipt with strict append-only `accepted -> desired_committed -> compatibility_window -> finalized` evidence per Installation and rejects changed accepted input | Retain through the downgrade window; finalization evidence plus the minimum-version/downgrade gate is required before removing compatibility fields |
 | Enablement migration coordinator | `src/loushang/harness/plugin_management/enablement_migration.py::PluginEnablementMigrationCoordinator` | A1-2 seeds only never-seen desired state through the common command port with deterministic retry identities; any desired history wins. Coding's migration and first-party default ingresses now require the exact workspace Installation scope, Product ID, and scope ID before Desired State writes; the default ingress also matches Package Revision to Plugin ID. Process and tenant keys with the same scope ID are refused | Retain until all legacy inputs are receipted; it cannot acquire Packages, infer Source availability as selection, or call a desired ledger commit |
 | Legacy compatibility projection | `src/loushang/harness/plugin_management/enablement_migration.py::PluginEnablementCompatibilityProjector` | A1-2 derives legacy disabled ids from canonical desired snapshots plus migration receipts | Temporary retain; callers may consume it for downgrade compatibility but cannot mutate it as peer state |
-| Coding compatibility writer | `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter` | A1-3 pins the private root with a POSIX no-follow directory fd or a Windows identity-checked root descriptor; Windows opens every coordination/owner lock and journal relative to that descriptor through `NtCreateFile`, then both platforms acquire common coordination, migration transaction, desired journal, and migration journal locks in fixed order; it treats only newline-terminated records as committed before submitting a monotonic typed projection through the single Product registry authority, while an absent state root remains absent | Temporary Product-owned downgrade coordinator; rooted child I/O prevents root/ancestor namespace redirection, the registry aggregates workspace projections without holding its lock across config I/O, the settings owner atomically reloads/preserves/publishes/verifies, an incomplete crash tail remains for canonical owner repair, partial publication is repaired, and canonical desired state is never rolled back |
+| Coding compatibility writer | `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter` | Retains migration admission, Product identity and domain projection/guard; delegates rooted capture to the shared Plugin Management owner, releases workspace locks before submitting the typed projection, and defers settings notifications around reconciliation | Temporary Product downgrade policy; public Writer/Error and binding interface remain stable; canonical desired state is never rolled back |
+| Legacy compatibility registry | `src/loushang/harness/config/agent/_legacy_compatibility.py::LegacyPluginCompatibilityRegistry` and `bind_legacy_plugin_compatibility_registry` | A173 owns the complete cached authority/issuer, writer identity, monotonic per-workspace projections, aggregate publication, Condition/deque and per-request BaseException completion | One authority; no lock across config I/O; each caller receives its own completion/error, failed requests do not stop the tail, and projections are not rolled back; distinct from Config listener notification queues |
 | Coding migration composition | `src/loushang/coding/_plugin_lifecycle.py::build_coding_plugin_lifecycle` | A1-2 binds the generic journal under the private workspace lifecycle root and checks the epoch fence before management recovery; A1-3 base, Capability, and Continuity paths import exact legacy inputs before mount | Retain as Product composition; `build_coding_plugin_management_application` and `project_coding_plugin_enablement_compatibility` keep durable owner construction out of transport adapters |
 | Coding fresh B Product state | `src/loushang/coding/package_product_runtime.py::open_coding_package_product_state` | Opens a distinct desired-state ledger and management service only after the Store epoch is fenced | Retain as Product-owned B composition; command mutations still flow through the management service |
 | Effective legacy settings detection | `src/loushang/coding/package_product_runtime.py::_coding_product_settings_need_compatibility` | Reads `SettingsManager.get_settings().disabled_plugins` once, alongside other legacy inputs, to select compatibility or refuse explicit fresh-only admission. It does not modify settings or grant Plugin execution authority | Required by [ARD-008](../../decisions/accepted/ARD-008-workspace-upgrade-compatibility.md), including effective in-memory overrides. The exact scope is recorded by the existing PLC9 semantic-token inventory; ordinary startup preserves old choices and an existing fence never falls back to an old writer |
@@ -786,9 +787,9 @@ materializes packages.
 ## PLC9B.0 Exact Entrypoint And Owner Inventory
 
 PLC9B.0 began with the pre-runtime-migration snapshot at parent `4bd71d63`; A2
-revises the same two independently checked source-wide inventories to 110
-ingress/declaration rows with 163 occurrences and 143 effect/capability rows
-with 159 occurrences. The executable
+revised the original snapshot. The current accepted source-wide inventories have
+119 ingress/declaration rows with 174 occurrences and 146 effect/capability rows
+with 163 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -947,21 +948,28 @@ effect seams across Product composition, operations, source resolution,
 materialization, mutable remove/forget, Plugin publish/bind/reopen, and revision
 store access. It counts renamed imports as their original sensitive symbol.
 
+Delivery reconciliation retains the same scanner and assertions: the two managed
+reopen sites now belong to Plugin Management assembly, and legacy RevisionStore
+recapture belongs to Product-facing Resources Packages outside the dark kernel.
+The four added occurrences are the existing factory reference and three
+materializer import/type references; they are not four new publication effects.
+The A204 Worker Product authority is also an accepted consumer of the existing
+Worker primitives, without enabling a new execution path.
+
 <!-- plc9b-effect-inventory:start -->
 ```text
 src/loushang/coding/_base_plugin.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/_base_plugin.py::prepare_coding_base_plugin_assembly::CodingPackageMaterializer = 2
 src/loushang/coding/_base_plugin.py::prepare_managed_coding_base_plugin_assembly::CodingPackageMaterializer = 2
-src/loushang/coding/_base_plugin.py::prepare_managed_coding_base_plugin_assembly::reopen_plugin_package = 1
 src/loushang/coding/_capability_plugin_composition.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/_capability_plugin_composition.py::_resolve_managed_capability_plugins::CodingPackageMaterializer = 1
-src/loushang/coding/_capability_plugin_composition.py::_resolve_managed_capability_plugins::reopen_plugin_package = 1
 src/loushang/coding/_capability_plugin_composition.py::_validate_preparation_inputs::CodingPackageMaterializer = 2
 src/loushang/coding/_capability_plugin_composition.py::prepare_coding_capability_plugin_composition::CodingPackageMaterializer = 1
 src/loushang/coding/bootstrap.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/bootstrap.py::<module>::GitPackageMaterializerBackend = 1
 src/loushang/coding/bootstrap.py::_create_agent_session::CodingPackageMaterializer = 4
 src/loushang/coding/bootstrap.py::_create_agent_session::GitPackageMaterializerBackend = 1
+src/loushang/coding/bootstrap.py::_create_agent_session_with_model_policy::CodingPackageMaterializer = 1
 src/loushang/coding/bootstrap.py::_default_package_materializer::CodingPackageMaterializer = 2
 src/loushang/coding/bootstrap.py::_default_package_materializer::GitPackageMaterializerBackend = 1
 src/loushang/coding/bootstrap.py::create_agent_session::CodingPackageMaterializer = 1
@@ -980,14 +988,17 @@ src/loushang/coding/continuity_bootstrap.py::bind_coding_configured_continuity::
 src/loushang/coding/lsp/_plugin_opt_in.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::assemble_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::prepare_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
-src/loushang/coding/package_legacy_local_wheel.py::<module>::PluginRevisionStore = 1
-src/loushang/coding/package_legacy_local_wheel.py::reacquire_coding_legacy_local_plugin_wheel::PluginRevisionStore = 1
 src/loushang/coding/resource_runtime.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/resource_runtime.py::<module>::PackageMaterializer = 1
 src/loushang/coding/resource_runtime.py::CodingPackageMaterializer::CodingPackageMaterializer = 1
 src/loushang/coding/resource_runtime.py::CodingPackageMaterializer::PackageMaterializer = 1
 src/loushang/coding/session/agent_session.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/session/agent_session.py::AgentSession.__init__::CodingPackageMaterializer = 1
+src/loushang/harness/plugin_management/assembly.py::<module>::PackageMaterializer = 1
+src/loushang/harness/plugin_management/assembly.py::_prepare_managed_plugin_runtime::PackageMaterializer = 1
+src/loushang/harness/plugin_management/assembly.py::_prepare_managed_plugin_runtime::reopen_plugin_package = 1
+src/loushang/harness/plugin_management/assembly.py::_resolve_managed_plugin_runtimes::PackageMaterializer = 1
+src/loushang/harness/plugin_management/assembly.py::_resolve_managed_plugin_runtimes::reopen_plugin_package = 1
 src/loushang/harness/resources/packages/__init__.py::<module>::GitPackageMaterializerBackend = 2
 src/loushang/harness/resources/packages/__init__.py::<module>::PackageMaterializer = 2
 src/loushang/harness/resources/packages/__init__.py::<module>::PackageOperationsRuntime = 2
@@ -1055,6 +1066,7 @@ src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime._remove_legacy::remove_remote_source = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.update::update_remote_source = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.update_all::update_all_remote_sources = 1
+src/loushang/harness/resources/packages/product_legacy_source_wheel.py::_reacquire_legacy_local_plugin_wheel::PluginRevisionStore = 2
 src/loushang/harness/resources/packages/projection.py::<module>::PackageMaterializer = 1
 src/loushang/harness/resources/packages/projection.py::collect_projected_package_entries::PackageMaterializer = 1
 src/loushang/harness/resources/packages/roots.py::<module>::PackageMaterializer = 1
@@ -1069,8 +1081,8 @@ src/loushang/harness/resources/packages/session.py::SessionPackageController.pre
 src/loushang/harness/resources/packages/source_resolver.py::<module>::PackageMaterializer = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver::PackageMaterializer = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver::PackageSourceResolver = 1
-src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.prepare_configured_remote_records::prepare_remote_source = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver._materialize_startup_source::materialize_remote_source_sync = 2
+src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.prepare_configured_remote_records::prepare_remote_source = 1
 src/loushang/harness/resources/plugins/__init__.py::<module>::PluginRevisionStore = 2
 src/loushang/harness/resources/plugins/authority.py::PluginBindingStore.bind_plugin_packages::bind_plugin_packages = 1
 src/loushang/harness/resources/plugins/authority.py::PluginBindingStore.publish_plugin_packages::publish_plugin_packages = 1

@@ -19,6 +19,7 @@ from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionOpenSpecV1,
     TranscriptRecordV1,
+    UserChoicePromptV1,
 )
 from loushang.appservice import HostedSessionPortV1
 from loushang.appservice.resume_ports import (
@@ -43,6 +44,7 @@ class CodingHostedSnapshotProjectionV1:
     running: bool
     records: tuple[TranscriptRecordV1, ...] = ()
     truncated: bool = False
+    user_choice: UserChoicePromptV1 | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.title, str) or not self.title.strip():

@@ -141,6 +141,8 @@ class AgentSessionRuntime(
 ):
     """Coding type binding for the shared Agent Product runtime."""
 
+    _resume_shutdown_error_prefix = "coding_resume"
+
     def __init__(
         self,
         *,
@@ -181,10 +183,12 @@ class AgentSessionRuntime(
                 enroll_legacy_shared_store=enroll_legacy_shared_store,
             ) if owned_transcripts else None
         )
-        self._product_owner_selection = product_owner_selection
+        self._product_owner_selection: CodingFencedProductApplicationSelection | None = (
+            product_owner_selection
+        )
         self._embedded_resume_approval_owner: InteractiveApprovalResolver | None = None
         self._initialize_session_history_reads()
-        self._resume_planning = ResumePlanningSlot()
+        self._resume_planning: ResumePlanningSlot = ResumePlanningSlot()
         self._configured_resume_planning: _ConfiguredResumePlanning | None = None
         transcript_type = (
             _bind_owned_session_manager(self._owned_transcript_factory)
@@ -507,9 +511,6 @@ class AgentSessionRuntime(
             attempt_id=continuation.attempt_id, input_record_id=continuation.input_record_id,
         )
 
-    async def _drain_resume_activations(self) -> None:
-        await self.lifecycle.drain_retained_preparations(error_prefix="coding_resume")
-
     async def start_resume_planning(
         self, history: CodingResumeHistoryPreview, current_composition: CodingCompositionSetPlan,
         *, workspace_root: Path, resource_loader: ResourceLoader, subject_digest: str,
@@ -700,9 +701,6 @@ class AgentSessionRuntime(
             error_prefix="coding_resume_history",
         )
 
-    async def _drain_resume_history_reads(self) -> None:
-        await self._drain_session_history_reads()
-
     async def dispose_session_runtime(
         self,
         *,
@@ -710,71 +708,6 @@ class AgentSessionRuntime(
     ) -> None:
         from loushang.coding.continuity import shutdown_coding_continuity
 
-        if self._resume_history_reads and self._resume_history_loop is not asyncio.get_running_loop():
-            raise RuntimeError("coding_resume_history_loop_changed")
-        failure: BaseException | None = None
-        self._resume_history_closed = True
-        factory = self._owned_transcript_factory
-        product_selection = self._product_owner_selection
-        if product_selection is not None:
-            product_selection.fence()
-        if factory is not None:
-            factory._on_loop()
-            try:
-                factory.fence()
-            except BaseException as error:
-                failure = error
-        # Preparation holds the native transition lock. Settle it and original
-        # undelivered candidates before closing their dependent owner factories.
-        await self._drain_resume_activations()
-        try:
-            await super().dispose_session_runtime(metadata=metadata)
-        except BaseException as error:
-            if failure is None:
-                failure = error
-            else:
-                failure.add_note(f"Session cleanup retained: {type(error).__name__}")
-            # The original lifecycle/construction owner retains failed Session
-            # retirement. Its dependent factories must wait for that retry.
-            raise failure
-        try:
-            await self._resume_planning.close()
-        except BaseException as error:
-            if failure is None:
-                failure = error
-            else:
-                failure.add_note(f"Resume planning cleanup retained: {type(error).__name__}")
-        try:
-            await self._drain_resume_history_reads()
-        except BaseException as error:
-            if failure is None:
-                failure = error
-            else:
-                failure.add_note(f"history read settlement retained: {type(error).__name__}")
-        if factory is not None:
-            try:
-                await factory.close()
-            except BaseException as error:
-                if failure is None:
-                    failure = error
-                else:
-                    failure.add_note(f"transcript factory cleanup retained: {type(error).__name__}")
-        try:
-            await shutdown_coding_continuity(self)
-        except BaseException as error:
-            if failure is None:
-                failure = error
-            else:
-                failure.add_note(f"continuity cleanup retained: {type(error).__name__}")
-        if product_selection is not None:
-            try:
-                product_selection.close()
-            except BaseException as error:
-                if failure is None:
-                    failure = error
-                else:
-                    failure.add_note(
-                        f"Product owner cleanup retained: {type(error).__name__}"
-                    )
-        if failure is not None:
-            raise failure
+        await self._dispose_session_runtime_dependencies(
+            shutdown_coding_continuity, metadata=metadata
+        )

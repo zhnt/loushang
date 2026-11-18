@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Callable
+from pathlib import Path
 from typing import Literal, Protocol
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
@@ -32,6 +33,9 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
     PackageProductLocalWorkerAdmissionV1,
 )
+from loushang.harness.resources.plugins.declarations import (
+    PluginLocalWorkerConfiguration,
+)
 from loushang.harness.worker.native_executable_format import (
     WorkerNativeExecutableFormatError,
     WorkerNativeExecutablePlatform,
@@ -49,6 +53,32 @@ from .product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from .product_runtime import PackageProductRuntimeRequestV1
+
+
+class ProductWorkerOptInFacts:
+    __slots__ = ()
+    owner_id: str
+
+
+class ProductWorkerNativeClosureFacts:
+    __slots__ = ()
+    native_platform: str
+    native_profile_catalog_revision: str
+    containment_launcher_digest: str
+    containment_profile_digest: str
+
+
+class ProductWorkerNativeLaunchMaterialFacts:
+    __slots__ = ()
+    launcher_path: Path
+    closure: ProductWorkerNativeClosureFacts
+
+
+class ProductWorkerSelectedPayloadFacts:
+    __slots__ = ()
+    configuration: PluginLocalWorkerConfiguration
+    body: bytes
+    digest: str
 
 
 def verify_product_selected_worker_candidate(
@@ -95,6 +125,25 @@ def verify_product_selected_worker_candidate(
     ):
         raise WorkerPackageCandidateError("worker_candidate_selection_mismatch")
     return candidate
+
+
+def _read_product_selected_worker_payload_facts(
+    selected: PackageProductSelectedPluginManifestV1,
+    *,
+    contribution_id: str,
+    native_platform: WorkerNativeExecutablePlatform,
+) -> tuple[WorkerPackageCandidateV1, PluginLocalWorkerConfiguration, bytes | None]:
+    """Return inert payload facts; the caller retains receipt/GC authority."""
+    candidate = verify_product_selected_worker_candidate(
+        selected, contribution_id=contribution_id, native_platform=native_platform
+    )
+    manifest = selected.verified_manifest()
+    configuration = manifest.contribution_index.items[0].worker_configuration
+    assert configuration is not None
+    root = manifest.root_relative_path.as_posix()
+    prefix = "" if root == "." else f"{root}/"
+    body = dict(selected.snapshot.files).get(f"{prefix}{configuration.entrypoint}")
+    return candidate, configuration, body
 
 
 __all__ = ["WorkerPackageCandidateV1", "verify_product_selected_worker_candidate"]

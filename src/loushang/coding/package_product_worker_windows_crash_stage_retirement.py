@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import os
 
+from loushang.harness.package_product._worker_windows_attempt import (
+    windows_product_worker_offline_write,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -62,87 +65,84 @@ def retire_coding_windows_product_worker_crash_stage(
         or type(expected_review) is not CodingWindowsWorkerCrashStageReviewV1
     ):
         raise ValueError("Windows Worker crash stage retirement requires exact Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
+    with windows_product_worker_offline_write(
+        product,
+        active_error=ValueError,
+        active_message='Windows Worker crash stage has active leases',
     ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker crash stage has active leases")
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                _require_retirement_root(
-                    product, root, ValueError, "Windows Worker crash stage root changed"
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            _require_retirement_root(
+                product, root, ValueError, "Windows Worker crash stage root changed"
+            )
+            _require_no_other_retirement(product, expected_review.attempt_id)
+            start = _read_start(product, expected_review.attempt_id)
+            completed = _read_receipt(product, expected_review.attempt_id)
+            root_intent = _read_root_intent(product, expected_review.attempt_id)
+            if start is None:
+                if completed is not None or root_intent is not None:
+                    raise ValueError("Windows Worker crash stage start is missing")
+                current = _review_crash_stage_under_gc_guard(
+                    product,
+                    attempt_id=expected_review.attempt_id,
+                    quiescence=quiescence,
                 )
-                _require_no_other_retirement(product, expected_review.attempt_id)
+                if current != expected_review:
+                    raise ValueError("Windows Worker crash stage review is stale")
+                write_windows_private_receipt(
+                    _start_path(product, expected_review.attempt_id),
+                    expected_review.to_bytes(),
+                    maximum_bytes=_MAX_REVIEW_BYTES,
+                )
                 start = _read_start(product, expected_review.attempt_id)
-                completed = _read_receipt(product, expected_review.attempt_id)
-                root_intent = _read_root_intent(product, expected_review.attempt_id)
-                if start is None:
-                    if completed is not None or root_intent is not None:
-                        raise ValueError("Windows Worker crash stage start is missing")
-                    current = _review_crash_stage_under_gc_guard(
-                        product,
-                        attempt_id=expected_review.attempt_id,
-                        quiescence=quiescence,
-                    )
-                    if current != expected_review:
-                        raise ValueError("Windows Worker crash stage review is stale")
-                    write_windows_private_receipt(
-                        _start_path(product, expected_review.attempt_id),
-                        expected_review.to_bytes(),
-                        maximum_bytes=_MAX_REVIEW_BYTES,
-                    )
-                    start = _read_start(product, expected_review.attempt_id)
-                if start != expected_review:
-                    raise ValueError("Windows Worker crash stage review changed")
-                assert start is not None
-                receipt = CodingWindowsWorkerStageRetirementReceiptV1(
-                    attempt_id=start.attempt_id,
-                    review_fingerprint=start.fingerprint,
-                    stage_identity=start.stage_identity[:2],
+            if start != expected_review:
+                raise ValueError("Windows Worker crash stage review changed")
+            assert start is not None
+            receipt = CodingWindowsWorkerStageRetirementReceiptV1(
+                attempt_id=start.attempt_id,
+                review_fingerprint=start.fingerprint,
+                stage_identity=start.stage_identity[:2],
+            )
+            if root_intent is not None and root_intent != receipt:
+                raise ValueError("Windows Worker crash stage root intent changed")
+            present = _stage_exists(root, start.attempt_id)
+            _require_crash_history(
+                product, start, stage_present=present, quiescence=quiescence
+            )
+            if completed is not None:
+                if completed != receipt or root_intent != receipt or present:
+                    raise ValueError("Windows Worker crash stage receipt changed")
+                return completed
+            if not present and root_intent is None:
+                raise ValueError("Windows Worker crash stage disappeared")
+            intent = _read_intent_under_gc_guard(product, start.attempt_id)
+            if intent is None:
+                raise ValueError(
+                    "Windows Worker crash stage launch intent is missing"
                 )
-                if root_intent is not None and root_intent != receipt:
-                    raise ValueError("Windows Worker crash stage root intent changed")
-                present = _stage_exists(root, start.attempt_id)
-                _require_crash_history(
-                    product, start, stage_present=present, quiescence=quiescence
-                )
-                if completed is not None:
-                    if completed != receipt or root_intent != receipt or present:
-                        raise ValueError("Windows Worker crash stage receipt changed")
-                    return completed
-                if not present and root_intent is None:
-                    raise ValueError("Windows Worker crash stage disappeared")
-                intent = _read_intent_under_gc_guard(product, start.attempt_id)
-                if intent is None:
-                    raise ValueError(
-                        "Windows Worker crash stage launch intent is missing"
-                    )
-                _remove_remaining_stage(
-                    product,
-                    root,
-                    start,
-                    intent,
-                    receipt,
-                    root_delete_intent_path=_root_intent_path(
-                        product, start.attempt_id
-                    ),
-                    read_root_delete_intent=lambda: _read_root_intent(
-                        product, start.attempt_id
-                    ),
-                )
-                if _stage_exists(root, start.attempt_id):
-                    raise ValueError("Windows Worker crash stage remains")
-                _records.publish_receipt(
-                    product,
-                    start,
-                    receipt,
-                    write=write_windows_private_receipt,
-                    read=_read_receipt,
-                    changed_message="Windows Worker crash stage receipt changed",
-                )
-                return receipt
+            _remove_remaining_stage(
+                product,
+                root,
+                start,
+                intent,
+                receipt,
+                root_delete_intent_path=_root_intent_path(
+                    product, start.attempt_id
+                ),
+                read_root_delete_intent=lambda: _read_root_intent(
+                    product, start.attempt_id
+                ),
+            )
+            if _stage_exists(root, start.attempt_id):
+                raise ValueError("Windows Worker crash stage remains")
+            _records.publish_receipt(
+                product,
+                start,
+                receipt,
+                write=write_windows_private_receipt,
+                read=_read_receipt,
+                changed_message="Windows Worker crash stage receipt changed",
+            )
+            return receipt
 
 
 def _require_crash_history(

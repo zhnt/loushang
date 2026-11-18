@@ -698,6 +698,10 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
     apphost = REPOSITORY_ROOT / "src/loushang/apphost"
     assert {
         path.relative_to(apphost).as_posix() for path in apphost.rglob("*.py")
+    } - {
+        "integrations/_continuity_preparation.py",
+        "integrations/_foreground_client_control.py",
+        "integrations/_managed_mux_command.py",
     } == {
         "__init__.py",
         "_ownership.py",
@@ -723,6 +727,8 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "managed/_database.py",
         "managed/registry.py",
         "managed/workspaces.py",
+        "managed/_workspace_preview.py",
+        "workspace_registry.py",
         "managed/storage_budget.py",
         "managed/event_log.py",
         "managed/_capture_native.py",
@@ -785,6 +791,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "protocol/codec.py",
         "protocol/errors.py",
         "protocol/model.py",
+        "protocol/workspace_preview.py",
         "protocol/schema.py",
         "protocol/stdio_profile.py",
         "protocol/connection_profile.py",
@@ -792,6 +799,12 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "execution/client.py",
         "execution/codec.py",
         "execution/dispatch.py",
+        "execution/_validation.py",
+        "execution/goal_client.py",
+        "execution/goal_codec.py",
+        "execution/goal_dispatch.py",
+        "execution/goal_model.py",
+        "execution/operation.py",
         "execution/model.py",
         "execution/recovery.py",
         "execution/remote.py",

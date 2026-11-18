@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import tempfile
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import (
     AbstractContextManager,
@@ -163,6 +164,22 @@ _reject_duplicate_keys = _unique_json_object_hook(
 
 def _reject_non_json_constant(value: str) -> object:
     raise ValueError(f"invalid JSON constant: {value}")
+
+
+def _write_json_atomically(path: Path, value: object, *, temporary_prefix: str) -> None:
+    """Publish default-encoded JSON through a flushed, private temporary file.
+
+    The caller owns parent creation and any read-modify-write serialization.
+    """
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=temporary_prefix)
+    try:
+        with os.fdopen(fd, "w") as output:
+            json.dump(value, output)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(name, path)
+    finally:
+        Path(name).unlink(missing_ok=True)
 
 
 class JsonConfigStore:

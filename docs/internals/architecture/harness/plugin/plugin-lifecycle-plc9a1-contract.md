@@ -115,7 +115,8 @@ never-seen disabled Installation is published to an exact immutable revision,
 seeded disabled, and left unmounted.
 
 `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
-is the Product-owned compatibility publisher. On POSIX it pins the existing
+retains the Coding migration admission and domain projection. Its capture already
+delegates to the shared Plugin Management owner. On POSIX that owner pins the existing
 private workspace root with a no-follow directory handle. On Windows it
 validates every directory component from the private state base through the
 workspace root, then opens the root with `CreateFileW`,
@@ -163,10 +164,20 @@ compatibility transaction preserves only unmigrated legacy ids, clears a stale
 session legacy overlay, publishes the project downgrade view, and verifies the
 effective migrated values. Its opaque object capability cannot be reclaimed by
 repeating a caller-chosen string. A shared settings owner accepts exactly one
-Coding Product registry authority. That registry retains one writer and latest
+Coding-profile registry authority. A173 places that complete registry and its
+cache binding in Config agent `_legacy_compatibility.py::LegacyPluginCompatibilityRegistry`.
+The Coding subclass supplies only writer construction, layout identity and the
+existing domain guard; its missing-fence admission and error profile remain Coding.
+That registry retains one writer and latest
 projection per workspace, serializes aggregate publications without holding its
 lock across config I/O, unions disabled ids conservatively, and calls every
-workspace guard before any peer mutation. Coding startup, every Continuity
+workspace guard before any peer mutation. Each publication has its own completion
+and `BaseException` receipt: other callers wait for their request, the drainer
+continues through failed requests, and projections are not rolled back on failure.
+This contract differs from Config listener notification queues; the latter are
+not substituted or given a new mode. Settings notifications stay deferred until
+reconciliation leaves the registry; arbitrary synchronous publisher self-reentry
+is not a supported successful path. Coding startup, every Continuity
 startup path (including empty-source and idempotent early returns), and CLI
 binding reconcile it; early reconciliation failures use the same stable
 `CodingContinuityBootstrapError`, retryability, and failed-status projection as

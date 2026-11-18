@@ -170,3 +170,31 @@ then finished once each; the operator confirmed both original replies in GUI B.
 The observer confirmed a clean managed stop and adapter exit. Separate process
 tests cover four concurrent sessions and matching Host, Session and Execution
 identities. This records Linux acceptance; no Windows, macOS or remote claim.
+
+## Workspace file preview
+
+The managed GUI binds a preview request to the selected Session's Workspace
+and live connection. Tauri and Rust Web pass it through the shared Rust
+AppClient. The AppClient checks the authenticated service instance before
+sending the `preview` action of `workspace/request`. The AppService uses its
+existing Workspace port and lock. The Coding catalog checks that the Workspace
+is still registered and that its scope fingerprint matches. The AppHost
+Workspace Registry owns native directory and file handles. The Coding
+catalog projects its bounded results into the AppServer protocol values.
+
+References use a Workspace-relative path and an optional base directory.
+Transcript references start at the Workspace root. Markdown preview links
+start at the parent of the displayed file. Host reads stay beneath the
+registered root and reject links and reparse points. Results are limited to
+128 KiB of UTF-8 text or the first 128 directory entries examined. A preview
+reflects the file system at the time of the read. Opening or closing it
+requires no Session control, Transcript update, shell command or external editor.
+
+The implementation agent (Codex) reviewed and accepted this action and its
+GUI, AppServer/AppService and AppHost Workspace boundaries on
+`feature/gui-markdown-file-preview`, based on GUI integration revision
+`2af01272f`. The protocol round-trip, rooted file tests, live Rust Web test with
+two Workspaces, and Chromium preview playback provide implementation evidence.
+The existing AppServer reviewability budget counts all 140 additional protocol
+lines, including closed values, error codes and codec projection. AppHost's
+native reader belongs to the managed Workspace Registry.

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,7 +19,6 @@ from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
     CodingPluginSessionLease,
-    package_revision_ref,
 )
 from loushang.coding._resource_catalog_adapter import (
     complete_coding_package_plugin_selection_seed,
@@ -67,15 +65,13 @@ from loushang.harness.capabilities.provider_selection import (
 )
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
-from loushang.harness.plugin_management import (
-    plugin_enablement_legacy_input_fingerprint,
+from loushang.harness.plugin_management.assembly import (
+    _ManagedPluginErrors,
+    _resolve_managed_plugin_runtimes,
 )
 from loushang.harness.resources.plugins.authority import (
-    PluginResolutionAuthority,
     PluginRuntimeResolution,
 )
-from loushang.harness.resources.plugins.manifest import PluginManifestError
-from loushang.harness.resources.plugins.revisions import PluginRevisionError
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginEffectiveConfigurationEntry,
@@ -87,7 +83,6 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
-from loushang.harness.resources.plugins.types import PluginSource
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 from loushang.harness.session._cleanup import run_cleanup_steps
@@ -821,6 +816,40 @@ class CodingCapabilityPluginCompositionPreparation(_PreparedCompositionCleanup):
         )
 
 
+_MANAGED_ASSEMBLY_ERRORS = _ManagedPluginErrors(
+    facts={
+        "management_selection_incomplete": (
+            "Enabled {plugin_id} lacks exact lifecycle evidence.",
+            "coding_capability_management_selection_incomplete",
+        ),
+        "binding_replay_invalid": (
+            "Selected {plugin_id} binding lock is invalid.",
+            "coding_capability_binding_replay_invalid",
+        ),
+        "binding_replay_unavailable": (
+            "Selected {plugin_id} binding is unavailable.",
+            "coding_capability_binding_replay_unavailable",
+        ),
+        "revision_replay_failed": (
+            "Selected {plugin_id} revision failed exact replay.",
+            "coding_capability_revision_replay_failed",
+        ),
+        "selected_revision_mismatch": (
+            "Replayed {plugin_id} is not the selected revision.",
+            "coding_capability_selected_revision_mismatch",
+        ),
+        "session_lease_mismatch": (
+            "{plugin_id} lease escaped the management snapshot.",
+            "coding_capability_session_lease_mismatch",
+        ),
+    },
+    make_error=lambda message, code: CodingCapabilityPluginCompositionError(
+        message, code=code
+    ),
+    cleanup_notes={},
+)
+
+
 def _resolve_managed_capability_plugins(
     configurations: Mapping[str, CodingCapabilityPluginConfig],
     *,
@@ -837,188 +866,29 @@ def _resolve_managed_capability_plugins(
     """Resolve exact revisions and optionally pin the common lifecycle snapshot."""
 
     specs = ordered_coding_capability_plugin_specs(configurations)
-    authority = PluginResolutionAuthority()
-    if lifecycle is None:
-        inspections = tuple(
-            authority.inspect(PluginSource(path=spec.source_root())) for spec in specs
-        )
-        return (
-            authority.publish_runtime(
-                inspections,
-                binding_store=package_materializer,
+    return _resolve_managed_plugin_runtimes(
+        configurations,
+        specs,
+        session_id=session_id,
+        package_materializer=package_materializer,
+        lifecycle=lifecycle,
+        session_owner_id=session_owner_id,
+        legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
+        owner_contributions=lambda spec: (
+            (
+                f"capability.{spec.capability.capability_id}",
+                (spec.provider_contribution_id,),
             ),
-            dict(configurations),
-            {},
-        )
-
-    packages = []
-    plugins = []
-    bindings = []
-    selected_configurations: dict[str, CodingCapabilityPluginConfig] = {}
-    leases: dict[str, CodingPluginSessionLease] = {}
-    current_package = None
-    try:
-        for spec in specs:
-            current_package = None
-            key = lifecycle.installation_key(spec.plugin_id)
-            snapshot = lifecycle.desired.snapshot()
-            state = snapshot.installation(key)
-            seen = any(item.installation_key == key for item in snapshot.installations)
-            legacy_disabled = spec.plugin_id in legacy_disabled_plugin_ids
-            if seen and lifecycle.enablement_migrations.journal.snapshot(key) is None:
-                lifecycle.migrate_legacy_enablement(
-                    key,
-                    state.selection.package_revision,
-                    legacy_disabled=legacy_disabled,
-                    manifest_enabled_default=True,
-                    legacy_input_fingerprint=(
-                        plugin_enablement_legacy_input_fingerprint(
-                            key,
-                            legacy_disabled=legacy_disabled,
-                            manifest_enabled_default=True,
-                        )
-                    ),
-                )
-                state = lifecycle.desired.snapshot().installation(key)
-            package = None
-            binding = None
-            if not seen:
-                published = authority.publish_runtime(
-                    (authority.inspect(PluginSource(path=spec.source_root())),),
-                    binding_store=package_materializer,
-                )
-                [package] = published.packages
-                [binding] = published.bindings
-                current_package = package
-                revision = package_revision_ref(
-                    plugin_id=package.manifest.name,
-                    plugin_version=package.manifest.version,
-                    package_content_digest=package.content_digest,
-                    dependency_lock_digest=package.dependency_lock.digest,
-                    package_source_identity=binding.source_identity,
-                )
-                manifest_default = package.manifest.enabled
-                lifecycle.migrate_legacy_enablement(
-                    key,
-                    revision,
-                    legacy_disabled=legacy_disabled,
-                    manifest_enabled_default=manifest_default,
-                    legacy_input_fingerprint=(
-                        plugin_enablement_legacy_input_fingerprint(
-                            key,
-                            legacy_disabled=legacy_disabled,
-                            manifest_enabled_default=manifest_default,
-                        )
-                    ),
-                )
-                state = lifecycle.desired.snapshot().installation(key)
-            lifecycle.reconcile_retirements()
-            if state.selection.desired_state != "installed_enabled":
-                if package is not None:
-                    package.revision_handle.close()
-                    current_package = None
-                continue
-            selected_revision = state.selection.package_revision
-            selected_instance = state.selection.instance_revision_ref
-            if selected_revision is None or selected_instance is None:
-                raise CodingCapabilityPluginCompositionError(
-                    f"Enabled {spec.plugin_id} lacks exact lifecycle evidence.",
-                    code="coding_capability_management_selection_incomplete",
-                )
-            if package is None or binding is None:
-                try:
-                    binding = package_materializer.get_plugin_binding_by_revision(
-                        selected_revision.package_source_identity,
-                        content_digest=selected_revision.package_content_digest,
-                        dependency_lock_digest=(
-                            selected_revision.dependency_lock_digest
-                        ),
-                    )
-                except PluginManifestError as exc:
-                    raise CodingCapabilityPluginCompositionError(
-                        f"Selected {spec.plugin_id} binding lock is invalid.",
-                        code="coding_capability_binding_replay_invalid",
-                    ) from exc
-                if binding is None:
-                    raise CodingCapabilityPluginCompositionError(
-                        f"Selected {spec.plugin_id} binding is unavailable.",
-                        code="coding_capability_binding_replay_unavailable",
-                    )
-                try:
-                    package = package_materializer.reopen_plugin_package(binding)
-                    current_package = package
-                except PluginRevisionError as exc:
-                    raise CodingCapabilityPluginCompositionError(
-                        f"Selected {spec.plugin_id} revision failed exact replay.",
-                        code="coding_capability_revision_replay_failed",
-                    ) from exc
-            actual_revision = package_revision_ref(
-                plugin_id=package.manifest.name,
-                plugin_version=package.manifest.version,
-                package_content_digest=package.content_digest,
-                dependency_lock_digest=package.dependency_lock.digest,
-                package_source_identity=binding.source_identity,
-            )
-            if actual_revision != selected_revision:
-                raise CodingCapabilityPluginCompositionError(
-                    f"Replayed {spec.plugin_id} is not the selected revision.",
-                    code="coding_capability_selected_revision_mismatch",
-                )
-            lease = lifecycle.acquire_session(
-                key,
-                session_id=session_id.strip(),
-                lease_attempt_id=secrets.token_hex(16),
-                owner_contributions=(
-                    (
-                        f"capability.{spec.capability.capability_id}",
-                        (spec.provider_contribution_id,),
-                    ),
-                    (
-                        f"tools.{spec.capability.capability_id}",
-                        (spec.tool_contribution_id,),
-                    ),
-                ),
-                session_owner_id=session_owner_id,
-            )
-            leases[spec.plugin_id] = lease
-            if (
-                lease.package_revision != selected_revision
-                or lease.instance_revision_ref != selected_instance
-            ):
-                raise CodingCapabilityPluginCompositionError(
-                    f"{spec.plugin_id} lease escaped the management snapshot.",
-                    code="coding_capability_session_lease_mismatch",
-                )
-            packages.append(package)
-            current_package = None
-            plugins.append(authority.project_package(package))
-            bindings.append(binding)
-            selected_configurations[spec.plugin_id] = configurations[spec.plugin_id]
-        return (
-            PluginRuntimeResolution(
-                packages=tuple(packages),
-                plugins=tuple(plugins),
-                bindings=tuple(bindings),
-            ),
-            selected_configurations,
-            leases,
-        )
-    except BaseException as error:
-        failure_packages = list(packages)
-        if current_package is not None and current_package not in failure_packages:
-            failure_packages.append(current_package)
-        _attach_failure_custodian(
+            (f"tools.{spec.capability.capability_id}", (spec.tool_contribution_id,)),
+        ),
+        errors=_MANAGED_ASSEMBLY_ERRORS,
+        attach_failure=lambda error, runtime, leases: _attach_failure_custodian(
             error,
             CodingCapabilityPluginCleanupCustodian(
-                runtime=PluginRuntimeResolution(
-                    packages=tuple(failure_packages),
-                    plugins=tuple(plugins),
-                    bindings=tuple(bindings),
-                ),
-                management_leases=dict(leases),
+                runtime=runtime, management_leases=leases
             ),
-        )
-        raise
+        ),
+    )
 
 
 def prepare_coding_capability_plugin_composition(
@@ -1322,6 +1192,16 @@ def _finalize_selection(
             state_root=state_root,
             clock=clock,
         )
+    approval_owner = request.approval_owner
+    windows_initial_approval_recovery = None
+    if (
+        resume_parents is None
+        and isinstance(approval_owner, _CodingDefaultCapabilityPluginApprovalOwner)
+        and approval_owner.approval_source == _DEFAULT_APPROVAL_SOURCE
+    ):
+        windows_initial_approval_recovery = (
+            _default_approval_authorization(_DEFAULT_APPROVAL_SOURCE), approval_owner.plugin_ids,
+        )
     return PluginDeclarationHost.resolve_for_product(
         seed.packages,
         bindings=seed.bindings,
@@ -1335,7 +1215,7 @@ def _finalize_selection(
         )
         if resume_parents is not None
         else frozenset(),
-        approval_owner=lambda: request.approval_owner,
+        approval_owner=lambda: approval_owner,
         distribution_evidence_resolver=lambda: (
             coding_plugin_distribution_evidence_resolver()
         ),
@@ -1347,6 +1227,7 @@ def _finalize_selection(
         error_factory=lambda message, code: CodingCapabilityPluginCompositionError(
             message, code=code
         ),
+        windows_initial_approval_recovery=windows_initial_approval_recovery,
     )
 
 

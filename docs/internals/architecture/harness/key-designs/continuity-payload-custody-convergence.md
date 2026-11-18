@@ -7,6 +7,57 @@
 - Source baseline: `60944e6d4`; local clean archmethod master
   `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`.
 
+## A162: Staged Payload To Prepared Activation Handoff
+
+The A68 statements below describe its original boundary. A162 extends the existing
+Continuity activation owner, not the native staging owner: the private
+`CallbackPreparedActivationLease._from_staged_payload` factory now owns the entire
+write → canonical prepare → remove → settlement/lease handoff. Code retains all
+five admission guards, Product root/cwd/limit selection and the narrow canonical
+restore call. That call performs the existing prepare operation; it is not a pure
+callback and contains no staging, cleanup or lease algorithm.
+
+The existing lease FSM, staging methods, `await_owned_task`, actual prepared
+operation and Path import remain unchanged. The old settlement and its successful
+abort marker move together; no extra registry, manager or lifecycle FSM is added.
+One private two-method structural port describes consume/abort without depending
+on Session implementation types. Private Code settlement/helper declarations have
+no other source/test consumers and exit; the four existing staging aliases and
+directory-capability alias remain for their actual callers.
+
+The whole cost is Code1359→1298 (−61), Core168→258 (+90), system+29, including
+the port, factory, label and imports. There is one actual consumer. This is an
+accepted design for complete resource handoff ownership, not deduplication, a
+system reduction, a performance improvement or adoption of KD003 bytes import.
+The source path, FileCopy policy, file fingerprint, attachments and nonowned
+Session reference still follow the original route.
+
+Prepare failure keeps its original error and adds any cleanup failure as a note;
+cleanup failure after successful prepare joins abort and remains the primary
+error. Consume failure keeps the original settlement behavior and abort notes.
+There is no extra await between successful removal and lease construction.
+The actual frozen/slots staged path is a plain field; arbitrary effectful
+replacement objects and private alias monkeypatches are outside this claim.
+
+The old `abort-cancel-retry` observation retains one cancelled abort task: a second
+abort joins it and is cancelled again. Task-factory rejection and lease-constructor
+failure also retain their old cleanup limits. Migration does not fix these gaps.
+Cold activation import adds only the staging and journal IO-loop modules;
+Coding Continuity's loaded module set is unchanged. Native staging remains solely
+in `_payload_staging`. Payload-staging descriptors are settled before lease
+publication; the prepared operation retains its original resources.
+
+The original real-file/FD/cancellation tests and fixed A68/A92 probes are reused.
+Seventeen compound-failure observations were frozen on the original actual bridge
+before modification, then compared on the actual replacement. The explicit
+`probe_continuity_activation_handoff.py` carrier has no capture mode or default
+test-discovery route. Its controlled ports do not prove native IO or full SDK
+activation. The first observer accidentally read a nonexistent payload attribute;
+that capture is rejected and preserved separately. Corrected capture includes
+phase-reachability assertions and original source-SHA verification. Current test
+results, actual acceptance and remaining boundaries are recorded in the
+[execution log](../coding-responsibility-convergence-progress.md).
+
 ## Complete Scenario And Reuse Decision
 
 The original Continuity bridge has an entire temporary-file custody program:

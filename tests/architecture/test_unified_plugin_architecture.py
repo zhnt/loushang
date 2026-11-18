@@ -772,6 +772,18 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         {"path_read": 1},
     ),
     (
+        "resources/packages/product_pre_b_snapshot.py",
+        "read_legacy_product_projection",
+        "PackageProductPreBSnapshotOwner",
+        {"path_read": 2},
+    ),
+    (
+        "resources/packages/product_pre_b_snapshot.py",
+        "write_legacy_product_projection",
+        "PackageProductPreBSnapshotOwner",
+        {"path_read": 2},
+    ),
+    (
         "resources/packages/product_windows_epoch_guard.py",
         "PackageProductWindowsFencedRuntimeOwner.open",
         "PackageProductWindowsFencedRuntimeOwner",
@@ -3478,6 +3490,18 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
             windows_cutover_temporary_root: "package-windows-epoch-cutover-owner"
         }
         counts = counts | {(*windows_cutover_temporary_root, "path_read"): 1}
+
+    for legacy_source_path in (
+        "src/loushang/harness/resources/packages/plugin_lifecycle/_exact_product_source.py",
+        "src/loushang/harness/resources/packages/product_legacy_source_wheel.py",
+    ):
+        legacy_source_capture = (
+            Path(legacy_source_path),
+            "_reacquire_legacy_local_plugin_wheel",
+        )
+        if legacy_source_capture in sites:
+            owners = owners | {legacy_source_capture: "ExactProductSourceFiles"}
+            counts = counts | {(*legacy_source_capture, "verified_open_file:handle"): 1}
 
     assert _plugin_package_boundary_sink_call_counts(sources) == counts
     assert sites == set(owners)

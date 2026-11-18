@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import cast
 
 from loushang.harness.package_product._linux_worker_recovery import (
-    ClosedLinuxCrashRecoveryAuthority,
     UnderGuardCleanupEvidenceAuthority,
     settle_crash_c5,
 )
@@ -40,9 +39,6 @@ class CodingWorkerCrashC5SettlementError(ValueError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
-
-
-_ClosedLinuxCrashRecoveryAuthority = ClosedLinuxCrashRecoveryAuthority
 
 
 class _UnderGuardCleanupEvidenceAuthority(

@@ -86,7 +86,7 @@ describe("tray selection integration", () => {
     await act(async () => { fireEvent.change(draft, { target: { value: "Unsent work" } }); });
     click("office", "enable");
     await waitFor(() => expect(backend.create).toHaveBeenCalledWith("/office", "office"));
-    await waitFor(() => expect(projection().currentLabel).toContain("🟢 Office"));
+    await waitFor(() => expect(projection().currentLabel).toBe("Current Host: Office · Connected"));
     expect(projection().webUrl).toBe("https://office.example");
     expect(backend.settings).toHaveBeenCalledWith({ operation: "host/request", connectionId: "office",
       request: { operation: "manage", action: "connect" } });

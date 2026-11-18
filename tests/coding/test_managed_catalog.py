@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import hashlib
 import os
 import sys
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from loushang.ai.types import ImagePart, UserMessage
+from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
-from loushang.appserver.protocol import SessionAvailabilityV1, SessionCompatibilityV1
+from loushang.apphost.workspace_registry import (
+    HostWorkspaceRegistryPort,
+    WorkspaceRegistrationError,
+)
+from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
+    SessionAvailabilityV1,
+    SessionCompatibilityV1,
+    WorkspaceRequestV1,
+)
 from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
 from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
 from loushang.coding.hosted_catalog import (
@@ -112,6 +124,27 @@ def test_missing_old_root_never_gets_a_second_initialization_grant(tmp_path, obs
         finally:
             if active is not None:
                 await active.close()
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_history_deletion_matches_the_hosted_identity(tmp_path):
+    async def scenario():
+        owner = catalog(tmp_path)
+        try:
+            candidate = await owner.create_candidate(_intent(owner.scopes[0]))
+            await candidate.close()
+            identity = candidate._binding.record.identity
+            path = candidate._binding.record.path
+            assert path.is_file()
+            with pytest.raises(CodingHostedCatalogError):
+                await owner.delete_session_history(replace(identity, continuity_id="different"))
+            assert path.is_file()
+            await owner.delete_session_history(identity)
+            assert not path.exists()
+            assert not (await discovery(owner, owner.scopes[0])).candidates
+        finally:
             await owner.close()
 
     asyncio.run(scenario())
@@ -522,6 +555,11 @@ def test_two_workspaces_route_real_transcripts_without_runtime_or_cwd_switch(tmp
             for scope in (sa, sb):
                 intent = _intent(scope)
                 candidate = await catalog.create_candidate(intent)
+                if scope == sa:
+                    await candidate._binding.manager_for_construction().append_message(
+                        ToolResultMessage("toolResult", "call", "write", [], False, 1.0,
+                                          {"path": str(a / "index.html"), "operation": "create"}),
+                    )
                 await candidate.close()
             headers = [load_agent_transcript_file(p, read_only=True)[0]
                        for p in (tmp_path / 'sessions').rglob('*.jsonl')]
@@ -530,6 +568,13 @@ def test_two_workspaces_route_real_transcripts_without_runtime_or_cwd_switch(tmp
             assert len(rows) == 2
             a_rows = await catalog.workspace_identities(sa.fingerprint, sa.discovery_scope, limit=1)
             assert len(a_rows) == 1 and a_rows[0].reference.source_id == sa.source_id
+            session = a_rows[0].envelope.session_id
+            inspected = await catalog.workspace(WorkspaceRequestV1("inspect", str(a), session))
+            assert inspected.workspaces[0].inspection["sessionChanges"] == [
+                {"path": "index.html", "created": True, "added": None, "removed": None},
+            ]
+            unrelated = await catalog.workspace(WorkspaceRequestV1("inspect", str(b), session))
+            assert "sessionChanges" not in unrelated.workspaces[0].inspection
             assert len({r.reference.source_id for r in rows}) == 2
             for row in rows:
                 candidate = await catalog.open_candidate(row.reference)
@@ -537,6 +582,91 @@ def test_two_workspaces_route_real_transcripts_without_runtime_or_cwd_switch(tmp
             assert Path.cwd() == original_cwd
         finally:
             await catalog.close()
+    asyncio.run(scenario())
+
+
+def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_catalogs(
+    tmp_path, monkeypatch,
+):
+    project = tmp_path / "project"
+    temporary = tmp_path / "scratch"
+    project.mkdir()
+    temporary.mkdir()
+    registry = Mock(spec=HostWorkspaceRegistryPort)
+    registry.list.return_value = (project,)
+    registry.register.return_value = project
+    registry.select.return_value = project
+    registry.allocate_temporary.return_value = temporary
+    new_project = tmp_path / "new"
+    new_project.mkdir()
+    registry.create.return_value = new_project
+    registry.is_temporary.side_effect = lambda path: path == temporary
+    closed = []
+    registry.close.side_effect = lambda: closed.append("registry")
+
+    async def scenario():
+        catalog = CodingWorkspaceCatalog(registry, tmp_path / "sessions", tmp_path / "stores")
+        try:
+            await catalog.load()
+            assert await catalog.register(str(project)) == project
+            scope = await catalog.select(str(project))
+            assert scope.cwd == project
+            allocated = await catalog.workspace(WorkspaceRequestV1("allocate-temporary"))
+            assert [item.path for item in allocated.workspaces] == [str(temporary)]
+            projects = await catalog.workspace(WorkspaceRequestV1("projects"))
+            assert [item.path for item in projects.workspaces] == [str(project)]
+            created = await catalog.workspace(WorkspaceRequestV1("create", str(new_project)))
+            assert [item.path for item in created.workspaces] == [str(new_project)]
+            projects = await catalog.workspace(WorkspaceRequestV1("projects"))
+            assert {item.path for item in projects.workspaces} == {str(new_project), str(project)}
+            assert catalog.pending_sessions == ()
+
+            close_project = catalog._catalogs[project].close
+
+            async def close_session_catalog():
+                await close_project()
+                closed.append("session catalog")
+
+            monkeypatch.setattr(catalog._catalogs[project], "close", close_session_catalog)
+            candidate = await catalog.create_candidate(_intent(scope))
+            await candidate.close()
+        finally:
+            await catalog.close()
+        assert closed == ["session catalog", "registry"]
+
+    asyncio.run(scenario())
+    registry.open.assert_called_once_with()
+    registry.list.assert_called_once_with()
+    registry.register.assert_called_once_with(str(project))
+    registry.select.assert_called_once_with(str(project))
+    registry.allocate_temporary.assert_called_once_with()
+    registry.create.assert_called_once_with(str(new_project))
+
+
+@pytest.mark.parametrize("failure,code", [
+    (ValueError("invalid_workspace"), AppErrorCodeV1.INVALID_REQUEST),
+    (FileNotFoundError(errno.ENOENT, "parent"), AppErrorCodeV1.NOT_FOUND),
+    (FileExistsError(errno.EEXIST, "leaf"), AppErrorCodeV1.ALREADY_EXISTS),
+    (PermissionError(errno.EACCES, "parent"), AppErrorCodeV1.PERMISSION_DENIED),
+    (OSError(errno.ENOSPC, "disk"), AppErrorCodeV1.OPERATION_UNAVAILABLE),
+    (WorkspaceRegistrationError(), AppErrorCodeV1.WORKSPACE_REGISTRATION_FAILED),
+])
+def test_workspace_catalog_exposes_safe_create_errors(tmp_path, failure, code):
+    registry = Mock(spec=HostWorkspaceRegistryPort)
+    registry.list.return_value = ()
+    registry.create.side_effect = failure
+
+    async def scenario():
+        catalog = CodingWorkspaceCatalog(registry, tmp_path / "sessions", tmp_path / "stores")
+        try:
+            await catalog.load()
+            with pytest.raises(AppServiceError) as error:
+                await catalog.workspace(WorkspaceRequestV1("create", str(tmp_path / "new")))
+            assert error.value.code is code
+            assert catalog.scopes == ()
+        finally:
+            await catalog.close()
+
     asyncio.run(scenario())
 
 

@@ -372,6 +372,8 @@ def observe_resolution(product: NS, case: str) -> dict[str, object]:
         handles.append(self)
 
     def close(self):
+        if not any(handle is self for handle in handles):
+            return original_close(self)
         plugin_id = self._selected.snapshot.installation_key.plugin_id
         trace.append(["handle.close", plugin_id, self.closed])
         if case == "cleanup-prefix-first" and plugin_id == "coding.base":

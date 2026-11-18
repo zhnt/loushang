@@ -584,20 +584,40 @@ def test_rcp0_discovery_and_projection_caller_inventory_is_exact() -> None:
 def test_rcp0_skill_fallback_is_deleted_and_eager_body_sinks_are_exact() -> None:
     sources = _source_texts()
 
-    assert _getattr_sites(
-        sources,
-        receiver_name="bundle",
-        attribute_name="skills",
-    ) == set()
-    assert _getattr_sites(
-        sources,
-        receiver_name="loader",
-        attribute_name="get_skills",
-    ) == set()
-    assert _call_sites(sources, "get_skills") == set()
     assert (
-        _attribute_load_sites(sources, "skills") == EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES
+        _getattr_sites(
+            sources,
+            receiver_name="bundle",
+            attribute_name="skills",
+        )
+        == set()
     )
+    assert (
+        _getattr_sites(
+            sources,
+            receiver_name="loader",
+            attribute_name="get_skills",
+        )
+        == set()
+    )
+    assert _call_sites(sources, "get_skills") == set()
+    skill_sites = _attribute_load_sites(sources, "skills")
+    expected_skill_sites = EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES
+    projection_site = (
+        Path("src/loushang/harness/plugin_management/current_preview.py"),
+        "project_current_product_resource_facts",
+    )
+    if projection_site in skill_sites:
+        expected_skill_sites = (
+            expected_skill_sites
+            - {
+                (
+                    Path("src/loushang/coding/package_product_preview.py"),
+                    "CodingFencedProductReadOnlyPreviewOwner.preview_current_data_resources",
+                )
+            }
+        ) | {projection_site}
+    assert skill_sites == expected_skill_sites
     assert _named_attribute_load_sites(
         sources,
         receiver_name="skill",
@@ -608,9 +628,7 @@ def test_rcp0_skill_fallback_is_deleted_and_eager_body_sinks_are_exact() -> None
             "_catalog_route_contribution",
         ),
         (
-            Path(
-                "src/loushang/harness/resources/_catalog_extension_source.py"
-            ),
+            Path("src/loushang/harness/resources/_catalog_extension_source.py"),
             "ExtensionResourceRouteContribution.__post_init__",
         ),
         (
@@ -626,11 +644,14 @@ def test_rcp0_skill_fallback_is_deleted_and_eager_body_sinks_are_exact() -> None
             "method_from_skill",
         ),
     }
-    assert _getattr_sites(
-        sources,
-        receiver_name="skill",
-        attribute_name="content",
-    ) == set()
+    assert (
+        _getattr_sites(
+            sources,
+            receiver_name="skill",
+            attribute_name="content",
+        )
+        == set()
+    )
 
 
 def test_rcp0_legacy_authority_mount_and_extension_merge_inventory_is_exact() -> None:

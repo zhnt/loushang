@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, TypeVar
 
 from loushang.harness.package_product.product_rebind_preflight import (
     PackageProductAcquiredRebindPreflightV1,
@@ -1478,6 +1478,125 @@ class PackageProductRuntimeBindingV1:
                 code="package_product_runtime_binding_changed",
             )
         return self
+
+
+_RepairResultT = TypeVar("_RepairResultT")
+
+
+async def _perform_package_repair(
+    runtime: PackageProductRuntimeBindingV1,
+    action: str,
+    operation_id: str,
+    *,
+    max_bytes: int,
+    result_factory: Callable[..., _RepairResultT],
+) -> _RepairResultT:
+    """Settle one admitted repair operation and dispose its borrowed runtime.
+
+    The caller admits the action, owns runtime creation and closes its parent.
+    """
+    try:
+        if action == "repair-handoff":
+            recovered = runtime.recover_committed_handoff_exact(operation_id)
+            return result_factory(
+                operation_id=operation_id,
+                phase="committed",
+                disposition=(
+                    "committed"
+                    if recovered.terminal_state == "settled"
+                    else "aborted"
+                ),
+                failure_code=(
+                    None
+                    if recovered.terminal_state == "settled"
+                    else "package_handoff_aborted"
+                ),
+            )
+        runtime.activate()
+        if action == "inspect-staging":
+            observed = await runtime.inspect_staging_rebind_claim(
+                operation_id, max_bytes=max_bytes
+            )
+            checkpoint = observed.checkpoint
+            return result_factory(
+                operation_id=operation_id,
+                phase=checkpoint.status.phase,
+                checkpoint_id=checkpoint.checkpoint_id,
+                missing_node_ids=checkpoint.missing_node_ids,
+                staged_node_count=len(checkpoint.receipts),
+            )
+        if action == "inspect-published":
+            observed_published = await runtime.inspect_published_set_rebind_claim(
+                operation_id, max_bytes=max_bytes
+            )
+            published_checkpoint = observed_published.checkpoint
+            return result_factory(
+                operation_id=operation_id,
+                phase=published_checkpoint.status.phase,
+                checkpoint_id=published_checkpoint.checkpoint_id,
+                missing_node_ids=(),
+                staged_node_count=len(published_checkpoint.receipts),
+            )
+        if action in {"repair-staging", "repair-published"}:
+            if action == "repair-staging":
+                await runtime.inspect_staging_rebind_claim(
+                    operation_id, max_bytes=max_bytes
+                )
+            else:
+                await runtime.inspect_published_set_rebind_claim(
+                    operation_id, max_bytes=max_bytes
+                )
+            staged_selection = runtime.prepare_staging_adoption(
+                operation_id, max_bytes=max_bytes
+            )
+            decision_id = staged_selection.decision.decision_id
+            settled = runtime.execute_staging_adoption(
+                operation_id, max_bytes=max_bytes
+            )
+        elif action == "repair-pinned":
+            pinned_selection = runtime.prepare_pinned_adoption(
+                operation_id, max_bytes=max_bytes
+            )
+            decision_id = pinned_selection.decision.decision_id
+            settled = runtime.execute_pinned_adoption(
+                operation_id, max_bytes=max_bytes
+            )
+        else:
+            if action == "repair-unstarted":
+                runtime.recover_unstarted_rebind(
+                    operation_id, max_bytes=max_bytes
+                )
+            elif action == "repair-acquired":
+                runtime.recover_acquired_rebind(
+                    operation_id, max_bytes=max_bytes
+                )
+            elif action == "repair-resolving":
+                runtime.recover_resolving_rebind(
+                    operation_id, max_bytes=max_bytes
+                )
+            elif action == "repair-verified":
+                runtime.recover_verified_rebind(
+                    operation_id, max_bytes=max_bytes
+                )
+            rebound_selection = runtime.prepare_rebind_decision(
+                operation_id, max_bytes=max_bytes
+            )
+            decision_id = rebound_selection.decision.decision_id
+            settled = runtime.execute_rebind_decision(
+                operation_id, max_bytes=max_bytes
+            )
+        return result_factory(
+            operation_id=operation_id,
+            phase=settled.phase,
+            disposition=settled.disposition,
+            decision_id=decision_id,
+            failure_code=(
+                settled.failure.code if settled.failure is not None else None
+            ),
+        )
+    finally:
+        runtime.dispose_runtime()
+
 
 
 class PackageProductRuntimeFactoryPort(Protocol):

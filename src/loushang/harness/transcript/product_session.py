@@ -914,4 +914,56 @@ class ProductTranscriptSession(
         return find_all_indexed_agent_transcript_session_summaries(sessions_root, query)
 
 
+# Fixed application binding over the existing factory's sole resource authority.
+class _ApplicationProductTranscriptSession(
+    ProductTranscriptSession[BindingInputT, ProductBindingT],
+):
+    _application_factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT]
+    _transient_factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT]
+
+    @classmethod
+    def _factory_for_persistence(
+        cls,
+        persist: bool,
+    ) -> AgentTranscriptSessionFactory[BindingInputT, ProductBindingT]:
+        # The runtime owns admission/cleanup; this class is only a binding.
+        factory = cls._application_factory
+        factory._accepting()
+        return factory if persist else cls._transient_factory
+
+    @classmethod
+    async def rename_session(
+        cls, session_file: str | Path, name: str | None
+    ) -> SessionSummary:
+        factory = cls._application_factory
+        factory._accepting()
+        context = factory._discover_owned_context(session_file)
+        async with factory._owned_source(context) as source:
+            manager = cls(lifecycle_session=source)
+            await manager.append_session_info(name)
+            return manager.get_session_summary()
+
+    @classmethod
+    async def delete_session(
+        cls,
+        session_file: str | Path,
+        *,
+        current_session_file: str | Path | None = None,
+        maintenance_owner: TranscriptDeletionOwner | None = None,
+    ) -> bool:
+        # Transcript deletion is writer-owned. Attachments remain recoverable
+        # for explicit maintenance, never deleted through a pathname fallback.
+        factory = cls._application_factory
+        if maintenance_owner is not None and maintenance_owner is not factory:
+            raise ValueError(
+                "application transcript maintenance belongs to its original factory"
+            )
+        return await factory.delete_transcript(
+            session_file, current_session_file=current_session_file
+        )
+
+    async def create_branched_session(self, leaf_id: str) -> Path | None:
+        raise ValueError("owned branching requires the Session-returning fork API")
+
+
 __all__ = ["ProductTranscriptSession"]

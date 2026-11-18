@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
@@ -37,6 +38,7 @@ class _ActivationReplayFields:
     retired_attempt_ids: frozenset[str]
 
 
+@dataclass(frozen=True, init=False, repr=False, eq=False)
 class _ActivationBaseMethods(_BaseWireMethods):
     __slots__ = ()
 

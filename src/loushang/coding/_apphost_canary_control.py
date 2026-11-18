@@ -2,35 +2,34 @@
 
 from __future__ import annotations
 
-import asyncio
-import os
 import re
-import stat
 from collections.abc import AsyncIterator, Iterator
-from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
-from dataclasses import dataclass, replace
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.journal import (
-    DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
     JournalCodecError,
-    JournalFileError,
-    JournalLoadPolicy,
-    JournalLockUnavailable,
-    JsonlSnapshot,
-    append_jsonl_record,
-    journal_file_lock,
-    load_jsonl,
+    JournalRecordCodec,
+)
+from loushang.harness.journal._private_operations import (
+    _JournalFailure,
+    _PreparedMutation,
+    _PrivateJournalOperations,
 )
 
 CODING_APPHOST_CANARY_CONTROL_VERSION = 1
 
+
 CanaryControlOperation = Literal["enable", "rollback"]
+
+
 CanaryControlState = Literal["unconfigured", "enabled", "disabled"]
+
 
 _OPERATION_ID = re.compile(r"[0-9a-f]{32}\Z")
 
@@ -156,26 +155,26 @@ def default_coding_apphost_canary_control_path(
     return paths.state / "products" / "coding" / "apphost-explicit-canary-control.jsonl"
 
 
-class CodingAppHostCanaryControlJournal:
+class CodingAppHostCanaryControlJournal(
+    _PrivateJournalOperations[
+        CodingAppHostCanaryControlRecordV1, CodingAppHostCanaryControlSnapshotV1
+    ]
+):
     """Strict append-only authority serializing canary runs and transitions."""
 
+    _storage_label = "Coding AppHost canary control"
+    _timeout_message = "Coding AppHost canary lock timeout is invalid"
+    _format_profile = SORTED_UNICODE_JSONL_FORMAT
+
     def __init__(self, path: str | Path) -> None:
-        self._path = Path(os.path.abspath(Path(path).expanduser()))
-        self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="raise")
+        super().__init__(path)
 
     @property
     def path(self) -> Path:
         return self._path
 
     def snapshot(self) -> CodingAppHostCanaryControlSnapshotV1:
-        if not self._path.exists():
-            return _unconfigured_snapshot()
-        try:
-            with self._private_lock(create=False, mode="shared"):
-                return self._snapshot_unlocked()
-        except FileNotFoundError:
-            return _unconfigured_snapshot()
+        return self._read_snapshot()
 
     def enable(self, *, operation_id: str) -> CodingAppHostCanaryControlSnapshotV1:
         return self._transition("enable", operation_id=operation_id)
@@ -188,17 +187,7 @@ class CodingAppHostCanaryControlJournal:
         *,
         timeout_seconds: float,
     ) -> CodingAppHostCanaryControlSnapshotV1:
-        if not self._path.exists():
-            return _unconfigured_snapshot()
-        context = await self._acquire_private_lock_async(
-            create=False,
-            mode="shared",
-            timeout_seconds=timeout_seconds,
-        )
-        try:
-            return self._snapshot_unlocked()
-        finally:
-            context.__exit__(None, None, None)
+        return await self._read_snapshot_async(timeout_seconds=timeout_seconds)
 
     async def enable_async(
         self,
@@ -228,14 +217,7 @@ class CodingAppHostCanaryControlJournal:
     def admitted_run(self) -> Iterator[CodingAppHostCanaryControlSnapshotV1]:
         """Hold the final enabled decision until the exact run has settled."""
 
-        with self._private_lock(create=True, mode="exclusive"):
-            snapshot = self._snapshot_unlocked()
-            if snapshot.state != "enabled":
-                raise self._error(
-                    "coding_apphost_canary_disabled",
-                    selection_generation=snapshot.selection_generation,
-                )
-            yield snapshot
+        yield from self._admitted_run_iterator()
 
     @asynccontextmanager
     async def admitted_run_async(
@@ -245,21 +227,10 @@ class CodingAppHostCanaryControlJournal:
     ) -> AsyncIterator[CodingAppHostCanaryControlSnapshotV1]:
         """Acquire without blocking an event loop, then retain until settlement."""
 
-        context = await self._acquire_private_lock_async(
-            create=True,
-            mode="exclusive",
-            timeout_seconds=timeout_seconds,
-        )
-        try:
-            snapshot = self._snapshot_unlocked()
-            if snapshot.state != "enabled":
-                raise self._error(
-                    "coding_apphost_canary_disabled",
-                    selection_generation=snapshot.selection_generation,
-                )
+        async with self._admitted_run_context_async(
+            timeout_seconds=timeout_seconds
+        ) as snapshot:
             yield snapshot
-        finally:
-            context.__exit__(None, None, None)
 
     def _transition(
         self,
@@ -272,12 +243,11 @@ class CodingAppHostCanaryControlJournal:
         target_state: Literal["enabled", "disabled"] = (
             "enabled" if operation == "enable" else "disabled"
         )
-        with self._private_lock(create=True, mode="exclusive"):
-            return self._transition_unlocked(
-                operation,
-                target_state=target_state,
-                operation_id=operation_id,
+        return self._mutate_locked(
+            lambda records: self._prepare_transition(
+                records, operation, target_state=target_state, operation_id=operation_id
             )
+        )
 
     async def _transition_async(
         self,
@@ -291,31 +261,26 @@ class CodingAppHostCanaryControlJournal:
         target_state: Literal["enabled", "disabled"] = (
             "enabled" if operation == "enable" else "disabled"
         )
-        context = await self._acquire_private_lock_async(
-            create=True,
-            mode="exclusive",
+        return await self._mutate_locked_async(
+            lambda records: self._prepare_transition(
+                records, operation, target_state=target_state, operation_id=operation_id
+            ),
             timeout_seconds=timeout_seconds,
         )
-        try:
-            return self._transition_unlocked(
-                operation,
-                target_state=target_state,
-                operation_id=operation_id,
-            )
-        finally:
-            context.__exit__(None, None, None)
 
-    def _transition_unlocked(
+    def _prepare_transition(
         self,
+        records: tuple[CodingAppHostCanaryControlRecordV1, ...],
         operation: CanaryControlOperation,
         *,
         target_state: Literal["enabled", "disabled"],
         operation_id: str,
-    ) -> CodingAppHostCanaryControlSnapshotV1:
-        records = self._load_unlocked()
+    ) -> _PreparedMutation[
+        CodingAppHostCanaryControlRecordV1, CodingAppHostCanaryControlSnapshotV1
+    ]:
         current = _snapshot_from_records(records)
         if current.state == target_state:
-            return current
+            return None, lambda: current, lambda: current.selection_generation
         revision = current.record_revision + 1
         record = CodingAppHostCanaryControlRecordV1(
             operation=operation,
@@ -324,118 +289,49 @@ class CodingAppHostCanaryControlJournal:
             record_revision=revision,
             operation_id=operation_id,
         )
-        try:
-            append_jsonl_record(
-                self._path,
-                record,
-                record_codec=CODING_APPHOST_CANARY_CONTROL_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._unlocked_durability,
-            )
-        except (JournalCodecError, JournalFileError, OSError) as error:
+        return (
+            record,
+            lambda: CodingAppHostCanaryControlSnapshotV1(
+                state=target_state,
+                selection_generation=record.selection_generation,
+                record_revision=record.record_revision,
+            ),
+            lambda: current.selection_generation,
+        )
+
+    @property
+    def _record_codec(self) -> JournalRecordCodec[CodingAppHostCanaryControlRecordV1]:
+        return CODING_APPHOST_CANARY_CONTROL_CODEC
+
+    @property
+    def _domain_error_type(self) -> type[Exception]:
+        return CodingAppHostCanaryControlError
+
+    def _validate_records(
+        self, records: tuple[CodingAppHostCanaryControlRecordV1, ...]
+    ) -> None:
+        _validate_history(records)
+
+    def _project_snapshot(
+        self, records: tuple[CodingAppHostCanaryControlRecordV1, ...]
+    ) -> CodingAppHostCanaryControlSnapshotV1:
+        return _snapshot_from_records(records)
+
+    def _require_admitted(self, snapshot: CodingAppHostCanaryControlSnapshotV1) -> None:
+        if snapshot.state != "enabled":
             raise self._error(
-                "coding_apphost_canary_control_write_failed",
-                selection_generation=current.selection_generation,
-            ) from error
-        return CodingAppHostCanaryControlSnapshotV1(
-            state=target_state,
-            selection_generation=record.selection_generation,
-            record_revision=record.record_revision,
-        )
-
-    async def _acquire_private_lock_async(
-        self,
-        *,
-        create: bool,
-        mode: Literal["exclusive", "shared"],
-        timeout_seconds: float,
-    ) -> AbstractContextManager[None]:
-        if (
-            isinstance(timeout_seconds, bool)
-            or not isinstance(timeout_seconds, (int, float))
-            or timeout_seconds <= 0
-        ):
-            raise ValueError("Coding AppHost canary lock timeout is invalid")
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + float(timeout_seconds)
-        while True:
-            candidate = self._private_lock(
-                create=create,
-                mode=mode,
-                blocking=False,
+                "coding_apphost_canary_disabled",
+                selection_generation=snapshot.selection_generation,
             )
-            try:
-                candidate.__enter__()
-            except JournalLockUnavailable:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    raise self._error("coding_apphost_canary_control_busy") from None
-                await asyncio.sleep(min(0.01, remaining))
-            else:
-                return candidate
 
-    def _snapshot_unlocked(self) -> CodingAppHostCanaryControlSnapshotV1:
-        return _snapshot_from_records(self._load_unlocked())
-
-    def _load_unlocked(self) -> tuple[CodingAppHostCanaryControlRecordV1, ...]:
-        if not self._path.exists():
-            return ()
-        try:
-            snapshot: JsonlSnapshot[None, CodingAppHostCanaryControlRecordV1] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=CODING_APPHOST_CANARY_CONTROL_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
-            )
-            records = snapshot.records
-            _validate_history(records)
-            return records
-        except (JournalCodecError, JournalFileError, OSError, ValueError) as error:
-            raise self._error("coding_apphost_canary_control_corrupt") from error
-
-    def _private_lock(
-        self,
-        *,
-        create: bool,
-        mode: Literal["exclusive", "shared"],
-        blocking: bool = True,
-    ) -> AbstractContextManager[None]:
-        return self._private_lock_context(
-            create=create,
-            mode=mode,
-            blocking=blocking,
-        )
-
-    @contextmanager
-    def _private_lock_context(
-        self,
-        *,
-        create: bool,
-        mode: Literal["exclusive", "shared"],
-        blocking: bool,
-    ) -> Iterator[None]:
-        try:
-            if create:
-                self._path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            _assert_private_storage(self._path, require_parent=create)
-            with journal_file_lock(
-                self._path,
-                mode,
-                lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-                blocking=blocking,
-                create=create,
-            ):
-                _assert_private_storage(self._path, require_parent=True)
-                yield
-        except CodingAppHostCanaryControlError:
-            raise
-        except JournalLockUnavailable:
-            raise
-        except OSError as error:
-            raise self._error("coding_apphost_canary_control_storage_unsafe") from error
+    def _journal_error(self, kind: _JournalFailure, *, context: int = 0) -> Exception:
+        code = {
+            "busy": "coding_apphost_canary_control_busy",
+            "corrupt": "coding_apphost_canary_control_corrupt",
+            "unsafe": "coding_apphost_canary_control_storage_unsafe",
+            "write_failed": "coding_apphost_canary_control_write_failed",
+        }[kind]
+        return self._error(code, selection_generation=context)
 
     def _error(
         self,
@@ -510,50 +406,6 @@ def _validate_history(
             raise ValueError("Coding AppHost canary control history is invalid")
         prior_state = record.state
         operation_ids.add(record.operation_id)
-
-
-def _assert_private_storage(path: Path, *, require_parent: bool) -> None:
-    parent = path.parent
-    try:
-        parent_metadata = parent.lstat()
-    except FileNotFoundError:
-        if require_parent:
-            raise
-        return
-    if (
-        not stat.S_ISDIR(parent_metadata.st_mode)
-        or parent.is_symlink()
-        or (os.name == "posix" and parent_metadata.st_mode & 0o077)
-        or not _owned_by_current_user(parent_metadata)
-    ):
-        raise OSError("Coding AppHost canary control parent is not private")
-    _assert_private_regular_file(path, required=False)
-    _assert_private_regular_file(
-        path.with_name(f"{path.name}{DURABLE_LOCKED_JOURNAL.lock_suffix}"),
-        required=False,
-    )
-
-
-def _assert_private_regular_file(path: Path, *, required: bool) -> None:
-    try:
-        metadata = path.lstat()
-    except FileNotFoundError:
-        if required:
-            raise
-        return
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or path.is_symlink()
-        or metadata.st_nlink != 1
-        or (os.name == "posix" and metadata.st_mode & 0o077)
-        or not _owned_by_current_user(metadata)
-    ):
-        raise OSError("Coding AppHost canary control file is not private")
-
-
-def _owned_by_current_user(metadata: os.stat_result) -> bool:
-    getuid = getattr(os, "geteuid", None)
-    return not callable(getuid) or metadata.st_uid == getuid()
 
 
 __all__ = [

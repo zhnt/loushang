@@ -76,6 +76,6 @@ launch = CodingHostedLaunchV1(
     root, root / "application", "coding.default", root / "cwd", root / "home"
 )
 command = CodingHostedTuiCommandV1(launch)
-command._owner._close_timeout = 0.1
-command._owner._graceful_timeout = 0.02
+getattr(command, "_control", command)._owner._close_timeout = 0.1
+getattr(command, "_control", command)._owner._graceful_timeout = 0.02
 raise SystemExit(_execute(command, StringIO()))

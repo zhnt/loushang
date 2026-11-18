@@ -7,7 +7,6 @@ writer-last resource scope without another execution queue.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -39,11 +38,6 @@ from loushang.coding.adapters._verification_work import CodingVerificationExecut
 from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.artifacts import SessionBlobStore, resolve_session_blob_data_root
 from loushang.harness.policy import PolicyEvaluatorChain
-from loushang.harness.session.execution_scope import (
-    ExecutionObservations,
-    ExecutionScopePorts,
-    SessionExecutionScope,
-)
 from loushang.harness.transcript.source_reader import TranscriptSourceReader
 from loushang.harnesswork import JsonlEventLogBackend
 from loushang.harnesswork.goal import GoalController, GoalError, GoalHeader, GoalState
@@ -53,6 +47,7 @@ from loushang.harnesswork.integrations.session import SessionWorkRuntime
 from loushang.harnesswork.integrations.session_goal import (
     SessionGoalCoordinator,
     SessionGoalPrompt,
+    _SessionGoalLifetime,
 )
 from loushang.harnesswork.integrations.transcript import WorkTranscriptSource
 from loushang.harnesswork.ports import WorkExecutionBinding
@@ -131,8 +126,20 @@ def _validate_goal_session(session, workspace, model_planning, *, ordinary=False
             )
 
 
-class CodingGoal:
+def _ordinary_goal_transport(session):
+    from loushang.agent.model_transport import is_prepared_request_conformant
+    from loushang.ai.api import stream
+
+    delegate = session.runtime.agent.stream_fn
+    if delegate is not stream and not is_prepared_request_conformant(delegate):
+        raise GoalError("current Session planning requires a prepared-request transport")
+    return delegate
+
+
+class CodingGoal(_SessionGoalLifetime):
     """A retained profile owner. Use open() or attach(); retain failed cleanup owners."""
+
+    _goal_close_task_name = "coding-goal-close"
 
     def __init__(self, workspace: Path, data_root: Path):
         self.workspace, self.data_root = workspace, data_root
@@ -142,27 +149,14 @@ class CodingGoal:
         self.session_id = ""
         self._sdk: Any = None
         self._session: Any = None
-        self._store: Any = None
-        self._core: GoalController | None = None
+        super().__init__()
         self._policy: Any = None
         self._work: Any = None
-        self._closing = self._closed = False
-        self._observations = ExecutionObservations()
-        self._close_task: asyncio.Task | None = None
-        self._callbacks_quiet = self._work_settled = False
-        self._session_retired = self._core_retired = self._writer_closed = False
-        self._prepared: dict[str, WorkExecutionBinding] = {}
         self._model_planning = False
         self._profile = None
         self._allowance: PlanningCallAllowance | None = None
-        self._source_reader: TranscriptSourceReader | None = None
-        self._source_retired = False
-        self._delegation = None
-        self._scope: SessionExecutionScope | None = None
-        self._coordinator: SessionGoalCoordinator | None = None
         self._session_work: SessionWorkRuntime | None = None
         self._execution_session = None
-        self._dependents_released = False
 
     @classmethod
     async def open(
@@ -205,9 +199,6 @@ class CodingGoal:
 
     @classmethod
     async def _attach(cls, *, session, max_model_calls=None, max_output_tokens=None, profile=None):
-        from loushang.agent.model_transport import is_prepared_request_conformant
-        from loushang.ai.api import stream
-
         from ._goal_planning_limits import PlanningCallAllowance
         from ._goal_planning_work import PlanningToolPolicy
         from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
@@ -216,9 +207,7 @@ class CodingGoal:
         if manager.get_session_file() is None:
             raise GoalError("current Session Goal requires a persistent Transcript")
         directory = Path(manager.get_session_dir()).resolve()
-        delegate = session.runtime.agent.stream_fn
-        if delegate is not stream and not is_prepared_request_conformant(delegate):
-            raise GoalError("current Session planning requires a prepared-request transport")
+        delegate = _ordinary_goal_transport(session)
         owner = cls(Path(manager.get_cwd()).resolve(), resolve_session_blob_data_root(directory))
         owner._journal_directory, owner._ordinary_session = directory, True
         owner._session, owner.session_id = session, session.session_id
@@ -656,22 +645,6 @@ class CodingGoal:
         if self._allowance is not None and self._allowance.fenced:
             raise GoalError("Coding Goal planning configuration fenced")
 
-    def _attach_scope(self):
-        if self._scope is not None:
-            return
-        scope = SessionExecutionScope(
-            self._session.runtime.execution_admission,
-            ExecutionScopePorts(self._begin_close, self._quiesce_goal, self._settle_goal_work,
-                                self._release_goal_resources, self._finalize_goal),
-            close_parent=self._dispose_owned_session if self._sdk is not None else None,
-        )
-        self._session.attach_execution_scope(scope)
-        self._scope = scope
-
-    def _begin_close(self):
-        self._closing = True
-        if self._core is not None:
-            self._core.begin_close()
 
     def _current_execution(self):
         if self._coordinator is None:
@@ -708,67 +681,11 @@ class CodingGoal:
         self._session.abort_command()
         self._session.abort_compaction()
 
-    async def close(self) -> None:
-        self._begin_close()
-        if self._closed:
-            return
-        if self._scope is not None:
-            self._close_task = self._scope.close_handle()
-        elif self._close_task is None or self._close_task.done():
-            self._close_task = asyncio.create_task(self._close_unpublished(), name="coding-goal-close")
-        await asyncio.shield(self._close_task)
-
-    async def _close_unpublished(self):
-        await self._quiesce_goal()
-        await self._settle_goal_work()
-        await self._release_goal_resources()
-        if not self._session_retired:
-            if self._sdk is not None:
-                await self._sdk.dispose_session_runtime()
-            self._session_retired = True
-        await self._finalize_goal()
-
-    async def _dispose_owned_session(self):
+    async def _dispose_bound_goal_session(self) -> None:
         await self._sdk.dispose_bound_session(self._session)
-        self._session_retired = True
 
-    async def _quiesce_goal(self):
-        if not self._callbacks_quiet:
-            await self._observations.quiesce()
-            if self._core is not None:
-                await self._core.quiesce()
-            self._callbacks_quiet = True
-
-    async def _settle_goal_work(self):
-        if not self._work_settled:
-            if self._core is not None:
-                await self._core.settle_work()
-            self._work_settled = True
-
-    async def _release_goal_resources(self):
-        if self._coordinator is not None:
-            self._coordinator.release()
-        if not self._dependents_released:
-            if self._delegation is not None:
-                await self._delegation.close()
-            if not self._source_retired:
-                if self._source_reader is not None:
-                    await self._source_reader.aclose()
-                self._source_retired = True
-            self._dependents_released = True
-
-    async def _finalize_goal(self):
-        self._session_retired = True
-        if not self._core_retired:
-            if self._core is not None:
-                self._core.retire()
-            self._core_retired = True
-        if not self._writer_closed:
-            if self._store is not None:
-                self._store.close()
-            self._writer_closed = True
-        self._prepared.clear()
-        self._closed = True
+    async def _dispose_goal_runtime(self) -> None:
+        await self._sdk.dispose_session_runtime()
 
 
 def inspect_goal(

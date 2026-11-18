@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -19,8 +20,15 @@ from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationSnapshotV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
+    PackageWindowsEpochRuntimeLeaseRegistry,
+    PackageWindowsRuntimeQuiescenceV1,
 )
 from loushang.harness.worker.history._windows_sources import WindowsHistorySourceCapture
 
@@ -325,43 +333,14 @@ def read_coding_windows_worker_history_semantics(
         with product.gc_gate.read_snapshot_guard() as gc_snapshot:
             if gc_snapshot.active:
                 raise ValueError("Windows Worker history GC reservation remains")
-            source_snapshot = (
-                _capture_coding_windows_worker_history_sources_under_gc_guard(
-                    product,
-                    store_id=registry.store_id,
-                    lease_owner_revision=quiescence.owner_revision,
-                    require_settled_history=True,
-                )
+            build_semantic = _capture_coding_windows_worker_semantics_under_gc_guard(
+                product,
+                store=registry,
+                quiescence=quiescence,
+                gc_snapshot=gc_snapshot,
             )
-            offline_recovery = (
-                _inspect_coding_windows_product_worker_offline_recovery_under_gc_guard(
-                    product,
-                    store_id=registry.store_id,
-                    lease_owner_revision=quiescence.owner_revision,
-                    gc_snapshot=gc_snapshot,
-                )
-            )
-            desired_snapshot, desired_transitions, desired_digest = (
-                _capture_coding_windows_worker_desired_history_under_gc_guard(product)
-            )
-            if source_snapshot != (
-                _capture_coding_windows_worker_history_sources_under_gc_guard(
-                    product,
-                    store_id=registry.store_id,
-                    lease_owner_revision=quiescence.owner_revision,
-                    require_settled_history=False,
-                )
-            ):
-                raise ValueError("Windows Worker history sources changed")
         product.assert_root_gc_authority_current()
-    return CodingWindowsWorkerHistorySemanticReadV1(
-        source_snapshot=source_snapshot,
-        offline_recovery=offline_recovery,
-        desired_inventory_revision=desired_snapshot.inventory_revision,
-        desired_history_digest=desired_digest,
-        desired_snapshot=desired_snapshot,
-        desired_transitions=desired_transitions,
-    )
+    return build_semantic()
 
 
 def _coding_windows_worker_desired_history_digest(
@@ -496,3 +475,56 @@ def _source_capture() -> WindowsHistorySourceCapture[
         _MAX_FILE_BYTES,
         _MAX_TOTAL_BYTES,
     )
+
+
+def _capture_coding_windows_worker_semantics_under_gc_guard(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    store: PackageWindowsEpochRuntimeLeaseRegistry | PackageWindowsRuntimeQuiescenceV1,
+    quiescence: PackageWindowsRuntimeQuiescenceV1,
+    gc_snapshot: PluginPackageGcReservationSnapshotV1,
+    allow_preparation_stage: bool = False,
+    allow_checkpoint_stage: bool = False,
+    allow_base_stage: bool = False,
+) -> Callable[[], CodingWindowsWorkerHistorySemanticReadV1]:
+    """Read the original owners in order; caller chooses the value-construction point."""
+    source = _capture_coding_windows_worker_history_sources_under_gc_guard(
+        product,
+        store_id=store.store_id,
+        lease_owner_revision=quiescence.owner_revision,
+        require_settled_history=True,
+        allow_preparation_stage=allow_preparation_stage,
+        allow_checkpoint_stage=allow_checkpoint_stage,
+        allow_base_stage=allow_base_stage,
+    )
+    recovery = _inspect_coding_windows_product_worker_offline_recovery_under_gc_guard(
+        product,
+        store_id=store.store_id,
+        lease_owner_revision=quiescence.owner_revision,
+        gc_snapshot=gc_snapshot,
+    )
+    desired_snapshot, desired_transitions, desired_digest = (
+        _capture_coding_windows_worker_desired_history_under_gc_guard(product)
+    )
+    if source != _capture_coding_windows_worker_history_sources_under_gc_guard(
+        product,
+        store_id=store.store_id,
+        lease_owner_revision=quiescence.owner_revision,
+        require_settled_history=False,
+        allow_preparation_stage=allow_preparation_stage,
+        allow_checkpoint_stage=allow_checkpoint_stage,
+        allow_base_stage=allow_base_stage,
+    ):
+        raise ValueError("Windows Worker history sources changed")
+
+    def build_semantic() -> CodingWindowsWorkerHistorySemanticReadV1:
+        return CodingWindowsWorkerHistorySemanticReadV1(
+            source_snapshot=source,
+            offline_recovery=recovery,
+            desired_inventory_revision=desired_snapshot.inventory_revision,
+            desired_history_digest=desired_digest,
+            desired_snapshot=desired_snapshot,
+            desired_transitions=desired_transitions,
+        )
+
+    return build_semantic

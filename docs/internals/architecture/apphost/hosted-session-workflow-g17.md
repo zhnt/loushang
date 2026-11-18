@@ -22,6 +22,21 @@
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
 - Baseline: `3c06f5b9a4309e03dc754511eb012f9e2c23cbcb`
 
+### Current A180 Responsibility Convergence
+
+The Product command keeps its public entry, launch admission, scopes/theme and
+thin UI bindings. Its complete startup/Mux handoff/retained-close and outer
+Runner/SIGINT/recovery program now belongs to the optional
+[`_foreground_client_control`](../../../../src/loushang/apphost/integrations/_foreground_client_control.py)
+integration. One control state uses the original launcher and terminal runner;
+the client-only Mux boundary and default-dark AppHost facade remain. The existing
+`foreground.command` inventory row continues to identify the Product entry.
+
+This transfer costs Code−116/AppHost+275/system+159 production lines; it does
+not remove a second algorithm. The [A180 record](../harness/coding-responsibility-convergence-progress.md#a180-完整前台客户端控制及runner恢复归apphost2026-11-14)
+separates the local 141-case validation from the historical installed/native
+acceptance above. This batch does not renew wheel or three-platform evidence.
+
 ## Outcome, Current And Target
 
 The user explicitly starts a foreground Hosted client, or attaches to an

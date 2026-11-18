@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import os
-import signal
 import stat
 import sys
 import time
 from collections.abc import Sequence
-from contextlib import redirect_stdout, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
+    from loushang.apphost.integrations._foreground_client_control import (
+        _ShellFactory,
+        _TerminalRunner,
+    )
+    from loushang.apphost.launcher import HostedForegroundClientV1
+    from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
+    from loushang.appserver.protocol import MuxSelectorV1, MuxSpaceV1
+    from loushang.harnesstui.mux.shell import HostedMuxShellV1
     from loushang.hosting.contracts import ProcessLaunchRequest
 
     from ..hosted_bootstrap import CodingHostedLaunchV1
@@ -93,11 +98,6 @@ class _LaunchPreparation:
         return _PreparedLaunch(self._request, self._identity)
 
 
-def _observe(task: asyncio.Task[object]) -> None:
-    if not task.cancelled():
-        task.exception()
-
-
 class CodingHostedTuiCommandV1:
     """Product launch intent, prefix-task fence and one terminal settlement.
 
@@ -107,11 +107,17 @@ class CodingHostedTuiCommandV1:
     """
 
     def __init__(
-        self, launch: CodingHostedLaunchV1, *, mux_name: str = "main",
+        self,
+        launch: CodingHostedLaunchV1,
+        *,
+        mux_name: str = "main",
         started_at: float | None = None,
     ) -> None:
-        self._started_at = time.monotonic() if started_at is None else started_at
-        self._remaining()
+        started_at = time.monotonic() if started_at is None else started_at
+        _remaining_at(started_at)
+        from loushang.apphost.integrations._foreground_client_control import (
+            _ForegroundClientControl,
+        )
         from loushang.apphost.launcher import HostedForegroundClientV1
         from loushang.appserver.protocol import MuxSelectorV1
         from loushang.appserver.protocol.connection_profile import (
@@ -119,215 +125,93 @@ class CodingHostedTuiCommandV1:
         )
         from loushang.hosting.runtime import create_process_host
 
-        self._launch = launch
-        self._selector = MuxSelectorV1(name=mux_name)
+        selector = MuxSelectorV1(name=mux_name)
         request = _launch_request(launch)
         preparation = _LaunchPreparation(request)
-        remaining = self._remaining()
-        self._owner = HostedForegroundClientV1(
-            request, host=create_process_host(max_processes=1),
-            preparation=preparation, startup_timeout=remaining,
+        remaining = _remaining_at(started_at)
+        owner = HostedForegroundClientV1(
+            request,
+            host=create_process_host(max_processes=1),
+            preparation=preparation,
+            startup_timeout=remaining,
             profile=AppConnectionProfileV1.STDIO_DISCOVERY_EXECUTION,
         )
-        from loushang.harnesstui.mux.shell import HostedMuxShellV1
+        # Preserve this original late import, including constructor failure.
+        from loushang.harnesstui.mux.shell import HostedMuxShellV1  # noqa: F401
 
-        self._shell: HostedMuxShellV1 | None = None
-        self._startup: asyncio.Task[None] | None = None
-        self._close_task: asyncio.Task[None] | None = None
-        self._close_deadline: float | None = None
-        self._closing = self._settled = False
+        def bind_shell(
+            selector_type: type[MuxSelectorV1],
+        ) -> _ShellFactory[HostedMuxShellV1]:
+            return _bind_shell_factory(launch, owner, selector_type)
 
-    def _remaining(self) -> float:
-        remaining = 30 - (time.monotonic() - self._started_at)
-        if not 0 < remaining <= 30:
-            raise TimeoutError("hosted_startup_timeout")
-        return remaining
-
-    def _admit_next(self) -> None:
-        if self._closing:
-            raise RuntimeError("hosted_client_closed")
-        self._remaining()
+        self._control: _ForegroundClientControl[HostedMuxShellV1] = (
+            _ForegroundClientControl(
+                owner, selector, started_at, bind_shell, _bind_terminal_runner
+            )
+        )
 
     @property
     def cleanup_pending(self) -> bool:
-        return not self._settled
+        return self._control.cleanup_pending
 
     @property
     def process_cleanup_pending(self) -> bool:
-        return self._owner.process_cleanup_pending
+        return self._control.process_cleanup_pending
 
-    async def _prepare(self) -> None:
-        await asyncio.sleep(0)  # Publish the task even under eager task factories.
-        from loushang.appserver.protocol import (
-            AppErrorCodeV1,
-            AppServiceError,
-            MuxCreateV1,
-            MuxReadV1,
-            MuxSelectorV1,
-        )
-        from loushang.harnesstui.conversation.theme import terminal_transcript_theme
-        from loushang.harnesstui.mux.shell import HostedMuxShellV1
+    async def run(self, *, stdin: TextIO, stdout: TextIO) -> int:
+        return await self._control.run(self, stdin=stdin, stdout=stdout)
 
-        self._admit_next()
-        await self._owner.start()
-        self._admit_next()
-        client = self._owner.client
-        try:
-            selected = await client.read_mux(MuxReadV1(self._selector))
-        except AppServiceError as error:
-            if error.code is not AppErrorCodeV1.NOT_FOUND:
-                raise
-            self._admit_next()
-            assert self._selector.name is not None
-            selected = await client.create_mux(MuxCreateV1(self._selector.name))
-        self._admit_next()
-        discovery = self._owner.discovery_client
-        if discovery is None:
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        # No await between the close fence and publication of the UI owner.
-        self._shell = HostedMuxShellV1(
-            client, selector=MuxSelectorV1(mux_space_id=selected.mux_space_id),
+    async def close(self, *, retry_timeout: float | None = None) -> None:
+        await self._control.close(retry_timeout=retry_timeout)
+
+
+def _remaining_at(started_at: float) -> float:
+    remaining = 30 - (time.monotonic() - started_at)
+    if not 0 < remaining <= 30:
+        raise TimeoutError("hosted_startup_timeout")
+    return remaining
+
+
+def _bind_shell_factory(
+    launch: CodingHostedLaunchV1,
+    owner: HostedForegroundClientV1,
+    selector_type: type[MuxSelectorV1],
+) -> _ShellFactory[HostedMuxShellV1]:
+    from loushang.harnesstui.conversation.theme import terminal_transcript_theme
+    from loushang.harnesstui.mux.shell import HostedMuxShellV1
+
+    def construct(
+        client: AppServicePortV1,
+        selected: MuxSpaceV1,
+        discovery: SessionDiscoveryPortV1,
+    ) -> HostedMuxShellV1:
+        return HostedMuxShellV1(
+            client,
+            selector=selector_type(mux_space_id=selected.mux_space_id),
             product_id="coding",
-            scopes=tuple((scope.scope, scope.fingerprint) for scope in self._launch.scopes),
-            discovery_client=discovery, close_timeout=20,
-            execution_client=self._owner.execution_client,
+            scopes=tuple((scope.scope, scope.fingerprint) for scope in launch.scopes),
+            discovery_client=discovery,
+            close_timeout=20,
+            execution_client=owner.execution_client,
             exit_ends_application=True,
             transcript_theme=terminal_transcript_theme(),
         )
 
-    async def run(self, *, stdin: TextIO, stdout: TextIO) -> int:
-        from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
-
-        if self._startup is not None or self._closing:
-            raise RuntimeError("hosted_client_closed")
-        status = 1
-        try:
-            deadline = asyncio.get_running_loop().time() + self._remaining()
-            self._startup = asyncio.create_task(self._prepare())
-            self._startup.add_done_callback(_observe)
-            done, _ = await asyncio.wait({self._startup}, timeout=self._remaining())
-            if not done:
-                raise TimeoutError("hosted_startup_timeout")
-            await asyncio.shield(self._startup)
-            self._admit_next()
-            assert self._shell is not None
-            status = await run_hosted_mux_shell(
-                self._shell, stdin=stdin, stdout=stdout,
-                settlement=self.close, startup_deadline=deadline,
-            )
-        finally:
-            await self.close()
-        facts = self._owner.diagnostics
-        return status or int(facts.forced_exit or facts.exit_code != 0)
-
-    async def close(self, *, retry_timeout: float | None = None) -> None:
-        from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
-
-        if retry_timeout is not None and (
-            type(retry_timeout) not in (int, float) or not 0 < retry_timeout <= 20
-        ):
-            raise ValueError("invalid foreground retry budget")
-        self._closing = True  # Fence every late startup/mux response before awaits.
-        if self._settled:
-            return
-        if retry_timeout is not None and self._close_task is not None and not self._close_task.done():
-            raise ValueError("foreground close still running")
-        if self._close_task is None or retry_timeout is not None:
-            self._close_deadline = asyncio.get_running_loop().time() + (retry_timeout or 20)
-            if self._startup is not None and not self._startup.done():
-                self._startup.cancel()
-            self._close_task = asyncio.create_task(self._close_once(retry_timeout))
-            self._close_task.add_done_callback(_observe)
-        assert self._close_deadline is not None
-        done, _ = await asyncio.wait(
-            {self._close_task},
-            timeout=max(0, self._close_deadline - asyncio.get_running_loop().time()),
-        )
-        if not done:
-            raise AppServiceError(AppErrorCodeV1.CLEANUP_INCOMPLETE)
-        await asyncio.shield(self._close_task)
-
-    async def _close_once(self, retry_timeout: float | None) -> None:
-        await asyncio.sleep(0)  # Publish this retained owner before cleanup effects.
-        options = {} if retry_timeout is None else {"retry_timeout": retry_timeout}
-        await self._owner.close(detach=self._shell.close if self._shell else None, **options)
-        if self._startup is not None:
-            await asyncio.gather(self._startup, return_exceptions=True)
-        self._settled = True
+    return construct
 
 
-def _diagnostic(message: str) -> None:
-    # A broken diagnostic sink cannot discard process ownership.
-    with suppress(OSError, ValueError):
-        print(message, file=sys.stderr, flush=True)
+def _bind_terminal_runner() -> _TerminalRunner[HostedMuxShellV1]:
+    from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
 
-
-async def _recover(command: CodingHostedTuiCommandV1, retry: asyncio.Event) -> None:
-    # No new stdin reader: a failed UI input waiter may still own that stream.
-    if command.process_cleanup_pending:
-        _diagnostic("hosted_cleanup_pending; controller retained; Ctrl+C explicitly retries cleanup")
-    while command.process_cleanup_pending:
-        try:
-            await asyncio.wait_for(retry.wait(), 0.1)
-        except TimeoutError:
-            continue
-        retry.clear()
-        try:
-            await command.close(retry_timeout=20)
-        except (Exception, asyncio.CancelledError):
-            _diagnostic("hosted_cleanup_incomplete")
-
-
-async def _run_owned(command: CodingHostedTuiCommandV1, task: asyncio.Task[int]) -> int:
-    try:
-        return await asyncio.shield(task)
-    finally:
-        # Cancellation before task entry cannot bypass ownership of the empty host.
-        await command.close()
+    return run_hosted_mux_shell
 
 
 def _execute(command: CodingHostedTuiCommandV1, output: TextIO) -> int:
-    from loushang.appserver.protocol import AppServiceError
+    from loushang.apphost.integrations._foreground_client_control import (
+        execute_foreground_command,
+    )
 
-    runner = asyncio.Runner()
-    loop = runner.get_loop()
-    task = loop.create_task(command.run(stdin=sys.stdin, stdout=output))
-    task.add_done_callback(_observe)
-    retry = asyncio.Event()
-    interrupted = False
-
-    def interrupt(signum: int, frame: object) -> None:
-        nonlocal interrupted
-        if not interrupted and not task.done():
-            interrupted = True
-            loop.call_soon_threadsafe(task.cancel)
-        else:
-            loop.call_soon_threadsafe(retry.set)
-
-    previous = signal.signal(signal.SIGINT, interrupt)
-    status = 1
-    with redirect_stdout(sys.stderr):
-        try:
-            status = runner.run(_run_owned(command, task))
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            status = 130
-            _diagnostic("hosted_interrupted")
-        except AppServiceError as error:
-            _diagnostic(error.code.value)
-        except Exception:
-            _diagnostic("hosted_client_failed")
-        finally:
-            if command.process_cleanup_pending:
-                status = status or 1
-            # The same non-raising SIGINT handler protects run handoffs, status
-            # output and retries, not just awaits within a Runner.run call.
-            runner.run(_recover(command, retry))
-            if command.cleanup_pending:
-                _diagnostic("hosted_cleanup_incomplete")
-                os._exit(status or 1)
-            signal.signal(signal.SIGINT, previous)
-            runner.close()
-    return status
+    return execute_foreground_command(command, output)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

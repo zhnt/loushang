@@ -1,5 +1,8 @@
 //! Sequential read-only attachment and membership-barrier implementation.
-use super::transport_auth::Channel;
+use super::{
+    transport_auth::Channel, InteractiveGoalCommand, InteractiveGoalReviewDecision,
+    InteractiveGoalReviewSubmission,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
 use sha2::{Digest, Sha256};
@@ -151,6 +154,24 @@ struct Detach<'a> {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ReadAttachmentEvents<'a> {
+    attachment_id: &'a str,
+    controller_generation: &'a RawValue,
+    limit: u8,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RespondInteraction<'a> {
+    attachment_id: &'a str,
+    controller_generation: &'a RawValue,
+    member_id: &'a str,
+    interaction_id: &'a str,
+    outcome: InteractionOutcome,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Control<'a> {
     attachment_id: &'a str,
     controller_generation: &'a RawValue,
@@ -229,6 +250,7 @@ pub struct ControlAuthority {
     controller_generation: String,
     instance: String,
     mux_name: String,
+    mux_space_id: String,
     members: BTreeMap<String, String>,
     session_templates: BTreeMap<String, SessionTemplate>,
     default_template: Option<SessionTemplate>,
@@ -239,6 +261,14 @@ struct SessionTemplate {
     product_id: String,
     scope: String,
     scope_fingerprint: String,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractionOutcome {
+    Approve,
+    Deny,
+    Cancel,
 }
 
 pub enum ControlResult {
@@ -377,22 +407,29 @@ impl ReadSession {
         let result = (|| {
             attempt.apply(|| Ok(()))?;
             let pending = self.read_snapshots(channel, attempt)?;
+            let mut readers = pending
+                .iter()
+                .map(EventReader::new)
+                .collect::<Result<Vec<_>, _>>()?;
+            let attached_cursors = self
+                .attachment
+                .sessions
+                .iter()
+                .map(|session| {
+                    let source = projection::source_value(session.snapshot.get())?;
+                    source["cursor"].as_str().map(str::to_owned).ok_or(())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            self.fill_approval_gaps(channel, &mut readers, &attached_cursors)?;
             membership_barrier(
                 channel,
                 &self.attachment.mux_space,
                 &mut self.next_id,
                 attempt,
             )?;
-            let readers = pending
-                .iter()
-                .map(EventReader::new)
-                .collect::<Result<Vec<_>, _>>()?;
             let initial = InitialSnapshot {
                 mux_space: self.attachment.mux_space.bridge_value()?,
-                sessions: pending
-                    .iter()
-                    .map(|value| value["result"].clone())
-                    .collect(),
+                sessions: approval_snapshots(pending, &readers),
             };
             attempt.apply(|| {
                 self.readers = Some(readers);
@@ -442,6 +479,7 @@ impl ReadSession {
             controller_generation: self.attachment.controller_generation.get().to_owned(),
             instance: self.instance.clone(),
             mux_name: self.attachment.mux_space.name.clone(),
+            mux_space_id: self.attachment.mux_space.mux_space_id.clone(),
             members,
             session_templates,
             default_template: self.default_template.clone(),
@@ -513,13 +551,15 @@ impl ReadSession {
                 if snapshots.len() != next.len() {
                     return Err(());
                 }
+                let cursors = next
+                    .iter()
+                    .map(|reader| reader.cursor.clone())
+                    .collect::<Vec<_>>();
                 for (reader, snapshot) in next.iter_mut().zip(&snapshots) {
                     reader.rebase(snapshot)?;
                 }
-                snapshots
-                    .iter()
-                    .map(|value| value["result"].clone())
-                    .collect()
+                self.fill_approval_gaps(channel, &mut next, &cursors)?;
+                approval_snapshots(snapshots, &next)
             } else {
                 Vec::new()
             };
@@ -538,6 +578,75 @@ impl ReadSession {
             self.fail(attempt);
         }
         result
+    }
+
+    // A new execution snapshot rebases the event stream. Read its covered
+    // interactions from the existing attachment before the next execution poll.
+    fn fill_approval_gaps<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+        readers: &mut [EventReader],
+        previous: &[String],
+    ) -> Result<(), ()> {
+        if readers
+            .iter()
+            .zip(previous)
+            .all(|(reader, cursor)| reader.cursor == *cursor)
+        {
+            return Ok(());
+        }
+        for _ in 0..=256 {
+            let Some(entry) = self.read_attachment_event(channel)? else {
+                return Ok(());
+            };
+            let index = self
+                .attachment
+                .sessions
+                .iter()
+                .position(|item| item.member.member_id == entry.member_id)
+                .ok_or(())?;
+            readers[index].apply_covered_interaction(entry.event, &previous[index])?;
+        }
+        Err(())
+    }
+
+    fn read_attachment_event<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+    ) -> Result<Option<AttachmentEvent>, ()> {
+        let id = take_request_id(&mut self.next_id)?;
+        let reply = request(
+            channel,
+            "attachment/read_events",
+            &id,
+            ReadAttachmentEvents {
+                attachment_id: &self.attachment.attachment_id,
+                controller_generation: &self.attachment.controller_generation,
+                limit: 1,
+            },
+        )?;
+        if reply.result_type != "events" {
+            return Err(());
+        }
+        let batch: AttachmentEvents = serde_json::from_str(reply.result.get()).map_err(|_| ())?;
+        match batch.events.as_slice() {
+            [] => Ok(None),
+            [entry]
+                if entry.attachment_id == self.attachment.attachment_id
+                    && entry.protocol_version == "loushang.app/v1" =>
+            {
+                Ok(batch.events.into_iter().next())
+            }
+            _ => Err(()),
+        }
+    }
+
+    pub(crate) fn has_approval(&self, session_id: &str, interaction_id: &str) -> bool {
+        self.readers.as_ref().is_some_and(|readers| {
+            readers.iter().any(|reader| {
+                reader.session_id == session_id && reader.approvals.contains_key(interaction_id)
+            })
+        })
     }
 
     fn read_snapshots<R: Read, W: Write>(
@@ -629,6 +738,47 @@ impl ReadSession {
 }
 
 impl ControlAuthority {
+    pub(crate) fn close_session<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        mux_space_id: &str,
+        session_id: &str,
+        request_id: &str,
+    ) -> Result<bool, ()> {
+        if mux_space_id != self.mux_space_id {
+            return Ok(false);
+        }
+        let Some(member_id) = self.members.get(session_id) else {
+            return Ok(false);
+        };
+        let response = request(
+            channel,
+            "mux/member/close",
+            request_id,
+            json!({
+                "selector": {"muxSpaceId": self.mux_space_id, "name": null},
+                "memberId": member_id,
+                "closeSession": true,
+                "deleteHistory": true,
+            }),
+        )?;
+        if response.result_type != "mux" {
+            return Err(());
+        }
+        let mux: Mux = serde_json::from_str(response.result.get()).map_err(|_| ())?;
+        if mux.mux_space_id != self.mux_space_id || mux.name != self.mux_name {
+            return Err(());
+        }
+        for member in &mux.members {
+            if member.member_id == *member_id
+                || member.value()?["session"]["sessionId"] == session_id
+            {
+                return Err(());
+            }
+        }
+        Ok(true)
+    }
+
     pub(crate) fn create_session<R: Read, W: Write>(
         &self,
         channel: &mut Channel<R, W>,
@@ -767,17 +917,34 @@ impl ControlAuthority {
         text: &str,
         request_id: &str,
     ) -> Result<ControlResult, ()> {
-        if !identifier(submission_id, 128)
-            || text.trim().is_empty()
-            || text.chars().count() > 262_144
-        {
+        if text.trim().is_empty() || text.chars().count() > 262_144 {
+            return Err(());
+        }
+        let mut payload = self.submission_payload(session_id, submission_id)?;
+        payload["text"] = Value::String(text.to_owned());
+        let result = execution_request(channel, "execution/submit", request_id, payload)?;
+        self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn start_goal<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        submission_id: &str,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        let payload = self.submission_payload(session_id, submission_id)?;
+        let result = execution_request(channel, "execution/goal_start", request_id, payload)?;
+        self.record_result(result, session_id, Some(submission_id))
+    }
+
+    fn submission_payload(&self, session_id: &str, submission_id: &str) -> Result<Value, ()> {
+        if !identifier(submission_id, 128) {
             return Err(());
         }
         let mut payload = self.payload(session_id)?;
         payload["submissionId"] = Value::String(submission_id.to_owned());
-        payload["text"] = Value::String(text.to_owned());
-        let result = execution_request(channel, "execution/submit", request_id, payload)?;
-        self.record_result(result, session_id, Some(submission_id))
+        Ok(payload)
     }
 
     pub(crate) fn find_submission<R: Read, W: Write>(
@@ -787,17 +954,201 @@ impl ControlAuthority {
         submission_id: &str,
         request_id: &str,
     ) -> Result<ControlResult, ()> {
-        if !identifier(submission_id, 128) {
-            return Err(());
-        }
-        let mut payload = self.payload(session_id)?;
-        payload["submissionId"] = Value::String(submission_id.to_owned());
+        let payload = self.submission_payload(session_id, submission_id)?;
         let result = execution_request(channel, "execution/find_submission", request_id, payload)?;
         if result["resultType"] == "not_found" {
             projection::control_bridge("not_found", &result.to_string())?;
             return Ok(ControlResult::Missing);
         }
         self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn respond_interaction<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        interaction_id: &str,
+        outcome: InteractionOutcome,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        let response = request(
+            channel,
+            "interaction/respond",
+            request_id,
+            RespondInteraction {
+                attachment_id: &self.attachment_id,
+                controller_generation: serde_json::from_str(&self.controller_generation)
+                    .map_err(|_| ())?,
+                member_id: self.members.get(session_id).ok_or(())?,
+                interaction_id,
+                outcome,
+            },
+        )?;
+        if let Some(code) = decode_app_error(&response.result_type, &response.result)? {
+            return Ok(ControlResult::Rejected(code));
+        }
+        if response.result_type != "ack" {
+            return Err(());
+        }
+        let ack: serde_json::Map<String, Value> =
+            serde_json::from_str(response.result.get()).map_err(|_| ())?;
+        if !ack.is_empty() {
+            return Err(());
+        }
+        Ok(ControlResult::Accepted)
+    }
+
+    pub(crate) fn interactive_goal<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        target: Option<&str>,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        let mut payload = self.payload(session_id)?;
+        let operation = if let Some(target) = target {
+            if target.trim().is_empty() || target.len() > 16_384 {
+                return Ok(None);
+            }
+            payload["goalTarget"] = Value::String(target.to_owned());
+            "session/interactive_goal_create"
+        } else {
+            "session/interactive_goal_status"
+        };
+        let result = execution_request(channel, operation, request_id, payload)?;
+        decode_interactive_goal(result, None)
+    }
+
+    pub(crate) fn control_interactive_goal<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        command: InteractiveGoalCommand,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        if !identifier(&command.goal_id, 128) || !identifier(&command.command_id, 128) {
+            return Ok(None);
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["goalId"] = json!(command.goal_id);
+        payload["commandId"] = json!(command.command_id);
+        payload["action"] = json!(command.action);
+        let result = execution_request(
+            channel,
+            "session/interactive_goal_command",
+            request_id,
+            payload,
+        )?;
+        decode_interactive_goal(result, Some(&command))
+    }
+
+    pub(crate) fn interactive_goal_recovery<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        let payload = self.payload(session_id)?;
+        let result = execution_request(
+            channel,
+            "session/interactive_goal_recovery",
+            request_id,
+            payload,
+        )?;
+        if rejected_result(&result)?.is_some() {
+            return Ok(None);
+        }
+        let mut checked =
+            projection::control_bridge("interactive_goal_recovery", &result.to_string())?;
+        Ok(Some(checked["result"].take()))
+    }
+
+    pub(crate) fn interactive_goal_review<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        goal_id: &str,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        if !identifier(goal_id, 128) {
+            return Ok(None);
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["goalId"] = json!(goal_id);
+        let result = execution_request(
+            channel,
+            "session/interactive_goal_review",
+            request_id,
+            payload,
+        )?;
+        if rejected_result(&result)?.is_some() {
+            return Ok(None);
+        }
+        let mut checked =
+            projection::control_bridge("interactive_goal_review", &result.to_string())?;
+        if checked["result"]["goalId"] != goal_id {
+            return Err(());
+        }
+        Ok(Some(checked["result"].take()))
+    }
+
+    pub(crate) fn submit_interactive_goal_review<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        review: InteractiveGoalReviewSubmission,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        let valid_reason = match (review.decision, &review.reason) {
+            (InteractiveGoalReviewDecision::Accept, None) => true,
+            (InteractiveGoalReviewDecision::Reject, Some(value)) => {
+                !value.trim().is_empty() && value.len() <= 4096
+            }
+            _ => false,
+        };
+        if !valid_reason
+            || !identifier(&review.goal_id, 128)
+            || !identifier(&review.command_id, 128)
+            || !projection::review_token(&review.review_token)
+        {
+            return Ok(None);
+        }
+        let mut payload = self.payload(session_id)?;
+        let wire = serde_json::to_value(&review).map_err(|_| ())?;
+        payload
+            .as_object_mut()
+            .ok_or(())?
+            .extend(wire.as_object().ok_or(())?.clone());
+        let result = execution_request(
+            channel,
+            "session/interactive_goal_review_submit",
+            request_id,
+            payload,
+        )?;
+        let view = decode_interactive_goal(result, None)?;
+        check_goal_receipt(
+            view,
+            &review.goal_id,
+            &review.command_id,
+            json!(review.decision),
+        )
+    }
+
+    pub(crate) fn goal_progress<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        execution_id: &str,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        if !identifier(execution_id, 128) {
+            return Err(());
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["executionId"] = Value::String(execution_id.to_owned());
+        payload["includeBatches"] = Value::Bool(true);
+        let result = execution_request(channel, "execution/goal_progress", request_id, payload)?;
+        decode_goal_progress(result, execution_id)
     }
 
     pub(crate) fn interrupt<R: Read, W: Write>(
@@ -851,7 +1202,10 @@ impl ControlAuthority {
 
 const THINKING_LEVELS: [&str; 6] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 
-fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelControlResult, ()> {
+pub(super) fn decode_model_result(
+    result_type: &str,
+    result: &RawValue,
+) -> Result<ModelControlResult, ()> {
     if let Some(code) = decode_app_error(result_type, result)? {
         return Ok(ModelControlResult::Rejected(code));
     }
@@ -897,6 +1251,18 @@ fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelCont
         }
     }
     Ok(ModelControlResult::Accepted(value))
+}
+
+pub fn definitive_create_rejection(code: &str) -> bool {
+    matches!(
+        code,
+        "workspace_not_selected"
+            | "invalid_request"
+            | "not_found"
+            | "product_mismatch"
+            | "already_attached"
+            | "session_unavailable"
+    )
 }
 
 fn decode_create_result(
@@ -976,6 +1342,53 @@ fn rejected_result(value: &Value) -> Result<Option<String>, ()> {
     ))
 }
 
+fn decode_interactive_goal(
+    result: Value,
+    expected: Option<&InteractiveGoalCommand>,
+) -> Result<Option<Value>, ()> {
+    if rejected_result(&result)?.is_some() {
+        return Ok(None);
+    }
+    let mut checked = projection::control_bridge("interactive_goal", &result.to_string())?;
+    let view = checked["result"].take();
+    if let Some(command) = expected {
+        return check_goal_receipt(
+            Some(view),
+            &command.goal_id,
+            &command.command_id,
+            json!(command.action),
+        );
+    }
+    Ok(Some(view))
+}
+
+fn check_goal_receipt(
+    view: Option<Value>,
+    goal_id: &str,
+    command_id: &str,
+    action: Value,
+) -> Result<Option<Value>, ()> {
+    if view.as_ref().is_some_and(|value| {
+        value["goalId"] != goal_id
+            || value["command"]["commandId"] != command_id
+            || value["command"]["action"] != action
+    }) {
+        return Err(());
+    }
+    Ok(view)
+}
+
+fn decode_goal_progress(result: Value, execution_id: &str) -> Result<Option<Value>, ()> {
+    if rejected_result(&result)?.is_some() {
+        return Ok(None);
+    }
+    let mut checked = projection::control_bridge("goal_progress", &result.to_string())?;
+    if checked["result"]["executionId"].as_str() != Some(execution_id) {
+        return Err(());
+    }
+    Ok(Some(checked["result"].take()))
+}
+
 fn successor(decimal: &str) -> String {
     let mut bytes = decimal.as_bytes().to_vec();
     for digit in bytes.iter_mut().rev() {
@@ -989,6 +1402,52 @@ fn successor(decimal: &str) -> String {
     String::from_utf8(bytes).expect("decimal input")
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AttachmentEvents {
+    events: Vec<AttachmentEvent>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AttachmentEvent {
+    attachment_id: String,
+    member_id: String,
+    protocol_version: String,
+    event: SourceEvent,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SourceEvent {
+    cursor: Box<RawValue>,
+    session_id: String,
+    kind: String,
+    interaction_id: Option<String>,
+    text: Option<String>,
+}
+
+fn cursor_order(left: &str, right: &str) -> std::cmp::Ordering {
+    left.len().cmp(&right.len()).then_with(|| left.cmp(right))
+}
+
+fn approval_snapshots(snapshots: Vec<Value>, readers: &[EventReader]) -> Vec<Value> {
+    snapshots
+        .into_iter()
+        .zip(readers)
+        .map(|(mut value, reader)| {
+            let approvals = reader
+                .approvals
+                .iter()
+                .map(|(id, text)| json!({"interactionId": id, "text": text}))
+                .collect();
+            let mut snapshot = value["result"].take();
+            snapshot["pendingApprovals"] = Value::Array(approvals);
+            snapshot
+        })
+        .collect()
+}
+
 // Inputs have passed the independent wire validators. Keep content and metadata
 // watermarks separate, and never coerce arbitrary-size source cursors to floats.
 #[derive(Clone)]
@@ -996,6 +1455,7 @@ struct EventReader {
     session_id: Value,
     cursor: String,
     revision: u64,
+    approvals: BTreeMap<String, String>,
     valid: bool,
 }
 impl EventReader {
@@ -1007,6 +1467,7 @@ impl EventReader {
             revision: snapshot["result"]["executions"]["revision"]
                 .as_u64()
                 .ok_or(())?,
+            approvals: BTreeMap::new(),
             valid: true,
         })
     }
@@ -1044,14 +1505,8 @@ impl EventReader {
     }
     fn advance(&mut self, events: &Value) -> Result<(), ()> {
         for event in events["result"]["events"].as_array().ok_or(())? {
-            if event.get("source").is_some() {
-                let content = &event["source"];
-                if content["sessionId"] != self.session_id
-                    || content["cursor"].as_str() != Some(successor(&self.cursor).as_str())
-                {
-                    return Err(());
-                }
-                self.cursor = content["cursor"].as_str().ok_or(())?.to_owned();
+            if let Some(content) = event.get("source") {
+                self.advance_content(content)?;
             } else {
                 let next = event["revision"].as_u64().ok_or(())?;
                 if self.revision.checked_add(1) != Some(next) {
@@ -1062,11 +1517,175 @@ impl EventReader {
         }
         Ok(())
     }
+
+    fn advance_content(&mut self, content: &Value) -> Result<(), ()> {
+        let cursor = content["cursor"].as_str().ok_or(())?;
+        if content["sessionId"] != self.session_id || cursor != successor(&self.cursor) {
+            return Err(());
+        }
+        self.apply_interaction(
+            content["kind"].as_str().ok_or(())?,
+            content["interactionId"].as_str(),
+            content["text"].as_str(),
+        )?;
+        self.cursor = cursor.to_owned();
+        Ok(())
+    }
+
+    fn apply_covered_interaction(&mut self, event: SourceEvent, previous: &str) -> Result<(), ()> {
+        if self.session_id != event.session_id || !positive(&event.cursor) {
+            return Err(());
+        }
+        let cursor = event.cursor.get();
+        if cursor_order(cursor, previous).is_gt() && !cursor_order(cursor, &self.cursor).is_gt() {
+            self.apply_interaction(
+                &event.kind,
+                event.interaction_id.as_deref(),
+                event.text.as_deref(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn apply_interaction(
+        &mut self,
+        kind: &str,
+        interaction_id: Option<&str>,
+        text: Option<&str>,
+    ) -> Result<(), ()> {
+        match kind {
+            "interaction_requested" => {
+                let id = interaction_id.filter(|id| identifier(id, 512)).ok_or(())?;
+                let text = text
+                    .filter(|text| !text.trim().is_empty() && text.chars().count() <= 262_144)
+                    .ok_or(())?;
+                self.approvals
+                    .entry(id.to_owned())
+                    .or_insert_with(|| text.to_owned());
+                if self.approvals.len() > 16 {
+                    return Err(());
+                }
+            }
+            "interaction_dismissed" => {
+                let id = interaction_id.filter(|id| identifier(id, 512)).ok_or(())?;
+                self.approvals.remove(id);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn goal_start_uses_the_current_member_and_validates_the_submission_record() {
+        let authority = ControlAuthority {
+            attachment_id: "attachment".into(),
+            controller_generation: "1".into(),
+            instance: "instance".into(),
+            mux_name: "goal".into(),
+            mux_space_id: "mux".into(),
+            members: BTreeMap::from([("session".into(), "member".into())]),
+            session_templates: BTreeMap::new(),
+            default_template: None,
+        };
+        assert_eq!(
+            authority
+                .submission_payload("session", "submission")
+                .unwrap(),
+            json!({
+                "control": {"attachmentId": "attachment", "controllerGeneration": 1, "memberId": "member"},
+                "expectedInstanceId": "instance",
+                "submissionId": "submission",
+            }),
+        );
+        assert!(authority.submission_payload("other", "submission").is_err());
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../tests/appserver/fixtures/execution_v1.json"
+        ))
+        .unwrap();
+        let record = &fixture["accepted"];
+        assert!(matches!(
+            authority.record_result(record.clone(), "session", Some("submission")),
+            Ok(ControlResult::Submitted(id)) if id == "execution"
+        ));
+        assert!(authority
+            .record_result(record.clone(), "session", Some("other"))
+            .is_err());
+        assert!(authority
+            .record_result(record.clone(), "other", Some("submission"))
+            .is_err());
+        let mut stale = record.clone();
+        stale["result"]["serviceInstanceId"] = json!("old-instance");
+        assert!(authority
+            .record_result(stale, "session", Some("submission"))
+            .is_err());
+    }
+
+    #[test]
+    fn interactive_goal_reply_binds_goal_command_and_action() {
+        let request = InteractiveGoalCommand {
+            goal_id: "goal-1".into(),
+            command_id: "command-1".into(),
+            action: super::super::InteractiveGoalAction::Step,
+        };
+        let reply = json!({
+            "protocolVersion": "loushang.execution/v1", "requestId": "1",
+            "resultType": "interactive_goal",
+            "result": {
+                "availability": "present", "goalId": "goal-1", "status": "active",
+                "revision": 1, "epoch": 1, "executionUnresolved": false,
+                "command": { "commandId": "command-1", "action": "step", "status": "running" },
+            },
+        });
+        assert_eq!(
+            decode_interactive_goal(reply.clone(), Some(&request)),
+            Ok(Some(reply["result"].clone()))
+        );
+        for field in [
+            "/result/goalId",
+            "/result/command/commandId",
+            "/result/command/action",
+        ] {
+            let mut mismatched = reply.clone();
+            *mismatched.pointer_mut(field).unwrap() = json!("run");
+            assert!(decode_interactive_goal(mismatched, Some(&request)).is_err());
+        }
+    }
+
+    #[test]
+    fn goal_progress_reply_is_bound_to_the_requested_execution() {
+        let reply = json!({
+            "protocolVersion": "loushang.execution/v1",
+            "requestId": "3",
+            "resultType": "goal_progress",
+            "result": {
+                "executionId": "exec-1", "presence": "present", "goalId": "calculator",
+                "status": "paused", "reasonCode": "model_budget", "validity": "not_checked",
+                "executionUnresolved": false, "advances": 1, "modelCalls": 2, "batchCount": 0, "batches": [],
+            },
+        });
+        assert!(decode_goal_progress(reply.clone(), "exec-2").is_err());
+        assert_eq!(
+            decode_goal_progress(reply.clone(), "exec-1"),
+            Ok(Some(reply["result"].clone()))
+        );
+        assert_eq!(
+            decode_goal_progress(
+                json!({
+                    "protocolVersion": "loushang.execution/v1",
+                    "requestId": "3",
+                    "resultType": "app_failure",
+                    "result": {"code": "operation_unavailable"},
+                }),
+                "exec-1"
+            ),
+            Ok(None),
+        );
+    }
+
     #[test]
     fn model_capability_rejection_is_semantic_not_transport_failure() {
         let raw = RawValue::from_string(r#"{"code":"operation_unavailable"}"#.to_owned()).unwrap();
@@ -1075,6 +1694,13 @@ mod tests {
             ModelControlResult::Accepted(_) => panic!("error response was accepted"),
         }
         assert!(decode_model_result("unexpected", &raw).is_err());
+    }
+
+    #[test]
+    fn member_creation_distinguishes_rejection_from_uncertain_cleanup() {
+        assert!(definitive_create_rejection("session_unavailable"));
+        assert!(!definitive_create_rejection("cleanup_incomplete"));
+        assert!(!definitive_create_rejection("operation_unavailable"));
     }
 
     #[test]
@@ -1127,7 +1753,7 @@ mod tests {
     #[test]
     fn batches_are_atomic_and_failures_fence_the_reader() {
         let snapshot = json!({"result":{"source":{"source":{"cursor":"9", "identity":{"sessionId":"s"}}},"executions":{"revision":7}}});
-        let batch = |cursors: &[&str]| json!({"result":{"events":cursors.iter().map(|c| json!({"source":{"sessionId":"s","cursor":c}})).collect::<Vec<_>>()}});
+        let batch = |cursors: &[&str]| json!({"result":{"events":cursors.iter().map(|c| json!({"source":{"sessionId":"s","kind":"status","cursor":c}})).collect::<Vec<_>>()}});
         let mut reader = EventReader::new(&snapshot).unwrap();
         reader.apply(&batch(&["10"])).unwrap();
         reader.apply(&batch(&["11"])).unwrap();
@@ -1151,11 +1777,41 @@ mod tests {
         assert_eq!(reader.revision, 5);
         assert!(reader
             .apply(&json!({"result":{"events":[
-                {"source":{"sessionId":"s","cursor":"6"}}, {"revision":6}
+                {"source":{"sessionId":"s","kind":"status","cursor":"6"}}, {"revision":6}
             ]}}))
             .is_ok());
         assert!(reader.rebase(&initial).is_err());
     }
+    #[test]
+    fn approval_request_is_deduplicated_and_only_a_matching_dismissal_removes_it() {
+        let mut reader = EventReader::new(&json!({"result": {
+            "source":{"source":{"identity":{"sessionId":"s"},"cursor":"0"}},
+            "executions":{"revision":0}
+        }}))
+        .unwrap();
+        let event = |cursor: &str, kind: &str, id: &str, text: Option<&str>| {
+            json!({
+                "source":{"sessionId":"s","cursor":cursor,"kind":kind,"interactionId":id,"text":text}
+            })
+        };
+        reader
+            .apply(&json!({"result":{"events":[
+                event("1", "interaction_requested", "one", Some("Preview")),
+                event("2", "interaction_requested", "one", Some("Preview")),
+                event("3", "interaction_requested", "two", Some("Second")),
+                event("4", "interaction_dismissed", "two", None),
+            ]}}))
+            .unwrap();
+        assert_eq!(
+            reader.approvals,
+            BTreeMap::from([("one".into(), "Preview".into())])
+        );
+        reader
+            .apply(&json!({"result":{"events":[event("5", "interaction_dismissed", "one", None)]}}))
+            .unwrap();
+        assert!(reader.approvals.is_empty());
+    }
+
     #[test]
     fn decimal_successor_is_lossless() {
         assert_eq!(successor("0"), "1");
@@ -1167,7 +1823,8 @@ mod tests {
     #[test]
     fn content_and_metadata_have_separate_contiguous_watermarks() {
         let snapshot = json!({"result":{"source":{"source":{"cursor":"999999999999999999999", "identity":{"sessionId":"s"}}},"executions":{"revision":7}}});
-        let content = json!({"source":{"sessionId":"s","cursor":"1000000000000000000000"}});
+        let content =
+            json!({"source":{"sessionId":"s","kind":"status","cursor":"1000000000000000000000"}});
         let batch = |items: Vec<Value>| json!({"result":{"events":items}});
         assert!(validate_events(
             &snapshot,
@@ -1179,7 +1836,7 @@ mod tests {
         assert!(validate_events(
             &snapshot,
             &batch(vec![
-                json!({"source":{"sessionId":"other","cursor":"1000000000000000000000"}})
+                json!({"source":{"sessionId":"other","kind":"status","cursor":"1000000000000000000000"}})
             ])
         )
         .is_err());

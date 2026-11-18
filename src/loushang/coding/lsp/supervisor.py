@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable, Mapping
-from contextlib import suppress
 from dataclasses import dataclass
 
 from loushang.coding.lsp.catalog import LspCatalog
@@ -12,6 +10,7 @@ from loushang.coding.lsp.client import LspClient
 from loushang.coding.lsp.diagnostics import DiagnosticInbox
 from loushang.coding.lsp.model import (
     LspProtocolError,
+    LspServerDefinition,
     LspServerKey,
     LspServerSelection,
 )
@@ -25,6 +24,7 @@ from loushang.coding.lsp.status import (
     LspServerRuntimeStatus,
     LspSessionStatus,
 )
+from loushang.harness.workspace.process.supervision import ProcessClientSupervisor
 
 _MAX_RUNTIME_STATUS_RECORDS = 128
 
@@ -36,8 +36,19 @@ class LspRuntimeHandle:
     client: LspClient
 
 
-class LspServerSupervisor:
+class LspServerSupervisor(
+    ProcessClientSupervisor[
+        LspServerKey,
+        LspRuntimeHandle,
+        tuple[LspServerDefinition, dict[str, str]],
+        LspClient,
+    ]
+):
     """Own every LSP runtime created by one Coding capability binding."""
+
+    _disposed_message = "LSP supervisor is disposed"
+    _startup_disposed_message = "LSP supervisor was disposed during startup"
+    _dispose_task_name = "coding-lsp-dispose"
 
     def __init__(
         self,
@@ -52,16 +63,7 @@ class LspServerSupervisor:
         self._catalog = catalog
         self._launcher = launcher
         self._baseline_environment = dict(baseline_environment)
-        self._runtimes: dict[LspServerKey, LspRuntimeHandle] = {}
-        self._starts: dict[LspServerKey, asyncio.Task[LspRuntimeHandle]] = {}
-        self._stops: dict[LspServerKey, asyncio.Task[None]] = {}
-        self._lock = asyncio.Lock()
-        self._next_runtime_id = 1
-        self._disposed = False
-        self._dispose_task: asyncio.Task[None] | None = None
-        self._states: dict[LspServerKey, LspServerRuntimeState] = {}
-        self._last_errors: dict[LspServerKey, str] = {}
-        self._start_counts: dict[LspServerKey, int] = {}
+        super().__init__()
         self._request_counts: dict[LspServerKey, int] = {}
         self._timeout_counts: dict[LspServerKey, int] = {}
         self._accepted_diagnostic_counts: dict[LspServerKey, int] = {}
@@ -81,72 +83,92 @@ class LspServerSupervisor:
         signal: object | None = None,
     ) -> LspRuntimeHandle:
         key = LspServerKey(selection.definition_id, selection.workspace_root)
-        async with self._lock:
-            if self._disposed:
-                raise LspProtocolError("LSP supervisor is disposed")
-            current = self._runtimes.get(key)
-            if current is not None and not current.client.is_closed:
-                return current
-            if current is not None:
-                self._runtimes.pop(key, None)
-                self._retire_runtime(current)
-                self._remember_state(key, "failed")
-                self._last_errors[key] = "connection_closed"
-            task = self._starts.get(key)
-            if task is None:
-                runtime_id = self._next_runtime_id
-                self._next_runtime_id += 1
-                self._start_counts[key] = self._start_counts.get(key, 0) + 1
-                self._remember_state(key, "starting")
-                task = asyncio.create_task(
-                    self._start_runtime(
-                        key,
-                        runtime_id=runtime_id,
-                        correlation_id=correlation_id,
-                        signal=signal,
-                    ),
-                    name=f"coding-lsp-start:{selection.definition_id}",
-                )
-                self._starts[key] = task
-
-        try:
-            return await asyncio.shield(task)
-        finally:
-            if task.done():
-                async with self._lock:
-                    if self._starts.get(key) is task:
-                        self._starts.pop(key, None)
+        return await self._ensure_process_runtime(
+            key,
+            correlation_id=correlation_id,
+            signal=signal,
+            task_name=lambda: f"coding-lsp-start:{selection.definition_id}",
+        )
 
     async def stop(self, key: LspServerKey) -> bool:
-        async with self._lock:
-            if self._disposed:
-                return False
-            existing_stop = self._stops.get(key)
-            if existing_stop is not None:
-                stop_task = existing_stop
-                stopped = True
-            else:
-                runtime = self._runtimes.pop(key, None)
-                start = self._starts.pop(key, None)
-                stopped = runtime is not None or start is not None
-                if not stopped:
-                    if key in self._states:
-                        self._remember_state(key, "stopped")
-                        self._last_errors.pop(key, None)
-                    return False
-                self._remember_state(key, "stopped")
-                self._last_errors.pop(key, None)
-                stop_task = asyncio.create_task(
-                    self._stop_owned_runtime(
-                        key,
-                        start=start,
-                        runtime=runtime,
-                    ),
-                    name=f"coding-lsp-stop:{key.definition_id}",
+        return await self._stop_process_runtime(key)
+
+    def _stop_task_name(self, key: LspServerKey) -> str:
+        return f"coding-lsp-stop:{key.definition_id}"
+
+    def _supervision_error(self, message: str) -> LspProtocolError:
+        return LspProtocolError(message)
+
+    def _startup_inputs(
+        self, key: LspServerKey
+    ) -> tuple[LspServerDefinition, dict[str, str]]:
+        definition = self._catalog.definition(key.definition_id)
+        environment = dict(self._baseline_environment)
+        environment.update(definition.environment)
+        return definition, environment
+
+    def _launch_request(
+        self, key: LspServerKey, inputs: tuple[LspServerDefinition, dict[str, str]]
+    ) -> ProcessLaunchRequest:
+        definition, environment = inputs
+        return ProcessLaunchRequest(
+            command=definition.command,
+            cwd=str(key.workspace_root),
+            effective_environment=tuple(sorted(environment.items())),
+        )
+
+    def _new_client(
+        self,
+        handle: ProcessHandle,
+        key: LspServerKey,
+        runtime_id: int,
+        inputs: tuple[LspServerDefinition, dict[str, str]],
+    ) -> LspClient:
+        definition, _ = inputs
+        return LspClient(
+            handle,
+            request_timeout_seconds=definition.request_timeout_seconds,
+            shutdown_timeout_seconds=definition.shutdown_timeout_seconds,
+            settings=definition.settings,
+            on_publish_diagnostics=(
+                lambda params: (
+                    self._diagnostics is not None
+                    and self._replace_diagnostics(
+                        runtime_id=runtime_id,
+                        server_id=key.definition_id,
+                        params=params,
+                    )
                 )
-                self._stops[key] = stop_task
-        await asyncio.shield(stop_task)
-        return stopped
+            ),
+            on_close=lambda: self._release_diagnostics(runtime_id),
+        )
+
+    async def _initialize_client(
+        self,
+        client: LspClient,
+        key: LspServerKey,
+        inputs: tuple[LspServerDefinition, dict[str, str]],
+    ) -> None:
+        definition, _ = inputs
+        await client.initialize(
+            root_uri=key.workspace_root.as_uri(),
+            initialization_options=definition.initialization_options,
+            timeout_seconds=definition.startup_timeout_seconds,
+        )
+
+    def _runtime_record(
+        self, key: LspServerKey, runtime_id: int, client: LspClient
+    ) -> LspRuntimeHandle:
+        return LspRuntimeHandle(key=key, runtime_id=runtime_id, client=client)
+
+    def _retire_failed_client(
+        self, key: LspServerKey, runtime_id: int, client: LspClient | None
+    ) -> None:
+        if client is not None:
+            self._accumulate_client(key, client)
+            self._release_runtime_documents(runtime_id)
+        if self._diagnostics is not None:
+            self._diagnostics.release_runtime(runtime_id)
 
     def status(self) -> LspSessionStatus:
         """Return one read-only snapshot without starting or stopping a Server."""
@@ -222,144 +244,6 @@ class LspServerSupervisor:
                 )
             )
         return LspSessionStatus(disposed=self._disposed, servers=tuple(servers))
-
-    async def dispose(self) -> None:
-        async with self._lock:
-            task = self._dispose_task
-            if task is None:
-                self._disposed = True
-                task = asyncio.create_task(
-                    self._dispose_all(),
-                    name="coding-lsp-dispose",
-                )
-                self._dispose_task = task
-        await asyncio.shield(task)
-
-    async def _dispose_all(self) -> None:
-        async with self._lock:
-            starts = tuple(self._starts.values())
-            stops = tuple(self._stops.values())
-            runtimes = tuple(self._runtimes.values())
-            for key in set(self._states) | set(self._starts) | set(self._runtimes):
-                self._remember_state(key, "stopped")
-                self._last_errors.pop(key, None)
-            self._starts.clear()
-            self._stops.clear()
-            self._runtimes.clear()
-        for task in starts:
-            task.cancel()
-        if starts:
-            await asyncio.gather(*starts, return_exceptions=True)
-        if stops or runtimes:
-            results = await asyncio.gather(
-                *stops,
-                *(self._shutdown_runtime(runtime) for runtime in runtimes),
-                return_exceptions=True,
-            )
-            for result in results:
-                if isinstance(result, BaseException):
-                    raise result
-
-    async def _stop_owned_runtime(
-        self,
-        key: LspServerKey,
-        *,
-        start: asyncio.Task[LspRuntimeHandle] | None,
-        runtime: LspRuntimeHandle | None,
-    ) -> None:
-        try:
-            if start is not None:
-                start.cancel()
-                await asyncio.gather(start, return_exceptions=True)
-            if runtime is not None:
-                await self._shutdown_runtime(runtime)
-        finally:
-            async with self._lock:
-                if self._stops.get(key) is asyncio.current_task():
-                    self._stops.pop(key, None)
-
-    async def _start_runtime(
-        self,
-        key: LspServerKey,
-        *,
-        runtime_id: int,
-        correlation_id: str,
-        signal: object | None,
-    ) -> LspRuntimeHandle:
-        definition = self._catalog.definition(key.definition_id)
-        environment = dict(self._baseline_environment)
-        environment.update(definition.environment)
-        handle: ProcessHandle | None = None
-        client: LspClient | None = None
-        try:
-            handle = await self._launcher.start(
-                ProcessLaunchRequest(
-                    command=definition.command,
-                    cwd=str(key.workspace_root),
-                    effective_environment=tuple(sorted(environment.items())),
-                ),
-                correlation_id=correlation_id,
-                signal=signal,
-            )
-            client = LspClient(
-                handle,
-                request_timeout_seconds=definition.request_timeout_seconds,
-                shutdown_timeout_seconds=definition.shutdown_timeout_seconds,
-                settings=definition.settings,
-                on_publish_diagnostics=(
-                    lambda params: (
-                        self._diagnostics is not None
-                        and self._replace_diagnostics(
-                            runtime_id=runtime_id,
-                            server_id=key.definition_id,
-                            params=params,
-                        )
-                    )
-                ),
-                on_close=lambda: self._release_diagnostics(runtime_id),
-            )
-            await client.initialize(
-                root_uri=key.workspace_root.as_uri(),
-                initialization_options=definition.initialization_options,
-                timeout_seconds=definition.startup_timeout_seconds,
-            )
-            runtime = LspRuntimeHandle(
-                key=key,
-                runtime_id=runtime_id,
-                client=client,
-            )
-            async with self._lock:
-                if self._disposed:
-                    raise LspProtocolError("LSP supervisor was disposed during startup")
-                self._runtimes[key] = runtime
-                self._remember_state(key, "ready")
-                self._last_errors.pop(key, None)
-            return runtime
-        except BaseException as exc:
-            with suppress(BaseException):
-                if client is not None:
-                    await client.abort()
-                elif handle is not None:
-                    await handle.close()
-            if client is not None:
-                self._accumulate_client(key, client)
-                self._release_runtime_documents(runtime_id)
-            if self._diagnostics is not None:
-                self._diagnostics.release_runtime(runtime_id)
-            async with self._lock:
-                if self._states.get(key) == "starting":
-                    if isinstance(exc, asyncio.CancelledError) or self._disposed:
-                        self._remember_state(key, "stopped")
-                    else:
-                        self._remember_state(key, "failed")
-                        self._last_errors[key] = "initialization_failed"
-            raise
-
-    async def _shutdown_runtime(self, runtime: LspRuntimeHandle) -> None:
-        try:
-            await runtime.client.shutdown()
-        finally:
-            self._retire_runtime(runtime)
 
     def _retire_runtime(self, runtime: LspRuntimeHandle) -> None:
         self._accumulate_client(runtime.key, runtime.client)

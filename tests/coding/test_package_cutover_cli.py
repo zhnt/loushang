@@ -3787,19 +3787,28 @@ def test_builtin_only_cli_review_is_frozen_and_does_not_claim_adoption(
     ).exists()
     if old_builtin_state == "installed_disabled":
 
+        from loushang.harness.package_product._plugin_bootstrap import (
+            _PluginBootstrapPolicy,
+            _ProductOwner,
+            bootstrap_product_plugin,
+        )
+
         def fail_after_base(
-            owner: object, plugin_id: str, *, enable: bool = True
+            product: _ProductOwner,
+            plugin_id: str,
+            *,
+            store_id: str,
+            policy: _PluginBootstrapPolicy,
+            enable: bool = True,
         ) -> bool:
             if plugin_id == "coding.lsp.default":
                 raise RuntimeError("interrupted after base Product commit")
-            return _bootstrap_coding_builtin_plugin(
-                owner,
-                plugin_id,
-                enable=enable,  # type: ignore[arg-type]
+            return bootstrap_product_plugin(
+                product, plugin_id, store_id=store_id, policy=policy, enable=enable
             )
 
         with patch(
-            "loushang.coding.package_legacy_builtin_adoption._bootstrap_coding_builtin_plugin",
+            "loushang.harness.package_product._plugin_bootstrap.bootstrap_product_plugin",
             side_effect=fail_after_base,
         ):
             assert cutover_main(adoption) == 1

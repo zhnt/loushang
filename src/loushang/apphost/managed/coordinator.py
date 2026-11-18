@@ -1,13 +1,18 @@
-"""One explicit service-start/reuse operation over already admitted storage.
+"""Managed service control over the existing admission and lifetime owners.
 
-No Product selection, directory initialization, Mux mutation or unclean restart.
-The caller retains this owner before ensure_started and keeps its journal and
-event loop alive through close. A cancelled waiter does not stop the service.
+The control entry admits storage for an explicitly selected service.
+ManagedServiceCoordinatorV1 selects no Product and initializes no directories.
+It starts/reuses admitted storage; its caller retains the journal/event loop
+through close. A cancelled waiter never stops the accepted background service.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from contextlib import AsyncExitStack
+from functools import partial
+from pathlib import Path
 from time import monotonic
 from typing import Literal
 
@@ -27,8 +32,13 @@ from .contracts import (
     ManagedNamespaceV1,
     ManagedServiceKeyV1,
 )
+from .defaults import ManagedDefaultsV1
 from .lifecycle import ManagedServiceJournalV1, ManagedServiceStateV1
+from .namespace_admission import ManagedNamespaceAdmissionV1
+from .paths import resolve_managed_service_paths
+from .service_admission import ManagedServiceAdmissionV1
 from .starter import ManagedLaunchRequestFactoryV1, ManagedServiceStarterV1
+from .stopper import ManagedServiceStopOperationV1
 
 
 class ManagedServiceCoordinatorV1:
@@ -162,7 +172,9 @@ class ManagedServiceCoordinatorV1:
 
     async def _ensure_once(self, deadline: float) -> None:
         state = await self._read(deadline)
-        if state is None or state.cleanly_stopped:
+        if state is not None:
+            state = await _settled_native(partial(self._journal.recover_exited, state, deadline=deadline))
+        if state is None or state.reusable:
             self._check(deadline)
             try:
                 state = await _settled_native(lambda: self._starter.start(expected=state, deadline=deadline))
@@ -175,17 +187,17 @@ class ManagedServiceCoordinatorV1:
                 # generation becomes durable. Keep observing that same
                 # attempt's original budget instead of treating one empty
                 # read as proof that no winner exists.
-                while (state is None or state.cleanly_stopped) and error.code in {"busy", "conflict"}:
+                while (state is None or state.reusable) and error.code in {"busy", "conflict"}:
                     await self._pause(deadline)
                     state = await self._read(deadline)
-                if state is None or state.cleanly_stopped:
+                if state is None or state.reusable:
                     raise error
         assert state is not None
         self._instance = state.handoff.instance
         while True:
             self._check(deadline)
             if (state.handoff.instance != self._instance or state.handoff.stop_requested
-                    or state.handoff.phase is ManagedHandoffPhaseV1.ABORTING or state.cleanly_stopped):
+                    or state.handoff.phase is ManagedHandoffPhaseV1.ABORTING or state.reusable):
                 conflict = ManagedStorageError("conflict")
                 conflict.add_note(
                     "managed_start_observation "
@@ -269,4 +281,116 @@ class ManagedServiceCoordinatorV1:
         self._settled = True
 
 
-__all__ = ["ManagedServiceCoordinatorV1"]
+async def control_managed_service(
+    operation: str,
+    expected: str | None,
+    *,
+    defaults: ManagedDefaultsV1,
+    service_alias: str,
+    application_id: str,
+    endpoint: str,
+    deadline: float,
+    select_request_factory: Callable[[], ManagedLaunchRequestFactoryV1],
+    error_factory: Callable[[str], Exception],
+) -> dict[str, object]:
+    """Control one explicitly selected service and settle its local owners.
+
+    The caller selects Product identity, deadline, launch policy and safe error
+    type. Selection of the launch factory remains lazy until start/restart.
+    Closing local owners never implies stopping an accepted background service.
+    """
+    def _absent(operation: str, expected: str | None) -> dict[str, object]:
+        if expected is not None or operation == "restart":
+            raise error_factory("instance_changed")
+        return {"state": "not_running"}
+
+    def _recorded_state(state: ManagedServiceStateV1 | None) -> str:
+        if state is None or state.cleanly_stopped:
+            return "not_running"
+        if state.reusable:
+            return "exited"
+        if state.evidence.process_exited:
+            raise error_factory("unclean_exit")
+        if state.handoff.stop_requested:
+            return "stopping"
+        return {
+            ManagedHandoffPhaseV1.COMMITTED: "running",
+            ManagedHandoffPhaseV1.ABORTING: "unknown",
+        }.get(state.handoff.phase, "starting")
+
+    def _running(connection: ManagedConnectionLeaseV1, state: ManagedServiceStateV1 | None) -> dict[str, object]:
+        if connection.application_id != application_id or connection.execution_client is None:
+            raise error_factory("protocol_incompatible")
+        return {
+            "state": "running",
+            "instanceId": connection.instance.instance_id,
+            "serviceInstanceId": connection.execution_client.service_instance_id,
+            "recordRoot": str(connection.record_root),
+            "pid": state.native_identity.pid if state and state.native_identity else None,
+        }
+
+    namespace = defaults.namespace
+    service = ManagedServiceKeyV1(service_alias, namespace.platform_home)
+    runtime = str(defaults.platform.runtime)
+    paths = resolve_managed_service_paths(namespace, service, runtime_root=runtime)
+    admission = ManagedNamespaceAdmissionV1(namespace, runtime_root=runtime, create_if_missing=operation == "start")
+
+    async with AsyncExitStack() as owners:
+        owners.push_async_callback(_settled_native, admission.close)
+        try:
+            registry = await _settled_native(lambda: admission.open(deadline=deadline, wait_for_lock=True))
+            if operation == "start":
+                admitted = ManagedServiceAdmissionV1(admission, service)
+                owners.push_async_callback(_settled_native, admitted.close)
+                journal = await _settled_native(lambda: admitted.open(deadline=deadline, wait_for_lock=True))
+            else:
+                journal = ManagedServiceJournalV1(registry, namespace, service, Path(paths.lifecycle), defer_open=True)
+                owners.push_async_callback(_settled_native, journal.close)
+                await _settled_native(lambda: journal.open(deadline=deadline, wait_for_lock=True))
+        except ManagedStorageError as error:
+            if error.code == "not_found" and operation != "start":
+                return _absent(operation, expected)
+            raise
+
+        state = await _settled_native(lambda: journal.read(deadline=deadline, wait_for_lock=True))
+        if operation in {"stop", "restart"}:
+            if state is None or state.cleanly_stopped:
+                return _absent(operation, expected)
+            instance = state.handoff.instance
+            if expected is not None and expected != instance.instance_id:
+                raise error_factory("instance_changed")
+            stopper = ManagedServiceStopOperationV1(journal, namespace, service, instance, runtime_root=runtime)
+            try:
+                stopped = await stopper.run(deadline=deadline)
+            finally:
+                await stopper.close()
+            if not stopped.cleanly_stopped:
+                raise error_factory("cleanup_incomplete")
+            if operation == "stop":
+                return {"state": "not_running", "cleanlyStopped": True}
+
+        if operation in {"start", "restart"}:
+            starter = ManagedServiceCoordinatorV1(
+                journal, namespace, service, runtime_root=runtime, endpoint=endpoint,
+                temporary_override=defaults.temporary_override,
+                request_factory=select_request_factory(),
+            )
+            owners.push_async_callback(starter.close)
+            ready = await starter.ensure_started(deadline=deadline)
+            return _running(ready, await _settled_native(lambda: journal.read(deadline=deadline, wait_for_lock=True)))
+
+        if state is not None:
+            state = await _settled_native(partial(journal.recover_exited, state, deadline=deadline))
+        status = _recorded_state(state)
+        if status != "running":
+            return {"state": status}
+        assert state is not None
+        connection = ManagedConnectionLeaseV1(
+            journal, namespace, service, state.handoff.instance, runtime_root=runtime, endpoint=endpoint,
+        )
+        owners.push_async_callback(connection.close)
+        await connection.prepare(deadline=deadline)
+        return _running(connection, state)
+
+
+__all__ = ["ManagedServiceCoordinatorV1", "control_managed_service"]

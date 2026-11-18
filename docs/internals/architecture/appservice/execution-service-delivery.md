@@ -1,5 +1,42 @@
 # Execution Service Delivery — #576
 
+## GUI Goal integration review
+
+Codex, as the implementation agent, reviewed the Workspace and native
+recovery seams on the GUI integration baseline `ea580afcd`. AppHost owns the
+Workspace registry port and its implementation. Hosting reports unconfirmed
+native observer rollback through `HostingError.cleanup_incomplete` while
+preserving the original error category. AppHost retains the connection or
+stop operation's cleanup debt when that flag is set. Lifecycle recovery reads
+only native process-scope observations from Hosting before attempting journal
+retirement. The checked dependency lists name those paths and imports exactly.
+The optional Goal port consumes the existing AppServer wire types directly.
+
+Codex accepts the Workspace registry, native cleanup status, and Goal split
+design in the implementation-agent role for this task. The reviewed candidate
+is the task worktree diff against `ea580afcd` for AppHost, Hosting, AppServer,
+AppService and Coding. The split preserves negotiated operations, exact value
+types and the original attachment and Session owners. Goal has its own budgets.
+The Linux capture and Hosted recovery regressions, ownership assertions, and
+Python, Rust and TypeScript contract probe verify these boundaries.
+
+| Owner | GUI baseline and existing budget | Measured split and limits |
+| --- | --- | --- |
+| AppServer | Execution transport 1,580 / 1,200 lines, with `model.py` 709 / 400 | Base transport 1,196 / 1,200 and model 398 / 400. Goal values, codec, client contracts and dispatch are counted separately, 547 / 560, with individual ceilings. |
+| AppService | `execution_service.py` 349 / 250 lines | Base service 246 / 250. Scoped Goal handler 151 / 160. The handler uses the same Session resolver, current-controller check and registry. |
+| Coding | G14 group 2,173 / 2,109 lines, with `hosted_session.py` 916 / 714 | G14 is 1,959 / 2,109; Session is 702 / 714 and the execution adapter is 354 / 354. Goal coordination, execution adaptation, commands, review and recovery are counted once in a separate group, 749 / 765. |
+
+Transport and Coding inventories count each file exactly once. AppService
+keeps its base service and optional handler separately bounded. The existing
+G11 protocol and core owners also account for the unrelated GUI business
+choice, Workspace model query and history deletion delta: 126 protocol/client
+lines and 48 scoped AppService lines relative to main. Read-only Workspace
+inspection adds another 20 lines to the existing protocol model and codec,
+covered by the workspace inspection review below. Cold Goal recovery
+continues to project persisted facts without obtaining authority to resume.
+Linux contract probes cover Python, Rust and TypeScript. Windows native
+observer evidence remains a separate platform check.
+
 ## GUI integration review (2026-11-12)
 
 Codex, acting as the implementation agent for PR #889, reviewed the managed
@@ -1006,3 +1043,30 @@ Implementation review for the GUI/AppHost boundary was performed by the
 implementing Codex agent on `feature/gui-mux-service`. The reviewed scope is
 local lifecycle delegation and authenticated record discovery. Workspace and
 Session operations stay on the existing AppServer protocol.
+
+## Read-only desktop workspace inspection
+
+Codex, acting as the implementation reviewer for the HarnessGUI, AppServer,
+and Coding boundary, reviewed the workspace inspection change on
+`feature/gui-session-inspection` against `lane/gui` revision `ea580afcd`.
+The accepted design keeps Git inspection and project toolchain discovery in
+Coding. The existing workspace operation accepts an explicit `inspect`
+action and returns a bounded report for a registered project. Ordinary
+workspace listings keep their existing response shape. The GUI verifies the
+returned workspace fingerprint against the selected Session before displaying
+the report. Protocol round trips and inspection of a linked worktree cover
+these boundaries.
+
+Git review compares the index with HEAD and the working tree with the index.
+The display identifies those comparisons and lists untracked files separately.
+For projects without Git, a request that names a Session can read the
+successful write and edit receipts from its selected transcript in that
+workspace. The panel identifies these as recorded Session operations.
+Recorded edit patches provide line counts. A write without a comparison
+baseline provides a file status. Missing evidence produces an empty state.
+
+The native desktop opens a workspace folder or a supported relative document
+only after the user clicks. The desktop verifies a local registered workspace,
+the Session scope fingerprint, and the canonical target before handing the
+path to the operating system. A tunneled connection has no local file-open
+action. The GUI displays diff and Markdown content as text.

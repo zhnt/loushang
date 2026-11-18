@@ -27,7 +27,7 @@ from .package_product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
 )
 from .package_product_worker_windows_provisioning_journal import (
-    _Record,
+    _Record as _Record,
 )
 
 _MAX_BASE_BYTES = 32 * 1024 * 1024
@@ -37,15 +37,6 @@ _MAX_BASE_BYTES = 32 * 1024 * 1024
 class CodingWindowsWorkerNativeProvisioningRetainedAttemptV1(
     _WindowsProvisioningRetainedMethods
 ):
-    attempt_id: str
-    identity: dict[str, object]
-    cutoff_revision: int
-    last_record: _Record
-    phase_history: tuple[str, ...]
-    witness_present_history: tuple[bool, ...]
-    last_witness_state: str | None
-    settlement_fingerprint: str | None
-
     @classmethod
     def from_dict(
         cls, value: object
@@ -59,15 +50,9 @@ class CodingWindowsWorkerNativeProvisioningSemanticBaseV1(
 ):
     _retained_type = CodingWindowsWorkerNativeProvisioningRetainedAttemptV1
 
-    scope_id: str
-    store_id: str
-    source_snapshot_digest: str
     retained_attempts: tuple[
         CodingWindowsWorkerNativeProvisioningRetainedAttemptV1, ...
     ]
-    attempt_ids: tuple[str, ...]
-    record_digest: str
-    version: int = 1
 
     @classmethod
     def from_semantic_read(

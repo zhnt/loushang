@@ -8,8 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.appserver.execution.codec import encode_response
+from loushang.appserver.execution.model import ExecutionResponseV1
 from loushang.appserver.goal import GoalServiceError
-from loushang.appserver.protocol import AppServiceError
+from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
 from loushang.coding._hosted_goal_config import CodingHostedGoalV1, HostedGoalSetup
 from loushang.coding._hosted_goal_work import GoalInvocation
@@ -112,6 +114,17 @@ def test_budget_material_and_cheap_progress_preserve_full_validation(tmp_path, m
                 uncertain = await client.progress(control, submitted.handle)
                 assert uncertain.observation.validity == "unknown"
                 assert uncertain.observation.execution_unresolved
+                reader = scope.goal_execution_observer
+                projected = await reader.goal_progress(control, client.service_instance_id, submitted.handle.execution_id)
+                wire = encode_response(ExecutionResponseV1("1", projected))
+                assert str(tmp_path).encode() not in wire
+                summary = json.loads(wire)["result"]["batches"]
+                assert [row["batchId"] for row in summary] == [b.batch_id for b in uncertain.observation.batches]
+                assert all(set(row) == {"batchId", "workStatus", "recordingAvailable", "cancellationStatus",
+                                        "observationUnavailable"} for row in summary)
+                assert all(row["workStatus"] == "completed" and not row["recordingAvailable"]
+                           and row["cancellationStatus"] is None and row["observationUnavailable"] for row in summary)
+                assert b"work_recording_unavailable" not in wire and b"work_cancellation_unavailable" not in wire
 
             with monkeypatch.context() as patch:
                 history = core.history
@@ -121,6 +134,10 @@ def test_budget_material_and_cheap_progress_preserve_full_validation(tmp_path, m
                 pending = await client.progress(control, submitted.handle)
                 assert pending.observation.execution_unresolved
                 assert pending.observation.batches[0].work is None
+                observed = await reader.goal_progress(control, client.service_instance_id, submitted.handle.execution_id)
+                first = observed.batches[0]
+                assert first.work_status is None and first.cancellation_status is None
+                assert not first.recording_available and first.observation_unavailable
 
             # Budget metadata cannot be silently ignored by business admission.
             with monkeypatch.context() as patch:
@@ -211,7 +228,26 @@ def test_progress_optional_capability_and_revocation_during_delivery(tmp_path, m
                 return value
 
             monkeypatch.setattr(port, "progress_goal", delayed)
-            reading = asyncio.create_task(client.progress(control, submitted.handle))
+            reader = scope.goal_execution_observer
+
+            def read_progress():
+                return asyncio.create_task(reader.goal_progress(
+                    control, client.service_instance_id, submitted.handle.execution_id,
+                ))
+
+            reading = read_progress()
+            await entered.wait()
+            with monkeypatch.context() as patch:
+                patch.setattr(type(port), "goal_capability", property(lambda self:
+                              replace(capability, supports_progress=False)))
+                release.set()
+                with pytest.raises(AppServiceError) as rejected:
+                    await reading
+                assert rejected.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+
+            entered.clear()
+            release.clear()
+            reading = read_progress()
             await entered.wait()
             await scope.close()
             release.set()

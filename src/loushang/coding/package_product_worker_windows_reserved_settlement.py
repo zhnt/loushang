@@ -12,6 +12,9 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
+from loushang.harness.package_product._worker_windows_attempt import (
+    windows_product_worker_offline_write,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -67,78 +70,73 @@ def settle_coding_windows_product_worker_reserved_no_effect(
         or type(expected_review) is not CodingWindowsWorkerReservedNoEffectReviewV1
     ):
         raise OSError("Windows Worker reserved settlement requires a Product review")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
+    with windows_product_worker_offline_write(
+        product,
+        active_error=CodingWindowsWorkerReservedSettlementError,
+        active_message='coding_worker_reserved_settlement_runtime_active',
     ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
+        current_review = _review_reserved_under_gc_guard(
+            product,
+            attempt_id=expected_review.attempt_id,
+            lease_owner_revision=quiescence.owner_revision,
+        )
+        if current_review != expected_review:
             raise CodingWindowsWorkerReservedSettlementError(
-                "coding_worker_reserved_settlement_runtime_active"
+                "coding_worker_reserved_settlement_review_stale"
             )
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            current_review = _review_reserved_under_gc_guard(
+        intent = _read_intent_under_gc_guard(product, expected_review.attempt_id)
+        if (
+            intent is None
+            or intent.fingerprint != expected_review.intent_fingerprint
+        ):
+            raise CodingWindowsWorkerReservedSettlementError(
+                "coding_worker_reserved_settlement_intent_changed"
+            )
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            _require_retirement_root(
                 product,
-                attempt_id=expected_review.attempt_id,
-                lease_owner_revision=quiescence.owner_revision,
+                root,
+                CodingWindowsWorkerReservedSettlementError,
+                "coding_worker_reserved_settlement_root_changed",
             )
-            if current_review != expected_review:
-                raise CodingWindowsWorkerReservedSettlementError(
-                    "coding_worker_reserved_settlement_review_stale"
-                )
-            intent = _read_intent_under_gc_guard(product, expected_review.attempt_id)
+            attempts = inspect_windows_worker_provisioning_attempts(
+                product.state_root, directory_fd=root
+            )
+            matches = tuple(
+                item
+                for item in attempts
+                if item.attempt_id == expected_review.attempt_id
+            )
             if (
-                intent is None
-                or intent.fingerprint != expected_review.intent_fingerprint
+                len(matches) != 1
+                or matches[0].phase != "reserved"
+                or matches[0].state_revision != 1
+                or matches[0].identity["workerRequestFingerprint"]
+                != intent.request_fingerprint
+                or matches[0].identity["receiptFingerprint"]
+                != intent.receipt_fingerprint
             ):
                 raise CodingWindowsWorkerReservedSettlementError(
-                    "coding_worker_reserved_settlement_intent_changed"
+                    "coding_worker_reserved_settlement_history_changed"
                 )
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                _require_retirement_root(
-                    product,
-                    root,
-                    CodingWindowsWorkerReservedSettlementError,
-                    "coding_worker_reserved_settlement_root_changed",
+            journal = WindowsWorkerProvisioningStateJournal(
+                product.state_root
+                / f"worker-native-provisioning-{expected_review.attempt_id}.jsonl",
+                identity=matches[0].identity,
+            )
+            current = journal.load(directory_fd=root)
+            if current is None:
+                raise CodingWindowsWorkerReservedSettlementError(
+                    "coding_worker_reserved_settlement_history_changed"
                 )
-                attempts = inspect_windows_worker_provisioning_attempts(
-                    product.state_root, directory_fd=root
+            settled = _settled_document(current, expected_review=expected_review)
+            if not journal.compare_and_swap(
+                expected_revision=1, document=settled, directory_fd=root
+            ):
+                raise CodingWindowsWorkerReservedSettlementError(
+                    "coding_worker_reserved_settlement_history_changed"
                 )
-                matches = tuple(
-                    item
-                    for item in attempts
-                    if item.attempt_id == expected_review.attempt_id
-                )
-                if (
-                    len(matches) != 1
-                    or matches[0].phase != "reserved"
-                    or matches[0].state_revision != 1
-                    or matches[0].identity["workerRequestFingerprint"]
-                    != intent.request_fingerprint
-                    or matches[0].identity["receiptFingerprint"]
-                    != intent.receipt_fingerprint
-                ):
-                    raise CodingWindowsWorkerReservedSettlementError(
-                        "coding_worker_reserved_settlement_history_changed"
-                    )
-                journal = WindowsWorkerProvisioningStateJournal(
-                    product.state_root
-                    / f"worker-native-provisioning-{expected_review.attempt_id}.jsonl",
-                    identity=matches[0].identity,
-                )
-                current = journal.load(directory_fd=root)
-                if current is None:
-                    raise CodingWindowsWorkerReservedSettlementError(
-                        "coding_worker_reserved_settlement_history_changed"
-                    )
-                settled = _settled_document(current, expected_review=expected_review)
-                if not journal.compare_and_swap(
-                    expected_revision=1, document=settled, directory_fd=root
-                ):
-                    raise CodingWindowsWorkerReservedSettlementError(
-                        "coding_worker_reserved_settlement_history_changed"
-                    )
-            product.assert_root_gc_authority_current()
+        product.assert_root_gc_authority_current()
 
 
 __all__ = [

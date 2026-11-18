@@ -13,6 +13,7 @@ from loushang.apphost.managed._files import ManagedStorageError, PrivateManagedD
 from loushang.apphost.managed.connection import ManagedConnectionLeaseV1
 from loushang.apphost.managed.contracts import ManagedContractError
 from loushang.appserver.client import AppConnectionClosedError
+from loushang.hosting.errors import HostingError, HostingFailureCategory
 from loushang.hosting.service import LinuxServiceObserverV1
 from tests.apphost.test_managed_starter import owners as owners
 
@@ -361,6 +362,33 @@ def test_close_before_prepare_never_opens_connection(owners, monkeypatch):
         with pytest.raises(ManagedStorageError, match="conflict"):
             await owner.prepare(deadline=monotonic() + 5)
         assert not connections and not owner.cleanup_pending
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("rollback_incomplete", [False, True])
+def test_observer_reopen_failure_retains_only_actual_cleanup_debt(
+    owners, monkeypatch, rollback_incomplete,
+):
+    state = committed(owners)
+    owner = lease(owners, state.handoff.instance)
+    error = HostingError(HostingFailureCategory.PREPARATION_FAILED, "service_observer_preparation_failed")
+    error.cleanup_incomplete = rollback_incomplete
+
+    def fail(_identity):
+        raise error
+
+    monkeypatch.setattr(LinuxServiceObserverV1, "reopen", fail)
+
+    async def scenario():
+        with pytest.raises(HostingError, match="service_observer_preparation_failed"):
+            await owner.prepare(deadline=monotonic() + 5)
+        if rollback_incomplete:
+            with pytest.raises(ManagedStorageError, match="unavailable"):
+                await owner.close()
+        else:
+            await owner.close()
+        assert owner.cleanup_pending is rollback_incomplete
 
     asyncio.run(scenario())
 

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from loushang.harness.worker.activation_state_journal import _StateRecord
 from loushang.harness.worker.history._activation import (
     _RetainedAttemptFields,
-    fold_activation_attempt_history,
     project_retained_attempts,
 )
 from loushang.harness.worker.history._activation import (
@@ -16,8 +15,6 @@ from loushang.harness.worker.history._activation import (
 from loushang.harness.worker.history._activation import (
     validate_activation_attempt_history as validate_coding_worker_activation_attempt_history,
 )
-
-_fold_coding_worker_activation_attempt_history = fold_activation_attempt_history
 
 
 @dataclass(frozen=True, slots=True)

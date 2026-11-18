@@ -58,11 +58,16 @@ from loushang.harness.plugin_management.records import (
     _require_digest as _require_sha256,
 )
 from loushang.harness.plugin_management.retirement import (
+    PluginRetirementError,
     PluginRetirementIntentSnapshotV1,
     PluginRetirementIntentV1,
+    decode_plugin_retirement_intent_capture,
 )
 from loushang.harness.plugin_management.retirement_sets import (
+    PluginRetirementSetError,
     PluginRetirementSetInventorySnapshotV1,
+    RetirementCaptureFields,
+    decode_plugin_retirement_set_capture,
 )
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
@@ -1722,3 +1727,53 @@ __all__ = [
     "PluginInstanceRuntimeSnapshotV1",
     "plugin_instance_security_acceptance_journal_path",
 ]
+
+
+def inspect_gracefully_retired_instance_capture(
+    runtime_raw: bytes,
+    *,
+    runtime_path: Path,
+    desired_snapshot: PluginDesiredStateSnapshotV1,
+    desired_transitions: tuple[PluginDesiredStateJournalTransition, ...],
+    retirements: RetirementCaptureFields,
+    error_type: type[Exception],
+    label: str,
+) -> PluginInstanceRuntimeInventorySnapshotV1:
+    """Prove graceful completion and no open family over existing capture decoders."""
+    try:
+        intents = decode_plugin_retirement_intent_capture(
+            retirements.intents_raw.decode("utf-8"), path=retirements.intents_path
+        )
+        sets = decode_plugin_retirement_set_capture(
+            retirements.sets_raw.decode("utf-8"),
+            path=retirements.sets_path,
+            intents=intents,
+        )
+        runtime = decode_plugin_instance_runtime_capture(
+            runtime_raw.decode("utf-8"),
+            path=runtime_path,
+            desired_snapshot=desired_snapshot,
+            desired_transitions=desired_transitions,
+            retirement_intents=intents,
+            retirement_sets=sets,
+        )
+    except (
+        UnicodeError,
+        PluginRetirementError,
+        PluginRetirementSetError,
+        PluginInstanceRuntimeError,
+    ) as exc:
+        raise error_type(f"{label} capture cannot be verified") from exc
+    if (
+        not runtime.instances
+        or runtime.open_families
+        or any(
+            item.state != "RETIRED"
+            or item.open_family_ids
+            or item.completion is None
+            or item.completion.completion_kind != "graceful"
+            for item in runtime.instances
+        )
+    ):
+        raise error_type(f"{label} capture retains a live or unproven reference")
+    return runtime

@@ -311,3 +311,102 @@ POSIX 恢复归档绑定提取暂缓。普通借用描述符的原型使 Coding 
 
 三份生产文件净变化为 −68、+125、−73。Coding 与系统各净减16行，Harness 净0。
 其余1966份生产源码与13份资源逐字节一致。证据在树外 a131-private-archive。
+
+
+## A184 完整Windows保留快照原型不采用
+
+按整物队列完成原WindowsBackupOwner.snapshot110行的完整双源外部原型；原ArchiveIO
+仍不持Product或journal，新固定读入口放既有PackageProduct._backup_topology家族。
+原topology程序逐字保留；新入口覆盖原读权威、GC、Desired、目录ACL/FD、restore/
+expiry扫描及关闭、身份复核、保留收据、保守status/trust、摘要和最终DTO。Code保实际
+Installation、三懒导入、两个事务构造/扫描及原路径/名字/hash薄绑定，不回借整条snapshot。
+
+正规最终Code303→231（−72）/Core103→254（+151）/系统+79，raw与统一格式同。
+4个readonly角色、2个新TypeVar及复用R、5个callable绑定、tree/key/prefix/label与公开
+兼容均计入。无新状态、ledger或第二物理引擎；旧Archive/Restore/Expiry/GC本已共享。
+Code其余retain/verify及profile仍依赖同native/journal，未证实另一算法或实际依赖退出。
+正确接收层与完整程序退出成立，但不足抵这次单producer envelope的全接口税；Root
+在三视角审查后决定不采用该形状。不因正增长一律拒绝，也不以小status helper、
+flags/profile池或压行挽救已付原型成本。C08及整条读路径的最终处置仍开放。
+
+首raw系统+81的替换脚本错误让scan/finallyclose退到借用FD作用域外；三视角源码检查
+发现并修回，首稿及scope修复/重依赖修复各稿保留。最终整个snapshot逆展开AST核含
+With/Try嵌套同，Code其它3方法与原topology逐字同；严格generic mypy两源及Ruff两源
+通过。旧_directory_identity私有别名转原tree method不承诺任意hotpatch保持，既有
+受控测试第93行若采用需精准迁位；本轮未改任何测试。新helper的PM DTO/ACL/目录
+import在函数内，注解类型在TYPE_CHECKING；缺省模块仅新增typing/collections.abc
+源码边及四角色/两TypeVar分配，不冒完整cold加载或IO性能实测。
+
+未安装候选、未capture期待、未运行旧/新pytest或Windows native；静态通过不冒运行
+接受。当前2059生产源全部SHA/行同A182/A183：Code110571/Harness364337/AppHost19717，
+全源659676，排GUI独立测试4524后655152；生产/测试增删0。树外
+`coding-convergence-resumed-20261114/a184-windows-backup-retention`保完整候选、原件、
+全税、控制流退出/加载源码证明及三报告。下一完整切点为POSIX delete_confirmed52中
+约30行replay→start→原物理删除→receipt→completion程序，核原Journal最小扩充；
+Code准入仍须先于replay，completion保terminal renamed，不直接套Windows执行器。
+
+
+## A185 原Journal拥有完整POSIX删除检查点程序
+
+原PrivateDataDeletionJournal已拥有started/renamed/completed的持久阶段、重放和短锁；
+新增execute_deletion把原Code120–146共27行统调完整接到该owner，不增状态、角色、
+TypeVar、外包锁、catch或新存储。Code仍先验command/root/offline/独立confirmation及
+Desired absent，再调用该入口；即使已有完成receipt，原准入也不跳过。三窄端点只绑定
+原target capture、原Core physical remove及纯Code receipt hash；两原错误文本作为数据。
+
+保持原!=方向/短路、receipt replay、current start/fresh target或pending拒绝、原remove
+返回(disposition, terminal_start)、收据字段从左至右及晚ID、completion用terminal_start。
+present target必须有renamed证据；Windows执行器仍回溯original started且remove只返
+ disposition，故未合并、不加flag。原Code其它4方法和Core13方法逐字同，展开三端点、
+消息及同一journal receiver后的完整delete AST同；原短锁仍只在各journal操作，不跨IO。
+
+最终CodeOwner181→167（−14），CodeJournal模块doc131→132（+1），Core271→312（+41）：
+Code合计−13/系统+28，raw=uniform。第三源码只是明确borrowed native/准入外置的说明，
+其行与SHA计入；不把27行操作退出当Code净减27，不计已共享物理算法为本片收益。
+不同于A184新跨owner envelope，本片直接补原phase权威的完整接口，0新角色/T和三个
+已有窄端点的成本相称；三独立设计及实际视角有界接受，Root接受该批，不关闭整C08。
+
+同三个原测试模块旧14过23.54s，装冻结三源后同14过23.69s、0fail/error/skip；测试源码、
+断言、fixture及CI路由均未改，无新oracle/portable。真实Product覆盖删除/absent/准入、
+重命名后及收据前中断后重开重试；篡改墓碑只证明拒绝及不产收据，不冒篡改也能恢复。
+原journal阶段与Harness confirmation/receipt合同一起覆盖；getter/receipt ctor/ID及
+compound-exit未独立故障观察，以整逆AST和原实际场景限定，不称全部错误窗口。
+
+旧/actual各独立phase/PID核5模块路径/SHA和递归19个code字段，分别81/82声明callable、
+14节点/28checks；仅父进程，不替child/wheel/Windows/native全平台或整PR。实际三源
+严格generic mypy/Ruff通过；没有新PR gate。当前2059源659704（排GUI4524后655180），
+Code434源110558/Harness364378/AppHost19717；距15K仍95558。树外
+`coding-convergence-resumed-20261114/a185-posix-deletion-checkpoint`保原/冻结三源、全税、
+完整退出证明、原消费者JUnit和逐进程守卫及三评审，完整Goal仍开放。
+
+
+## A210完整Windows保留读事务接入
+
+A184保留当时的外部原型拒绝与修正历史。2026-11-15，按用户允许完整职责改善带来必要
+适度增长的准则重新审查现源；两original仍逐字相同，三独立设计视角支持有限old-first，
+完整110行保留读取事务现已接入原PackageProduct backup family，不以无第二引擎否决。
+
+原ArchiveIO不增Product/Journal依赖；PackageProduct拥有读权威、GC、Desired、ACL/借用
+FD、原Restore/Expiry扫描寿命、身份复核、保守收据状态、摘要调用和最终投影。Code保
+原两字段/公开method/名义记录、懒导入及五个窄构造/scan/命名/路径/hash绑定。四只读
+角色、两新T+原R和所有薄适配均计；无新store/manager/FSM或写入、恢复、授权路径。
+
+初权威与GC进入在catch外；restore构造在scan try外，scan/finally-close保持借用FD内；
+路径后验在FD/ACL退出后。只原OS/ValueError降级untrusted，摘要仍catch后GC内；
+末权威晚读于GC退出后。不同失败和pending/expired/reappeared判断不统一成宽泛cleanup。
+完整逆AST保这些作用域，原topology和Code其它三methods逐字不改。
+
+最终Code303→231（−72）、Harness103→254（+151）、系统+79，raw=uniform。+151含
+真实公共程序以及typing/适配成本；收益是完整操作离开领域层，不宣称去重或系统精简。
+原91回归、原71边界和另31冻结旧观察均实际通过，总193不同节点；原projection重复1
+不多计。31结果/摘要/异常链/步骤与旧版逐byte相同，真实Linux FD检查scan/close仍在借用
+期并最终关闭；Windows物理效果受控，不冒原生Windows或Task.cancel覆盖。
+
+原projection测试只迁三个已移动physical hook，原9assert与逆还原module AST同，三个
+原fixture逐SHA同；测试+4行，无gate变更。mypy两源、Ruff/fullformat三文件及生成依赖
+check过；原公开ctor/四method/两fields/布局、四旧method pickle、506冷模块名字列表同。
+API脚本只校验__file__而无compiled runtime guard，未序列化live Product图。
+
+三独立实际视角与完整证据在树外a210-windows-backup-retention；本批技术接受仅限该
+读事务与上述验证范围。完整Code108526/系统661050，距15K仍93526；整C08及P1–P4开放。
+具体运行失败/更正和全成本见[执行记录](../coding-responsibility-convergence-progress.md)。

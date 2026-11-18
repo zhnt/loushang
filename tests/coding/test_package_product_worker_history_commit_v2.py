@@ -10,7 +10,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import package_product_worker_history_commit_v2 as commit_module
 from loushang.coding.package_product_worker_history_checkpoint import (
     read_coding_product_worker_history_checkpoints_under_gc_guard,
 )
@@ -189,13 +188,13 @@ def test_product_v2_owner_commit_rechecks_preflight_and_retries_under_custody(
     calls: list[str] = []
     product = _product(tmp_path, monkeypatch, calls)
 
-    def preflight(_product: object, **_kwargs: object) -> object:
+    def preflight(_bindings: object, _product: object, **_kwargs: object) -> object:
         assert calls == ["runtime-enter", "gc-enter", "gc-snapshot"]
         return prepared
 
     monkeypatch.setattr(
-        commit_module,
-        "_prepare_coding_product_worker_history_cutover_under_guard",
+        history_owner,
+        "prepare_history_cutover_under_guard",
         preflight,
     )
     assert (
@@ -215,12 +214,12 @@ def test_product_v2_owner_commit_rechecks_preflight_and_retries_under_custody(
         prepared.index.to_bytes()
     )
 
-    def no_preflight(_product: object, **_kwargs: object) -> object:
+    def no_preflight(_bindings: object, _product: object, **_kwargs: object) -> object:
         raise AssertionError("committed V2 must not reopen pruned V1 history")
 
     monkeypatch.setattr(
-        commit_module,
-        "_prepare_coding_product_worker_history_cutover_under_guard",
+        history_owner,
+        "prepare_history_cutover_under_guard",
         no_preflight,
     )
     assert (
@@ -239,9 +238,9 @@ def test_product_v2_owner_commit_rejects_stale_preflight_before_owner(
         _locks(rooted)
     product = _product(tmp_path, monkeypatch, [])
     monkeypatch.setattr(
-        commit_module,
-        "_prepare_coding_product_worker_history_cutover_under_guard",
-        lambda _product, **_kwargs: object(),
+        history_owner,
+        "prepare_history_cutover_under_guard",
+        lambda _bindings, _product, **_kwargs: object(),
     )
     with pytest.raises(CodingWorkerV2OwnerCommitError, match="preparation_stale"):
         commit_coding_product_worker_v2_owner(

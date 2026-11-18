@@ -42,8 +42,6 @@ from loushang.harness.transcript import (
     AgentTranscriptLifecycleSession,
     AgentTranscriptRecord,
     AgentTranscriptSessionFactory,
-    SessionSummary,
-    TranscriptDeletionOwner,
 )
 from loushang.harness.transcript import (
     ProductTranscriptSession as ProductTranscriptSession,
@@ -57,6 +55,9 @@ from loushang.harness.transcript._resume_continuation import (
 from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_file,
     load_agent_transcript_header,
+)
+from loushang.harness.transcript.product_session import (
+    _ApplicationProductTranscriptSession,
 )
 from loushang.harness.transcript.types import ExtensionData
 
@@ -733,49 +734,14 @@ def _bind_owned_session_manager(
         validate_restored_header=_validate_coding_restored_header,
     )
 
-    class ApplicationSessionManager(SessionManager):
-        @classmethod
-        def _factory_for_persistence(
-            cls,
-            persist: bool,
-        ) -> AgentTranscriptSessionFactory[
+    class ApplicationSessionManager(
+        _ApplicationProductTranscriptSession[
             ResolvedRuntimeProfile, RuntimeProfileBinding
-        ]:
-            # The runtime owns admission/cleanup; this class is only a binding.
-            factory._accepting()
-            return factory if persist else transient
-
-        @classmethod
-        async def rename_session(
-            cls, session_file: str | Path, name: str | None
-        ) -> SessionSummary:
-            factory._accepting()
-            context = factory._discover_owned_context(session_file)
-            async with factory._owned_source(context) as source:
-                manager = cls(lifecycle_session=source)
-                await manager.append_session_info(name)
-                return manager.get_session_summary()
-
-        @classmethod
-        async def delete_session(
-            cls,
-            session_file: str | Path,
-            *,
-            current_session_file: str | Path | None = None,
-            maintenance_owner: TranscriptDeletionOwner | None = None,
-        ) -> bool:
-            # Transcript deletion is writer-owned. Attachments remain recoverable
-            # for explicit maintenance, never deleted through a pathname fallback.
-            if maintenance_owner is not None and maintenance_owner is not factory:
-                raise ValueError(
-                    "application transcript maintenance belongs to its original factory"
-                )
-            return await factory.delete_transcript(
-                session_file, current_session_file=current_session_file
-            )
-
-        async def create_branched_session(self, leaf_id: str) -> Path | None:
-            raise ValueError("owned branching requires the Session-returning fork API")
+        ],
+        SessionManager,
+    ):
+        _application_factory = factory
+        _transient_factory = transient
 
     return ApplicationSessionManager
 

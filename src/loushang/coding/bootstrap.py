@@ -7,13 +7,10 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
-from contextlib import suppress
 from dataclasses import dataclass, replace
 from functools import partial
 from inspect import iscoroutine, iscoroutinefunction
 from pathlib import Path
-from tempfile import TemporaryDirectory as _TemporaryDirectoryCleanup
-from tempfile import mkdtemp
 from typing import Any, Literal, cast
 
 from loushang.agent import Agent, StreamFn, ThinkingLevel
@@ -34,6 +31,7 @@ from loushang.coding._base_product_composition import (
 from loushang.coding._capability_plugin_composition import (
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionError,
+    CodingCapabilityPluginCompositionPreparation,
     CodingResumePluginParents,
     coding_capability_plugin_failure_custodian,
     create_coding_capability_plugin_composition_request,
@@ -244,12 +242,16 @@ from loushang.harness.session import (
     prepare_agent_session_services as prepare_standard_agent_session_services,
 )
 from loushang.harness.session._cleanup import (
+    ExplicitTemporaryDirectory as _ExplicitTemporaryDirectory,
+)
+from loushang.harness.session._cleanup import (
     get_session_construction_cleanup as get_session_construction_cleanup,
 )
 from loushang.harness.session._cleanup import (
     retain_session_construction_failure,
     run_cleanup_steps,
 )
+from loushang.harness.session.bootstrap_construction import PreparationRootCustody
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
@@ -299,28 +301,6 @@ def _reject_peer_coding_exact_tools(
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
 _CODING_PLUGIN_HOST_BOOT_ID = secrets.token_hex(16)
-
-
-class _ExplicitTemporaryDirectory:
-    """Temporary root with no GC finalizer and retryable explicit cleanup."""
-
-    def __init__(self, *, prefix: str) -> None:
-        self.name = mkdtemp(prefix=prefix)
-        self._cleaned = False
-
-    def cleanup(self) -> None:
-        if self._cleaned:
-            return
-        with suppress(FileNotFoundError):
-            # Reuse the stdlib's read-only/reparse-aware deletion routine
-            # without constructing TemporaryDirectory (and therefore without
-            # registering its weakref finalizer).
-            cleanup_tree = cast(
-                Callable[[str], None],
-                getattr(_TemporaryDirectoryCleanup, "_rmtree"),
-            )
-            cleanup_tree(self.name)
-        self._cleaned = True
 
 
 def create_services(
@@ -1195,9 +1175,9 @@ def _create_agent_session(
     def coding_plugin_clock() -> int:
         return time.time_ns() // 1_000_000
 
-    capability_plugin_ephemeral_state = None
-    arch_private_ephemeral_state = None
-    capability_plugin_preparation = None
+    preparation_custody: PreparationRootCustody[
+        CodingCapabilityPluginCompositionPreparation
+    ] = PreparationRootCustody()
     base_plugin_session_preparation = None
     product_base_compilation: CodingBaseProductCompilation | None = None
     product_base_runtime: PackageProductRuntimeBindingV1 | None = None
@@ -1213,34 +1193,30 @@ def _create_agent_session(
     builtin_product_preparation: CodingBuiltinProductCompositionPreparation | None = (
         None
     )
-    capability_plugin_preparation_started = False
 
     def prepare_capability_plugins(
         plan_seed: ProductPluginPlanSeed | None = None,
     ) -> Any:
-        nonlocal capability_plugin_ephemeral_state
-        nonlocal capability_plugin_preparation_started
-        nonlocal arch_private_ephemeral_state
-        if capability_plugin_preparation_started:
-            raise RuntimeError("Coding Capability Plugins were already prepared")
-        capability_plugin_preparation_started = True
-        capability_plugin_ephemeral_state = (
-            _ExplicitTemporaryDirectory(prefix="loushang-coding-capability-plugins-")
-            if not session_manager.persist
-            else None
+
+        preparation_custody.begin_once(
+            "Coding Capability Plugins were already prepared"
         )
-        arch_private_ephemeral_state = (
-            _ExplicitTemporaryDirectory(prefix="loushang-coding-arch-private-")
-            if arch_enabled_for_session and not session_manager.persist
-            else None
-        )
-        state_root = (
-            Path(capability_plugin_ephemeral_state.name)
-            if capability_plugin_ephemeral_state is not None
-            else _coding_capability_plugin_state_root(
-                session_manager,
-                session_id=session_id,
-            )
+        state_root = preparation_custody.prepare_roots(
+            make_state=lambda: (
+                _ExplicitTemporaryDirectory(
+                    prefix="loushang-coding-capability-plugins-"
+                )
+                if not session_manager.persist
+                else None
+            ),
+            make_private=lambda: (
+                _ExplicitTemporaryDirectory(prefix="loushang-coding-arch-private-")
+                if arch_enabled_for_session and (not session_manager.persist)
+                else None
+            ),
+            persistent_root=lambda: _coding_capability_plugin_state_root(
+                session_manager, session_id=session_id
+            ),
         )
         policy_revision = (
             plan_seed.plan.context.policy_revision if plan_seed is not None else None
@@ -1280,8 +1256,8 @@ def _create_agent_session(
                 CodingArchPluginConfigV1.from_runtime_inputs(
                     workspace_root=session_manager.get_cwd(),
                     private_data_root=(
-                        Path(arch_private_ephemeral_state.name)
-                        if arch_private_ephemeral_state is not None
+                        Path(preparation_custody.private_root.name)
+                        if preparation_custody.private_root is not None
                         else state_root / "private-data" / "coding-arch-default"
                     ),
                 )
@@ -1303,13 +1279,13 @@ def _create_agent_session(
                 coding_base_plugin_assembly=coding_base_plugin_assembly,
                 coding_product_plan_seed=plan_seed,
                 state_cleanup=(
-                    capability_plugin_ephemeral_state.cleanup
-                    if capability_plugin_ephemeral_state is not None
+                    preparation_custody.state_root.cleanup
+                    if preparation_custody.state_root is not None
                     else None
                 ),
                 private_state_cleanup=(
-                    arch_private_ephemeral_state.cleanup
-                    if arch_private_ephemeral_state is not None
+                    preparation_custody.private_root.cleanup
+                    if preparation_custody.private_root is not None
                     else None
                 ),
             )
@@ -1337,7 +1313,7 @@ def _create_agent_session(
         loader: ResourceLoader,
         resolved_cwd: Path,
     ) -> ResourceBundle:
-        nonlocal capability_plugin_preparation, base_plugin_session_preparation
+        nonlocal base_plugin_session_preparation
         if prepared_resource_catalog_adapters:
             raise RuntimeError(
                 "Initial Resource Catalog projection was already prepared"
@@ -1390,9 +1366,11 @@ def _create_agent_session(
                 evaluated_at=evaluated_at,
             )
         elif eager_capability_plugins_enabled_for_session:
-            capability_plugin_preparation = prepare_capability_plugins(plan_seed)
-            if capability_plugin_preparation is not None:
-                product_composition = capability_plugin_preparation.product_composition
+            preparation_custody.preparation = prepare_capability_plugins(plan_seed)
+            if preparation_custody.preparation is not None:
+                product_composition = (
+                    preparation_custody.preparation.product_composition
+                )
             elif coding_base_plugin_assembly is not None:
                 assert plan_seed is not None
                 selection_seed = finalize_coding_package_plugin_plan_seed(plan_seed)
@@ -1475,8 +1453,8 @@ def _create_agent_session(
         nonlocal product_base_disabled_selection
         nonlocal product_capability_desired_selections
         nonlocal product_external_data_compilation
-        nonlocal builtin_product_preparation, capability_plugin_preparation
-        nonlocal capability_plugin_ephemeral_state, arch_private_ephemeral_state
+        nonlocal builtin_product_preparation
+
         if not product_base_requested or product_base_compilation is not None:
             raise RuntimeError("Coding Product base Catalog was already prepared")
         if prepared_resource_catalog_adapters:
@@ -1507,8 +1485,8 @@ def _create_agent_session(
                     CodingArchPluginConfigV1.from_runtime_inputs(
                         workspace_root=session_manager.get_cwd(),
                         private_data_root=(
-                            Path(arch_private_ephemeral_state.name)
-                            if arch_private_ephemeral_state is not None
+                            Path(preparation_custody.private_root.name)
+                            if preparation_custody.private_root is not None
                             else prepare_coding_product_arch_private_data_root(
                                 resolve_coding_plugin_lifecycle_state_layout(
                                     session_manager.get_cwd()
@@ -1570,33 +1548,31 @@ def _create_agent_session(
                 enabled_capability_ids.append(plugin_id)
             product_capability_desired_selections = tuple(observed_capabilities)
             if enabled_capability_ids:
-                capability_plugin_ephemeral_state = (
-                    _ExplicitTemporaryDirectory(
-                        prefix="loushang-coding-product-capability-plugins-"
-                    )
-                    if not session_manager.persist
-                    else None
-                )
-                arch_private_ephemeral_state = (
-                    _ExplicitTemporaryDirectory(
-                        prefix="loushang-coding-product-arch-private-"
-                    )
-                    if "coding.arch.default" in enabled_capability_ids
-                    and not session_manager.persist
-                    else None
-                )
-                state_root = (
-                    Path(capability_plugin_ephemeral_state.name)
-                    if capability_plugin_ephemeral_state is not None
-                    else _coding_capability_plugin_state_root(
+                state_root = preparation_custody.prepare_roots(
+                    make_state=lambda: (
+                        _ExplicitTemporaryDirectory(
+                            prefix="loushang-coding-product-capability-plugins-"
+                        )
+                        if not session_manager.persist
+                        else None
+                    ),
+                    make_private=lambda: (
+                        _ExplicitTemporaryDirectory(
+                            prefix="loushang-coding-product-arch-private-"
+                        )
+                        if "coding.arch.default" in enabled_capability_ids
+                        and (not session_manager.persist)
+                        else None
+                    ),
+                    persistent_root=lambda: _coding_capability_plugin_state_root(
                         session_manager, session_id=session_id
-                    )
+                    ),
                 )
                 no_base_configurations = build_product_capability_configurations(
                     enabled_capability_ids
                 )
                 try:
-                    capability_plugin_preparation = (
+                    preparation_custody.preparation = (
                         prepare_coding_product_capability_plugin_composition(
                             product_runtime,
                             session_id=session_id,
@@ -1607,21 +1583,9 @@ def _create_agent_session(
                         )
                     )
                 except BaseException:
-                    if capability_plugin_ephemeral_state is not None:
-                        capability_plugin_ephemeral_state.cleanup()
-                    if arch_private_ephemeral_state is not None:
-                        arch_private_ephemeral_state.cleanup()
+                    preparation_custody.cleanup_roots_sequentially()
                     raise
-                capability_plugin_preparation.state_cleanup = (
-                    capability_plugin_ephemeral_state.cleanup
-                    if capability_plugin_ephemeral_state is not None
-                    else None
-                )
-                capability_plugin_preparation.private_state_cleanup = (
-                    arch_private_ephemeral_state.cleanup
-                    if arch_private_ephemeral_state is not None
-                    else None
-                )
+                preparation_custody.attach_cleanup(preparation_custody.preparation)
             elif _resume_plugin_parents is not None:
                 raise CodingResourceCatalogAdmissionError(
                     ("resume_plugin_participation_changed",)
@@ -1639,8 +1603,8 @@ def _create_agent_session(
             composition = (
                 product_external_data_compilation.product_composition
                 if product_external_data_compilation is not None
-                else capability_plugin_preparation.product_composition
-                if capability_plugin_preparation is not None
+                else preparation_custody.preparation.product_composition
+                if preparation_custody.preparation is not None
                 else None
             )
             adapter, projection = _prepare_coding_catalog_projection(
@@ -1735,28 +1699,25 @@ def _create_agent_session(
                 enabled_capability_ids.append(plugin_id)
         product_capability_desired_selections = tuple(observed_capabilities)
         if enabled_capability_ids:
-            capability_plugin_ephemeral_state = (
-                _ExplicitTemporaryDirectory(
-                    prefix="loushang-coding-product-capability-plugins-"
-                )
-                if not session_manager.persist
-                else None
-            )
-            arch_private_ephemeral_state = (
-                _ExplicitTemporaryDirectory(
-                    prefix="loushang-coding-product-arch-private-"
-                )
-                if "coding.arch.default" in enabled_capability_ids
-                and not session_manager.persist
-                else None
-            )
-            state_root = (
-                Path(capability_plugin_ephemeral_state.name)
-                if capability_plugin_ephemeral_state is not None
-                else _coding_capability_plugin_state_root(
-                    session_manager,
-                    session_id=session_id,
-                )
+            state_root = preparation_custody.prepare_roots(
+                make_state=lambda: (
+                    _ExplicitTemporaryDirectory(
+                        prefix="loushang-coding-product-capability-plugins-"
+                    )
+                    if not session_manager.persist
+                    else None
+                ),
+                make_private=lambda: (
+                    _ExplicitTemporaryDirectory(
+                        prefix="loushang-coding-product-arch-private-"
+                    )
+                    if "coding.arch.default" in enabled_capability_ids
+                    and (not session_manager.persist)
+                    else None
+                ),
+                persistent_root=lambda: _coding_capability_plugin_state_root(
+                    session_manager, session_id=session_id
+                ),
             )
             configurations = build_product_capability_configurations(
                 enabled_capability_ids
@@ -1777,41 +1738,16 @@ def _create_agent_session(
                     )
                 )
             except BaseException as error:
-                run_cleanup_steps(
+                preparation_custody.cleanup_roots_with_notes(
                     error,
-                    tuple(
-                        (name, cleanup)
-                        for name, cleanup in (
-                            (
-                                "Coding Product Capability state cleanup",
-                                capability_plugin_ephemeral_state.cleanup
-                                if capability_plugin_ephemeral_state is not None
-                                else None,
-                            ),
-                            (
-                                "Coding Product Arch private-state cleanup",
-                                arch_private_ephemeral_state.cleanup
-                                if arch_private_ephemeral_state is not None
-                                else None,
-                            ),
-                        )
-                        if cleanup is not None
-                    ),
+                    state_label="Coding Product Capability state cleanup",
+                    private_label="Coding Product Arch private-state cleanup",
                 )
                 raise
-            capability_plugin_preparation = (
+            preparation_custody.preparation = (
                 builtin_product_preparation.capability_preparation
             )
-            capability_plugin_preparation.state_cleanup = (
-                capability_plugin_ephemeral_state.cleanup
-                if capability_plugin_ephemeral_state is not None
-                else None
-            )
-            capability_plugin_preparation.private_state_cleanup = (
-                arch_private_ephemeral_state.cleanup
-                if arch_private_ephemeral_state is not None
-                else None
-            )
+            preparation_custody.attach_cleanup(preparation_custody.preparation)
             compiled = builtin_product_preparation.base_compilation
         else:
             if _resume_plugin_parents is not None:
@@ -2034,8 +1970,8 @@ def _create_agent_session(
                 product_composition = (
                     product_external_data_compilation.product_composition
                     if product_external_data_compilation is not None
-                    else capability_plugin_preparation.product_composition
-                    if capability_plugin_preparation is not None
+                    else preparation_custody.preparation.product_composition
+                    if preparation_custody.preparation is not None
                     else None
                 )
             elif coding_base_plugin_assembly is not None:
@@ -2224,10 +2160,10 @@ def _create_agent_session(
                     CODING_ARCH_CAPABILITY: arch_mode,
                 }[capability_id]
                 for capability_id in (
-                    capability_plugin_preparation.provider_owner_authorities
+                    preparation_custody.preparation.provider_owner_authorities
                 )
             }
-            if capability_plugin_preparation is not None
+            if preparation_custody.preparation is not None
             else {}
         )
         builtin_product_session = (
@@ -2243,13 +2179,13 @@ def _create_agent_session(
         capability_plugin_assembly = (
             builtin_product_session.capability_assembly
             if builtin_product_session is not None
-            else capability_plugin_preparation.bind_workspace(
+            else preparation_custody.preparation.bind_workspace(
                 workspace_binding=workspace_binding,
                 host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
                 tool_modes=capability_tool_modes,
                 clock=coding_plugin_clock,
             )
-            if capability_plugin_preparation is not None
+            if preparation_custody.preparation is not None
             else None
         )
         base_plugin_session_assembly = (
@@ -2672,34 +2608,14 @@ def _create_agent_session(
         capability_plugin_cleanup: Callable[[], None] | None
         capability_management_cleanup: Callable[[], None] | None
         arch_private_cleanup: Callable[[], None] | None
-        if failure_custodian is not None:
-            # A preparation that acquired lifecycle evidence is its sole cleanup
-            # owner.  Retrying that owner preserves the lease -> management root
-            # -> private root ordering; naked callbacks would bypass the gate.
-            capability_plugin_cleanup = failure_custodian.close
-            capability_management_cleanup = None
-            arch_private_cleanup = None
-        else:
-            capability_plugin_cleanup = (
-                capability_plugin_preparation.close
-                if capability_plugin_preparation is not None
-                else (
-                    capability_plugin_ephemeral_state.cleanup
-                    if capability_plugin_ephemeral_state is not None
-                    else None
-                )
-            )
-            arch_private_cleanup = (
-                arch_private_ephemeral_state.cleanup
-                if capability_plugin_preparation is None
-                and arch_private_ephemeral_state is not None
-                else None
-            )
-            capability_management_cleanup = (
-                capability_management_state_cleanup
-                if capability_plugin_preparation is None
-                else None
-            )
+        (
+            capability_plugin_cleanup,
+            capability_management_cleanup,
+            arch_private_cleanup,
+        ) = preparation_custody.failure_callbacks(
+            failure_custodian=failure_custodian,
+            management_cleanup=capability_management_state_cleanup,
+        )
         cleanup_steps = []
         if deferred_lsp_management_state_cleanup is not None:
             cleanup_steps.append(
@@ -2799,7 +2715,6 @@ def _create_agent_session(
         if retained is error:
             raise
         raise retained from error
-
 
 
 def _session_manager_plugin_owner_id(session_manager: SessionManager) -> str:
@@ -2958,6 +2873,71 @@ async def _create_resume_agent_session(
 
 
 def create_agent_session(
+    *,
+    session_manager: SessionManager,
+    model: Model | ModelSelection | None = None,
+    stream_fn: StreamFn | None = None,
+    system_prompt: str | None = None,
+    thinking_level: ThinkingLevel | None = None,
+    tools: list[ToolDefinition] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
+    active_tool_names: list[str] | None = None,
+    no_tools: NoToolsMode | bool | None = None,
+    composition_set: CodingCompositionSetId | None = None,
+    services: BootstrapServices | None = None,
+    output_capture_factory: ExecCaptureFactory | None = None,
+    agent_factory: AgentFactory = Agent,
+    session_start_event: SessionStartEvent | None = None,
+    package_materializer: PackageMaterializer | None = None,
+    package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
+    worker_candidate_plugin_id: str | None = None,
+    worker_query_turn_tool: bool = False,
+    resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+    ),
+    append_system_prompt: list[str] | tuple[str, ...] | None = None,
+    extension_flag_values: ExtensionFlagValues | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
+    enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
+) -> AgentSession:
+    return _create_agent_session_with_model_policy(
+        session_manager=session_manager,
+        model=model,
+        stream_fn=stream_fn,
+        system_prompt=system_prompt,
+        thinking_level=thinking_level,
+        tools=tools,
+        tool_registry=tool_registry,
+        allowed_tool_names=allowed_tool_names,
+        active_tool_names=active_tool_names,
+        no_tools=no_tools,
+        composition_set=composition_set,
+        services=services,
+        output_capture_factory=output_capture_factory,
+        agent_factory=agent_factory,
+        session_start_event=session_start_event,
+        package_materializer=package_materializer,
+        package_product_runtime_factory=package_product_runtime_factory,
+        worker_candidate_plugin_id=worker_candidate_plugin_id,
+        worker_query_turn_tool=worker_query_turn_tool,
+        resource_catalog_source_policy=resource_catalog_source_policy,
+        append_system_prompt=append_system_prompt,
+        extension_flag_values=extension_flag_values,
+        approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
+        enable_multiagent=enable_multiagent,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
+    )
+
+
+def _create_agent_session_with_model_policy(
     *,
     session_manager: SessionManager,
     model: Model | ModelSelection | None = None,
@@ -3200,7 +3180,6 @@ def create_agent_session_result(
         if retained is error:
             raise
         raise retained from error
-
 
 
 def _default_package_materializer(

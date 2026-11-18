@@ -12,6 +12,8 @@ import pytest
 
 import loushang.coding.package_private_data_windows_backup as backup_module
 import loushang.coding.package_private_data_windows_backup_expiry_journal as journal
+import loushang.foundation.windows_private_acl as native_acl
+import loushang.harness.package_product._backup_topology as topology
 import loushang.harness.resources.packages._private_tree_windows as native_tree
 from loushang.coding.package_private_data_windows_backup import (
     CodingWindowsArchPrivateDataBackupOwner,
@@ -74,9 +76,9 @@ def test_windows_backup_status_requires_terminal_receipt_for_expired(
         def validate(self, descriptor: int) -> None:
             return None
 
-    monkeypatch.setattr(backup_module, "WindowsPrivateDirectoryAcl", FakeAcl)
+    monkeypatch.setattr(native_acl, "WindowsPrivateDirectoryAcl", FakeAcl)
     monkeypatch.setattr(
-        backup_module,
+        topology,
         "inspect_windows_product_private_directory_identity",
         lambda path: (1, 4),
     )
@@ -90,7 +92,9 @@ def test_windows_backup_status_requires_terminal_receipt_for_expired(
             else os.open(path, os.O_RDONLY)
         ),
     )
-    monkeypatch.setattr(backup_module, "_directory_identity", lambda fd: (1, 4))
+    monkeypatch.setattr(
+        type(backup_module._native_io), "directory_identity", lambda self, fd: (1, 4)
+    )
     monkeypatch.setattr(backup_module, "_retained_receipts", lambda *args, **kwargs: ())
 
     record = owner.snapshot().records[0]
@@ -127,7 +131,7 @@ def test_windows_backup_status_requires_terminal_receipt_for_expired(
         raise FileNotFoundError(path)
 
     monkeypatch.setattr(
-        backup_module,
+        topology,
         "inspect_windows_product_private_directory_identity",
         missing_state,
     )

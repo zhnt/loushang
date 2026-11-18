@@ -13,13 +13,13 @@ import re
 import stat
 import sys
 import sysconfig
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
-from typing import Never, cast
+from typing import ClassVar, Never, Protocol, cast
 
 from packaging.markers import default_environment
 from packaging.tags import sys_tags
@@ -2396,3 +2396,117 @@ __all__ = [
     "PosixLocalWheelProductRuntimeFactory",
     "compose_posix_local_wheel_product",
 ]
+
+
+class _ApplicationProductSelection(Protocol):
+    def product_owner_for_factory(
+        self,
+        factory: PosixLocalWheelProductRuntimeFactory
+        | WindowsLocalWheelProductRuntimeFactory,
+    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner: ...
+
+    def close(self) -> None: ...
+
+
+class _SessionProductRuntimeRelease:
+    """Release the original lease before its owning application selection."""
+
+    __slots__ = ()
+    release: Callable[[], None]
+    selection: _ApplicationProductSelection
+
+    @property
+    def registry(self) -> object:
+        lease = getattr(self.release, "__self__", None)
+        return getattr(lease, "registry", None)
+
+    def dispose(self) -> None:
+        self.release()
+        self.selection.close()
+
+
+class _WorkerProductRuntimeFactorySelection:
+    __slots__ = ()
+    _product_label: ClassVar[str]
+    factory: (
+        PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory
+    )
+    selection: _ApplicationProductSelection
+
+    def product_owner_for_worker(
+        self,
+    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner:
+        owner = self.selection.product_owner_for_factory(self.factory)
+        if not isinstance(
+            owner,
+            (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
+        ):
+            raise TypeError(
+                f"{self._product_label} Worker Product Session owner changed platform"
+            )
+        return owner
+
+
+class _IssuedProductRuntimeBinding(Protocol):
+    _binding_issued: bool
+
+
+class _SessionOwnedProductRuntimeFactory(_WorkerProductRuntimeFactorySelection):
+    """Transfer a single Session's application owner with its native binding."""
+
+    __slots__ = ()
+    _binding_issued: bool
+    _lock: Lock
+
+    def create(
+        self, request: PackageProductRuntimeRequestV1
+    ) -> PackageProductRuntimeBindingV1:
+        with self._lock:
+            if self._binding_issued:
+                raise ValueError(
+                    f"{self._product_label} Product Session factory already used"
+                )
+            binding = self.factory.create(request)
+            try:
+                release = binding.on_dispose
+                if release is None:
+                    raise ValueError(
+                        f"{self._product_label} Product runtime release is missing"
+                    )
+                owned = replace(binding, on_dispose=self._dispose_binding(release))
+            except BaseException as error:
+                try:
+                    binding.dispose_runtime()
+                    self.selection.close()
+                except BaseException:
+                    error.add_note(
+                        f"{self._product_label} Product Session owner cleanup also failed"
+                    )
+                raise
+            issued: _IssuedProductRuntimeBinding = self
+            issued._binding_issued = True
+            return owned
+
+    def dispose_unbound_runtime(self) -> None:
+        with self._lock:
+            if self._binding_issued:
+                return
+            self.factory.dispose_unbound_runtime()
+            self.selection.close()
+
+    def _dispose_binding(self, release: Callable[[], None]) -> Callable[[], None]:
+        raise NotImplementedError
+
+
+class _ApplicationWorkerProductRuntimeFactory(_WorkerProductRuntimeFactorySelection):
+    """Borrow an application-owned factory without disposing its selection."""
+
+    __slots__ = ()
+
+    def create(
+        self, request: PackageProductRuntimeRequestV1
+    ) -> PackageProductRuntimeBindingV1:
+        return self.factory.create(request)
+
+    def dispose_unbound_runtime(self) -> None:
+        self.factory.dispose_unbound_runtime()

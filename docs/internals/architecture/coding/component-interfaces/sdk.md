@@ -71,5 +71,8 @@
 - `create_agent_session_services(...)` 会加载 extension registry、暴露 `extension_runner`、应用 `extension_flag_values`，并把未知 flag / string flag 缺值收敛为创建期 diagnostics
 - `create_agent_session_from_services(...)` 用已创建的 cwd-bound services 构造 session，避免宿主程序重复拼装 bootstrap 参数
 - `loushang.coding` 顶层 `__all__` 是稳定 Python SDK 边界；新增对外类型时需要同步 public surface snapshot 和 smoke 测试
+- `create_agent_session` 保留既有28个显式参数；Hosted新建/恢复的缺省模型政策绑定
+  私有构造入口，原构造及失败清理机制共用。曾误露的 `_use_default_model` 不属于
+  该公开签名，公开传入时在参数绑定阶段拒绝；Hosted内部政策和存量模型记录不变
 - 当前优先保留轻量模块入口，不先抽更重的 SDK 对象
 - `sdk` 更适合作为对外嵌入面，而不是反向承担装配中心职责
