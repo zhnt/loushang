@@ -748,6 +748,16 @@ Coding 保留原查询政策、批准与 Profile：八种私有构造／操作 P
 
 C07 原文件12,433行，邻组适配4行全计，有效剩余12,437，归因退出7,829，多数目标仍差2,305。原 Goal 归因 Harness+10,715、系统+2,886；同期其它主线+3,404另计。原生 Windows LPAC／Job、真实崩溃及远端平台路线未由上述局部验证证明；完整选中检查、整组112文件处置和多数退出验收均未完成。
 
+## 两平台 Product 历史访问适配归位原型
+
+逐文件清单明确 `_worker_history_access` 的两个借用适配不是 Coding 产品政策。本原型将整对原 frozen/slots dataclass 归 `package_product._worker_history_access`，Coding 只保留两个原私有名称的别名；原 Receipt、Supervisor、checkpoint、snapshot 与 Windows C5 消费者使用同一对象，没有额外适配实例。现有 Worker History ports 和 Journal/Snapshot/Rooted IO owners 保持，不新增 Protocol、账本、锁、读写算法或权限。
+
+两个完整类的 AST 仅更改类名，字段与全部方法体保持。POSIX guard 仍显式传 `require_write`；Windows 默认/False 仍省略参数，仅 True 显式传入。POSIX pin 和 Windows borrowed descriptor 继续使用各自原 Product 方法，不将 Windows 读取变成 root 修复或创建入口。Ruff、格式、diff 与两源 mypy 已通过；真实消费者和既有三种访问 port 的扩大 scoped mypy 正在执行。为避免与上一候选完整回归争用，不并发启动新的运行时验证。
+
+原型 Coding −43、Harness +54、系统生产 +11，测试0，文档单列。它消除残留中性适配的职责错位，不是新的物理 IO／恢复机制，也不将原已共享 Journal 内核重计。本原型尚未运行时验收、未计入7,829行退出或2,305行目标缺口。
+
+原私有类的模块/名称/repr和新保存的 pickle 路径会变化，Code 别名拟保留旧查找；这是待验证的兼容差异，不能仅凭别名存在宣称旧实例加载正确。原字段元数据、slots、旧类/实例 pickle、真实调用及失败顺序验证仍待执行。若这些必要兼容成本抵消收益，应调整或撤回；不能因只剩43行就放松原 Goal 的整链和多数要求。上一份112文件表仍准确描述它所标明的冻结源码 `6d695024e`，不将本原型冒充已交付状态。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
