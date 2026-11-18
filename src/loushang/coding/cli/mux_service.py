@@ -95,6 +95,13 @@ def _uses_managed_backend() -> bool:
 
 
 def control(operation: str, unit: str) -> int:
+    if sys.platform == "darwin":
+        if unit != DEFAULT_UNIT:
+            return 1
+        if operation == "logs":
+            from ..macos_service import print_logs
+            return print_logs()
+        return control_local(operation, None, as_json=False)
     if _uses_managed_backend():
         if operation == "logs" or unit != DEFAULT_UNIT:
             print("loushang-mux service: this action requires a systemd user unit", file=sys.stderr)
@@ -121,7 +128,10 @@ def control_local(operation: str, expected: str | None, *, as_json: bool) -> int
     from ..managed_service import ServiceControlError, control_managed_service
 
     try:
-        if _uses_managed_backend():
+        if sys.platform == "darwin":
+            from ..macos_service import control_launchd_service
+            reply = control_launchd_service(operation, expected)
+        elif _uses_managed_backend():
             reply = asyncio.run(control_managed_service(operation, expected))
         elif sys.platform == "linux":
             reply = _systemd_control(operation, expected)

@@ -1,0 +1,66 @@
+name: macOS Intel Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag or commit to build
+        type: string
+        default: lane/gui
+  workflow_call:
+    inputs:
+      source_ref:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+      RUSTUP_TOOLCHAIN: "1.98.1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - name: Verify Intel build host
+        run: test "$(uname -m)" = x86_64
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Prepare pinned Python and Rust
+        run: |
+          uv python install 3.11.15
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup target add --toolchain 1.98.1 x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            gui/src-tauri -> target
+            gui/web -> target
+          key: macos12-intel
+          cache-on-failure: true
+      - name: Build full installation package
+        run: uv run --no-project --python 3.11 python scripts/gui/build_macos_full.py
+      - name: Install and verify packaged applications
+        run: |
+          sudo /usr/sbin/installer -pkg "$(find dist/macos-full -maxdepth 1 -name '*.pkg' -print -quit)" -target /
+          mv gui/dist "$RUNNER_TEMP/loushang-source-assets"
+          uv run --no-project --python 3.11 python scripts/gui/check_macos_package.py --evidence dist/macos-full/evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loushang-macos12-intel
+          path: dist/macos-full/
+          if-no-files-found: error
+          retention-days: 14

@@ -81,7 +81,7 @@ class CodingWorkspaceCatalog(
     def _create_catalog(self, path: Path) -> CodingHostedSessionCatalogV1:
         leaf = hashlib.sha256(str(path).encode()).hexdigest()
         root = self._root / "workspaces" / leaf
-        if sys.platform == "win32":
+        if sys.platform in {"win32", "darwin"}:
             # Use the native hosted Session writer with separate scope roots.
             return CodingHostedSessionCatalogV1(
                 tuple(
@@ -210,7 +210,7 @@ class CodingWorkspaceCatalog(
     async def _open_workspace_candidate(
         self, catalog: CodingHostedSessionCatalogV1, reference
     ):
-        if sys.platform == "win32":
+        if sys.platform in {"win32", "darwin"}:
             return await catalog.open_candidate(reference)
         return await catalog.open_history_candidate(
             reference, max_bytes=_MAX_TRANSCRIPT_BYTES

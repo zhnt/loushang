@@ -662,3 +662,18 @@ The standalone GUI package includes `bin/loushang-web` and `web/` assets. Invoke
 `loushang-gui web` to run them. The Host is packaged separately. After staging
 both programs, verify their independent startup and connection with
 `uv run python scripts/gui/check_split_linux_programs.py /path/to/host /path/to/gui`.
+
+### macOS Intel full installer
+
+Build the full macOS 12+ Intel test installer on an Intel Mac:
+
+```sh
+uv run --no-project --python 3.11 python scripts/gui/build_macos_full.py
+```
+
+It includes GUI, Web, the frozen TUI and a backend Python runtime. The macOS
+service adapter uses launchd; the Host continues running after GUI exit.
+The manual Actions job uses `macos-15-intel` and audits the Intel slice and
+minimum OS versions of packaged native code, including the frozen TUI's libraries.
+See [macOS packaging instructions](../scripts/gui/macos-package.md) for manual
+dispatch, installation, artifacts and the remaining macOS 12 acceptance boundary.
