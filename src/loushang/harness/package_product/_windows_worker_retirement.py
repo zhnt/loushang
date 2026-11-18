@@ -7,6 +7,7 @@ custody through replay, proof, exact member deletion and receipt publication.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,6 +75,29 @@ from ._worker_windows_attempt import (
 from .product_local_wheel_runtime import WindowsLocalWheelProductSessionOwner
 
 
+def _require_retirement_entry(
+    product: WindowsLocalWheelProductSessionOwner,
+    review: object,
+    *,
+    product_id: str | None,
+    review_type: type[object],
+    message: str,
+    required_native_revision: int | None = None,
+) -> None:
+    if product_id is not None and (
+        os.name != "nt"
+        or type(product) is not WindowsLocalWheelProductSessionOwner
+        or product.policy.product_id != product_id
+        or type(review) is not review_type
+        or (
+            required_native_revision is not None
+            and cast(_WindowsReservedStageReviewMethods, review).native_revision
+            != required_native_revision
+        )
+    ):
+        raise OSError(message)
+
+
 class _RetirementLaunchIntent(_LaunchIntentFacts, _StageCaptureIntent, Protocol):
     pass
 
@@ -134,6 +158,9 @@ class WindowsProductWorkerCompleteStageRetirement(
     review_maximum: Callable[[], int]
     error_prefix: str
 
+    entry_product_id: str | None = None
+    entry_required_message: str = ""
+
     def physical(self) -> WindowsStageRetirement:
         return WindowsStageRetirement(
             self.inspection(), self.records.error_type, self.error_prefix
@@ -145,6 +172,14 @@ class WindowsProductWorkerCompleteStageRetirement(
         *,
         expected_review: _ReviewT,
     ) -> _ReceiptT:
+        "Retire only the reviewed stage while Package runtime remains offline."
+        _require_retirement_entry(
+            product,
+            expected_review,
+            product_id=self.entry_product_id,
+            review_type=self.records.review_type,
+            message=self.entry_required_message,
+        )
         with windows_product_worker_offline_write(
             product,
             active_error=self.records.error_type,
@@ -421,12 +456,23 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
     review_maximum: Callable[[], int]
     error_prefix: str
 
+    entry_product_id: str | None = None
+    entry_required_message: str = ""
+
     def retire(
         self,
         product: WindowsLocalWheelProductSessionOwner,
         *,
         expected_review: _PartialT,
     ) -> _ReceiptT:
+        "Delete only saved members after verifying no launch ever committed."
+        _require_retirement_entry(
+            product,
+            expected_review,
+            product_id=self.entry_product_id,
+            review_type=self.records.review_type,
+            message=self.entry_required_message,
+        )
         with windows_product_worker_offline_write(
             product,
             active_error=self.records.error_type,
@@ -590,12 +636,24 @@ class WindowsProductWorkerUnlaunchedStageRetirement(
     review_maximum: Callable[[], int]
     error_prefix: str
 
+    entry_product_id: str | None = None
+    entry_required_message: str = ""
+
     def retire(
         self,
         product: WindowsLocalWheelProductSessionOwner,
         *,
         expected_review: _ReservedT,
     ) -> _ReceiptT:
+        "Delete only the reviewed payload after proving no native or process effect."
+        _require_retirement_entry(
+            product,
+            expected_review,
+            product_id=self.entry_product_id,
+            review_type=self.records.review_type,
+            message=self.entry_required_message,
+            required_native_revision=2,
+        )
         with windows_product_worker_offline_write(
             product,
             active_error=self.records.error_type,
