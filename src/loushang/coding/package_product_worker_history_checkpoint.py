@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import cast
 
-from loushang.coding._worker_history_access import _CodingHistoryAccess
 from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.package_product._linux_worker_history import (
+    bound_product_worker_history_checkpoint,
     publish_product_worker_history_checkpoint,
+    read_product_worker_history_checkpoints,
     repair_product_worker_history_checkpoint_append,
     rollback_product_worker_history_checkpoint_tail,
 )
@@ -113,12 +113,12 @@ def _read_records_or_repair_empty_bootstrap(
 _anchor_for_records = _CHECKPOINT_HISTORY.anchor_for_records
 
 
-@contextmanager
 def _bound_checkpoint(
     product: PosixLocalWheelProductSessionOwner,
-) -> Iterator[RootedFile]:
-    with _checkpoint_commands().bound(_CodingHistoryAccess(product)) as rooted:
-        yield rooted
+) -> AbstractContextManager[RootedFile]:
+    return bound_product_worker_history_checkpoint(
+        product, commands=lambda: _checkpoint_commands()
+    )
 
 
 def read_coding_product_worker_history_checkpoints_under_gc_guard(
@@ -130,8 +130,9 @@ def read_coding_product_worker_history_checkpoints_under_gc_guard(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Coding Worker checkpoint requires its Product")
-    with _bound_checkpoint(product) as rooted:
-        return _checkpoint_commands().read(rooted, access=_CodingHistoryAccess(product))
+    return read_product_worker_history_checkpoints(
+        product, commands=lambda: _checkpoint_commands()
+    )
 
 
 def read_coding_worker_checkpoint_writer_fence(

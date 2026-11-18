@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 
 from loushang.harness.package_product._worker_windows_attempt import (
     WindowsProductWorkerIntentRecords,
+    inspect_windows_product_worker_launch_intents,
+    read_windows_product_worker_launch_intent,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -134,8 +136,9 @@ def read_coding_windows_product_worker_launch_intent(
 
     _require_product(product)
     _require_attempt(attempt_id)
-    with product.gc_gate.read_guard():
-        return _read_intent_under_gc_guard(product, attempt_id)
+    return read_windows_product_worker_launch_intent(
+        product, attempt_id=attempt_id, records=lambda: _intent_records(product)
+    )
 
 
 def inspect_coding_windows_product_worker_launch_intents(
@@ -144,8 +147,9 @@ def inspect_coding_windows_product_worker_launch_intents(
     """Strictly inventory all committed intents and unpublished stages."""
 
     _require_product(product)
-    with product.gc_gate.read_guard():
-        return _inspect_intents_under_gc_guard(product)
+    return inspect_windows_product_worker_launch_intents(
+        product, records=lambda: _intent_records(product)
+    )
 
 
 def _inspect_intents_under_gc_guard(

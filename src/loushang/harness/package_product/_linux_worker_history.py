@@ -19,6 +19,9 @@ from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.package_product._linux_worker_native_release import (
     _LinuxWorkerNativeReleaseCustody,
 )
+from loushang.harness.package_product._worker_history_access import (
+    PosixProductWorkerHistoryAccess,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -36,6 +39,7 @@ from loushang.harness.worker.history._checkpoint_commands import (
     CheckpointCommands,
     _BackupRevision,
 )
+from loushang.harness.worker.history._checkpoint_history import _AnchorT, _CheckpointT
 from loushang.harness.worker.history._cutover import _IndexMethods
 from loushang.harness.worker.history._no_effect import (
     _NoEffectArchiveMethods,
@@ -1254,6 +1258,27 @@ def seal_product_history_v1(
                 error_type=error_type,
                 max_segment_bytes=segment_limit(),
             )
+
+
+@contextmanager
+def bound_product_worker_history_checkpoint(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    commands: Callable[[], CheckpointCommands[_CheckpointT, _AnchorT]],
+) -> Iterator[RootedFile]:
+    """Borrow the original command binding without capturing its live limits."""
+    with commands().bound(PosixProductWorkerHistoryAccess(product)) as rooted:
+        yield rooted
+
+
+def read_product_worker_history_checkpoints(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    commands: Callable[[], CheckpointCommands[_CheckpointT, _AnchorT]],
+) -> tuple[_CheckpointT, ...]:
+    """Own the full bound read, preserving two original command constructions."""
+    with bound_product_worker_history_checkpoint(product, commands=commands) as rooted:
+        return commands().read(rooted, access=PosixProductWorkerHistoryAccess(product))
 
 
 def publish_product_worker_history_checkpoint(

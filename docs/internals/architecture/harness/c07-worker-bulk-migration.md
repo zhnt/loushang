@@ -760,6 +760,18 @@ C07 原文件12,433行，邻组适配4行全计，有效剩余12,437，归因退
 
 另以两个切点的112份源码哈希核对原349个公开入口，除源路径/哈希及等值 frozenset 的显示顺序外，公开反射观察无差异；原 Goal 335项公开引用的670条旧 pickle 路径及新往返通过，无恢复后的字段缺失。惰性核对以低优先级独立运行，异步/原生生命周期及 pytest 继续串行；真实消费者和完整选中回归仍待执行，43行尚未计入已验证迁移量。若必要兼容成本抵消收益，应调整或撤回；不能因只剩43行就放松原 Goal 的整链和多数要求。上一份112文件表仍准确描述它所标明的冻结源码 `6d695024e`，不将本候选冒充已交付状态。
 
+## 三条完整读取作用域归位原型
+
+继续拆开真实产品准入和通用资源协调：POSIX checkpoint 完整读取及其原 bound context，由既有 `_linux_worker_history` 持有；Windows intent 的公开读取和枚举，由既有 `_worker_windows_attempt` 持有 GC read guard。真实 Code 入口直接接入，保留原 Product/OS/attempt 准入、名义记录、格式与限额配置；未改造现有 IO、Journal 或 Scope owner，没有新增 Protocol、TypeVar、manager、实例字段或写入/修复操作。
+
+每条路线只借用原完整 Commands/Records 组件工厂。checkpoint 仍在原两个位置分别构造 Commands，第一次 bound 和第二次 read 使用当时的配置；传入惰性 getter 保留锁内 quota/构造器变化。Windows Records 仍在 GC read guard 内构造，读取仍显式传原 `allow_unpublished_stage=False`。旧 under-guard intent 入口保留，原恢复消费者继续使用；Code `_bound_checkpoint` 保留原全局查找名称，改为返回 Harness 的同一形状 context manager，其私有返回注解和 `__wrapped__` 实现元数据有变化，不能声称任意私有反射完全一致。
+
+四个相关源文件 mypy、Ruff/格式/diff 通过。两份 Code 文件的全部类及公开参数/返回/装饰器 AST 保持；只改变四个作用域入口。对精确前序 `9e54f0338` 的原函数 AST 与当前真实入口/Harness 操作进行260组受控对照，其中252组故障，覆盖六种 primary exception、构造器/配额替换、进入/读取/退出和二次清理失败；事件、返回、异常身份/因果/notes一致。使用真实名义 Product 类型和假的 Commands/Records/guard，不读取实际磁盘，不替代真实消费者或原生/异步生命周期验证。
+
+本批 Coding +5、Harness +46、Hosting/其它0，系统 Python生产 +51；测试0，文档另计。它清除 Code 的读取作用域协调，属于职责归位成本，不能报告为删减；少量适配增长也不改变多数目标。连同尚未完成消费者验收的访问适配候选，合计 Coding−38、Harness+100、系统+62；这些未验收变化不计入7,829行已复核退出或2,305行缺口。
+
+前一冻结 `6d695024e` 完整检查的 Coding、HarnessTUI、Coding UI、回放及文档/依赖事实通过；Harness 为6,355 passed、116 skipped、1 failed，唯一失败是C52清单仍把 native binder消费者记为 Code preparation，实际 owner已归 Package Product。`30170b10a`仅替换原双消费者集合的一条路径，原断言逻辑/场景/门禁不变，C52原6项复核通过。生产源码未变，已通过范围保留证据，受影响 Harness 和未执行 Hosting/unit 范围串行补跑；旧失败日志保留，不记作整轮通过。当前读取原型的真实消费者及完整选中检查仍未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
