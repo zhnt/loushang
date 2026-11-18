@@ -132,13 +132,19 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .account-label small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-popover { position: absolute; bottom: calc(100% + 6px); left: 8px; width: 264px; max-width: calc(100vw - 64px); padding: 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px #0002; }
 .account-menu-compact .account-popover { left: 0; }
-.account-popover-profile { padding: 9px 10px 11px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-.account-popover-profile strong { font-size: 13px; }
+.account-popover-profile { padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.account-popover-profile strong { font-size: 13px; overflow-wrap: anywhere; }
 .account-popover button { display: flex; align-items: center; gap: 9px; width: 100%; margin-top: 4px; padding: 7px 9px; color: var(--ink); background: transparent; border: 0; border-radius: 6px; text-align: left; }
 .account-popover button:focus-visible { background: var(--control-hover); }
-.account-popover > .copy-action { display: flex; gap: 0; }
-.account-popover > .copy-action button { color: var(--ink-secondary); font-weight: var(--font-weight-normal); }
-.account-popover > .copy-action small { padding: 0 9px 4px; padding-inline-start: 36px; color: var(--muted); }
+.account-popover .account-profile-button { justify-content: space-between; margin-top: 0; }
+.account-profile-button > .ui-icon { color: var(--muted); }
+.account-details-dialog { max-height: calc(100dvh - 32px); padding: 0; }
+.account-details-dialog .settings-header { padding: 10px 14px 10px 18px; }
+.account-details-dialog dl { grid-template-columns: minmax(0, 1fr); margin: 0; padding: 14px 18px 18px; }
+.account-details-dialog dt { margin-bottom: 3px; color: var(--muted); font-size: var(--font-size-caption); }
+.account-details-dialog dd { overflow-wrap: anywhere; }
+.account-id-value { display: flex; align-items: center; gap: 8px; }
+.account-id-value code { flex: 1; min-width: 0; font-size: var(--font-size-caption); word-break: break-all; user-select: text; }
 
 .conversation-pane { --chat-width: 760px; position: relative; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; background: var(--paper); }
 .conversation-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); }

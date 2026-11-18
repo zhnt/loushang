@@ -15,6 +15,7 @@ export function AccountMenu({ compact = false, account, onSettings }: {
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const settings = useRef<HTMLButtonElement>(null);
+  const details = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -58,13 +59,35 @@ export function AccountMenu({ compact = false, account, onSettings }: {
     </button>
     {open ? <div id={id} className="account-popover">
       {account ? <section className="account-popover-profile" aria-label={t("offlineAccount")}>
-        <div className="account-label"><strong>{account.name}</strong><small>{t("offlineAccount")}</small></div>
+        <button type="button" className="account-profile-button" aria-haspopup="dialog" aria-controls={`${id}-details`}
+          onClick={() => { dismiss(); details.current?.showModal(); }}>
+          <span className="account-label"><strong>{account.name}</strong><small>{t("offlineAccount")}</small></span>
+          <span className="sr-only">{t("accountDetails")}</span>
+          <UiIcon name="chevron-right" />
+        </button>
       </section> : null}
       <button ref={settings} type="button" onClick={() => { dismiss(); onSettings(); }}>
         <UiIcon name="settings" />
         {t("settings")}
       </button>
-      {account?.id ? <CopyButton text={account.id} label={t("copyAccountId")} icon showLabel feedbackMs={2500} /> : null}
     </div> : null}
+    {account ? <dialog ref={details} id={`${id}-details`} className="frame-dialog account-details-dialog"
+      aria-labelledby={`${id}-details-title`} onClose={() => trigger.current?.focus({ preventScroll: true })}>
+      <header className="settings-header">
+        <h2 id={`${id}-details-title`}>{t("accountDetails")}</h2>
+        <button type="button" className="icon-close" aria-label={t("closeAccountDetails")} autoFocus
+          onClick={() => details.current?.close()}><UiIcon name="close" /></button>
+      </header>
+      <dl>
+        <div><dt>{t("accountName")}</dt><dd>{account.name}</dd></div>
+        {account.id ? <div>
+          <dt>{t("accountId")}</dt>
+          <dd className="account-id-value">
+            <code>{account.id}</code>
+            <CopyButton text={account.id} label={t("copyAccountId")} icon feedbackMs={2500} />
+          </dd>
+        </div> : null}
+      </dl>
+    </dialog> : null}
   </div>;
 }

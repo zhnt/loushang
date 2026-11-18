@@ -3,9 +3,10 @@ import { appName } from "../../src/branding";
 
 const hoverGray = "rgb(236, 236, 235)";
 const focusGray = "rgb(104, 108, 114)";
+const previewAccountId = "local-" + "a".repeat(64);
 
 async function simulateDesktop(page: Page, managed = false) {
-  await page.addInitScript((managed) => {
+  await page.addInitScript(({ managed, previewAccountId }) => {
     Object.assign(window, {
       isTauri: true,
       __LOUSHANG_MANAGED_TEST__: managed,
@@ -26,7 +27,7 @@ async function simulateDesktop(page: Page, managed = false) {
           if (command === "plugin:os|locale") return "en-US";
           if (command === "plugin:event|listen") return 1;
           if (command === "fixture_bridge_handshake") throw new Error("Fixture bridge disabled");
-          if (managed && command === "offline_account") return { name: "desktop-user", id: "local-preview-account" };
+          if (managed && command === "offline_account") return { name: "desktop-user", id: previewAccountId };
           if (managed && command === "client_settings") {
             const { request } = args as { request: { operation: string } };
             if (request.operation === "connections/list") return {
@@ -43,7 +44,7 @@ async function simulateDesktop(page: Page, managed = false) {
         },
       },
     });
-  }, managed);
+  }, { managed, previewAccountId });
 }
 
 for (const width of [700, 1440]) {
@@ -221,19 +222,33 @@ test("General and Host share a fixed dialog with scrollable content in a short w
   await page.setViewportSize({ width: 680, height: 360 });
   await simulateDesktop(page, true);
   await page.goto("/");
-  await page.getByRole("button", { name: "Account menu" }).click();
+  const accountMenu = page.getByRole("button", { name: "Account menu" });
+  await accountMenu.click();
   const account = page.getByRole("region", { name: "Local account" });
   await expect(account.getByText("desktop-user")).toBeVisible();
-  await expect(page.getByText("local-preview-account")).toHaveCount(0);
+  await expect(page.getByText(previewAccountId).filter({ visible: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("account-menu.png") });
+  await account.getByRole("button", { name: /desktop-user.*Account details/ }).press("Enter");
+  const details = page.getByRole("dialog", { name: "Account details" });
+  await expect(details.getByText(previewAccountId)).toBeVisible();
+  await page.setViewportSize({ width: 360, height: 360 });
+  const copyId = details.getByRole("button", { name: "Copy local account ID" });
+  await expect(copyId).toBeInViewport({ ratio: 1 });
+  await expect(details).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: info.outputPath("account-details.png") });
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.getByRole("button", { name: "Copy local account ID" }).click();
-  await expect(page.locator(".account-popover").getByRole("status")).toHaveText("Copied");
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("local-preview-account");
+  await copyId.click();
+  await expect(details.getByRole("status")).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(previewAccountId);
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await expect(accountMenu).toBeFocused();
+  await page.setViewportSize({ width: 680, height: 360 });
+  await accountMenu.click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   const generalBounds = await settings.boundingBox();
-  await expect(settings.getByText("local-preview-account")).toHaveCount(0);
+  await expect(settings.getByText(previewAccountId)).toHaveCount(0);
   await settings.getByRole("combobox", { name: "Markdown theme" }).click();
   const options = settings.getByRole("listbox", { name: "Markdown theme" });
   const bounds = (await options.boundingBox())!;
