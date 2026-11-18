@@ -648,6 +648,16 @@ Codex 实施者按已授权职责接受这条只读组件边界及固定接线�
 
 本批 Coding −117、Harness +173、Hosting／其它生产0，系统生产 +56行；测试+4行、文档单列。增长包含全部固定配置、泛型及入口接线成本；收益是已有组件的读取族与入口归位，不宣称重复算法删除或系统净精简。自原 Goal 切点累计 Coding −7,467、Harness +10,315、系统生产 +2,848行；C07余12,799行，距多数退出仍差2,667行，目标不降低。逐文件当前行／SHA再次核对442份 Coding 源码，当前100,458行；Harness379,562／Hosting14,235／其它154,008，生产 Python 共648,263行。
 
+## POSIX 批准 Journal 作用域与已知状态识别
+
+独立后续候选基于 `9af1400a5`，不修改正在整体验证的上批 worktree。Codex 实施者在原授权内接受此局部边界：既有 Package Product native-release 模块中的 `_ProductRootedNativeApprovalRecords` 复用原 `RootedNativeApprovalRecords`，持有 current/change 的完整 GC、绑定根目录、currentness 与释放作用域。Coding 保留候选来源信任准入、原构造赋值、名义 approval/review/decision、codec 和错误政策。没有第二份 Journal、重放器或资源状态；Windows Journal 借用调用方 pinned root 的不同寿命保持。
+
+既有 `_linux_worker_history` 持有完整已知状态文件名识别及正则；Coding 保留原 matcher 入口、实际 repair 正则端口及 live history-proof 绑定。公开三项导出不变。识别旧名称不等于证明语义有效、物理不存在或获得删除权限。已审查23处显式引用和两处模块别名传递；动态 hasattr／故障注入仅针对原 native group 观察端口。删除无消费者私有别名还结合1,206组原／新语法对照、历史 pickle 与实际历史读取证据，不只依赖搜索无匹配；不承诺任意外部动态私有属性访问。
+
+真实后续 worktree 的既有批准／完整历史证明／状态准备组合229 passed（82.10秒），固定观察和期望未变；四源 mypy、Ruff、format 与 diff 检查通过。原批准 Journal 的10条旧 callable／惰性实例 pickle 路径及10次新往返、三项参数形状／原实例字段和属性访问通过；原 matcher／正则12条旧路径及12次新往返通过。后者验证真实 Harness 实现，不是只运行旧源码。惰性实例不证明活跃 Product 权限／lease 可序列化；泛型运行时注解与方法定义归属会变化。既有 journal IO、GC currentness、失败优先级与释放另由原固定探针覆盖，不将受控 Windows 端口当原生验证。
+
+本批 Coding −85、Harness +101、Hosting／其它生产0、系统生产 +16行；测试0、文档另计。Code DTO 字段不搬运，旧 Rooted IO 和 native-release 内核不重计收益。C07当前12,714行，自原 Goal 累计 Coding −7,552、Harness +10,416、系统 +2,864，多数退出仍差2,582行。全部442份 Coding 当前行／SHA重核为100,373行；Harness379,663／Hosting14,235／其它154,008，生产 Python 共648,279行。上批及本批尚待各自完整交付检查和 PR，不声明整组完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

@@ -19,7 +19,7 @@ from hashlib import sha256
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
+from typing import Any, ClassVar, Generic, Literal, Protocol, TypeVar, cast
 
 from loushang.harness.journal._io_loops import write_all
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
@@ -37,8 +37,10 @@ from loushang.harness.worker._linux_native_release import (
     _LinuxNativeReleaseVerifier,
 )
 from loushang.harness.worker.history._native_approval import (
+    RootedNativeApprovalRecords,
     _NativeApprovalMethods,
     _NativeDecisionMethods,
+    _valid_opaque,
 )
 from loushang.harness.worker.native_executable_format import (
     WorkerNativeExecutableFormatError,
@@ -685,4 +687,62 @@ class _LinuxWorkerNativeReleaseCustody(Generic[A, V, C, M, R]):
                     closure,
                     native_profile_catalog_revision=f"{closure.native_profile_catalog_revision}:g{decision.generation}",
                 ),
+            )
+
+
+_ApprovalDecisionT = TypeVar("_ApprovalDecisionT", bound=_NativeDecisionMethods)
+
+
+class _ProductRootedNativeApprovalRecords(
+    RootedNativeApprovalRecords[A, _ApprovalDecisionT]
+):
+    """Product GC scope over the original rooted approval journal operations."""
+
+    _product_owner: PosixLocalWheelProductSessionOwner
+    _approval_type: type[A]
+
+    @property
+    def product_owner(self) -> PosixLocalWheelProductSessionOwner:
+        return self._product_owner
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def current(self) -> _ApprovalDecisionT | None:
+        with (
+            self._product_owner.gc_gate.guard(),
+            self._bound_journal(read_only=True) as rooted,
+        ):
+            self._product_owner.assert_root_gc_authority_current()
+            events = self._load(rooted)
+            return events[-1] if events else None
+
+    def change(
+        self,
+        *,
+        operation_id: str,
+        expected_generation: int,
+        action: Literal["approve", "revoke"],
+        approval: A | None,
+    ) -> _ApprovalDecisionT:
+        if (
+            not _valid_opaque(operation_id)
+            or type(expected_generation) is not int
+            or expected_generation < 0
+            or (action not in {"approve", "revoke"})
+            or ((action == "approve") != isinstance(approval, self._approval_type))
+        ):
+            raise ValueError("Worker native approval command is invalid")
+        with (
+            self._product_owner.gc_gate.guard(require_write=True),
+            self._bound_journal() as rooted,
+        ):
+            self._product_owner.assert_root_gc_authority_current()
+            return self._change(
+                rooted,
+                operation_id=operation_id,
+                expected_generation=expected_generation,
+                action=action,
+                approval=approval,
             )
