@@ -50,7 +50,7 @@ def test_ai_readme_documents_curated_builtin_catalog_and_archive() -> None:
     assert "backup/ai/models-legacy-full.json.gz" in docs
     assert "model.upstream_id" in docs
     assert "ProviderRequest.upstream_model_id" not in docs
-    assert "kimi-k2.6" in docs
+    assert "kimi-k3.1-pro" in docs
 
 
 def test_stable_sdk_guides_cover_public_ai_paths_and_examples() -> None:

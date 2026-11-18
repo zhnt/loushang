@@ -31,7 +31,7 @@ from loushang.ai import (
 Choose a concrete model before invocation:
 
 ```python
-model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+model = get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 ```
 
 The tuple is always `provider:endpoint:model`. The selected `Model` already
@@ -216,7 +216,7 @@ credential source directly; it calls `get_auth(model)` and passes the result to
 the request before calling:
 
 ```python
-get_model("openai", "coding-responses", "gpt-5.5")
+get_model("openai", "coding-responses", "gpt-6.2-sol")
 ```
 
 See
@@ -227,13 +227,16 @@ See
 The built-in catalog is `src/loushang/ai/model/models.json`. Custom files use the
 same strict shape:
 
-`capabilities.reasoningEfforts` optionally lists provider-native effort values
-in display order. Missing means the supported levels are unknown; `[]` means
-the model has no adjustable effort setting. This metadata does not by itself
-enable an adapter to send effort parameters. A model's `defaults.reasoningEffort`,
-when present, must be in the declared list. `none` is included only when the
-provider accepts it as an effort value; some providers handle disabling reasoning
-through a separate setting.
+Unified reasoning strengths are `minimal`, `low`, `medium`, `high`, `xhigh`,
+and `max`. Leaving reasoning unspecified uses the catalog or provider default.
+Use `ReasoningOptions(enabled=False)` to turn reasoning off on a supported route.
+
+`capabilities.reasoningEfforts` lists provider-native values. Omission leaves
+the adjustable strengths unknown. `[]` declares no adjustable strength.
+Matching names map directly. Use `adapter.reasoningEffortMap` for different
+names and a native value for `defaults.reasoningEffort`. Set
+`capabilities.reasoningRequired: false` to declare verified Off support when
+the endpoint uses a separate control.
 
 For Kimi K3.1 Pro, Kimi API uses `kimi-k3.1-pro` (or
 `kimi-k3.1-pro-highspeed`) on `moonshot/openai-completions`. Kimi Code uses

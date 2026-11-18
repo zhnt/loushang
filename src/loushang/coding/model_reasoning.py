@@ -13,23 +13,12 @@ def reasoning_choices(session: object) -> tuple[str, ...]:
     return tuple(level for level in getter() if isinstance(level, str))
 
 
-def reasoning_choice_label(level: str) -> str:
-    return "default" if level == "off" else level
-
-
 def reasoning_description(session: object, level: str) -> str:
     details: list[str] = []
     if level == getattr(session, "thinking_level", None):
         details.append("current")
     model = getattr(session, "model", None)
     if isinstance(model, Model):
-        if level == "off" and model.capabilities.reasoning:
-            default = model.defaults.get("reasoningEffort")
-            details.append(
-                f"model default: {default}"
-                if isinstance(default, str)
-                else "provider default"
-            )
         native = native_reasoning_effort(model, level)
         if native is not None and native != level:
             details.append(f"API: {native}")
@@ -38,20 +27,13 @@ def reasoning_description(session: object, level: str) -> str:
 
 def effective_reasoning_label(session: object) -> str | None:
     level = getattr(session, "thinking_level", None)
-    if not isinstance(level, str):
-        return None
     model = getattr(session, "model", None)
-    if isinstance(model, Model):
-        if level == "off":
-            if not model.capabilities.reasoning:
-                return None
-            default = model.defaults.get("reasoningEffort")
-            return default if isinstance(default, str) else "default"
-        return native_reasoning_effort(model, level)
-    return level
+    if isinstance(model, Model) and model.capabilities.reasoning:
+        return level if isinstance(level, str) else "default"
+    return None
 
 
-async def select_reasoning_level(session: object, level: str) -> str:
+async def select_reasoning_level(session: object, level: str | None) -> str:
     setter = getattr(session, "set_thinking_level", None)
     if not callable(setter):
         raise RuntimeError("Reasoning selection is not available for this session")
@@ -61,7 +43,6 @@ async def select_reasoning_level(session: object, level: str) -> str:
 
 __all__ = [
     "effective_reasoning_label",
-    "reasoning_choice_label",
     "reasoning_choices",
     "reasoning_description",
     "select_reasoning_level",

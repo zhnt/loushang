@@ -118,7 +118,7 @@ async def _set_first_turn_title(session: AgentSession, question: str) -> None:
         isinstance(adapter, OpenAIResponsesConfig) and not adapter.max_output_tokens
     )
     available = session.get_available_thinking_levels()
-    level = next((item for item in ("minimal", "low") if item in available), "off")
+    level = next((item for item in ("minimal", "low") if item in available), None)
     child = Agent(
         initial_state={
             "system_prompt": _TITLE_PROMPT,

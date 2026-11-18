@@ -8,6 +8,7 @@ from typing import cast
 
 from loushang.agent import ThinkingLevel
 from loushang.ai.model import ModelSelection
+from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.commands import SessionCommandDescriptor
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.types import DiagnosticDraft
@@ -44,7 +45,7 @@ class ExtensionRuntimeBindingFactory:
     is_idle: Callable[[], bool]
     has_pending_messages: Callable[[], bool]
     get_context_usage: Callable[[], object | None]
-    get_thinking_level: Callable[[], ThinkingLevel]
+    get_thinking_level: Callable[[], ThinkingLevel | None]
     set_thinking_level: Callable[[ThinkingLevel], Awaitable[None]]
     register_provider: Callable[[str, object], None] | None
     unregister_provider: Callable[[str], None] | None
@@ -97,7 +98,7 @@ class ExtensionRuntimeBindingFactory:
             return self.list_commands()
 
         async def set_thinking_level(level: str) -> None:
-            if level not in {"off", "minimal", "low", "medium", "high", "xhigh"}:
+            if level not in THINKING_LEVELS:
                 raise ValueError(f"unsupported thinking level: {level}")
             await self.set_thinking_level(cast(ThinkingLevel, level))
 

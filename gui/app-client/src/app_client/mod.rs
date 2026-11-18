@@ -539,7 +539,7 @@ impl AppClient {
         timeout: Duration,
         request: WorkspaceRequest<'_>,
     ) -> Result<WorkspaceResult, ()> {
-        self.request_once(target, timeout, |channel, hello| {
+        self.request_once(target, timeout, false, |channel, hello| {
             if let WorkspaceRequest::Preview { instance, .. } = &request {
                 if *instance != hello.service_instance_id {
                     return Ok(WorkspaceResult::Rejected("instance_changed".into()));
@@ -555,20 +555,22 @@ impl AppClient {
         target: AppTarget<'_>,
         timeout: Duration,
         path: Option<&str>,
+        model_id: Option<&str>,
     ) -> Result<ModelControlResult, ()> {
-        self.request_once(target, timeout, |channel, _| {
-            let response = attachment::request(
-                channel,
-                "workspace/models",
-                "1",
-                serde_json::json!({"path": path}),
-            )?;
+        // A draft's model-specific preview needs the same reasoning
+        // negotiation as an attached session. The plain catalog stays legacy-compatible.
+        self.request_once(target, timeout, model_id.is_some(), |channel, _| {
+            let mut payload = serde_json::json!({"path": path});
+            if let Some(id) = model_id {
+                payload["modelId"] = serde_json::json!(id);
+            }
+            let response = attachment::request(channel, "workspace/models", "1", payload)?;
             attachment::decode_model_result(&response.result_type, &response.result)
         })
     }
 
     pub fn instance(&self, target: AppTarget<'_>, timeout: Duration) -> Result<String, ()> {
-        self.request_once(target, timeout, |_, hello| {
+        self.request_once(target, timeout, false, |_, hello| {
             Ok(hello.service_instance_id.clone())
         })
     }
@@ -578,7 +580,7 @@ impl AppClient {
         target: AppTarget<'_>,
         timeout: Duration,
     ) -> Result<Vec<serde_json::Value>, ()> {
-        self.request_once(target, timeout, |channel, _| {
+        self.request_once(target, timeout, false, |channel, _| {
             let response = attachment::request(channel, "mux/list", "1", serde_json::json!({}))?;
             if response.result_type != "muxList" {
                 return Err(());
@@ -598,6 +600,7 @@ impl AppClient {
         &self,
         target: AppTarget<'_>,
         timeout: Duration,
+        request_thinking: bool,
         operation: impl FnOnce(
             &mut transport_auth::Channel<DeadlineStream, DeadlineStream>,
             &Hello,
@@ -607,7 +610,16 @@ impl AppClient {
         let attempt = self.0.begin()?;
         let (record, profile, address) = self.load_record(target)?;
         let (stream, _cancel, mut channel, hello) = open_channel(
-            self, &record, &profile, address, &deadline, None, None, &attempt, false, false,
+            self,
+            &record,
+            &profile,
+            address,
+            &deadline,
+            None,
+            None,
+            &attempt,
+            request_thinking,
+            false,
         )?;
         let result = operation(&mut channel, &hello);
         let _ = stream.shutdown(Shutdown::Both);

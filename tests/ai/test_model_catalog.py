@@ -44,10 +44,10 @@ def test_builtin_catalog_excludes_archived_legacy_providers() -> None:
 def test_builtin_catalog_includes_verified_curated_routes() -> None:
     registry = load_builtin_model_registry()
 
-    moonshot = registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
-    openai = registry.get_model("openai", "openai-responses", "gpt-5.5")
-    coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
-    anthropic = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-5")
+    moonshot = registry.get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
+    openai = registry.get_model("openai", "openai-responses", "gpt-6.2-sol")
+    coding = registry.get_model("openai", "coding-responses", "gpt-6.2-sol")
+    anthropic = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-5-5")
     qianfan = registry.get_model("baidu-qianfan", "openai-completions-cn", "ernie-5.1")
     stepfun = registry.get_model("stepfun", "openai-completions", "step-3.7-flash")
 
@@ -80,7 +80,7 @@ def test_builtin_catalog_marks_single_preferred_endpoint_per_provider() -> None:
 def test_builtin_catalog_models_expose_endpoint_context() -> None:
     registry = load_builtin_model_registry()
 
-    model = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
+    model = registry.get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 
     assert model.api == "openai-completions"
     assert model.region is None
@@ -117,13 +117,13 @@ def test_provider_compaction_is_scoped_to_verified_openai_responses_models() -> 
 
     assert (
         registry.get_model(
-            "openai", "openai-responses", "gpt-6-astra"
+            "openai", "openai-responses", "gpt-6.2-astra"
         ).provider_compaction
         == "openai-responses"
     )
     assert (
         registry.get_model(
-            "openai", "coding-responses", "gpt-6-astra"
+            "openai", "coding-responses", "gpt-6.2-astra"
         ).provider_compaction
         is None
     )

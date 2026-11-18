@@ -7,7 +7,7 @@ from typing import Any, cast
 import pytest
 
 import loushang.harness.session.bootstrap_construction as bootstrap_construction_module
-from loushang.ai.model import ModelSelection
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.harness.bootstrap import BootstrapActivationRuntime
 from loushang.harness.capabilities.tools import ToolSelection
@@ -300,10 +300,11 @@ def test_agent_product_construction_runtime_composes_existing_owners(
         "assemble_prompt",
         lambda **_kwargs: SimpleNamespace(system_prompt="assembled prompt"),
     )
+    model = Model(id="resolved-model")
     monkeypatch.setattr(
         bootstrap_construction_module,
         "resolve_session_model",
-        lambda *_args, **_kwargs: "resolved-model",
+        lambda *_args, **_kwargs: model,
     )
     monkeypatch.setattr(
         bootstrap_construction_module,
@@ -383,7 +384,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
     assert actions[0][0] == "diagnostics"
     assert actions[1][0] == "agent"
     assert actions[1][1]["initial_state"]["system_prompt"] == "assembled prompt"
-    assert actions[1][1]["initial_state"]["model"] == "resolved-model"
+    assert actions[1][1]["initial_state"]["model"] is model
     assert actions[2][0] == "scoped-models"
     assert disposed == []
 
@@ -477,7 +478,7 @@ def test_agent_product_construction_binding_compiles_research_policy(
     assert request.configuration.session_id == "research-session"
     assert request.configuration.cwd == "/research"
     assert request.default_system_prompt == "research default"
-    assert request.thinking_level == "medium"
+    assert request.thinking_level is None
     assert request.product_tool_pack_id == "research.registry"
     assert request.extension_tool_pack_id == "research.extensions"
     assert request.ports.prompt_section_composer == "research-prompts"

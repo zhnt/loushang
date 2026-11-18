@@ -243,7 +243,7 @@ def test_G11_CONTRACT_STRICT_request_round_trip(
                     True,
                 ),
             ),
-            SessionThinkingV1("high", ("low", "high")),
+            SessionThinkingV1(None, ("off", "minimal", "low", "medium", "high", "xhigh", "max")),
         ),
     ),
 )
@@ -352,11 +352,12 @@ def test_workspace_requests_roundtrip(action, path):
     assert decode_request(encode_request(request)) == request
 
 
-@pytest.mark.parametrize("path", [None, "/project", "C:/Workspace A"])
-def test_workspace_models_request_only_accepts_the_target_path(path):
-    request = AppRequestV1("request-1", AppOperationV1.WORKSPACE_MODELS, WorkspaceModelsRequestV1(path))
+@pytest.mark.parametrize("path, model_id", [(None, None), ("/project", "provider:endpoint:model"), ("C:/Workspace A", None)])
+def test_workspace_models_request_accepts_path_and_optional_model(path, model_id):
+    request = AppRequestV1("request-1", AppOperationV1.WORKSPACE_MODELS, WorkspaceModelsRequestV1(path, model_id))
     assert decode_request(encode_request(request)) == request
     wire = json.loads(encode_request(request))
+    assert ("modelId" in wire["payload"]) is (model_id is not None)
     wire["payload"]["attachmentId"] = "unrelated"
     with pytest.raises(InvalidAppMessageError):
         decode_request(json.dumps(wire).encode())

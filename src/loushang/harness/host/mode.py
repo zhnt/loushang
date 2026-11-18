@@ -39,7 +39,7 @@ class ModeState(TypedDict, total=False):
     """
 
     model: dict[str, object] | None
-    thinkingLevel: str
+    thinkingLevel: str | None
     isStreaming: bool
     isCompacting: bool
     steeringMode: str

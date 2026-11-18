@@ -16,10 +16,11 @@ from loushang.ai.auth.credentials import (
 )
 from loushang.ai.prepared_request import PreparedRequestCommitter, PreparedRequestLimits
 from loushang.ai.structured import StructuredOutputOptions
+from loushang.foundation.reasoning import REASONING_EFFORTS, ReasoningEffort
 
 PairingMode = Literal["strict", "repair"]
 
-ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
+ThinkingLevel = ReasoningEffort
 
 
 CacheRetention = Literal["none", "short", "long"]
@@ -28,7 +29,6 @@ CacheRetention = Literal["none", "short", "long"]
 ToolChoice = str | Mapping[str, object]
 
 _TOOL_CHOICE_STRINGS = frozenset({"auto", "none", "required", "any"})
-_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high", "xhigh"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +41,7 @@ class ReasoningOptions:
     def __post_init__(self) -> None:
         if self.enabled is not None and not isinstance(self.enabled, bool):
             raise TypeError("enabled must be a boolean or None")
-        if self.effort is not None and self.effort not in _THINKING_LEVELS:
+        if self.effort is not None and self.effort not in REASONING_EFFORTS:
             raise ValueError(f"Unsupported reasoning effort: {self.effort!r}")
         if self.budget_tokens is not None and (
             isinstance(self.budget_tokens, bool)

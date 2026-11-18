@@ -322,7 +322,7 @@ def _encode_thinking_selection(payload: object) -> JSONValue:
 
 def _decode_thinking_selection(value: JSONValue) -> ThinkingSelectionSnapshot:
     payload = _payload_object(value, name="thinking selection", fields={"level"})
-    return ThinkingSelectionSnapshot(level=_text(payload, "level"))
+    return ThinkingSelectionSnapshot(level=_optional_text(payload, "level"))
 
 
 def _encode_model_selection(payload: object) -> JSONValue:

@@ -47,7 +47,7 @@ class SessionModelPort(Protocol):
 
     async def cycle_model(self, direction: str = "forward") -> object | None: ...
 
-    async def set_thinking_level(self, level: ThinkingLevel) -> None: ...
+    async def set_thinking_level(self, level: ThinkingLevel | None) -> None: ...
 
     async def cycle_thinking_level(self) -> ThinkingLevel | None: ...
 
@@ -241,7 +241,7 @@ class SessionFacadeOptionalOperations:
     async def cycle_model(self, direction: str = "forward") -> object | None:
         return await self._require_model_selection().cycle_model(direction)
 
-    async def set_thinking_level(self, level: ThinkingLevel) -> None:
+    async def set_thinking_level(self, level: ThinkingLevel | None) -> None:
         await self._require_model_selection().set_thinking_level(level)
 
     async def cycle_thinking_level(self) -> ThinkingLevel | None:

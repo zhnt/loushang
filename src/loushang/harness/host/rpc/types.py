@@ -32,7 +32,7 @@ class RpcSessionState(TypedDict, total=False):
     sessionName: NotRequired[str]
     sessionFile: NotRequired[str]
     model: Required[RpcModel | None]
-    thinkingLevel: Required[str]
+    thinkingLevel: Required[str | None]
     isStreaming: Required[bool]
     isCompacting: Required[bool]
     steeringMode: Required[str | None]

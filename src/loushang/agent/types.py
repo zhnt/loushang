@@ -45,6 +45,7 @@ from loushang.ai.types import (
     Usage,
 )
 from loushang.foundation.json import JSONValue, require_json_value
+from loushang.foundation.reasoning import ThinkingLevel as ThinkingLevel
 
 TDetails = TypeVar("TDetails")
 
@@ -56,7 +57,6 @@ class _AfterToolCallDetailsUnset:
 _AFTER_TOOL_CALL_DETAILS_UNSET = _AfterToolCallDetailsUnset()
 
 ToolExecutionMode: TypeAlias = Literal["sequential", "parallel"]
-ThinkingLevel: TypeAlias = Literal["off", "minimal", "low", "medium", "high", "xhigh"]
 AgentToolCall: TypeAlias = ToolCall
 
 
@@ -625,7 +625,7 @@ class AgentState:
         self,
         system_prompt: str,
         model: Model,
-        thinking_level: ThinkingLevel,
+        thinking_level: ThinkingLevel | None,
         tools: list[AgentTool[Any]] | None = None,
         messages: list[AgentMessage] | None = None,
         is_streaming: bool = False,

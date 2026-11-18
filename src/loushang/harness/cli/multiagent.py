@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Never, TextIO
 
+from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.multiagent import (
     CollaborationRecipe,
     RecipeExecutionResult,
@@ -272,7 +273,7 @@ def _run_parser() -> _NoExitParser:
     )
     parser.add_argument(
         "--thinking",
-        choices=("off", "minimal", "low", "medium", "high", "xhigh"),
+        choices=THINKING_LEVELS,
     )
     parser.add_argument(
         "--agent",
