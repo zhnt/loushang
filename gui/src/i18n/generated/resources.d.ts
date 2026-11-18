@@ -157,7 +157,7 @@ export default interface Resources {
     },
     "header": {
       "actions": "Session actions",
-      "bottomHint": "Bottom panel unavailable in this fixture",
+      "bottomHint": "The bottom panel is not available yet",
       "bottomUnavailable": "Bottom panel unavailable",
       "openDock": "Open Work Dock",
       "share": "⇧ Share",
@@ -225,6 +225,7 @@ export default interface Resources {
         "unavailable": "Current candidate unavailable. Read it again before deciding."
       },
       "revision": "Revision",
+      "shortcut": "Goal",
       "target": "Goal target",
       "title": "Development goal",
       "unavailable": "Goal status is unavailable.",

@@ -517,9 +517,10 @@ and Subagents. The Session header spans both the conversation and right-panel
 columns, so opening a panel or collapsing the sidebar does not pull its controls
 away from the window's right edge. Only the body reserves right-panel width;
 narrow layouts stack that panel below the conversation. The right panel hosts
-Tasks/Subagents/Review; the bottom-panel
-button is explicitly unavailable. Native drag, resize, maximize/restore, keyboard
-focus and scaled layout still require Windows acceptance.
+Tasks/Subagents/Review. When the Session supports interactive Goals, the
+composer's Goal button opens the Goal controls in Tasks. The bottom-panel button
+is disabled. Native drag, resize, maximize/restore, keyboard focus and scaled
+layout still require Windows acceptance.
 
 This slice is not yet fully accepted. Automated coverage includes Workspace and
 draft isolation, Task/Activity progression, Task/AgentRun navigation, Quick Look

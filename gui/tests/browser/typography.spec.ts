@@ -135,6 +135,11 @@ for (const sample of [
       await writeFile(info.outputPath("fallback-fonts.json"), JSON.stringify(fallbackFonts, null, 2));
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(680);
       expect(fontRequests).toEqual([]);
+      await page.locator(".brand-actions .frame-icon").click();
+      const goal = page.locator(".composer-goal");
+      await goal.click();
+      await expect(goal).toHaveAttribute("aria-expanded", "true");
+      await expect(page.locator(".interactive-goal")).toBeInViewport();
     } finally {
       await context.close();
     }

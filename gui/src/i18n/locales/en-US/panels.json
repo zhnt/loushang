@@ -50,6 +50,7 @@
       "unconfirmed": "Goal command {{id}} is not yet confirmed."
     },
     "title": "Development goal",
+    "shortcut": "Goal",
     "open": "Create development goal",
     "target": "Goal target",
     "create": "Create goal",
@@ -151,7 +152,7 @@
     "shareUnavailable": "Share unavailable",
     "share": "⇧ Share",
     "bottomUnavailable": "Bottom panel unavailable",
-    "bottomHint": "Bottom panel unavailable in this fixture",
+    "bottomHint": "The bottom panel is not available yet",
     "openDock": "Open Work Dock",
     "toggleDock": "Toggle right panel"
   },

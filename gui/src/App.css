@@ -142,6 +142,7 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .conversation-pane { --chat-width: 760px; position: relative; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; background: var(--paper); }
 .conversation-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); }
 .session-heading { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.session-heading > .ui-icon { color: var(--muted); }
 .session-heading > div { min-width: 0; }
 .session-heading h1 { margin: 0; overflow: hidden; color: var(--ink); font-size: 14px; font-weight: 600; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
 .session-heading p { margin: 2px 0 0; color: var(--faint); font-size: 12px; }
@@ -337,6 +338,8 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .composer-permissions { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .composer-permissions .icon-button { flex: 0 0 25px; }
 .composer-permissions .permission-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-goal { min-height: 30px; padding: 4px 8px; border: 0; border-radius: 6px; color: var(--ink-secondary); background: transparent; font-size: var(--font-size-small); white-space: nowrap; }
+.composer-goal[aria-expanded="true"] { color: var(--ink); background: var(--control-hover); }
 .model-picker { justify-self: end; min-width: 0; max-width: 100%; }
 .model-trigger { display: flex; align-items: center; gap: 8px; min-height: 30px; max-width: 100%; padding: 4px 8px 4px 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 13px; line-height: 18px; font-weight: 600; }
 .model-current-label { display: flex; align-items: center; gap: 6px; min-width: 0; }

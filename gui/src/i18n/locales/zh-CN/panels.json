@@ -50,6 +50,7 @@
       "unconfirmed": "目标命令 {{id}} 尚未确认。"
     },
     "title": "开发目标",
+    "shortcut": "目标",
     "open": "创建开发目标",
     "target": "目标内容",
     "create": "创建目标",
@@ -151,7 +152,7 @@
     "shareUnavailable": "分享不可用",
     "share": "⇧ 分享",
     "bottomUnavailable": "底部面板不可用",
-    "bottomHint": "当前测试模式不支持底部面板",
+    "bottomHint": "底部面板暂不可用",
     "openDock": "打开工作面板",
     "toggleDock": "切换右侧面板"
   },

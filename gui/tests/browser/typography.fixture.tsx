@@ -21,6 +21,7 @@ async function mount() {
   const sameText = "中文与 English 混排，Version 2.0 和数字 128 清晰易读。";
   const session = {
     ...seed.sessions[0], id: "mixed", title, status: "idle" as const, run: null, changeSet: null,
+    supportsInteractiveGoal: true as const,
     messages: [
       { id: "prompt", role: "user" as const, phase: "complete" as const, content: sameText },
       { id: "reply", role: "assistant" as const, phase: "complete" as const,
@@ -39,6 +40,10 @@ async function mount() {
     submitText: async ({ submissionId }) => ({ accepted: false, submissionId }),
     interrupt: async () => ({ accepted: false }),
     sessionModels: async () => models,
+    createInteractiveGoal: async () => null,
+    interactiveGoalStatus: async () => ({
+      availability: "ready", goalId: null, status: null, revision: null, epoch: null, executionUnresolved: null,
+    }),
   };
   const navigation: ManagedProjectNavigation = {
     hostKey: "typography", available: true, pending: false, error: false, folderInput: false,
