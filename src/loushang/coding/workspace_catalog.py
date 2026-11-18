@@ -189,7 +189,7 @@ class CodingWorkspaceCatalog(
     async def _open_workspace_candidate(
         self, catalog: CodingHostedSessionCatalogV1, reference
     ):
-        if sys.platform == "win32":
+        if sys.platform in {"win32", "darwin"}:
             return await catalog.open_candidate(reference)
         return await catalog.open_history_candidate(
             reference, max_bytes=_MAX_TRANSCRIPT_BYTES
