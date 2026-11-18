@@ -13,9 +13,8 @@ NotifyAccess=main
 WorkingDirectory=%h
 RuntimeDirectory=loushang-host
 RuntimeDirectoryMode=0700
-StateDirectory=loushang-host
-StateDirectoryMode=0700
-ExecStart=%h/.local/bin/loushang-mux --connection-root "%t/loushang-host/connections" --endpoint workspace serve --systemd --workspace "%h" --application-root "%S/loushang-host/application" --cwd-sessions "%h/.loushang/data/workspace-sessions" --home-sessions "%h/.loushang/data/sessions"
+Environment=LOUSHANG_RUNTIME_DIR=%t/loushang-host
+ExecStart=%h/.local/bin/loushang-mux service run
 KillMode=mixed
 TimeoutStartSec=75s
 TimeoutStopSec=40s

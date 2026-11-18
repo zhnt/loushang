@@ -131,6 +131,32 @@ beforeEach(() => {
 });
 
 describe("local managed Host presentation", () => {
+  it("finishes connecting when navigation fails and clears the warning after recovery", async () => {
+    installMock(async (command) => {
+      if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
+      if (command === "environment") return { supported: true, workspace: "/workspace" };
+      return { state: "running", errorCode: null, instanceId: "instance-1" };
+    });
+    const implementation = native.invoke.getMockImplementation()!;
+    let failed = true;
+    native.invoke.mockImplementation(async (command, args) => {
+      if (failed && args?.request?.request?.action === "navigation") throw new Error("operation_unavailable");
+      return implementation(command, args);
+    });
+    render(<LocalHostGate />);
+    await screen.findByText("Unable to open this workspace.");
+    const projection = () => {
+      const calls = native.invoke.mock.calls.filter(([name]) => name === "sync_tray");
+      return calls[calls.length - 1]?.[1].projection;
+    };
+    await waitFor(() => {
+      expect(projection()?.currentLabel).toBeDefined();
+      expect(projection().currentLabel).not.toContain("Connecting");
+    });
+    failed = false;
+    await waitFor(() => expect(screen.queryByText("Unable to open this workspace.")).toBeNull(), { timeout: 5000 });
+  });
+
   it("does not query the Web Host directory while selecting a direct native connection", async () => {
     native.available.mockResolvedValueOnce(true);
     render(<LocalHostGate />);
