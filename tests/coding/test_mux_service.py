@@ -79,4 +79,3 @@ def test_systemd_status_uses_the_published_managed_connection_root(tmp_path, mon
     from loushang.coding.managed_service import ServiceControlError
     with pytest.raises(ServiceControlError, match="management_unavailable"):
         mux_service._systemd_state()
-
