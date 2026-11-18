@@ -15,6 +15,11 @@ interface ComposerProps {
   readonly notice?: ReactNode;
 }
 
+function resizeEditor(input: HTMLTextAreaElement) {
+  input.style.height = "auto";
+  input.style.height = `${input.scrollHeight}px`;
+}
+
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
   buttonDisabled, fixture, model, notice, submitLabel }: ComposerProps) {
   const { t } = useTranslation("session");
@@ -22,17 +27,32 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
   const composing = useRef(false);
   useLayoutEffect(() => {
     const input = editor.current;
-    if (!input) return;
-    const resize = () => {
-      input.style.height = "auto";
-      input.style.height = `${input.scrollHeight}px`;
-    };
-    resize();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(resize);
-    if (input.parentElement) observer.observe(input.parentElement);
-    return () => observer.disconnect();
+    if (input) resizeEditor(input);
   }, [text]);
+  useLayoutEffect(() => {
+    const input = editor.current;
+    const composer = input?.parentElement;
+    if (!input || !composer || typeof ResizeObserver === "undefined") return;
+    let width: number | undefined;
+    let frame: number | undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      const nextWidth = entry?.contentRect.width;
+      // The editor changes the composer's height. Only width can rewrap the draft.
+      if (nextWidth === undefined || nextWidth === width) return;
+      width = nextWidth;
+      if (frame !== undefined) return;
+      // Set height outside observer delivery so reflow cannot feed back in this frame.
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        resizeEditor(input);
+      });
+    });
+    observer.observe(composer);
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, []);
   return (
     <form className="composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
       <label className="visually-hidden" htmlFor="message-input">{t("composer.messageFor", { title })}</label>

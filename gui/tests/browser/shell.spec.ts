@@ -284,3 +284,29 @@ test("composer keeps controls aligned and uses Enter to send at a narrow width",
   await expect(input).toHaveValue("");
   await expect(page.getByRole("article", { name: "user message" }).filter({ hasText: "First line Second line" })).toBeVisible();
 });
+
+test("composer rewraps a draft when its parent narrows without a resize observer loop", async ({ page }) => {
+  const resizeErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    if (error.message.includes("ResizeObserver")) resizeErrors.push(error.message);
+  });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+  await page.getByRole("button", { name: "Operational ontology · Idle" }).click();
+  const input = page.locator("#message-input");
+  const height = () => input.evaluate((element) => element.clientHeight);
+  const empty = await height();
+  const draft = "The composer needs enough room for a draft with wrapped lines. ".repeat(9);
+  await input.fill(draft);
+  await expect.poll(height).toBeGreaterThan(empty);
+  const wide = await height();
+  await page.setViewportSize({ width: 560, height: 900 });
+  await expect.poll(height).toBeGreaterThan(wide);
+  await expect(input).toHaveValue(draft);
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await expect.poll(height).toBe(wide);
+  await input.fill("");
+  await expect.poll(height).toBe(empty);
+  expect(resizeErrors).toEqual([]);
+});
