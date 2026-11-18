@@ -314,14 +314,12 @@ Linux evidence and the remaining graphical acceptance limits are recorded in
 The record root and Mux selection are parsed and retained by Rust; the WebView
 cannot provide or read them. Native admission still validates the private record
 directory and file before authentication. The published payload contains no
-attachment ID, controller generation or authentication key. Live snapshots are
-prepared with a default Session when the selected Mux is empty. The native
-adapter uses the authenticated record's admitted `cwd` scope (or its home scope
-when no workspace scope is published), asks AppHost to open a stable per-Mux
-continuity identity, and reattaches before publishing the snapshot. Existing
-members are retained; reconnecting does not append another default Session.
-New Session can also use this admitted context without an existing selection.
-See [default Session acceptance](tests/playback/default-session-acceptance.md).
+attachment ID, controller generation or authentication key. The window opens
+on the new conversation page, including when the Mux is empty. Opening that page from the sidebar or from a project keeps the draft
+in the GUI. Sending the first message creates the Session. The sidebar shows
+it when AppHost accepts the message. In direct native mode, creation without
+a source Session uses the authenticated record's admitted `cwd` scope or its
+home scope. Existing Mux members remain available in the sidebar.
 
 Live snapshots are
 visibly labelled as AppHost-controlled. Send and Interrupt use controller facts

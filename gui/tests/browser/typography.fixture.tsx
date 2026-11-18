@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { HarnessGui } from "../../src/App";
 import type { HarnessClientUiPort } from "../../src/client/model";
-import type { ManagedProjectNavigation, ProjectChat } from "../../src/client/projectDirectory";
+import { TEMPORARY_WORKSPACE, type ManagedProjectNavigation, type ProjectChat } from "../../src/client/projectDirectory";
 import { initializeI18n } from "../../src/i18n";
 import { createMockAppClient } from "../support/mockAppClient";
 
@@ -51,7 +51,7 @@ async function mount() {
       projects: [{ path: project, sessions: [chat("pinned", "置顶 · Pinned", true)] }],
       temporarySessions: temporary,
     },
-    selection: null,
+    selection: { workspace: TEMPORARY_WORKSPACE, id: session.id },
     openFolder: () => {}, closeFolder: () => {}, register: async () => false,
     createChat: async () => null, togglePin: () => {}, select: () => {},
   };

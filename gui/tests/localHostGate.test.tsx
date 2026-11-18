@@ -195,7 +195,7 @@ describe("local managed Host presentation", () => {
     expect(countActions("start")).toBe(0);
     click(projection().revision, "start");
     await waitFor(() => expect(projection()?.hosts[0]?.stop).toBe(true));
-    expect(projection().currentLabel).toContain("Connecting");
+    expect(projection().currentLabel).toContain("Connected");
     click(projection().revision, "stop");
     expect(await screen.findByRole("alertdialog")).toBeVisible();
     expect(within(screen.getByRole("alertdialog")).getByText("instance-1", { exact: true })).toBeVisible();
@@ -231,23 +231,28 @@ describe("local managed Host presentation", () => {
     expect(native.invoke).toHaveBeenCalledWith("client_settings", management("connect"));
     expect(countActions("start")).toBe(0);
     fireEvent.click(start);
-    await screen.findByLabelText("Draft");
+    await waitFor(() => expect(screen.getByRole("button", { name: "New Session" })).toBeEnabled());
     const hostInfo = within(settings.getByRole("region", { name: "Host information" }));
     expect(hostInfo.getByText("123")).toBeVisible();
     expect(hostInfo.getByText("instance-1", { exact: true })).toBeVisible();
     expect(hostInfo.getByText("service-1", { exact: true })).toBeVisible();
-    expect(native.create).toHaveBeenCalledTimes(1);
+    expect(native.create).not.toHaveBeenCalled();
     expect(native.invoke).toHaveBeenCalledWith("client_settings", management("start"));
   });
 
-  it("automatically enters a running Host without starting a process or opening Settings", async () => {
+  it("opens the new conversation page with existing chats and no attached conversation", async () => {
+    native.realShell = true;
     installMock(async (command) => {
       if (command === "offline_account") return null;
       if (command === "environment") return { supported: true, workspace: "/previous" };
       return { state: "running", errorCode: null, workspace: "/previous", instanceId: "instance-1" };
     });
     render(<StrictMode><LocalHostGate /></StrictMode>);
-    expect(await screen.findByLabelText("Draft")).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Project B chat" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("heading", { name: "What would you like to work on?" })).toBeVisible();
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    expect(native.create).not.toHaveBeenCalled();
+    expect(countActions("create-chat")).toBe(0);
     expect(native.invoke).toHaveBeenCalledWith("client_settings", management("connect", "/previous"));
     expect(countActions("start")).toBe(0);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -361,6 +366,7 @@ describe("local managed Host presentation", () => {
   it("confirms Host stop and preserves the mounted draft across stop and start", async () => {
     render(<LocalHostGate />);
     fireEvent.click(await openHostSettings().findByRole("button", { name: "Start and connect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Project A chat" }));
     const draft = await screen.findByLabelText("Draft");
     fireEvent.change(draft, { target: { value: "unsent work" } });
     (screen.getByRole("dialog") as HTMLDialogElement).open = false;
@@ -383,7 +389,7 @@ describe("local managed Host presentation", () => {
   it("keeps the open conversation connecting until the replacement Host publishes a snapshot", async () => {
     native.realShell = true;
     const seed = await createMockAppClient().snapshot();
-    const session = { ...seed.sessions[0], status: "running" as const };
+    const session = { ...seed.sessions[0], id: "a", status: "running" as const };
     const snapshot = (instance: string): ClientSnapshot => ({
       ...seed, sessions: [session], selectedSessionId: session.id, connection: "connected",
       source: { kind: "live", serviceInstanceId: instance, muxSpaceId: "mux", connectionEpoch: "1" },
@@ -414,7 +420,8 @@ describe("local managed Host presentation", () => {
     const { container } = render(<LocalHostGate />);
     const chip = () => container.querySelector(".connection-chip");
     await waitFor(() => expect(chip()).toHaveTextContent(/^Connected$/));
-    const editor = screen.getByRole("textbox", { name: /message/i });
+    fireEvent.click(await screen.findByRole("button", { name: "Project A chat" }));
+    const editor = await screen.findByRole("textbox", { name: /message/i });
     fireEvent.change(editor, { target: { value: "unsent during restart" } });
     const interrupt = screen.getByRole("button", { name: "Interrupt" });
     expect(interrupt).toBeEnabled();

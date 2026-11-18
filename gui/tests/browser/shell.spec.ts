@@ -191,20 +191,23 @@ test("desktop shell renders menus and Session history with a simulated native br
   expect(errors).toEqual([]);
 });
 
-test("offline startup keeps the message centered as the window and sidebar resize", async ({ page }) => {
+test("offline startup keeps the new conversation centered and editable on resize", async ({ page }) => {
   await page.setViewportSize({ width: 560, height: 420 });
   await simulateDesktop(page, true);
   await page.goto("/");
-  const notice = page.getByText("No AppHost is connected. Manage the local AppHost in Settings.");
-  await expect(notice).toBeVisible();
-  const workspace = page.locator(".app-shell");
+  const welcome = page.getByRole("heading", { name: "What would you like to work on?" });
+  const workspace = page.getByLabel("Session transcript").locator(".transcript-content");
+  const input = page.getByRole("textbox", { name: "Message for New Session" });
+  await expect(welcome).toBeVisible();
+  await input.fill("Saved while offline");
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
   const sidebar = page.locator(".sidebar-container:not([hidden]), .collapsed-rail");
   async function expectCentered() {
-    const [shell, rail, message] = await Promise.all([
-      workspace.boundingBox(), sidebar.boundingBox(), notice.boundingBox(),
-    ]);
-    expect(message!.x + message!.width / 2).toBeCloseTo((rail!.x + rail!.width + shell!.x + shell!.width) / 2, 0);
-    expect(message!.y + message!.height / 2).toBeCloseTo(shell!.y + shell!.height / 2, 0);
+    const [transcript, heading] = await Promise.all([workspace.boundingBox(), welcome.boundingBox()]);
+    expect(heading!.x + heading!.width / 2).toBeCloseTo(transcript!.x + transcript!.width / 2, 0);
+    expect(heading!.y + heading!.height / 2).toBeCloseTo(transcript!.y + transcript!.height / 2, 0);
+    await expect(input).toHaveValue("Saved while offline");
+    await expect(input).toBeInViewport({ ratio: 1 });
   }
   for (const width of [560, 760, 761, 1024, 1440, 1920]) {
     await page.setViewportSize({ width, height: width < 800 ? 420 : 900 });
