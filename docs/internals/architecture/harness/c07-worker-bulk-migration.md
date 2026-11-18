@@ -692,6 +692,18 @@ C07 归因与上述全局变化之间的同期主线差额为 Coding +1,495、Ha
 
 本批 C07 −39、相关 C09 Coding +4，全部 Coding 净 −35；Harness +58、Hosting／其它生产0，系统生产 +23行，测试0、文档另计。112份 C07实物余12,675行，但相关额外4行适配同时计入本 Goal，等效剩余12,679行；累计 Coding净 −7,587、Harness +10,474、系统 +2,887，多数退出仍差2,547行，不把适配挪出清单作为收益。442份 Coding当前行／SHA全部重核为100,338行；Harness379,721／Hosting14,235／其它154,008，生产 Python共648,302行。当前候选未交付，原 Goal不关闭。
 
+## Prepared Worker Profile 直接复用候选
+
+在独立分支复用现有 `_PreparedWorkerProviderMethods`，将原私有原生交接函数作为其 `_prepare_native` 操作，直接使用既有 release/error/prefix/fingerprint Profile 与具体 `Self` 构造。两个真实 Pending Host 调用方直接接入，删除两份重复实参、无消费者的 `_PreparedFactory` Protocol 及三个 TypeVar；没有新增 Owner、Protocol、实例状态或转发层。原生执行内核本来已在 Harness，本次不重计其整段为新迁移收益。
+
+四项 Profile 在首次 await 前快照，之后保留原 try／handoff／失败释放流程；规范化源对照仅替换配置绑定与具体类构造后，内核执行体 AST 一致。两平台 Code Host 的字段、slots、构造、prepare 参数／返回和文档保持。5个既有交接／取消／原生交接前失败用例通过；仅将探针入口移至实际既有 owner，所有断言、参数化及场景不改，不新增门禁。三源 mypy、Ruff、format、diff 检查通过。
+
+原实现的12条惰性公开值／绑定入口 protocol4/5 pickle 路径及12次新往返、字节、全部 dataclass 字段与元数据、slots、MRO、公开签名和导出一致。它们不是活动 Product／lease 或原生平台序列化证明。原私有自由函数只有两平台调用和该探针使用；真实 Session 保存的是 Code Host.prepare，必要公开 pickle 不引用旧私有函数。不承诺任意外部私有 helper-global pickle 或私有导入别名的重绑定时点。
+
+本切片 Coding −16、Harness −20、Hosting／其它生产0，系统 Python 生产净减少36行；测试 +4，文档单列。相对已交付 main `19ab72fd5`，连同退休／C5候选合计 Coding −58、Harness +62、系统 +4。当前 C07 原文件12,652行，邻组适配4行全计入，有效剩余12,656行，归因退出7,610行；多数目标还差2,524行。局部验证已通过，完整 change-aware 检查及交付尚待完成，不据这次去重关闭整组。
+
+整个 Python 生产代码从原 Goal 切点到本工作树为 Coding 106,430→100,315（−6,115）、Harness 369,178→379,725（+10,547）、Hosting +32、其它 Python 生产 +1,808，总量642,011→648,283（+6,272）。其中 C07 任务归因系统 +2,868，同期其它主线差额 +3,404；GUI 前端／Rust 等其它语言不在该 Python 表内。上节表保留上一个组合切点，不当成本切片当前总量。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

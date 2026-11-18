@@ -3,7 +3,7 @@
 本轮 C09 最新审计与候选实现见 [C09 收敛记录](c09-legacy-convergence.md)。
 C09 上轮由 PR #892/#893 合并交付时为34文件、7,624行；本组合候选因 C07 名义回执接线增加4行，当前7,628行，这4行计入 C07 适配成本，详见收敛记录。
 C07 上轮通过 PR #894/#895 交付时为112文件、20,266行，Coding −267、Harness +309、生产系统 +42；历史验证与限制见 [C07 收敛记录](c07-worker-convergence.md)。
-本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；PR #903/#904 和 #905/#906 已交付至 main `19ab72fd5`，C07 为112文件、12,714行。退休入口与 C5 恢复资格两批在独立工作树组合验证，合计 Coding −42、Harness +82、系统 Python 生产 +40；当前 C07 原文件12,668行，加邻组名义回执适配4行，有效剩余12,672行。归属于 C07 的累计 Coding −7,594、Harness +10,498、系统 +2,904，多数退出仍差2,540行。同期其它主线变化分开核账；组合候选尚未交付，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
+本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；PR #903/#904 和 #905/#906 已交付至 main `19ab72fd5`，C07 为112文件、12,714行。退休入口、C5恢复资格及 Provider Profile 复用三个本地切片相对该 main 合计 Coding −58、Harness +62、系统 Python 生产 +4；当前 C07 原文件12,652行，加邻组名义回执适配4行，有效剩余12,656行。C07 归因累计 Coding −7,610、Harness +10,478、系统 +2,868，多数退出仍差2,524行。同期其它主线变化分开核账；本地候选尚未完整交付，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
 
 
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
@@ -380,7 +380,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_ordinary_bootstrap.py](../../../../src/loushang/coding/package_product_worker_ordinary_bootstrap.py) | C07 | 312 | M | C07 插件 Worker 执行/持久化/恢复 | 7d97151fe500 | 265 | d33796ff12d6 |
 | [package_product_worker_ordinary_error.py](../../../../src/loushang/coding/package_product_worker_ordinary_error.py) | C07 | 12 | M | C07 插件 Worker 执行/持久化/恢复 | 69d14f793272 | 12 | 69d14f793272 |
 | [package_product_worker_payload.py](../../../../src/loushang/coding/package_product_worker_payload.py) | C07 | 2,360 | M | 完整载荷／规划／绑定及三种修复入口直接归原POSIX custody；保原名义DTO、值约束和固定产品Profile | 331b1fd4706a | 319 | fb90e24bf8ee |
-| [package_product_worker_pending_host.py](../../../../src/loushang/coding/package_product_worker_pending_host.py) | C07 | 473 | M | C07 插件 Worker 执行/持久化/恢复 | 08074e856b21 | 187 | 756ffa0fb297 |
+| [package_product_worker_pending_host.py](../../../../src/loushang/coding/package_product_worker_pending_host.py) | C07 | 473 | M | 复用PreparedWorkerProvider既有Profile并直调其共享原生交接方法；保名义Host、产品准入和平台输入接线 | 08074e856b21 | 179 | dc055730c136 |
 | [package_product_worker_policy.py](../../../../src/loushang/coding/package_product_worker_policy.py) | C07 | 335 | M | A160复用原RecordSchema字段遍历；保实际DTO及产品policy/准入，非整簇退出；A204中性facts基类无新存储，实际领域DTO与policy保Code | 1b9092a94b4f | 194 | 9176ca39e56f |
 | [package_product_worker_posix_gc_history.py](../../../../src/loushang/coding/package_product_worker_posix_gc_history.py) | C07 | 343 | M | C07 插件 Worker 执行/持久化/恢复 | 3e4710cfe431 | 60 | 565127c20648 |
 | [package_product_worker_provider.py](../../../../src/loushang/coding/package_product_worker_provider.py) | C07 | 288 | M | C07 插件 Worker 执行/持久化/恢复 | 33ebd66f42c1 | 165 | f9d3c9cddc51 |
@@ -436,7 +436,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_partial_stage_review.py](../../../../src/loushang/coding/package_product_worker_windows_partial_stage_review.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 8d715c51e57b | 146 | 20b47e8f118d |
 | [package_product_worker_windows_payload.py](../../../../src/loushang/coding/package_product_worker_windows_payload.py) | C07 | 726 | M | C07 插件 Worker 执行/持久化/恢复 | 3b269028908c | 170 | d1d0071cd2ed |
 | [package_product_worker_windows_payload_inventory.py](../../../../src/loushang/coding/package_product_worker_windows_payload_inventory.py) | C07 | 150 | M | C07 插件 Worker 执行/持久化/恢复 | 9464816cc608 | 86 | 7de98ea1fd47 |
-| [package_product_worker_windows_pending_host.py](../../../../src/loushang/coding/package_product_worker_windows_pending_host.py) | C07 | 593 | M | C5恢复资格只读检查归原WindowsActivationStateJournal；保名义Host、错误及惰性journal接线、Coding Provider/Session政策 | 543a2c4a6116 | 215 | 26fedb37f3dc |
+| [package_product_worker_windows_pending_host.py](../../../../src/loushang/coding/package_product_worker_windows_pending_host.py) | C07 | 593 | M | 复用PreparedWorkerProvider既有Profile并直调其共享原生交接方法；保名义Host、产品准入和平台输入接线；Windows C5检查仍由原Journal持有 | 543a2c4a6116 | 207 | 0d373ede6f84 |
 | [package_product_worker_windows_persisted_bases.py](../../../../src/loushang/coding/package_product_worker_windows_persisted_bases.py) | C07 | 315 | M | C07 插件 Worker 执行/持久化/恢复 | 28438d7a4fed | 195 | d0c09ff5dc8b |
 | [package_product_worker_windows_provisioning.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning.py) | C07 | 344 | M | 原 Harness ProvisioningAccess 持有准入/绑定/intent/CAS/恢复；保名义类、Product Profile及直接载荷 owner 接线 | 98ffbd480b88 | 116 | 4f692e01aa98 |
 | [package_product_worker_windows_provisioning_base.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning_base.py) | C07 | 410 | M | C07 插件 Worker 执行/持久化/恢复 | 0e8ef6cd61ab | 93 | fe3513dd7f00 |
@@ -544,7 +544,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-18：逐文件当前行／SHA和下表重新核对已交付 main `19ab72fd5` 加退休入口／C5 恢复资格组合候选，共442文件、100,331物理行；原审计列、历史批次数字与建议处置保留。旧C07汇总20,533行含本轮基线前已交付的267行差异，本轮收益仍从20,266行计算，不重复计入。同期主线其它 Coding 变化不计为 C07 成本或收益；邻组适配4行则完整计入。计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
+2026-11-18：逐文件当前行／SHA和下表重新核对已交付 main `19ab72fd5` 加退休入口／C5恢复资格／Provider Profile 复用候选，共442文件、100,315物理行；原审计列、历史批次数字与建议处置保留。旧C07汇总20,533行含本轮基线前已交付的267行差异，本轮收益仍从20,266行计算，不重复计入。同期主线其它 Coding 变化不计为 C07 成本或收益；邻组适配4行则完整计入。计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
 
 A215完整捕获资源族五源形状−111/+276/系统+165未采用，全部2063生产源保持A214
 实物SHA/行数；候选成本不进入下列当前列，公共字段与该族不据此成为最终领域下界。
@@ -570,7 +570,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,809 |
 | C05 | 6 | 3,417 |
 | C06 | 27 | 4,640 |
-| C07 | 112 | 12,668 |
+| C07 | 112 | 12,652 |
 | C08 | 31 | 6,593 |
 | C09 | 34 | 7,628 |
 | C10 | 12 | 5,185 |
@@ -592,7 +592,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 442 | 100,331 |
+| 合计 | 442 | 100,315 |
 
 A217计量口径：2063源账本661370含31份GUI测试/support4524行，生产2032源656846；
 Code108032/Harness367396/AppHost20629，系统本批raw+14，不作净减。
