@@ -134,10 +134,11 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .account-menu-compact .account-popover { left: 0; }
 .account-popover-profile { padding: 9px 10px 11px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .account-popover-profile strong { font-size: 13px; }
-.account-popover-profile dl { display: grid; gap: 4px; margin: 10px 0 0; color: var(--muted); font-size: 12px; }
-.account-popover-profile dd { margin: 0; color: var(--ink-secondary); }
 .account-popover button { display: flex; align-items: center; gap: 9px; width: 100%; margin-top: 4px; padding: 7px 9px; color: var(--ink); background: transparent; border: 0; border-radius: 6px; text-align: left; }
 .account-popover button:focus-visible { background: var(--control-hover); }
+.account-popover > .copy-action { display: flex; gap: 0; }
+.account-popover > .copy-action button { color: var(--ink-secondary); font-weight: var(--font-weight-normal); }
+.account-popover > .copy-action small { padding: 0 9px 4px; padding-inline-start: 36px; color: var(--muted); }
 
 .conversation-pane { --chat-width: 760px; position: relative; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; background: var(--paper); }
 .conversation-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); }
@@ -569,10 +570,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .goal-technical summary { cursor: pointer; color: var(--muted); }
 .copy-action { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
 
-
-.account-technical { margin-top: 6px; }
-.account-technical summary { color: var(--ink-secondary); font-size: 12px; cursor: pointer; }
-.account-technical .copy-action { margin-top: 6px; }
 
 .app-context-menu { position: fixed; z-index: 100; min-inline-size: 150px; max-inline-size: calc(100vw - 8px); padding: 4px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); color: var(--ink); box-shadow: 0 6px 20px #0002; font-size: var(--font-size-small); line-height: var(--line-height-ui); }
 .app-context-menu button { display: block; width: 100%; min-height: 32px; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: start; }
