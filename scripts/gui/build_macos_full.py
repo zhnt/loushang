@@ -141,7 +141,8 @@ def main() -> None:
     if destination.exists():
         parser.error(f"refusing to overwrite {destination}")
     with tempfile.TemporaryDirectory(prefix="loushang-macos-") as directory:
-        work = Path(directory)
+        # macOS tempfile paths can use /var while realpath uses /private/var.
+        work = Path(directory).resolve()
         config = work / "tauri-macos.json"
         config.write_text(json.dumps({"bundle": {"macOS": {"minimumSystemVersion": MINIMUM}}}))
         run("npm", "ci", cwd=ROOT / "gui")

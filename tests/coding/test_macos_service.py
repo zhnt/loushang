@@ -49,3 +49,9 @@ def test_launchd_refuses_other_writable_control_directory(tmp_path, monkeypatch)
     monkeypatch.setattr(macos_service, "_launchctl", lambda *_: pytest.fail("must not load an unsafe plist"))
     with pytest.raises(ServiceControlError, match="unsafe_state_directory"):
         macos_service.control_launchd_service("start", None)
+
+
+def test_launchd_stop_wait_does_not_accept_an_instance_replacement(monkeypatch):
+    monkeypatch.setattr(macos_service, "_launchctl", lambda *_: SimpleNamespace(returncode=0, stdout="\tpid = 22\n"))
+    with pytest.raises(ServiceControlError, match="instance_changed"):
+        macos_service._wait_for_exit("user/501/test", 11)

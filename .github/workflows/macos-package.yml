@@ -43,6 +43,13 @@ jobs:
           uv python install 3.11.15
           rustup toolchain install 1.98.1 --profile minimal
           rustup target add --toolchain 1.98.1 x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            gui/src-tauri -> target
+            gui/web -> target
+          key: macos12-intel
+          cache-on-failure: true
       - name: Build full installation package
         run: uv run --no-project --python 3.11 python scripts/gui/build_macos_full.py
       - name: Install and verify packaged applications

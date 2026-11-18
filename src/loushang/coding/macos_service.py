@@ -14,7 +14,7 @@ from pathlib import Path
 from time import monotonic, sleep
 
 from loushang.apphost.managed._files import ManagedStorageError, PrivateManagedDirectory
-from loushang.appserver.local import LocalAppClientConnectionV1
+from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1
 from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.machine_resources import prepare_private_directory_chain
@@ -35,13 +35,16 @@ def _identity(home: Path) -> tuple[str, str]:
     return label, f"user/{os.getuid()}/{label}"
 
 
-async def _probe(record_root: Path, instance: str) -> str:
+async def _probe(record_root: Path, instance: str, *, stop: bool = False) -> str:
     directory = LocalConnectionDirectoryV1(record_root)
     connection = LocalAppClientConnectionV1(
         directory, "workspace", timeout=2, expected_product_id="coding", expected_instance=instance,
+        mode=LocalConnectionModeV1.STOP if stop else LocalConnectionModeV1.APP,
     )
     try:
         await connection.start()
+        if stop:
+            return ""
         execution = connection.execution_client
         if execution is None:
             raise ServiceControlError("protocol_incompatible")
@@ -117,6 +120,19 @@ def _validate_state(state: Path) -> None:
         directory.close()
 
 
+def _wait_for_exit(target: str, pid: int) -> None:
+    deadline = monotonic() + 40
+    while monotonic() < deadline:
+        printed = _launchctl("print", target)
+        match = re.search(r"^\s*pid = ([0-9]+)\s*$", printed.stdout, re.MULTILINE)
+        if printed.returncode or match is None:
+            return
+        if int(match[1]) != pid:
+            raise ServiceControlError("instance_changed")
+        sleep(0.1)
+    raise ServiceControlError("stop_failed")
+
+
 def control_launchd_service(operation: str, expected: str | None) -> dict[str, object]:
     import fcntl
 
@@ -141,6 +157,14 @@ def control_launchd_service(operation: str, expected: str | None) -> dict[str, o
         if operation == "start" and previous["state"] == "running":
             return previous
         if operation in {"stop", "restart"} or previous["state"] == "exited":
+            if previous["state"] == "running":
+                # The protocol ack only accepts stop. launchd's subsequent exit
+                # observation proves the process completed application cleanup.
+                asyncio.run(_probe(home / "state/macos-host/connections", str(previous["instanceId"]), stop=True))
+                pid = previous.get("pid")
+                if type(pid) is not int:
+                    raise ServiceControlError("management_unavailable")
+                _wait_for_exit(target, pid)
             stopped = _launchctl("bootout", target)
             if stopped.returncode and previous["state"] != "not_running":
                 raise ServiceControlError("stop_failed")
