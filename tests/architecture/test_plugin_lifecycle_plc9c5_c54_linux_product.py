@@ -180,6 +180,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_windows_pending_host.py": {
         'loushang.harness.worker._ordinary_prepare',
         'loushang.harness.worker.capability_query',
+        'loushang.harness.worker.history._windows_product_journals',
         'loushang.harness.worker.product_activation',
     },
     CODING_ROOT / "package_product_worker_session_composition.py": {

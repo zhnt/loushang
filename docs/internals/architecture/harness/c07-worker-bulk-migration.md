@@ -666,7 +666,9 @@ Codex 实施者按已授权职责接受这条只读组件边界及固定接线�
 
 原函数与实际候选 helper 的1,540组逐事件对照一致，其中736组实际触发注入错误；覆盖构造、presence、保留读取、迭代、phase／比较故障及读取后替换 callable journal factory／错误类。既有 C5／激活回归83 passed、1 skipped，跳过项是原生 Windows backend review，未用模拟替代。两源 mypy、Ruff 和 format 通过；完整 change-aware 验证仍待执行，不新增或扩大门禁。
 
-本候选 Coding −7、Harness +24、Hosting／其它生产0，系统 Python 生产 +17；测试0，文档单列。这是残留机制归位，不是系统净精简，也不重计已共享的读取、折叠或 CAS 内核。上段 +17行仅为 C5 切片成本。当前组合工作树同时包含退休入口批次，合计 Coding −42、Harness +82、系统 +40；C07 原文件12,668行，加邻组回执适配4行，有效剩余12,672行，归因累计 Coding −7,594、Harness +10,498、系统 +2,904，多数退出仍差2,540行。独立退休冻结验证未被修改；整组及全部文件最终处置仍未验收。
+完整 Coding 回归4,307 passed／24 skipped／77 deselected（6,153.28秒）。Harness初轮6,355 passed／116 skipped／1 failed（1,562.55秒）；唯一失败是C54精确依赖库存未同步 Windows Pending Host 新增的 `_windows_product_journals` 导入。只向原表补记该实际 owner，原集合相等断言、用例和路线不改，完整C54文件复核7 passed（19.12秒）。其它选中检查尚未完成；本分支与 Provider／Receipt 注解修复合为后续串行完整候选，不将局部复核当作整组或完整 Harness 重跑成功。
+
+本候选 Coding −7、Harness +24、Hosting／其它生产0，系统 Python 生产 +17；测试 +1，文档单列。这是残留机制归位，不是系统净精简，也不重计已共享的读取、折叠或 CAS 内核。上段 +17行仅为 C5 切片成本。当前组合工作树同时包含退休入口批次，合计 Coding −42、Harness +82、系统 +40；C07 原文件12,668行，加邻组回执适配4行，有效剩余12,672行，归因累计 Coding −7,594、Harness +10,498、系统 +2,904，多数退出仍差2,540行。独立退休冻结验证未被修改；整组及全部文件最终处置仍未验收。
 
 以下另列从原 Goal 切点到本工作树的**整个 Python 生产代码**变化，包含同期其它 main 交付；不等于 C07 收益，也不含 GUI 前端／Rust 等其它语言：
 
