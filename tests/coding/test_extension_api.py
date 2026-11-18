@@ -142,7 +142,7 @@ def test_extension_api_runtime_actions_are_noop_before_binding() -> None:
     asyncio.run(api.set_model({"provider": "demo", "model_id": "model"}))
 
     assert api.get_session_name() is None
-    assert api.get_thinking_level() == "off"
+    assert api.get_thinking_level() is None
 
 
 def test_extension_api_exec_command_requires_runtime_binding() -> None:

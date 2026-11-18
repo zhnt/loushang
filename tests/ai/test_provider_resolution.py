@@ -166,7 +166,12 @@ def test_resolver_produces_authoritative_reasoning_state(
     )
 
     resolved = resolve_request_for_model(
-        _model(defaults=defaults),
+        _model(
+            defaults=defaults,
+            capabilities=Capabilities(
+                reasoning=True, reasoning_required=False, reasoning_efforts=("medium", "high")
+            ),
+        ),
         options=CallOptions(auth=ApiKeyAuth("token"), reasoning=reasoning),
         env={},
     )

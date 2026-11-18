@@ -7,7 +7,6 @@ from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     available_thinking_levels,
     load_builtin_model_registry,
-    native_reasoning_effort,
     preferred_thinking_level,
     validate_reasoning_request,
 )
@@ -19,8 +18,8 @@ from loushang.ai.provider import resolve_request_for_model
 @pytest.mark.parametrize(
     ("provider", "endpoint", "model_id", "default"),
     [
-        ("moonshot", "openai-completions", "kimi-k3.1-pro", "xhigh"),
-        ("moonshot", "openai-completions", "kimi-k3.1-pro-highspeed", "xhigh"),
+        ("moonshot", "openai-completions", "kimi-k3.1-pro", "max"),
+        ("moonshot", "openai-completions", "kimi-k3.1-pro-highspeed", "max"),
         ("kimi-code", "kimi-code-openai", "k3.1-pro", "high"),
         ("kimi-code", "kimi-code-openai", "k3.1-pro-highspeed", "high"),
         ("kimi-code", "kimi-code-anthropic", "k3.1-pro", "high"),
@@ -32,10 +31,9 @@ def test_k31_exposes_only_distinct_supported_levels_and_rejects_off(
 ) -> None:
     model = load_builtin_model_registry().get_model(provider, endpoint, model_id)
 
-    assert available_thinking_levels(model) == ("low", "high", "xhigh")
+    assert available_thinking_levels(model) == ("low", "high", "max")
     assert preferred_thinking_level(model) == default
-    assert native_reasoning_effort(model, "xhigh") == "max"
-    assert native_reasoning_effort(model, "medium") == "high"
+    assert "medium" not in available_thinking_levels(model)
 
     with pytest.raises(ValueError, match="requires reasoning"):
         resolve_request_for_model(
@@ -50,11 +48,11 @@ def test_k31_exposes_only_distinct_supported_levels_and_rejects_off(
         model,
         options=CallOptions(
             auth=ApiKeyAuth("secret"),
-            reasoning=ReasoningOptions(enabled=True, effort="xhigh"),
+            reasoning=ReasoningOptions(enabled=True, effort="max"),
         ),
     )
     assert request.reasoning_enabled is True
-    assert request.reasoning_effort == "xhigh"
+    assert request.reasoning_effort == "max"
     adapter = (
         AnthropicMessagesAdapter()
         if endpoint == "kimi-code-anthropic"
@@ -88,7 +86,7 @@ def test_known_effort_list_rejects_unsupported_generic_level() -> None:
             "off",
             "none",
         ),
-        ("zai", "openai-completions", "glm-5.3-flash", "xhigh", "max"),
+        ("zai", "openai-completions", "glm-5.3-flash", "max", "max"),
     ],
 )
 def test_current_chat_models_send_the_documented_effort(
@@ -127,3 +125,68 @@ def test_minimax_flash_sends_selected_effort_through_messages_adapter() -> None:
     payload = AnthropicMessagesAdapter().prepare_request(request).payload
     assert payload["thinking"] == {"type": "adaptive"}
     assert payload["output_config"] == {"effort": "low"}
+
+
+def test_openai_responses_sends_two_distinct_top_efforts() -> None:
+    from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
+
+    model = load_builtin_model_registry().get_model(
+        "openai", "openai-responses", "gpt-6.2-sol"
+    )
+    assert available_thinking_levels(model) == ("low", "medium", "high", "xhigh", "max")
+    for effort in ("xhigh", "max"):
+        request = resolve_request_for_model(
+            model,
+            options=CallOptions(
+                auth=ApiKeyAuth("secret"), reasoning=ReasoningOptions(effort=effort)
+            ),
+        )
+        payload = OpenAIResponsesAdapter().prepare_request(request).payload
+        assert payload["reasoning"]["effort"] == effort
+
+
+def test_custom_responses_mapping_chooses_one_level_per_native_value() -> None:
+    from dataclasses import replace
+
+    from loushang.ai.model import OpenAIResponsesConfig
+    from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
+
+    builtin = load_builtin_model_registry().get_model(
+        "openai", "openai-responses", "gpt-6-luna"
+    )
+    model = replace(
+        builtin,
+        capabilities=replace(
+            builtin.capabilities, reasoning_efforts=("none", "fast", "max")
+        ),
+        defaults={},
+        adapter=OpenAIResponsesConfig(
+            reasoning_effort_map={"low": "fast", "xhigh": "max"}
+        ),
+    )
+    assert available_thinking_levels(model) == ("off", "low", "max")
+    auth = ApiKeyAuth("secret")
+    adapter = OpenAIResponsesAdapter()
+    for request_options, expected in (
+        (CallOptions(auth=auth), None),
+        (
+            CallOptions(auth=auth, reasoning=ReasoningOptions(enabled=False)),
+            {"effort": "none"},
+        ),
+        (
+            CallOptions(auth=auth, reasoning=ReasoningOptions(effort="low")),
+            {"effort": "fast"},
+        ),
+    ):
+        request = resolve_request_for_model(model, options=request_options)
+        assert adapter.prepare_request(request).payload.get("reasoning") == expected
+
+    with pytest.raises(ValueError, match="Available levels: off, low, max"):
+        resolve_request_for_model(
+            model,
+            options=CallOptions(auth=auth, reasoning=ReasoningOptions(effort="xhigh")),
+        )
+    unknown = replace(
+        model, capabilities=replace(model.capabilities, reasoning_efforts=None)
+    )
+    assert available_thinking_levels(unknown) == ()

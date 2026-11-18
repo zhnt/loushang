@@ -809,7 +809,7 @@ def test_openai_completions_explicit_zai_thinking_object_format(
         )
     )
 
-    assert _FakeAsyncOpenAI.last_create_kwargs["thinking"] == {"type": "enabled"}
+    assert _FakeAsyncOpenAI.last_create_kwargs["extra_body"]["thinking"] == {"type": "enabled"}
     assert "enable_thinking" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "store" not in _FakeAsyncOpenAI.last_create_kwargs

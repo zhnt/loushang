@@ -119,6 +119,7 @@ def test_public_literal_and_union_types_are_defined() -> None:
         "medium",
         "high",
         "xhigh",
+        "max",
     }
     assert get_args(AgentMessage)
     assert get_args(AgentEvent)

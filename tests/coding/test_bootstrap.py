@@ -80,7 +80,7 @@ def _usage() -> Usage:
 
 def _assistant_message(text: str) -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",

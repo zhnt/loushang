@@ -324,11 +324,13 @@ export default interface Resources {
       "endpoint": "Endpoint: {{endpoint}}",
       "label": "Session model",
       "levels": {
+        "default": "Default",
         "high": "High",
         "low": "Low",
+        "max": "Maximum",
         "medium": "Medium",
         "minimal": "Minimal",
-        "off": "Default",
+        "off": "Off",
         "xhigh": "Extra high"
       },
       "loading": "Loading models…",

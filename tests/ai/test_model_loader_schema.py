@@ -151,6 +151,19 @@ def test_model_loader_rejects_invalid_reasoning_efforts(
         validate_model_registry_raw(raw)
 
 
+def test_model_loader_rejects_an_unsupported_inherited_effort() -> None:
+    capabilities = _capabilities()
+    capabilities.update(reasoning=True, reasoningEfforts=["low"])
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        endpoint_extra={"defaults": {"reasoningEffort": "high"}},
+        model_extra={"capabilities": capabilities},
+    )
+
+    with pytest.raises(ValueError, match="default reasoning effort must be supported"):
+        validate_model_registry_raw(raw)
+
+
 @pytest.mark.parametrize("required", [True, "true"])
 def test_model_loader_rejects_reasoning_required_without_reasoning(
     required: object,

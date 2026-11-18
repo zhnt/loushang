@@ -676,7 +676,7 @@ def test_rpc_mode_get_state_fills_stable_defaults_for_partial_state() -> None:
 
     state = _parse_jsonl(stdout)[0]["data"]
     assert state["model"] is None
-    assert state["thinkingLevel"] == "off"
+    assert state["thinkingLevel"] is None
     assert state["isStreaming"] is False
     assert state["isCompacting"] is False
     assert state["steeringMode"] == "one-at-a-time"

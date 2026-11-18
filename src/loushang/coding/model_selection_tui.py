@@ -6,7 +6,6 @@ import inspect
 from collections.abc import Callable
 
 from loushang.coding.model_reasoning import (
-    reasoning_choice_label,
     reasoning_choices,
     reasoning_description,
     select_reasoning_level,
@@ -15,13 +14,14 @@ from loushang.coding.model_selection import (
     apply_model_selection,
     persistence_warning_message,
 )
+from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harnesstui.selection.binding import select_session_model
 from loushang.harnesstui.selection.interaction import (
     ModelInteractionChooser as ModelPaletteChooser,
 )
 from loushang.tui import CommandPalette, CommandPaletteItem
 
-_REASONING_LEVELS = {"default", "off", "minimal", "low", "medium", "high", "xhigh"}
+_REASONING_LEVELS = (*THINKING_LEVELS, "default")
 
 
 async def select_available_model(
@@ -40,8 +40,6 @@ async def select_available_model(
     )
     if requested_level is not None:
         query = model_query
-        if requested_level == "default":
-            requested_level = "off"
 
     async def apply(selection: object) -> object:
         return await apply_model_selection(
@@ -63,15 +61,16 @@ async def select_available_model(
         return label
     levels = reasoning_choices(session)
     if requested_level is not None:
-        return f"{label} · {await select_reasoning_level(session, requested_level)}"
-    if choose is None or len(levels) <= 1:
+        level = None if requested_level == "default" else requested_level
+        return f"{label} · {await select_reasoning_level(session, level)}"
+    if choose is None or not levels:
         return label
     palette = CommandPalette(
         title="Select Reasoning",
         items=tuple(
             CommandPaletteItem(
                 value=level,
-                label=reasoning_choice_label(level),
+                label=level,
                 description=reasoning_description(session, level),
             )
             for level in levels

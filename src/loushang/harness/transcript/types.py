@@ -107,10 +107,11 @@ def _freeze_json_mapping(
 
 @dataclass(frozen=True)
 class ThinkingSelectionSnapshot:
-    level: str
+    level: str | None
 
     def __post_init__(self) -> None:
-        _require_text(self.level, name="thinking selection level")
+        if self.level is not None:
+            _require_text(self.level, name="thinking selection level")
 
 
 @dataclass(frozen=True)
@@ -332,7 +333,7 @@ AgentTranscriptRecord: TypeAlias = ConversationRecord[DecodedAgentTranscriptPayl
 @dataclass(frozen=True)
 class AgentTranscriptState:
     thinking_selection: ThinkingSelectionSnapshot = field(
-        default_factory=lambda: ThinkingSelectionSnapshot(level="off")
+        default_factory=lambda: ThinkingSelectionSnapshot(level=None)
     )
     model_selection: ModelSelectionSnapshot | None = None
     conversation_metadata: Mapping[str, JSONValue] = field(default_factory=dict)
@@ -378,7 +379,7 @@ class AgentTranscriptContext:
         return self.state.model_selection
 
     @property
-    def thinking_level(self) -> str:
+    def thinking_level(self) -> str | None:
         return self.state.thinking_selection.level
 
     @property

@@ -243,7 +243,8 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                             f"{model_path}.capabilities.reasoningEfforts"
                         )
                     default_effort = (model.get("defaults") or {}).get(
-                        "reasoningEffort"
+                        "reasoningEffort",
+                        (endpoint.get("defaults") or {}).get("reasoningEffort"),
                     )
                     if default_effort is not None and default_effort not in efforts:
                         raise ValueError(

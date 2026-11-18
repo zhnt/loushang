@@ -214,10 +214,14 @@ get_model("openai", "coding-responses", "gpt-6.2-sol")
 
 内置 catalog 是 `src/loushang/ai/model/models.json`。自定义文件使用同一严格形状：
 
-`capabilities.reasoningEfforts` 可选，按展示顺序列出服务商原生推理级别。缺省表示
-级别未知，`[]` 表示已确认没有可调节级别。该元数据本身不会使 adapter 自动传递
-推理参数。若声明 `defaults.reasoningEffort`，其值必须在列表中。仅当服务商将
-`none` 作为 effort 值接受时才列入；有些服务商用独立参数关闭推理。
+统一推理强度为 `minimal`、`low`、`medium`、`high`、`xhigh` 和 `max`。
+省略推理选项会使用目录或厂商默认行为。只有确认端点支持关闭时，才可显式传入
+`ReasoningOptions(enabled=False)`。
+
+`capabilities.reasoningEfforts` 声明厂商原生值。缺省表示可调档位未知，`[]`
+表示没有可调档位。同名强度直接对应，异名强度使用 `adapter.reasoningEffortMap`。
+`defaults.reasoningEffort` 使用原生值。对于通过独立参数关闭推理的端点，使用
+`capabilities.reasoningRequired: false` 声明确认可关闭。
 
 Kimi K3.1 Pro 在 Kimi API 的 `moonshot/openai-completions` 下使用
 `kimi-k3.1-pro`（高速版为 `kimi-k3.1-pro-highspeed`）；在 Kimi Code 的 OpenAI

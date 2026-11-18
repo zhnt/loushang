@@ -104,16 +104,12 @@
                   "low",
                   "high",
                   "max"
-                ]
+                ],
+                "reasoningRequired": false
               },
               "adapter": {
                 "reasoningFormat": "deepseek",
-                "reasoningEffort": true,
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "medium": "high",
-                  "xhigh": "max"
-                }
+                "reasoningEffort": true
               }
             }
           },
@@ -188,8 +184,7 @@
               "family": "qwen-plus",
               "alias": "qwen-balanced",
               "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
+                "maxOutputTokens": 32000
               },
               "capabilities": {
                 "contextWindow": 1000000,
@@ -205,7 +200,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningRequired": false
               },
               "pricing": {
                 "currency": "CNY",
@@ -249,6 +245,43 @@
                 "input": 0.8,
                 "output": 2.7,
                 "cacheRead": 0.1
+              }
+            },
+            "qwen3.8-max": {
+              "displayName": "Qwen3.8 Max",
+              "family": "qwen-max",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "xhigh"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "maxTokens": 131072,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "xhigh"
+                ]
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 12,
+                "output": 36,
+                "cacheRead": 1.5
               }
             }
           },
@@ -300,7 +333,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningRequired": false
               },
               "pricing": {
                 "currency": "USD",
@@ -332,7 +366,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningRequired": false
               },
               "pricing": {
                 "currency": "USD",
@@ -347,13 +382,6 @@
             "developerRole": false,
             "streamingUsage": true,
             "reasoningEffort": true,
-            "reasoningEffortMap": {
-              "low": "low",
-              "medium": "high",
-              "high": "high",
-              "xhigh": "max",
-              "minimal": "low"
-            },
             "strictSchema": true,
             "maxOutputTokensField": "max_tokens",
             "assistantReasoningContent": true,
@@ -401,7 +429,8 @@
                 "structuredOutput": false,
                 "attachment": false,
                 "temperature": false,
-                "reasoningEfforts": []
+                "reasoningEfforts": [],
+                "reasoningRequired": false
               },
               "adapter": {
                 "thinkingMode": "adaptive"
@@ -442,13 +471,7 @@
                 "reasoningRequired": true
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "low": "low",
-                  "medium": "medium",
-                  "high": "high",
-                  "xhigh": "xhigh"
-                }
+                "thinkingMode": "adaptive"
               },
               "defaults": {
                 "reasoningEffort": "max",
@@ -514,14 +537,7 @@
               "adapter": {
                 "reasoningEffort": true,
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
+                "reasoningFormat": "openai"
               },
               "alias": "default-chat"
             },
@@ -557,14 +573,7 @@
               "adapter": {
                 "reasoningEffort": true,
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
+                "reasoningFormat": "openai"
               },
               "alias": "default-coding"
             }
@@ -605,7 +614,8 @@
               "family": "kimi-coding",
               "alias": "balanced-coding",
               "defaults": {
-                "maxOutputTokens": 32768
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "max"
               },
               "capabilities": {
                 "contextWindow": 1048576,
@@ -626,12 +636,15 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": false
               },
               "adapter": {
                 "streamingUsage": false,
-                "reasoningEffort": false,
-                "strictSchema": true
+                "reasoningEffort": true,
+                "strictSchema": true,
+                "reasoningFormat": "openai",
+                "assistantReasoningContent": true
               }
             },
             "k3.1-pro": {
@@ -667,14 +680,7 @@
                 "reasoningEffort": true,
                 "maxOutputTokensField": "max_completion_tokens",
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
+                "reasoningFormat": "openai"
               },
               "alias": "default-coding"
             },
@@ -711,14 +717,7 @@
                 "reasoningEffort": true,
                 "maxOutputTokensField": "max_completion_tokens",
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
+                "reasoningFormat": "openai"
               }
             }
           },
@@ -742,7 +741,8 @@
               "family": "kimi-coding",
               "alias": "balanced-coding",
               "defaults": {
-                "maxOutputTokens": 32768
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "max"
               },
               "capabilities": {
                 "contextWindow": 1048576,
@@ -763,7 +763,11 @@
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": false
+              },
+              "adapter": {
+                "thinkingMode": "adaptive"
               }
             },
             "k3.1-pro": {
@@ -796,14 +800,7 @@
                 "reasoningRequired": true
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
+                "thinkingMode": "adaptive"
               },
               "alias": "default-coding"
             },
@@ -837,14 +834,7 @@
                 "reasoningRequired": true
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
+                "thinkingMode": "adaptive"
               }
             }
           },
@@ -1295,12 +1285,6 @@
             "developerRole": false,
             "streamingUsage": true,
             "reasoningEffort": true,
-            "reasoningEffortMap": {
-              "low": "low",
-              "medium": "medium",
-              "high": "high",
-              "xhigh": "high"
-            },
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens"
           }
@@ -1544,10 +1528,7 @@
             "developerRole": false,
             "reasoningEffort": true,
             "strictSchema": false,
-            "maxOutputTokensField": "max_tokens",
-            "reasoningEffortMap": {
-              "xhigh": "high"
-            }
+            "maxOutputTokensField": "max_tokens"
           }
         }
       }
@@ -1691,12 +1672,7 @@
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens",
             "assistantReasoningContent": true,
-            "reasoningFormat": "openai",
-            "reasoningEffortMap": {
-              "minimal": "low",
-              "medium": "high",
-              "xhigh": "max"
-            }
+            "reasoningFormat": "openai"
           }
         }
       }
@@ -1754,14 +1730,7 @@
                 "reasoningRequired": true
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "medium",
-                  "high": "high",
-                  "xhigh": "xhigh"
-                }
+                "thinkingMode": "adaptive"
               },
               "pricing": {
                 "currency": "USD",
@@ -1804,14 +1773,7 @@
                 "reasoningRequired": true
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "medium",
-                  "high": "high",
-                  "xhigh": "xhigh"
-                }
+                "thinkingMode": "adaptive"
               },
               "pricing": {
                 "currency": "USD",
@@ -1853,14 +1815,7 @@
                 "temperature": false
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "medium",
-                  "high": "high",
-                  "xhigh": "xhigh"
-                }
+                "thinkingMode": "adaptive"
               },
               "pricing": {
                 "currency": "USD",
@@ -1902,14 +1857,7 @@
                 "temperature": false
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "medium",
-                  "high": "high",
-                  "xhigh": "xhigh"
-                }
+                "thinkingMode": "adaptive"
               },
               "pricing": {
                 "currency": "USD",

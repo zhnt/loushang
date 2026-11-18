@@ -463,7 +463,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const selectModel = vi.fn(async (_sessionId: string, modelId: string, level?: ThinkingLevel): Promise<SessionModels> => ({
       ...models,
       currentId: modelId,
-      thinking: { currentLevel: level ?? "medium", availableLevels: ["off", "low", "medium", "high"] },
+      thinking: { currentLevel: level ?? null, availableLevels: ["off", "xhigh", "max"] },
     }));
     render(<HarnessGui client={{
       snapshot: async () => ({
@@ -497,18 +497,19 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ }));
     expect(selectModel).toHaveBeenCalledWith("session-gui", "provider-b:endpoint-b:shared-model");
     const effort = await screen.findByRole("menu", { name: "Reasoning effort" });
-    expect(within(effort).getByRole("menuitemradio", { name: "Medium" })).toBeChecked();
-    expect(within(effort).getByRole("menuitemradio", { name: "Default" })).toBeVisible();
-    await user.click(within(effort).getByRole("menuitemradio", { name: "High" }));
-    expect(selectModel).toHaveBeenLastCalledWith("session-gui", "provider-b:endpoint-b:shared-model", "high");
+    expect(selector).toHaveTextContent("Default");
+    expect(within(effort).getByRole("menuitemradio", { name: "Extra high" })).not.toBeChecked();
+    expect(within(effort).queryByRole("menuitemradio", { name: "Medium" })).not.toBeInTheDocument();
+    await user.click(within(effort).getByRole("menuitemradio", { name: "Maximum" }));
+    expect(selectModel).toHaveBeenLastCalledWith("session-gui", "provider-b:endpoint-b:shared-model", "max");
     expect(selector).toHaveTextContent("provider-b · shared-model");
-    expect(selector).toHaveTextContent("High");
+    expect(selector).toHaveTextContent("Maximum");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     await user.click(selector);
     await user.click(screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Default" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "Off" }));
     expect(selectModel).toHaveBeenLastCalledWith("session-gui", "provider-b:endpoint-b:shared-model", "off");
-    expect(selector).toHaveTextContent("Default");
+    expect(selector).toHaveTextContent("Off");
   });
 
   it.each(["empty", "failed"])("blocks sending while the model query is pending or %s", async (result) => {

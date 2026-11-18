@@ -89,6 +89,7 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
         ("dashscope", "openai-responses"): {
             "qwen3.7-plus",
             "qwen3.8-flash",
+            "qwen3.8-max",
             "qwen4-max",
         },
         ("deepseek", "openai-completions"): {"deepseek-flash", "deepseek-v4-pro"},
@@ -231,8 +232,6 @@ def test_kimi_k31_catalog_uses_distinct_api_ids_and_effort_defaults() -> None:
         assert code_openai.adapter.reasoning_format == "openai"
         assert isinstance(code_anthropic.adapter, AnthropicMessagesConfig)
         assert code_anthropic.adapter.thinking_mode == "adaptive"
-        assert code_anthropic.adapter.reasoning_effort_map["medium"] == "high"
-        assert code_anthropic.adapter.reasoning_effort_map["xhigh"] == "max"
 
 
 def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:

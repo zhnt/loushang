@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
-from loushang.ai.model import Model
+from loushang.ai.model import (
+    Model,
+    available_thinking_levels,
+    validate_reasoning_request,
+)
 from loushang.ai.model.selection import ModelSelection
 from loushang.harness.bootstrap import (
     StandardExtensionRuntime,
@@ -379,6 +383,19 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
                 on_default_unavailable=request.on_default_model_unavailable,
             )
 
+            level = request.thinking_level
+            if resolved_model is not None:
+                if level is None:
+                    configured_level = settings.thinking_level
+                    if configured_level in available_thinking_levels(resolved_model):
+                        level = configured_level
+                elif isinstance(level, str):
+                    validate_reasoning_request(
+                        resolved_model,
+                        enabled=level != "off",
+                        effort=None if level == "off" else level,
+                    )
+
             def register_extension_tools(
                 bundle: ResourceBundle,
                 registry: WorkspaceToolRegistry | None,
@@ -409,7 +426,7 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
                     session_id=request.configuration.session_id,
                     base_prompt=base_prompt,
                     resolved_prompt=resolved_prompt,
-                    thinking_level=request.thinking_level,
+                    thinking_level=level,
                     model=resolved_model,
                     convert_to_llm=request.convert_to_llm,
                     steering_mode=settings.steering_mode,
@@ -786,11 +803,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     append_system_prompt=append_system_prompt,
                     model=model,
                     use_default_model=use_default_model,
-                    thinking_level=(
-                        settings.thinking_level
-                        if thinking_level is None
-                        else thinking_level
-                    ),
+                    thinking_level=thinking_level,
                     tools=tools,
                     tool_registry=tool_registry,
                     allowed_tool_names=allowed_tool_names,
