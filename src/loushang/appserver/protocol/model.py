@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import TypeAlias
 
 from .errors import AppFailureV1
+from .workspace_preview import (
+    WorkspaceDirectoryPreviewV1,
+    WorkspaceFilePreviewV1,
+    WorkspacePreviewRequestV1,
+    WorkspacePreviewV1,
+)
 
 APP_PROTOCOL_VERSION = "loushang.app/v1"
 MAX_TEXT_CHARS = 262_144
@@ -107,6 +114,7 @@ class AppOperationV1(str, Enum):
     ATTACHMENT_READ_EVENTS = "attachment/read_events"
     SESSIONS_LIST = "sessions/list"
     WORKSPACE = "workspace/request"
+    WORKSPACE_MODELS = "workspace/models"
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,6 +297,51 @@ class TranscriptRecordV1:
         )
 
 
+USER_CHOICE_MAX_OPTIONS = 5
+USER_CHOICE_QUESTION_CHARS = 1024
+USER_CHOICE_ID_CHARS = 64
+USER_CHOICE_LABEL_CHARS = 160
+USER_CHOICE_DESCRIPTION_CHARS = 512
+
+
+@dataclass(frozen=True, slots=True)
+class UserChoiceOptionV1:
+    id: str
+    label: str
+    description: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_opaque_id(self.id, field="option ID")
+        if len(self.id) > USER_CHOICE_ID_CHARS:
+            raise ValueError("invalid option ID")
+        _require_text(self.label, field="option label", maximum=USER_CHOICE_LABEL_CHARS, empty=False)
+        if self.description is not None:
+            _require_text(
+                self.description, field="option description",
+                maximum=USER_CHOICE_DESCRIPTION_CHARS, empty=False,
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class UserChoicePromptV1:
+    """A business question bound to the Session identity of its snapshot."""
+
+    question_id: str
+    question: str
+    options: tuple[UserChoiceOptionV1, ...]
+
+    def __post_init__(self) -> None:
+        _require_opaque_id(self.question_id, field="question ID")
+        _require_text(self.question, field="question", maximum=USER_CHOICE_QUESTION_CHARS, empty=False)
+        if (
+            type(self.options) is not tuple
+            or not 2 <= len(self.options) <= USER_CHOICE_MAX_OPTIONS
+            or any(type(option) is not UserChoiceOptionV1 for option in self.options)
+            or len({option.id for option in self.options}) != len(self.options)
+        ):
+            raise ValueError("invalid choice options")
+
+
 @dataclass(frozen=True, slots=True)
 class SessionSnapshotV1:
     identity: SessionIdentityV1
@@ -298,6 +351,7 @@ class SessionSnapshotV1:
     running: bool
     records: tuple[TranscriptRecordV1, ...] = ()
     submission_mode: SessionSubmissionModeV1 = SessionSubmissionModeV1.LEGACY
+    user_choice: UserChoicePromptV1 | None = None
 
     def __post_init__(self) -> None:
         if type(self.identity) is not SessionIdentityV1:
@@ -313,6 +367,8 @@ class SessionSnapshotV1:
             raise TypeError("invalid session running state")
         if type(self.submission_mode) is not SessionSubmissionModeV1:
             raise TypeError("invalid session submission mode")
+        if self.user_choice is not None and type(self.user_choice) is not UserChoicePromptV1:
+            raise TypeError("invalid session user choice")
         if (
             not isinstance(self.records, tuple)
             or len(self.records) > MAX_SNAPSHOT_RECORDS
@@ -527,6 +583,7 @@ class MuxMemberCloseV1:
     selector: MuxSelectorV1
     member_id: str
     close_session: bool = True
+    delete_history: bool = False
 
     def __post_init__(self) -> None:
         if type(self.selector) is not MuxSelectorV1:
@@ -534,6 +591,8 @@ class MuxMemberCloseV1:
         _require_opaque_id(self.member_id, field="member_id")
         if type(self.close_session) is not bool:
             raise TypeError("invalid close_session")
+        if type(self.delete_history) is not bool or (self.delete_history and not self.close_session):
+            raise ValueError("history deletion requires closing the session")
 
 
 @dataclass(frozen=True, slots=True)
@@ -700,10 +759,21 @@ class AttachmentEventsV1:
 class WorkspaceRequestV1:
     action: str
     path: str | None = None
+    session_id: str | None = None
+    preview: WorkspacePreviewRequestV1 | None = None
 
     def __post_init__(self) -> None:
-        if self.action not in {"list", "projects", "register", "open", "unregister", "allocate-temporary"}:
+        if self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary", "inspect", "preview"}:
             raise ValueError("invalid workspace action")
+        if self.action == "preview":
+            if type(self.preview) is not WorkspacePreviewRequestV1:
+                raise ValueError("missing workspace preview request")
+        elif self.preview is not None:
+            raise ValueError("unexpected workspace preview request")
+        if self.session_id is not None:
+            if self.action != "inspect":
+                raise ValueError("invalid workspace inspection session")
+            _require_opaque_id(self.session_id, field="session_id")
         if self.action in {"list", "projects", "allocate-temporary"}:
             if self.path is not None:
                 raise ValueError("workspace action takes no path")
@@ -713,15 +783,36 @@ class WorkspaceRequestV1:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkspaceModelsRequestV1:
+    path: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.path is not None:
+            WorkspaceRequestV1("open", self.path)
+
+
+@dataclass(frozen=True, slots=True)
 class WorkspaceInfoV1:
     path: str
     scope: SessionScopeV1
     scope_fingerprint: str
+    inspection: dict[str, object] | None = None
+    preview: WorkspacePreviewV1 | None = None
 
     def __post_init__(self) -> None:
         WorkspaceRequestV1("open", self.path)
         if type(self.scope) is not SessionScopeV1 or type(self.scope_fingerprint) is not str or not _FINGERPRINT.fullmatch(self.scope_fingerprint):
             raise ValueError("invalid workspace scope")
+        if self.inspection is not None and (
+            type(self.inspection) is not dict
+            or len(json.dumps(self.inspection, ensure_ascii=False, allow_nan=False).encode()) > 48_000
+        ):
+            raise ValueError("invalid workspace inspection")
+        if self.preview is not None and (
+            type(self.preview) not in (WorkspaceFilePreviewV1, WorkspaceDirectoryPreviewV1)
+            or self.inspection is not None
+        ):
+            raise ValueError("invalid workspace preview")
 
 
 @dataclass(frozen=True, slots=True)
@@ -737,6 +828,7 @@ class WorkspaceResultV1:
 
 AppRequestPayloadV1: TypeAlias = (
     WorkspaceRequestV1
+    | WorkspaceModelsRequestV1
     | MuxCreateV1
     | MuxListV1
     | MuxReadV1
@@ -757,6 +849,7 @@ AppRequestPayloadV1: TypeAlias = (
 
 _PAYLOAD_TYPES: dict[AppOperationV1, type[object]] = {
     AppOperationV1.WORKSPACE: WorkspaceRequestV1,
+    AppOperationV1.WORKSPACE_MODELS: WorkspaceModelsRequestV1,
     AppOperationV1.MUX_CREATE: MuxCreateV1,
     AppOperationV1.MUX_LIST: MuxListV1,
     AppOperationV1.MUX_READ: MuxReadV1,
@@ -853,7 +946,7 @@ class AppResponseV1:
 
 
 __all__ = [
-    "WorkspaceRequestV1", "WorkspaceInfoV1", "WorkspaceResultV1",
+    "WorkspaceRequestV1", "WorkspaceModelsRequestV1", "WorkspaceInfoV1", "WorkspaceResultV1",
     "APP_PROTOCOL_VERSION",
     "MAX_MEMBERS",
     "MAX_MUX_SPACES",
@@ -896,6 +989,8 @@ __all__ = [
     "SessionScopeV1",
     "SessionSnapshotRequestV1",
     "SessionSnapshotV1",
+    "UserChoiceOptionV1",
+    "UserChoicePromptV1",
     "SessionModelChoiceV1",
     "SessionModelSelectV1",
     "SessionModelsV1",

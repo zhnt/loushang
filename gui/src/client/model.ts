@@ -1,3 +1,6 @@
+import type { ReadWorkspacePreview } from "./workspacePreview";
+import type { ExecutionGoalProgressV1, InteractiveGoalCommandV1, InteractiveGoalRecoveryV1, InteractiveGoalReviewSubmissionV1, InteractiveGoalReviewV1, InteractiveGoalViewV1, UserChoicePromptV1 } from "../../contracts/generated/bridge";
+
 export type ConnectionState =
   | "fixture-offline"
   | "connected"
@@ -37,6 +40,7 @@ export interface WorkspaceSummary {
 }
 
 export interface ContextIdentity {
+  readonly continuityId?: string;
   readonly project: string;
   readonly rootLabel: string;
   readonly scope?: "cwd" | "user_home";
@@ -53,6 +57,7 @@ export interface ConversationMessage {
   readonly role: "user" | "assistant" | "status";
   readonly content: string;
   readonly phase: MessagePhase;
+  readonly systemNotice?: "resumesRuntime";
 }
 
 export interface ExecutionProjection {
@@ -134,6 +139,15 @@ export interface ChangeSetProjection {
   readonly files: readonly FileChangeProjection[];
 }
 
+export type InteractionOutcome = "approve" | "deny" | "cancel";
+
+export interface PendingApproval {
+  readonly sessionId: string;
+  readonly interactionId: string;
+  readonly text: string;
+  readonly status: "pending" | "submitting" | "processed" | "unavailable";
+}
+
 export interface SessionSnapshot {
   readonly id: string;
   readonly workspaceId: string;
@@ -143,6 +157,13 @@ export interface SessionSnapshot {
   readonly context: ContextIdentity;
   readonly messages: readonly ConversationMessage[];
   readonly execution?: ExecutionProjection | null;
+  readonly supportsGoalProgress?: true;
+  readonly supportsGoalStart?: true;
+  readonly supportsInteractiveGoal?: true;
+  readonly supportsInteractiveGoalCommands?: true;
+  readonly supportsInteractiveGoalRecovery?: true;
+  readonly pendingApprovals?: readonly PendingApproval[];
+  readonly userChoice?: UserChoicePromptV1;
   readonly documents: readonly ReadonlyDocument[];
   readonly run: RunProjection | null;
   readonly changeSet: ChangeSetProjection | null;
@@ -152,6 +173,12 @@ export interface CapabilitySummary {
   readonly name: "workspace" | "changes" | "artifacts" | "tasks" | "agents";
   readonly version: string | null;
   readonly availability: "fixture" | "live" | "unavailable";
+}
+
+export interface InteractiveGoalScope {
+  readonly sessionId: string;
+  readonly serviceInstanceId: string;
+  readonly connectionEpoch: string;
 }
 
 export type ClientSource =
@@ -273,11 +300,19 @@ export interface SessionModels {
 
 export interface CreateSessionInput {
   readonly sourceSessionId?: string;
+  readonly continuityId?: string;
   readonly title: string;
 }
 
-export interface CreateSessionReceipt {
-  readonly sessionId: string;
+export type CreateSessionReceipt =
+  | { readonly sessionId: string }
+  | { readonly rejected: true };
+
+export interface DraftBinding {
+  readonly client: HarnessClientUiPort;
+  readonly sessionId?: string;
+  readonly show: (sessionId?: string) => boolean;
+  readonly refresh?: () => Promise<void>;
 }
 
 export interface PlaybackStep {
@@ -291,9 +326,21 @@ export interface HarnessClientUiPort {
   subscribeSnapshots?(listener: (snapshot: ClientSnapshot) => void): () => void;
   subscribeConnection?(listener: (connection: "disconnected" | "resync-required") => void): () => void;
   requestResync?(): Promise<void>;
+  previewWorkspace?: ReadWorkspacePreview;
+  locateWorkspace?: (scope: import("./workspacePreview").WorkspacePreviewScope) => Promise<string>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
+  findSubmission?(sessionId: string, submissionId: string, serviceInstanceId: string): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
+  respondInteraction?(sessionId: string, interactionId: string, outcome: InteractionOutcome): Promise<ControlReceipt>;
   createSession?(input: CreateSessionInput): Promise<CreateSessionReceipt>;
+  startGoal?(input: Omit<SubmitTextInput, "text">, expectedInstanceId?: string): Promise<SubmitReceipt>;
+  createInteractiveGoal?(input: InteractiveGoalScope & { readonly goalTarget: string }): Promise<InteractiveGoalViewV1 | null>;
+  controlInteractiveGoal?(input: InteractiveGoalScope & InteractiveGoalCommandV1): Promise<InteractiveGoalViewV1 | null>;
+  interactiveGoalRecovery?(input: InteractiveGoalScope): Promise<InteractiveGoalRecoveryV1 | null>;
+  interactiveGoalReview?(input: InteractiveGoalScope & { readonly goalId: string }): Promise<InteractiveGoalReviewV1 | null>;
+  submitInteractiveGoalReview?(input: InteractiveGoalScope & InteractiveGoalReviewSubmissionV1): Promise<InteractiveGoalViewV1 | null>;
+  interactiveGoalStatus?(input: InteractiveGoalScope): Promise<InteractiveGoalViewV1 | null>;
+  goalProgress?(sessionId: string, executionId: string): Promise<ExecutionGoalProgressV1 | null>;
   sessionModels?(sessionId: string): Promise<SessionModels>;
   selectModel?(sessionId: string, modelId: string, thinkingLevel?: ThinkingLevel): Promise<SessionModels>;
 }

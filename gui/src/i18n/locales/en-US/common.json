@@ -1,4 +1,16 @@
 {
+  "contextMenu": "Context menu",
+  "openLinkFailed": "Could not open the link in the system browser.",
+  "clipboard": {
+    "cut": "Cut",
+    "paste": "Paste",
+    "selectAll": "Select all",
+    "unavailable": "Could not access the clipboard. Try the keyboard shortcut.",
+    "copy": "Copy",
+    "copyValue": "Copy {{label}}",
+    "copied": "Copied",
+    "failed": "Could not copy"
+  },
   "status": {
     "idle": "Idle",
     "running": "Running",

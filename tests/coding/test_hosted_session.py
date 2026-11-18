@@ -14,7 +14,15 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, ThinkingPart, ToolCall, Usage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ThinkingPart,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 from loushang.apphost import (
     SessionBindingKeyV1,
     SessionCreateIntentV1,
@@ -205,6 +213,8 @@ def test_tool_only_rounds_stay_in_history_without_empty_hosted_messages(tmp_path
             for entry in history.records
         )
         restored = CodingHostedHistoryBindingV1(binding.identity, history)
+        assert restored.control is None
+        assert not hasattr(restored, "create_interactive_goal")
         assert [row.text for row in restored.project_snapshot().records[:-1]] == expected
 
     asyncio.run(scenario())
@@ -306,7 +316,7 @@ def test_gui_title_and_primary_reply_keep_independent_durable_outcomes(tmp_path:
         try:
             binding = await _binding(
                 tmp_path, prepared_model(api=adapter.api),
-                continuity_id="gui-new-durable-title-test", stream_fn=None,
+                continuity_id="gui-draft-durable-title-test", stream_fn=None,
             )
             hosted = CodingHostedExecutionSessionV1(binding)
             hosted.subscribe(lambda event: title_published.set() if event.kind is SessionEventKindV1.STATUS else None)
@@ -1138,3 +1148,91 @@ def test_G14_PRODUCT_real_approval_broker_round_trip_and_close(tmp_path: Path) -
             await asyncio.gather(decision, return_exceptions=True)
 
     asyncio.run(asyncio.wait_for(scenario(), 20))
+
+
+@pytest.mark.parametrize("case", ["standalone", "mixed", "duplicate"])
+def test_hosted_business_choice_finishes_turn_and_survives_until_next_input(tmp_path, case):
+    sent = []
+
+    @synthetic_model_transport
+    async def stream(model, context, options=None):
+        assert "ask_user" in {tool.name for tool in context.tools}
+        sent.append(context.messages[-1].role)
+        ordinary = await _stream(model, context, options)
+        if len(sent) != 1:
+            return ordinary
+        calls = [ToolCall(type="toolCall", id="ask-1", name="ask_user", arguments={
+            "question": "Choose a direction",
+            "options": [
+                {"id": "a", "label": "Gradual"},
+                {"id": "a" if case == "duplicate" else "b", "label": "Rewrite"},
+            ],
+        })]
+        if case == "mixed":
+            calls.append(ToolCall(type="toolCall", id="other", name="unused_tool", arguments={}))
+        turn = replace(await ordinary.result(), content=calls, stop_reason="toolUse")
+        result = AssistantMessageEventStream()
+        result.push({"type": "done", "reason": "toolUse", "message": turn})
+        return result
+
+    async def scenario():
+        binding = await _binding(tmp_path, stream_fn=stream)
+        hosted = CodingHostedExecutionSessionV1(binding)
+        try:
+            hosted.start_execution(ExecutionRequestV1("plan", "Let me choose a plan."))
+            assert (await hosted.wait_execution("plan")).status is ExecutionStatusV1.SUCCEEDED
+            snapshot = (await hosted.snapshot_execution()).source
+            prompt = snapshot.user_choice
+            if case != "standalone":
+                assert prompt is None and sent == ["user", "toolResult"]
+                return
+            assert sent == ["user"]
+            assert not snapshot.running
+            assert prompt.question == "Choose a direction"
+            assert [item.id for item in prompt.options] == ["a", "b"]
+            assert (await hosted.snapshot_execution()).source.user_choice == prompt
+            path = binding.control.session_manager.session_file
+            assert path is not None
+            durable_bytes = path.read_bytes()
+            history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+            reopened = CodingHostedHistoryBindingV1(binding.identity, history)
+            assert reopened.control is None
+            assert reopened.project_snapshot().user_choice == prompt
+            result, = (entry.payload for entry in history.selected_records
+                       if isinstance(entry.payload, ToolResultMessage))
+            assert result.details == {"kind": "coding.user_choice/v1", "questionId": prompt.question_id}
+            assert result.terminate and not result.is_error
+            assert path.read_bytes() == durable_bytes and sent == ["user"]
+            original_input = next(entry for entry in history.selected_records
+                                  if isinstance(entry.payload, UserMessage))
+            earlier = read_coding_resume_snapshot(
+                path, max_bytes=1024 * 1024, selected_leaf_id=original_input.record_id,
+            )
+            assert result in [entry.payload for entry in earlier.records]
+            other_branch = CodingHostedHistoryBindingV1(binding.identity, earlier)
+            assert other_branch.project_snapshot().user_choice is None
+            await other_branch.close()
+            await reopened.close()
+            isolated = tmp_path / "isolated"
+            isolated.mkdir()
+            other = CodingHostedExecutionSessionV1(await _binding(isolated))
+            try:
+                assert (await other.snapshot_execution()).source.user_choice is None
+            finally:
+                await other.close()
+
+            hosted.start_execution(ExecutionRequestV1("answer", "Choose b: Rewrite."))
+            assert (await hosted.wait_execution("answer")).status is ExecutionStatusV1.SUCCEEDED
+            snapshot = (await hosted.snapshot_execution()).source
+            assert snapshot.identity == binding.identity
+            assert snapshot.user_choice is None
+            assert any(row.text == "Choose b: Rewrite." for row in snapshot.records)
+            answered = CodingHostedHistoryBindingV1(
+                binding.identity, read_coding_resume_snapshot(path, max_bytes=1024 * 1024),
+            )
+            assert answered.project_snapshot().user_choice is None
+            await answered.close()
+        finally:
+            await hosted.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=10))

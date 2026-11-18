@@ -3,13 +3,15 @@ import { appName } from "../../src/branding";
 
 const hoverGray = "rgb(236, 236, 235)";
 const focusGray = "rgb(104, 108, 114)";
+const previewAccountId = "local-" + "a".repeat(64);
 
 async function simulateDesktop(page: Page, managed = false) {
-  await page.addInitScript((managed) => {
+  await page.addInitScript(({ managed, previewAccountId }) => {
     Object.assign(window, {
       isTauri: true,
       __LOUSHANG_MANAGED_TEST__: managed,
       resizeRequests: [] as unknown[],
+      devtoolsRequests: [] as string[],
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
       __TAURI_INTERNALS__: {
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
@@ -19,10 +21,13 @@ async function simulateDesktop(page: Page, managed = false) {
           if (command === "plugin:window|start_resize_dragging") {
             (window as unknown as { resizeRequests: unknown[] }).resizeRequests.push(args);
           }
+          if (command === "open_devtools") {
+            (window as unknown as { devtoolsRequests: string[] }).devtoolsRequests.push(command);
+          }
           if (command === "plugin:os|locale") return "en-US";
           if (command === "plugin:event|listen") return 1;
           if (command === "fixture_bridge_handshake") throw new Error("Fixture bridge disabled");
-          if (managed && command === "offline_account") return { name: "desktop-user", id: "local-preview-account" };
+          if (managed && command === "offline_account") return { name: "desktop-user", id: previewAccountId };
           if (managed && command === "client_settings") {
             const { request } = args as { request: { operation: string } };
             if (request.operation === "connections/list") return {
@@ -39,7 +44,7 @@ async function simulateDesktop(page: Page, managed = false) {
         },
       },
     });
-  }, managed);
+  }, { managed, previewAccountId });
 }
 
 for (const width of [700, 1440]) {
@@ -156,6 +161,10 @@ test("desktop shell renders menus and Session history with a simulated native br
   await expect(help).toHaveCSS("outline-offset", "-2px");
   await page.screenshot({ path: info.outputPath("help-keyboard-focus.png"), fullPage: true });
   await help.click();
+  await page.getByRole("menuitem", { name: "Developer Tools" }).click();
+  expect(await page.evaluate(() => (window as unknown as { devtoolsRequests: string[] }).devtoolsRequests)).toEqual(["open_devtools"]);
+  await expect(page.getByRole("menu", { name: "Help" })).toHaveCount(0);
+  await help.click();
   await about.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -213,15 +222,33 @@ test("General and Host share a fixed dialog with scrollable content in a short w
   await page.setViewportSize({ width: 680, height: 360 });
   await simulateDesktop(page, true);
   await page.goto("/");
-  await page.getByRole("button", { name: "Account menu" }).click();
-  const account = page.getByRole("region", { name: "Offline account" });
+  const accountMenu = page.getByRole("button", { name: "Account menu" });
+  await accountMenu.click();
+  const account = page.getByRole("region", { name: "Local account" });
   await expect(account.getByText("desktop-user")).toBeVisible();
-  await expect(account.getByText("local-preview-account")).toBeVisible();
+  await expect(page.getByText(previewAccountId).filter({ visible: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("account-menu.png") });
+  await account.getByRole("button", { name: /desktop-user.*Account details/ }).press("Enter");
+  const details = page.getByRole("dialog", { name: "Account details" });
+  await expect(details.getByText(previewAccountId)).toBeVisible();
+  await page.setViewportSize({ width: 360, height: 360 });
+  const copyId = details.getByRole("button", { name: "Copy local account ID" });
+  await expect(copyId).toBeInViewport({ ratio: 1 });
+  await expect(details).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: info.outputPath("account-details.png") });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await copyId.click();
+  await expect(details.getByRole("status")).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(previewAccountId);
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await expect(accountMenu).toBeFocused();
+  await page.setViewportSize({ width: 680, height: 360 });
+  await accountMenu.click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   const generalBounds = await settings.boundingBox();
-  await expect(settings.getByText("local-preview-account")).toHaveCount(0);
+  await expect(settings.getByText(previewAccountId)).toHaveCount(0);
   await settings.getByRole("combobox", { name: "Markdown theme" }).click();
   const options = settings.getByRole("listbox", { name: "Markdown theme" });
   const bounds = (await options.boundingBox())!;
@@ -273,4 +300,30 @@ test("composer keeps controls aligned and uses Enter to send at a narrow width",
   await input.press("Enter");
   await expect(input).toHaveValue("");
   await expect(page.getByRole("article", { name: "user message" }).filter({ hasText: "First line Second line" })).toBeVisible();
+});
+
+test("composer rewraps a draft when its parent narrows without a resize observer loop", async ({ page }) => {
+  const resizeErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    if (error.message.includes("ResizeObserver")) resizeErrors.push(error.message);
+  });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+  await page.getByRole("button", { name: "Operational ontology · Idle" }).click();
+  const input = page.locator("#message-input");
+  const height = () => input.evaluate((element) => element.clientHeight);
+  const empty = await height();
+  const draft = "The composer needs enough room for a draft with wrapped lines. ".repeat(9);
+  await input.fill(draft);
+  await expect.poll(height).toBeGreaterThan(empty);
+  const wide = await height();
+  await page.setViewportSize({ width: 560, height: 900 });
+  await expect.poll(height).toBeGreaterThan(wide);
+  await expect(input).toHaveValue(draft);
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await expect.poll(height).toBe(wide);
+  await input.fill("");
+  await expect.poll(height).toBe(empty);
+  expect(resizeErrors).toEqual([]);
 });

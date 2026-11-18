@@ -167,7 +167,7 @@ class _LocalPeer:
                 elif self._execution_factory is not None:
                     execution_scope = self._execution_factory()
                     self._scope = execution_scope
-                    execution = execution_scope.execution_client
+                    execution = execution_scope.execution_client or getattr(execution_scope, "goal_execution_observer", None)
                     if execution is None:
                         raise AppConnectionClosedError()
                     if self._discovery_factory is not None:

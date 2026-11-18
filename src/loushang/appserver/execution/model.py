@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -16,35 +15,32 @@ from ..protocol import (
     TurnTextV1,
 )
 from ..resume_model import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
-
-_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~-]{0,127}\Z")
-
-
-def _identifier(value: str) -> None:
-    if type(value) is not str or _ID.fullmatch(value) is None:
-        raise ValueError("invalid execution identifier")
-
-
-def _counter(value: object) -> None:
-    if type(value) is not int or not 0 <= value <= (1 << 53) - 1:
-        raise ValueError("invalid execution counter")
-
-
-class ExecutionStatusV1(str, Enum):
-    ACCEPTED = "accepted"
-    RUNNING = "running"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    INTERRUPTED = "interrupted"
-
-    @property
-    def terminal(self) -> bool:
-        return self in {self.SUCCEEDED, self.FAILED, self.INTERRUPTED}
-
-
-class InterruptModeV1(str, Enum):
-    LEGACY_TURN_ONLY = "legacy_turn_only"
-    WHOLE_EXECUTION = "whole_execution"
+from ._validation import _counter
+from ._validation import _identifier as _identifier
+from .goal_model import (
+    MAX_GOAL_BATCHES,
+    ExecutionGoalBatchV1,
+    ExecutionGoalCancellationStatusV1,
+    ExecutionGoalProgressV1,
+    ExecutionGoalStatusV1,
+    ExecutionGoalValidityV1,
+    ExecutionGoalWorkStatusV1,
+    GoalRecoveryHistoryReasonV1,
+    GoalRecoveryUnavailableReasonV1,
+    InteractiveGoalActionV1,
+    InteractiveGoalCommandStatusV1,
+    InteractiveGoalCommandV1,
+    InteractiveGoalCommandViewV1,
+    InteractiveGoalObservedActionV1,
+    InteractiveGoalRecoveryV1,
+    InteractiveGoalReviewDecisionV1,
+    InteractiveGoalReviewSubmissionV1,
+    InteractiveGoalReviewV1,
+    InteractiveGoalViewV1,
+    is_review_path,
+    validate_goal_fields,
+)
+from .operation import ExecutionOperationV1, ExecutionStatusV1, InterruptModeV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,6 +247,11 @@ class ExecutionSessionSnapshotV1:
     service_instance_id: str
     source: ExecutionSourceSnapshotV1
     executions: ExecutionSessionViewV1
+    supports_goal_progress: bool = False
+    supports_goal_start: bool = False
+    supports_interactive_goal: bool = False
+    supports_interactive_goal_commands: bool = False
+    supports_interactive_goal_recovery: bool = False
 
     def __post_init__(self) -> None:
         _identifier(self.service_instance_id)
@@ -258,16 +259,13 @@ class ExecutionSessionSnapshotV1:
             ExecutionSessionViewV1
         ) or self.source.source.identity != self.executions.identity:
             raise ValueError("invalid execution composite snapshot")
-
-
-class ExecutionOperationV1(str, Enum):
-    SUBMIT = "execution/submit"
-    GET = "execution/get"
-    FIND = "execution/find_submission"
-    INTERRUPT = "execution/interrupt"
-    SNAPSHOT = "execution/snapshot"
-    EVENTS = "execution/read_events"
-    RESUME_INPUT_LOOKUP = "session/lookup_resume_input"
+        if any(type(flag) is not bool for flag in (
+            self.supports_goal_progress, self.supports_goal_start, self.supports_interactive_goal,
+            self.supports_interactive_goal_commands, self.supports_interactive_goal_recovery,
+        )):
+            raise TypeError("invalid Goal capability")
+        if self.supports_interactive_goal_commands and not self.supports_interactive_goal:
+            raise ValueError("Goal commands require interactive Goal support")
 
 
 class ExecutionInterruptDispositionV1(str, Enum):
@@ -300,6 +298,11 @@ class ExecutionCallV1:
     execution_id: str | None = None
     text: str | None = None
     resume_query: ResumeInputLookupQueryV1 | None = None
+    include_goal_batches: bool = False
+    goal_target: str | None = None
+    goal_command: InteractiveGoalCommandV1 | None = None
+    review_goal_id: str | None = None
+    review_submission: InteractiveGoalReviewSubmissionV1 | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -308,9 +311,17 @@ class ExecutionCallV1:
             SessionSnapshotRequestV1
         ):
             raise TypeError("invalid execution call")
-        submission = self.operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND}
-        execution = self.operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT}
+        submission = self.operation in {
+            ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND, ExecutionOperationV1.GOAL_START,
+        }
+        execution = self.operation in {
+            ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
+        }
         text = self.operation is ExecutionOperationV1.SUBMIT
+        if type(self.include_goal_batches) is not bool or (
+            self.include_goal_batches and self.operation is not ExecutionOperationV1.GOAL_PROGRESS
+        ):
+            raise ValueError("unexpected Goal batch opt-in")
         if (self.resume_query is not None) != (self.operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP):
             raise ValueError("unexpected Resume lookup query")
         if self.resume_query is not None and type(self.resume_query) is not ResumeInputLookupQueryV1:
@@ -325,7 +336,7 @@ class ExecutionCallV1:
             _identifier(self.execution_id)
         if self.text is not None:
             ExecutionRequestV1("validation", self.text)
-
+        validate_goal_fields(self)
 
 @dataclass(frozen=True, slots=True)
 class ExecutionEventsV1:
@@ -350,7 +361,7 @@ class ExecutionFailureV1:
 ExecutionResultV1 = (
     ExecutionRecordV1 | ExecutionSessionSnapshotV1 | ExecutionEventsV1
     | ExecutionInterruptResultV1 | ExecutionFailureV1 | AppFailureV1 | None
-    | ResumeInputLookupResultV1
+    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1 | InteractiveGoalReviewV1 | InteractiveGoalRecoveryV1
 )
 
 
@@ -365,6 +376,23 @@ class ExecutionResponseV1:
             ExecutionRecordV1, ExecutionSessionSnapshotV1, ExecutionEventsV1,
             ExecutionFailureV1, AppFailureV1,
             ExecutionInterruptResultV1,
-            ResumeInputLookupResultV1,
+            ResumeInputLookupResultV1, ExecutionGoalProgressV1, InteractiveGoalViewV1, InteractiveGoalReviewV1, InteractiveGoalRecoveryV1,
         ):
             raise TypeError("invalid execution response")
+
+__all__ = [
+    "MAX_GOAL_BATCHES", "ExecutionGoalBatchV1", "ExecutionGoalCancellationStatusV1",
+    "ExecutionGoalProgressV1", "ExecutionGoalStatusV1", "ExecutionGoalValidityV1",
+    "ExecutionGoalWorkStatusV1", "GoalRecoveryHistoryReasonV1", "GoalRecoveryUnavailableReasonV1",
+    "InteractiveGoalActionV1", "InteractiveGoalCommandStatusV1", "InteractiveGoalCommandV1",
+    "InteractiveGoalCommandViewV1", "InteractiveGoalObservedActionV1", "InteractiveGoalRecoveryV1",
+    "InteractiveGoalReviewDecisionV1", "InteractiveGoalReviewSubmissionV1", "InteractiveGoalReviewV1",
+    "InteractiveGoalViewV1", "is_review_path", "ExecutionStatusV1",
+    "InterruptModeV1", "ExecutionRequestV1", "ExecutionOutcomeV1",
+    "ExecutionObservationV1", "ExecutionStateV1", "ExecutionSourceSnapshotV1",
+    "ExecutionContentEventV1", "ExecutionUpdateV1", "ExecutionErrorCodeV1",
+    "ExecutionServiceErrorV1", "ExecutionRecordV1", "ExecutionSessionViewV1",
+    "ExecutionSessionSnapshotV1", "ExecutionInterruptDispositionV1", "ExecutionInterruptResultV1",
+    "ExecutionCallV1", "ExecutionEventsV1", "ExecutionFailureV1",
+    "ExecutionResponseV1", "ExecutionOperationV1", "ExecutionResultV1",
+]

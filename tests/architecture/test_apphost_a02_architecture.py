@@ -23,6 +23,7 @@ OPTIONAL = {
     APPHOST / "local.py",
     APPHOST / "hosted.py",
     APPHOST / "launcher.py",
+    APPHOST / "workspace_registry.py",
 }
 ADAPTER = APPHOST / "integrations/harness_session.py"
 SCOPE = Path("docs/internals/architecture/apphost/README.md")

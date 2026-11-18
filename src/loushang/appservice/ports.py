@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from loushang.appserver.protocol import (
     InteractionOutcomeV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionModelsV1,
     SessionOpenSpecV1,
     SessionSnapshotV1,
     WorkspaceRequestV1,
@@ -83,3 +84,13 @@ __all__ = [
 
 class HostedWorkspacePort(Protocol):
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1: ...
+
+
+@runtime_checkable
+class HostedWorkspaceModelsPort(Protocol):
+    async def workspace_models(self, path: str | None) -> SessionModelsV1: ...
+
+
+@runtime_checkable
+class HostedSessionHistoryDeletionPort(Protocol):
+    async def delete_session_history(self, identity: SessionIdentityV1) -> None: ...

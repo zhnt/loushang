@@ -51,7 +51,14 @@ async def control_managed_service(
 async def _control(
     operation: str, expected: str | None, request_factory: ManagedLaunchRequestFactoryV1 | None,
 ) -> dict[str, object]:
-    deadline = monotonic() + (60 if operation == "restart" else 30)
+    timeout = 30.0
+    if operation == "restart":
+        timeout += 30.0
+    if sys.platform == "win32" and operation in {"start", "restart"}:
+        # The manager starts its clock before spawning and admitting the child,
+        # which then needs its own bounded window to restore legacy Sessions.
+        timeout += 15.0
+    deadline = monotonic() + timeout
     defaults = resolve_managed_defaults()
     return await _control_managed_service(
         operation,

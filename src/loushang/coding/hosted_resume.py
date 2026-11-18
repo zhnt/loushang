@@ -20,6 +20,7 @@ from loushang.apphost.integrations.session_control import (
     _HostedAgentExecutionWork,
     _HostedApprovalPresentation,
 )
+from loushang.appserver.execution.model import InteractiveGoalRecoveryV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -56,6 +57,8 @@ from .appservice_adapter import (
 from .bootstrap import BootstrapServices
 from .composition_sets import resolve_coding_composition_set
 from .hosted_catalog import CodingHostedCatalogError, CodingHostedResumeSourceV1
+from .hosted_goal_recovery import read_interactive_goal_recovery, unavailable_recovery
+from .hosted_models import load_workspace_models
 from .hosted_session import (
     _MAX_INTERACTIONS,
     _TEXT_LIMIT,
@@ -127,6 +130,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         tools: list[ToolDefinition] | None,
         output_capture_factory: ExecCaptureFactory | None,
         product_owner_selection: CodingFencedProductApplicationSelection,
+        user_choice_enabled: bool = False,
     ) -> None:
         self._source = source
         self.identity = source.record.identity
@@ -134,6 +138,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
+        self._user_choice_enabled = user_choice_enabled
         self._output_capture_factory = output_capture_factory
         self._product_owner_selection = product_owner_selection
         self._approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
@@ -156,6 +161,32 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     @property
     def execution_available(self) -> bool:
         return self._close_task is None
+
+    @property
+    def supports_interactive_goal_recovery(self) -> bool:
+        return self._active is None and self._close_task is None
+
+    async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1:
+        source = self._source
+        record = source.record
+        try:
+            history = source.history
+            source.require_current_source()
+            if (not self.supports_interactive_goal_recovery or self._activation_lock.locked()
+                    or self.identity != record.identity
+                    or history.header_preview.header != record.header
+                    or record.header.conversation_id != self.identity.session_id
+                    or record.scope.fingerprint != self.identity.scope_fingerprint
+                    or record.path.parent != record.scope.session_dir):
+                return unavailable_recovery("source_changed")
+            result = await settled_io(read_interactive_goal_recovery, record.scope.session_dir, self.identity.session_id)
+            if (not self.supports_interactive_goal_recovery or self._activation_lock.locked()
+                    or source.history is not history):
+                return unavailable_recovery("source_changed")
+            source.require_current_source()
+            return result
+        except (CodingHostedCatalogError, OSError, ValueError):
+            return unavailable_recovery("source_changed")
 
     @property
     def current_model(self) -> Model | None:
@@ -249,21 +280,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             raise CodingResumeRecoveryRequired("input.plan_unavailable")
         return plan
 
-    def _load_model_catalog(self) -> None:
-        cwd = self._source.record.scope.cwd
-        inputs = self._services.resource_loader.preview_catalog_input_receipt(cwd)
-        # Match the ordinary bootstrap's nearest project context, then user context.
-        roots_with_context = {fact.root for fact in inputs.context_file_facts if fact.status == "file"}
-        roots = (*inputs.user_resource_roots, *inputs.project_context_roots)
-        project_root = next((root for root in reversed(roots) if root in roots_with_context), cwd)
-        self._services.model_registry.reload_if_project_layer(
-            user_dir=Path.home() / ".loushang" / "models",
-            project_dir=project_root / ".loushang" / "models",
-        )
-
     async def start_background_planning(self) -> None:
         self._source.require_current_source()
-        await settled_io(self._load_model_catalog)
+        await settled_io(load_workspace_models, self._services, self._source.record.scope.cwd)
         self._source.require_current_source()
         policy = workspace_tool_runtime_settings(self._services.settings_manager)
         raw_policy_engine = policy.policy_engine
@@ -579,6 +598,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 real = CodingRealHostedSessionV1(
                     continuation.session, self.identity, self._approval
                 )
+                if self._user_choice_enabled:
+                    real.enable_user_choice()
                 self._control.activate(real.control)
                 self._active = real
                 # The input was durably committed while the real adapter did

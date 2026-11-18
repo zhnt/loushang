@@ -150,6 +150,7 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
                 },
                 Path("src/loushang/apphost/managed/lifecycle.py"): {
                     "loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_windows",
+                    "loushang.hosting.service_group",
                 },
                 Path("src/loushang/apphost/managed/bootstrap.py"): {
                     "loushang.hosting.errors", "loushang.hosting.service",
@@ -160,13 +161,16 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
                     "loushang.hosting.service_windows",
                 },
                 Path("src/loushang/apphost/managed/stopper.py"): {
+                    "loushang.hosting.errors",
                     "loushang.hosting.service", "loushang.hosting.service_group",
                     "loushang.hosting.service_windows",
                 },
                 Path("src/loushang/apphost/managed/defaults.py"): {
                     "loushang.hosting.errors", "loushang.hosting.machine_identity",
                 },
-                Path("src/loushang/apphost/managed/connection.py"): {"loushang.hosting.service"},
+                Path("src/loushang/apphost/managed/connection.py"): {
+                    "loushang.hosting.errors", "loushang.hosting.service",
+                },
                 Path("src/loushang/apphost/managed/mux_management.py"): {
                     "loushang.hosting.service", "loushang.hosting.service_windows",
                 },

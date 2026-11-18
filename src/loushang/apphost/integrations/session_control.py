@@ -31,6 +31,7 @@ from loushang.appserver.protocol import (
     SessionSubmissionModeV1,
     SessionThinkingV1,
     TranscriptRecordV1,
+    UserChoicePromptV1,
 )
 from loushang.appservice import HostedSessionEventListenerV1
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
@@ -64,6 +65,8 @@ class _SnapshotProjection(Protocol):
     def running(self) -> bool: ...
     @property
     def records(self) -> tuple[TranscriptRecordV1, ...]: ...
+    @property
+    def user_choice(self) -> UserChoicePromptV1 | None: ...
 
 
 class _EventProjection(Protocol):
@@ -178,6 +181,7 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
             running=projection.running,
             records=projection.records,
             submission_mode=self._submission_mode,
+            user_choice=projection.user_choice,
         )
 
     def subscribe(
@@ -249,28 +253,8 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
         details = await iter_available_model_details(control)
         if selection is not None:
             details.append(active_model)
-        models: list[SessionModelChoiceV1] = []
-        for choice in model_choice_data_from_details(details):
-            reference = normalize_model_selection(choice.selection)
-            if reference is None or not is_usable_model_selection(reference):
-                continue
-            models.append(SessionModelChoiceV1(
-                id=choice.value,
-                provider=reference.provider,
-                endpoint_id=reference.endpoint_id,
-                model_id=reference.model_id,
-                label=choice.label,
-                supports_thinking=bool(
-                    getattr(choice.selection, "supports_thinking", False)
-                    or getattr(choice.selection, "reasoning", False)
-                ),
-            ))
-        visible = models[:256]
-        active_choice = next((model for model in models[256:] if model.id == current), None)
-        if active_choice is not None:
-            visible[-1] = active_choice
-        return SessionModelsV1(
-            current, tuple(visible), _thinking_settings(control) if current is not None else None
+        return project_session_models(
+            current, details, _thinking_settings(control) if current is not None else None
         )
 
 
@@ -471,6 +455,32 @@ def _validate_foreground_binding(
     ):
         if not callable(getattr(control, name, None)):
             raise TypeError(f"{label} hosted Session control is invalid")
+
+
+def project_session_models(
+    current: str | None, details: list[object], thinking: SessionThinkingV1 | None = None,
+) -> SessionModelsV1:
+    models: list[SessionModelChoiceV1] = []
+    for choice in model_choice_data_from_details(details):
+        reference = normalize_model_selection(choice.selection)
+        if reference is None or not is_usable_model_selection(reference):
+            continue
+        models.append(SessionModelChoiceV1(
+            id=choice.value,
+            provider=reference.provider,
+            endpoint_id=reference.endpoint_id,
+            model_id=reference.model_id,
+            label=choice.label,
+            supports_thinking=bool(
+                getattr(choice.selection, "supports_thinking", False)
+                or getattr(choice.selection, "reasoning", False)
+            ),
+        ))
+    visible = models[:256]
+    active_choice = next((model for model in models[256:] if model.id == current), None)
+    if active_choice is not None:
+        visible[-1] = active_choice
+    return SessionModelsV1(current, tuple(visible), thinking)
 
 
 def _thinking_settings(control: object) -> SessionThinkingV1 | None:

@@ -18,6 +18,10 @@ class AppErrorCodeV1(str, Enum):
     ATTACHMENT_LAGGED = "attachment_lagged"
     SESSION_UNAVAILABLE = "session_unavailable"
     OPERATION_UNAVAILABLE = "operation_unavailable"
+    PERMISSION_DENIED = "permission_denied"
+    WORKSPACE_PREVIEW_BINARY = "workspace_preview_binary"
+    WORKSPACE_PREVIEW_TOO_LARGE = "workspace_preview_too_large"
+    WORKSPACE_REGISTRATION_FAILED = "workspace_registration_failed"
     CLEANUP_INCOMPLETE = "cleanup_incomplete"
     SERVICE_CLOSED = "service_closed"
 

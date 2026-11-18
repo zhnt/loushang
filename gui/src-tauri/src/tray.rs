@@ -19,6 +19,7 @@ pub struct TrayHost {
     start: bool,
     start_label: String,
     stop: bool,
+    restart: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -35,6 +36,7 @@ pub struct TrayProjection {
     info_label: String,
     reconnect_label: String,
     stop_label: String,
+    restart_label: String,
     web_url: Option<String>,
     hosts: Vec<TrayHost>,
 }
@@ -127,7 +129,11 @@ fn apply(app: &AppHandle, projection: TrayProjection) -> tauri::Result<()> {
             ("reconnect", &projection.reconnect_label, host.reconnect),
             ("start", &host.start_label, host.start),
             ("stop", &projection.stop_label, host.stop),
+            ("restart", &projection.restart_label, host.restart),
         ] {
+            if action == "restart" && !host.restart {
+                continue;
+            }
             // Show only the applicable start/stop action, or both disabled if unknown.
             if (action == "start" && host.stop) || (action == "stop" && host.start) {
                 continue;
@@ -188,12 +194,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let product_name = &app.package_info().name;
     let menu_name = product_name.replace('&', "&&");
     let user = MenuItem::new(app, &menu_name, false, None::<&str>)?;
-    let current = MenuItem::new(
-        app,
-        "⚪ 未选择 Host / No Host selected",
-        false,
-        None::<&str>,
-    )?;
+    let current = MenuItem::new(app, "未选择 Host / No Host selected", false, None::<&str>)?;
     let show = MenuItem::with_id(
         app,
         "tray-show",
@@ -242,7 +243,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
                     .get(id)
                     .cloned();
                 if let Some(action) = action {
-                    if action.action == "info" || action.action == "stop" {
+                    if matches!(action.action.as_str(), "info" | "stop" | "restart") {
                         show_main_window(app);
                     }
                     let _ = app.emit_to("main", "gui://tray-host-action", action);

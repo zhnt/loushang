@@ -1104,6 +1104,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             "service_windows": {"WindowsServiceLaunchRequestV1", "WindowsServiceProcessV1"},
         },
         APPHOST_ROOT / "managed/stopper.py": {
+            "errors": {"HostingError"},
             "service": {"ServiceObserverV1", "reopen_service_observer"},
             "service_group": {"LinuxServiceGroupObservationV1"},
             "service_windows": {"WindowsServiceJobV1", "WindowsServiceObserverV1"},
@@ -1113,6 +1114,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             "machine_identity": {"linux_machine_key", "windows_machine_key"},
         },
         APPHOST_ROOT / "managed/connection.py": {
+            "errors": {"HostingError"},
             "service": {"ServiceObserverV1", "reopen_service_observer"},
         },
         APPHOST_ROOT / "managed/mux_management.py": {
@@ -1128,7 +1130,8 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         APPHOST_ROOT / "managed/lifecycle.py": {
             "errors": {"HostingError"},
             "service": {"LinuxServiceIdentityV1", "ServiceIdentityV1"},
-            "service_windows": {"WindowsServiceIdentityV1"},
+            "service_group": {"linux_service_group_recovery_status"},
+            "service_windows": {"WindowsServiceIdentityV1", "windows_service_job_settled"},
         },
         APPHOST_ROOT / "managed/bootstrap.py": {
             "errors": {"HostingError"},

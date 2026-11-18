@@ -12,6 +12,7 @@ from .errors import AppErrorCodeV1, AppFailureV1, InvalidAppMessageError
 from .model import (
     APP_PROTOCOL_VERSION,
     MAX_DISCOVERY_PAGE,
+    USER_CHOICE_MAX_OPTIONS,
     AckV1,
     AppOperationV1,
     AppRequestV1,
@@ -56,9 +57,20 @@ from .model import (
     TranscriptRecordV1,
     TurnInterruptV1,
     TurnTextV1,
+    UserChoiceOptionV1,
+    UserChoicePromptV1,
     WorkspaceInfoV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
+)
+from .workspace_preview import (
+    MAX_PREVIEW_ENTRIES,
+    WorkspaceDirectoryPreviewV1,
+    WorkspaceFilePreviewV1,
+    WorkspacePreviewEntryV1,
+    WorkspacePreviewRequestV1,
+    WorkspacePreviewV1,
 )
 
 MAX_MESSAGE_BYTES = 1_048_576
@@ -191,7 +203,9 @@ def encode_response(response: AppResponseV1) -> bytes:
     value: _Object
     if type(result) is WorkspaceResultV1:
         result_type, value = "workspaces", {"workspaces": [
-            {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint}
+            {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint,
+             **({"inspection": item.inspection} if item.inspection is not None else {}),
+             **({"preview": _encode_workspace_preview(item.preview)} if item.preview is not None else {})}
             for item in result.workspaces]}
     elif type(result) is AckV1:
         result_type, value = "ack", {}
@@ -264,10 +278,14 @@ def decode_response(payload: bytes) -> AppResponseV1:
             raise InvalidAppMessageError()
         workspaces = []
         for row in rows:
-            item = _object(row, {"path", "scope", "scopeFingerprint"})
+            fields = {"path", "scope", "scopeFingerprint"}
+            if isinstance(row, dict):
+                fields.update({"inspection", "preview"} & row.keys())
+            item = _object(row, fields)
             workspaces.append(_construct(WorkspaceInfoV1, path=_string(item["path"]),
                 scope=_enum(SessionScopeV1, item["scope"]),
-                scope_fingerprint=_string(item["scopeFingerprint"])))
+                scope_fingerprint=_string(item["scopeFingerprint"]), inspection=item.get("inspection"),
+                preview=_decode_workspace_preview(item["preview"]) if "preview" in item else None))
         result = _construct(WorkspaceResultV1, workspaces=tuple(workspaces))
     elif result_type == "ack":
         _object(raw, set())
@@ -402,12 +420,46 @@ def _decode_event(value: object) -> AttachmentEventV1:
     )
 
 
+def _encode_workspace_preview(preview: WorkspacePreviewV1) -> _Object:
+    if isinstance(preview, WorkspaceFilePreviewV1):
+        return {"kind": "file", "path": preview.path, "text": preview.text}
+    return {
+        "kind": "directory", "path": preview.path, "limited": preview.limited,
+        "entries": [{"name": entry.name, "kind": entry.kind} for entry in preview.entries],
+    }
+
+
+def _decode_workspace_preview(raw: object) -> WorkspacePreviewV1:
+    if isinstance(raw, dict) and raw.get("kind") == "file":
+        value = _object(raw, {"kind", "path", "text"})
+        return _construct(WorkspaceFilePreviewV1, path=_string(value["path"]), text=_string(value["text"]))
+    value = _object(raw, {"kind", "path", "entries", "limited"})
+    if value["kind"] != "directory":
+        raise InvalidAppMessageError()
+    rows = value["entries"]
+    if type(rows) is not list or len(rows) > MAX_PREVIEW_ENTRIES:
+        raise InvalidAppMessageError()
+    entries = []
+    for row in rows:
+        entry = _object(row, {"name", "kind"})
+        entries.append(_construct(WorkspacePreviewEntryV1, name=_string(entry["name"]), kind=_string(entry["kind"])))
+    return _construct(WorkspaceDirectoryPreviewV1, path=_string(value["path"]),
+                      entries=tuple(entries), limited=_boolean(value["limited"]))
+
+
 def _encode_request_payload(request: AppRequestV1) -> _Object:
     payload = request.payload
     operation = request.operation
     if operation is AppOperationV1.WORKSPACE:
         workspace = cast(WorkspaceRequestV1, payload)
-        return {"action": workspace.action, "path": workspace.path}
+        return {"action": workspace.action, "path": workspace.path,
+                **({"sessionId": workspace.session_id} if workspace.session_id is not None else {}),
+                **({"preview": {
+                    "reference": workspace.preview.reference, "base": workspace.preview.base,
+                    "scopeFingerprint": workspace.preview.scope_fingerprint,
+                }} if workspace.preview is not None else {})}
+    if operation is AppOperationV1.WORKSPACE_MODELS:
+        return {"path": cast(WorkspaceModelsRequestV1, payload).path}
     if operation is AppOperationV1.MUX_CREATE:
         return {"name": cast(MuxCreateV1, payload).name}
     if operation is AppOperationV1.MUX_LIST:
@@ -454,6 +506,7 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
         close_value = cast(MuxMemberCloseV1, payload)
         return {
             "closeSession": close_value.close_session,
+            **({"deleteHistory": True} if close_value.delete_history else {}),
             "memberId": close_value.member_id,
             "selector": _encode_selector(close_value.selector),
         }
@@ -486,9 +539,21 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
 
 def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
     if operation is AppOperationV1.WORKSPACE:
-        value = _object(raw, {"action", "path"})
+        fields = {"action", "path"}
+        if isinstance(raw, dict):
+            fields.update({"sessionId", "preview"} & raw.keys())
+        value = _object(raw, fields)
+        preview = None
+        if "preview" in value:
+            spec = _object(value["preview"], {"reference", "base", "scopeFingerprint"})
+            preview = _construct(WorkspacePreviewRequestV1, reference=_string(spec["reference"]),
+                                 base=_string(spec["base"]), scope_fingerprint=_string(spec["scopeFingerprint"]))
         return _construct(WorkspaceRequestV1, action=_string(value["action"]),
-                          path=_optional_string(value["path"]))
+                          path=_optional_string(value["path"]), session_id=_optional_string(value.get("sessionId")),
+                          preview=preview)
+    if operation is AppOperationV1.WORKSPACE_MODELS:
+        value = _object(raw, {"path"})
+        return _construct(WorkspaceModelsRequestV1, path=_optional_string(value["path"]))
     if operation is AppOperationV1.MUX_CREATE:
         value = _object(raw, {"name"})
         return _construct(MuxCreateV1, name=_string(value["name"]))
@@ -541,12 +606,16 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
             session=_decode_open_spec(value["session"]),
         )
     if operation is AppOperationV1.MEMBER_CLOSE:
-        value = _object(raw, {"closeSession", "memberId", "selector"})
+        fields = {"closeSession", "memberId", "selector"}
+        if type(raw) is dict and "deleteHistory" in raw:
+            fields.add("deleteHistory")
+        value = _object(raw, fields)
         return _construct(
             MuxMemberCloseV1,
             selector=_decode_selector(value["selector"]),
             member_id=_string(value["memberId"]),
             close_session=_boolean(value["closeSession"]),
+            delete_history=_boolean(value.get("deleteHistory", False)),
         )
     if operation in {AppOperationV1.SESSION_SNAPSHOT, AppOperationV1.SESSION_MODELS}:
         return _decode_member_operation(SessionSnapshotRequestV1, raw, set())
@@ -798,13 +867,44 @@ def _encode_snapshot(value: SessionSnapshotV1) -> _Object:
     # unsafe for this exact binding.
     if value.submission_mode is SessionSubmissionModeV1.EXECUTION:
         encoded["submissionMode"] = value.submission_mode.value
+    if value.user_choice is not None:
+        encoded["userChoice"] = _encode_user_choice(value.user_choice)
     return encoded
+
+
+def _encode_user_choice(value: UserChoicePromptV1) -> _Object:
+    return {
+        "questionId": value.question_id,
+        "question": value.question,
+        "options": [
+            {"id": option.id, "label": option.label, "description": option.description}
+            for option in value.options
+        ],
+    }
+
+
+def _decode_user_choice(raw: object) -> UserChoicePromptV1:
+    value = _object(raw, {"questionId", "question", "options"})
+    options = value["options"]
+    if type(options) is not list or not 2 <= len(options) <= USER_CHOICE_MAX_OPTIONS:
+        raise InvalidAppMessageError()
+    decoded = []
+    for raw_option in options:
+        option = _object(raw_option, {"id", "label", "description"})
+        decoded.append(_construct(
+            UserChoiceOptionV1, id=option["id"], label=option["label"],
+            description=option["description"],
+        ))
+    return _construct(
+        UserChoicePromptV1, question_id=value["questionId"], question=value["question"],
+        options=tuple(decoded),
+    )
 
 
 def _decode_snapshot(raw: object) -> SessionSnapshotV1:
     fields = {"cursor", "identity", "records", "revision", "running", "title"}
-    if type(raw) is dict and "submissionMode" in raw:
-        fields.add("submissionMode")
+    if type(raw) is dict:
+        fields.update({"submissionMode", "userChoice"} & raw.keys())
     value = _object(raw, fields)
     records = value["records"]
     if type(records) is not list:
@@ -837,6 +937,7 @@ def _decode_snapshot(raw: object) -> SessionSnapshotV1:
         running=_boolean(value["running"]),
         records=tuple(decoded_records),
         submission_mode=submission_mode,
+        user_choice=_decode_user_choice(value["userChoice"]) if "userChoice" in value else None,
     )
 
 

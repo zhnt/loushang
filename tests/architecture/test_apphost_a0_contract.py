@@ -22,6 +22,7 @@ APPHOST_OPTIONAL_MODULES = {
     APPHOST_ROOT / "continuity.py",
     APPHOST_ROOT / "foreground.py",
     APPHOST_ROOT / "launcher.py",
+    APPHOST_ROOT / "workspace_registry.py",
     APPHOST_ROOT / "local.py",
     APPHOST_ROOT / "hosted.py",
 }

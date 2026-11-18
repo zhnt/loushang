@@ -48,7 +48,10 @@ from loushang.appserver.protocol import (
     TranscriptRecordV1,
     TurnInterruptV1,
     TurnTextV1,
+    UserChoiceOptionV1,
+    UserChoicePromptV1,
     WorkspaceInfoV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
     decode_event,
@@ -155,6 +158,10 @@ def test_snapshot_execution_submission_mode_is_optional_and_round_trips():
         (
             AppOperationV1.MEMBER_CLOSE,
             MuxMemberCloseV1(MuxSelectorV1(name="dev"), "member-1"),
+        ),
+        (
+            AppOperationV1.MEMBER_CLOSE,
+            MuxMemberCloseV1(MuxSelectorV1(name="dev"), "member-1", delete_history=True),
         ),
         (
             AppOperationV1.SESSION_SNAPSHOT,
@@ -338,10 +345,23 @@ def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
     ('list', None), ('projects', None), ('allocate-temporary', None),
     ('register', '/project'), ('open', '/project'), ('unregister', '/project'),
     ('register', r'C:\Workspace A'), ('open', 'C:/Workspace A'),
+    ('inspect', '/project'), ('create', '/new-project'), ('create', 'C:/New Project'),
 ])
 def test_workspace_requests_roundtrip(action, path):
     request = AppRequestV1('request-1', AppOperationV1.WORKSPACE, WorkspaceRequestV1(action, path))
     assert decode_request(encode_request(request)) == request
+
+
+@pytest.mark.parametrize("path", [None, "/project", "C:/Workspace A"])
+def test_workspace_models_request_only_accepts_the_target_path(path):
+    request = AppRequestV1("request-1", AppOperationV1.WORKSPACE_MODELS, WorkspaceModelsRequestV1(path))
+    assert decode_request(encode_request(request)) == request
+    wire = json.loads(encode_request(request))
+    wire["payload"]["attachmentId"] = "unrelated"
+    with pytest.raises(InvalidAppMessageError):
+        decode_request(json.dumps(wire).encode())
+    with pytest.raises(ValueError):
+        WorkspaceModelsRequestV1("relative")
 
 
 @pytest.mark.parametrize("action", ["projects", "allocate-temporary"])
@@ -356,10 +376,24 @@ def test_workspace_results_preserve_host_path_and_admitted_scope(path):
     assert decode_response(encode_response(response)) == response
 
 
+def test_workspace_inspection_roundtrips_without_changing_directory_entries():
+    request = AppRequestV1("request-1", AppOperationV1.WORKSPACE,
+                           WorkspaceRequestV1("inspect", "/project", "session-1"))
+    assert decode_request(encode_request(request)) == request
+    scope = SessionScopeV1.CWD
+    ordinary = WorkspaceInfoV1("/project", scope, "a" * 64)
+    report = {"git": None, "changes": [], "toolchains": [], "limited": False}
+    inspected = WorkspaceInfoV1("/project", scope, "a" * 64, report)
+    response = AppResponseV1("request-1", WorkspaceResultV1((inspected,)))
+    assert decode_response(encode_response(response)) == response
+    assert b'"inspection"' not in encode_response(AppResponseV1("request-1", WorkspaceResultV1((ordinary,))))
+
+
 @pytest.mark.parametrize('path', ['relative', '', '/bad\0path', 'C:relative', r'\relative', r'\\server\share'])
-def test_workspace_request_rejects_invalid_paths_at_protocol_boundary(path):
+@pytest.mark.parametrize("action", ["open", "create"])
+def test_workspace_request_rejects_invalid_paths_at_protocol_boundary(path, action):
     with pytest.raises(ValueError):
-        WorkspaceRequestV1('open', path)
+        WorkspaceRequestV1(action, path)
 
 
 def test_workspace_request_rejects_unknown_authority_fields():
@@ -368,3 +402,52 @@ def test_workspace_request_rejects_unknown_authority_fields():
     wire['payload']['controlGeneration'] = 42
     with pytest.raises(InvalidAppMessageError):
         decode_request(json.dumps(wire).encode())
+
+
+
+def test_app_snapshot_round_trips_a_session_bound_business_choice():
+    choice = UserChoicePromptV1("q-1", "选择方案", (
+        UserChoiceOptionV1("A", "渐进"),
+        UserChoiceOptionV1("B", "重构", "保留兼容入口"),
+    ))
+    response = AppResponseV1("request-1", replace(_snapshot(), user_choice=choice))
+    encoded = encode_response(response)
+    assert decode_response(encoded) == response
+    wire = json.loads(encoded)
+    wire["result"]["userChoice"]["options"][1]["id"] = "A"
+    with pytest.raises(InvalidAppMessageError):
+        decode_response(json.dumps(wire).encode())
+
+
+def test_workspace_preview_roundtrips_through_existing_authenticated_operation():
+    from loushang.appserver.protocol.workspace_preview import (
+        WorkspaceDirectoryPreviewV1,
+        WorkspaceFilePreviewV1,
+        WorkspacePreviewEntryV1,
+        WorkspacePreviewRequestV1,
+    )
+
+    request = AppRequestV1(
+        "request-1",
+        AppOperationV1.WORKSPACE,
+        WorkspaceRequestV1("preview", "/project", preview=WorkspacePreviewRequestV1("../README.md", "gui", FINGERPRINT)),
+    )
+    assert decode_request(encode_request(request)) == request
+    for preview in (
+        WorkspaceFilePreviewV1("README.md", "# 工作区"),
+        WorkspaceDirectoryPreviewV1("gui", (WorkspacePreviewEntryV1("README.md", "file"),), True),
+    ):
+        info = WorkspaceInfoV1("/project", SessionScopeV1.CWD, FINGERPRINT, preview=preview)
+        response = AppResponseV1("request-1", WorkspaceResultV1((info,)))
+        assert decode_response(encode_response(response)) == response
+
+
+def test_workspace_preview_requires_a_valid_scope_and_cannot_extend_other_actions():
+    from loushang.appserver.protocol.workspace_preview import WorkspacePreviewRequestV1
+
+    with pytest.raises(ValueError):
+        WorkspacePreviewRequestV1("README.md", "", "invalid")
+    with pytest.raises(ValueError):
+        WorkspaceRequestV1("preview", "/project")
+    with pytest.raises(ValueError):
+        WorkspaceRequestV1("open", "/project", preview=WorkspacePreviewRequestV1("README.md", "", FINGERPRINT))

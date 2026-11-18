@@ -66,14 +66,17 @@ from .model import (
     TranscriptRecordV1,
     TurnInterruptV1,
     TurnTextV1,
+    UserChoiceOptionV1,
+    UserChoicePromptV1,
     WorkspaceInfoV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
 from .schema import operation_names_v1, schema_fingerprint_material_v1
 
 __all__ = [
-    "WorkspaceRequestV1", "WorkspaceInfoV1", "WorkspaceResultV1",
+    "WorkspaceRequestV1", "WorkspaceModelsRequestV1", "WorkspaceInfoV1", "WorkspaceResultV1",
     "APP_PROTOCOL_VERSION",
     "MAX_MEMBERS",
     "MAX_MUX_SPACES",
@@ -120,6 +123,8 @@ __all__ = [
     "SessionScopeV1",
     "SessionSnapshotRequestV1",
     "SessionSnapshotV1",
+    "UserChoiceOptionV1",
+    "UserChoicePromptV1",
     "SessionModelChoiceV1",
     "SessionModelSelectV1",
     "SessionModelsV1",

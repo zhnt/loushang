@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import secrets
 import string
 from collections.abc import Callable, Iterable, Mapping
@@ -30,6 +31,7 @@ from loushang.harness.journal import (
     journal_file_lock,
     load_jsonl,
 )
+from loushang.harness.journal.jsonl import _journal_io_path
 from loushang.harness.resources.plugins.declarations import (
     PluginDeclarationCodecError,
 )
@@ -1165,6 +1167,58 @@ class PluginExecutionDecisionJournal:
     def path(self) -> Path:
         return self._path
 
+    def archive_windows_duplicate_initial_approvals(
+        self,
+        *,
+        authorization: PluginApprovalAuthorizationV1,
+        plugin_ids: frozenset[str],
+    ) -> None:
+        """Preserve malformed issuance history without reusing its authority."""
+        io_path = _journal_io_path(self._path)
+        if os.name != "nt" or len(str(self._path)) < 260 or io_path == self._path:
+            return
+        with self._lock():
+            if not io_path.exists():
+                return
+            try:
+                records = load_jsonl(
+                    self._path,
+                    record_codec=_PLUGIN_EXECUTION_EVENT_CODEC,
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    durability=self._unlocked_durability,
+                ).records
+            except JournalFileError:
+                # The normal reader owns corruption and incomplete-tail handling.
+                return
+            if len(records) < 2:
+                return
+
+            decision_ids: set[str] = set()
+            for record in records:
+                if (
+                    record.journal_revision != 1
+                    or record.expected_journal_revision != 0
+                    or not isinstance(record.payload, _DecisionIssuedV1)
+                ):
+                    return
+                decision = record.payload.decision
+                if (
+                    decision.authorization != authorization
+                    or decision.plugin_id not in plugin_ids
+                    or decision.scope_kind != self._scope_kind
+                    or decision.scope_id != self._scope_id
+                    or decision.disposition != "approved"
+                    or decision.consumption_state != "AVAILABLE"
+                    or decision.decision_revision != 1
+                    or decision.decision_id in decision_ids
+                ):
+                    return
+                decision_ids.add(decision.decision_id)
+
+            # Windows rename is atomic within this directory and refuses to
+            # overwrite a previous archive. The normal issuer owns new decisions.
+            io_path.rename(io_path.with_suffix(".windows-duplicate-issuance.jsonl"))
+
     def issue_execution_decision(
         self,
         subject: PluginExecutionApprovalSubject,
@@ -1894,7 +1948,7 @@ class PluginExecutionDecisionJournal:
         require_open_resume: bool = False,
         require_quiescent_resume: bool = False,
     ) -> _ReplayedExecutionJournal:
-        if not self._path.exists():
+        if not _journal_io_path(self._path).exists():
             if required_resume_parent is not None:
                 raise self._error(
                     "Original parent enrollment is missing",

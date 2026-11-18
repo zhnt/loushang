@@ -1,0 +1,72 @@
+.workspace-preview {
+  box-sizing: border-box;
+  inline-size: min(800px, calc(100% - 32px));
+  max-block-size: calc(100dvh - 48px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 18px 50px #0003;
+  font-family: var(--font-ui);
+}
+.workspace-preview[open] {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+.workspace-preview::backdrop { background: var(--dialog-backdrop); }
+.workspace-preview-header,
+.workspace-preview-actions {
+  padding: 10px 16px;
+  border-block-end: 1px solid var(--line);
+}
+.workspace-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+.workspace-preview-header h2 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.workspace-preview-header p { margin: 4px 0; color: var(--muted); font-size: 13px; }
+.workspace-preview-header .icon-button { flex-shrink: 0; }
+.workspace-preview-path,
+.workspace-preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.workspace-preview-path { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.workspace-preview-path code { min-inline-size: 0; font-family: var(--font-mono); }
+.workspace-preview-actions:empty { display: none; }
+.workspace-preview-actions [aria-pressed="true"] { background: var(--control-hover); }
+.workspace-preview-line { color: var(--muted); font-size: 12px; }
+.workspace-preview-body {
+  min-block-size: 5em;
+  min-inline-size: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+.workspace-preview-body > p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.workspace-preview-source pre { max-block-size: 56dvh; overflow: auto; }
+.workspace-preview-source[data-located="true"] pre {
+  --line-start: calc(12px + (var(--preview-line) - 1) * 1lh);
+  background-image: linear-gradient(
+    transparent var(--line-start),
+    var(--green-soft) var(--line-start) calc(var(--line-start) + 1lh),
+    transparent calc(var(--line-start) + 1lh)
+  );
+  background-attachment: local;
+}
+.workspace-preview-entries { list-style: none; padding: 0; margin: 0; }
+.workspace-preview-entries button {
+  display: block;
+  inline-size: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  font: 13px/1.4 var(--font-mono);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.workspace-preview-entries button:hover { background: var(--control-hover); }

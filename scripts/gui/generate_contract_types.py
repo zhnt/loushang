@@ -13,7 +13,7 @@ from dataclasses import fields
 from enum import Enum
 from pathlib import Path
 from types import UnionType
-from typing import Literal, get_args, get_origin, get_type_hints
+from typing import Literal, Union, get_args, get_origin, get_type_hints
 
 from loushang.appserver.execution import codec as execution
 from loushang.appserver.protocol import model as app
@@ -24,8 +24,11 @@ SOURCES = (
     "src/loushang/appserver/protocol/model.py",
     "src/loushang/appserver/protocol/errors.py",
     "src/loushang/appserver/protocol/codec.py",
+    "src/loushang/appserver/protocol/workspace_preview.py",
     "src/loushang/appserver/execution/model.py",
     "src/loushang/appserver/execution/codec.py",
+    "src/loushang/appserver/execution/goal_codec.py",
+    "src/loushang/appserver/execution/goal_model.py",
 )
 # Only integer representations are bridge policy. Bounds and cross-field
 # invariants still require independent validators and reference codec evidence.
@@ -40,6 +43,21 @@ DECIMAL = {
     "MuxDetachV1.controller_generation",
 }
 SAFE = {
+    "ExecutionGoalProgressV1.advances",
+    "ExecutionGoalProgressV1.model_calls",
+    "ExecutionGoalProgressV1.batch_count",
+    "InteractiveGoalViewV1.revision",
+    "InteractiveGoalViewV1.epoch",
+    "InteractiveGoalRecoveryV1.revision",
+    "InteractiveGoalRecoveryV1.epoch",
+    "InteractiveGoalRecoveryV1.batch_count",
+    "InteractiveGoalRecoveryV1.completed_count",
+    "InteractiveGoalRecoveryV1.failed_count",
+    "InteractiveGoalRecoveryV1.cancelled_count",
+    "InteractiveGoalRecoveryV1.orphaned_count",
+    "InteractiveGoalReviewV1.revision",
+    "InteractiveGoalReviewV1.epoch",
+    "InteractiveGoalReviewV1.check_count",
     "ExecutionStateV1.revision",
     "ExecutionObservationV1.final_cursor",
     "ExecutionSessionViewV1.revision",
@@ -92,7 +110,7 @@ def generate() -> dict[str, str]:
                 literals[name] = args
                 return name
             return " | ".join(json.dumps(item) for item in args)
-        if origin is UnionType:
+        if origin in (UnionType, Union):
             if type(None) in args:
                 members = tuple(item for item in args if item is not type(None))
                 if len(members) != 1:
@@ -136,7 +154,7 @@ def generate() -> dict[str, str]:
                     f"    pub {name}: {annotation(hints[name], key, True)},",
                 ]
             )
-        # The codec adds this canonical optional field outside its static _FIELDS.
+        # The codec adds these canonical optional fields outside its static _FIELDS.
         if cls is app.SessionSnapshotV1:
             key = "SessionSnapshotV1.submission_mode"
             mode = annotation(Literal["execution"], key, True)
@@ -145,6 +163,30 @@ def generate() -> dict[str, str]:
                 '    #[serde(rename = "submissionMode", skip_serializing_if = "Option::is_none")]',
                 f"    pub submission_mode: Option<{mode}>,",
             ])
+            ts.append("  readonly userChoice?: UserChoicePromptV1;")
+            rs.extend([
+                '    #[serde(rename = "userChoice", skip_serializing_if = "Option::is_none")]',
+                "    pub user_choice: Option<UserChoicePromptV1>,",
+            ])
+        if cls.__name__ == "InteractiveGoalViewV1":
+            ts.append("  readonly command?: InteractiveGoalCommandViewV1;")
+            ts.append("  readonly reviewAvailable?: true;")
+            rs.extend([
+                '    #[serde(rename = "reviewAvailable", skip_serializing_if = "Option::is_none")]',
+                "    pub review_available: Option<bool>,",
+            ])
+            rs.extend([
+                '    #[serde(skip_serializing_if = "Option::is_none")]',
+                "    pub command: Option<InteractiveGoalCommandViewV1>,",
+            ])
+        if cls.__name__ == "ExecutionSessionSnapshotV1":
+            for flag in execution.GOAL_CAPABILITIES:
+                field = execution._camel(flag)
+                ts.append(f"  readonly {field}?: true;")
+                rs.extend([
+                    f'    #[serde(rename = "{field}", skip_serializing_if = "Option::is_none")]',
+                    f"    pub {flag}: Option<bool>,",
+                ])
         ts.append("}")
         rs.append("}")
     for name, members in sorted(unions.items()):

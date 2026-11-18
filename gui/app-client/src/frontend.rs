@@ -1,13 +1,17 @@
 //! Browser and desktop requests use the same AppServer client.
+mod live_view;
 mod service;
 use crate::{
-    AppClient, AppTarget, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
-    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
+    definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlCommand,
+    ControlResult, CreateSessionResult, InteractiveGoalCommand, InteractiveGoalReviewSubmission,
+    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
 };
+use live_view::{Target, View};
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     num::NonZeroU16,
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
@@ -24,6 +28,8 @@ pub struct Backend {
     root: PathBuf,
     tunnel: Option<(PathBuf, NonZeroU16)>,
     requests: Arc<Mutex<()>>,
+    views: Arc<Mutex<HashMap<String, View>>>,
+    next_view_epoch: Arc<Mutex<u64>>,
     manager: Option<PathBuf>,
     managed_record: Arc<Mutex<Option<PathBuf>>>,
 }
@@ -34,6 +40,8 @@ impl Backend {
             root,
             tunnel: None,
             requests: Arc::new(Mutex::new(())),
+            views: Arc::default(),
+            next_view_epoch: Arc::default(),
             manager: None,
             managed_record: Arc::new(Mutex::new(None)),
         }
@@ -49,6 +57,8 @@ impl Backend {
             tunnel: Some((root.clone(), port)),
             root,
             requests: self.requests.clone(),
+            views: self.views.clone(),
+            next_view_epoch: self.next_view_epoch.clone(),
             manager: None,
             managed_record: Arc::new(Mutex::new(None)),
         }
@@ -76,8 +86,15 @@ impl Backend {
     }
 
     fn host_request(&self, operation: &str, request: &Value) -> Result<Value> {
-        let configured_record = if self.tunnel.is_none() { self.record_root()? } else { None };
-        let manager = self.manager.as_deref().filter(|_| configured_record.is_none());
+        let configured_record = if self.tunnel.is_none() {
+            self.record_root()?
+        } else {
+            None
+        };
+        let manager = self
+            .manager
+            .as_deref()
+            .filter(|_| configured_record.is_none());
         if let (Some(manager), "manage") = (manager, operation) {
             return self.manage_service(manager, request);
         }
@@ -90,7 +107,11 @@ impl Backend {
         } else {
             record_root = match configured_record {
                 Some(path) => Some(path),
-                None => self.managed_record.lock().map_err(|_| "host_unavailable")?.clone(),
+                None => self
+                    .managed_record
+                    .lock()
+                    .map_err(|_| "host_unavailable")?
+                    .clone(),
             };
             record_root.as_deref().map(AppTarget::Local)
         };
@@ -101,11 +122,65 @@ impl Backend {
             })),
             "manage" => status(target, field(request, "action")?),
             "workspace" => self.workspace(target.ok_or("not_connected")?, request),
-            "live" => live_request(target.ok_or("not_connected")?, request),
+            "live" => self.live(target.ok_or("not_connected")?, request),
             _ => Err("unknown_operation".into()),
         }
     }
 
+    fn live(&self, target: AppTarget<'_>, request: &Value) -> Result<Value> {
+        let id = field(request, "viewId")?;
+        if id.len() != 36
+            || !id
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+        {
+            return Err("invalid_request".into());
+        }
+        let path = field(request, "workspace")?;
+        let action = field(request, "action")?;
+        let identity = Target::from(target);
+        let mut views = self.views.lock().map_err(|_| "host_unavailable")?;
+        views.retain(|_, view| view.active());
+        if views
+            .get(id)
+            .is_some_and(|view| view.target != identity || view.path != path)
+        {
+            return Err("invalid_request".into());
+        }
+        if action == "close" {
+            views.remove(id);
+            return Ok(json!({}));
+        }
+        if matches!(action, "snapshot" | "find-submission") && !views.contains_key(id) {
+            if views.len() >= 16 {
+                return Err("connection_failed".into());
+            }
+            let workspace = if path == TEMPORARY {
+                None
+            } else {
+                Some(open_workspace(target, path)?)
+            };
+            let mux = workspace
+                .as_ref()
+                .map_or_else(|| TEMPORARY_MUX.into(), |item| mux_name(&item.path));
+            let epoch = {
+                let mut counter = self
+                    .next_view_epoch
+                    .lock()
+                    .map_err(|_| "host_unavailable")?;
+                *counter = counter.checked_add(1).ok_or("host_unavailable")?;
+                *counter
+            };
+            let view = View::open(identity, path.to_owned(), workspace, mux, epoch)?;
+            views.insert(id.to_owned(), view);
+        }
+        let view = views.get(id).ok_or("connection_failed")?;
+        match action {
+            "snapshot" => view.snapshot(),
+            "create" => created(view.control(None, create_command(&request["input"])?)?),
+            _ => session_control(view, action, &request["input"]),
+        }
+    }
 
     fn manage_service(&self, manager: &std::path::Path, request: &Value) -> Result<Value> {
         let (action, instance) = match field(request, "action")? {
@@ -113,7 +188,11 @@ impl Backend {
             "start" => ("start", None),
             action @ ("stop" | "restart") => {
                 let instance = field(request, "instanceId")?;
-                if instance.len() != 32 || !instance.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+                if instance.len() != 32
+                    || !instance
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                {
                     return Err("invalid_request".into());
                 }
                 (action, Some(instance))
@@ -129,7 +208,10 @@ impl Backend {
             return Ok(error(&code));
         }
         if reply.state != "running" {
-            if !matches!(reply.state.as_str(), "not_running" | "starting" | "stopping" | "exited" | "unknown") {
+            if !matches!(
+                reply.state.as_str(),
+                "not_running" | "starting" | "stopping" | "exited" | "unknown"
+            ) {
                 return Ok(error("management_unconfirmed"));
             }
             *self.managed_record.lock().map_err(|_| "host_unavailable")? = None;
@@ -143,12 +225,17 @@ impl Backend {
             Ok(instance) => instance,
             Err(()) => return Ok(error(client.failure_code())),
         };
-        if reply.service_instance_id.is_some_and(|expected| expected != service_instance) {
+        if reply
+            .service_instance_id
+            .is_some_and(|expected| expected != service_instance)
+        {
             return Ok(error("instance_changed"));
         }
         *self.managed_record.lock().map_err(|_| "host_unavailable")? = Some(root);
-        Ok(json!({"state":"running", "errorCode":null, "manageable":true,
-                  "instanceId":reply.instance_id, "serviceInstanceId":service_instance}))
+        Ok(
+            json!({"state":"running", "errorCode":null, "manageable":true,
+                  "instanceId":reply.instance_id, "serviceInstanceId":service_instance}),
+        )
     }
 
     fn record_root(&self) -> Result<Option<PathBuf>> {
@@ -173,8 +260,65 @@ impl Backend {
         let operation = match action {
             "navigation" => return self.navigation(target),
             "create-chat" => return create_chat(target, request),
+            "delete-chat" => return delete_chat(target, request),
+            "models" => {
+                let path = optional_workspace_path(request)?;
+                let client = AppClient::default();
+                return models(
+                    client
+                        .workspace_models(target, TIMEOUT, path)
+                        .map_err(|_| client.failure_code())?,
+                );
+            }
+            "inspect" => {
+                let path = field(request, "path")?;
+                let inspect = WorkspaceRequest::Inspect {
+                    path,
+                    session: request.get("sessionId").and_then(Value::as_str),
+                };
+                return match workspaces(target, inspect) {
+                    Ok(items) => Ok(json!({"workspaces": items})),
+                    Err(code)
+                        if matches!(
+                            code.as_str(),
+                            "connection_failed" | "invalid_request" | "operation_unavailable"
+                        ) =>
+                    {
+                        match workspaces(target, WorkspaceRequest::Projects) {
+                            Ok(items) if items.iter().any(|item| item.path == path) => {
+                                Err("workspace_inspection_unavailable".into())
+                            }
+                            _ => Err(code),
+                        }
+                    }
+                    Err(code) => Err(code),
+                };
+            }
+            "preview" => return preview_workspace(target, request),
+            "locate" => {
+                let instance = field(request, "serviceInstanceId")?;
+                let client = AppClient::default();
+                if client
+                    .instance(target, TIMEOUT)
+                    .map_err(|_| "connection_failed")?
+                    != instance
+                {
+                    return Err("instance_changed".into());
+                }
+                let workspace = workspace_by_fingerprint(target, field(request, "fingerprint")?)?;
+                if client
+                    .instance(target, TIMEOUT)
+                    .map_err(|_| "connection_failed")?
+                    != instance
+                {
+                    return Err("instance_changed".into());
+                }
+                return Ok(json!({ "path": workspace.path }));
+            }
             "open" => return self.open(target, field(request, "path")?),
             "list" => WorkspaceRequest::List,
+            "projects" => WorkspaceRequest::Projects,
+            "create" => WorkspaceRequest::Create(workspace_creation_path(request)?),
             "register" => WorkspaceRequest::Register(field(request, "path")?),
             "unregister" => WorkspaceRequest::Unregister(field(request, "path")?),
             _ => return Err("unknown_operation".into()),
@@ -206,7 +350,8 @@ impl Backend {
             };
             let scope = format!("mux:{}", field(mux, "muxSpaceId")?);
             let pinned = pins(&database, &scope)?;
-            let mut result = mux["members"].as_array().ok_or("invalid_host_reply")?.iter().map(|member| {
+            // Mux members are appended in creation order and retained in that order.
+            let mut result = mux["members"].as_array().ok_or("invalid_host_reply")?.iter().rev().map(|member| {
                 let id = field(&member["session"], "sessionId")?;
                 Ok(json!({"id": id, "title": member["title"], "scope": scope, "pinned": pinned.iter().any(|value| value == id)}))
             }).collect::<Result<Vec<_>>>()?;
@@ -315,6 +460,16 @@ fn mux_name(path: &str) -> String {
     )
 }
 
+fn workspace_creation_path(request: &Value) -> Result<&str> {
+    let path = request["path"].as_str().ok_or("invalid_request")?;
+    let absolute = path.starts_with('/')
+        || matches!(path.as_bytes(), [drive, b':', b'/' | b'\\', ..] if drive.is_ascii_alphabetic());
+    if !absolute || path.contains('\0') || path.chars().count() > 4096 {
+        return Err("invalid_request".into());
+    }
+    Ok(path)
+}
+
 fn workspaces(target: AppTarget<'_>, request: WorkspaceRequest<'_>) -> Result<Vec<WorkspaceInfo>> {
     match AppClient::default()
         .workspace(target, TIMEOUT, request)
@@ -328,6 +483,46 @@ fn workspaces(target: AppTarget<'_>, request: WorkspaceRequest<'_>) -> Result<Ve
 fn single(items: Vec<WorkspaceInfo>) -> Result<WorkspaceInfo> {
     let [workspace]: [WorkspaceInfo; 1] = items.try_into().map_err(|_| "invalid_host_reply")?;
     Ok(workspace)
+}
+
+fn preview_workspace(target: AppTarget<'_>, request: &Value) -> Result<Value> {
+    let path = field(request, "path")?;
+    let fingerprint = field(request, "fingerprint")?;
+    let located;
+    let path = if path == TEMPORARY {
+        located = workspace_by_fingerprint(target, fingerprint)?;
+        located.path.as_str()
+    } else {
+        path
+    };
+    let operation = WorkspaceRequest::Preview {
+        path,
+        fingerprint,
+        instance: field(request, "serviceInstanceId")?,
+        reference: field(request, "reference")?,
+        base: request
+            .get("base")
+            .and_then(Value::as_str)
+            .ok_or("invalid_request")?,
+    };
+    let workspace = single(workspaces(target, operation)?)?;
+    if workspace.path != path || workspace.scope_fingerprint != fingerprint {
+        return Err("invalid_host_reply".into());
+    }
+    let preview = workspace.preview.ok_or("workspace_preview_unavailable")?;
+    serde_json::to_value(preview).map_err(|_| "invalid_host_reply".into())
+}
+
+fn workspace_by_fingerprint(target: AppTarget<'_>, fingerprint: &str) -> Result<WorkspaceInfo> {
+    let mut matches = workspaces(target, WorkspaceRequest::List)?
+        .into_iter()
+        .filter(|item| {
+            matches!(item.scope, WorkspaceScope::Cwd) && item.scope_fingerprint == fingerprint
+        });
+    match (matches.next(), matches.next()) {
+        (Some(workspace), None) => Ok(workspace),
+        _ => Err("workspace_unavailable".into()),
+    }
 }
 
 fn open_workspace(target: AppTarget<'_>, path: &str) -> Result<WorkspaceInfo> {
@@ -425,30 +620,82 @@ fn control_on<T>(
         .map_err(|_| "connection_failed".into())
 }
 
-fn create(
-    target: AppTarget<'_>,
-    mux: &str,
-    workspace: Option<&WorkspaceInfo>,
-    input: &Value,
-) -> Result<Value> {
-    let title = field(input, "title")?.to_owned();
-    let mut entropy = [0_u8; 16];
-    getrandom::getrandom(&mut entropy).map_err(|_| "host_unavailable")?;
-    let continuity_id = entropy.iter().map(|byte| format!("{byte:02x}")).collect();
-    let source_session_id = input["sourceSessionId"].as_str().map(str::to_owned);
-    match control(options(target, mux, workspace), |reply| {
-        ControlCommand::CreateSession {
-            source_session_id,
-            continuity_id,
-            title,
+fn delete_chat(target: AppTarget<'_>, input: &Value) -> Result<Value> {
+    let path = field(input, "path")?;
+    let session_id = field(input, "sessionId")?.to_owned();
+    let mux_space_id = field(input, "scope")?
+        .strip_prefix("mux:")
+        .filter(|id| !id.is_empty() && id.len() <= 512)
+        .ok_or("invalid_request")?
+        .to_owned();
+    let instance = field(input, "serviceInstanceId")?;
+    let mux = if path == TEMPORARY {
+        TEMPORARY_MUX.to_owned()
+    } else {
+        mux_name(path)
+    };
+    let accepted = control_on(
+        options(target, &mux, None),
+        Some(instance),
+        &mut None,
+        |reply| ControlCommand::CloseSession {
+            mux_space_id,
+            session_id,
             reply,
+        },
+    )?;
+    Ok(json!({"accepted": accepted}))
+}
+
+fn create_command(
+    input: &Value,
+) -> Result<
+    impl FnOnce(mpsc::SyncSender<std::result::Result<CreateSessionResult, ()>>) -> ControlCommand,
+> {
+    let title = field(input, "title")?.to_owned();
+    let continuity_id = match input.get("continuityId") {
+        Some(value) if !value.is_null() => {
+            let id = value.as_str().ok_or("invalid_request")?;
+            if id.len() > 512
+                || !id.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._~-".contains(&byte))
+            {
+                return Err("invalid_request".into());
+            }
+            id.to_owned()
         }
-    })? {
+        _ => {
+            let mut entropy = [0_u8; 16];
+            getrandom::getrandom(&mut entropy).map_err(|_| "host_unavailable")?;
+            entropy.iter().map(|byte| format!("{byte:02x}")).collect()
+        }
+    };
+    let source_session_id = input["sourceSessionId"].as_str().map(str::to_owned);
+    Ok(move |reply| ControlCommand::CreateSession {
+        source_session_id,
+        continuity_id,
+        title,
+        reply,
+    })
+}
+
+fn created(result: CreateSessionResult) -> Result<Value> {
+    match result {
         CreateSessionResult::Accepted(session_id) => {
             Ok(json!({"sessionId":session_id, "accepted":true}))
         }
         CreateSessionResult::Rejected(code) => Err(code),
     }
+}
+
+fn optional_workspace_path(request: &Value) -> Result<Option<&str>> {
+    request
+        .get("path")
+        .filter(|path| !path.is_null())
+        .map(|path| path.as_str().ok_or_else(|| "invalid_request".into()))
+        .transpose()
 }
 
 fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
@@ -460,93 +707,174 @@ fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     if title.trim().is_empty() || title.chars().count() > 256 {
         return Err("invalid_request".into());
     }
-    let (path, mux, scope) = match request.get("path").filter(|path| !path.is_null()) {
-        Some(path) => {
-            let workspace = open_workspace(target, path.as_str().ok_or("invalid_request")?)?;
-            (workspace.path.clone(), mux_name(&workspace.path), workspace)
-        }
-        None => {
-            let scope = single(workspaces(target, WorkspaceRequest::AllocateTemporary)?)?;
-            (TEMPORARY.into(), TEMPORARY_MUX.into(), scope)
-        }
+    let command = create_command(&json!({
+        "title": title, "continuityId": request["continuityId"],
+    }))?;
+    let workspace_path = optional_workspace_path(request)?;
+    let scope = match workspace_path {
+        Some(path) => open_workspace(target, path),
+        None => workspaces(target, WorkspaceRequest::AllocateTemporary).and_then(single),
     };
-    let result = create(target, &mux, Some(&scope), &json!({"title": title}))?;
-    Ok(json!({"workspace": path, "sessionId": result["sessionId"]}))
-}
-
-fn live_request(target: AppTarget<'_>, request: &Value) -> Result<Value> {
-    let path = field(request, "workspace")?;
-    let workspace = if path == TEMPORARY {
-        None
-    } else {
-        Some(open_workspace(target, path)?)
+    let Ok(scope) = scope else {
+        return Ok(json!({"accepted": false}));
     };
-    live(
-        target,
-        workspace.as_ref(),
-        field(request, "action")?,
-        &request["input"],
-    )
-}
-
-fn live(
-    target: AppTarget<'_>,
-    workspace: Option<&WorkspaceInfo>,
-    action: &str,
-    input: &Value,
-) -> Result<Value> {
-    let mux = workspace
-        .map(|item| mux_name(&item.path))
-        .unwrap_or_else(|| TEMPORARY_MUX.into());
-    let options = options(target, &mux, workspace);
-    match action {
-        "snapshot" => snapshot(options),
-        "create" => create(target, &mux, workspace, input),
-        _ => session_control(options, action, input),
+    let (path, mux) = match workspace_path {
+        Some(_) => (scope.path.as_str(), mux_name(&scope.path)),
+        None => (TEMPORARY, TEMPORARY_MUX.into()),
+    };
+    match control(options(target, &mux, Some(&scope)), command)? {
+        CreateSessionResult::Accepted(session_id) => {
+            Ok(json!({"workspace": path, "sessionId": session_id}))
+        }
+        CreateSessionResult::Rejected(code) if definitive_create_rejection(&code) => {
+            Ok(json!({"accepted": false}))
+        }
+        CreateSessionResult::Rejected(code) => Err(code),
     }
 }
 
-fn snapshot(options: ConnectionOptions<'_>) -> Result<Value> {
-    let mut snapshot = None;
-    AppClient::default()
-        .run(options, &mut |value| {
-            snapshot = Some(value);
-            Ok(())
-        })
-        .map_err(|_| "connection_failed")?;
-    serde_json::to_value(snapshot.ok_or("connection_failed")?)
-        .map_err(|_| "invalid_host_reply".into())
-}
-
-fn session_control(options: ConnectionOptions<'_>, action: &str, input: &Value) -> Result<Value> {
+fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
     let session_id = field(input, "sessionId")?.to_owned();
     match action {
-        "submit" => submit(options, session_id, input),
-        "find-submission" => {
-            let submission_id = field(input, "submissionId")?;
-            let instance = field(input, "serviceInstanceId")?;
-            Ok(submission_receipt(
-                submission_id,
-                find_submission(options, &session_id, submission_id, instance),
-            ))
-        }
+        "submit" | "find-submission" | "goal-start" => submission(view, action, session_id, input),
         "interrupt" => {
             let execution_id = field(input, "executionId")?.to_owned();
-            let result = control(options, |reply| ControlCommand::Interrupt {
+            let result = view.control(None, |reply| ControlCommand::Interrupt {
                 session_id,
                 execution_id,
                 reply,
             })?;
             Ok(json!({"accepted": matches!(result, ControlResult::Accepted)}))
         }
-        "models" => models(control(options, |reply| ControlCommand::ListModels {
+        "interactive-goal-create" | "interactive-goal-status" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let epoch = field(input, "connectionEpoch")?;
+            let target = if action == "interactive-goal-create" {
+                Some(field(input, "goalTarget")?.to_owned())
+            } else {
+                None
+            };
+            if input.as_object().map(|object| object.len())
+                != Some(3 + usize::from(target.is_some()))
+            {
+                return Err("invalid_request".into());
+            }
+            if epoch != view.epoch.to_string() {
+                return Ok(Value::Null);
+            }
+            let result = view.control(Some(instance), |reply| {
+                ControlCommand::interactive_goal(session_id, target, reply)
+            })?;
+            Ok(json!(result))
+        }
+        "interactive-goal-command" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let epoch = field(input, "connectionEpoch")?;
+            if input.as_object().map(|object| object.len()) != Some(6) {
+                return Err("invalid_request".into());
+            }
+            let command = serde_json::from_value::<InteractiveGoalCommand>(json!({
+                "goalId": input["goalId"], "commandId": input["commandId"], "action": input["action"],
+            })).map_err(|_| "invalid_request")?;
+            if epoch != view.epoch.to_string() {
+                return Ok(Value::Null);
+            }
+            let result = view.control(Some(instance), |reply| {
+                ControlCommand::ControlInteractiveGoal {
+                    session_id,
+                    command,
+                    reply,
+                }
+            })?;
+            Ok(json!(result))
+        }
+        "interactive-goal-recovery" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let epoch = field(input, "connectionEpoch")?;
+            if input.as_object().map(|object| object.len()) != Some(3) {
+                return Err("invalid_request".into());
+            }
+            if epoch != view.epoch.to_string() {
+                return Ok(Value::Null);
+            }
+            let result = view.control(Some(instance), |reply| {
+                ControlCommand::ReadInteractiveGoalRecovery { session_id, reply }
+            })?;
+            Ok(json!(result))
+        }
+        "interactive-goal-review" | "interactive-goal-review-submit" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let epoch = field(input, "connectionEpoch")?;
+            let goal_id = field(input, "goalId")?.to_owned();
+            let submit = action == "interactive-goal-review-submit";
+            if input.as_object().map(|object| object.len()) != Some(if submit { 8 } else { 4 }) {
+                return Err("invalid_request".into());
+            }
+            if epoch != view.epoch.to_string() {
+                return Ok(Value::Null);
+            }
+            let review = if submit {
+                let reason = input.get("reason").ok_or("invalid_request")?;
+                Some(serde_json::from_value::<InteractiveGoalReviewSubmission>(json!({
+                    "goalId": goal_id, "commandId": input["commandId"], "reviewToken": input["reviewToken"],
+                    "decision": input["decision"], "reason": reason,
+                })).map_err(|_| "invalid_request")?)
+            } else {
+                None
+            };
+            let result = view.control(Some(instance), |reply| match review {
+                Some(review) => ControlCommand::SubmitInteractiveGoalReview {
+                    session_id,
+                    review,
+                    reply,
+                },
+                None => ControlCommand::ReadInteractiveGoalReview {
+                    session_id,
+                    goal_id,
+                    reply,
+                },
+            })?;
+            Ok(json!(result))
+        }
+        "goal-progress" => {
+            let instance = field(input, "serviceInstanceId")?;
+            let execution_id = field(input, "executionId")?.to_owned();
+            let result = view.control(Some(instance), |reply| {
+                ControlCommand::ObserveGoalProgress {
+                    session_id,
+                    execution_id,
+                    reply,
+                }
+            })?;
+            Ok(json!(result))
+        }
+        "respond-interaction" => {
+            let interaction_id = field(input, "interactionId")?.to_owned();
+            let outcome =
+                serde_json::from_value(input["outcome"].clone()).map_err(|_| "invalid_request")?;
+            if field(input, "connectionEpoch")? != view.epoch.to_string() {
+                return Ok(json!({"accepted": false, "reason": "stale_attachment"}));
+            }
+            let result = view.control(None, |reply| ControlCommand::RespondInteraction {
+                session_id,
+                interaction_id,
+                outcome,
+                reply,
+            })?;
+            match result {
+                ControlResult::Accepted => Ok(json!({"accepted": true})),
+                ControlResult::Rejected(reason) => Ok(json!({"accepted": false, "reason": reason})),
+                _ => Err("invalid_host_reply".into()),
+            }
+        }
+        "models" => models(view.control(None, |reply| ControlCommand::ListModels {
             session_id,
             reply,
         })?),
         "select-model" => {
             let model_id = field(input, "modelId")?.to_owned();
             let thinking_level = input["thinkingLevel"].as_str().map(str::to_owned);
-            models(control(options, |reply| ControlCommand::SelectModel {
+            models(view.control(None, |reply| ControlCommand::SelectModel {
                 session_id,
                 model_id,
                 thinking_level,
@@ -557,38 +885,41 @@ fn session_control(options: ConnectionOptions<'_>, action: &str, input: &Value) 
     }
 }
 
-fn submit(options: ConnectionOptions<'_>, session_id: String, input: &Value) -> Result<Value> {
-    let submission_id = field(input, "submissionId")?.to_owned();
-    let text = field(input, "text")?.to_owned();
-    let expected_instance = input["serviceInstanceId"].as_str();
-    let mut instance = None;
-    let mut result = control_on(options.clone(), expected_instance, &mut instance, |reply| {
-        ControlCommand::Submit {
-            session_id: session_id.clone(),
-            submission_id: submission_id.clone(),
+fn submission(view: &View, action: &str, session_id: String, input: &Value) -> Result<Value> {
+    let id = field(input, "submissionId")?;
+    let instance = input["serviceInstanceId"].as_str();
+    let result = if action == "find-submission" {
+        view.control(Some(instance.ok_or("invalid_request")?), |reply| {
+            ControlCommand::FindSubmission {
+                session_id,
+                submission_id: id.to_owned(),
+                reply,
+            }
+        })
+    } else if action == "goal-start" {
+        if !input.as_object().is_some_and(|fields| fields.len() == 3) {
+            return Err("invalid_request".into());
+        }
+        view.control(Some(field(input, "serviceInstanceId")?), |reply| {
+            ControlCommand::StartGoal {
+                session_id,
+                submission_id: id.to_owned(),
+                reply,
+            }
+        })
+    } else {
+        let text = field(input, "text")?.to_owned();
+        view.control(instance, |reply| ControlCommand::Submit {
+            session_id,
+            submission_id: id.to_owned(),
             text,
             reply,
-        }
-    });
-    if let (Err(_), Some(instance)) = (&result, instance) {
-        result = find_submission(options, &session_id, &submission_id, &instance);
+        })
+    };
+    if matches!(action, "submit" | "goal-start") && result.is_err() {
+        return Err("connection_failed".into());
     }
-    Ok(submission_receipt(&submission_id, result))
-}
-
-fn find_submission(
-    options: ConnectionOptions<'_>,
-    session_id: &str,
-    submission_id: &str,
-    instance: &str,
-) -> Result<ControlResult> {
-    control_on(options, Some(instance), &mut None, |reply| {
-        ControlCommand::FindSubmission {
-            session_id: session_id.to_owned(),
-            submission_id: submission_id.to_owned(),
-            reply,
-        }
-    })
+    Ok(submission_receipt(id, result))
 }
 
 fn submission_receipt(submission_id: &str, result: Result<ControlResult>) -> Value {
@@ -617,6 +948,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn workspace_creation_checks_the_wire_shape_without_interpreting_host_paths() {
+        for path in ["/home/project", r"C:\Work Space"] {
+            assert_eq!(
+                workspace_creation_path(&json!({"path": path})).unwrap(),
+                path
+            );
+        }
+        for path in ["relative", "C:relative", "/bad\0path", ""] {
+            assert_eq!(
+                workspace_creation_path(&json!({"path": path})).unwrap_err(),
+                "invalid_request"
+            );
+        }
+    }
+
+    #[test]
     fn invalid_chat_titles_are_rejected_before_workspace_allocation() {
         let target = AppTarget::Local(std::path::Path::new("unconfigured"));
         for title in ["   ".to_owned(), "a".repeat(257)] {
@@ -627,7 +974,7 @@ mod tests {
         }
         assert_eq!(
             create_chat(target, &json!({"title": "a".repeat(256)})),
-            Err("connection_failed".into())
+            Ok(json!({"accepted": false}))
         );
     }
 }

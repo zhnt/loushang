@@ -29,6 +29,7 @@ from loushang.appserver.local_record import (
 )
 from loushang.appserver.managed_mux import ManagedMuxCreationPortV1
 from loushang.appserver.managed_mux_close import ManagedMuxClosePortV1
+from loushang.hosting.errors import HostingError
 from loushang.hosting.service import ServiceObserverV1, reopen_service_observer
 
 from ._files import ManagedStorageError, _check_deadline
@@ -175,7 +176,13 @@ class ManagedConnectionLeaseV1:
         state = self._current(deadline)
         assert state.native_identity is not None
         self._native_uncertain = True
-        self._observer = reopen_service_observer(state.native_identity)
+        try:
+            self._observer = reopen_service_observer(state.native_identity)
+        except HostingError as error:
+            # Hosting reports incomplete rollback explicitly when it acquired
+            # a native handle and could not close it.
+            self._native_uncertain = error.cleanup_incomplete
+            raise
         self._native_uncertain = False
         if self._observer.exited():
             raise ManagedStorageError("unavailable")

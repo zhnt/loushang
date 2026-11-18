@@ -47,6 +47,29 @@ def test_windows_service_reopens_exact_live_process_and_observes_exit():
                 reopened.close()
 
 
+def test_windows_reopen_preserves_error_category_when_close_receipt_is_lost(monkeypatch):
+    from loushang.hosting import service_windows
+
+    observer = service_windows.WindowsServiceObserverV1.capture(os.getpid())
+    stale = replace(observer.identity, creation_filetime=observer.identity.creation_filetime + 1)
+    observer.close()
+    kernel = service_windows._bind_kernel()
+
+    class LostCloseReceipt:
+        def __getattr__(self, name):
+            return getattr(kernel, name)
+
+        def CloseHandle(self, handle):
+            assert kernel.CloseHandle(handle)
+            return False
+
+    monkeypatch.setattr(service_windows, "_bind_kernel", LostCloseReceipt)
+    with pytest.raises(HostingError) as error:
+        service_windows.WindowsServiceObserverV1.reopen(stale)
+    assert error.value.category is HostingFailureCategory.PREPARATION_STALE
+    assert error.value.cleanup_incomplete
+
+
 def test_windows_service_close_releases_only_its_native_handle():
     from loushang.hosting.service_windows import WindowsServiceObserverV1
 

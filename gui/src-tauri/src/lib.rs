@@ -21,6 +21,11 @@ fn quit_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
+#[tauri::command]
 fn show_tray_window(app: tauri::AppHandle) {
     #[cfg(desktop)]
     tray::show_main_window(&app);
@@ -78,7 +83,9 @@ pub fn run() {
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         sync_tray,
+        web_link::open_web_link,
         quit_app,
+        open_devtools,
         show_tray_window,
         project_folder::pick_project_folder,
         fixture_bridge_handshake,
@@ -87,8 +94,17 @@ pub fn run() {
         live_bridge::live_connection_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
+        live_bridge::live_respond_interaction,
         live_bridge::live_create_session,
         live_bridge::live_session_models,
+        live_bridge::live_goal_progress,
+        live_bridge::live_interactive_goal_command,
+        live_bridge::live_interactive_goal_recovery,
+        live_bridge::live_interactive_goal_review,
+        live_bridge::live_interactive_goal_review_submit,
+        live_bridge::live_interactive_goal_create,
+        live_bridge::live_interactive_goal_status,
+        live_bridge::live_goal_start,
         live_bridge::live_select_model,
         live_bridge::resync_live_connection,
         live_bridge::start_live_connection,
@@ -97,7 +113,9 @@ pub fn run() {
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         sync_tray,
+        web_link::open_web_link,
         quit_app,
+        open_devtools,
         show_tray_window,
         project_folder::pick_project_folder,
         client_settings::client_settings,
@@ -105,8 +123,17 @@ pub fn run() {
         live_bridge::live_connection_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
+        live_bridge::live_respond_interaction,
         live_bridge::live_create_session,
         live_bridge::live_session_models,
+        live_bridge::live_goal_progress,
+        live_bridge::live_interactive_goal_command,
+        live_bridge::live_interactive_goal_recovery,
+        live_bridge::live_interactive_goal_review,
+        live_bridge::live_interactive_goal_review_submit,
+        live_bridge::live_interactive_goal_create,
+        live_bridge::live_interactive_goal_status,
+        live_bridge::live_goal_start,
         live_bridge::live_select_model,
         live_bridge::resync_live_connection,
         live_bridge::start_live_connection,

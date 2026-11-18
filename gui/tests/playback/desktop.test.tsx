@@ -20,12 +20,14 @@ describe("desktop frame", () => {
     const rail = screen.getByLabelText("Workspace and Session navigation");
     expect(rail.textContent).not.toMatch(/[♢▱⌕]/);
     expect(rail.querySelectorAll('[data-icon="folder"]')).toHaveLength(3);
-    expect(rail.querySelector('.brand-name [data-icon="chevron-down"]')).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
+    const brand = rail.querySelector(".brand-name");
+    expect(brand).toHaveTextContent(config.productName);
+    expect(brand?.querySelector("svg")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Tasks" }));
     const close = screen.getByRole("button", { name: "Close Work Dock" });
     expect(close.querySelector('[data-icon="close"]')).toBeInTheDocument();
     await user.click(close);
-    expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Work Dock" })).not.toBeInTheDocument();
   });
   it("pins chats above workspace groups, keeps unassigned chats, and scopes pins to the mux", async () => {
     const user = userEvent.setup();
@@ -83,7 +85,7 @@ describe("desktop frame", () => {
 
   const originalWidth = window.innerWidth;
   afterEach(() => { vi.unstubAllGlobals(); Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth }); });
-  it("shares measured content margins including a native scrollbar", async () => {
+  it("reserves space for the native scrollbar beside the composer", async () => {
     let resize = () => {};
     vi.stubGlobal("ResizeObserver", class {
       constructor(callback: () => void) { resize = callback; }
@@ -94,11 +96,9 @@ describe("desktop frame", () => {
     await screen.findByRole("heading", { name: "GUI development" });
     const pane = screen.getByLabelText("Session workspace");
     const transcript = screen.getByLabelText("Session transcript");
-    Object.defineProperty(pane, "clientWidth", { configurable: true, value: 1140 });
     Object.defineProperty(transcript, "offsetWidth", { configurable: true, value: 1140 });
     Object.defineProperty(transcript, "clientWidth", { configurable: true, value: 1125 });
     act(() => resize());
-    expect(pane.style.getPropertyValue("--content-gutter")).toBe("182.5px");
     expect(pane.style.getPropertyValue("--scrollbar-width")).toBe("15px");
   });
   it("reserves right space and changes layout based on remaining width", async () => {
@@ -114,7 +114,7 @@ describe("desktop frame", () => {
     expect(layout).toHaveClass("right-stacked");
     await user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
     expect(layout).not.toHaveClass("right-stacked");
-    await user.click(screen.getByRole("button", { name: "Toggle environment" }));
+    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
     expect(layout).toHaveClass("dock-closed");
     expect(layout).not.toHaveClass("right-visible");
   });
@@ -136,20 +136,39 @@ describe("desktop frame", () => {
     expect(screen.queryByRole("button", { name: "Minimize window" })).not.toBeInTheDocument();
   });
 
-  it("separates environment and work panel controls and shares the Work Dock and switches to Review", async () => {
+  it("toggles one Work Dock and restores the selected tab", async () => {
     const user = userEvent.setup();
     render(<HarnessGui client={createMockAppClient()} />);
     await screen.findByRole("heading", { name: "GUI development" });
     expect(screen.getByLabelText("Environment summary")).toBeVisible();
-    expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle environment" })).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Open Work Dock" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Bottom panel unavailable" })).toBeDisabled();
     await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Review" }));
     expect(screen.getByLabelText("Read-only review")).toBeVisible();
     expect(screen.queryByLabelText("Environment summary")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
-    expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Toggle environment" }));
+    await user.click(toggle);
+    expect(screen.queryByRole("complementary", { name: "Work Dock" })).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await user.click(toggle);
+    expect(screen.getByLabelText("Read-only review")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Environment" }));
     expect(screen.getByLabelText("Environment summary")).toBeVisible();
+  });
+
+  it("restores the panel tab and open state per conversation", async () => {
+    const user = userEvent.setup();
+    render(<HarnessGui client={createMockAppClient()} />);
+    await screen.findByRole("heading", { name: "GUI development" });
+    await user.click(screen.getByRole("button", { name: "Close environment" }));
+    await user.click(screen.getByRole("button", { name: /^Operational ontology ·/ }));
+    await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Tasks" }));
+    await user.click(screen.getByRole("button", { name: /^GUI development ·/ }));
+    expect(screen.queryByRole("complementary", { name: /Work Dock|Environment summary/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Operational ontology ·/ }));
+    expect(within(screen.getByRole("complementary", { name: "Work Dock" })).getByRole("button", { name: "Tasks" }))
+      .toHaveAttribute("aria-pressed", "true");
   });
 
   it("replaces native decorations and grants only scoped window commands", () => {

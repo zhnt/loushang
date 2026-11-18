@@ -97,10 +97,11 @@ it("localizes live UI and rejected submissions while retaining raw content and t
   await user.type(input, "Keep my prompt 世界");
   await changeLanguage(user, "zh-CN");
   expect(screen.getByText("在线 AppHost · 受控")).toBeVisible();
-  expect(screen.getByText("已确认的 AppHost 身份")).toBeVisible();
+  expect(screen.getByText("技术详情")).toBeVisible();
   expect(screen.getByText("执行已成功")).toBeVisible();
-  expect(screen.getByText("执行状态版本")).not.toBeVisible();
+  expect(screen.queryByText("执行状态版本")).not.toBeInTheDocument();
   await user.click(screen.getByText("执行已成功"));
+  await user.click(screen.getByText("在线执行详情"));
   expect(screen.getByText("执行状态版本")).toBeVisible();
   expect(screen.getByText(rawMessage)).toBeVisible();
   await user.click(screen.getByRole("button", { name: "发送" }));

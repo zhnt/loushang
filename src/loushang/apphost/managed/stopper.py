@@ -10,6 +10,7 @@ from pathlib import Path
 from time import monotonic
 from typing import TypeVar
 
+from loushang.hosting.errors import HostingError
 from loushang.hosting.service import ServiceObserverV1, reopen_service_observer
 from loushang.hosting.service_group import LinuxServiceGroupObservationV1
 from loushang.hosting.service_windows import (
@@ -120,7 +121,13 @@ class ManagedServiceStopOperationV1:
     def _admit(self, state: ManagedServiceStateV1) -> None:
         assert state.native_identity is not None
         self._native_uncertain = True
-        self._observer = reopen_service_observer(state.native_identity)
+        try:
+            self._observer = reopen_service_observer(state.native_identity)
+        except HostingError as error:
+            # Hosting reports incomplete rollback explicitly when it acquired
+            # a native handle and could not close it.
+            self._native_uncertain = error.cleanup_incomplete
+            raise
         self._native_uncertain = False
         if isinstance(self._observer, WindowsServiceObserverV1):
             self._group = self._observer.open_scope(state.handoff.attempt_id)

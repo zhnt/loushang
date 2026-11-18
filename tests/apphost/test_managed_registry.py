@@ -20,6 +20,10 @@ from loushang.apphost.managed.contracts import (
 )
 from loushang.apphost.managed.registry import ManagedMuxReservationV1, ManagedRegistryV1
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
+from loushang.apphost.workspace_registry import (
+    HostWorkspaceRegistryPort,
+    WorkspaceRegistrationError,
+)
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux managed registry")
 
@@ -555,7 +559,7 @@ def test_registry_is_host_owned_persistent_and_does_not_change_cwd(tmp_path):
     alias = tmp_path / "alias"
     alias.symlink_to(a, target_is_directory=True)
     before = Path.cwd()
-    owner = WorkspaceRegistry(tmp_path / "registry")
+    owner: HostWorkspaceRegistryPort = WorkspaceRegistry(tmp_path / "registry")
     try:
         owner.open()
         assert owner.list() == ()
@@ -566,6 +570,10 @@ def test_registry_is_host_owned_persistent_and_does_not_change_cwd(tmp_path):
         assert owner.select(str(alias)) == a
         with pytest.raises(ValueError):
             owner.register("relative")
+        temporary = owner.allocate_temporary()
+        assert temporary.is_dir() and owner.is_temporary(temporary)
+        assert not owner.is_temporary(a)
+        assert owner.select(str(temporary)) == temporary
         assert not list(a.iterdir()), "registration must not create Session or Runtime files"
         assert Path.cwd() == before
     finally:
@@ -573,10 +581,10 @@ def test_registry_is_host_owned_persistent_and_does_not_change_cwd(tmp_path):
     reopened = WorkspaceRegistry(tmp_path / "registry")
     try:
         reopened.open()
-        assert reopened.list() == (a, b)
+        assert reopened.list() == (a, b, temporary)
         reopened.unregister(str(a))
         reopened.unregister(str(a))
-        assert reopened.list() == (b,)
+        assert reopened.list() == (b, temporary)
         with pytest.raises(ValueError, match="workspace_not_registered"):
             reopened.select(str(a))
     finally:
@@ -608,5 +616,91 @@ def test_registry_refuses_corrupt_membership_instead_of_silently_starting_fresh(
         path.chmod(0o600)
         with pytest.raises(ManagedStorageError, match='invalid_record'):
             owner.list()
+    finally:
+        owner.close()
+
+
+def test_workspace_create_publishes_empty_directory_and_rejects_existing_target(tmp_path):
+    owner = WorkspaceRegistry(tmp_path / "registry")
+    target = tmp_path / "project"
+    try:
+        owner.open()
+        assert owner.create(str(target)) == target
+        assert owner.list() == (target,)
+        assert owner.select(str(target)) == target
+        assert list(target.iterdir()) == []
+        sentinel = target / "keep"
+        sentinel.write_text("original")
+        with pytest.raises(FileExistsError):
+            owner.create(str(target))
+        assert sentinel.read_text() == "original"
+    finally:
+        owner.close()
+
+
+def test_workspace_create_rejects_missing_and_linked_parents(tmp_path):
+    owner = WorkspaceRegistry(tmp_path / "registry")
+    alias = tmp_path / "alias"
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    alias.symlink_to(directory, target_is_directory=True)
+    try:
+        owner.open()
+        with pytest.raises(FileNotFoundError):
+            owner.create(str(tmp_path / "missing" / "leaf"))
+        with pytest.raises(NotADirectoryError):
+            owner.create(str(alias / "leaf"))
+        with pytest.raises(ValueError):
+            owner.create(str(directory / ".." / "leaf"))
+        with pytest.raises(FileExistsError):
+            owner.create(str(alias))
+        with pytest.raises(ValueError):
+            owner.create(str(tmp_path.anchor))
+        with pytest.raises(ValueError):
+            owner.create("relative")
+        assert not (tmp_path / "missing").exists()
+        assert not (tmp_path / "leaf").exists()
+        assert list(directory.iterdir()) == []
+        assert owner.list() == ()
+    finally:
+        owner.close()
+
+
+def test_workspace_create_keeps_directory_when_registration_fails(tmp_path, monkeypatch):
+    def fail(*args, **kwargs):
+        raise ManagedStorageError("conflict")
+
+    owner = WorkspaceRegistry(tmp_path / "registry")
+    target = tmp_path / "project"
+    try:
+        owner.open()
+        monkeypatch.setattr(owner, "_update", fail)
+        with pytest.raises(WorkspaceRegistrationError):
+            owner.create(str(target))
+        assert target.is_dir() and list(target.iterdir()) == []
+        assert owner.list() == ()
+    finally:
+        owner.close()
+
+
+
+def test_workspace_create_does_not_register_a_directory_replaced_before_publication(tmp_path, monkeypatch):
+    owner = WorkspaceRegistry(tmp_path / "registry")
+    target = tmp_path / "project"
+    original = tmp_path / "original"
+    register = owner.register
+
+    def replace_then_register(value, **kwargs):
+        target.rename(original)
+        target.mkdir()
+        return register(value, **kwargs)
+
+    try:
+        owner.open()
+        monkeypatch.setattr(owner, "register", replace_then_register)
+        with pytest.raises(WorkspaceRegistrationError):
+            owner.create(str(target))
+        assert original.is_dir() and target.is_dir()
+        assert owner.list() == ()
     finally:
         owner.close()

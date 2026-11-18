@@ -1,9 +1,18 @@
 {
+  "approval": {
+    "processed": "Decision processed",
+    "scope": "Scope · {{scope}}",
+    "title": "Tool approval",
+    "approve": "Allow once",
+    "deny": "Deny",
+    "cancel": "Cancel operation",
+    "submitting": "Sending decision…",
+    "unavailable": "This request is unavailable."
+  },
   "notice": {
     "loading": "Loading snapshot…",
     "fixtureReady": "Fixture snapshot installed. No backend is running.",
     "liveReady": "Live AppHost connection installed.",
-    "created": "New Session created and attached.",
     "liveUpdated": "Live AppHost event round installed.",
     "modelsUnavailable": "The AppHost model catalog is unavailable.",
     "emptyPrompt": "Enter a message before sending.",
@@ -17,7 +26,13 @@
     "interruptRejected": "Interrupt was not accepted.",
     "interruptFailed": "Interrupt failed. Resynchronize before retrying.",
     "modelRejected": "Model change was rejected. The Session kept its previous model.",
-    "creating": "New Session created. Reattaching to the updated workspace…",
+    "creating": "Creating Session…",
+    "sending": "Sending first message…",
+    "waitingForReply": "Waiting for a reply…",
+    "createUnknown": "Session creation is unconfirmed. Your draft is saved.",
+    "firstSubmissionUnknown": "The first message outcome is unknown. Your draft is saved.",
+    "firstModelUnavailable": "The selected model could not be applied. Your draft is saved.",
+    "firstSubmitRejected": "The first message was rejected. Your draft is saved.",
     "createFailed": "New Session could not be created.",
     "createSyncFailed": "New Session was created, but it could not be shown yet.",
     "rejected": "Submission rejected.",
@@ -27,7 +42,21 @@
     "thinkingChanged": "Reasoning effort updated.",
     "thinkingRejected": "Could not change reasoning effort."
   },
+  "choice": {
+    "title": "Choose a direction",
+    "notes": "Additional notes (optional)",
+    "confirm": "Confirm choice",
+    "selected": "Selected",
+    "accepted": "Answer accepted. Waiting for the Session to update.",
+    "unknown": "The answer outcome is unknown. Your selection is preserved.",
+    "rejected": "The answer was not accepted. Your selection is preserved.",
+    "answer": "Question: {{question}}\nSelected option {{id}}: {{label}}",
+    "answerNotes": "Additional notes: {{notes}}"
+  },
   "composer": {
+    "checkConversation": "Check conversation",
+    "dismissNotice": "Dismiss",
+    "checkCreation": "Check creation status",
     "fixturePlaceholder": "Type a fixture prompt…",
     "livePlaceholder": "Message the live Agent…",
     "attachUnavailable": "Attach file unavailable",
@@ -41,6 +70,7 @@
     "messageFor": "Message for {{title}}"
   },
   "models": {
+    "default": "Default model",
     "label": "Session model",
     "unavailable": "Model catalog unavailable",
     "none": "Model information unavailable",
@@ -61,6 +91,8 @@
     }
   },
   "transcript": {
+    "copyCode": "Copy code",
+    "copyReply": "Copy reply",
     "label": "Session transcript",
     "you": "You",
     "harness": "Harness",
@@ -94,6 +126,7 @@
     "title": "Synchronization interrupted. Resynchronize to continue.",
     "details": "Diagnostic details"
   },
+  "welcome": "What would you like to work on?",
   "emptySession": "No Session is available.",
   "opening": "Opening {{appName}}…"
 }

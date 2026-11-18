@@ -282,6 +282,33 @@ async def test_execution_reads_consume_covered_legacy_copies_without_eventual_fa
 
 
 @scenario
+async def test_snapshot_refresh_keeps_covered_approval_in_the_current_attachment():
+    service, _, first, _, _, control, product = await fixture()
+    client = first.execution_client
+    await client.snapshot_execution_session(control, "instance")
+    session = service._sessions[product.identity.session_id]
+
+    product.cursor += 1
+    request = SessionEventV1(
+        product.identity.session_id, product.cursor,
+        SessionEventKindV1.INTERACTION_REQUESTED, "Preview\nreview\n{}", "approval",
+    )
+    await session._on_event(request)
+    for listener in tuple(product.listeners):
+        listener(ExecutionContentEventV1(request))
+
+    snapshot = await client.snapshot_execution_session(control, "instance")
+    assert snapshot.source.source.cursor == request.cursor
+    events = await first.read_events(
+        attachment_id=control.attachment_id,
+        controller_generation=control.controller_generation,
+    )
+    assert tuple(item.event for item in events) == (request,)
+    assert not await client.read_execution_events(control, "instance")
+    await service.close()
+
+
+@scenario
 async def test_snapshot_revalidates_authority_after_product_await():
     service, owner, first, second, selector, control, product = await fixture()
     entered, release = asyncio.Event(), asyncio.Event()
@@ -341,3 +368,40 @@ async def test_first_application_stop_includes_debt_from_a_previously_removed_me
     assert service._execution_registry.active_count == 0
     assert product.closed
     assert service._execution_registry.get(product.identity, record.state.execution_id).state.status.terminal
+
+
+def test_goal_recovery_rechecks_attachment_after_the_original_product_read():
+    from loushang.appserver.execution.model import InteractiveGoalRecoveryV1
+
+    async def run():
+        service, _, first, second, selector, address, product = await fixture()
+        entered, release = asyncio.Event(), asyncio.Event()
+        product.supports_interactive_goal_recovery = True
+
+        async def observe():
+            entered.set()
+            await release.wait()
+            return InteractiveGoalRecoveryV1("absent", "no_goal")
+
+        product.interactive_goal_recovery = observe
+        request = asyncio.create_task(first.execution_client.interactive_goal_recovery(address, "instance"))
+        try:
+            await entered.wait()
+            await first.close()
+            attached = await second.attach_mux(MuxAttachV1(selector))
+            release.set()
+            with pytest.raises(AppServiceError) as revoked:
+                await request
+            assert revoked.value.code in {AppErrorCodeV1.SERVICE_CLOSED, AppErrorCodeV1.STALE_ATTACHMENT}
+            control = replace(address, attachment_id=attached.attachment_id, controller_generation=attached.controller_generation)
+            with pytest.raises(ExecutionServiceErrorV1):
+                await second.execution_client.interactive_goal_recovery(control, "old-host")
+            with pytest.raises(AppServiceError):
+                await second.execution_client.interactive_goal_recovery(replace(control, member_id="another"), "instance")
+            assert (await second.execution_client.interactive_goal_recovery(control, "instance")).presence == "absent"
+            assert not product.legacy_calls
+        finally:
+            release.set()
+            await service.close()
+
+    asyncio.run(run())

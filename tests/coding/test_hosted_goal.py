@@ -12,8 +12,15 @@ from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
+from loushang.appserver.execution.dispatch import dispatch_execution
+from loushang.appserver.execution.model import (
+    ExecutionCallV1,
+    ExecutionOperationV1,
+    ExecutionServiceErrorV1,
+)
 from loushang.appserver.goal import GoalServiceError
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
     AppServiceError,
     MuxAttachV1,
     MuxCreateV1,
@@ -137,7 +144,62 @@ async def application(launch, config, adapter):
         raise
 
 
-def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_path):
+def test_execution_goal_start_is_one_shot_even_if_interrupted_before_product_entry(tmp_path):
+    async def scenario():
+        launch, config = task(tmp_path)
+        adapter = CalculatorAdapter(config.workspace, block=True)
+        app, scope, control, selector = await application(launch, config, adapter)
+        try:
+            reader = scope.goal_execution_observer
+            instance = reader.service_instance_id
+            assert (await reader.snapshot_execution_session(control, instance)).supports_goal_start
+
+            async def start(submission_id, *, address=control, host=instance):
+                return await dispatch_execution(reader, ExecutionCallV1(
+                    "1", ExecutionOperationV1.GOAL_START, address, host, submission_id=submission_id,
+                ))
+
+            with pytest.raises(ExecutionServiceErrorV1, match="service_instance_changed"):
+                await start("stale", host="other-instance")
+            with pytest.raises(AppServiceError):
+                await start("other-member", address=replace(control, member_id="other-member"))
+
+            record = await start("original")
+            execution_id = record.state.execution_id
+            assert (await start("original")).state.execution_id == execution_id
+            assert not (await reader.snapshot_execution_session(control, instance)).supports_goal_start
+            with pytest.raises(ExecutionServiceErrorV1, match="execution_not_retained"):
+                await reader.goal_interrupt(control, instance, "other-execution")
+            interrupted = await dispatch_execution(reader, ExecutionCallV1(
+                "2", ExecutionOperationV1.INTERRUPT, control, instance, execution_id=execution_id,
+            ))
+            assert interrupted.record.state.interrupt_requested
+            await scope.close()
+
+            scope2 = app.open_client_scope()
+            attached = await scope2.attach_mux(MuxAttachV1(selector))
+            reader = scope2.goal_execution_observer
+            control2 = replace(control, attachment_id=attached.attachment_id, controller_generation=attached.controller_generation)
+            found = await dispatch_execution(reader, ExecutionCallV1(
+                "3", ExecutionOperationV1.FIND, control2, instance, submission_id="original",
+            ))
+            assert found.state.execution_id == execution_id
+            settled = await scope2.goal_client.wait(control2, (await scope2.goal_client.find(control2, instance, "original")).handle)
+            assert settled.execution.state.status is ExecutionStatusV1.INTERRUPTED
+            assert adapter.calls == 0
+            assert (await reader.goal_progress(control2, instance, execution_id)).batches == ()
+            assert not (await reader.snapshot_execution_session(control2, instance)).supports_goal_start
+            assert (await start("original", address=control2)).state.execution_id == execution_id
+            with pytest.raises(AppServiceError) as unavailable:
+                await start("new-submission", address=control2)
+            assert unavailable.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+        finally:
+            adapter.release.set()
+            await app.close()
+    asyncio.run(scenario())
+
+
+def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_path, monkeypatch):
     async def scenario():
         launch, config = task(tmp_path)
         protected = {p.relative_to(config.workspace): p.read_bytes() for p in config.workspace.rglob("*") if p.is_file() and p.name != "calculator.py"}
@@ -156,6 +218,47 @@ def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_pa
                     raise error
             assert result.execution.state.status is ExecutionStatusV1.SUCCEEDED, asdict(result)
             view = result.observation
+            reader = scope.goal_execution_observer
+            instance = client.service_instance_id
+            execution_id = submitted.handle.execution_id
+            snapshot = await reader.snapshot_execution_session(control, instance)
+            assert snapshot.supports_goal_progress and not snapshot.supports_interactive_goal
+            calls_before_observation = adapter.calls
+            observed = await reader.goal_progress(control, instance, execution_id)
+            assert adapter.calls == calls_before_observation
+            with pytest.raises(ExecutionServiceErrorV1, match="execution_not_retained"):
+                await reader.goal_progress(control, instance, "wrong-execution")
+            with pytest.raises(ExecutionServiceErrorV1, match="service_instance_changed"):
+                await reader.goal_progress(control, "other-instance", execution_id)
+            forbidden = ExecutionCallV1(
+                "request", ExecutionOperationV1.SUBMIT, control, instance,
+                submission_id="not-a-goal-authority", text="start",
+            )
+            with pytest.raises(AppServiceError) as denied:
+                await dispatch_execution(reader, forbidden)
+            assert denied.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+            assert observed.execution_id == submitted.handle.execution_id
+            assert observed.status == "completed" and observed.validity == "not_checked"
+            assert observed.model_calls == adapter.calls
+            assert observed.batch_count == len(view.batches)
+            assert [batch.batch_id for batch in observed.batches] == [batch.batch_id for batch in view.batches]
+            assert [batch.work_status for batch in observed.batches] == [batch.work.status for batch in view.batches]
+            assert all(batch.recording_available and batch.cancellation_status == "not_requested"
+                       and not batch.observation_unavailable for batch in observed.batches)
+            _, binding = await client._execution._resolve(control, instance)
+            progress = await binding.port.progress_goal(execution_id)
+            batches = tuple(replace(progress.batches[-1], batch_id=f"batch-{i}") for i in range(18))
+
+            async def many_batches(execution):
+                assert execution == execution_id
+                return replace(progress, batches=batches)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(binding.port, "progress_goal", many_batches)
+                limited = await reader.goal_progress(control, instance, execution_id)
+                assert limited.batch_count == 18
+                assert [batch.batch_id for batch in limited.batches] == [f"batch-{i}" for i in range(2, 18)]
+            assert adapter.calls == calls_before_observation
             assert view.status == "completed" and view.validity == "current" and not view.execution_unresolved
             assert 1 < view.advances <= 8 and view.model_calls == adapter.calls <= 8
             runs = [b.work for b in view.batches]

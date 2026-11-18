@@ -1,8 +1,10 @@
 //! Tauri handoff for reconnecting snapshots, validated event rounds and bounded control.
 use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use loushang_app_client::{
-    AppClient, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
-    LiveEventRound, LiveInitialSnapshot, ModelControlResult,
+    definitive_create_rejection, AppClient, ConnectionOptions, ControlCommand, ControlResult,
+    CreateSessionResult, InteractionOutcome, InteractiveGoalAction, InteractiveGoalCommand,
+    InteractiveGoalReviewDecision, InteractiveGoalReviewSubmission, LiveEventRound,
+    LiveInitialSnapshot, ModelControlResult,
 };
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -64,9 +66,75 @@ pub(crate) struct LiveSubmitInput {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveGoalStartInput {
+    session_id: String,
+    submission_id: String,
+    service_instance_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LiveInterruptInput {
     session_id: String,
     execution_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveGoalProgressInput {
+    session_id: String,
+    execution_id: String,
+    service_instance_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveInteractiveGoalInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveCreateInteractiveGoalInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+    goal_target: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveControlInteractiveGoalInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+    goal_id: String,
+    command_id: String,
+    action: InteractiveGoalAction,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveInteractiveGoalReviewInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+    goal_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveInteractiveGoalReviewSubmissionInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+    goal_id: String,
+    review_token: String,
+    command_id: String,
+    decision: InteractiveGoalReviewDecision,
+    reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -86,14 +154,16 @@ pub(crate) struct LiveSelectModelInput {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LiveCreateSessionInput {
+    continuity_id: Option<String>,
     source_session_id: Option<String>,
     title: String,
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct LiveCreateSessionReceipt {
-    session_id: String,
+#[serde(untagged, rename_all_fields = "camelCase")]
+pub(crate) enum LiveCreateSessionReceipt {
+    Created { session_id: String },
+    Rejected { rejected: bool },
 }
 
 #[derive(Serialize)]
@@ -273,24 +343,93 @@ pub(crate) async fn live_submit_text(
                     control.connection_epoch,
                     &control.service_instance_id,
                 )?;
-                let (reply, receive) = mpsc::sync_channel(1);
-                recovered
-                    .sender
-                    .send(ControlCommand::FindSubmission {
-                        session_id: recovery_session_id,
-                        submission_id: recovery_submission_id,
-                        reply,
-                    })
-                    .map_err(|_| "live recovery connection changed".to_owned())?;
-                let result = receive
-                    .recv_timeout(Duration::from_secs(6))
-                    .map_err(|_| "live submission recovery timed out".to_owned())?;
-                control_receipt(result, true)
+                control_receipt(
+                    find_live_submission(&recovered, &recovery_session_id, &recovery_submission_id),
+                    true,
+                )
             }
         }
     })
     .await
     .map_err(|_| "live submit worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_goal_start(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveGoalStartInput,
+) -> Result<serde_json::Value, String> {
+    let control = current_control(&state)?;
+    if control.service_instance_id != input.service_instance_id {
+        return Err("live Host instance changed".to_owned());
+    }
+    let controls = state.control.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        let result = control
+            .sender
+            .send(ControlCommand::StartGoal {
+                session_id: input.session_id.clone(),
+                submission_id: input.submission_id.clone(),
+                reply,
+            })
+            .map_err(|_| ())
+            .and_then(|()| {
+                receive
+                    .recv_timeout(Duration::from_secs(6))
+                    .unwrap_or(Err(()))
+            });
+        let result =
+            result.unwrap_or_else(|()| recover_goal_submission(&controls, &control, &input));
+        let mut receipt = serde_json::to_value(control_receipt(Ok(result), true)?)
+            .map_err(|_| "invalid Goal submission receipt".to_owned())?;
+        receipt["submissionId"] = serde_json::Value::String(input.submission_id);
+        Ok(receipt)
+    })
+    .await
+    .map_err(|_| "live Goal start worker failed".to_owned())?
+}
+
+fn find_live_submission(
+    control: &LiveControl,
+    session_id: &str,
+    submission_id: &str,
+) -> Result<ControlResult, ()> {
+    let (reply, receive) = mpsc::sync_channel(1);
+    control
+        .sender
+        .send(ControlCommand::FindSubmission {
+            session_id: session_id.to_owned(),
+            submission_id: submission_id.to_owned(),
+            reply,
+        })
+        .map_err(|_| ())?;
+    receive
+        .recv_timeout(Duration::from_secs(6))
+        .map_err(|_| ())?
+}
+
+fn recover_goal_submission(
+    controls: &Arc<RwLock<Option<LiveControl>>>,
+    original: &LiveControl,
+    input: &LiveGoalStartInput,
+) -> ControlResult {
+    let find = |control: &LiveControl| {
+        find_live_submission(control, &input.session_id, &input.submission_id)
+    };
+    let found = find(original).or_else(|()| {
+        let reconnected = wait_for_reconnected_control(
+            controls,
+            original.connection_epoch,
+            &input.service_instance_id,
+        )
+        .map_err(|_| ())?;
+        find(&reconnected)
+    });
+    match found {
+        Ok(receipt @ ControlResult::Submitted(_)) => receipt,
+        _ => ControlResult::Missing,
+    }
 }
 
 #[tauri::command]
@@ -318,13 +457,58 @@ pub(crate) async fn live_interrupt(
     .map_err(|_| "live interrupt worker failed".to_owned())?
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveInteractionInput {
+    connection_epoch: String,
+    session_id: String,
+    interaction_id: String,
+    outcome: InteractionOutcome,
+}
+
+#[tauri::command]
+pub(crate) async fn live_respond_interaction(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractionInput,
+) -> Result<LiveControlReceipt, String> {
+    let control = current_control(&state)?;
+    if input.connection_epoch != control.connection_epoch.to_string() {
+        return Ok(LiveControlReceipt {
+            accepted: false,
+            reason: Some("stale_attachment".into()),
+            execution_id: None,
+        });
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::RespondInteraction {
+                session_id: input.session_id,
+                interaction_id: input.interaction_id,
+                outcome: input.outcome,
+                reply,
+            })
+            .map_err(|_| "live control connection changed".to_owned())?;
+        let result = receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "live approval response timed out".to_owned())?;
+        control_receipt(result, false)
+    })
+    .await
+    .map_err(|_| "live approval worker failed".to_owned())?
+}
+
 #[tauri::command]
 pub(crate) async fn live_create_session(
     state: tauri::State<'_, LiveLaunchState>,
     input: LiveCreateSessionInput,
 ) -> Result<LiveCreateSessionReceipt, String> {
     let control = current_control(&state)?;
-    let continuity_id = format!("gui-new-{}", random_id()?);
+    let continuity_id = match input.continuity_id {
+        Some(id) => id,
+        None => format!("gui-new-{}", random_id()?),
+    };
     tauri::async_runtime::spawn_blocking(move || {
         let (reply, receive) = mpsc::sync_channel(1);
         control
@@ -342,10 +526,13 @@ pub(crate) async fn live_create_session(
             .map_err(|_| "session creation connection failed".to_owned())?
         {
             CreateSessionResult::Accepted(session_id) => {
-                Ok(LiveCreateSessionReceipt { session_id })
+                Ok(LiveCreateSessionReceipt::Created { session_id })
+            }
+            CreateSessionResult::Rejected(code) if definitive_create_rejection(&code) => {
+                Ok(LiveCreateSessionReceipt::Rejected { rejected: true })
             }
             CreateSessionResult::Rejected(code) => {
-                Err(format!("session creation rejected: {code}"))
+                Err(format!("session creation outcome unknown: {code}"))
             }
         }
     })
@@ -358,6 +545,184 @@ fn random_id() -> Result<String, String> {
     getrandom::getrandom(&mut bytes)
         .map_err(|_| "secure session identity unavailable".to_owned())?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+#[tauri::command]
+pub(crate) async fn live_goal_progress(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveGoalProgressInput,
+) -> Result<Option<serde_json::Value>, String> {
+    let control = current_control(&state)?;
+    if control.service_instance_id != input.service_instance_id {
+        return Ok(None);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::ObserveGoalProgress {
+                session_id: input.session_id,
+                execution_id: input.execution_id,
+                reply,
+            })
+            .map_err(|_| "live control connection changed".to_owned())?;
+        receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "Goal observation timed out".to_owned())?
+            .map_err(|_| "Goal observation connection failed".to_owned())
+    })
+    .await
+    .map_err(|_| "Goal observation worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_create(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveCreateInteractiveGoalInput,
+) -> Result<Option<serde_json::Value>, String> {
+    interactive_goal(
+        &state,
+        LiveInteractiveGoalInput {
+            session_id: input.session_id,
+            service_instance_id: input.service_instance_id,
+            connection_epoch: input.connection_epoch,
+        },
+        Some(input.goal_target),
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_status(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractiveGoalInput,
+) -> Result<Option<serde_json::Value>, String> {
+    interactive_goal(&state, input, None).await
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_command(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveControlInteractiveGoalInput,
+) -> Result<Option<serde_json::Value>, String> {
+    let command = InteractiveGoalCommand {
+        goal_id: input.goal_id,
+        command_id: input.command_id,
+        action: input.action,
+    };
+    send_interactive_goal(
+        &state,
+        LiveInteractiveGoalInput {
+            session_id: input.session_id,
+            service_instance_id: input.service_instance_id,
+            connection_epoch: input.connection_epoch,
+        },
+        |session_id, reply| ControlCommand::ControlInteractiveGoal {
+            session_id,
+            command,
+            reply,
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_recovery(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractiveGoalInput,
+) -> Result<Option<serde_json::Value>, String> {
+    send_interactive_goal(&state, input, |session_id, reply| {
+        ControlCommand::ReadInteractiveGoalRecovery { session_id, reply }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_review(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractiveGoalReviewInput,
+) -> Result<Option<serde_json::Value>, String> {
+    send_interactive_goal(
+        &state,
+        LiveInteractiveGoalInput {
+            session_id: input.session_id,
+            service_instance_id: input.service_instance_id,
+            connection_epoch: input.connection_epoch,
+        },
+        |session_id, reply| ControlCommand::ReadInteractiveGoalReview {
+            session_id,
+            goal_id: input.goal_id,
+            reply,
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_review_submit(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractiveGoalReviewSubmissionInput,
+) -> Result<Option<serde_json::Value>, String> {
+    let review = InteractiveGoalReviewSubmission {
+        goal_id: input.goal_id,
+        review_token: input.review_token,
+        command_id: input.command_id,
+        decision: input.decision,
+        reason: input.reason,
+    };
+    send_interactive_goal(
+        &state,
+        LiveInteractiveGoalInput {
+            session_id: input.session_id,
+            service_instance_id: input.service_instance_id,
+            connection_epoch: input.connection_epoch,
+        },
+        |session_id, reply| ControlCommand::SubmitInteractiveGoalReview {
+            session_id,
+            review,
+            reply,
+        },
+    )
+    .await
+}
+
+async fn interactive_goal(
+    state: &LiveLaunchState,
+    input: LiveInteractiveGoalInput,
+    target: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    send_interactive_goal(state, input, |session_id, reply| {
+        ControlCommand::interactive_goal(session_id, target, reply)
+    })
+    .await
+}
+
+type GoalReply = mpsc::SyncSender<Result<Option<serde_json::Value>, ()>>;
+
+async fn send_interactive_goal(
+    state: &LiveLaunchState,
+    input: LiveInteractiveGoalInput,
+    command: impl FnOnce(String, GoalReply) -> ControlCommand + Send + 'static,
+) -> Result<Option<serde_json::Value>, String> {
+    let control = current_control(state)?;
+    if control.service_instance_id != input.service_instance_id
+        || input.connection_epoch != control.connection_epoch.to_string()
+    {
+        return Ok(None);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(command(input.session_id, reply))
+            .map_err(|_| "live control connection changed".to_owned())?;
+        receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "Interactive Goal request timed out".to_owned())?
+            .map_err(|_| "Interactive Goal connection failed".to_owned())
+    })
+    .await
+    .map_err(|_| "Interactive Goal worker failed".to_owned())?
 }
 
 #[tauri::command]
