@@ -748,9 +748,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     ? (review: boolean) => projectNavigation.inspectWorkspace!(
       workspacePath, workspaceFingerprint, review ? workspaceSessionId : undefined,
     ) : undefined;
-  const openWorkspacePath = connected && workspacePath && workspaceFingerprint && projectNavigation?.openProjectPath
-    ? (file?: string) => projectNavigation.openProjectPath!(workspacePath, workspaceFingerprint, file)
-    : undefined;
+  const openProjectPath = projectNavigation?.openProjectPath;
+  const openWorkspacePath = useMemo(() => workspaceScope && workspaceContext && workspaceFingerprint && openProjectPath
+    ? (file?: string) => openProjectPath(workspaceContext, workspaceFingerprint, file)
+    : undefined, [workspaceScope, workspaceContext, workspaceFingerprint, openProjectPath]);
   const [filePreview, setFilePreview] = useState<{
     scope: string; reference: FileReference; trigger: HTMLButtonElement;
   }>();
@@ -956,7 +957,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                           <span>{valueLabel(message.phase)}</span>
                         </div>
                         {message.role === "assistant" && message.content
-                          ? <MessageMarkdown text={message.content} openFile={openFilePreview} />
+                          ? <MessageMarkdown text={message.content} openFile={openWorkspacePath ? undefined : openFilePreview}
+                            revealFile={openWorkspacePath} />
                           : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
                         {replyCopies.has(message.id)
                           ? <div className="reply-actions"><CopyButton text={replyCopies.get(message.id)!}
@@ -1016,7 +1018,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               {filePreview && filePreview.scope === previewScopeKey && previewScope && readPreview
                 ? <WorkspacePreviewDialog key={previewScopeKey} initial={filePreview.reference} theme={markdown.theme}
                   read={(reference, base) => readPreview({ ...previewScope, reference, base })}
-                  openPath={openWorkspacePath}
                   onClose={() => {
                     setFilePreview(undefined);
                     filePreview.trigger.focus({ preventScroll: true });
@@ -1482,7 +1483,7 @@ interface WorkDockProps {
   readonly workspacePath?: string;
   readonly temporaryWorkspace?: boolean;
   readonly inspectWorkspace?: (review: boolean) => Promise<Inspection>;
-  readonly openWorkspacePath?: (file?: string) => Promise<void>;
+  readonly openWorkspacePath?: () => Promise<unknown>;
   readonly goalControls: ReactNode;
   readonly goalProgress: ReactNode;
   readonly tab: DockTab;
@@ -1609,7 +1610,7 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
 
 function LiveContextPanel({ state, session, workspacePath: path, temporary, openPath, children }: {
   readonly children?: ReactNode;
-  readonly openPath?: (file?: string) => Promise<void>;
+  readonly openPath?: () => Promise<unknown>;
   readonly state: GuiState;
   readonly session: SessionSnapshot;
   readonly workspacePath?: string;

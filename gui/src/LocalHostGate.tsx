@@ -14,6 +14,8 @@ import { TrayHostDialog } from "./TrayHostDialog";
 import "./LocalHostGate.css";
 
 const emptyDirectory: ProjectDirectory = { projects: [], temporarySessions: [] };
+const openLocalWorkspacePath: NonNullable<ManagedProjectNavigation["openProjectPath"]> = (workspace, fingerprint, file) =>
+  webRequest({ operation: "open-project-path", workspace, fingerprint, ...(file ? { file } : {}) }, "local");
 
 const states = {
   unknown: "localHost.states.unknown", not_running: "localHost.states.notRunning",
@@ -417,9 +419,7 @@ export default function LocalHostGate() {
         if (workspace?.scopeFingerprint !== fingerprint || !workspace.inspection) throw new Error("workspace_unavailable");
         return workspace.inspection;
       },
-      openProjectPath: isTauri() && selectedId === "local" ? async (workspace, fingerprint, file) => {
-        await webRequest({ operation: "open-project-path", workspace, fingerprint, ...(file ? { file } : {}) }, selectedId);
-      } : undefined,
+      openProjectPath: isTauri() && selectedId === "local" ? openLocalWorkspacePath : undefined,
       draftModels: async (path) => validateSessionModels(
         await webRequest({ operation: "workspace", action: "models", path }, connectionId.current),
       ),

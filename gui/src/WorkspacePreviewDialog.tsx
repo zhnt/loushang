@@ -5,7 +5,6 @@ import { UiIcon } from "./UiIcon";
 import type { WorkspacePreview } from "./client/workspacePreview";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import type { FileReference } from "./markdown/fileReference";
-import { OpenWorkspacePath } from "./WorkspaceInspection";
 import "./workspacePreview.css";
 
 interface PreviewTarget extends FileReference { readonly base: string }
@@ -25,11 +24,10 @@ function previewError(error: unknown) {
   }
 }
 
-export function WorkspacePreviewDialog({ initial, theme, read, openPath, onClose }: {
+export function WorkspacePreviewDialog({ initial, theme, read, onClose }: {
   readonly initial: FileReference;
   readonly theme: string;
   readonly read: (reference: string, base: string) => Promise<WorkspacePreview>;
-  readonly openPath?: (file?: string) => Promise<void>;
   readonly onClose: () => void;
 }) {
   const title = useId();
@@ -69,8 +67,7 @@ export function WorkspacePreviewDialog({ initial, theme, read, openPath, onClose
     onCancel={(event) => { event.preventDefault(); close(); }}>
     <PreviewHeader title={title} details={details} target={target} result={result}
       closeButton={closeButton} close={close} />
-    <PreviewContents result={result} line={target.line} openPath={openPath}
-      reference={[target.base, target.path].filter(Boolean).join("/")}
+    <PreviewContents result={result} line={target.line}
       back={history.length > 1 ? () => changeTarget(history.slice(0, -1)) : undefined}
       navigate={(next, base) => changeTarget([...history, { ...next, base }])} />
   </dialog>;
@@ -114,25 +111,20 @@ function PreviewFormat({ content }: { readonly content: WorkspacePreview }) {
 
 type Navigate = (file: FileReference, base: string) => void;
 
-function PreviewContents({ result, line, back, navigate, openPath, reference }: {
+function PreviewContents({ result, line, back, navigate }: {
   readonly result?: PreviewResult;
   readonly line?: number;
   readonly back?: () => void;
   readonly navigate: Navigate;
-  readonly openPath?: (file?: string) => Promise<void>;
-  readonly reference: string;
 }) {
   const { t } = useTranslation("workspace");
   if (!result) return <div className="workspace-preview-body"><p role="status">{t("preview.loading")}</p></div>;
   if ("error" in result) return <>
-    <PreviewActions back={back}>
-      {openPath && (result.error === "preview.tooLarge" || result.error === "preview.binary")
-        && <OpenWorkspacePath key={reference} file={reference} open={openPath} />}
-    </PreviewActions>
+    <PreviewActions back={back} />
     <div className="workspace-preview-body"><p role="alert">{t(result.error)}</p></div>
   </>;
   const { content } = result;
-  if (content.kind === "file") return <FilePreview file={content} line={line} back={back} navigate={navigate} openPath={openPath} />;
+  if (content.kind === "file") return <FilePreview file={content} line={line} back={back} navigate={navigate} />;
   return <>
     <PreviewActions back={back} path={content.path} />
     <div className="workspace-preview-body"><DirectoryPreview directory={content} navigate={navigate} /></div>
@@ -152,12 +144,11 @@ function PreviewActions({ back, path, children }: {
   </div>;
 }
 
-function FilePreview({ file, line, back, navigate, openPath }: {
+function FilePreview({ file, line, back, navigate }: {
   readonly file: Extract<WorkspacePreview, { kind: "file" }>;
   readonly line?: number;
   readonly back?: () => void;
   readonly navigate: Navigate;
-  readonly openPath?: (file?: string) => Promise<void>;
 }) {
   const { t } = useTranslation("workspace");
   const [source, setSource] = useState(Boolean(line));
@@ -166,7 +157,6 @@ function FilePreview({ file, line, back, navigate, openPath }: {
   const base = file.path.split("/").slice(0, -1).join("/");
   return <>
     <PreviewActions back={back} path={file.path}>
-      {openPath && <OpenWorkspacePath key={file.path} file={file.path} open={openPath} />}
       <CopyButton text={file.text} showLabel label={t("preview.copyContent")} />
       {isMarkdown && <button type="button" className="secondary-button" aria-pressed={source}
         onClick={() => setSource(!source)}>{t("preview.source")}</button>}

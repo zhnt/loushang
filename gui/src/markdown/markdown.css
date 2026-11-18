@@ -40,6 +40,8 @@
 }
 .markdown-body :is(a, pre, .markdown-table):focus-visible { outline-color: var(--md-accent); }
 .markdown-link-error { color: var(--red); }
+.markdown-file-notice { color: var(--md-muted); }
+.markdown-file-notice[role="alert"] { color: var(--red); }
 .markdown-body blockquote {
   padding: 2px 0 2px 14px;
   border-inline-start: 2px solid var(--md-guide);

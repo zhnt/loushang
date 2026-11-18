@@ -9,7 +9,7 @@ it("offers an accessible folder action and explains a missing path", async () =>
   await userEvent.tab();
   expect(screen.getByRole("button", { name: "Open folder" })).toHaveFocus();
   await userEvent.keyboard("{Enter}");
-  expect(open).toHaveBeenCalledWith(undefined);
+  expect(open).toHaveBeenCalledExactlyOnceWith();
   expect(await screen.findByText("This workspace path no longer exists.")).toBeVisible();
 });
 

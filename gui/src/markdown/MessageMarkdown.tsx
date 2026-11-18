@@ -11,7 +11,9 @@ import "./markdown.css";
 
 const languagePrefix = "language-";
 const CodeToolbar = createContext(true);
-const OpenFile = createContext<((file: FileReference, trigger: HTMLButtonElement) => void) | undefined>(undefined);
+type PreviewFile = (file: FileReference, trigger: HTMLButtonElement) => void;
+type RevealFile = (path: string) => Promise<{ fileMissing: boolean }>;
+const OpenFile = createContext<{ preview?: PreviewFile; reveal?: RevealFile } | undefined>(undefined);
 
 function codeText(node: ElementContent): string {
   if (node.type === "text") return node.value;
@@ -32,10 +34,27 @@ function CodeBlock({ language, source, children }: { language?: string; source: 
 
 function FileReferenceButton({ file, children }: { readonly file: FileReference; readonly children: ReactNode }) {
   const open = useContext(OpenFile);
-  return <button className="markdown-file-reference" type="button" aria-haspopup="dialog"
-    onClick={(event) => open?.(file, event.currentTarget)}>
-    <OpenFile.Provider value={undefined}>{children}</OpenFile.Provider>
-  </button>;
+  const { t } = useTranslation("workspace");
+  const [notice, setNotice] = useState<"openedNearestFolder" | "openFailed">();
+  async function reveal(action: RevealFile) {
+    setNotice(undefined);
+    try {
+      if ((await action(file.path)).fileMissing) setNotice("openedNearestFolder");
+    } catch {
+      setNotice("openFailed");
+    }
+  }
+  return <>
+    <button className="markdown-file-reference" type="button" aria-haspopup={open?.preview ? "dialog" : undefined}
+      title={open?.reveal ? t("inspection.revealFile") : undefined}
+      onClick={(event) => {
+        if (open?.reveal) void reveal(open.reveal);
+        else open?.preview?.(file, event.currentTarget);
+      }}>
+      <OpenFile.Provider value={undefined}>{children}</OpenFile.Provider>
+    </button>
+    {notice && <span className="markdown-file-notice" role={notice === "openFailed" ? "alert" : "status"}> {t(`inspection.${notice}`)}</span>}
+  </>;
 }
 
 function MarkdownLink({ url, children }: { readonly url?: string; readonly children: ReactNode }) {
@@ -103,15 +122,17 @@ const components: Components = {
   },
 };
 
-export const MessageMarkdown = memo(function MessageMarkdown({ text, openFile, codeToolbar = true }: {
+export const MessageMarkdown = memo(function MessageMarkdown({ text, openFile, revealFile, codeToolbar = true }: {
   readonly text: string;
   readonly codeToolbar?: boolean;
-  readonly openFile?: (file: FileReference, trigger: HTMLButtonElement) => void;
+  readonly openFile?: PreviewFile;
+  readonly revealFile?: RevealFile;
 }) {
+  const fileAction = revealFile ? { reveal: revealFile } : openFile ? { preview: openFile } : undefined;
   return <div className="markdown-body">
-    <CodeToolbar.Provider value={codeToolbar}><OpenFile.Provider value={openFile}>
+    <CodeToolbar.Provider value={codeToolbar}><OpenFile.Provider value={fileAction}>
       <Markdown skipHtml remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} urlTransform={(url, attribute) =>
-        attribute === "href" && (/^https?:\/\//i.test(url) || (openFile && markdownFileReference(url))) ? url : undefined
+        attribute === "href" && (/^https?:\/\//i.test(url) || (fileAction && markdownFileReference(url))) ? url : undefined
       } components={components}>{text}</Markdown>
     </OpenFile.Provider></CodeToolbar.Provider>
   </div>;

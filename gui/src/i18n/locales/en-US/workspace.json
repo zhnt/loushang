@@ -121,7 +121,8 @@
     "workspaceUnavailable": "Unable to open this workspace."
   },
   "inspection": {
-    "openInSystem": "Open on this device",
+    "revealFile": "Show in file manager",
+    "openedNearestFolder": "File not found. Opened the nearest existing folder.",
     "openFolder": "Open folder",
     "openFailed": "Could not open the workspace path. Check that it still exists and is available on this device.",
     "repositoryRoot": "Git repository root",

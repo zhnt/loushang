@@ -26,9 +26,8 @@ function pathError(reason: unknown) {
   return "openFailed";
 }
 
-export function OpenWorkspacePath({ file, open }: {
-  readonly file?: string;
-  readonly open: (file?: string) => Promise<void>;
+export function OpenWorkspacePath({ open }: {
+  readonly open: () => Promise<unknown>;
 }) {
   const { t } = useTranslation("workspace");
   const [opening, setOpening] = useState(false);
@@ -37,7 +36,7 @@ export function OpenWorkspacePath({ file, open }: {
     setOpening(true);
     setError(null);
     try {
-      await open(file);
+      await open();
     } catch (reason) {
       setError(pathError(reason));
     } finally {
@@ -45,10 +44,10 @@ export function OpenWorkspacePath({ file, open }: {
     }
   }
   const label = t("inspection.openFolder");
-  return <span className={file ? "workspace-open" : "workspace-open-folder"}>
-    <button type="button" className={file ? "secondary-button" : "workspace-folder-action"} disabled={opening}
-      aria-label={file ? undefined : label} title={file ? undefined : label} onClick={() => void activate()}>
-      {file ? t("inspection.openInSystem") : <UiIcon name="folder" />}
+  return <span className="workspace-open-folder">
+    <button type="button" className="workspace-folder-action" disabled={opening}
+      aria-label={label} title={label} onClick={() => void activate()}>
+      <UiIcon name="folder" />
     </button>
     {error && <span className="workspace-open-error" role="status">{t(`inspection.${error}`)}</span>}
   </span>;

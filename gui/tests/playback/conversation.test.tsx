@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
 import { MessageMarkdown } from "../../src/markdown/MessageMarkdown";
+import { projectNativeInitialSnapshot } from "../../src/client/nativeLiveClient";
 import { createMockAppClient } from "../support/mockAppClient";
+import { liveSnapshot } from "../support/liveSnapshot";
 import type { ClientSnapshot, CreateSessionReceipt, FixturePlaybackPort, HarnessClientUiPort, SessionModels, ThinkingLevel } from "../../src/client/model";
 
 const liveModel = {
@@ -27,6 +29,37 @@ function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): Fi
 }
 
 describe("GUI-B1 Workspace / Task / Review fixture", () => {
+  it("reveals a temporary Session artifact directly without reading its preview", async () => {
+    const raw = liveSnapshot();
+    raw.sessions[0].source.source.records[1].text = "已完成：index.html";
+    const snapshot = projectNativeInitialSnapshot(raw);
+    const previewWorkspace = vi.fn();
+    const openProjectPath = vi.fn().mockResolvedValue({ fileMissing: true });
+    const client: HarnessClientUiPort = {
+      snapshot: async () => snapshot,
+      subscribe: () => () => {},
+      submitText: async ({ submissionId }) => ({ accepted: false, submissionId }),
+      interrupt: async () => ({ accepted: false }),
+      previewWorkspace,
+    };
+    const session = snapshot.sessions[0];
+    render(<HarnessGui client={client}
+      managedHostConnection={{ status: "running", serviceInstanceId: "service-1" }}
+      projectNavigation={{
+        hostKey: "local", directory: { projects: [], temporarySessions: [] }, available: true,
+        pending: false, error: false, folderInput: false, selection: { workspace: "@temporary", id: session.id },
+        openFolder: () => {}, closeFolder: () => {}, register: async () => false,
+        createChat: async () => null, togglePin: () => {}, select: () => {}, openProjectPath,
+      }} />);
+    const artifact = await screen.findByRole("button", { name: "index.html" });
+    expect(artifact).not.toHaveAttribute("aria-haspopup");
+    fireEvent.click(artifact);
+    expect(await screen.findByText("File not found. Opened the nearest existing folder.")).toBeVisible();
+    expect(openProjectPath).toHaveBeenCalledExactlyOnceWith("@temporary", "a".repeat(64), "index.html");
+    expect(previewWorkspace).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("opens desktop Markdown links through the system browser bridge and reports failures", async () => {
     const url = "https://example.org/search?q=weather#results";
     const invoke = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce("open_failed");

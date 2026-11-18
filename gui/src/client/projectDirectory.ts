@@ -37,7 +37,7 @@ export interface ProjectNavigationProps {
 
 export interface ManagedProjectNavigation extends Omit<ProjectNavigationProps, "create"> {
   readonly inspectWorkspace?: (path: string, fingerprint: string, sessionId?: string) => Promise<import("../WorkspaceInspection").Inspection>;
-  readonly openProjectPath?: (path: string, fingerprint: string, file?: string) => Promise<void>;
+  readonly openProjectPath?: (path: string, fingerprint: string, file?: string) => Promise<{ fileMissing: boolean }>;
   readonly draftModels?: (path: string | null) => Promise<SessionModels>;
   readonly createChat: (path: string | null, continuityId: string, title: string) => Promise<DraftBinding | null>;
 }

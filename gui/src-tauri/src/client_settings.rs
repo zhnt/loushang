@@ -182,14 +182,20 @@ fn open_project_path(backend: &Backend, body: &Value) -> Result<Value> {
     let workspaces = backend
         .call(json!({"operation":"workspace","action":"list"}))
         .map_err(|_| "connection_failed")?;
-    let admitted = workspaces["workspaces"].as_array().is_some_and(|rows| {
-        rows.iter().any(|row| {
-            row["path"] == workspace
+    let mut admitted = workspaces["workspaces"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|row| {
+            (workspace == "@temporary" || row["path"] == workspace)
                 && row["scope"] == "cwd"
                 && row["scopeFingerprint"] == fingerprint
-        })
-    });
-    if !admitted {
+        });
+    let root = admitted
+        .next()
+        .and_then(|row| row["path"].as_str())
+        .ok_or("workspace_unavailable")?;
+    if admitted.next().is_some() {
         return Err("workspace_unavailable");
     }
     let relative = match body.get("file") {
@@ -197,59 +203,60 @@ fn open_project_path(backend: &Backend, body: &Value) -> Result<Value> {
         None | Some(Value::Null) => None,
         _ => return Err("invalid_request"),
     };
-    let path = resolve_project_path(Path::new(workspace), relative)?;
-    if can_open_document(&path) || path.is_dir() {
-        open_in_desktop(&path).or_else(|error| {
-            if path.is_file() {
-                reveal_file(&path)
-            } else {
-                Err(error)
-            }
-        })?;
+    let (path, missing) = resolve_project_path(Path::new(root), relative)?;
+    if path.is_dir() {
+        open_in_desktop(&path)?;
     } else {
-        reveal_file(&path)?;
+        reveal_file(&path).or_else(|_| open_in_desktop(path.parent().ok_or("open_failed")?))?;
     }
-    Ok(json!({}))
+    Ok(json!({ "fileMissing": missing }))
 }
 
-fn resolve_project_path(workspace: &Path, relative: Option<&str>) -> Result<PathBuf> {
+fn resolve_project_path(workspace: &Path, relative: Option<&str>) -> Result<(PathBuf, bool)> {
+    use std::io::ErrorKind;
+    use std::path::Component;
+
+    if !workspace.is_absolute() {
+        return Err("invalid_request");
+    }
     let root = workspace.canonicalize().map_err(|_| "not_found")?;
     if !root.is_dir() {
         return Err("not_found");
     }
-    if let Some(relative) = relative {
-        use std::path::Component;
-        let relative = Path::new(relative);
-        if relative.as_os_str().is_empty()
-            || !relative
-                .components()
-                .all(|part| matches!(part, Component::Normal(_)))
-        {
-            return Err("invalid_request");
-        }
-        let file = root
-            .join(relative)
-            .canonicalize()
-            .map_err(|_| "not_found")?;
-        if !file.starts_with(&root) || !(file.is_file() || file.is_dir()) {
-            return Err("operation_unavailable");
-        }
-        Ok(file)
-    } else {
-        Ok(root)
+    let Some(relative) = relative else {
+        return Ok((root, false));
+    };
+    if relative.is_empty()
+        || relative.len() > 4096
+        || relative.chars().any(|c| c.is_control() || c == ':')
+    {
+        return Err("invalid_request");
     }
-}
-
-fn can_open_document(path: &Path) -> bool {
-    path.extension()
-        .and_then(|value| value.to_str())
-        .is_some_and(|value| {
-            [
-                "html", "htm", "pdf", "png", "jpg", "jpeg", "webp", "txt", "md",
-            ]
-            .iter()
-            .any(|extension| value.eq_ignore_ascii_case(extension))
-        })
+    let portable = relative.replace('\\', "/");
+    let relative = Path::new(&portable);
+    if !relative
+        .components()
+        .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
+    {
+        return Err("invalid_request");
+    }
+    let requested = root.join(relative);
+    for (index, candidate) in requested.ancestors().enumerate() {
+        if !candidate.starts_with(&root) {
+            break;
+        }
+        match candidate.canonicalize() {
+            Ok(path)
+                if path.starts_with(&root) && (path.is_dir() || (index == 0 && path.is_file())) =>
+            {
+                return Ok((path, index > 0));
+            }
+            Ok(_) => return Err("operation_unavailable"),
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(_) => return Err("operation_unavailable"),
+        }
+    }
+    Err("not_found")
 }
 
 #[cfg(target_os = "linux")]
@@ -277,7 +284,7 @@ fn reveal_file(path: &Path) -> Result<()> {
             return Ok(());
         }
     }
-    open_in_desktop(path.parent().ok_or("open_failed")?)
+    Err("open_failed")
 }
 
 #[cfg(target_os = "macos")]
@@ -307,8 +314,8 @@ fn reveal_file(path: &Path) -> Result<()> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-fn reveal_file(path: &Path) -> Result<()> {
-    open_in_desktop(path.parent().ok_or("open_failed")?)
+fn reveal_file(_path: &Path) -> Result<()> {
+    Err("open_failed")
 }
 
 #[cfg(target_os = "windows")]
@@ -382,32 +389,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn project_file_open_resolves_supported_files_and_rejects_traversal() {
+    fn project_file_reveal_resolves_the_file_or_nearest_workspace_folder() {
         let root = tempfile::tempdir().unwrap();
         let project = root.path().join("workspace");
         std::fs::create_dir(&project).unwrap();
-        let doc = project.join("index.html");
+        let reports = project.join("reports");
+        std::fs::create_dir(&reports).unwrap();
+        let doc = reports.join("index.html");
         std::fs::write(&doc, "<h1>Dashboard</h1>").unwrap();
         let outside = root.path().join("external.html");
         std::fs::write(&outside, "<h1>Outside</h1>").unwrap();
 
         assert_eq!(
-            resolve_project_path(&project, Some("index.html")).unwrap(),
-            doc.canonicalize().unwrap()
+            resolve_project_path(&project, Some(r"./reports\index.html")).unwrap(),
+            (doc.canonicalize().unwrap(), false)
+        );
+        assert_eq!(
+            resolve_project_path(&project, Some("reports/")).unwrap(),
+            (reports.canonicalize().unwrap(), false)
         );
         assert_eq!(
             resolve_project_path(&project, Some("../external.html")),
             Err("invalid_request")
         );
         assert_eq!(
-            resolve_project_path(&project, Some("missing.html")),
-            Err("not_found")
+            resolve_project_path(&project, Some("reports/missing/deeper.html")).unwrap(),
+            (reports.canonicalize().unwrap(), true)
+        );
+        assert_eq!(
+            resolve_project_path(&project, Some("index.html")).unwrap(),
+            (project.canonicalize().unwrap(), true)
         );
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(outside, project.join("link.html")).unwrap();
             assert_eq!(
                 resolve_project_path(&project, Some("link.html")),
+                Err("operation_unavailable")
+            );
+            std::os::unix::fs::symlink(root.path(), project.join("outside")).unwrap();
+            assert_eq!(
+                resolve_project_path(&project, Some("outside/missing.html")),
                 Err("operation_unavailable")
             );
         }

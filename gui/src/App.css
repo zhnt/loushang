@@ -599,13 +599,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
   cursor: pointer;
 }
 
-.workspace-open {
-  display: inline-flex;
-  align-items: baseline;
-  gap: .5rem;
-  flex-wrap: wrap;
-}
-
 .workspace-environment,
 .inspection-review {
   display: grid;
