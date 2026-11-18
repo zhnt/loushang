@@ -656,7 +656,29 @@ Codex 实施者按已授权职责接受这条只读组件边界及固定接线�
 
 真实后续 worktree 的既有批准／完整历史证明／状态准备组合229 passed（82.10秒），固定观察和期望未变；四源 mypy、Ruff、format 与 diff 检查通过。原批准 Journal 的10条旧 callable／惰性实例 pickle 路径及10次新往返、三项参数形状／原实例字段和属性访问通过；原 matcher／正则12条旧路径及12次新往返通过。后者验证真实 Harness 实现，不是只运行旧源码。惰性实例不证明活跃 Product 权限／lease 可序列化；泛型运行时注解与方法定义归属会变化。既有 journal IO、GC currentness、失败优先级与释放另由原固定探针覆盖，不将受控 Windows 端口当原生验证。
 
-本批 Coding −85、Harness +101、Hosting／其它生产0、系统生产 +16行；测试0、文档另计。Code DTO 字段不搬运，旧 Rooted IO 和 native-release 内核不重计收益。C07当前12,714行，自原 Goal 累计 Coding −7,552、Harness +10,416、系统 +2,864，多数退出仍差2,582行。全部442份 Coding 当前行／SHA重核为100,373行；Harness379,663／Hosting14,235／其它154,008，生产 Python 共648,279行。上批及本批尚待各自完整交付检查和 PR，不声明整组完成。
+本批 Coding −85、Harness +101、Hosting／其它生产0、系统生产 +16行；测试0、文档另计。Code DTO 字段不搬运，旧 Rooted IO 和 native-release 内核不重计收益。C07当前12,714行，自原 Goal 累计 Coding −7,552、Harness +10,416、系统 +2,864，多数退出仍差2,582行。全部442份 Coding 当前行／SHA重核为100,373行；Harness379,663／Hosting14,235／其它154,008，生产 Python 共648,279行。前两批现已由 PR #903/#904、#905/#906 交付至 main `19ab72fd5`，各自任务／集成及 main push CI 成功；接受仍限声明的局部范围，不代表整组完成。
+
+## Windows C5 待启动恢复资格归位候选
+
+本候选基于已交付 main `19ab72fd5`，不修改仍在回归的独立退休入口工作树。现有 `WindowsActivationStateJournal.require_recovered` 持有完整的 owner presence／当前 state／保留尝试结算检查。复用现有 `_RetainedAttemptFields` 类型边界，没有新增 Protocol、日志、持久状态或恢复管理器。Coding 保留原 Pending Host、Product journal 构造及错误政策，原 helper 参数和文档不变。
+
+两个 Journal 仍在原读取点分别构造；缺失 owner 不触发第二次读取，空锁而无 state 保守拒绝，存在 state 时在首个未结算尝试处短路。原日志工厂和错误构造都在使用点惰性读取；不固定捕获旧错误类、不缓存 journal、不获得修复／写入／删除权限。31个既有 Harness 函数及两份 Coding 类体 AST 未改，新增检查不改变原记录字段、slots 或历史 codec。
+
+原函数与实际候选 helper 的1,540组逐事件对照一致，其中736组实际触发注入错误；覆盖构造、presence、保留读取、迭代、phase／比较故障及读取后替换 callable journal factory／错误类。既有 C5／激活回归83 passed、1 skipped，跳过项是原生 Windows backend review，未用模拟替代。两源 mypy、Ruff 和 format 通过；完整 change-aware 验证仍待执行，不新增或扩大门禁。
+
+本候选 Coding −7、Harness +24、Hosting／其它生产0，系统 Python 生产 +17；测试0，文档单列。这是残留机制归位，不是系统净精简，也不重计已共享的读取、折叠或 CAS 内核。当前 C07 112文件／12,707行，任务归因累计 Coding −7,559、Harness +10,440、系统 +2,881；多数退出仍差2,575行。尚在独立回归的退休批次不计入本候选数字，整组及全部文件最终处置仍未验收。
+
+以下另列从原 Goal 切点到本工作树的**整个 Python 生产代码**变化，包含同期其它 main 交付；不等于 C07 收益，也不含 GUI 前端／Rust 等其它语言：
+
+| 范围 | 原 Goal 切点 | 当前工作树 | 全局变化 |
+| --- | ---: | ---: | ---: |
+| Coding | 106,430 | 100,366 | −6,064 |
+| Harness | 369,178 | 379,687 | +10,509 |
+| Hosting | 14,203 | 14,235 | +32 |
+| 其它 Python 生产 | 152,200 | 154,008 | +1,808 |
+| Python 生产合计 | 642,011 | 648,296 | +6,285 |
+
+C07 归因与上述全局变化之间的同期主线差额为 Coding +1,495、Harness +69、Hosting +32、其它 Python 生产 +1,808，共 +3,404；该差额不计为 C07 迁移成本或删减收益。
 
 ## 当前验证与限制
 

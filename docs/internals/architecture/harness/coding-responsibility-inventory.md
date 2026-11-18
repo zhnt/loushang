@@ -3,7 +3,7 @@
 本轮 C09 最新审计与候选实现见 [C09 收敛记录](c09-legacy-convergence.md)。
 C09 已完成本地验证与 PR #892/#893 合并交付，34 文件当前 7,624 行；详见收敛记录。
 C07 上轮通过 PR #894/#895 交付时为112文件、20,266行，Coding −267、Harness +309、生产系统 +42；历史验证与限制见 [C07 收敛记录](c07-worker-convergence.md)。
-本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；上批已由 PR #901/#902 合入 main `4100b4f65`，交付时 C07为112文件、13,104行。本地清理证据与 POSIX 入口提交之后，当前 Windows 恢复读取族候选再 Coding −117、Harness +173、系统生产 +56。阶段合计 Coding −305、Harness +362、系统生产 +57；当前 C07余12,799行，自原 Goal 切点累计 Coding −7,467、Harness +10,315、系统生产 +2,848，多数退出仍差2,667行。该阶段尚未合并，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。 独立后续候选将 POSIX 批准 Journal 完整 GC/root 作用域及已知状态识别归原 Harness owner，再 Coding −85、Harness +101、系统 +16；本地 C07 当前12,714行，累计 −7,552／+10,416／系统 +2,864，多数退出仍差2,582行。两候选分开验证，均不据局部通过宣称整组完成。
+本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；PR #903/#904 和 #905/#906 已交付至 main `19ab72fd5`，C07 为112文件、12,714行。独立 C5 恢复资格候选复用现有 Windows Activation Journal，Coding −7、Harness +24、系统 Python 生产 +17；当前工作树 C07 为12,707行，归属于 C07 的累计 Coding −7,559、Harness +10,440、系统 +2,881，多数退出仍差2,575行。同期其它主线变化与 C07 归因分开核账；当前候选尚未交付，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
 
 
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
@@ -436,7 +436,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_partial_stage_review.py](../../../../src/loushang/coding/package_product_worker_windows_partial_stage_review.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 8d715c51e57b | 146 | 20b47e8f118d |
 | [package_product_worker_windows_payload.py](../../../../src/loushang/coding/package_product_worker_windows_payload.py) | C07 | 726 | M | C07 插件 Worker 执行/持久化/恢复 | 3b269028908c | 170 | d1d0071cd2ed |
 | [package_product_worker_windows_payload_inventory.py](../../../../src/loushang/coding/package_product_worker_windows_payload_inventory.py) | C07 | 150 | M | C07 插件 Worker 执行/持久化/恢复 | 9464816cc608 | 86 | 7de98ea1fd47 |
-| [package_product_worker_windows_pending_host.py](../../../../src/loushang/coding/package_product_worker_windows_pending_host.py) | C07 | 593 | M | C07 插件 Worker 执行/持久化/恢复 | 543a2c4a6116 | 222 | d77ad8d02cb5 |
+| [package_product_worker_windows_pending_host.py](../../../../src/loushang/coding/package_product_worker_windows_pending_host.py) | C07 | 593 | M | C5恢复资格只读检查归原WindowsActivationStateJournal；保名义Host、错误及惰性journal接线、Coding Provider/Session政策 | 543a2c4a6116 | 215 | 26fedb37f3dc |
 | [package_product_worker_windows_persisted_bases.py](../../../../src/loushang/coding/package_product_worker_windows_persisted_bases.py) | C07 | 315 | M | C07 插件 Worker 执行/持久化/恢复 | 28438d7a4fed | 195 | d0c09ff5dc8b |
 | [package_product_worker_windows_provisioning.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning.py) | C07 | 344 | M | 原 Harness ProvisioningAccess 持有准入/绑定/intent/CAS/恢复；保名义类、Product Profile及直接载荷 owner 接线 | 98ffbd480b88 | 116 | 4f692e01aa98 |
 | [package_product_worker_windows_provisioning_base.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning_base.py) | C07 | 410 | M | C07 插件 Worker 执行/持久化/恢复 | 0e8ef6cd61ab | 93 | fe3513dd7f00 |
@@ -544,7 +544,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-18：逐文件当前行／SHA和下表重新核对 main `4100b4f65` 加清理证据、POSIX 载荷入口及 Windows 恢复读取族、后续批准 Journal／状态名候选，共442文件、100,373物理行；原审计列、历史批次数字与建议处置保留。清单旧C07汇总20,533行包含本轮基线前已交付的267行差异，本轮收益仍严格从主线20,266行计算，不重复计入。上游新增8份 Coding 文件及其余功能变化单列，不算 C07 成本或收益。当前计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
+2026-11-18：逐文件当前行／SHA和下表重新核对已交付 main `19ab72fd5` 加独立 C5 恢复资格候选，共442文件、100,366物理行；原审计列、历史批次数字与建议处置保留。清单旧C07汇总20,533行包含本轮基线前已交付的267行差异，本轮收益仍严格从20,266行计算，不重复计入。上游新增8份 Coding 文件及其余功能变化单列，不算 C07 成本或收益。计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
 
 A215完整捕获资源族五源形状−111/+276/系统+165未采用，全部2063生产源保持A214
 实物SHA/行数；候选成本不进入下列当前列，公共字段与该族不据此成为最终领域下界。
@@ -570,7 +570,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,809 |
 | C05 | 6 | 3,417 |
 | C06 | 27 | 4,640 |
-| C07 | 112 | 12,714 |
+| C07 | 112 | 12,707 |
 | C08 | 31 | 6,593 |
 | C09 | 34 | 7,624 |
 | C10 | 12 | 5,185 |
@@ -592,7 +592,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 442 | 100,373 |
+| 合计 | 442 | 100,366 |
 
 A217计量口径：2063源账本661370含31份GUI测试/support4524行，生产2032源656846；
 Code108032/Harness367396/AppHost20629，系统本批raw+14，不作净减。

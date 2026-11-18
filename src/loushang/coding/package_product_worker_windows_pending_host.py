@@ -28,6 +28,9 @@ from loushang.harness.worker.capability_query import (
     CapabilityWorkerAdmissionV1,
     CapabilityWorkerBindingV1,
 )
+from loushang.harness.worker.history._windows_product_journals import (
+    WindowsActivationStateJournal,
+)
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
@@ -79,22 +82,12 @@ def _require_windows_host_c5_recovered(
 ) -> None:
     """Keep interrupted initialization and unfinished attempts out of a new Host."""
 
-    present, state = CodingWindowsWorkerActivationStateJournal(
-        product
-    ).load_with_presence_read_only()
-    if present and state is None:
-        raise CodingWindowsWorkerPendingHostError(
+    WindowsActivationStateJournal.require_recovered(
+        lambda: CodingWindowsWorkerActivationStateJournal(product),
+        failure=lambda: CodingWindowsWorkerPendingHostError(
             "coding_worker_pending_c5_owner_requires_recovery"
-        )
-    if state is not None and any(
-        attempt.phase != "settled"
-        for attempt in CodingWindowsWorkerActivationStateJournal(
-            product
-        ).retained_attempts_read_only()
-    ):
-        raise CodingWindowsWorkerPendingHostError(
-            "coding_worker_pending_c5_owner_requires_recovery"
-        )
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
