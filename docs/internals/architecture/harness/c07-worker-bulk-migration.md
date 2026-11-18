@@ -658,6 +658,18 @@ Codex 实施者按已授权职责接受这条只读组件边界及固定接线�
 
 本批 Coding −85、Harness +101、Hosting／其它生产0、系统生产 +16行；测试0、文档另计。Code DTO 字段不搬运，旧 Rooted IO 和 native-release 内核不重计收益。C07当前12,714行，自原 Goal 累计 Coding −7,552、Harness +10,416、系统 +2,864，多数退出仍差2,582行。全部442份 Coding 当前行／SHA重核为100,373行；Harness379,663／Hosting14,235／其它154,008，生产 Python 共648,279行。上批及本批尚待各自完整交付检查和 PR，不声明整组完成。
 
+## 三个 Windows 退休公开入口归既有 operation owner
+
+后续独立候选基于 `fe61edcee`。Codex 实施者按已授权职责接受此局部实现边界：完整、partial、unlaunched 三个原退休 owner 接管原公开入口的前置 platform／Product／名义 review 校验；unlaunched 的 native revision2门槛保持，全部校验仍先于任何 offline／GC／根目录操作。Coding 仅配置实际 product_id、原错误信息、名义记录及原组件，公开名称直接绑定原 owner；没有新增退休器、账本、owner 或 Protocol。crash 公开入口继续经原 recovery program 复核，不把它直接替换成 raw retirement owner。
+
+三个私有 Harness 配置各追加两个可选准入字段，原调用者未配置时保持原行为，旧构造参数仍有效；不承诺任意旧私有配置实例的 pickle／slots 兼容。五个 Coding 名义类体、字段／slots／wire schema 原样保持。公开参数名／kind／default及文档保持；定义归属、运行时泛型注解和 Python 参数绑定错误前缀随 bound method 归位变化。
+
+原四个公开 callable 在协议4／5往返通过，而直接绑定原 owner 首轮8份新 pickle 全失败，具体阻碍为既有 Receipt IO 的 late rename lambda。候选仅将该端口及三个 review 容量 getter改为具名函数，继续逐次读取原模块端口／限额；不增加序列化注册器。真实 worktree 的8条旧路径恢复、8次新往返、四项公开参数形状／文档和四个动态端口通过。首轮对 owner 的 `__eq__` 断言失败，差异来自反序列化后的嵌套组件方法绑定；原记录保留，随后逐类型、状态、函数身份及共享引用关系核对整份配置图通过，未删除配置验证。
+
+184组原／新入口对照覆盖非 Windows、错误 Product／子类／缺失或抛错 policy、错误 review／子类及原 native revision 比较语义；有效路径到同一第一副作用边界即截断。27个原 Harness 方法体在排除新增准入前缀后 AST一致，真实三文件既有测试20 passed（17.86秒）。五源 shadow mypy通过，实际五源与其字节及项目配置相同。Ruff／format／diff通过。该证据不代替真实 Windows ACL、删除、reboot、LPAC 或 Task.cancel 路线；整批检查仍待执行。
+
+本批 C07 −39、相关 C09 Coding +4，全部 Coding 净 −35；Harness +58、Hosting／其它生产0，系统生产 +23行，测试0、文档另计。112份 C07实物余12,675行，但相关额外4行适配同时计入本 Goal，等效剩余12,679行；累计 Coding净 −7,587、Harness +10,474、系统 +2,887，多数退出仍差2,547行，不把适配挪出清单作为收益。442份 Coding当前行／SHA全部重核为100,338行；Harness379,721／Hosting14,235／其它154,008，生产 Python共648,302行。当前候选未交付，原 Goal不关闭。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

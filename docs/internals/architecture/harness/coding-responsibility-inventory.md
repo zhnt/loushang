@@ -1,9 +1,9 @@
 # Coding 逐文件职责与处置清单 R2
 
 本轮 C09 最新审计与候选实现见 [C09 收敛记录](c09-legacy-convergence.md)。
-C09 已完成本地验证与 PR #892/#893 合并交付，34 文件当前 7,624 行；详见收敛记录。
+C09 已完成本地验证与 PR #892/#893 合并交付，交付时34文件、7,624行；本 C07 退休入口候选将相关 rename 端口具名化增加4行，当前34文件、7,628行，成本计入本轮 Coding 总量。
 C07 上轮通过 PR #894/#895 交付时为112文件、20,266行，Coding −267、Harness +309、生产系统 +42；历史验证与限制见 [C07 收敛记录](c07-worker-convergence.md)。
-本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；上批已由 PR #901/#902 合入 main `4100b4f65`，交付时 C07为112文件、13,104行。本地清理证据与 POSIX 入口提交之后，当前 Windows 恢复读取族候选再 Coding −117、Harness +173、系统生产 +56。阶段合计 Coding −305、Harness +362、系统生产 +57；当前 C07余12,799行，自原 Goal 切点累计 Coding −7,467、Harness +10,315、系统生产 +2,848，多数退出仍差2,667行。该阶段尚未合并，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。 独立后续候选将 POSIX 批准 Journal 完整 GC/root 作用域及已知状态识别归原 Harness owner，再 Coding −85、Harness +101、系统 +16；本地 C07 当前12,714行，累计 −7,552／+10,416／系统 +2,864，多数退出仍差2,582行。两候选分开验证，均不据局部通过宣称整组完成。
+本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；PR #903/#904 已合入 main `0dac793d9`，主线 C07余12,799行，累计 Coding −7,467、Harness +10,315、系统生产 +2,848。后续独立提交 `fe61edcee` 将批准 Journal／状态名归原 owner，C07余12,714行。再后续三个退休入口候选为 C07 −39、相关 C09 Coding +4、Harness +58，系统 +23；112文件实物余12,675行，额外4行适配一并计入 Goal，按目标口径余12,679行。累计 Coding −7,587、Harness +10,474、系统生产 +2,887，多数退出仍差2,547行。后续两批仍待各自完整验证和交付，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
 
 
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
@@ -303,7 +303,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_legacy_snapshot_member.py](../../../../src/loushang/coding/package_legacy_snapshot_member.py) | C09 | 198 | E | C09明确保留/共享边界见c09-legacy-convergence.md逐文件结论 | d86ab52e1964 | 133 | 0eda2b5af788 |
 | [package_legacy_source_consumption.py](../../../../src/loushang/coding/package_legacy_source_consumption.py) | C09 | 400 | E | C09明确保留/共享边界见c09-legacy-convergence.md逐文件结论 | 362fb2103c5f | 172 | dc511c7c1b86 |
 | [package_legacy_source_evidence.py](../../../../src/loushang/coding/package_legacy_source_evidence.py) | C09 | 142 | E | C09明确保留/共享边界见c09-legacy-convergence.md逐文件结论 | 3fc875a324a0 | 140 | 200468832d50 |
-| [package_legacy_windows_receipt.py](../../../../src/loushang/coding/package_legacy_windows_receipt.py) | C09 | 289 | E | C09明确保留/共享边界见c09-legacy-convergence.md逐文件结论 | ebb5b40e0b99 | 67 | ea1d662e1563 |
+| [package_legacy_windows_receipt.py](../../../../src/loushang/coding/package_legacy_windows_receipt.py) | C09 | 289 | E | 原私有 Receipt IO；保产品错误／限额与具名 late rename 端口，C07相关适配+4 | ebb5b40e0b99 | 71 | ae07a3d2378e |
 | [package_pre_b_snapshot.py](../../../../src/loushang/coding/package_pre_b_snapshot.py) | C09 | 448 | E | C09明确保留/共享边界见c09-legacy-convergence.md逐文件结论 | bf7cef184eb2 | 380 | ca99c2e4e267 |
 | [package_private_data_backup.py](../../../../src/loushang/coding/package_private_data_backup.py) | C08 | 645 | M | C08 插件私有数据生命周期 | 233a09f3c323 | 275 | 5a136214a5d7 |
 | [package_private_data_backup_expiry.py](../../../../src/loushang/coding/package_private_data_backup_expiry.py) | C08 | 439 | M | C08 插件私有数据生命周期 | 91576e5df2d4 | 275 | baca476c0061 |
@@ -432,7 +432,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_opt_in_owner.py](../../../../src/loushang/coding/package_product_worker_windows_opt_in_owner.py) | C07 | 240 | M | A204 current/allow/revoke完整协调归原Core；保实际构造、backend与domain plan绑定 | 8a433b9a6e12 | 66 | f331e54dd22f |
 | [package_product_worker_windows_orphan_review.py](../../../../src/loushang/coding/package_product_worker_windows_orphan_review.py) | C07 | 218 | M | C07 插件 Worker 执行/持久化/恢复 | f208ccc2257a | 112 | ba35062ac78f |
 | [package_product_worker_windows_package_references.py](../../../../src/loushang/coding/package_product_worker_windows_package_references.py) | C07 | 333 | M | C07 插件 Worker 执行/持久化/恢复 | 4e592d2bb6a4 | 129 | 1921171cf241 |
-| [package_product_worker_windows_partial_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_partial_stage_retirement.py) | C07 | 470 | M | C07 插件 Worker 执行/持久化/恢复 | f3aa4d490897 | 99 | e3802c4d7690 |
+| [package_product_worker_windows_partial_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_partial_stage_retirement.py) | C07 | 470 | M | 原 partial 退休 owner 接管公开准入；保产品标识／错误域与固定接线 | f3aa4d490897 | 86 | 3c9c3b4b73bc |
 | [package_product_worker_windows_partial_stage_review.py](../../../../src/loushang/coding/package_product_worker_windows_partial_stage_review.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 8d715c51e57b | 146 | 20b47e8f118d |
 | [package_product_worker_windows_payload.py](../../../../src/loushang/coding/package_product_worker_windows_payload.py) | C07 | 726 | M | C07 插件 Worker 执行/持久化/恢复 | 3b269028908c | 170 | d1d0071cd2ed |
 | [package_product_worker_windows_payload_inventory.py](../../../../src/loushang/coding/package_product_worker_windows_payload_inventory.py) | C07 | 150 | M | C07 插件 Worker 执行/持久化/恢复 | 9464816cc608 | 86 | 7de98ea1fd47 |
@@ -447,11 +447,11 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_recovery_inventory.py](../../../../src/loushang/coding/package_product_worker_windows_recovery_inventory.py) | C07 | 948 | M | 库存／引用／GC观察／离线快照八入口归原Journal family；保原名义事实、Code产品Profile及循环依赖下的退休绑定 | b27d4837686b | 263 | b70e0a158be7 |
 | [package_product_worker_windows_reserved_review.py](../../../../src/loushang/coding/package_product_worker_windows_reserved_review.py) | C07 | 498 | M | C07 插件 Worker 执行/持久化/恢复 | da4173eeec8e | 211 | 93ff24b3df72 |
 | [package_product_worker_windows_reserved_settlement.py](../../../../src/loushang/coding/package_product_worker_windows_reserved_settlement.py) | C07 | 148 | M | C07 插件 Worker 执行/持久化/恢复 | 2b51f84d3792 | 73 | 3593d00fb79e |
-| [package_product_worker_windows_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_stage_retirement.py) | C07 | 819 | M | C07 插件 Worker 执行/持久化/恢复 | 3ff0e86ef425 | 155 | f01b541baf12 |
+| [package_product_worker_windows_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_stage_retirement.py) | C07 | 819 | M | 原完整退休 owner 接管公开准入；保名义 receipt/schema、产品标识与固定接线 | 3ff0e86ef425 | 143 | 8615c1842c7a |
 | [package_product_worker_windows_stage_review.py](../../../../src/loushang/coding/package_product_worker_windows_stage_review.py) | C07 | 562 | M | C07 插件 Worker 执行/持久化/恢复 | 6ea1c3b1a359 | 183 | 8884bea8ee19 |
 | [package_product_worker_windows_supervisor_base.py](../../../../src/loushang/coding/package_product_worker_windows_supervisor_base.py) | C07 | 282 | M | C07 插件 Worker 执行/持久化/恢复 | 7b61d5a66355 | 84 | 720019d37f19 |
 | [package_product_worker_windows_supervisor_journal.py](../../../../src/loushang/coding/package_product_worker_windows_supervisor_journal.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 009fdc92f3b4 | 50 | d97db7b700f4 |
-| [package_product_worker_windows_unlaunched_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_unlaunched_stage_retirement.py) | C07 | 438 | M | C07 插件 Worker 执行/持久化/恢复 | f21cd9031d90 | 107 | bc9632e5b0b3 |
+| [package_product_worker_windows_unlaunched_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_unlaunched_stage_retirement.py) | C07 | 438 | M | 原 unlaunched owner 接管准入及 revision2门槛；保产品事实／固定接线 | f21cd9031d90 | 93 | 64745d6acd3b |
 | [package_source_snapshot.py](../../../../src/loushang/coding/package_source_snapshot.py) | C09 | 433 | E | C09明确保留/共享边界见c09-legacy-convergence.md逐文件结论 | 3966088d6f93 | 123 | 7d156ccb09a0 |
 | [platform/__init__.py](../../../../src/loushang/coding/platform/__init__.py) | C27 | 5 | K | C27 版本检查 Product 绑定 | 6af5d273482a | 5 | 6af5d273482a |
 | [platform/version_check.py](../../../../src/loushang/coding/platform/version_check.py) | C27 | 45 | K | C27 版本检查 Product 绑定 | 564c53288c45 | 45 | 564c53288c45 |
@@ -544,7 +544,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-18：逐文件当前行／SHA和下表重新核对 main `4100b4f65` 加清理证据、POSIX 载荷入口及 Windows 恢复读取族、后续批准 Journal／状态名候选，共442文件、100,373物理行；原审计列、历史批次数字与建议处置保留。清单旧C07汇总20,533行包含本轮基线前已交付的267行差异，本轮收益仍严格从主线20,266行计算，不重复计入。上游新增8份 Coding 文件及其余功能变化单列，不算 C07 成本或收益。当前计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
+2026-11-18：逐文件当前行／SHA和下表重新核对 main `4100b4f65` 加清理证据、POSIX 载荷入口及 Windows 恢复读取族、后续批准 Journal／状态名及退休入口候选，共442文件、100,338物理行；原审计列、历史批次数字与建议处置保留。清单旧C07汇总20,533行包含本轮基线前已交付的267行差异，本轮收益仍严格从主线20,266行计算，不重复计入。上游新增8份 Coding 文件及其余功能变化单列，不算 C07 成本或收益。当前计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
 
 A215完整捕获资源族五源形状−111/+276/系统+165未采用，全部2063生产源保持A214
 实物SHA/行数；候选成本不进入下列当前列，公共字段与该族不据此成为最终领域下界。
@@ -570,9 +570,9 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,809 |
 | C05 | 6 | 3,417 |
 | C06 | 27 | 4,640 |
-| C07 | 112 | 12,714 |
+| C07 | 112 | 12,675 |
 | C08 | 31 | 6,593 |
-| C09 | 34 | 7,624 |
+| C09 | 34 | 7,628 |
 | C10 | 12 | 5,185 |
 | C11 | 26 | 9,215 |
 | C12 | 25 | 6,896 |
@@ -592,7 +592,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 442 | 100,373 |
+| 合计 | 442 | 100,338 |
 
 A217计量口径：2063源账本661370含31份GUI测试/support4524行，生产2032源656846；
 Code108032/Harness367396/AppHost20629，系统本批raw+14，不作净减。
