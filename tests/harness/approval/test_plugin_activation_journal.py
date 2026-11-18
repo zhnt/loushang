@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,16 @@ def test_activation_decision_and_attempt_are_durable_one_shot_authority(
             expected_journal_revision=2,
         )
     assert consumed.value.code == "plugin_activation_decision_consumed"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows journal path length")
+def test_windows_activation_journal_replays_long_path(tmp_path: Path) -> None:
+    root = tmp_path / ("x" * max(16, 245 - len(str(tmp_path))))
+    journal = _journal(root)
+    decision = _issue(journal)
+    assert journal.snapshot().decisions == (decision,)
+    reservation = _consume(journal, decision.decision_id)
+    assert _journal(root).snapshot().activation_uses == (reservation,)
 
 
 def test_legacy_complete_bundle_subject_wire_remains_untagged_and_round_trips(

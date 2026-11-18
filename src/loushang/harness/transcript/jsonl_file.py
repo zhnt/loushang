@@ -406,6 +406,7 @@ class AgentTranscriptFileLayout:
     filename_for_key: FilenameForKey | None = None
     _known_paths: dict[ConversationKey, Path] = field(default_factory=dict)
     file_io: RootedFileIO | None = None
+    excluded_candidate_name: Callable[[str], bool] | None = None
 
     def __post_init__(self) -> None:
         if self.file_io is None:
@@ -486,6 +487,12 @@ class AgentTranscriptFileLayout:
 
         return self.scan_candidate_path_snapshot(namespace).paths
 
+    def _is_candidate_name(self, path: Path) -> bool:
+        return (
+            path.suffix == ".jsonl" and not path.name.endswith("-export.jsonl")
+            and (self.excluded_candidate_name is None or not self.excluded_candidate_name(path.name))
+        )
+
     def scan_candidate_path_snapshot(
         self,
         namespace: str,
@@ -521,7 +528,7 @@ class AgentTranscriptFileLayout:
                     complete = False
                     break
                 path = self.root / name
-                if path.suffix == ".jsonl" and not path.name.endswith("-export.jsonl") and self._is_file(path):
+                if self._is_candidate_name(path) and self._is_file(path):
                     if len(candidates) == candidate_limit:
                         complete = False
                         break
@@ -536,9 +543,7 @@ class AgentTranscriptFileLayout:
                         complete = False
                         break
                     path = Path(entry.path)
-                    if path.suffix == ".jsonl" and not path.name.endswith(
-                        "-export.jsonl"
-                    ):
+                    if self._is_candidate_name(path):
                         if len(candidates) >= candidate_limit:
                             complete = False
                             break

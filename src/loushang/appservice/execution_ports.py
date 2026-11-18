@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
+from loushang.appserver.execution.model import (
+    InteractiveGoalCommandV1,
+    InteractiveGoalRecoveryV1,
+    InteractiveGoalReviewSubmissionV1,
+    InteractiveGoalReviewV1,
+    InteractiveGoalViewV1,
+)
 from loushang.appserver.protocol import SessionIdentityV1
 
 from .execution_contract import (
@@ -68,3 +75,37 @@ class HostedExecutionPortV1(Protocol):
         covered content event must never suppress outcome settlement.
         """
         ...
+
+
+@runtime_checkable
+class HostedInteractiveGoalPortV1(Protocol):
+    @property
+    def supports_interactive_goal(self) -> bool: ...
+
+    async def create_interactive_goal(
+        self, target: str, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalViewV1: ...
+
+    async def interactive_goal_status(self) -> InteractiveGoalViewV1: ...
+
+
+@runtime_checkable
+class HostedInteractiveGoalCommandPortV1(Protocol):
+    def control_interactive_goal(
+        self, command: InteractiveGoalCommandV1 | InteractiveGoalReviewSubmissionV1, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalViewV1: ...
+
+
+@runtime_checkable
+class HostedInteractiveGoalReviewPortV1(HostedInteractiveGoalCommandPortV1, Protocol):
+    async def interactive_goal_review(
+        self, goal_id: str, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalReviewV1: ...
+
+
+@runtime_checkable
+class HostedInteractiveGoalRecoveryPortV1(Protocol):
+    @property
+    def supports_interactive_goal_recovery(self) -> bool: ...
+
+    async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1: ...

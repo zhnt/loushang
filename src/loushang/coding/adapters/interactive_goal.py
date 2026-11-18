@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -48,7 +49,7 @@ from ._goal_planning_shared import BatchPlanningPolicy
 from ._goal_planning_work import PlanningToolPolicy, ScopedSessionWork, publish_report
 from ._goal_proposal import Action, ProposalRejected, parse_proposal
 from ._verification_work import inspect_verification
-from .goal import CodingGoal
+from .goal import CodingGoal, _ordinary_goal_transport, _validate_goal_session
 from .harnesswork import CODING_WORK_PROFILE, project_coding_runtime_event
 
 ACTION_EVIDENCE = {
@@ -468,6 +469,11 @@ class InteractiveGoal(CodingGoal):
 
     _allowances: dict[str, _TaskAllowance]
 
+    @staticmethod
+    def require_session_tools(session, workspace: Path) -> None:
+        _ordinary_goal_transport(session)
+        _validate_goal_session(session, workspace, True, ordinary=True)
+
     @classmethod
     async def attach(cls, *, session, **limits):
         owner = await cls._attach(session=session, profile=_PROFILE, **limits)
@@ -475,13 +481,17 @@ class InteractiveGoal(CodingGoal):
         owner._policy._facts = owner.controller.facts
         return owner
 
-    async def create_task(self, task: GoalTask):
+    async def create_task(
+        self, task: GoalTask, *, check_current: Callable[[], None] | None = None,
+    ) -> str:
         async def create():
             admission = self._session.runtime.execution_admission
             reservation = admission.reserve_candidate()
             try:
                 await self._policy.refresh()
                 admission.validate_reservation(reservation, require_operation=False)
+                if check_current is not None:
+                    check_current()
                 return self._create_task(task)
             finally:
                 reservation.release()
@@ -557,6 +567,17 @@ class InteractiveGoal(CodingGoal):
 
         return await self._observations.invoke(inspect)
 
+    def review_check_status(self, goal_id, snapshot) -> tuple[int, bool]:
+        """Observe exactly the required check evidence used by review admission."""
+        core = self.controller
+        basis = GoalBasis(core.header, core.query(goal_id), core.history.sequence)
+        count = len(self._policy.contract(basis)["checks"])
+        try:
+            self._policy.review_dependencies(basis, snapshot)
+        except GoalError:
+            return count, False
+        return count, True
+
     async def accept(self, goal_id, identity):
         return await self.review(
             goal_id, identity, approved=True, reason="user accepted current result"
@@ -600,7 +621,7 @@ class InteractiveGoal(CodingGoal):
             self._policy.pending_review = None
 
 
-def read_task_history(session):
+def read_task_history(session, *, missing_ok: bool = False):
     """Read the original store without obtaining a new execution owner."""
     from loushang.harnesswork.goal import GoalHeader
     from loushang.harnesswork.goal.records import replay
@@ -612,7 +633,12 @@ def read_task_history(session):
         Path(session.session_manager.get_session_dir()), header, read_only=True
     )
     try:
-        store.open()
+        try:
+            store.open()
+        except GoalError as error:
+            if missing_ok and str(error) == "unknown Goal: Session has no Goal journal":
+                return None
+            raise
         actual, records = store.load()
         return replay(actual, records)
     finally:

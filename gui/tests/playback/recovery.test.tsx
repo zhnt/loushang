@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { HarnessGui } from "../../src/App";
@@ -37,7 +37,9 @@ describe("fixture synchronization", () => {
       await fixture.source.advanceFixture();
       fixture.requests[0].resolve(includesEvents ? await fixture.source.snapshot() : before);
     });
-    expect(await screen.findByRole("button", { name: "Step 2 / 4" })).toBeVisible();
+    const summary = await screen.findByRole("button", { name: "Step 2 / 4" });
+    expect(summary).toBeVisible();
+    fireEvent.click(summary);
     expect(screen.queryByRole("button", { name: "Resynchronize fixture" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Build the Workspace.*Activities: 4/ })).toBeVisible();
   });
@@ -71,6 +73,7 @@ describe("fixture synchronization", () => {
       await fixture.source.advanceFixture();
       fixture.requests[2].resolve(snapshot);
     });
+    await user.click(screen.getByRole("button", { name: "Tasks" }));
     expect(await screen.findByRole("button", { name: /Build the Workspace.*Activities: 5/ })).toBeVisible();
     expect(screen.getByRole("button", { name: "Interrupt" })).toBeEnabled();
     expect(input).toHaveValue("Keep this draft");
@@ -87,6 +90,7 @@ describe("fixture synchronization", () => {
     view.rerender(<HarnessGui client={next.client} />);
     const snapshot = await next.source.snapshot();
     await act(async () => { next.requests[0].resolve({ ...snapshot, generation: "replacement" }); });
+    await user.click(await screen.findByText("Technical details"));
     await waitFor(() => expect(screen.getByText("replacement")).toBeVisible());
     await act(async () => { old.requests[1].resolve(await old.source.snapshot()); });
     expect(screen.getByText("replacement")).toBeVisible();

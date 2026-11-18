@@ -1,4 +1,10 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { validateGoalProgress } from "../../contracts/goalProgress";
+import { validateUserChoice } from "../../contracts/userChoice";
+import { ApprovalResponses } from "./approvalResponses";
+import { validateInteractiveGoalRecovery } from "../../contracts/interactiveGoalRecovery";
+import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
+import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { thinkingLevels, type ThinkingLevel } from "./model";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -13,6 +19,8 @@ import type {
   ClientEvent,
   ClientSnapshot,
   ConversationMessage,
+  ControlReceipt,
+  PendingApproval,
   ExecutionProjection,
   HarnessClientUiPort,
   SessionSnapshot,
@@ -23,7 +31,11 @@ interface NativeInitialSnapshot {
   readonly connectionEpoch: string;
   readonly serviceInstanceId: string;
   readonly muxSpace: MuxSpaceV1;
-  readonly sessions: readonly ExecutionSessionSnapshotV1[];
+  readonly sessions: readonly NativeSessionSnapshot[];
+}
+
+interface NativeSessionSnapshot extends ExecutionSessionSnapshotV1 {
+  readonly pendingApprovals?: readonly PendingApproval[];
 }
 
 interface NativeMemberEvents {
@@ -50,7 +62,7 @@ const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatusV1>([
 const APP_ERROR_CODES = new Set([
   "invalid_request", "not_found", "already_exists", "already_attached", "product_mismatch",
   "revision_conflict", "snapshot_required", "stale_attachment", "attachment_lagged",
-  "session_unavailable", "operation_unavailable", "cleanup_incomplete", "service_closed",
+  "session_unavailable", "operation_unavailable", "permission_denied", "workspace_preview_binary", "workspace_preview_too_large", "workspace_registration_failed", "cleanup_incomplete", "service_closed",
 ]);
 
 export async function nativeLiveAvailable(): Promise<boolean> {
@@ -73,7 +85,14 @@ export function createNativeLiveClient(): HarnessClientUiPort {
   const snapshotListeners = new Set<(snapshot: ClientSnapshot) => void>();
   const connectionListeners = new Set<(state: "disconnected" | "resync-required") => void>();
 
+  const publish = (value: ClientSnapshot) => {
+    for (const listener of snapshotListeners) listener(value);
+  };
+  const approvals = new ApprovalResponses(publish);
+
   const notifyConnection = (state: "disconnected" | "resync-required") => {
+    approvals.disconnected();
+    current = null;
     for (const listener of connectionListeners) listener(state);
   };
 
@@ -90,8 +109,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       session.executions.revision,
     ]));
     if (deliveredInitial) {
-      const projected = projectSnapshot(next);
-      for (const listener of snapshotListeners) listener(projected);
+      publish(approvals.project(projectSnapshot(next)));
     } else {
       resolveInitial(next);
     }
@@ -114,8 +132,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       sequence = next.sequence;
       contentCursors = next.contentCursors;
       executionRevisions = next.executionRevisions;
-      const projected = projectSnapshot(next.snapshot);
-      for (const listener of snapshotListeners) listener(projected);
+      if (deliveredInitial) publish(approvals.project(projectSnapshot(next.snapshot)));
     } catch {
       notifyConnection("resync-required");
     }
@@ -167,7 +184,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       await ensureStarted();
       if (current) {
         deliveredInitial = true;
-        return projectSnapshot(current);
+        return approvals.project(projectSnapshot(current));
       }
       let timer = 0;
       const timeout = new Promise<never>((_resolve, reject) => {
@@ -177,11 +194,12 @@ export function createNativeLiveClient(): HarnessClientUiPort {
         );
       });
       try {
-        const snapshot = await Promise.race([initial, timeout]);
+        await Promise.race([initial, timeout]);
         deliveredInitial = true;
         // A round or reconnect can arrive between resolving the first snapshot
         // and this continuation. Never overwrite that newer accepted state.
-        return projectSnapshot(current ?? snapshot);
+        if (!current) throw new Error("The native live connection changed.");
+        return approvals.project(projectSnapshot(current));
       } finally {
         window.clearTimeout(timer);
       }
@@ -199,7 +217,62 @@ export function createNativeLiveClient(): HarnessClientUiPort {
     },
     async requestResync() {
       await ensureStarted();
+      approvals.disconnected();
+      current = null;
       await invoke("resync_live_connection");
+    },
+    async createInteractiveGoal(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_create", { input });
+      return result === null ? null : validateInteractiveGoal(result);
+    },
+    async controlInteractiveGoal(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_command", { input });
+      return result === null ? null : validateInteractiveGoal(result);
+    },
+    async interactiveGoalRecovery(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_recovery", { input });
+      return result === null ? null : validateInteractiveGoalRecovery(result);
+    },
+    async interactiveGoalReview(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_review", { input });
+      return result === null ? null : validateInteractiveGoalReview(result);
+    },
+    async submitInteractiveGoalReview(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_review_submit", { input });
+      return result === null ? null : validateInteractiveGoal(result);
+    },
+    async interactiveGoalStatus(input) {
+      const source = current;
+      if (source?.serviceInstanceId !== input.serviceInstanceId || source.connectionEpoch !== input.connectionEpoch) return null;
+      const result = await invoke<unknown>("live_interactive_goal_status", { input });
+      return result === null ? null : validateInteractiveGoal(result);
+    },
+    async goalProgress(sessionId, executionId) {
+      const serviceInstanceId = current?.serviceInstanceId;
+      if (!serviceInstanceId) return null;
+      const result = await invoke<unknown>("live_goal_progress", { input: { sessionId, executionId, serviceInstanceId } });
+      return result === null ? null : validateGoalProgress(result, executionId);
+    },
+    async startGoal(input, expectedInstanceId) {
+      const serviceInstanceId = current?.serviceInstanceId;
+      const unknown = unknownGoalStart(input.submissionId);
+      if (!serviceInstanceId || (expectedInstanceId && expectedInstanceId !== serviceInstanceId)) return unknown;
+      try {
+        const result = await invoke("live_goal_start", { input: { ...input, serviceInstanceId } });
+        return goalStartReceipt(result, input.submissionId);
+      } catch {
+        return unknown;
+      }
     },
     async submitText(input) {
       const receipt = await invoke<{ accepted: boolean; reason?: string | null; executionId?: string | null }>("live_submit_text", { input });
@@ -209,6 +282,13 @@ export function createNativeLiveClient(): HarnessClientUiPort {
         executionId: receipt.executionId ?? undefined,
         reason: receipt.reason ?? undefined,
       };
+    },
+    respondInteraction(sessionId, interactionId, outcome) {
+      return approvals.respond(sessionId, interactionId, (connectionEpoch) =>
+        invoke<ControlReceipt>("live_respond_interaction", {
+          input: { sessionId, interactionId, outcome, connectionEpoch },
+        }),
+      );
     },
     async interrupt(sessionId) {
       const executionId = current
@@ -222,6 +302,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
     },
     async createSession(input) {
       const value = object(await invoke("live_create_session", { input }));
+      if (value.rejected === true) return { rejected: true };
       return { sessionId: identifier(value.sessionId) };
     },
     async sessionModels(sessionId) {
@@ -285,11 +366,16 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
   const sessions = root.sessions.map((raw, index) => {
     const session = object(raw);
     if (identifier(session.serviceInstanceId) !== serviceInstanceId) throw new Error("instance");
+    for (const key of ["supportsGoalProgress", "supportsGoalStart", "supportsInteractiveGoal", "supportsInteractiveGoalCommands", "supportsInteractiveGoalRecovery"]) {
+      if (key in session && session[key] !== true) throw new Error("Goal capability");
+    }
+    if (session.supportsInteractiveGoalCommands && !session.supportsInteractiveGoal) throw new Error("interactive Goal capability");
     const source = object(session.source);
     const sourceSnapshot = object(source.source);
     if ("submissionMode" in sourceSnapshot && sourceSnapshot.submissionMode !== "execution") {
       throw new Error("submission mode");
     }
+    if ("userChoice" in sourceSnapshot) validateUserChoice(sourceSnapshot.userChoice);
     const sourceIdentity = identity(sourceSnapshot.identity);
     if (sourceIdentity.sessionId !== members[index].session.sessionId) throw new Error("identity");
     const cursor = decimal(sourceSnapshot.cursor);
@@ -317,7 +403,10 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
     const latestTerminal = executions.latestTerminal === null ? null : validateExecutionState(executions.latestTerminal);
     if (active && TERMINAL_EXECUTION_STATUSES.has(active.status)) throw new Error("active execution");
     if (latestTerminal && !TERMINAL_EXECUTION_STATUSES.has(latestTerminal.status)) throw new Error("terminal execution");
-    return raw as ExecutionSessionSnapshotV1;
+    return {
+      ...raw as ExecutionSessionSnapshotV1,
+      pendingApprovals: validatePendingApprovals(session.pendingApprovals, sourceIdentity.sessionId),
+    };
   });
   return {
     connectionEpoch,
@@ -402,6 +491,19 @@ function validateEventRound(
   return { snapshot, sequence, contentCursors, executionRevisions };
 }
 
+function validatePendingApprovals(value: unknown, sessionId: string): PendingApproval[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 16) throw new Error("pending approvals");
+  const ids = new Set<string>();
+  return value.map((raw) => {
+    const item = object(raw);
+    const interactionId = identifier(item.interactionId);
+    if (ids.has(interactionId)) throw new Error("duplicate approval");
+    ids.add(interactionId);
+    return { sessionId, interactionId, text: text(item.text, 262_144), status: "pending" };
+  });
+}
+
 function validateConnectionState(value: unknown): NativeConnectionState {
   const root = object(value);
   const state = root.state;
@@ -454,7 +556,7 @@ export function projectNativeEventRound(initial: unknown, round: unknown): Clien
 
 function projectSession(
   initial: NativeInitialSnapshot,
-  snapshot: ExecutionSessionSnapshotV1,
+  snapshot: NativeSessionSnapshot,
   memberId: string,
   memberIndex: number,
 ): SessionSnapshot {
@@ -463,6 +565,8 @@ function projectSession(
     id: `live-${source.identity.sessionId}-${index}`,
     role: record.kind === "user" || record.kind === "status" ? record.kind : "assistant",
     content: record.text,
+    systemNotice: record.kind === "status" && record.text === "Sending a message resumes the session runtime."
+      ? "resumesRuntime" : undefined,
     phase: record.kind === "error" ? "failed" as const : "complete" as const,
   }));
   if (snapshot.source.draft) {
@@ -496,11 +600,19 @@ function projectSession(
       applicationId: initial.serviceInstanceId,
       muxId: initial.muxSpace.muxSpaceId,
       memberId,
+      continuityId: source.identity.continuityId,
       sessionId: source.identity.sessionId,
       source: "live",
     },
     messages,
     execution: projectExecution(snapshot),
+    supportsGoalProgress: snapshot.supportsGoalProgress,
+    supportsGoalStart: snapshot.supportsGoalStart,
+    supportsInteractiveGoal: snapshot.supportsInteractiveGoal,
+    supportsInteractiveGoalCommands: snapshot.supportsInteractiveGoalCommands,
+    supportsInteractiveGoalRecovery: snapshot.supportsInteractiveGoalRecovery,
+    pendingApprovals: snapshot.pendingApprovals ?? [],
+    userChoice: source.userChoice,
     documents: [],
     run: null,
     changeSet: null,

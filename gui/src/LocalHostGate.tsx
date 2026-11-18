@@ -3,17 +3,19 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import App, { HarnessGui } from "./App";
 import { useOfflineAccount } from "./client/offlineAccount";
-import { nativeLiveAvailable } from "./client/nativeLiveClient";
+import { nativeLiveAvailable, validateSessionModels } from "./client/nativeLiveClient";
 import type { ConnectionState, HarnessClientUiPort } from "./client/model";
 import { useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
-import { createWebLiveClient } from "./client/webLiveClient";
+import { createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
-import { TEMPORARY_WORKSPACE, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
+import { TEMPORARY_WORKSPACE, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
 import { TrayHostDialog } from "./TrayHostDialog";
 import "./LocalHostGate.css";
 
 const emptyDirectory: ProjectDirectory = { projects: [], temporarySessions: [] };
+const openLocalWorkspacePath: NonNullable<ManagedProjectNavigation["openProjectPath"]> = (workspace, fingerprint, file) =>
+  webRequest({ operation: "open-project-path", workspace, fingerprint, ...(file ? { file } : {}) }, "local");
 
 const states = {
   unknown: "localHost.states.unknown", not_running: "localHost.states.notRunning",
@@ -44,20 +46,25 @@ export default function LocalHostGate() {
   const [folderInput, setFolderInput] = useState(false);
   const [workspaceError, setWorkspaceError] = useState(false);
   const [workspacePending, setWorkspacePending] = useState(false);
-  const [selection, setSelection] = useState<{ workspace: string; id: string } | null>(null);
+  const [selection, setSelection] = useState<ManagedProjectNavigation["selection"]>(null);
   const workspaceEpoch = useRef(0);
-  const workspaceClients = useRef(new Map<string, HarnessClientUiPort>());
+  const workspaceClients = useRef(new Map<string, WebLiveClient>());
   const workspaceMutation = useRef(false);
   const folderPicker = useRef(false);
 
-  function openConversation(path: string, id?: string) {
-    setWorkspace(path);
-    setSelection(id ? { workspace: path, id } : null);
+  function workspaceClient(path: string) {
     let selected = workspaceClients.current.get(path);
     if (!selected) {
       selected = createWebLiveClient(path, connectionId.current);
       workspaceClients.current.set(path, selected);
     }
+    return selected;
+  }
+
+  function openConversation(path: string, id?: string) {
+    setWorkspace(path);
+    setSelection({ workspace: path, id });
+    const selected = workspaceClient(path);
     clientRef.current = selected;
     setClient(selected);
     void webRequest({ operation: "remember-workspace", workspace: path }, connectionId.current).catch(() => {});
@@ -71,17 +78,16 @@ export default function LocalHostGate() {
     return result;
   }
 
-  async function changeDirectory(request: { action: "register" | "create-chat"; path?: string }) {
+  async function registerWorkspace(path: string) {
     if (workspaceMutation.current || pending.current || host.state !== "running" || host.errorCode) return false;
     workspaceMutation.current = true;
     setWorkspacePending(true);
     setWorkspaceError(false);
     const epoch = ++workspaceEpoch.current;
     try {
-      const result = await webRequest<{ workspace: string; sessionId: string }>({ operation: "workspace", ...request }, connectionId.current);
+      await webRequest({ operation: "workspace", action: "register", path }, connectionId.current);
       if (epoch !== workspaceEpoch.current) return false;
-      if (request.action === "register") setFolderInput(false);
-      else openConversation(result.workspace, result.sessionId);
+      setFolderInput(false);
       await refreshDirectory();
       return true;
     } catch {
@@ -90,6 +96,76 @@ export default function LocalHostGate() {
     } finally {
       workspaceMutation.current = false;
       setWorkspacePending(false);
+    }
+  }
+
+  const createChat: ManagedProjectNavigation["createChat"] = async (path, continuityId, title) => {
+    const origin = connectionId.current;
+    const destination = path ?? TEMPORARY_WORKSPACE;
+    const previous = workspaceClients.current.get(destination);
+    const bound = workspaceClient(destination);
+    let sessionId: string | undefined;
+    // Creation acquires the Mux controller. Release just the view it will use.
+    const resume = await previous?.suspend();
+    try {
+      if (origin !== connectionId.current) return null;
+      const result = await webRequest<{ accepted: false } | { workspace: string; sessionId: string }>({
+        operation: "workspace", action: "create-chat", path, continuityId, title,
+      }, origin);
+      if ("accepted" in result && result.accepted === false) return null;
+      if ("sessionId" in result && typeof result.sessionId === "string" && result.workspace === destination) {
+        sessionId = result.sessionId;
+      }
+    } catch {
+      // Only a matching continuation in the target Mux proves an unknown create.
+    } finally {
+      resume?.();
+    }
+    if (origin === connectionId.current) void refreshDirectory().catch(() => {});
+    return {
+      client: bound,
+      sessionId,
+      show(id) {
+        if (origin !== connectionId.current) return false;
+        workspaceClients.current.set(destination, bound);
+        openConversation(destination, id);
+        return true;
+      },
+    };
+  };
+
+  async function deleteChat(path: string, chat: ProjectChat) {
+    const serviceInstanceId = host.serviceInstanceId;
+    if (!serviceInstanceId || workspaceMutation.current || pending.current || host.state !== "running" || host.errorCode) return false;
+    workspaceMutation.current = true;
+    setWorkspacePending(true);
+    const epoch = ++workspaceEpoch.current;
+    const origin = connectionId.current;
+    let resume: (() => void) | undefined;
+    try {
+      resume = await workspaceClients.current.get(path)?.suspend();
+      if (epoch !== workspaceEpoch.current) return false;
+      const { accepted } = await webRequest<{ accepted: boolean }>({
+        operation: "workspace", action: "delete-chat", path, sessionId: chat.id, scope: chat.scope, serviceInstanceId,
+      }, origin);
+      if (accepted !== true || epoch !== workspaceEpoch.current) return false;
+      const withoutChat = (chats: readonly ProjectChat[]) =>
+        chats.filter((item) => item.id !== chat.id || item.scope !== chat.scope);
+      ++workspaceEpoch.current;
+      setDirectory((current) => ({
+        projects: current.projects.map((project) => project.path === path
+          ? { ...project, sessions: withoutChat(project.sessions) } : project),
+        temporarySessions: path === TEMPORARY_WORKSPACE ? withoutChat(current.temporarySessions) : current.temporarySessions,
+      }));
+      setSelection((current) => current?.workspace === path && current.id === chat.id ? { workspace: path } : current);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      resume?.();
+      workspaceMutation.current = false;
+      setWorkspacePending(false);
+      if (origin === connectionId.current) void refreshDirectory().catch(() => {});
     }
   }
 
@@ -114,7 +190,7 @@ export default function LocalHostGate() {
       const path = await invoke<string | null>("pick_project_folder", {
         title: t("sidebar.addProject"), accept: t("sidebar.addProject"), cancel: t("localHost.cancel"),
       });
-      if (path && epoch === workspaceEpoch.current) await changeDirectory({ action: "register", path });
+      if (path && epoch === workspaceEpoch.current) await registerWorkspace(path);
     } catch {
       if (epoch === workspaceEpoch.current) setWorkspaceError(true);
     } finally {
@@ -270,7 +346,7 @@ export default function LocalHostGate() {
     : reason?.startsWith("start_") || reason === "spawn_failed" ? t("localHost.errors.start")
     : reason?.startsWith("stop_") || reason === "cleanup_incomplete" ? t("localHost.errors.stop")
     : t("localHost.errors.unknown");
-  const canStart = host.manageable && host.state === "not_running";
+  const canStart = host.manageable && ["not_running", "exited"].includes(host.state);
   const startHost = () => void perform("start", workspace.trim());
   const stop = (action: "stop" | "restart") => {
     setConfirmation({ action, workspace, instanceId: host.instanceId });
@@ -290,8 +366,8 @@ export default function LocalHostGate() {
             <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
           {host.state === "running" ? <>
             <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
-            {host.manageable && host.instanceId && <><button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
-            <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button></>}
+            {host.manageable && host.instanceId && <><button className="host-danger" disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
+            <button className="host-danger" disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button></>}
           </> : null}
         </div>
       </div>
@@ -300,33 +376,59 @@ export default function LocalHostGate() {
       <section className="local-host-card local-host-info" aria-labelledby="local-host-info-title">
         <h4 id="local-host-info-title">{t("localHost.identity")}</h4>
         {host.instanceId || host.serviceInstanceId || host.pid != null ? <dl className="detail-list">
-          {host.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd>{host.pid}</dd></div> : null}
-          {host.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd>{host.instanceId}</dd></div> : null}
-          {host.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd>{host.serviceInstanceId}</dd></div> : null}
+          {host.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd><code>{host.pid}</code></dd></div> : null}
+          {host.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd><code>{host.instanceId}</code></dd></div> : null}
+          {host.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd><code>{host.serviceInstanceId}</code></dd></div> : null}
         </dl> : <p>{t("localHost.identityUnavailable")}</p>}
       </section>
     </section>
-    {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true" aria-label={t("localHost.confirmTitle")} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); } }}>
-      <div><strong>{t("localHost.confirmTitle")}</strong><p>{t("localHost.confirmStop")}</p>
+    {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true"
+      aria-labelledby="host-confirm-title" aria-describedby="host-confirm-impact"
+      onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); } }}>
+      <div>
+        <strong id="host-confirm-title">{t(confirmation.action === "restart" ? "localHost.restartTitle" : "localHost.confirmTitle")}</strong>
+        <p id="host-confirm-impact">{t(confirmation.action === "restart" ? "localHost.confirmRestart" : "localHost.confirmStop")}</p>
         <button autoFocus onClick={() => setConfirmation(null)}>{t("localHost.cancel")}</button>
-        <button onClick={() => { const selected = confirmation; setConfirmation(null); void perform(selected.action, selected.workspace, selected.instanceId); }}>{t("localHost.confirm")}</button>
+        <button className="host-danger" onClick={() => {
+          const selected = confirmation;
+          setConfirmation(null);
+          void perform(selected.action, selected.workspace, selected.instanceId);
+        }}>{t(confirmation.action === "restart" ? "localHost.restart" : "localHost.confirm")}</button>
       </div>
     </div> : null}
   </>;
+  const requestConnection = connectionId.current;
   return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
     startLocalHost={canStart ? <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={client ? setConnection : undefined}
+    managedHostConnection={busy ? { status: pendingAction.current === "stop" ? "disconnected" : "connecting" }
+      : host.state === "running" && !host.errorCode ? { status: "running", serviceInstanceId: host.serviceInstanceId }
+        : { status: "disconnected" }}
     projectNavigation={{
       directory, available: host.state === "running" && !host.errorCode && !busy,
       pending: workspacePending, error: workspaceError, folderInput, selection,
       openFolder: () => { void openFolder(); },
       closeFolder: () => setFolderInput(false),
-      register: (path) => changeDirectory({ action: "register", path }),
-      create: (path) => { void changeDirectory({ action: "create-chat", ...(path ? { path } : {}) }); },
+      register: registerWorkspace,
+      hostKey: selectedId,
+      inspectWorkspace: async (path, fingerprint, sessionId) => {
+        const result = await webRequest<{ workspaces: { scopeFingerprint: string; inspection?: import("./WorkspaceInspection").Inspection }[] }>(
+          { operation: "workspace", action: "inspect", path, sessionId }, requestConnection,
+        );
+        const workspace = result.workspaces[0];
+        if (workspace?.scopeFingerprint !== fingerprint || !workspace.inspection) throw new Error("workspace_unavailable");
+        return workspace.inspection;
+      },
+      openProjectPath: isTauri() && selectedId === "local" ? openLocalWorkspacePath : undefined,
+      draftModels: async (path) => validateSessionModels(
+        await webRequest({ operation: "workspace", action: "models", path }, connectionId.current),
+      ),
+      createChat,
+      deleteChat,
       togglePin: (chat) => { void togglePin(chat); },
       select: openConversation,
     }} />
     <TrayHostDialog details={trayHosts.details} error={trayHosts.error}
-      onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmStop} />
+      onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmAction} />
   </>;
 }

@@ -44,6 +44,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
@@ -52,7 +53,7 @@ from ._operations import _observe, _OwnedAppOperations
 from ._scope_interactions import _ScopeInteractions
 from .execution_registry import ExecutionErrorCodeV1, ExecutionServiceErrorV1
 from .execution_service import ScopedExecutionClientV1
-from .goal import ScopedGoalClientV1
+from .goal import ScopedGoalClientV1, ScopedGoalExecutionObserverV1
 from .method_work import ScopedMethodWorkClientV1
 from .resume_ports import (
     _current_resume_subject,
@@ -272,6 +273,11 @@ class AppClientScopeV1:
         return self._goal_client
 
     @property
+    def goal_execution_observer(self) -> ScopedGoalExecutionObserverV1 | None:
+        goal = self.goal_client
+        return None if goal is None else ScopedGoalExecutionObserverV1(goal)
+
+    @property
     def discovery_client(self) -> SessionDiscoveryViewV1 | None:
         self._require_open()
         return self._discovery
@@ -368,6 +374,10 @@ class AppClientScopeV1:
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         self._require_open()
         return await self._service.workspace(request)
+
+    async def workspace_models(self, request: WorkspaceModelsRequestV1) -> SessionModelsV1:
+        self._require_open()
+        return await self._service.workspace_models(request)
 
     async def attach_mux(self, request: MuxAttachV1) -> MuxAttachmentV1:
         self._service._require_request(request, MuxAttachV1)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from contextlib import AsyncExitStack
+from functools import partial
 from pathlib import Path
 from time import monotonic
 from typing import Literal
@@ -171,7 +172,9 @@ class ManagedServiceCoordinatorV1:
 
     async def _ensure_once(self, deadline: float) -> None:
         state = await self._read(deadline)
-        if state is None or state.cleanly_stopped:
+        if state is not None:
+            state = await _settled_native(partial(self._journal.recover_exited, state, deadline=deadline))
+        if state is None or state.reusable:
             self._check(deadline)
             try:
                 state = await _settled_native(lambda: self._starter.start(expected=state, deadline=deadline))
@@ -184,17 +187,17 @@ class ManagedServiceCoordinatorV1:
                 # generation becomes durable. Keep observing that same
                 # attempt's original budget instead of treating one empty
                 # read as proof that no winner exists.
-                while (state is None or state.cleanly_stopped) and error.code in {"busy", "conflict"}:
+                while (state is None or state.reusable) and error.code in {"busy", "conflict"}:
                     await self._pause(deadline)
                     state = await self._read(deadline)
-                if state is None or state.cleanly_stopped:
+                if state is None or state.reusable:
                     raise error
         assert state is not None
         self._instance = state.handoff.instance
         while True:
             self._check(deadline)
             if (state.handoff.instance != self._instance or state.handoff.stop_requested
-                    or state.handoff.phase is ManagedHandoffPhaseV1.ABORTING or state.cleanly_stopped):
+                    or state.handoff.phase is ManagedHandoffPhaseV1.ABORTING or state.reusable):
                 conflict = ManagedStorageError("conflict")
                 conflict.add_note(
                     "managed_start_observation "
@@ -304,6 +307,8 @@ async def control_managed_service(
     def _recorded_state(state: ManagedServiceStateV1 | None) -> str:
         if state is None or state.cleanly_stopped:
             return "not_running"
+        if state.reusable:
+            return "exited"
         if state.evidence.process_exited:
             raise error_factory("unclean_exit")
         if state.handoff.stop_requested:
@@ -374,6 +379,8 @@ async def control_managed_service(
             ready = await starter.ensure_started(deadline=deadline)
             return _running(ready, await _settled_native(lambda: journal.read(deadline=deadline, wait_for_lock=True)))
 
+        if state is not None:
+            state = await _settled_native(partial(journal.recover_exited, state, deadline=deadline))
         status = _recorded_state(state)
         if status != "running":
             return {"state": status}

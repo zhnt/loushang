@@ -8,6 +8,7 @@ hooks project values or name actual constructors; none reborrow Code IO programs
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 import threading
 import time
@@ -24,7 +25,10 @@ from loushang.apphost.contracts import (
     SessionIdentityCatalogPortV1,
     SessionIdentityProjectionV1,
 )
+from loushang.apphost.workspace_registry import WorkspaceRegistrationError
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
     SessionAvailabilityV1,
     SessionCompatibilityV1,
     SessionDiscoveryCandidateV1,
@@ -55,7 +59,20 @@ from loushang.harness.transcript.store_admission import (
 )
 
 if TYPE_CHECKING:
-    from loushang.apphost.managed.workspaces import WorkspaceRegistry
+    from loushang.apphost.workspace_registry import HostWorkspaceRegistryPort
+
+
+_WORKSPACE_CREATE_ERRORS: dict[int | None, AppErrorCodeV1] = {
+    errno.ENOENT: AppErrorCodeV1.NOT_FOUND,
+    errno.EEXIST: AppErrorCodeV1.ALREADY_EXISTS,
+    errno.ENOTDIR: AppErrorCodeV1.INVALID_REQUEST,
+    errno.ELOOP: AppErrorCodeV1.INVALID_REQUEST,
+    errno.EINVAL: AppErrorCodeV1.INVALID_REQUEST,
+    errno.ENAMETOOLONG: AppErrorCodeV1.INVALID_REQUEST,
+    errno.EACCES: AppErrorCodeV1.PERMISSION_DENIED,
+    errno.EPERM: AppErrorCodeV1.PERMISSION_DENIED,
+    errno.EROFS: AppErrorCodeV1.PERMISSION_DENIED,
+}
 
 
 class CanonicalTranscriptScope(Protocol):
@@ -194,6 +211,9 @@ class _CanonicalTranscriptCatalogMethods(
         header: ConversationHeader,
     ) -> RecordT | None:
         raise NotImplementedError
+
+    def _candidate_layout(self, directory: Path) -> AgentTranscriptFileLayout:
+        return AgentTranscriptFileLayout(directory)
 
     def _header_read_context(self) -> tuple[bool, threading.Event | None]:
         return self._owned_factory is not None, None
@@ -417,7 +437,7 @@ class _CanonicalTranscriptCatalogMethods(
         before = self._directory_revision(admitted.session_dir)
         if before is None:
             return HostedSessionDiscoverySnapshotV1(scope, (), True)
-        layout = AgentTranscriptFileLayout(admitted.session_dir)
+        layout = self._candidate_layout(admitted.session_dir)
         scan = layout.scan_candidate_path_snapshot(
             layout.namespace,
             max_candidates=self._maximum_candidates(),
@@ -495,7 +515,7 @@ class _CanonicalTranscriptCatalogMethods(
                 before = self._directory_revision(scope.session_dir)
                 if before is None:
                     continue
-                layout = AgentTranscriptFileLayout(scope.session_dir)
+                layout = self._candidate_layout(scope.session_dir)
                 snapshot = layout.scan_candidate_path_snapshot(
                     layout.namespace,
                     max_candidates=self._maximum_candidates(),
@@ -744,7 +764,7 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
     catalogs retain their existing native storage and Session lifetimes.
     """
 
-    registry: WorkspaceRegistry
+    registry: HostWorkspaceRegistryPort
     _catalogs: dict[Path, WorkspaceCatalogT]
     _loaded: bool
     _closed: bool
@@ -758,6 +778,9 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
     async def _workspace_entries(self, request):
         if request.action == "register":
             await self.register(request.path)
+        elif request.action == "create":
+            path = await self._create_workspace(request.path)
+            return ((path, self._add(path)),)
         elif request.action == "allocate-temporary":
             path = await asyncio.to_thread(self.registry.allocate_temporary)
             self._add(path)
@@ -811,6 +834,17 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
         if path not in self._catalogs:
             self._catalogs[path] = self._create_catalog(path)
         return self._catalogs[path]
+
+    async def _create_workspace(self, value: str) -> Path:
+        try:
+            return await asyncio.to_thread(self.registry.create, value)
+        except WorkspaceRegistrationError as exc:
+            raise AppServiceError(AppErrorCodeV1.WORKSPACE_REGISTRATION_FAILED) from exc
+        except ValueError as exc:
+            raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST) from exc
+        except OSError as exc:
+            code = _WORKSPACE_CREATE_ERRORS.get(exc.errno, AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            raise AppServiceError(code) from exc
 
     async def register(self, value: str) -> Path:
         path = await asyncio.to_thread(self.registry.register, value)

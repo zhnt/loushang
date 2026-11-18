@@ -15,6 +15,7 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlJournal,
     JsonlSnapshot,
+    decode_jsonl,
 )
 
 _EVENT_LOG_ENTRY_FIELDS = frozenset(
@@ -398,6 +399,16 @@ def _datetime_from_json(value: object) -> datetime:
 
 
 _EVENT_LOG_CODEC = FunctionalJournalRecordCodec(_entry_to_json, _entry_from_json)
+
+
+def decode_detached_work_events(raw: str, path: Path) -> tuple[EventLogEntry, ...]:
+    """Decode an authorized Work Event Log snapshot without opening an append owner."""
+    snapshot: JsonlSnapshot[object, EventLogEntry] = decode_jsonl(
+        raw, target=path, record_codec=_EVENT_LOG_CODEC,
+        load_policy=JournalLoadPolicy(collect_duplicate_keys=True),
+    )
+    snapshot.require_unique_keys("duplicate Work event fields")
+    return snapshot.records
 
 
 __all__ = [

@@ -14,7 +14,7 @@ export interface SavedHost {
 }
 export interface HostDirectory { selectedId: string; connections: SavedHost[] }
 interface HostProbe { host: HostStatus; workspace: string; supported: boolean; connection: TrayConnection }
-export interface HostDetails { entry: SavedHost; probe: HostProbe; confirm: boolean }
+export interface HostDetails { entry: SavedHost; probe: HostProbe; confirm: "stop" | "restart" | null }
 const request = <T,>(request: Record<string, unknown>) => invoke<T>("client_settings", { request });
 export const listTrayHosts = () => request<HostDirectory>({ operation: "connections/list" });
 export const selectTrayHost = (connectionId: string) => request<HostDirectory>({ operation: "connections/select", connectionId });
@@ -127,8 +127,8 @@ export function useTrayHosts(options: {
     const entry = entries.find((item) => item.id === id);
     if (!entry) return;
     const state = currentProbe(entry);
-    if (action === "info" || action === "stop") {
-      setDetails({ entry, probe: state, confirm: action === "stop" });
+    if (action === "info" || action === "stop" || action === "restart") {
+      setDetails({ entry, probe: state, confirm: action === "info" ? null : action });
       return;
     }
     if (action === "enable") {
@@ -141,13 +141,13 @@ export function useTrayHosts(options: {
         .finally(() => { switchingRef.current = false; if (active.current) setSwitching(false); });
     } else { void manage(entry, action === "start" ? "start" : "connect", state); }
   }
-  function confirmStop() {
+  function confirmAction() {
     if (!details?.confirm) return;
     const captured = details;
     setDetails(null);
     // Preserve the identity shown in the confirmation even if polling found a replacement.
-    void manage(captured.entry, "stop", captured.probe);
+    void manage(captured.entry, details.confirm, captured.probe);
   }
-  return { hosts, action, details, closeDetails: () => setDetails(null), confirmStop, error,
+  return { hosts, action, details, closeDetails: () => setDetails(null), confirmAction, error,
     clearError: () => setError(null) };
 }

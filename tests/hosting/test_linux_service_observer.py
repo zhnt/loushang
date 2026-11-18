@@ -69,12 +69,16 @@ def test_close_lost_receipt_inside_outer_exception_retains_unknown(monkeypatch):
             native_close(replacement)
 
 
-def test_close_preserves_own_primary_when_native_cleanup_is_interrupted(monkeypatch):
+@pytest.mark.parametrize("structured", [False, True])
+def test_close_preserves_own_primary_when_native_cleanup_is_interrupted(monkeypatch, structured):
     from loushang.hosting.service import _close_fd
 
     descriptor = os.open("/dev/null", os.O_RDONLY)
     native = os.close
-    primary = ValueError("original operation")
+    primary = (
+        HostingError(HostingFailureCategory.PREPARATION_STALE, "original operation")
+        if structured else ValueError("original operation")
+    )
 
     def interrupted(fd):
         native(fd)
@@ -83,7 +87,39 @@ def test_close_preserves_own_primary_when_native_cleanup_is_interrupted(monkeypa
     with monkeypatch.context() as patch:
         patch.setattr(os, "close", interrupted)
         _close_fd(descriptor, primary=primary)
-    assert primary.__notes__ == ["service_observer_cleanup_incomplete"]
+    if isinstance(primary, HostingError):
+        assert primary.category is HostingFailureCategory.PREPARATION_STALE
+        assert primary.cleanup_incomplete
+    else:
+        assert primary.__notes__ == ["service_observer_cleanup_incomplete"]
+
+
+def test_capture_reports_incomplete_rollback_when_proc_read_and_close_fail(child, monkeypatch):
+    from loushang.hosting import service
+
+    read_file = service._read_file
+    close = os.close
+    failed_directory = None
+
+    def read(path, *, parent=None, limit=4096):
+        nonlocal failed_directory
+        if path == "status" and parent is not None:
+            failed_directory = parent
+            raise OSError("injected proc read failure")
+        return read_file(path, parent=parent, limit=limit)
+
+    def close_directory(descriptor):
+        close(descriptor)
+        if descriptor == failed_directory:
+            raise OSError("lost directory close receipt")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(service, "_read_file", read)
+        patch.setattr(os, "close", close_directory)
+        with pytest.raises(HostingError) as caught:
+            LinuxServiceObserverV1.capture(child.pid)
+    assert caught.value.category is HostingFailureCategory.PREPARATION_FAILED
+    assert caught.value.cleanup_incomplete
 
 
 def test_capture_reopen_and_exit_with_retained_native_identity(child):

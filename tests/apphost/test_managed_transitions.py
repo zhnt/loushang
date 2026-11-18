@@ -21,19 +21,25 @@ owners = _base_owners
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux managed transitions")
 
 
-def stopped(owners):
+def stopped(owners, *, application_cleanup_completed=True):
     journal = owners[1]
     state = journal.prepare("c" * 32, expected=None)
     journal.register_native(state.handoff.instance, "c" * 32, _identity())
     journal.commit(state.handoff.instance, "c" * 32, native_identity=_identity())
     journal.request_stop(state.handoff.instance)
-    return journal.record_stop_evidence(ManagedStopEvidenceV1(state.handoff.instance, True, True, True))
+    return journal.record_stop_evidence(
+        ManagedStopEvidenceV1(state.handoff.instance, True, application_cleanup_completed, True)
+    )
 
 
-def test_transition_retains_exact_previous_and_is_unchanged_by_current_updates(owners):
+@pytest.mark.parametrize("application_cleanup_completed", [True, False])
+def test_transition_retains_exact_previous_and_is_unchanged_by_current_updates(
+    owners, application_cleanup_completed,
+):
     registry, journal, _, _ = owners
     assert journal.read_transition() is None
-    previous = stopped(owners)
+    previous = stopped(owners, application_cleanup_completed=application_cleanup_completed)
+    assert previous.cleanly_stopped is application_cleanup_completed
     first = journal.read_transition()
     assert first.previous is None and first.started_revision == 1
     successor = journal.prepare("d" * 32, expected=previous)
@@ -57,10 +63,10 @@ def test_transition_retains_exact_previous_and_is_unchanged_by_current_updates(o
     assert (path.read_bytes(), path.stat().st_mtime_ns) == before_file
 
 
-@pytest.mark.parametrize("change", ["missing", "instance", "attempt", "revision", "unclean", "namespace", "service",
+@pytest.mark.parametrize("change", ["missing", "instance", "attempt", "revision", "namespace", "service",
                                     "previous_instance", "previous_attempt", "null_previous", "noncanonical", "nested",
                                     "exit_unsettled", "scope_unsettled"])
-def test_missing_mismatched_or_unclean_predecessor_is_rejected_before_journal_update(owners, change):
+def test_missing_mismatched_or_unsettled_predecessor_is_rejected_before_journal_update(owners, change):
     registry, journal, _, _ = owners
     previous = stopped(owners)
     current = journal.prepare("d" * 32, expected=previous)
@@ -79,7 +85,7 @@ def test_missing_mismatched_or_unclean_predecessor_is_rejected_before_journal_up
         else:
             raw = json.loads(connection.execute("SELECT previous FROM service_transitions").fetchone()[0])
             if change != "noncanonical":
-                index, value = {"namespace": (0, "e" * 64), "service": (1, "e" * 64), "unclean": (8, 0),
+                index, value = {"namespace": (0, "e" * 64), "service": (1, "e" * 64),
                                 "exit_unsettled": (7, 0), "scope_unsettled": (9, 0),
                                 "previous_instance": (3, current.handoff.instance.instance_id),
                                 "previous_attempt": (4, current.handoff.attempt_id)}[change]

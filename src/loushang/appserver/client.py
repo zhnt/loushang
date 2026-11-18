@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from .protocol import (
     AckV1,
@@ -28,6 +28,7 @@ from .protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceModelsRequestV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
@@ -86,6 +87,13 @@ class AppClientV1(Protocol):
         controller_generation: int,
         limit: int = 64,
     ) -> tuple[AttachmentEventV1, ...]: ...
+
+
+@runtime_checkable
+class WorkspaceModelsPortV1(Protocol):
+    """Read-only model choices supplied by a managed Workspace owner."""
+
+    async def workspace_models(self, request: WorkspaceModelsRequestV1) -> SessionModelsV1: ...
 
 
 class SessionDiscoveryClientV1(Protocol):

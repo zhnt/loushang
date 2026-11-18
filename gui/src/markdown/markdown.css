@@ -1,46 +1,67 @@
 .markdown-body {
   min-inline-size: 0;
-  color: var(--md-fg);
-  font: 400 var(--md-font-size)/var(--md-line-height) var(--md-font);
+  color: var(--conversation-color);
+  font: var(--conversation-font-weight) var(--conversation-font-size)/var(--conversation-line-height) var(--conversation-font);
   overflow-wrap: anywhere;
 }
-.markdown-body :where(p, ul, ol, blockquote, pre, hr) { margin: 0; }
+.markdown-body :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, pre, hr) { margin: 0; }
+
 .markdown-body > * + *,
-.markdown-body :is(li, blockquote) > * + * { margin-block-start: var(--md-paragraph-gap); }
-.markdown-body :is(h1, h2, h3, h4, h5, h6) {
-  margin-block: var(--heading-gap) 0;
-  font-size: var(--heading-size);
-  font-weight: 600;
-  line-height: 1.35;
+.markdown-body blockquote > * + * { margin-block-start: var(--md-paragraph-gap); }
+.markdown-body :is(h1, h2, h3, h4, h5, h6) + :not(h1, h2, h3, h4, h5, h6) {
+  margin-block-start: 8px;
 }
-.markdown-body :is(h1, h2) { font-weight: 650; }
-.markdown-body h1 { --heading-size: var(--md-h1-size); --heading-gap: var(--md-h1-gap); }
-.markdown-body h2 { --heading-size: var(--md-h2-size); --heading-gap: var(--md-h2-gap); }
-.markdown-body h3 { --heading-size: var(--md-h3-size); --heading-gap: var(--md-h3-gap); }
-.markdown-body :is(h4, h5, h6) { --heading-size: var(--md-font-size); --heading-gap: var(--md-h4-gap); }
-.markdown-body > :first-child { margin-block-start: 0; }
+.markdown-body > * + :is(h1, h2, h3, h4, h5, h6),
+.markdown-body blockquote > * + :is(h1, h2, h3, h4, h5, h6) { margin-block-start: var(--heading-gap); }
+
+.markdown-body :is(h1, h2, h3, h4, h5, h6) {
+  --heading-gap: 16px;
+  font-size: var(--conversation-font-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.4;
+}
+.markdown-body h1 { --heading-gap: 28px; font-size: var(--md-h1-size); }
+.markdown-body h2 { --heading-gap: 22px; font-size: var(--md-h2-size); }
+.markdown-body h3 { --heading-gap: 18px; font-size: var(--md-h3-size); }
+.markdown-body :is(strong, b) { font-weight: var(--font-weight-medium); }
+.markdown-body :is(h1, h2, h3, h4, h5, h6) :is(strong, b) { font-weight: inherit; }
+
 .markdown-body :is(ul, ol) { padding-inline-start: 1.5em; }
 .markdown-body li + li,
+.markdown-body li > * + *,
 .markdown-body li > :is(ul, ol) { margin-block-start: var(--md-list-gap); }
 .markdown-body li::marker { color: var(--md-muted); }
 .markdown-body .task-list-item { list-style: none; }
 .markdown-body .task-list-item input { accent-color: var(--md-accent); }
-.markdown-body a { color: var(--md-link); text-underline-offset: 3px; }
-.markdown-body a:hover { background: var(--md-surface); }
-.markdown-body :is(a, pre, .markdown-table):focus-visible { outline-color: var(--md-accent); }
+.markdown-body a[href] {
+  color: var(--md-link);
+  text-decoration-color: color-mix(in srgb, currentColor 70%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+.markdown-body a[href]:hover {
+  background-color: transparent;
+  text-decoration-color: currentColor;
+}
+.markdown-body a[href]:focus-visible {
+  outline: 1px solid var(--control-focus);
+  outline-offset: 1px;
+}
+.markdown-body :is(pre, .markdown-table):focus-visible { outline-color: var(--md-accent); }
+.markdown-link-error { color: var(--red); }
+.markdown-file-notice { color: var(--md-muted); }
+.markdown-file-notice[role="alert"] { color: var(--red); }
 .markdown-body blockquote {
-  padding: 10px 14px;
-  border-inline-start: 3px solid var(--md-quote-border);
-  border-start-end-radius: var(--md-radius);
-  border-end-end-radius: var(--md-radius);
-  background: var(--md-surface);
+  padding: 2px 0 2px 14px;
+  border-inline-start: 2px solid var(--md-guide);
+  color: var(--md-muted);
 }
 .markdown-body hr { border: 0; border-block-start: 1px solid var(--md-border); }
 
-.markdown-body code {
-  padding: 0.12em 0.34em;
-  border-radius: 4px;
-  background: var(--md-code-bg);
+.markdown-body :not(pre) > code {
+  padding-inline: 0.16em;
+  border-radius: 3px;
+  background: var(--md-inline-code-bg);
   font: 400 var(--md-code-size)/var(--md-code-line-height) var(--md-code-font);
 }
 .markdown-body .markdown-code-block {
@@ -50,8 +71,11 @@
   background: var(--md-code-bg);
 }
 .markdown-body .markdown-code-label {
-  padding: 6px 14px;
-  border-block-end: 1px solid var(--md-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 14px 0;
   color: var(--md-muted);
   font-size: var(--md-caption-size);
 }
@@ -59,13 +83,13 @@
   max-inline-size: 100%;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  padding: 12px 14px;
+  padding: 8px 14px 12px;
   font: 400 var(--md-code-size)/var(--md-code-line-height) var(--md-code-font);
   white-space: pre;
   overflow-wrap: normal;
   tab-size: 4;
 }
-.markdown-body pre code { padding: 0; background: transparent; font: inherit; }
+.markdown-body pre code { font: inherit; }
 .markdown-body :is(.hljs-keyword, .hljs-selector-tag, .hljs-doctag) { color: var(--md-syntax-keyword); }
 .markdown-body :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--md-syntax-string); }
 .markdown-body :is(.hljs-number, .hljs-literal, .hljs-deletion) { color: var(--md-syntax-number); }
@@ -76,21 +100,45 @@
   max-inline-size: 100%;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  border: 1px solid var(--md-border);
-  border-radius: var(--md-radius);
+  border-block-end: 1px solid var(--md-border);
 }
 .markdown-body table {
   inline-size: 100%;
   border-collapse: collapse;
-  background: var(--md-bg);
   font-size: var(--md-table-size);
   line-height: var(--md-table-line-height);
 }
 .markdown-body :is(th, td) {
   min-inline-size: 7rem;
-  padding: 10px 12px;
+  padding: 8px 12px;
   vertical-align: top;
   text-align: start;
 }
-.markdown-body th { background: var(--md-surface); font-weight: 600; }
+.markdown-body th { font-weight: var(--font-weight-semibold); }
 .markdown-body tbody tr { border-block-start: 1px solid var(--md-border); }
+
+.markdown-code-label .secondary-button { padding: 3px 7px; }
+
+.markdown-file-reference {
+  display: inline;
+  max-inline-size: 100%;
+  padding: 0 0.18em;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  text-decoration: underline dotted color-mix(in srgb, var(--md-guide) 65%, var(--md-muted));
+  text-underline-offset: 0.18em;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.markdown-body .markdown-file-reference > code { padding: 0; background: transparent; }
+.markdown-file-reference:enabled:hover,
+.markdown-file-reference:focus-visible {
+  background-color: var(--navigation-hover);
+  text-decoration-color: transparent;
+}
+.markdown-file-reference:enabled:active { background-color: var(--navigation-selected); }
+.markdown-file-reference:enabled:focus-visible { outline: 1px solid var(--control-focus); outline-offset: 1px; }

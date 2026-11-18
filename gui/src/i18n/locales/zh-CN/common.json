@@ -1,4 +1,15 @@
 {
+  "contextMenu": "右键菜单",
+  "clipboard": {
+    "cut": "剪切",
+    "paste": "粘贴",
+    "selectAll": "全选",
+    "unavailable": "无法访问剪贴板，请尝试使用键盘快捷键。",
+    "copy": "复制",
+    "copyValue": "复制{{label}}",
+    "copied": "已复制",
+    "failed": "复制失败"
+  },
   "status": {
     "idle": "空闲",
     "running": "运行中",
@@ -28,6 +39,7 @@
     "resync": "需要重新同步"
   },
   "openItem": "打开 {{title}} →",
+  "openLinkFailed": "无法在系统浏览器中打开链接。",
   "unavailableTitle": "{{label}}不可用",
   "unavailableExplanation": "当前会话未提供已确认的数据，界面不会根据会话文字推断这些数据。",
   "additions": "+{{value, number}}",

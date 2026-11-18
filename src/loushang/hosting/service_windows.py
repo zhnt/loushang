@@ -34,6 +34,7 @@ _SID = re.compile(r"S-1-(?:0|[1-9][0-9]{0,14})(?:-(?:0|[1-9][0-9]{0,9})){1,15}\Z
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _JOB_QUERY = 0x0004
 _ERROR_ALREADY_EXISTS = 183
+_ERROR_FILE_NOT_FOUND = 2
 _MAX_STARTUP = 128 * 1024
 _ATTEMPT = re.compile(r"[a-f0-9]{32}\Z")
 _SYNCHRONIZE = 0x100000
@@ -108,10 +109,14 @@ class WindowsServiceObserverV1:
                 raise _error(HostingFailureCategory.PREPARATION_STALE)
             return cls(kernel, handle, identity)
         except BaseException as error:
+            failure = _error(HostingFailureCategory.PREPARATION_FAILED) if isinstance(error, OSError) else error
             if not kernel.CloseHandle(handle):
-                error.add_note("service_observer_cleanup_incomplete")
-            if isinstance(error, OSError):
-                raise _error(HostingFailureCategory.PREPARATION_FAILED) from None
+                if isinstance(failure, HostingError):
+                    failure.cleanup_incomplete = True
+                else:
+                    failure.add_note("service_observer_cleanup_incomplete")
+            if failure is not error:
+                raise failure from None
             raise
 
     def open_scope(self, attempt_id: str) -> WindowsServiceJobV1:
@@ -213,6 +218,23 @@ class WindowsServiceJobV1:
             if not self._kernel.CloseHandle(handle):
                 raise _error(HostingFailureCategory.CLEANUP_FAILED)
             self._close_unknown = False
+
+
+def windows_service_job_settled(attempt_id: str) -> bool:
+    """Observe the exact named, non-breakaway Job of a registered service."""
+    if not _WINDOWS:
+        raise _error(HostingFailureCategory.PLATFORM_UNSUPPORTED)
+    kernel = _bind_kernel()
+    handle = kernel.OpenJobObjectW(_JOB_QUERY, False, _job_name(attempt_id))
+    if not handle:
+        if getattr(C, "get_last_error")() == _ERROR_FILE_NOT_FOUND:
+            return True
+        raise _error(HostingFailureCategory.PREPARATION_FAILED)
+    scope = WindowsServiceJobV1(kernel, handle)
+    try:
+        return scope.exited()
+    finally:
+        scope.close()
 
 
 @dataclass(frozen=True, slots=True)

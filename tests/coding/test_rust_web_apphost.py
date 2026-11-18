@@ -11,6 +11,7 @@ from pathlib import Path
 from time import monotonic, sleep
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
@@ -56,8 +57,13 @@ def web_server(binary, env, home):
             child.wait(timeout=5)
 
 
+def live(endpoint, path, action, **fields):
+    return call(endpoint, "live", workspace=str(path), action=action,
+                viewId=str(uuid5(NAMESPACE_URL, str(path))), **fields)
+
+
 def snapshot(endpoint, path):
-    return call(endpoint, "live", workspace=str(path), action="snapshot")
+    return live(endpoint, path, "snapshot")
 
 
 def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
@@ -67,7 +73,8 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
         ["cargo", "build", "--locked", "--offline", "--manifest-path", str(manifest)],
         check=True, timeout=120,
     )
-    binary = manifest.parent / "target/debug/loushang-web"
+    target = Path(os.environ.get("CARGO_TARGET_DIR", manifest.parent / "target"))
+    binary = target / "debug/loushang-web"
     home = tmp_path / "home"
     home.mkdir(mode=0o700)
     (home / "host.json").write_text('{"web":{"port":0}}')
@@ -75,6 +82,9 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
     for path in workspaces:
         path.mkdir()
         (path / "marker").write_text(path.name)
+        (path / "gui").mkdir()
+        (path / "gui/README.md").write_text(f"# {path.name} GUI", encoding="utf-8")
+        (path / "README.zh-CN.md").write_text(f"# 工作区 {path.name}", encoding="utf-8")
     env = {
         **os.environ, "LOUSHANG_HOME": str(home),
         "LOUSHANG_RUNTIME_DIR": str(tmp_path / "runtime"),
@@ -107,6 +117,22 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
                 call(endpoint, "workspace", action="create-chat", path=str(path), title="Second Session")
                 first = snapshot(endpoint, path)
                 assert len(first["sessions"]) == 2
+                scope = first["muxSpace"]["members"][0]["session"]["scopeFingerprint"]
+                preview = dict(action="preview", path=str(path), fingerprint=scope,
+                               serviceInstanceId=first["serviceInstanceId"], base="")
+                assert call(endpoint, "workspace", **preview, reference="README.zh-CN.md") == {
+                    "kind": "file", "path": "README.zh-CN.md", "text": f"# 工作区 {path.name}",
+                }
+                assert call(endpoint, "workspace", **preview, reference="gui/README.md")["text"] == f"# {path.name} GUI"
+                assert call(endpoint, "workspace", **preview, reference="gui/")["entries"] == [
+                    {"name": "README.md", "kind": "file"},
+                ]
+                assert call(endpoint, "workspace", **{**preview, "base": "gui"},
+                            reference="../README.zh-CN.md")["text"] == f"# 工作区 {path.name}"
+                with pytest.raises(AssertionError, match="instance_changed"):
+                    call(endpoint, "workspace", **{**preview, "serviceInstanceId": "old-host"}, reference="README.zh-CN.md")
+                with pytest.raises(AssertionError, match="permission_denied"):
+                    call(endpoint, "workspace", **{**preview, "fingerprint": "0" * 64}, reference="README.zh-CN.md")
                 executions[path] = {}
                 for index, member in enumerate(first["muxSpace"]["members"]):
                     session = member["session"]["sessionId"]
@@ -116,14 +142,14 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
                     unknown = {"accepted": False, "submissionId": label,
                                "reason": "submission_outcome_unknown"}
                     stale = {**identity, "serviceInstanceId": "replaced-instance"}
-                    assert call(endpoint, "live", workspace=str(path), action="submit",
-                                input={**stale, "text": "stale request"}) == unknown
-                    reply = call(endpoint, "live", workspace=str(path), action="submit",
+                    with pytest.raises(AssertionError, match="connection_failed"):
+                        live(endpoint, path, "submit", input={**stale, "text": "stale request"})
+                    reply = live(endpoint, path, "submit",
                                  input={**identity, "text": label})
                     assert reply["accepted"], reply
-                    assert call(endpoint, "live", workspace=str(path), action="find-submission",
+                    assert live(endpoint, path, "find-submission",
                                 input=identity) == reply
-                    assert call(endpoint, "live", workspace=str(path), action="find-submission",
+                    assert live(endpoint, path, "find-submission",
                                 input=stale) == unknown
                     executions[path][session] = reply["executionId"]
             directory = call(endpoint, "workspace", action="navigation")

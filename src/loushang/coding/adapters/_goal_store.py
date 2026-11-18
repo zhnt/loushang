@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 from loushang.harnesswork.goal import GoalHeader
 from loushang.harnesswork.integrations.goal_store import JsonlGoalRecordStore
+
+_GOAL_JOURNAL_NAME = re.compile(r"[0-9a-f]{64}\.goal(?:\.work)?\.jsonl")
+
+
+def is_goal_journal_filename(name: str) -> bool:
+    return _GOAL_JOURNAL_NAME.fullmatch(name) is not None
 
 
 def goal_journal_path(session_dir: Path, session_id: str) -> Path:

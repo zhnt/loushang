@@ -154,7 +154,13 @@ export function guiReducer(state: GuiState, action: GuiAction): GuiState {
     case "connection.changed":
       return {
         ...state,
-        remote: { ...state.remote, connection: action.connection },
+        remote: {
+          ...state.remote,
+          connection: action.connection,
+          sessions: Object.fromEntries(Object.entries(state.remote.sessions).map(([id, session]) => [
+            id, session.pendingApprovals?.length ? { ...session, pendingApprovals: [] } : session,
+          ])),
+        },
         diagnostic: action.message,
       };
     case "transcript.scrolled":

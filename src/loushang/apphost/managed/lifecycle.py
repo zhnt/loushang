@@ -16,7 +16,11 @@ from secrets import token_hex
 
 from loushang.hosting.errors import HostingError
 from loushang.hosting.service import LinuxServiceIdentityV1, ServiceIdentityV1
-from loushang.hosting.service_windows import WindowsServiceIdentityV1
+from loushang.hosting.service_group import linux_service_group_recovery_status
+from loushang.hosting.service_windows import (
+    WindowsServiceIdentityV1,
+    windows_service_job_settled,
+)
 
 from ._files import (
     ManagedStorageError,
@@ -100,6 +104,14 @@ class ManagedServiceStateV1:
     def cleanly_stopped(self) -> bool:
         return self.evidence.cleanly_stopped
 
+    @property
+    def reusable(self) -> bool:
+        return self.cleanly_stopped or (
+            self.native_identity is not None
+            and self.evidence.process_exited
+            and self.evidence.process_scope_settled
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ManagedServiceTransitionV1:
@@ -119,7 +131,7 @@ class ManagedServiceTransitionV1:
         if previous is None:
             if self.started_revision != 1:
                 raise ManagedContractError()
-        elif (type(previous) is not ManagedServiceStateV1 or not previous.cleanly_stopped
+        elif (type(previous) is not ManagedServiceStateV1 or not previous.reusable
                 or previous.handoff.instance.namespace_key != self.instance.namespace_key
                 or previous.handoff.instance.service_id != self.instance.service_id
                 or previous.handoff.instance == self.instance
@@ -133,8 +145,8 @@ class ManagedServiceJournalV1:
 
     Lock order is service fence, then short registry transaction. No network IO,
     process wait or caller callback is performed while either lock is held.
-    This slice permits only clean reuse. Unclean retirement/recovery admission
-    still needs a separate native proof; never invent application cleanup facts.
+    Unclean reuse requires exact native scope settlement. Application cleanup
+    remains a separate fact.
     """
 
     def __init__(
@@ -208,7 +220,7 @@ class ManagedServiceJournalV1:
         """Reserve a fresh generation, never infer absence from socket/PID loss.
 
         An uncertain result is resolved by read(), not by repeating process spawn.
-        Existing generations require all three matching stop facts before reuse.
+        Existing generations must have settled their native scope before reuse.
         """
         self._require_open()
         _match(attempt_id, _HEX32)
@@ -219,7 +231,7 @@ class ManagedServiceJournalV1:
             if current != expected:
                 raise ManagedStorageError("conflict")
             if current is not None:
-                if not current.cleanly_stopped:
+                if not current.reusable:
                     raise ManagedStorageError("busy")
                 if attempt_id == current.handoff.attempt_id:
                     raise ManagedStorageError("conflict")
@@ -408,6 +420,32 @@ class ManagedServiceJournalV1:
         if (current.handoff.attempt_id != attempt_id
                 or current.native_identity is not None and current.native_identity != native):
             raise ManagedStorageError("conflict")
+
+    def recover_exited(
+        self, expected: ManagedServiceStateV1, *, deadline: float,
+    ) -> ManagedServiceStateV1:
+        """Retire a registered generation once its exact native scope is gone."""
+        native = expected.native_identity
+        if expected.reusable or native is None:
+            return expected
+        if isinstance(native, WindowsServiceIdentityV1):
+            settled = windows_service_job_settled(expected.handoff.attempt_id)
+        else:
+            settled = linux_service_group_recovery_status(native) in {"absent", "prior_boot_absent"}
+        if not settled:
+            return expected
+
+        def retire(current: ManagedServiceStateV1) -> ManagedServiceStateV1:
+            if current.reusable and current.native_identity == native:
+                return current
+            if current != expected:
+                raise ManagedStorageError("conflict")
+            return replace(
+                current, handoff=current.handoff.request_stop(),
+                evidence=replace(current.evidence, process_exited=True, process_scope_settled=True),
+            )
+
+        return self._update(expected.handoff.instance, retire, deadline=deadline, wait_for_lock=True)
 
     def record_native_stop(
         self, instance: ManagedInstanceRefV1, native_identity: ServiceIdentityV1, *,

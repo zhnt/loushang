@@ -100,6 +100,7 @@ def test_real_product_projection_matches_recipe_window(last):
         owner = SimpleNamespace(
             _session=SimpleNamespace(messages=messages, session_name="History", is_streaming=False),
             _revision=last + 1,
+            _user_choice=SimpleNamespace(pending=None),
             identity=SimpleNamespace(continuity_id="history-recipe"),
         )
         snapshot = CodingRealHostedSessionV1.project_snapshot(owner)

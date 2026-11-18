@@ -31,6 +31,9 @@ from loushang.appserver.execution.model import (
     ExecutionStateV1,
     ExecutionStatusV1,
     ExecutionUpdateV1,
+    InteractiveGoalCommandV1,
+    InteractiveGoalReviewSubmissionV1,
+    InteractiveGoalViewV1,
 )
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -55,15 +58,103 @@ CONTROL = SessionSnapshotRequestV1("attachment", 1, "member")
 def test_closed_execution_call_round_trip(operation):
     call = ExecutionCallV1(
         "1", operation, CONTROL, "instance",
-        submission_id="submission" if operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND} else None,
-        execution_id="execution" if operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT} else None,
+        submission_id="submission" if operation in {
+            ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND, ExecutionOperationV1.GOAL_START,
+        } else None,
+        execution_id="execution" if operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS} else None,
         text="没有输出的命令" if operation is ExecutionOperationV1.SUBMIT else None,
+        goal_target="目标" if operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE else None,
+        goal_command=InteractiveGoalCommandV1("goal", "command", "step")
+        if operation is ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND else None,
+        review_goal_id="goal" if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW else None,
+        review_submission=InteractiveGoalReviewSubmissionV1("goal", "a" * 64, "command", "reject", "Keep tests")
+        if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT else None,
         resume_query=ResumeInputLookupQueryV1("input-1", "a" * 64)
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP else None,
     )
     assert decode_call(encode_call(call)) == call
     raw = json.loads(encode_call(call))
     raw["payload"]["unspecified"] = True
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("goalId", "../private"), ("commandId", "bad id"), ("action", "accept"),
+    ("workId", "arbitrary"), ("goalTarget", "unrelated"), ("script", "arbitrary"),
+])
+def test_interactive_goal_command_has_closed_identity_and_action(field, value):
+    call = ExecutionCallV1(
+        "1", ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND, CONTROL, "instance",
+        goal_command=InteractiveGoalCommandV1("goal", "command", "pause"),
+    )
+    raw = json.loads(encode_call(call))
+    raw["payload"][field] = value
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("reviewToken", "abbreviated"), ("goalId", "/other"), ("commandId", "broken id"),
+    ("decision", "allow_once"), ("reason", " "), ("reason", "界" * 1400),
+    ("checksSatisfied", True), ("workId", "chosen"), ("basis", {}),
+])
+def test_review_requires_closed_candidate_and_decision(field, value):
+    call = ExecutionCallV1(
+        "1", ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT, CONTROL, "instance",
+        review_submission=InteractiveGoalReviewSubmissionV1("goal", "a" * 64, "review", "reject", "Specific feedback"),
+    )
+    raw = json.loads(encode_call(call))
+    raw["payload"][field] = value
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+
+
+def test_interactive_goal_present_requires_a_controller_status():
+    with pytest.raises(ValueError, match="identity or status"):
+        InteractiveGoalViewV1("present", "goal-1", None, 1, 1, False)
+
+
+def test_interactive_goal_target_accepts_exact_utf8_limit():
+    call = ExecutionCallV1(
+        "1", ExecutionOperationV1.INTERACTIVE_GOAL_CREATE, CONTROL, "instance",
+        goal_target="目" * 5461 + "x",
+    )
+    assert decode_call(encode_call(call)) == call
+
+
+@pytest.mark.parametrize("target", [None, "\u3000", "目标" * 2731])
+def test_interactive_goal_create_rejects_invalid_target(target):
+    valid = ExecutionCallV1(
+        "1", ExecutionOperationV1.INTERACTIVE_GOAL_CREATE, CONTROL, "instance",
+        goal_target="目标",
+    )
+    raw = json.loads(encode_call(valid))
+    raw["payload"]["goalTarget"] = target
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+    del raw["payload"]["goalTarget"]
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+    raw["operation"] = ExecutionOperationV1.INTERACTIVE_GOAL_STATUS.value
+    raw["payload"]["goalTarget"] = "目标"
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+
+
+@pytest.mark.parametrize("flag", [False, 1, None, "true"])
+def test_goal_batch_details_opt_in_is_closed(flag):
+    call = ExecutionCallV1(
+        "1", ExecutionOperationV1.GOAL_PROGRESS, CONTROL, "instance",
+        execution_id="execution", include_goal_batches=True,
+    )
+    assert decode_call(encode_call(call)) == call
+    raw = json.loads(encode_call(call))
+    raw["payload"]["includeBatches"] = flag
+    with pytest.raises(InvalidAppMessageError):
+        decode_call(json.dumps(raw).encode())
+    raw["operation"] = ExecutionOperationV1.GET.value
+    raw["payload"]["includeBatches"] = True
     with pytest.raises(InvalidAppMessageError):
         decode_call(json.dumps(raw).encode())
 
@@ -79,6 +170,7 @@ def test_record_snapshot_and_event_round_trip():
     )
     for result in (
         ExecutionRecordV1("instance", IDENTITY, "submission", state), snapshot,
+        replace(snapshot, supports_goal_start=True),
         ExecutionEventsV1((
             ExecutionUpdateV1(3, state),
             ExecutionContentEventV1(SessionEventV1(IDENTITY.session_id, 1, SessionEventKindV1.STATUS, "text"), "execution"),

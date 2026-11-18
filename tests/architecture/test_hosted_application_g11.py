@@ -142,6 +142,7 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/coding/hosted_bootstrap.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_execution.py"),
+        Path("src/loushang/coding/hosted_execution_goal.py"),
         Path("src/loushang/coding/hosted_resume.py"),
         Path("src/loushang/coding/hosted_session.py"),
         Path("src/loushang/coding/_hosted_execution_work.py"),
@@ -318,7 +319,13 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # Optional Session reasoning adds 63 lines (2 exports, 31 codec, 30 model).
         # See Optional Session Reasoning in the AppServer architecture overview.
         # Host First adds the managed Workspace operation and profile validation.
-        "appserver": 2_100 + 121 + 63 + 82,
+        # GUI adds 126 net lines for business choices, Workspace model queries,
+        # and history deletion on these same v1 owners (main: 2,360).
+        # Read-only Workspace inspection extends the existing response and
+        # codec by 20 lines (12 model, 8 codec). See the delivery review.
+        # Workspace preview adds 140 net lines of closed request/result values,
+        # errors and codec projection. Native file IO remains in AppHost.
+        "appserver": 2_360 + 126 + 20 + 140,
         # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity
@@ -328,7 +335,9 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # Optional reasoning adds five lines to confirm the selected level.
         # Host First: typed Workspace port and membership admission on the owner.
         # Managed Workspace open provisions its Mux on the existing owner.
-        "appservice-core": 1_961 + 5 + 54 + 18,
+        # Workspace model queries and close/delete ordering add 48 lines
+        # across runtime (+33), ports (+11), and the scoped client (+4).
+        "appservice-core": 1_961 + 5 + 54 + 18 + 48,
         # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
         # same continuity schema/recovery boundary; no owner split or activation.
         # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;
