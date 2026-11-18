@@ -17,6 +17,7 @@ export interface FrameActions {
   environmentOpen?: boolean;
   onClose?: () => void;
   onQuit?: () => void;
+  onOpenDevtools?: () => void;
   onSettings?: () => void;
 }
 
@@ -143,7 +144,7 @@ export function FrameMenu(actions: FrameActions) {
     help: [
       [entry("documentation"), entry("shortcuts", () => showHelp("shortcuts"), "Ctrl+/"), entry("whatsNew")],
       [entry("troubleshooting"), entry("systemStatus"), entry("feedback")],
-      [entry("taskManager"), entry("performanceTrace")],
+      [entry("devtools", actions.onOpenDevtools), entry("taskManager"), entry("performanceTrace")],
       [entry("about", () => showHelp("about"))],
     ],
   };

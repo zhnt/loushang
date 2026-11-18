@@ -30,6 +30,7 @@
   "edit": "编辑",
   "view": "视图",
   "help": "帮助",
+  "devtools": "开发者工具",
   "dragWindow": "拖动窗口；双击最大化或还原",
   "minimize": "最小化窗口",
   "restore": "还原窗口",

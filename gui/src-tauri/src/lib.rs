@@ -21,6 +21,11 @@ fn quit_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
+#[tauri::command]
 fn show_tray_window(app: tauri::AppHandle) {
     #[cfg(desktop)]
     tray::show_main_window(&app);
@@ -80,6 +85,7 @@ pub fn run() {
         sync_tray,
         web_link::open_web_link,
         quit_app,
+        open_devtools,
         show_tray_window,
         project_folder::pick_project_folder,
         fixture_bridge_handshake,
@@ -109,6 +115,7 @@ pub fn run() {
         sync_tray,
         web_link::open_web_link,
         quit_app,
+        open_devtools,
         show_tray_window,
         project_folder::pick_project_folder,
         client_settings::client_settings,

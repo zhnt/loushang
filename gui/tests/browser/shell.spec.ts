@@ -10,6 +10,7 @@ async function simulateDesktop(page: Page, managed = false) {
       isTauri: true,
       __LOUSHANG_MANAGED_TEST__: managed,
       resizeRequests: [] as unknown[],
+      devtoolsRequests: [] as string[],
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
       __TAURI_INTERNALS__: {
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
@@ -18,6 +19,9 @@ async function simulateDesktop(page: Page, managed = false) {
         invoke: async (command: string, args: unknown) => {
           if (command === "plugin:window|start_resize_dragging") {
             (window as unknown as { resizeRequests: unknown[] }).resizeRequests.push(args);
+          }
+          if (command === "open_devtools") {
+            (window as unknown as { devtoolsRequests: string[] }).devtoolsRequests.push(command);
           }
           if (command === "plugin:os|locale") return "en-US";
           if (command === "plugin:event|listen") return 1;
@@ -155,6 +159,10 @@ test("desktop shell renders menus and Session history with a simulated native br
   await expect(help).toHaveCSS("outline-color", focusGray);
   await expect(help).toHaveCSS("outline-offset", "-2px");
   await page.screenshot({ path: info.outputPath("help-keyboard-focus.png"), fullPage: true });
+  await help.click();
+  await page.getByRole("menuitem", { name: "Developer Tools" }).click();
+  expect(await page.evaluate(() => (window as unknown as { devtoolsRequests: string[] }).devtoolsRequests)).toEqual(["open_devtools"]);
+  await expect(page.getByRole("menu", { name: "Help" })).toHaveCount(0);
   await help.click();
   await about.click();
   await expect(page.getByRole("dialog")).toBeVisible();

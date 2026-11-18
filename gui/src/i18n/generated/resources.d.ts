@@ -417,6 +417,7 @@ export default interface Resources {
     "copySelection": "Copy selection",
     "cut": "Cut",
     "deleteSelection": "Delete",
+    "devtools": "Developer Tools",
     "dismiss": "Close",
     "dismissMenu": "Close menu or dialog",
     "documentation": "Documentation",
