@@ -526,6 +526,20 @@ Code 原公开构造的参数、默认值、运行时解析后的 hints、module
 
 本批 Coding −71、Harness +148、Hosting／其他生产／测试0，系统生产 +77行，文档另列。增长包含两个完整 typed 操作入口、组件绑定和必要公开兼容构造；全部适配成本计入，未搬动记录字段、删注释或重复计算原 Journal／native 机制。累计 Coding −6,701、Harness +9,739、系统生产仍 +3,038行；C07余13,565行，距过半退出还差3,433行。此批为完整程序职责迁移，不计系统去重收益；整组多数退出及最终完整候选验证未完成。
 
+## 两平台 pending 请求装配合并与旧 C5 拒绝策略退出
+
+两个公开 pending-session 入口在原产品准入后，原本各自执行相同的 base current 复核、identity 读取、Worker binding／admission 构造、原 pending host 创建及 deferred Session 输入调用。现由现有 Session _worker_provider 的单个完整程序持有，直接使用原 _binding_for_worker／_admission_for_worker、实际 Code host 类和原公开 Session 入口。Code 的精确／isinstance 差异、Resume 关联、receipt／Base identity、query definition／owner policy 决策保持原 AST；原 native prepare 方法和两平台真实差异完全未改。新增一个仅声明 prepare 方法的借用 port，不增字段、运行对象、阶段表、supplier 或生命周期 owner。
+
+共同程序仍在原时点复核实际 Base owner，再构造相同 DTO，直到原 Code host.prepare 被 Session 调用才允许 native 效果。Code host 名义类、所有字段／slots／方法和公开函数签名／注解保持；四份原惰性 pending 值 pickle 字节及加载路径保持。产品提供的 host 类／Session callable 在共享调用开始时绑定；当前执行代理在已授权职责内接受这一固定组件接线，不承诺中途重绑 Code 私有模块 aliases。policy-revision lambda 仍由原 binding builder 立即调用、不存入返回值，不影响持久化路径。
+
+删除已无真实生产路线的 _require_uncoupled_windows_host_c5_absent。实际 native prepare 早已使用 _require_windows_host_c5_recovered；前者未进 __all__／路由注册，也未进入已核实的历史记录／callback 字段。原生测试只有“owner 缺失”和“owner 存在但 state 未完成”两次调用，与现行 guard 在这两种观测下结果／错误及读操作相同，已将三处 import／调用名称接到真实 guard，其余测试 AST、断言、case、host-runtime／平台 selector 均不变。不是仅凭静态无调用删除，也不声称两种策略在已结清历史等其它状态全域等价；未新增或扩大门禁。
+
+300组完整原／新装配对照一致，含112组实际故障／取消、两个 event-loop generation，使用原 binding／admission builder 与真实 DTO 字典／指纹，并核对 deferred 的原 host 接收者及 graph generation。旧 native 测试两个状态另有12组正常／构造失败／读取失败／取消对照。current／Session compile／native 端口受控，不能作为 Product／Windows／H6 准入证明。树外探针首次因 tests 搜索路径未设置而未执行，修正后通过，未改 Product。
+
+既有组合／handoff／Resume／C5 路线61 passed／1个 native skip；两条现有 Product 候选事务2 passed。四源 mypy、Ruff、依赖图和限定 AST 证明通过；所有旧 H 程序及 Code 名义数据／native prepare 原体保持，原 native 测试未在此机器执行。该批 Coding −54、Harness +68、Hosting／其它生产／测试净0，系统生产 +14行，文档单列。共同装配部分 Code −40／H +68，系统 +28；旧 guard 整体退出 −14（声明12行、相邻分隔2行），合计系统 +14。类型／调用接线成本已全部纳入，不将职责迁移冒充系统净删减。
+
+累计 Coding −6,755、Harness +9,807、系统生产仍 +3,052行；C07余13,511行，距离过半退出还差3,379行。整组与最终完整候选检查未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

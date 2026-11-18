@@ -34,13 +34,18 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
     SessionCapabilityWorkerComponentRequest,
 )
-from loushang.harness.worker._ordinary_prepare import _NativeWorkerAttempt
+from loushang.harness.worker._ordinary_prepare import (
+    _NativeWorkerAttempt,
+    _PendingLaunch,
+)
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
     CapabilityWorkerAdmissionV1,
     CapabilityWorkerAuthorityV1,
     CapabilityWorkerBindingV1,
     CapabilityWorkerFacetGrantV1,
+    _admission_for_worker,
+    _binding_for_worker,
     bind_capability_query_worker_adapter,
 )
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
@@ -569,6 +574,69 @@ class _SelectedWorkerManifestOwner(Protocol):
     def current_selected_manifest(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> PackageProductSelectedPluginManifestV1: ...
+
+
+class _PendingWorkerHost(Protocol):
+    def prepare(
+        self, graph_generation: int
+    ) -> Awaitable[PreparedSessionWorkerCapabilityComponent]: ...
+
+
+def _prepare_pending_worker_session_inputs(
+    *,
+    resolved_providers: ResolvedCapabilityProviderSet,
+    provider_owner: CapabilityProviderOwnerAuthority,
+    receipt_owner: object,
+    receipt: ProductWorkerActivationReceiptV1,
+    pending_launch: _PendingLaunch,
+    evaluated_at: int,
+    clock: Callable[[], int],
+    base_policy_binding: _BasePolicyGuard,
+    resume_parent_context: object | None,
+    resume_settlement: object | None,
+    capability_id: str,
+    owner_policy_revision: str,
+    host_type: Callable[..., _PendingWorkerHost],
+    prepare_session_inputs: Callable[..., SessionCapabilityCompositionInputs],
+) -> SessionCapabilityCompositionInputs:
+    """Bind selected intent facts and defer native effects to the existing host."""
+    base_policy_binding.assert_current()
+    identity = pending_launch.identity
+    binding = _binding_for_worker(
+        identity,
+        allowed_capability_ids=(capability_id,),
+        product_policy_revision=lambda: receipt.policy.product_policy_revision,
+        owner_policy_revision=owner_policy_revision,
+        revocation_epoch=0,
+    )
+    admission = _admission_for_worker(binding, identity)
+    host = host_type(
+        resolved_providers=resolved_providers,
+        provider_owner=provider_owner,
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+        pending_launch=pending_launch,
+        expected_admission=admission,
+        binding=binding,
+        base_policy_binding=base_policy_binding,
+        clock=clock,
+        resume_parent_context=resume_parent_context,
+        resume_settlement=resume_settlement,
+    )
+    return prepare_session_inputs(
+        resolved_providers=resolved_providers,
+        provider_owner=provider_owner,
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+        capability_authority=None,
+        adapter=None,
+        worker_admission=admission,
+        evaluated_at=evaluated_at,
+        clock=clock,
+        release_attempt=None,
+        base_policy_binding=base_policy_binding,
+        deferred_prepare=host.prepare,
+    )
 
 
 def _prepare_worker_session_inputs(
