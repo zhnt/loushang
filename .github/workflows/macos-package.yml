@@ -33,18 +33,44 @@ jobs:
           export LOUSHANG_HOME="$RUNNER_TEMP/diagnostic-home"
           mkdir -m 700 "$LOUSHANG_HOME"
           /Applications/loushang-gui.app/Contents/Resources/runtime/bin/python3 -I - <<'PY'
-          import subprocess
+          import os, plistlib, subprocess
+          from pathlib import Path
           from loushang.coding import macos_service as service
           original = service._launchctl
           def traced(*args):
               result = original(*args)
-              print('launchctl', args, '=>', result.returncode, result.stdout, result.stderr, flush=True)
+              if result.returncode:
+                  print('launchctl', args, '=>', result.returncode, result.stderr, flush=True)
               return result
           service._launchctl = traced
-          try:
-              print(service.control_launchd_service('start', None))
-          finally:
-              print(service.control_launchd_service('stop', None))
+          identity = service._identity
+          write = service._write_agent
+          for domain, session in [('user', 'Background'), ('gui', None)]:
+              print('CASE', domain, session, flush=True)
+              home = Path(os.environ['LOUSHANG_HOME']) / domain
+              service.resolve_platform_home = lambda: home
+              def identify(home):
+                  label, _ = identity(home)
+                  return label, f'{domain}/{os.getuid()}/{label}'
+              def agent(home, label):
+                  path = write(home, label)
+                  value = plistlib.loads(path.read_bytes())
+                  if session:
+                      value['LimitLoadToSessionType'] = session
+                  path.write_bytes(plistlib.dumps(value))
+                  return path
+              service._identity = identify
+              service._write_agent = agent
+              try:
+                  print(service.control_launchd_service('start', None), flush=True)
+              except Exception as error:
+                  print(type(error).__name__, str(error), flush=True)
+                  subprocess.run(['sudo', 'log', 'show', '--last', '1m', '--style', 'compact', '--predicate', 'process == "launchd" AND eventMessage CONTAINS "ai.loushang"'])
+              finally:
+                  print(service.control_launchd_service('stop', None), flush=True)
+                  log = home / 'state/macos-host/host.log'
+                  if log.exists():
+                      print(log.read_text(), flush=True)
           PY
   package:
     if: ${{ false }}
