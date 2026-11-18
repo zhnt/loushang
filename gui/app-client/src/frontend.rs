@@ -263,10 +263,14 @@ impl Backend {
             "delete-chat" => return delete_chat(target, request),
             "models" => {
                 let path = optional_workspace_path(request)?;
+                let model_id = request
+                    .get("modelId")
+                    .map(|id| id.as_str().ok_or("invalid_request"))
+                    .transpose()?;
                 let client = AppClient::default();
                 return models(
                     client
-                        .workspace_models(target, TIMEOUT, path)
+                        .workspace_models(target, TIMEOUT, path, model_id)
                         .map_err(|_| client.failure_code())?,
                 );
             }

@@ -348,6 +348,7 @@ export default interface Resources {
       "firstModelUnavailable": "The selected model could not be applied. Your draft is saved.",
       "firstSubmissionUnknown": "The first message outcome is unknown. Your draft is saved.",
       "firstSubmitRejected": "The first message was rejected. Your draft is saved.",
+      "firstThinkingUnavailable": "The selected reasoning effort could not be applied. Your draft is saved.",
       "fixtureAccepted": "Fixture accepted the prompt. Advance it step by step.",
       "fixtureInterrupted": "Fixture execution interrupted.",
       "fixtureReady": "Fixture snapshot installed. No backend is running.",

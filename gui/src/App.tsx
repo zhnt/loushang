@@ -29,7 +29,7 @@ import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
-import { canSubmitDraft, isSendingDraft, useSessionCreation } from "./useSessionCreation";
+import { canSubmitDraft, isSendingDraft, useSessionCreation, type DraftTarget } from "./useSessionCreation";
 import { useDraftModels } from "./useDraftModels";
 import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
@@ -661,6 +661,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
   async function selectModel(modelId: string, level?: ThinkingLevel): Promise<SessionModels | null> {
     if (!selected || !modelScope || !client.selectModel || modelRunning || modelPending || awaitingPublication || controlPendingRef.current) return null;
+    if (level === undefined && sessionModels?.currentId === modelId) return sessionModels;
     const request = ++modelRequest.current;
     setModelPending(true);
     try {
@@ -670,6 +671,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       if (request !== modelRequest.current) return null;
       const choice = models.models.find((model) => model.id === models.currentId);
       if (!choice || choice.id !== modelId) throw new Error("Unconfirmed model selection");
+      if (level !== undefined && models.thinking?.currentLevel !== level) throw new Error("Unconfirmed reasoning effort");
       setModelResult({ scope: modelScope, query: modelQuery, models });
       if (!failure?.pending) clearFailure();
       setNotice(level === undefined ? { key: "notice.modelChanged", params: { model: choice.label } } : { key: "notice.thinkingChanged" });
@@ -783,7 +785,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       key: JSON.stringify([draftHost, path]),
       hostKey: draftHost,
       workspace: path,
-      loadModels: loadModels ? () => loadModels(path) : undefined,
+      loadModels: loadModels ? (modelId) => modelId === undefined ? loadModels(path) : loadModels(path, modelId) : undefined,
       create: async (continuityId) => {
         if (projectNavigation) return projectNavigation.createChat(path, continuityId, draftTitle);
         let sessionId: string | undefined;
@@ -830,18 +832,47 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     : connected || Boolean(draft?.binding);
   const draftModelTarget = draftCreation.draft?.target;
   const draftModels = useDraftModels(
-    draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled, draftCreation.draft?.modelId,
+    draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled,
+    draft?.modelId, draft?.thinking,
   );
-  async function selectDraftModel(id: string) {
-    if (!draftModels.models?.models.some((model) => model.id === id)) return null;
-    draftCreation.selectModel(id);
-    return { ...draftModels.models, currentId: id };
+  const draftModelRequest = useRef<DraftTarget | null>(null);
+  const [pendingDraftModel, setPendingDraftModel] = useState<DraftTarget | null>(null);
+  const draftModelBusy = Boolean(draft && pendingDraftModel === draft.target);
+  async function selectDraftModel(id: string, level?: ThinkingLevel): Promise<SessionModels | null> {
+    const models = draftModels.models;
+    const choice = models?.models.find((model) => model.id === id);
+    if (!draft || !models || !choice || draftModelRequest.current === draft.target) return null;
+    let thinking: SessionModels["thinking"];
+    if (level !== undefined) {
+      if (models.currentId !== id || !models.thinking?.availableLevels.includes(level)) return null;
+      thinking = { ...models.thinking, currentLevel: level };
+    } else if (models.currentId === id && models.thinking) {
+      return models;
+    } else if (choice.supportsThinking && draft.target.loadModels) {
+      draftModelRequest.current = draft.target;
+      setPendingDraftModel(draft.target);
+      try {
+        const preview = await draft.target.loadModels(id).catch(() => null);
+        if (draftModelRequest.current !== draft.target) return null;
+        // Older Hosts can still select the model without a reasoning preview.
+        if (preview?.currentId === id) thinking = preview.thinking;
+      } finally {
+        if (draftModelRequest.current === draft.target) {
+          draftModelRequest.current = null;
+          setPendingDraftModel(null);
+        }
+      }
+    }
+    if (!draftCreation.selectModel(draft.target, id, thinking)) return null;
+    return { ...models, currentId: id, thinking };
   }
   const draftModelId = draftModels.models?.currentId ?? undefined;
-  const canSendDraft = draftEnabled && !draftPending && canSubmitDraft(draft)
+  const canSendDraft = draftEnabled && !draftPending && !draftModelBusy && canSubmitDraft(draft)
     && (!draftModels.required || Boolean(draftModelId));
   function submitDraft() {
-    if (canSendDraft) void draftCreation.submit(draftModelId);
+    if (canSendDraft && draftModelRequest.current !== draft.target) {
+      void draftCreation.submit(draftModelId, draft?.thinking?.currentLevel ?? undefined);
+    }
   }
 
   const composer = draft ? {
@@ -1059,9 +1090,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     emptyLabel={draft ? draftModels.label : modelLabel}
                     disabled={draft
                       ? draftPending || draft.status === "firstSubmissionUnknown"
-                        || !draftModels.models?.models.some((model) => model.id !== draftModelId)
+                        || !draftModels.models?.models.some((model) => model.id !== draftModelId || model.supportsThinking)
                       : !canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
-                    busy={Boolean(selected) && modelPending}
+                    busy={draft ? draftModelBusy : Boolean(selected) && modelPending}
                     onSelect={draft ? selectDraftModel : selectModel}
                   />}
                 />

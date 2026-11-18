@@ -555,14 +555,14 @@ impl AppClient {
         target: AppTarget<'_>,
         timeout: Duration,
         path: Option<&str>,
+        model_id: Option<&str>,
     ) -> Result<ModelControlResult, ()> {
         self.request_once(target, timeout, |channel, _| {
-            let response = attachment::request(
-                channel,
-                "workspace/models",
-                "1",
-                serde_json::json!({"path": path}),
-            )?;
+            let mut payload = serde_json::json!({"path": path});
+            if let Some(id) = model_id {
+                payload["modelId"] = serde_json::json!(id);
+            }
+            let response = attachment::request(channel, "workspace/models", "1", payload)?;
             attachment::decode_model_result(&response.result_type, &response.result)
         })
     }

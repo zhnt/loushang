@@ -65,7 +65,7 @@ export function ModelPicker({ models, emptyLabel, disabled, busy, onSelect }: {
 
   async function chooseModel(id: string) {
     if (busy) return;
-    const result = id === current?.id ? models : await onSelect(id);
+    const result = await onSelect(id);
     if (!result) return;
     if ((result.thinking?.availableLevels.length ?? 0) > 0) {
       setStage((previous) => previous === "model" ? "thinking" : previous);

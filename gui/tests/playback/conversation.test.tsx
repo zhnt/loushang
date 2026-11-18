@@ -700,11 +700,15 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(createChat).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])("sends only with the model selected before creation (selection fails first: %s)", async (rejectFirstModel) => {
+  it.each(["none", "model", "reasoning"] as const)(
+    "applies the draft model and effort before sending (first rejection: %s)",
+    async (rejection) => {
     const inputSnapshot = await createMockAppClient().snapshot();
-    const second = { ...liveModel, id: "test:primary:second", modelId: "second" };
+    const second = { ...liveModel, id: "test:primary:second", modelId: "second", supportsThinking: true };
     const choices: SessionModels = { currentId: liveModel.id, models: [liveModel, second] };
-    const defaultModels = vi.fn(async () => choices);
+    const defaultModels = vi.fn(async (_path: string | null, id?: string): Promise<SessionModels> => id === second.id
+      ? { ...choices, currentId: id, thinking: { currentLevel: null, availableLevels: ["high", "max"] } }
+      : choices);
     let snapshot: ClientSnapshot = {
       ...inputSnapshot,
       connection: "connected",
@@ -713,12 +717,22 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     };
     let publish: ((value: ClientSnapshot) => void) | undefined;
     let activeModel = liveModel.id;
-    const selectModel = vi.fn(async (_sessionId: string, modelId: string) => {
-      if (!rejectFirstModel || selectModel.mock.calls.length > 1) activeModel = modelId;
-      return { ...choices, currentId: activeModel };
+    let activeLevel: ThinkingLevel | null = null;
+    let rejected = false;
+    const settings = (): SessionModels => ({ ...choices, currentId: activeModel, thinking: activeModel === second.id
+      ? { currentLevel: activeLevel, availableLevels: ["high", "max"] } : undefined });
+    const selectModel = vi.fn(async (_sessionId: string, modelId: string, level?: ThinkingLevel) => {
+      if (!rejected && rejection === (level === undefined ? "model" : "reasoning")) {
+        rejected = true;
+        return settings();
+      }
+      activeModel = modelId;
+      if (level !== undefined) activeLevel = level;
+      return settings();
     });
     const submitText = vi.fn<HarnessClientUiPort["submitText"]>(async ({ submissionId }) => {
       expect(activeModel).toBe(second.id);
+      expect(activeLevel).toBe("max");
       return { accepted: true, submissionId };
     });
     const client: HarnessClientUiPort = {
@@ -726,7 +740,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       subscribe: () => () => {},
       subscribeSnapshots: (listener) => { publish = listener; return () => {}; },
       interrupt: async () => ({ accepted: false }),
-      sessionModels: async () => ({ ...choices, currentId: activeModel }),
+      sessionModels: async () => settings(),
       selectModel, submitText,
     };
     const createChat = vi.fn(async (_path: string | null, continuityId: string) => {
@@ -763,6 +777,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     fireEvent.click(picker);
     fireEvent.click(screen.getByRole("menuitemradio", { name: /test · second/ }));
     await waitFor(() => expect(picker).toHaveTextContent("test · second"));
+    const effort = await screen.findByRole("menu", { name: "Reasoning effort" });
+    fireEvent.click(within(effort).getByRole("menuitemradio", { name: "Maximum" }));
+    expect(picker).toHaveTextContent("Maximum");
     expect(createChat).not.toHaveBeenCalled();
     expect(selectModel).not.toHaveBeenCalled();
     expect(submitText).not.toHaveBeenCalled();
@@ -777,8 +794,10 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("textbox")).toHaveValue("");
     expect(screen.getByRole("heading", { name: "Use the selected model" })).toBeVisible();
     expect(chats.getByRole("button", { name: "Use the selected model" })).toHaveAttribute("aria-current", "page");
-    if (rejectFirstModel) {
-      expect(await screen.findByText("The selected model could not be applied. Your draft is saved.")).toBeVisible();
+    if (rejection !== "none") {
+      expect(await screen.findByText(rejection === "model"
+        ? "The selected model could not be applied. Your draft is saved."
+        : "The selected reasoning effort could not be applied. Your draft is saved.")).toBeVisible();
       expect(submitText).not.toHaveBeenCalled();
       expect(screen.getByRole("textbox")).toHaveValue("Use the selected model");
       fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -811,9 +830,12 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(chats.getByRole("button", { name: "Model selection summary" })).toBeVisible();
     expect(transcript.getByText(message.content)).toBeVisible();
     expect(createChat).toHaveBeenCalledExactlyOnceWith(null, expect.any(String), "New Session");
-    expect(selectModel.mock.calls).toEqual(rejectFirstModel
-      ? [["first-model", second.id], ["first-model", second.id]]
-      : [["first-model", second.id]]);
+    expect(selectModel.mock.calls).toEqual([
+      ["first-model", second.id],
+      ...(rejection === "model" ? [["first-model", second.id]] : []),
+      ["first-model", second.id, "max"],
+      ...(rejection === "reasoning" ? [["first-model", second.id, "max"]] : []),
+    ]);
   });
 
   it.each(["rejected", "lost-create", "unconfirmed-create", "rejected-submit", "lost-submit"] as const)(
