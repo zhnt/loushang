@@ -61,47 +61,11 @@ class CodingWindowsProductWorkerProvisioningStateStore(
     ) -> WindowsProductWorkerPayload[
         WindowsWorkerLaunchPayload, _PendingPayload, WindowsRecoveryAttemptV1
     ]:
-        from .package_product_worker_windows_payload import _payload_program
+        from .package_product_worker_windows_payload import _PAYLOAD_PROGRAM
 
         return cast(
             "WindowsProductWorkerPayload[WindowsWorkerLaunchPayload, _PendingPayload, WindowsRecoveryAttemptV1]",
-            _payload_program(),
-        )
-
-    def __init__(
-        self,
-        product: WindowsLocalWheelProductSessionOwner,
-        *,
-        runtime: PackageProductRuntimeBindingV1,
-        selected: PackageProductSelectedPluginManifestV1,
-        receipt: ProductWorkerActivationReceiptV1,
-        worker_request: ManagedWorkerLaunchRequestV1,
-        plan: _WindowsLpacProductWorkerProfilePlan,
-    ) -> None:
-        if os.name != "nt" or type(product) is not WindowsLocalWheelProductSessionOwner:
-            raise OSError("Windows Worker Product provisioning owner is unavailable")
-        if (
-            type(selected) is not PackageProductSelectedPluginManifestV1
-            or type(receipt) is not ProductWorkerActivationReceiptV1
-            or type(worker_request) is not ManagedWorkerLaunchRequestV1
-            or (type(plan) is not _WindowsLpacProductWorkerProfilePlan)
-        ):
-            raise ValueError("Windows Worker Product selection is invalid")
-        if (
-            type(runtime) is not PackageProductRuntimeBindingV1
-            or runtime.product_id != "coding"
-            or (not runtime.lifecycle.active)
-            or (runtime.session_id != receipt.policy.session_id)
-            or (runtime.product_runtime_id != receipt.policy.product_runtime_id)
-        ):
-            raise ValueError("Windows Worker Product runtime binding is invalid")
-        self._bind_provisioning_attempt(
-            product,
-            runtime=runtime,
-            selected=selected,
-            receipt=receipt,
-            worker_request=worker_request,
-            plan=plan,
+            _PAYLOAD_PROGRAM,
         )
 
 

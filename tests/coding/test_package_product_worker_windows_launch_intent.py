@@ -7,6 +7,7 @@ import pytest
 from loushang.coding.package_product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentError,
     CodingWindowsWorkerLaunchIntentV1,
+    commit_coding_windows_product_worker_launch_intent,
 )
 
 
@@ -57,3 +58,32 @@ def test_windows_worker_launch_intent_rejects_noncanonical_or_duplicate_bytes() 
     for changed in (raw + b" ", raw[:-1] + b',"attemptId":"' + b"7" * 32 + b'"}'):
         with pytest.raises(CodingWindowsWorkerLaunchIntentError):
             CodingWindowsWorkerLaunchIntentV1.from_bytes(changed)
+
+
+def test_launch_intent_reaches_product_admission_after_loading_payload_owner() -> None:
+    """A stale lazy factory import must not prevent the original admission error."""
+    with pytest.raises(OSError, match="launch intent requires a Product owner"):
+        commit_coding_windows_product_worker_launch_intent(
+            object(),
+            receipt_owner=object(),
+            receipt=object(),
+            request=object(),
+            payload_lease=object(),
+        )
+
+
+def test_provisioning_recovery_uses_the_actual_launch_payload_owner() -> None:
+    from loushang.coding.package_product_worker_windows_payload import (
+        bind_coding_windows_product_worker_launch_request,
+        materialize_coding_windows_product_worker_payload,
+        plan_coding_windows_product_worker_pending_launch,
+    )
+    from loushang.coding.package_product_worker_windows_provisioning import (
+        CodingWindowsProductWorkerProvisioningStateStore,
+    )
+
+    store = object.__new__(CodingWindowsProductWorkerProvisioningStateStore)
+    owner = store._recovery_payload()
+    assert owner is plan_coding_windows_product_worker_pending_launch.__self__
+    assert owner is materialize_coding_windows_product_worker_payload.__self__
+    assert owner is bind_coding_windows_product_worker_launch_request.__self__
