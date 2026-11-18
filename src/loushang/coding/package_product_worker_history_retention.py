@@ -7,14 +7,22 @@ lacks an attempt-level closure decision.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Literal
 
 from loushang.harness.package_product._linux_worker_history import (
+    _PAYLOAD_REPAIR as _PAYLOAD_REPAIR,
+)
+from loushang.harness.package_product._linux_worker_history import (
+    _REGISTERED_REPAIR_STAGING as _REGISTERED_REPAIR_STAGING,
+)
+from loushang.harness.package_product._linux_worker_history import (
     HistoryProofBindings,
     review_history,
     review_history_under_guard,
+)
+from loushang.harness.package_product._linux_worker_history import (
+    known_worker_state_name as _known_worker_state_name,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -39,14 +47,7 @@ from .package_product_worker_activation_state_journal import (
     CodingProductWorkerRetainedAttemptV1,
 )
 from .package_product_worker_history_stream_snapshot import (
-    CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
-)
-from .package_product_worker_history_v2_names import (
-    DELETION_LEDGER_NAME,
-    NO_EFFECT_ARCHIVE_NAME,
-    PREPARATION_STATE_NAMES,
-    PRODUCT_OWNER_INDEX_NAME,
 )
 from .package_product_worker_opt_in import (
     CodingWorkerOptInDecisionV1,
@@ -66,47 +67,6 @@ from .package_product_worker_start_gate_journal import (
 from .package_product_worker_start_gate_recovery import (
     GatedGroupStatus,
 )
-
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-_SEGMENTED_STEMS = (*CODING_WORKER_HISTORY_STREAM_STEMS, "worker-history-checkpoints")
-_SEGMENTED_SUFFIX = re.compile(
-    r"(?:\.jsonl(?:\.lock)?|\.segments\.json|\.head\.json|"
-    r"\.g[0-9]{8}\.(?:jsonl|head\.json))\Z"
-)
-_PAYLOAD_STAGE = re.compile(r"worker-payload-[0-9a-f]{32}\Z")
-_PAYLOAD_REPAIR = re.compile(
-    r"worker-(?P<kind>empty|complete|unmarked|registered)-repair-"
-    r"(?P<attempt>[0-9a-f]{32})\.json\Z"
-)
-_REGISTERED_REPAIR_STAGING = re.compile(
-    r"\.worker-registered-repair-[0-9a-f]{32}\.json\.stage\Z"
-)
-
-
-def _known_worker_state_name(name: str) -> bool:
-    if name in (
-        *PREPARATION_STATE_NAMES,
-        NO_EFFECT_ARCHIVE_NAME,
-        PRODUCT_OWNER_INDEX_NAME,
-        DELETION_LEDGER_NAME,
-    ) or name in {
-        "worker-native-release-v1",
-        "worker-native-release-approvals.jsonl",
-        "worker-native-release-approvals.jsonl.lock",
-        "worker-history-checkpoint-owner.json",
-    }:
-        return True
-    if (
-        _PAYLOAD_STAGE.fullmatch(name)
-        or _PAYLOAD_REPAIR.fullmatch(name)
-        or _REGISTERED_REPAIR_STAGING.fullmatch(name)
-    ):
-        return True
-    return any(
-        _SEGMENTED_SUFFIX.fullmatch(name[len(stem) :]) is not None
-        for stem in _SEGMENTED_STEMS
-        if name.startswith(stem)
-    )
 
 
 @dataclass(frozen=True, slots=True)
