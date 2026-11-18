@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 from time import monotonic, sleep
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 
 def check_web(
@@ -55,9 +56,11 @@ def check_web(
             assert instance and instance == host.get("serviceInstanceId", instance)
             call("workspace", action="register", path=str(workspace))
             call("workspace", action="open", path=str(workspace))
-            snapshot = call("live", action="snapshot", workspace=str(workspace))
+            view_id = str(uuid4())
+            snapshot = call("live", action="snapshot", workspace=str(workspace), viewId=view_id)
             assert snapshot["serviceInstanceId"] == instance
             assert len(snapshot["sessions"]) == 1
+            call("live", action="close", workspace=str(workspace), viewId=view_id)
             call("shutdown-adapter")
             assert web.wait(timeout=15) == 0
         finally:
@@ -76,6 +79,7 @@ def check_host(package: Path, root: Path) -> None:
         "HOME": str(home),
         "PATH": "/nonexistent",
         "LANG": "C.UTF-8",
+        "LOUSHANG_MUX_BACKEND": "managed",
         "LOUSHANG_HOME": str(home / ".loushang"),
         "LOUSHANG_RUNTIME_DIR": str(root / "runtime"),
         "PYTHONPATH": "/nonexistent",
