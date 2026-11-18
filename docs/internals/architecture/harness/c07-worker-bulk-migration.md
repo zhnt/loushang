@@ -722,6 +722,16 @@ C07 归因与上述全局变化之间的同期主线差额为 Coding +1,495、Ha
 
 本修复 Coding／Hosting／其它生产0，Harness及系统 Python 生产 −4行；新增回归测试单列，文档另计。这是兼容缺陷修复，不计任何新的 C07 迁移退出。当前 Coding100,315／Harness379,721／Hosting14,235／其它154,008，生产 Python共648,279行；相对已交付 main `ca7091aa8` 的 C5／Provider／本修复候选合计 Coding−23、Harness0、系统−23。原 Goal 归因 Coding−7,610、Harness+10,474、系统+2,864；同期其它主线+3,404仍另计，整库 Python较原基线+6,268。C07有效剩余12,656，多数目标仍差2,524，不因349项反射通过宣称整组完成。
 
+## C5、Provider 与 Receipt 修复合并候选的完整本地检查
+
+上述候选冻结在 `e7fcea589d7a5b9e912b4b31ef2e073c8eb51b35`，相对最新已交付 main `ca7091aa8` 串行执行既定 change-aware 检查；运行器核对全部受版本控制输入的哈希，最终全部选中本地检查通过。此节仅追加执行结果，不修改该次验证的生产源码或测试输入。
+
+Coding 4,309 passed／24 skipped／77 deselected；HarnessTUI 1,078 passed；Coding UI 614 passed；回放319 passed；Harness 6,356 passed／116 skipped；Hosting 515 passed／61 skipped；独立 unit Harness 5,939 passed／113 skipped；unit Hosting 399 passed／57 skipped。各范围有交叠，数量不累加；unit Coding 经收集证明为 Coding 的既有子集，去重执行。文档与依赖事实检查也通过。原并发运行的失败及对照证据保留，不因串行通过推断其根因。
+
+原有选择器、超时、断言、平台和门禁不变；`harness_native`、`host_runtime`、`windows_shell` 保留为 Actions／平台路线，本次本地结果不代替原生 Windows 验证。公开引用670条旧 pickle 路径及112模块／349入口反射的范围与限制沿用上一节。生产总量、归因和多数目标缺口均不变：有效退出7,610行，仍差2,524行。
+
+本地检查完成，远端交付待推送允许时段执行。C07 整组仍未完成，后续优先项为 C01 启动／插件装配；LSP 的领域职责留 Coding，通用进程和生命周期能力按实际复用另评估。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
