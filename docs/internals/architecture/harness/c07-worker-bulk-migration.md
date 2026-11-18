@@ -566,6 +566,14 @@ C51 首轮10 passed／1 failed，失败仅为 Windows receipt 已退出直接 ac
 
 后续串行检查在Hosted Goal族出现16 failed／1,441 passed／13 skipped后提取失败，原因定位到执行代理额外全局设置的`PYTEST_ADDOPTS`：其`--skip-host-runtime`被保护包目录中的合同pytest继承，该目录不加载工作区注册选项的conftest。原Hosted Repository用例不带该全局覆盖时两项通过（54.12秒），恢复唯一这一环境覆盖后同一`False`用例复现失败（19.68秒）。这是验证运行器的环境污染，未修改Product、测试断言或超时；后续将安全选择器限定在各命令参数及Make的`PYTEST_RUNNER`，完整检查重新验证。初始并发deadline失败与本次环境错误分别保留，不归并为产品回归，也不将中断的检查记作通过。
 
+## 交付回归中的精确边界库存收敛
+
+移除全局 pytest 环境覆盖后，完整 Coding 回归4,240 passed／24 skipped／76 deselected，Harnesstui 1,078 passed／87 deselected，Coding UI 614 passed／68 deselected，TUI 回放319 passed／8,152 deselected；各组有交叠，不相加。当前候选的真实 Coding console `--help` 入口正常输出并以0退出。上述通过不等于整组 C07 验收或原生 Windows 验证。
+
+Harness 首轮静态检查通过（mypy 916源文件），测试6,354 passed／113 skipped／2 failed；两项失败均是 C50／C54 精确消费者集合仍包含已经退出直接 Worker 依赖的 Windows receipt。修正首层集合后，C54 暴露被首个断言遮蔽的三条过期边：provider_host 的 capability_query／product_activation，以及 Windows receipt journal 的 product_activation。静态全清单差异核实只有这些旧边退出，没有新增依赖边。同步删除过期固定库存及不再能进入的 receipt 特例，保留原扫描、集合相等、私有 Profile 与其它边界断言；不是放宽生产边界或增加门禁。
+
+首轮两项节点复核1 passed／1 failed（发现上述旧边），最终相同两项节点2 passed（21.79秒）。失败结果保留；这次修正不改任何生产源码、业务 golden、平台选择器、超时或工作流。已通过且输入未变的 Coding／界面路线保留证据，更新文档重新检查，Harness 完整受影响检查及尚未执行的 Hosting／包级检查继续验证，未将局部复跑当作最终完整检查通过。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

@@ -166,9 +166,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_provider_host.py": {
-        "loushang.harness.worker.capability_query",
         "loushang.harness.worker.facet_proxy",
-        "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_query_consumer.py": {
         "loushang.harness.worker.capability_query",
@@ -217,13 +215,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         'loushang.harness.worker.payload._windows_stage_io',
         'loushang.harness.worker.product_activation',
     },
-    CODING_ROOT / "package_product_worker_windows_receipt.py": {
-        "loushang.harness.worker._native_profile_bridge",
-        "loushang.harness.worker.contracts",
-        "loushang.harness.worker.product_activation",
-    },
     CODING_ROOT / "package_product_worker_windows_receipt_journal.py": {
-        "loushang.harness.worker.product_activation",
         "loushang.harness.worker.history._windows_record_journals",
     },
     CODING_ROOT / "package_product_worker_windows_opt_in_journal.py": {
@@ -535,33 +527,9 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
             for imported in _imports(path)
             if imported.startswith("loushang.harness.worker")
         }
-        optional_receipt_selector: set[str] = set()
-        receipt_values = "loushang.harness.worker.history._receipts"
-        if (
-            path == CODING_ROOT / "package_product_worker_windows_receipt.py"
-            and receipt_values in actual
-            and {
-                imported
-                for imported in resolved_imports(path)
-                if imported == receipt_values
-                or imported.startswith(receipt_values + ".")
-            }
-            == {receipt_values, receipt_values + ".latest_receipt_record"}
-        ):
-            optional_receipt_selector = {receipt_values}
         if path in optional_retirement_proofs:
             actual.discard(history_proofs)
-        optional_shared_receipt_edges = (
-            {
-                "loushang.harness.worker._native_profile_bridge",
-                "loushang.harness.worker.contracts",
-            }
-            if path == CODING_ROOT / "package_product_worker_windows_receipt.py"
-            else set()
-        )
-        assert actual - optional_receipt_selector - optional_shared_receipt_edges == (
-            allowed - optional_shared_receipt_edges
-        )
+        assert actual == allowed
     assert not any(
         imported.startswith("loushang.hosting") for imported in _imports(CANARY)
     )
