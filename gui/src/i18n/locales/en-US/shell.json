@@ -13,6 +13,8 @@
   "closeAccountDetails": "Close account details",
   "copyAccountId": "Copy local account ID",
   "accountName": "System user",
+  "accountType": "Account type",
+  "accountTypeLocal": "Local account",
   "accountId": "Local account ID",
   "accountMenu": "Account menu",
   "generalSettings": "General",

@@ -399,6 +399,8 @@ export default interface Resources {
     "accountId": "Local account ID",
     "accountMenu": "Account menu",
     "accountName": "System user",
+    "accountType": "Account type",
+    "accountTypeLocal": "Local account",
     "actionFailed": "Window action failed. Please retry.",
     "actionUnavailable": "Currently unavailable",
     "actualSize": "Actual size",
