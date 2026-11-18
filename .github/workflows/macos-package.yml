@@ -17,7 +17,37 @@ permissions:
   contents: read
 
 jobs:
+  diagnose:
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose installed launchd control
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 44270718283 -n loushang-macos12-intel -D "$RUNNER_TEMP/package"
+          sudo installer -pkg "$(find "$RUNNER_TEMP/package" -name '*.pkg' -print -quit)" -target /
+          export LOUSHANG_HOME="$RUNNER_TEMP/diagnostic-home"
+          mkdir -m 700 "$LOUSHANG_HOME"
+          /Applications/loushang-gui.app/Contents/Resources/runtime/bin/python3 -I - <<'PY'
+          import subprocess
+          from loushang.coding import macos_service as service
+          original = service._launchctl
+          def traced(*args):
+              result = original(*args)
+              print('launchctl', args, '=>', result.returncode, result.stdout, result.stderr, flush=True)
+              return result
+          service._launchctl = traced
+          try:
+              print(service.control_launchd_service('start', None))
+          finally:
+              print(service.control_launchd_service('stop', None))
+          PY
   package:
+    if: ${{ false }}
     runs-on: macos-15-intel
     timeout-minutes: 60
     env:
