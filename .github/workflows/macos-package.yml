@@ -72,7 +72,7 @@ jobs:
                   if log.exists():
                       print(log.read_text(), flush=True)
           PY
-          /Applications/loushang-gui.app/Contents/Resources/runtime/bin/python3 -I - <<'PY'
+          sudo /Applications/loushang-gui.app/Contents/Resources/runtime/bin/python3 -I - <<'PY'
           from pathlib import Path
           path = Path('/Applications/loushang-gui.app/Contents/Resources/runtime/lib/python3.11/site-packages/loushang/coding/macos_service.py')
           path.write_text(path.read_text().replace('"RunAtLoad": True,', '"LimitLoadToSessionType": "Background", "RunAtLoad": True,'))
