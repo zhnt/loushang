@@ -8,67 +8,28 @@ proof; unknown, partial, or changed history fails closed.
 from __future__ import annotations
 
 import os
-import re
-from collections.abc import Mapping
-from typing import cast
 
+from loushang.harness.package_product._windows_worker_recovery import (
+    require_windows_product_worker_settled_history,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    windows_listdir_at,
+from loushang.harness.worker.history._windows_recovery import (
+    require_windows_worker_c5_gc_history,
 )
-from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
+from loushang.harness.worker.history._windows_sources import (
+    WindowsHistoryNames as WindowsHistoryNames,
+)
+from loushang.harness.worker.history._windows_sources import (
+    windows_worker_history_names,
+)
 
-from .package_product_worker_activation_history import (
-    CodingProductWorkerRetainedAttemptV1,
-)
-from .package_product_worker_windows_activation_state_journal import (
-    CodingWindowsWorkerActivationStateJournal,
-)
-from .package_product_worker_windows_base_files import (
-    WINDOWS_WORKER_BASE_NAMES,
-    WINDOWS_WORKER_BASE_STAGE_NAMES,
-)
-from .package_product_worker_windows_opt_in_journal import (
-    CodingWindowsWorkerOptInJournal,
-)
-from .package_product_worker_windows_receipt_journal import (
-    CodingWindowsWorkerReceiptJournal,
-)
 from .package_product_worker_windows_recovery_inventory import (
-    CodingWindowsWorkerRecoveryAttemptV1,
     _current_after_verified_retirements_under_gc_guard,
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
     _observe_native_job_absence,
-)
-from .package_product_worker_windows_stage_retirement import _RETIREMENT_NAME
-
-_INTENT = re.compile(r"worker-launch-intent-[0-9a-f]{32}\.json\Z")
-_NATIVE = re.compile(r"worker-native-provisioning-[0-9a-f]{32}\.jsonl(?:\.lock)?\Z")
-_C5_HEAD = re.compile(r"worker-activation-state\.h[0-9]{8}\.json\Z")
-_EXACT = (
-    frozenset(
-        {
-            "worker-activation-state.jsonl",
-            "worker-activation-state.jsonl.lock",
-            "worker-supervisor.jsonl",
-            "worker-supervisor.jsonl.lock",
-            "worker-activation-receipts.jsonl",
-            "worker-activation-receipts.jsonl.lock",
-            "worker-opt-in.jsonl",
-            "worker-opt-in.jsonl.lock",
-            "worker-native-release-approvals.jsonl",
-            "worker-native-release-approvals.jsonl.lock",
-            "worker-native-backend-release-v1.whl",
-            "worker-history-preparation-v1.json",
-            "worker-history-preparation-v1.json.stage",
-            "worker-history-checkpoint-v1.json",
-            "worker-history-checkpoint-v1.json.stage",
-        }
-    )
-    | WINDOWS_WORKER_BASE_NAMES
-    | WINDOWS_WORKER_BASE_STAGE_NAMES
+    _windows_history_journals,
 )
 
 
@@ -76,44 +37,7 @@ def _require_known_windows_worker_state_names(names: tuple[str, ...]) -> None:
     _history_names().require_known(names)
 
 
-def _require_c5_gc_history(
-    state: Mapping[str, object] | None,
-    retained: tuple[CodingProductWorkerRetainedAttemptV1, ...],
-    inventory: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...],
-    receipt_policies: Mapping[str, tuple[str, int]],
-    native_job_absence: Mapping[str, bool | None],
-) -> None:
-    """Join settled C5 attempts to exact launched attempts and Product receipts."""
-
-    if state is None:
-        raise ValueError("Windows Worker GC C5 owner is incomplete")
-    active = cast(dict[str, dict[str, object]], state["attempts"])
-    publications = cast(dict[str, object], state["publications"])
-    if publications or any(
-        attempt["phase"] != "settled" for attempt in active.values()
-    ):
-        raise ValueError("Windows Worker GC C5 activation remains active")
-    by_id = {item.attempt_id: item for item in retained}
-    launched = {
-        item.attempt_id: item
-        for item in inventory
-        if item.launch_request_fingerprint is not None
-        or item.native_phase is not None
-        or item.supervisor_phase is not None
-    }
-    if len(by_id) != len(retained) or set(by_id) != set(launched):
-        raise ValueError("Windows Worker GC C5 attempt history is incomplete")
-    for attempt_id, item in by_id.items():
-        observed = launched[attempt_id]
-        if (
-            item.phase != "settled"
-            or item.cleanup_contract_version != 2
-            or observed.launch_receipt_fingerprint != item.receipt_fingerprint
-            or receipt_policies.get(item.receipt_fingerprint)
-            != (item.policy_fingerprint, item.owner_generation)
-            or native_job_absence.get(attempt_id) is not True
-        ):
-            raise ValueError("Windows Worker GC C5 attempt history is incomplete")
+_require_c5_gc_history = require_windows_worker_c5_gc_history
 
 
 class CodingWindowsWorkerGcHistoryAuthority:
@@ -146,94 +70,20 @@ class CodingWindowsWorkerGcHistoryAuthority:
         compared before and after the owner reads to catch a changed inventory.
         """
 
-        if type(observed_names) is not tuple or any(
-            type(name) is not str for name in observed_names
-        ):
-            raise ValueError("Windows Worker GC inventory is invalid")
-        self._product.assert_root_gc_authority_current()
-        with self._product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            if set(windows_listdir_at(root)) != set(observed_names):
-                raise ValueError("Windows Worker GC inventory changed")
-            _require_known_windows_worker_state_names(observed_names)
-            if (
-                (
-                    "worker-history-preparation-v1.json.stage" in observed_names
-                    and not allow_preparation_stage
-                )
-                or (
-                    "worker-history-checkpoint-v1.json.stage" in observed_names
-                    and not allow_checkpoint_stage
-                )
-                or (
-                    not allow_base_stage
-                    and WINDOWS_WORKER_BASE_STAGE_NAMES.intersection(observed_names)
-                )
-            ):
-                raise ValueError("Windows Worker history preparation remains staged")
-
-            inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(
-                self._product
-            )
-            if _current_after_verified_retirements_under_gc_guard(
-                self._product, inventory, attempt_id=None
-            ):
-                raise ValueError("Windows Worker GC attempt is unsettled")
-
-            receipts = CodingWindowsWorkerReceiptJournal(
-                self._product.state_root / "worker-activation-receipts.jsonl",
-                scope_id=self._product.policy.project_scope_id,
-            ).records(directory_fd=root)
-            opt_in_decisions = CodingWindowsWorkerOptInJournal(
-                self._product.state_root / "worker-opt-in.jsonl",
-                scope_id=self._product.policy.project_scope_id,
-            ).history_read_only(directory_fd=root)
-            opt_in_by_digest = {
-                decision.decision_digest: decision for decision in opt_in_decisions
-            }
-            if any(
-                (decision := opt_in_by_digest.get(record.opt_in_decision_digest))
-                is None
-                or decision.action != "allow"
-                or decision.plugin_id != record.receipt.policy.plugin_id
-                for record in receipts
-            ):
-                raise ValueError("Windows Worker GC opt-in history is incomplete")
-            receipt_fingerprints = {record.receipt.fingerprint for record in receipts}
-            if any(
-                attempt.launch_receipt_fingerprint is not None
-                and attempt.launch_receipt_fingerprint not in receipt_fingerprints
-                for attempt in inventory
-            ):
-                raise ValueError("Windows Worker GC receipt history is incomplete")
-            if any(
-                name.startswith("worker-activation-state") for name in observed_names
-            ):
-                journal = CodingWindowsWorkerActivationStateJournal(self._product)
-                _require_c5_gc_history(
-                    journal.load(),
-                    journal.retained_attempts_read_only(),
-                    inventory,
-                    {
-                        record.receipt.fingerprint: (
-                            record.receipt.policy.fingerprint,
-                            record.receipt.policy.owner_selection_generation,
-                        )
-                        for record in receipts
-                    },
-                    {
-                        attempt.attempt_id: _observe_native_job_absence(
-                            attempt.native_job_name
-                        )
-                        for attempt in inventory
-                    },
-                )
-            if set(windows_listdir_at(root)) != set(observed_names):
-                raise ValueError("Windows Worker GC inventory changed")
-        self._product.assert_root_gc_authority_current()
+        return require_windows_product_worker_settled_history(
+            self._product,
+            journals=_windows_history_journals(),
+            inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
+            current_attempts=_current_after_verified_retirements_under_gc_guard,
+            observe_job_absence=_observe_native_job_absence,
+            observed_names=observed_names,
+            allow_preparation_stage=allow_preparation_stage,
+            allow_checkpoint_stage=allow_checkpoint_stage,
+            allow_base_stage=allow_base_stage,
+        )
 
 
 __all__ = ["CodingWindowsWorkerGcHistoryAuthority"]
 
 
-def _history_names() -> WindowsHistoryNames:
-    return WindowsHistoryNames(_EXACT, (_INTENT, _NATIVE, _C5_HEAD, _RETIREMENT_NAME))
+_history_names = windows_worker_history_names

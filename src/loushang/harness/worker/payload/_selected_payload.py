@@ -8,6 +8,7 @@ ports, invoked at the original points; receipt reads are not assumed pure."""
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
@@ -353,3 +354,23 @@ def bind_selected_payload_request(
         runtime=payload_lease.runtime,
         validate_current=validate_current,
     )
+
+
+class PendingPayloadMethods:
+    __slots__ = ()
+    receipt_fingerprint: str
+    identity: WorkerLaunchIdentityV1
+    _pending_exact_identity: bool
+    _pending_invalid_message: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.receipt_fingerprint) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", self.receipt_fingerprint) is None
+            or (
+                type(self.identity) is not WorkerLaunchIdentityV1
+                if self._pending_exact_identity
+                else not isinstance(self.identity, WorkerLaunchIdentityV1)
+            )
+        ):
+            raise ValueError(self._pending_invalid_message)

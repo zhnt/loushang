@@ -578,3 +578,35 @@ class WindowsActivationStateJournal(Generic[_T]):
             output.flush()
             windows_flush_file(output.fileno())
         windows_flush_directory(root)
+
+
+_CRASH_FAILURE_CODE = "windows_host_crash"
+_ACTIVE_PHASES = frozenset(
+    {"claimed", "launching", "handshaking", "healthy", "draining"}
+)
+
+
+def settle_windows_crashed_supervisor_record(
+    journal: WorkerSupervisorJournal, record: WorkerAttemptRecordV1
+) -> WorkerAttemptRecordV1:
+    if record.process_settled:
+        return record
+    if record.phase in _ACTIVE_PHASES:
+        record = journal.transition(
+            record.attempt_id,
+            expected_phase=record.phase,
+            next_phase="failed",
+            expected_record_revision=record.record_revision,
+            expected_supervisor_epoch=record.supervisor_epoch,
+            failure_code=_CRASH_FAILURE_CODE,
+        )
+    if record.phase not in {"failed", "fenced"} or record.failure_code is None:
+        raise ValueError("Windows Worker crashed Supervisor state is invalid")
+    return journal.transition(
+        record.attempt_id,
+        expected_phase=record.phase,
+        next_phase="process_settled",
+        expected_record_revision=record.record_revision,
+        expected_supervisor_epoch=record.supervisor_epoch,
+        failure_code=record.failure_code,
+    )

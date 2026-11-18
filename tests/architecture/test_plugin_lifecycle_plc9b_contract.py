@@ -2120,6 +2120,22 @@ def _require_package_kernel_imports(path: Path, permitted: dict[str, set[str]]) 
 
 def _require_worker_package_primitives(path: Path) -> None:
     prefix = "loushang.harness.resources.packages.plugin_lifecycle"
+    # C07 moved retained lease facts and their read-only join into Worker
+    # history. Keep these imports bounded by exact consumer and symbol.
+    history = SOURCE_ROOT / "harness/worker/history"
+    lease_facts = {
+        history / "_start_gate.py": {
+            f"{prefix}.epoch_fence": {"PackageEpochRuntimeLeaseV1"},
+        },
+        history / "_retention.py": {
+            f"{prefix}.epoch_fence": {"PackageEpochRuntimeLeaseV1"},
+        },
+        history / "_windows_recovery.py": {
+            f"{prefix}.epoch_fence": {"PackageEpochRuntimeLeaseV1"},
+            f"{prefix}.lease_registry": {"PackageEpochRuntimeLeaseRecordV1"},
+            f"{prefix}.windows_lease_registry": {"PackageWindowsRuntimeQuiescenceV1"},
+        },
+    }
     _require_package_kernel_imports(path, {
         f"{prefix}.records": {"canonical_json_bytes"},
         f"{prefix}._record_schema": {"RecordField", "RecordSchema"},
@@ -2128,6 +2144,7 @@ def _require_worker_package_primitives(path: Path) -> None:
             "windows_delete_open_entry", "windows_directory_stream_names", "windows_flush_directory",
             "windows_flush_file", "windows_listdir_at", "windows_regular_file_stream_names", "windows_stat_at",
         },
+        **lease_facts.get(path, {}),
     })
 
 

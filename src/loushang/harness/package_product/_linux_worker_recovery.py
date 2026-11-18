@@ -17,6 +17,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, TypeVar, cast
 
+import loushang.harness.worker.payload._recovery as _recovery
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -29,6 +30,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.history._activation import _RetainedAttemptFields
 from loushang.harness.worker.history._activation_store import SegmentedActivationJournal
 from loushang.harness.worker.history._no_effect import is_no_effect_closure
@@ -39,13 +41,31 @@ from loushang.harness.worker.history._retention import (
     RetentionReviewMethods,
     registered_repair_matches_no_effect_closure,
 )
-from loushang.harness.worker.history._start_gate import _StartGateRecordMethods
-from loushang.harness.worker.journal import WorkerAttemptRecordV1
-from loushang.harness.worker.payload._records import PayloadPlan
+from loushang.harness.worker.history._start_gate import (
+    _GATED_ACTIVE_PHASES,
+    GatedRecoveryReviewMethods,
+    OrphanGatedRecoveryReviewMethods,
+    _StartGateRecordMethods,
+)
+from loushang.harness.worker.journal import (
+    WorkerAttemptRecordV1,
+    WorkerSupervisorJournal,
+)
+from loushang.harness.worker.payload._records import (
+    EmptyPayloadPlan,
+    PayloadPlan,
+    PayloadReview,
+)
 from loushang.harness.worker.payload._repair import RepairJournal
-from loushang.harness.worker.payload._storage import _DIR_FLAGS
+from loushang.harness.worker.payload._selected_payload import (
+    _MaterializedPayload,
+    _PendingPayload,
+    bind_selected_payload_request,
+    materialize_selected_payload,
+    plan_selected_payload_launch,
+)
+from loushang.harness.worker.payload._storage import _DIR_FLAGS, PayloadStorage
 from loushang.harness.worker.product_activation import (
-    ActivationWitness,
     ProductWorkerActivationCoordinator,
     ProductWorkerActivationReceiptV1,
     WorkerCleanupDebtV1,
@@ -63,13 +83,20 @@ from ._linux_worker_history import (
     review_history,
     review_history_under_guard,
 )
+from ._worker_product_authority import (
+    ClosedProductWorkerCrashRecoveryAuthority,
+    _PosixWorkerProductReceiptAuthority,
+)
+from .product_worker_candidate import (
+    ProductWorkerNativeLaunchMaterialFacts,
+    ProductWorkerSelectedPayloadFacts,
+)
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
 HistoryReview = RetentionReviewMethods[AttemptReference]
 HistoryT = TypeVar("HistoryT")
 _ATTEMPT = re.compile("[0-9a-f]{32}\\Z")
-_STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
 
 class RegisteredReview(Protocol):
@@ -167,19 +194,24 @@ def _read_receipt(
     *,
     receipt_fingerprint: str,
 ) -> _ReceiptRecordMethods | None:
-    if not isinstance(product, PosixLocalWheelProductSessionOwner):
-        raise TypeError(
-            f"{bindings.history.product_label} Worker Product owner is required"
-        )
-    if (
-        type(receipt_fingerprint) is not str
-        or len(receipt_fingerprint) != 64
-        or any((char not in "0123456789abcdef" for char in receipt_fingerprint))
-    ):
-        raise ValueError(
-            f"{bindings.history.product_label} Worker receipt fingerprint is invalid"
-        )
-    return bindings.history.receipts(product).find_retained_record(receipt_fingerprint)
+    return _read_history_receipt(
+        bindings.history, product, receipt_fingerprint=receipt_fingerprint
+    )
+
+
+def _read_history_receipt(
+    bindings: HistoryProofBindings[HistoryT],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    receipt_fingerprint: str,
+) -> _ReceiptRecordMethods | None:
+    _require_receipt_lookup_input(
+        product,
+        receipt_fingerprint,
+        product_required_message=f"{bindings.product_label} Worker Product owner is required",
+        receipt_invalid_message=f"{bindings.product_label} Worker receipt fingerprint is invalid",
+    )
+    return bindings.receipts(product).find_retained_record(receipt_fingerprint)
 
 
 class CleanupEvidenceAuthority(Generic[HistoryT]):
@@ -405,26 +437,15 @@ class CleanupEvidenceAuthority(Generic[HistoryT]):
         return False
 
 
-class ClosedLinuxCrashRecoveryAuthority:
-    """Serialize C5 changes while refusing any fresh Worker admission."""
+class ClosedLinuxCrashRecoveryAuthority(
+    ClosedProductWorkerCrashRecoveryAuthority[PosixLocalWheelProductSessionOwner]
+):
+    """Original Linux nominal authority; shared closed-admission program."""
+
+    _admission_error = "Linux crash recovery cannot change Worker admission"
 
     def __init__(self, product: PosixLocalWheelProductSessionOwner) -> None:
-        self._product = product
-
-    @contextmanager
-    def serialized_admission(self) -> Iterator[None]:
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            yield
-            self._product.assert_root_gc_authority_current()
-
-    def current_witness(
-        self, _receipt: ProductWorkerActivationReceiptV1
-    ) -> ActivationWitness:
-        return _STALE_WITNESS
-
-    def latch_kill_switch(self, *, expected_generation: int) -> int:
-        raise ValueError("Linux crash recovery cannot change Worker admission")
+        super().__init__(product)
 
 
 class UnderGuardCleanupEvidenceAuthority(CleanupEvidenceAuthority[HistoryT]):
@@ -1391,3 +1412,560 @@ def _settle_crash_c5_under_guard(
             f"{bindings.history.product_id}_worker_crash_c5_settlement_unverified"
         )
     return settled
+
+
+_PayloadResultT = TypeVar("_PayloadResultT")
+_PayloadPlanT = TypeVar("_PayloadPlanT", bound=PayloadPlan)
+_EmptyPlanT = TypeVar("_EmptyPlanT", bound=EmptyPayloadPlan)
+_UnmarkedReviewT = TypeVar("_UnmarkedReviewT", bound=PayloadReview)
+_PayloadReviewT = TypeVar("_PayloadReviewT")
+_PosixLeaseT = TypeVar(
+    "_PosixLeaseT", bound=_MaterializedPayload[ProductWorkerNativeLaunchMaterialFacts]
+)
+_PosixPendingT = TypeVar("_PosixPendingT", bound=_PendingPayload)
+_ReceiptT = TypeVar("_ReceiptT", bound=_ReceiptRecordMethods)
+_SelectedT = TypeVar("_SelectedT", bound=ProductWorkerSelectedPayloadFacts)
+_NativeT = TypeVar("_NativeT", bound=ProductWorkerNativeLaunchMaterialFacts)
+
+
+@dataclass(frozen=True, slots=True)
+class PosixProductWorkerPayloadCustody(
+    Generic[
+        _PayloadPlanT,
+        _EmptyPlanT,
+        _UnmarkedReviewT,
+        _PayloadReviewT,
+        _PosixLeaseT,
+        _PosixPendingT,
+    ]
+):
+    """Fixed complete Product operations over original payload/storage owners."""
+
+    storage: PayloadStorage
+    supervisor: Callable[[PosixLocalWheelProductSessionOwner], WorkerSupervisorJournal]
+    recovery_type: Callable[..., _PayloadReviewT]
+    lease_type: Callable[..., _PosixLeaseT]
+    pending_type: type[_PosixPendingT]
+    receipt_error_type: type[Exception]
+    error_prefix: str
+    stale_message: str
+    product_required_message: str
+
+    def review_complete(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _PayloadReviewT:
+        """Correlate an exact Product stage with its canonical Supervisor journal.
+
+        An absent or failed/fenced attempt does not establish process settlement.
+        This review does not authorize deleting the payload or restarting a Worker.
+        """
+        with (
+            self.offline(product),
+            self.storage.open_root(lambda: product.state_root) as root_fd,
+        ):
+            plan, record = _recovery.review_complete(
+                self.storage,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            )
+            return self.recovery_type(
+                plan=cast("_PayloadPlanT", plan), attempt_record=record
+            )
+
+    @contextmanager
+    def materialize(
+        self,
+        *,
+        receipt_owner: _PosixWorkerProductReceiptAuthority[
+            _ReceiptT, _SelectedT, _NativeT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+    ) -> Iterator[_PosixLeaseT]:
+        product = receipt_owner.product_owner
+        state_root = product.state_root
+        with materialize_selected_payload(
+            self.storage,
+            root=state_root,
+            authority=receipt_owner,
+            receipt=receipt,
+            attempt_id=attempt_id,
+            guard=lambda write: (
+                product.gc_gate.guard(require_write=True)
+                if write
+                else product.gc_gate.guard()
+            ),
+            assert_current=lambda: product.assert_root_gc_authority_current(),
+            supervisor=lambda: self.supervisor(product),
+            lease_factory=self.lease_type,
+            error_prefix=self.error_prefix,
+        ) as lease:
+            yield lease
+
+    def plan(
+        self,
+        *,
+        receipt_owner: _PosixWorkerProductReceiptAuthority[
+            _ReceiptT, _SelectedT, _NativeT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+    ) -> _PosixPendingT:
+        product = receipt_owner.product_owner
+        return plan_selected_payload_launch(
+            self.storage,
+            authority=receipt_owner,
+            receipt=receipt,
+            attempt_id=attempt_id,
+            guard=lambda write: (
+                product.gc_gate.guard(require_write=True)
+                if write
+                else product.gc_gate.guard()
+            ),
+            assert_current=lambda: product.assert_root_gc_authority_current(),
+            supervisor=lambda: self.supervisor(product),
+            pending_factory=cast(Callable[..., _PosixPendingT], self.pending_type),
+            error_prefix=self.error_prefix,
+        )
+
+    def bind(
+        self,
+        *,
+        receipt_owner: _PosixWorkerProductReceiptAuthority[
+            _ReceiptT, _SelectedT, _NativeT
+        ],
+        receipt: ProductWorkerActivationReceiptV1,
+        payload_lease: _PosixLeaseT,
+        supervisor_epoch: int,
+        pending_launch: _PosixPendingT | None = None,
+    ) -> ManagedWorkerLaunchRequestV1:
+        if (
+            payload_lease.receipt_fingerprint != receipt.fingerprint
+            or payload_lease.runtime.package_root
+            != receipt_owner.product_owner.state_root
+            / f"worker-payload-{payload_lease.attempt_id}"
+        ):
+            raise self.storage.error_type(self.error_prefix + "_binding_mismatch")
+        return bind_selected_payload_request(
+            self.storage,
+            authority=receipt_owner,
+            receipt=receipt,
+            payload_lease=payload_lease,
+            supervisor_epoch=supervisor_epoch,
+            pending_launch=pending_launch,
+            pending_type=self.pending_type,
+            guard=lambda write: (
+                receipt_owner.product_owner.gc_gate.guard(require_write=True)
+                if write
+                else receipt_owner.product_owner.gc_gate.guard()
+            ),
+            supervisor=lambda: self.supervisor(receipt_owner.product_owner),
+            receipt_error_type=self.receipt_error_type,
+            stale_message=self.stale_message,
+            error_prefix=self.error_prefix,
+        )
+
+    def preview_complete(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _PayloadPlanT:
+        """Read a complete abandoned stage only while Product Sessions are absent."""
+        return cast(
+            "_PayloadPlanT",
+            self._under_payload_root(
+                product, _recovery.preview_complete, attempt_id=attempt_id
+            ),
+        )
+
+    def preview_empty(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _EmptyPlanT:
+        """Review only an empty stage with no durable Supervisor claim."""
+        return cast(
+            "_EmptyPlanT",
+            self._under_payload_root(
+                product,
+                _recovery.preview_empty,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def review_unmarked(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _UnmarkedReviewT:
+        """Inspect a nonempty pre-marker stage without granting cleanup authority."""
+        return cast(
+            "_UnmarkedReviewT",
+            self._under_payload_root(
+                product,
+                _recovery.review_unmarked,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def repair_unmarked(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        expected_review: _UnmarkedReviewT,
+    ) -> _UnmarkedReviewT:
+        return cast(
+            "_UnmarkedReviewT",
+            self._under_payload_root(
+                product,
+                _recovery.repair_unmarked,
+                require_write=True,
+                expected_review=expected_review,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def reopen_unmarked(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _UnmarkedReviewT | None:
+        """Reopen a published, completed pre-marker cleanup after a process crash."""
+        return cast(
+            "_UnmarkedReviewT | None",
+            self._under_payload_root(
+                product,
+                _recovery.reopen_unmarked,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def read_unmarked_intent(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _UnmarkedReviewT | None:
+        """Read a durable cleanup intent even when its exact stage remains."""
+        return cast(
+            "_UnmarkedReviewT | None",
+            self._under_payload_root(
+                product,
+                _recovery.read_unmarked_intent,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def reopen_empty(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _EmptyPlanT | None:
+        """Read a durable repair result only after its exact stage disappeared."""
+        return cast(
+            "_EmptyPlanT | None",
+            self._under_payload_root(
+                product,
+                _recovery.reopen_empty,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def list_complete(
+        self, product: PosixLocalWheelProductSessionOwner
+    ) -> tuple[_PayloadPlanT, ...]:
+        """Enumerate every complete attempt stage under offline Product authority.
+
+        A malformed stage name or body makes the whole inventory unavailable. GC
+        and recovery callers must not infer that an unreadable attempt is absent.
+        """
+        return cast(
+            "tuple[_PayloadPlanT, ...]",
+            self._under_payload_root(product, _recovery.list_complete),
+        )
+
+    def repair_complete(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        expected_plan: _PayloadPlanT,
+    ) -> _PayloadPlanT:
+        return cast(
+            "_PayloadPlanT",
+            self._under_payload_root(
+                product,
+                _recovery.repair_complete,
+                require_write=True,
+                expected_plan=expected_plan,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def reopen_complete(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _PayloadPlanT | None:
+        """Read one completed, exact payload repair without accepting stage debt."""
+        return cast(
+            "_PayloadPlanT | None",
+            self._under_payload_root(
+                product,
+                _recovery.reopen_complete,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def read_complete_intent(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _PayloadPlanT | None:
+        """Read a durable settled cleanup intent while its stage may remain."""
+        return cast(
+            "_PayloadPlanT | None",
+            self._under_payload_root(
+                product,
+                _recovery.read_complete_intent,
+                attempt_id=attempt_id,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    def repair_empty(
+        self, product: PosixLocalWheelProductSessionOwner, *, expected_plan: _EmptyPlanT
+    ) -> _EmptyPlanT:
+        return cast(
+            "_EmptyPlanT",
+            self._under_payload_root(
+                product,
+                _recovery.repair_empty,
+                require_write=True,
+                expected_plan=expected_plan,
+                supervisor=lambda: self.supervisor(product),
+            ),
+        )
+
+    @contextmanager
+    def offline(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        require_write: bool = False,
+    ) -> Iterator[None]:
+        if not isinstance(product, PosixLocalWheelProductSessionOwner):
+            raise TypeError(self.product_required_message)
+        registry = product.epoch_runtime.registry
+        with registry.exclusive_runtime_quiescence(
+            store_id=registry.store_id
+        ) as quiescence:
+            if quiescence.active_runtime_lease_ids:
+                raise self.storage.error_type(self.error_prefix + "_runtime_active")
+            product.assert_root_gc_authority_current()
+            with product.gc_gate.guard(require_write=require_write):
+                yield
+            product.assert_root_gc_authority_current()
+
+    def _under_payload_root(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        operation: Callable[..., _PayloadResultT],
+        *,
+        require_write: bool = False,
+        **arguments: object,
+    ) -> _PayloadResultT:
+        # Only the fixed named methods select a complete existing Worker program.
+        # No caller supplies individual stages, facts, cleanup or publication.
+        with (
+            self.offline(product, require_write=require_write),
+            self.storage.open_root(lambda: product.state_root) as root_fd,
+        ):
+            return operation(self.storage, root_fd, **arguments)
+
+
+_GatedOrphanT = TypeVar("_GatedOrphanT", bound=OrphanGatedRecoveryReviewMethods)
+
+
+def read_gated_review_under_guard(
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+) -> GatedRecoveryReviewMethods:
+    return cast(
+        GatedRecoveryReviewMethods,
+        review_gated_offline(history(), product, attempt_id=attempt_id),
+    )
+
+
+def _read_gated_receipt(
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    receipt_fingerprint: str,
+    product_required_message: str,
+    receipt_invalid_message: str,
+) -> _ReceiptRecordMethods | None:
+    _require_receipt_lookup_input(
+        product,
+        receipt_fingerprint,
+        product_required_message=product_required_message,
+        receipt_invalid_message=receipt_invalid_message,
+    )
+    return history().receipts(product).find_retained_record(receipt_fingerprint)
+
+
+def review_gated_orphan_runtime(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    storage: PayloadStorage,
+    record_type: Callable[..., _GatedOrphanT],
+    product_required_message: str,
+    receipt_invalid_message: str,
+) -> _GatedOrphanT:
+    if not isinstance(product, PosixLocalWheelProductSessionOwner):
+        raise TypeError(product_required_message)
+    registry = product.epoch_runtime.registry
+    orphans = registry.review_orphans(store_id=registry.store_id)
+    with product.gc_gate.guard():
+        product.assert_root_gc_authority_current()
+        gated = read_gated_review_under_guard(history, product, attempt_id=attempt_id)
+        gate = gated.gate_record
+        receipt = (
+            None
+            if gate is None
+            else _read_gated_receipt(
+                history,
+                product,
+                receipt_fingerprint=gate.receipt_fingerprint,
+                product_required_message=product_required_message,
+                receipt_invalid_message=receipt_invalid_message,
+            )
+        )
+        matching = (
+            ()
+            if receipt is None
+            else tuple(
+                (
+                    lease
+                    for lease in orphans
+                    if lease.runtime_id == receipt.receipt.policy.product_runtime_id
+                )
+            )
+        )
+        plan = None
+        if gate is not None:
+            with storage.open_root(lambda: product.state_root) as root_fd:
+                plan = storage._verify_debt(root_fd, gate.attempt_id)
+        fence = product.epoch_runtime.cutover_result.fence
+        assert fence is not None
+        return record_type(
+            gated_review=gated,
+            receipt_record=receipt,
+            orphan_lease=matching[0] if len(matching) == 1 else None,
+            payload_plan=plan,
+            current_runtime_epoch=fence.epoch,
+            current_store_root_identity=fence.fenced_root_identity,
+        )
+
+
+def repair_gated_orphan_runtime(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    expected_review: OrphanGatedRecoveryReviewMethods,
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    storage: PayloadStorage,
+    record_type: Callable[..., _GatedOrphanT],
+    product_required_message: str,
+    receipt_invalid_message: str,
+    error_type: type[RuntimeError],
+    error_prefix: str,
+) -> PackageEpochRuntimeLeaseV1:
+    current = review_gated_orphan_runtime(
+        product,
+        attempt_id=expected_review.gated_review.attempt_id,
+        history=history,
+        storage=storage,
+        record_type=record_type,
+        product_required_message=product_required_message,
+        receipt_invalid_message=receipt_invalid_message,
+    )
+    if current != expected_review:
+        raise error_type(error_prefix + "_orphan_runtime_review_stale")
+    if not current.repair_candidate or current.orphan_lease is None:
+        raise error_type(error_prefix + "_orphan_runtime_unproven")
+    product.epoch_runtime.registry.repair_orphan(current.orphan_lease.lease_id)
+    return current.orphan_lease
+
+
+def review_gated_recovery(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    custody: PosixProductWorkerPayloadCustody,
+) -> GatedRecoveryReviewMethods:
+    """Reopen exact histories while Product runtimes are quiescent."""
+    with custody.offline(product):
+        return read_gated_review_under_guard(history, product, attempt_id=attempt_id)
+
+
+def settle_gated_attempt(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    expected_review: GatedRecoveryReviewMethods,
+    expected_plan: PayloadPlan,
+    history: Callable[[], HistoryProofBindings[HistoryT]],
+    custody: PosixProductWorkerPayloadCustody,
+    storage: PayloadStorage,
+    error_type: type[RuntimeError],
+    error_prefix: str,
+    failure_code: str,
+) -> WorkerAttemptRecordV1:
+    with custody.offline(product):
+        current = read_gated_review_under_guard(
+            history, product, attempt_id=expected_review.attempt_id
+        )
+        if current != expected_review:
+            raise error_type(error_prefix + "_gated_recovery_review_stale")
+        if not current.settlement_candidate:
+            raise error_type(error_prefix + "_gated_recovery_unproven")
+        gate = current.gate_record
+        attempt = current.attempt_record
+        assert gate is not None and attempt is not None
+        if expected_plan.attempt_id != gate.attempt_id:
+            raise error_type(error_prefix + "_gated_recovery_attempt_mismatch")
+        with storage.open_root(lambda: product.state_root) as root_fd:
+            plan = storage._verify_debt(root_fd, gate.attempt_id)
+            if (
+                plan != expected_plan
+                or plan.receipt_fingerprint != gate.receipt_fingerprint
+            ):
+                raise error_type(error_prefix + "_gated_recovery_payload_mismatch")
+            journal = custody.supervisor(product)
+            if attempt.phase in _GATED_ACTIVE_PHASES:
+                attempt = journal.transition(
+                    gate.attempt_id,
+                    expected_phase=attempt.phase,
+                    next_phase="failed",
+                    expected_record_revision=attempt.record_revision,
+                    expected_supervisor_epoch=attempt.supervisor_epoch,
+                    failure_code=failure_code,
+                )
+            return journal.transition(
+                gate.attempt_id,
+                expected_phase=attempt.phase,
+                next_phase="process_settled",
+                expected_record_revision=attempt.record_revision,
+                expected_supervisor_epoch=attempt.supervisor_epoch,
+                failure_code=attempt.failure_code,
+            )
+
+
+def _require_receipt_lookup_input(
+    product: PosixLocalWheelProductSessionOwner,
+    receipt_fingerprint: str,
+    *,
+    product_required_message: str,
+    receipt_invalid_message: str,
+) -> None:
+    if not isinstance(product, PosixLocalWheelProductSessionOwner):
+        raise TypeError(product_required_message)
+    if (
+        type(receipt_fingerprint) is not str
+        or len(receipt_fingerprint) != 64
+        or any((char not in "0123456789abcdef" for char in receipt_fingerprint))
+    ):
+        raise ValueError(receipt_invalid_message)

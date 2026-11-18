@@ -16,6 +16,9 @@ from loushang.harness.worker.history._opt_in import (
     _OptInDecisionMethods,
     fold_opt_in_events,
 )
+from loushang.harness.worker.history._windows_prepared import (
+    _WindowsPreparedSourceMethods,
+)
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _DIGEST,
     _RecoveryFacts,
@@ -24,7 +27,9 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsOptInBaseMethods(_SourceBoundBaseWireMethods):
+class _WindowsOptInBaseMethods(
+    _WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods
+):
     __slots__ = ()
     scope_id: str
     store_id: str

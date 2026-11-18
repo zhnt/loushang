@@ -274,7 +274,10 @@ def observe_sources(case, directory, patch):
             ).items():
                 if hasattr(module, name):
                     bound.setattr(module, name, value)
-        bound.setattr(sources, "WindowsPrivateDirectoryAcl", Acl)
+        history_owner = importlib.import_module(
+            "loushang.harness.package_product._windows_worker_history"
+        )
+        bound.setattr(history_owner, "WindowsPrivateDirectoryAcl", Acl)
         bound.setattr(sources, "CodingWindowsWorkerGcHistoryAuthority", Gc)
         bound.setattr(os, "fstat", fstat)
         bound.setattr(os, "fdopen", fdopen)

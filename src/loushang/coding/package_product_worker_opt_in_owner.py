@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
+from loushang.harness.package_product._worker_product_authority import (
+    _PosixWorkerProductOptInAuthority,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
-)
-from loushang.harness.package_product.product_worker_candidate import (
-    _capture_worker_opt_in_selection,
-)
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWheelBindingV1,
-    PackageProductLocalWorkerAdmissionV1,
 )
 
 from .package_product_worker_installed_native import (
@@ -19,8 +15,12 @@ from .package_product_worker_installed_native import (
 from .package_product_worker_opt_in import (
     CodingWorkerOptInDecisionV1,
     CodingWorkerOptInJournal,
+    CodingWorkerOptInRetentionProjectionV1,
 )
-from .package_product_worker_policy import CodingWorkerOptInV1
+from .package_product_worker_policy import (
+    CodingWorkerNativeClosureV1,
+    CodingWorkerOptInV1,
+)
 
 
 class CodingWorkerProductOptInError(RuntimeError):
@@ -29,56 +29,26 @@ class CodingWorkerProductOptInError(RuntimeError):
         self.code = code
 
 
-def _plan_worker_allow(
-    previous: CodingWorkerOptInDecisionV1 | None,
-    *,
-    binding: PackageProductLocalWheelBindingV1,
-    admission: PackageProductLocalWorkerAdmissionV1,
-    plugin_id: str,
-    operation_id: str,
-    expected_generation: int,
-    require_worker: bool,
-) -> CodingWorkerOptInV1:
-    """Validate a current allow or return the exact prior opt-in for replay."""
-
-    generation = 0 if previous is None else previous.generation
-    kill_generation = 0 if previous is None else previous.kill_switch_generation
-    if (
-        previous is not None
-        and previous.operation_id == operation_id
-        and previous.action == "allow"
-        and previous.generation == expected_generation + 1
-    ):
-        prior_opt_in = previous.opt_in
-        if (
-            prior_opt_in is None
-            or prior_opt_in.plugin_id != plugin_id
-            or prior_opt_in.contribution_id != admission.contribution_id
-            or prior_opt_in.owner_id != admission.owner_id
-            or prior_opt_in.artifact_digest != binding.artifact_digest
-            or prior_opt_in.native_platform != admission.native_platform
-            or prior_opt_in.require_worker != require_worker
-        ):
-            raise CodingWorkerProductOptInError(
-                "coding_worker_opt_in_operation_conflict"
-            )
-        return prior_opt_in
-    if generation != expected_generation:
-        raise CodingWorkerProductOptInError("coding_worker_opt_in_stale")
-    return CodingWorkerOptInV1(
-        plugin_id=plugin_id,
-        contribution_id=admission.contribution_id,
-        owner_id=admission.owner_id,
-        artifact_digest=binding.artifact_digest,
-        native_platform=admission.native_platform,
-        owner_selection_generation=generation + 1,
-        kill_switch_generation=kill_generation,
-        require_worker=require_worker,
-    )
-
-
-class CodingWorkerProductOptInOwner:
+class CodingWorkerProductOptInOwner(
+    _PosixWorkerProductOptInAuthority[
+        CodingWorkerOptInDecisionV1,
+        CodingWorkerOptInRetentionProjectionV1,
+        CodingWorkerOptInV1,
+    ]
+):
     """Derive an operator decision from current Product facts, without launching."""
+
+    _opt_in_error = CodingWorkerProductOptInError
+    _error_prefix = "coding_worker_"
+    _product_id = "coding"
+    _requiredness_error = "Coding Worker requiredness must be boolean"
+    _selection_error_prefix = "coding_worker"
+    _opt_in_type = CodingWorkerOptInV1
+
+    def _current_native_closure(self) -> CodingWorkerNativeClosureV1:
+        return open_coding_product_installed_worker_release_reader(
+            self._product
+        ).current_closure()
 
     def __init__(self, product_owner: PosixLocalWheelProductSessionOwner) -> None:
         if (
@@ -97,73 +67,6 @@ class CodingWorkerProductOptInOwner:
             gc_gate=product_owner.gc_gate,
             store_id=product_owner.epoch_runtime.registry.store_id,
         )
-
-    def current(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None:
-        return self._journal.current(plugin_id)
-
-    def allow(
-        self,
-        *,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        require_worker: bool,
-    ) -> CodingWorkerOptInDecisionV1:
-        """Pin the currently enabled candidate and approved native release."""
-
-        if type(require_worker) is not bool:
-            raise TypeError("Coding Worker requiredness must be boolean")
-        with self._product.gc_gate.guard(require_write=True):
-            binding, admission = _capture_worker_opt_in_selection(
-                self._product,
-                plugin_id,
-                product_id="coding",
-                error_type=CodingWorkerProductOptInError,
-                error_prefix="coding_worker",
-            )
-            closure = open_coding_product_installed_worker_release_reader(
-                self._product
-            ).current_closure()
-            if closure.native_platform != admission.native_platform:
-                raise CodingWorkerProductOptInError(
-                    "coding_worker_opt_in_native_platform_changed"
-                )
-            previous = self._journal.current(plugin_id)
-            opt_in = _plan_worker_allow(
-                previous,
-                binding=binding,
-                admission=admission,
-                plugin_id=plugin_id,
-                operation_id=operation_id,
-                expected_generation=expected_generation,
-                require_worker=require_worker,
-            )
-            return self._journal.change(
-                plugin_id=plugin_id,
-                operation_id=operation_id,
-                expected_generation=expected_generation,
-                action="allow",
-                opt_in=opt_in,
-            )
-
-    def revoke(
-        self,
-        *,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-    ) -> CodingWorkerOptInDecisionV1:
-        """Revoke even when the selected candidate or native bytes disappeared."""
-
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            return self._journal.change(
-                plugin_id=plugin_id,
-                operation_id=operation_id,
-                expected_generation=expected_generation,
-                action="revoke",
-                opt_in=None,
-            )
 
 
 __all__ = ["CodingWorkerProductOptInError", "CodingWorkerProductOptInOwner"]

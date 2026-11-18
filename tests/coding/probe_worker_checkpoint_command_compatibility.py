@@ -15,6 +15,7 @@ import pytest
 import loushang.coding.package_product_worker_history_checkpoint as checkpoint
 import loushang.coding.package_product_worker_history_segments as segments
 import loushang.coding.package_product_worker_history_stream_snapshot as snapshots
+import loushang.harness.package_product._linux_worker_history as history_owner
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -82,9 +83,7 @@ def observe_checkpoint(case, root, patch):
             supervisor_epoch_high_water=(("key", 1),),
         )
 
-    patch.setattr(
-        checkpoint, "_review_coding_product_worker_history_under_guard", review
-    )
+    patch.setattr(history_owner, "review_history_under_guard", review)
     if case in {"duplicate", "seal-next", "source-tampered"}:
         checkpoint.publish_coding_product_worker_history_checkpoint(
             product, attempt_id=ATTEMPT

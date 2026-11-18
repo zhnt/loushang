@@ -1,7 +1,25 @@
 # Coding剩余职责实施优先级
 
-当前仅收尾既有提交与必要发布验证修复；按用户最新指令，交付并同步本地后暂停goal。
-下列完整职责排序供后续恢复使用，不构成本次继续开启下一批的指令。
+## 2026-11-18 阶段交付后的候选评估
+
+按当前源码 `578202e15` 重核，Coding为434份Python源码、99,399物理行。当前用户要求先交付已有修改、同步本地，再评估下一块；本节是候选建议，尚未实施新迁移，也不改变C07超过一半退出的原验收标准。C07仍有13,235行，距离目标还差3,103行；其当前成果不作为整组完成。
+
+排序依据是剩余完整机制、已有owner可接管程度、旧流程退出、系统净成本和兼容／验证负担。组行数仅表示审计范围；原型必须计入所有Code适配和Harness增长，不能预先承诺迁移行数或比例。
+
+| 顺序 | 当前范围 | 首个完整候选链 | 已有能力与保留边界 |
+| --- | ---: | --- | --- |
+| 1．C13 LSP | 21文件／5,228行 | 协议初始化与有界请求→文档版本同步→运行实例诊断替换→退休释放；先核`client`、`supervisor`、`documents`、`diagnostics`、`positions`五文件，共1,278行，包含必要保留代码 | 已有JSON-RPC传输、`ProcessClientSupervisor`和授权启动／Workspace读取。保留Coding服务器选择、Plugin准入、只读／批准边界、Tool呈现与必要名义类型；原传输和进程寿命不重复计益 |
+| 2．C04 Continuity | 2文件／2,809行 | 配置源获取→启动重放→准备／发布→失败交接 | 复用Continuity staging、binding lifetime、Plugin Management与RuntimeProfileBinder；Code保来源／限额／cwd和canonical restore政策，已共享shutdown／Task不重计，保真实Path／FileCopy／引用支持 |
+| 3．C01 启动／Plugin／资源装配 | 22文件／12,134行 | 选一条准备根保管→审批／选择→构图→发布／失败交接 | 复用`PreparationRootCustody`、`SelectedProductPreparationScope`和原Construction／Product composition；Code保组合集、信任、模型／工具选择及Profile。不能把大`bootstrap`整体当机制，先前接口税过高的原型不重做 |
+| 4．C10 Product runtime／C02托管接入 | 分别5,185／7,925行 | 剩余freshness／open／repair／release或普通／Resume交接 | 分别接既有Package Product／Session／Transcript或AppHost owner；已共享Catalog读取、factory release、托管进程控制不重计，不把AppHost职责塞进Harness |
+
+首选C13的具体依据是：[`LspClient`](../../../../src/loushang/coding/lsp/client.py)已继承原[`ContentLengthJsonRpcProcessTransport`](../../../../src/loushang/harness/workspace/process/json_rpc.py)，而握手、LSP请求和协议关闭仍在Code；[`LspServerSupervisor`](../../../../src/loushang/coding/lsp/supervisor.py)已复用原[`ProcessClientSupervisor`](../../../../src/loushang/harness/workspace/process/supervision.py)，剩余文档／诊断关联可以沿同一实例审查。应由共享协议层承接完整链，不新增第二套传输、进程注册或生命周期管理。Harness当前通用DiagnosticsService是运行诊断服务，不能仅凭名称相同就替代带文档版本的LSP诊断收件箱。这个候选仍需端到端成本原型和兼容验证，尚不构成新增LSP组件的接受记录。
+
+C08／C09的归档、恢复、接受事务已有共享owner，余量应优先证明具体旧流程可退出；C11／C12包含真实语法、呈现、仓库检查和评审政策，不按整目录行数排序。C07继续保留未完成清单，不能依靠字段搬运、压行或薄转发达到多数目标。
+
+## 历史优先队列
+
+以下保留2026-11-15的排序和当时“收尾交付后暂停Goal”的交付说明，供追溯；它不控制本轮状态，也不表示本轮收到新的暂停指令。
 
 2026-11-15，按用户要求优先完整可迁移职责。排序依据是实际尚未共享的操作体、现有
 owner能否完整承接、旧实现退出和全部适配成本；目录行数只作审计范围，不作可删除预算。

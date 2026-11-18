@@ -41,6 +41,7 @@ from .package_product_worker_windows_supervisor_base import (
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerHistorySemanticJoinV1(_WindowsHistoryJoinMethods):
+    _preparation_type = CodingWindowsWorkerHistoryPreparationV1
     """One source-bound, no-effect agreement of the six retained ledgers."""
 
     _opt_in_type = CodingWindowsWorkerOptInSemanticBaseV1
@@ -63,31 +64,7 @@ class CodingWindowsWorkerHistorySemanticJoinV1(_WindowsHistoryJoinMethods):
         prepared: CodingWindowsWorkerHistoryPreparationV1,
         semantic: CodingWindowsWorkerHistorySemanticReadV1,
     ) -> CodingWindowsWorkerHistorySemanticJoinV1:
-        if type(prepared) is not CodingWindowsWorkerHistoryPreparationV1:
-            raise ValueError("Windows Worker history join preparation is invalid")
-        prepared.require_semantic_read(semantic)
-        source = semantic.source_snapshot
-        recovery = semantic.offline_recovery
-        observed = cls._observed_attempt_ids(recovery)
-        opt_in = CodingWindowsWorkerOptInSemanticBaseV1.from_semantic_read(
-            prepared, semantic
-        )
-        receipt = CodingWindowsWorkerReceiptSemanticBaseV1.from_semantic_read(
-            prepared, semantic
-        )
-        supervisor = CodingWindowsWorkerSupervisorSemanticBaseV1.from_semantic_read(
-            prepared, semantic
-        )
-        c5 = CodingWindowsWorkerC5SemanticBaseV1.from_semantic_read(prepared, semantic)
-        launch = CodingWindowsWorkerLaunchIntentSemanticBaseV1.from_semantic_read(
-            prepared, semantic
-        )
-        native = CodingWindowsWorkerNativeProvisioningSemanticBaseV1.from_semantic_read(
-            prepared, semantic
-        )
-        return cls._from_source_bases(
-            source, recovery, observed, opt_in, receipt, supervisor, c5, launch, native
-        )
+        return cls._from_prepared_history(prepared, semantic)
 
 
 __all__ = ["CodingWindowsWorkerHistorySemanticJoinV1"]

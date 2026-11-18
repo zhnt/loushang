@@ -28,7 +28,7 @@ from .package_product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
 from .package_product_worker_windows_history_sources import (
-    CodingWindowsWorkerHistorySemanticReadV1,
+    CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
 
 _MAX_BASE_BYTES = 32 * 1024 * 1024
@@ -43,24 +43,13 @@ class CodingWindowsWorkerOptInReplayV1:
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerOptInSemanticBaseV1(_WindowsOptInBaseMethods):
+    _preparation_type = CodingWindowsWorkerHistoryPreparationV1
+    _preparation_label = "opt-in"
     _decision_type = CodingWorkerOptInDecisionV1
     _error_type = CodingWorkerOptInJournalError
     _replay_type = CodingWindowsWorkerOptInReplayV1
 
     latest_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
-
-    @classmethod
-    def from_semantic_read(
-        cls,
-        prepared: CodingWindowsWorkerHistoryPreparationV1,
-        semantic: CodingWindowsWorkerHistorySemanticReadV1,
-    ) -> CodingWindowsWorkerOptInSemanticBaseV1:
-        if type(prepared) is not CodingWindowsWorkerHistoryPreparationV1:
-            raise ValueError("Windows Worker opt-in preparation is invalid")
-        prepared.require_semantic_read(semantic)
-        return cls._from_source_read(
-            semantic.source_snapshot, semantic.offline_recovery
-        )
 
     def replay(
         self, events: tuple[CodingWorkerOptInDecisionV1, ...]

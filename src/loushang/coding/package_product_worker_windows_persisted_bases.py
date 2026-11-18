@@ -9,13 +9,19 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from loushang.harness.package_product._windows_worker_history import (
+    capture_windows_product_worker_persisted_history,
+)
 from loushang.harness.package_product._worker_windows_attempt import (
     read_windows_product_worker_persisted_bases,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.worker.history._windows_persisted import (
+    _WindowsPersistedBasesMethods,
 )
 
 from .package_legacy_windows_receipt import _receipt_io
@@ -35,6 +41,9 @@ from .package_product_worker_windows_checkpoint import (
 )
 from .package_product_worker_windows_gc_history import (
     _history_names,
+)
+from .package_product_worker_windows_history_join import (
+    CodingWindowsWorkerHistorySemanticJoinV1,
 )
 from .package_product_worker_windows_launch_intent_base import (
     CodingWindowsWorkerLaunchIntentSemanticBaseV1,
@@ -62,7 +71,10 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerPersistedBasesV1:
+class CodingWindowsWorkerPersistedBasesV1(_WindowsPersistedBasesMethods):
+    _checkpoint_type = CodingWindowsWorkerHistoryCheckpointV1
+    _join_type = CodingWindowsWorkerHistorySemanticJoinV1
+
     checkpoint: CodingWindowsWorkerHistoryCheckpointV1
     opt_in: CodingWindowsWorkerOptInSemanticBaseV1
     receipt: CodingWindowsWorkerReceiptSemanticBaseV1
@@ -70,60 +82,6 @@ class CodingWindowsWorkerPersistedBasesV1:
     c5: CodingWindowsWorkerC5SemanticBaseV1
     launch_intent: CodingWindowsWorkerLaunchIntentSemanticBaseV1
     native_provisioning: CodingWindowsWorkerNativeProvisioningSemanticBaseV1
-
-    def __post_init__(self) -> None:
-        if type(self.checkpoint) is not CodingWindowsWorkerHistoryCheckpointV1:
-            raise ValueError("Windows Worker persisted bases are invalid")
-        source = self.checkpoint.source_snapshot
-        bases = (
-            ("optIn", self.opt_in, CodingWindowsWorkerOptInSemanticBaseV1),
-            ("receipt", self.receipt, CodingWindowsWorkerReceiptSemanticBaseV1),
-            (
-                "supervisor",
-                self.supervisor,
-                CodingWindowsWorkerSupervisorSemanticBaseV1,
-            ),
-            ("c5", self.c5, CodingWindowsWorkerC5SemanticBaseV1),
-            (
-                "launchIntent",
-                self.launch_intent,
-                CodingWindowsWorkerLaunchIntentSemanticBaseV1,
-            ),
-            (
-                "nativeProvisioning",
-                self.native_provisioning,
-                CodingWindowsWorkerNativeProvisioningSemanticBaseV1,
-            ),
-        )
-        if (
-            any(
-                type(base) is not expected
-                or base.scope_id != source.scope_id
-                or base.store_id != source.store_id
-                or base.source_snapshot_digest != source.snapshot_digest
-                for _, base, expected in bases
-            )
-            or self.checkpoint.base_digests
-            != tuple((name, base.record_digest) for name, base, _ in bases)
-            or self.checkpoint.opt_in_operation_ids != self.opt_in.retired_operation_ids
-            or self.checkpoint.receipt_fingerprints
-            != self.receipt.retired_receipt_fingerprints
-            or self.checkpoint.native_provisioning_attempt_ids
-            != self.native_provisioning.attempt_ids
-            or not set(self.native_provisioning.attempt_ids).issubset(
-                self.c5.known_attempt_ids
-            )
-            or not set(self.supervisor.retired_attempt_ids).issubset(
-                self.launch_intent.intent_attempt_ids
-            )
-            or not set(self.launch_intent.intent_attempt_ids).issubset(
-                self.native_provisioning.attempt_ids
-            )
-            or not set(self.native_provisioning.attempt_ids).issubset(
-                self.checkpoint.attempt_ids
-            )
-        ):
-            raise ValueError("Windows Worker persisted bases are invalid")
 
 
 def _read_coding_windows_worker_persisted_bases(
@@ -142,20 +100,12 @@ def _read_coding_windows_worker_persisted_bases(
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Windows Worker persisted bases require their Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker persisted bases runtime remains active")
-        product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                result = _read_coding_windows_worker_persisted_bases_under_gc_guard(
-                    product, root, require_cutover=require_cutover
-                )
-            product.assert_root_gc_authority_current()
-            return result
+    result, marker = capture_windows_product_worker_persisted_history(
+        product,
+        read_under_guard=_read_coding_windows_worker_persisted_bases_under_gc_guard,
+        require_cutover=require_cutover,
+    )
+    return result, cast("CodingWindowsWorkerHistoryCutoverRecordV1 | None", marker)
 
 
 def _read_coding_windows_worker_persisted_bases_under_gc_guard(
@@ -188,19 +138,7 @@ def _read_coding_windows_worker_persisted_bases_under_gc_guard(
         cutover_name=WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
         limits=lambda: (_MAX_CHECKPOINT_BYTES, _MAX_BASE_BYTES, _MAX_CUTOVER_BYTES),
         decode_checkpoint=CodingWindowsWorkerHistoryCheckpointV1.from_bytes,
-        make_result=lambda checkpoint, raw: CodingWindowsWorkerPersistedBasesV1(
-            checkpoint=checkpoint,
-            opt_in=CodingWindowsWorkerOptInSemanticBaseV1.from_bytes(raw[0]),
-            receipt=CodingWindowsWorkerReceiptSemanticBaseV1.from_bytes(raw[1]),
-            supervisor=CodingWindowsWorkerSupervisorSemanticBaseV1.from_bytes(raw[2]),
-            c5=CodingWindowsWorkerC5SemanticBaseV1.from_bytes(raw[3]),
-            launch_intent=CodingWindowsWorkerLaunchIntentSemanticBaseV1.from_bytes(
-                raw[4]
-            ),
-            native_provisioning=CodingWindowsWorkerNativeProvisioningSemanticBaseV1.from_bytes(
-                raw[5]
-            ),
-        ),
+        make_result=CodingWindowsWorkerPersistedBasesV1._from_retained_bytes,
         cutover_codec=_persisted_cutover_codec,
     )
 

@@ -151,9 +151,20 @@ def reflect():
             if value is cleanup.CodingPosixWorkerCleanupEvidenceAuthority:
                 row["authority_id"] = value.authority_id
                 row["authority_fingerprint"] = value.authority_fingerprint
-            for member_name, raw in value.__dict__.items():
-                if member_name.startswith("_") and member_name != "__init__":
-                    continue
+            original_methods = _FIXED["observations"]["api"]["value"][module.__name__][
+                name
+            ]["methods"]
+            own_methods = {
+                member_name
+                for member_name, raw in value.__dict__.items()
+                if (not member_name.startswith("_") or member_name == "__init__")
+                and (
+                    isinstance(raw, (property, classmethod, staticmethod))
+                    or inspect.isfunction(raw)
+                )
+            }
+            for member_name in sorted(set(original_methods) | own_methods):
+                raw = inspect.getattr_static(value, member_name)
                 if isinstance(raw, property):
                     row["methods"][member_name] = signature(raw.fget)
                 elif isinstance(raw, (classmethod, staticmethod)) or inspect.isfunction(
@@ -417,4 +428,16 @@ _FIXED = json.loads(
 @pytest.mark.parametrize("case", CASES)
 def test_fixed_registered_recovery_values(case):
     """Compare only immutable original-source observations; never recapture."""
-    assert observe(case) == _FIXED["observations"][case]
+    expected = copy.deepcopy(_FIXED["observations"][case])
+    if case == "api":
+        owners = json.loads(
+            (
+                Path(__file__).parent
+                / "fixtures"
+                / "worker_c07_inherited_method_owners_v1.json"
+            ).read_text()
+        )["registered_api_methods"]
+        for module, classes in owners.items():
+            for name, methods in classes.items():
+                expected["value"][module][name]["methods"].update(methods)
+    assert observe(case) == expected

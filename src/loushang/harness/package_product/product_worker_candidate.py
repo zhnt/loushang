@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from re import Pattern
 from typing import Literal, Protocol
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
@@ -58,6 +59,51 @@ from .product_runtime import PackageProductRuntimeRequestV1
 class ProductWorkerOptInFacts:
     __slots__ = ()
     owner_id: str
+    plugin_id: str
+    contribution_id: str
+    artifact_digest: str
+    native_platform: str
+    require_worker: bool
+    owner_selection_generation: int
+    kill_switch_generation: int
+
+    def to_dict(self) -> dict[str, object]:
+        raise NotImplementedError
+
+    def _validate_opt_in(
+        self,
+        *,
+        max_text: int,
+        identifier: Pattern[str],
+        digest: Pattern[str],
+        native_profiles: Mapping[str, str],
+        label: str,
+    ) -> None:
+        for value in (self.plugin_id, self.contribution_id, self.owner_id):
+            if (
+                not isinstance(value, str)
+                or len(value) > max_text
+                or identifier.fullmatch(value) is None
+            ):
+                raise ValueError(f"{label} opt-in identity is invalid")
+        if (
+            not isinstance(self.artifact_digest, str)
+            or digest.fullmatch(self.artifact_digest) is None
+        ):
+            raise ValueError(f"{label} opt-in digest is invalid")
+        if (
+            not isinstance(self.native_platform, str)
+            or self.native_platform not in native_profiles
+        ):
+            raise ValueError(f"{label} opt-in platform is unsupported")
+        if (
+            type(self.owner_selection_generation) is not int
+            or self.owner_selection_generation < 1
+            or type(self.kill_switch_generation) is not int
+            or self.kill_switch_generation < 0
+            or type(self.require_worker) is not bool
+        ):
+            raise ValueError(f"{label} opt-in generation or requiredness is invalid")
 
 
 class ProductWorkerNativeClosureFacts:
@@ -66,6 +112,33 @@ class ProductWorkerNativeClosureFacts:
     native_profile_catalog_revision: str
     containment_launcher_digest: str
     containment_profile_digest: str
+
+    def to_dict(self) -> dict[str, object]:
+        raise NotImplementedError
+
+    def _validate_native_closure(
+        self,
+        *,
+        max_text: int,
+        opaque: Pattern[str],
+        digest: Pattern[str],
+        native_profiles: Mapping[str, str],
+        label: str,
+    ) -> None:
+        if (
+            not isinstance(self.native_platform, str)
+            or self.native_platform not in native_profiles
+            or not isinstance(self.native_profile_catalog_revision, str)
+            or len(self.native_profile_catalog_revision) > max_text
+            or opaque.fullmatch(self.native_profile_catalog_revision) is None
+        ):
+            raise ValueError(f"{label} native closure identity is invalid")
+        for value in (
+            self.containment_launcher_digest,
+            self.containment_profile_digest,
+        ):
+            if not isinstance(value, str) or digest.fullmatch(value) is None:
+                raise ValueError(f"{label} native closure digest is invalid")
 
 
 class ProductWorkerNativeLaunchMaterialFacts:

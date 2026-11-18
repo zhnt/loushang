@@ -91,12 +91,20 @@ def test_completed_unlaunched_retirement_requires_exact_history(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     intent, review, receipt, attempt = _history()
-    monkeypatch.setattr(retirement, "_read_start", lambda *_: review)
-    monkeypatch.setattr(retirement, "_read_receipt", lambda *_: receipt)
-    monkeypatch.setattr(retirement, "_read_root_intent", lambda *_: receipt)
-    monkeypatch.setattr(retirement, "_read_intent_under_gc_guard", lambda *_: intent)
+    monkeypatch.setattr(type(retirement._records), "read_start", lambda *_: review)
+    monkeypatch.setattr(type(retirement._records), "read_receipt", lambda *_: receipt)
     monkeypatch.setattr(
-        retirement, "_other_retirement_artifact_present", lambda *_: False
+        type(retirement._records), "read_root_intent", lambda *_: receipt
+    )
+    monkeypatch.setattr(
+        retirement,
+        "_require_completed_unlaunched_retirement_under_gc_guard",
+        replace(
+            retirement._operations, read_intent=lambda *_: intent
+        ).require_completed,
+    )
+    monkeypatch.setattr(
+        type(retirement._operations), "other_artifact", lambda *_: False
     )
     retirement._require_completed_unlaunched_retirement_under_gc_guard(
         None,
@@ -115,7 +123,7 @@ def test_completed_unlaunched_retirement_requires_exact_history(
                 None,
                 replace(attempt, **changed),  # type: ignore[arg-type]
             )
-    monkeypatch.setattr(retirement, "_read_root_intent", lambda *_: None)
+    monkeypatch.setattr(type(retirement._records), "read_root_intent", lambda *_: None)
     with pytest.raises(retirement.CodingWindowsWorkerUnlaunchedRetirementError):
         retirement._require_completed_unlaunched_retirement_under_gc_guard(
             None,

@@ -13,15 +13,10 @@ from loushang.harness.package_product._worker_product_authority import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWheelBindingV1,
-    PackageProductLocalWorkerAdmissionV1,
-)
 
 from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
 from .package_product_worker_opt_in_owner import (
     CodingWorkerProductOptInError,
-    _plan_worker_allow,
 )
 from .package_product_worker_policy import CodingWorkerOptInV1
 from .package_product_worker_windows_installed_backend import (
@@ -37,6 +32,7 @@ class CodingWindowsWorkerProductOptInOwner(
         CodingWorkerOptInDecisionV1, CodingWorkerOptInV1
     ]
 ):
+    _opt_in_type = CodingWorkerOptInV1
     _opt_in_error = CodingWorkerProductOptInError
     _error_prefix = "coding_worker_"
     _product_id = "coding"
@@ -65,62 +61,6 @@ class CodingWindowsWorkerProductOptInOwner(
         self, product: WindowsLocalWheelProductSessionOwner
     ) -> _WindowsBackendInstalledMethods:
         return read_coding_windows_worker_installed_backend_release(product)
-
-    def _plan_allow(
-        self,
-        previous: CodingWorkerOptInDecisionV1 | None,
-        *,
-        binding: PackageProductLocalWheelBindingV1,
-        admission: PackageProductLocalWorkerAdmissionV1,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        require_worker: bool,
-    ) -> CodingWorkerOptInV1:
-        return _plan_worker_allow(
-            previous,
-            binding=binding,
-            admission=admission,
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-            require_worker=require_worker,
-        )
-
-    def current(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None:
-        return super().current(plugin_id)
-
-    def allow(
-        self,
-        *,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        require_worker: bool,
-    ) -> CodingWorkerOptInDecisionV1:
-        """Record only the selected candidate with an approved installed backend."""
-
-        return super().allow(
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-            require_worker=require_worker,
-        )
-
-    def revoke(
-        self,
-        *,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-    ) -> CodingWorkerOptInDecisionV1:
-        """Persist a kill generation even if the release has disappeared."""
-
-        return super().revoke(
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-        )
 
 
 __all__ = ["CodingWindowsWorkerProductOptInOwner"]

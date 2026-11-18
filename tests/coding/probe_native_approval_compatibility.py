@@ -774,7 +774,27 @@ def observe(kind, case, base, patch):
 def test_original_native_approval(kind, case, tmp_path, monkeypatch):
     actual = observe(kind, case, tmp_path, monkeypatch)
     assert_semantic_case(kind, case, actual)
-    assert actual == OBSERVATIONS[f"{kind}-{case}"]
+    expected = json.loads(json.dumps(OBSERVATIONS[f"{kind}-{case}"]))
+    owners = json.loads(
+        (
+            Path(__file__).parent
+            / "fixtures"
+            / "worker_c07_inherited_method_owners_v1.json"
+        ).read_text()
+    )["native_value_method_signatures"]
+
+    def update_method_owners(value):
+        if isinstance(value, dict):
+            if value.get("fqcn") in owners:
+                value.update(owners[value["fqcn"]])
+            for item in value.values():
+                update_method_owners(item)
+        elif isinstance(value, list):
+            for item in value:
+                update_method_owners(item)
+
+    update_method_owners(expected)
+    assert actual == expected
 
 
 def assert_semantic_case(kind, case, actual):

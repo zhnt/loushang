@@ -5,20 +5,30 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
+from dataclasses import asdict
 from hashlib import sha256
-from typing import ClassVar, Literal, Self, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeVar, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochRuntimeLeaseV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.worker.journal import WorkerAttemptRecordV1
+from loushang.harness.worker.payload._records import PayloadPlan
 
 from .._segmented_history import CodingWorkerSegmentedHistoryV1
 from ..gated_start import WorkerNativeProcessIdentityV1
 from ._base_codec import _BASE_ERRORS, _BaseWireMethods, _unchanged
+from ._receipts import _ReceiptRecordMethods
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 
@@ -416,4 +426,119 @@ class _StartGateBaseMethods(_BaseWireMethods):
             last_revision=revision,
             current_records=tuple(latest[key] for key in sorted(latest)),
             retired_attempt_ids=frozenset(self.retired_attempt_ids),
+        )
+
+
+_GATED_ACTIVE_PHASES = frozenset(
+    {"claimed", "launching", "handshaking", "healthy", "draining"}
+)
+_GATED_RECOVERABLE_PHASES = _GATED_ACTIVE_PHASES | {"failed", "fenced"}
+
+
+class GatedRecoveryReviewMethods:
+    __slots__ = ()
+    attempt_id: str
+    gate_record: _StartGateRecordMethods | None
+    attempt_record: WorkerAttemptRecordV1 | None
+    native_closure_current: bool
+    group_status: Literal[
+        "unobserved",
+        "absent",
+        "present",
+        "prior_boot_absent",
+        "context_stale",
+        "unknown",
+    ]
+
+    @property
+    def same_boot_settlement_candidate(self) -> bool:
+        return (
+            self.gate_record is not None
+            and self.gate_record.phase == "bound"
+            and (self.attempt_record is not None)
+            and (self.attempt_record.phase in _GATED_RECOVERABLE_PHASES)
+            and self.native_closure_current
+            and (self.group_status == "absent")
+        )
+
+    @property
+    def prior_boot_settlement_candidate(self) -> bool:
+        return (
+            self.gate_record is not None
+            and self.gate_record.phase == "bound"
+            and (self.attempt_record is not None)
+            and (self.attempt_record.phase in _GATED_RECOVERABLE_PHASES)
+            and self.native_closure_current
+            and (self.group_status == "prior_boot_absent")
+        )
+
+    @property
+    def settlement_candidate(self) -> bool:
+        return (
+            self.same_boot_settlement_candidate or self.prior_boot_settlement_candidate
+        )
+
+
+class OrphanGatedRecoveryReviewMethods:
+    __slots__ = ()
+    _product_id: str
+    gated_review: GatedRecoveryReviewMethods
+    receipt_record: _ReceiptRecordMethods | None
+    orphan_lease: PackageEpochRuntimeLeaseV1 | None
+    payload_plan: PayloadPlan | None
+    current_runtime_epoch: int
+    current_store_root_identity: str
+
+    @property
+    def review_id(self) -> str:
+        gated = self.gated_review
+        return sha256(
+            canonical_json_bytes(
+                {
+                    "reviewVersion": 1,
+                    "attemptId": gated.attempt_id,
+                    "gateRecord": None
+                    if gated.gate_record is None
+                    else gated.gate_record.to_dict(),
+                    "attemptRecord": None
+                    if gated.attempt_record is None
+                    else gated.attempt_record.to_dict(),
+                    "nativeClosureCurrent": gated.native_closure_current,
+                    "groupStatus": gated.group_status,
+                    "receiptRecord": None
+                    if self.receipt_record is None
+                    else self.receipt_record.to_dict(),
+                    "orphanLease": None
+                    if self.orphan_lease is None
+                    else self.orphan_lease.to_dict(),
+                    "payloadPlan": None
+                    if self.payload_plan is None
+                    else asdict(cast("DataclassInstance", self.payload_plan)),
+                    "runtimeEpoch": self.current_runtime_epoch,
+                    "storeRootIdentity": self.current_store_root_identity,
+                }
+            )
+        ).hexdigest()
+
+    @property
+    def repair_candidate(self) -> bool:
+        gate = self.gated_review.gate_record
+        receipt = self.receipt_record
+        lease = self.orphan_lease
+        plan = self.payload_plan
+        return (
+            self.gated_review.settlement_candidate
+            and gate is not None
+            and (receipt is not None)
+            and (lease is not None)
+            and (plan is not None)
+            and (receipt.receipt.fingerprint == gate.receipt_fingerprint)
+            and (receipt.receipt.policy.product_id == self._product_id)
+            and (receipt.receipt.policy.fingerprint == gate.policy_fingerprint)
+            and (receipt.receipt.policy.product_scope_id == gate.scope_id)
+            and (lease.runtime_id == receipt.receipt.policy.product_runtime_id)
+            and (lease.runtime_epoch == self.current_runtime_epoch)
+            and (lease.store_root_identity == self.current_store_root_identity)
+            and (plan.attempt_id == gate.attempt_id)
+            and (plan.receipt_fingerprint == gate.receipt_fingerprint)
         )

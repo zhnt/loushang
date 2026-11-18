@@ -1,6 +1,6 @@
 """Compatibility imports for the shared Worker provisioning journal.
 
-Product binding stays in the original Coding provisioning owner.
+Product binding uses the existing Harness Provisioning owner through Coding admission.
 """
 
 from loushang.harness.worker._windows_provisioning_journal import (

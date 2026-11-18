@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Literal
 
 from loushang.harness.worker.history._windows_record_journals import WindowsOptInRecords
 
@@ -53,36 +52,6 @@ class CodingWindowsWorkerOptInJournal(
     @property
     def path(self) -> Path:
         return self._path
-
-    def current(
-        self, plugin_id: str, *, directory_fd: int
-    ) -> CodingWorkerOptInDecisionV1 | None:
-        return super().current(plugin_id, directory_fd=directory_fd)
-
-    def history_read_only(
-        self, *, directory_fd: int
-    ) -> tuple[CodingWorkerOptInDecisionV1, ...]:
-        "Read every retained operation without creating a journal or lock."
-        return super().history_read_only(directory_fd=directory_fd)
-
-    def change(
-        self,
-        *,
-        directory_fd: int,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        action: Literal["allow", "revoke"],
-        opt_in: CodingWorkerOptInV1 | None,
-    ) -> CodingWorkerOptInDecisionV1:
-        return super().change(
-            directory_fd=directory_fd,
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-            action=action,
-            opt_in=opt_in,
-        )
 
     @staticmethod
     def _require_plugin_id(plugin_id: str) -> None:
