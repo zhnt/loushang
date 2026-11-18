@@ -55,6 +55,16 @@ def check_web(
             instance = call("manage", action="connect")["serviceInstanceId"]
             assert instance and instance == host.get("serviceInstanceId", instance)
             call("workspace", action="register", path=str(workspace))
+            catalog = call("workspace", action="models", path=str(workspace))
+            model = next(
+                choice for choice in catalog["models"]
+                if choice["modelId"] == "gpt-6.2-sol" and choice["endpointId"] == "coding-responses"
+            )
+            assert model["supportsThinking"]
+            assert "thinking" not in catalog
+            preview = call("workspace", action="models", path=str(workspace), modelId=model["id"])
+            assert preview["currentId"] == model["id"]
+            assert "high" in preview["thinking"]["availableLevels"]
             call("workspace", action="open", path=str(workspace))
             view_id = str(uuid4())
             snapshot = call("live", action="snapshot", workspace=str(workspace), viewId=view_id)
