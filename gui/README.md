@@ -35,15 +35,20 @@ For Windows source development, prepare the installed command in the repository
 environment and run the desktop:
 
 ```powershell
-uv sync
+uv sync --locked
 npm.cmd --prefix gui ci
 npm.cmd --prefix gui run dev
 ```
 
-Choose **Start and connect** from the disconnected desktop. The same setup
-supports `npm.cmd --prefix gui run dev:web`. Enable Web service controls by
-setting `web.manageLocal` in the BFF configuration below. Development starts the frontend
-before AppHost. Windows management runs without a console window.
+Development automatically connects to a running local AppHost. If AppHost is
+stopped, choose **Start and connect** from the disconnected desktop. The
+launcher looks for `.venv/Scripts/loushang-mux.exe`, honors
+`UV_PROJECT_ENVIRONMENT`, and prints the expected path if the command is
+missing. Set `LOUSHANG_MUX` to an absolute path to use a different command.
+
+For browser development, use `npm.cmd --prefix gui run dev:web`. Enable Web
+service controls by setting `web.manageLocal` in the BFF configuration below.
+Windows management runs without a console window.
 
 Linux installed packages configure the bundled management command. For Linux
 desktop development, run these commands from the checkout root:

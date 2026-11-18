@@ -9,11 +9,8 @@ const manifest = path.join(guiDir, "src-tauri", "Cargo.toml");
 const cargo = rustTool("cargo");
 const rustc = rustTool("rustc");
 const npmEntry = process.env.npm_execpath;
-const devMux = path.join(guiDir, "..", ".venv", "Scripts", "loushang-mux.exe");
 const childEnv = {
   ...process.env,
-  ...(process.platform === "win32" && !process.env.LOUSHANG_MUX && existsSync(devMux)
-    ? { LOUSHANG_MUX: devMux } : {}),
   ...(path.isAbsolute(cargo) ? { PATH: `${path.dirname(cargo)}${path.delimiter}${process.env.PATH ?? ""}` } : {}),
 };
 
@@ -102,13 +99,18 @@ function buildWeb() {
 }
 
 function runNative(command, fixtureBridge = false) {
-  if (command === "dev" && process.platform === "linux" && !childEnv.LOUSHANG_MUX) {
-    const mux = path.join(guiDir, "..", ".venv", "bin", "loushang-mux");
+  const windows = process.platform === "win32";
+  if (command === "dev" && (windows || process.platform === "linux") && !childEnv.LOUSHANG_MUX) {
+    const environment = path.resolve(guiDir, "..", childEnv.UV_PROJECT_ENVIRONMENT || ".venv");
+    const mux = windows
+      ? path.join(environment, "Scripts", "loushang-mux.exe")
+      : path.join(environment, "bin", "loushang-mux");
     if (statSync(mux, { throwIfNoEntry: false })?.isFile()) {
       childEnv.LOUSHANG_MUX = mux;
-      childEnv.LOUSHANG_MUX_BACKEND ??= "managed";
+      if (!windows) childEnv.LOUSHANG_MUX_BACKEND ??= "managed";
     } else if (!childEnv.LOUSHANG_APP_RECORD_ROOT) {
-      process.stderr.write("Local AppHost command is missing. Run uv sync --locked in this checkout to enable Host controls.\n");
+      process.stderr.write(`Local AppHost command not found at ${mux}.\n`);
+      process.stderr.write("Run uv sync --locked in this checkout or set LOUSHANG_MUX to the absolute path of the installed command.\n");
     }
   }
   const webManifest = path.join(guiDir, "web", "Cargo.toml");
@@ -118,7 +120,7 @@ function runNative(command, fixtureBridge = false) {
   if (fixtureBridge) args.push("--features", "fixture-bridge");
   runNpm(args);
   if (command === "build") {
-    const name = process.platform === "win32" ? "loushang-web.exe" : "loushang-web";
+    const name = windows ? "loushang-web.exe" : "loushang-web";
     const destination = path.join(guiDir, "src-tauri", "target", "release");
     mkdirSync(destination, { recursive: true });
     copyFileSync(path.join(guiDir, "web", "target", "release", name), path.join(destination, name));
