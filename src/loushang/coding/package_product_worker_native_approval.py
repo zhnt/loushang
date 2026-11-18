@@ -16,15 +16,16 @@ from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
     JournalCodecError,
 )
+from loushang.harness.package_product._linux_worker_native_release import (
+    _ProductRootedNativeApprovalRecords,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.worker.history._native_approval import (
-    RootedNativeApprovalRecords,
     _NativeApprovalMethods,
     _NativeDecisionMethods,
     _NativeReviewMethods,
-    _valid_opaque,
     decode_native_approval_history,
 )
 
@@ -113,12 +114,13 @@ def _native_approval_failure(code: str) -> CodingWorkerNativeApprovalError:
 
 
 class CodingWorkerNativeApprovalJournal(
-    RootedNativeApprovalRecords[
+    _ProductRootedNativeApprovalRecords[
         CodingWorkerNativeReleaseApprovalV1, CodingWorkerNativeApprovalDecisionV1
     ]
 ):
     """Exact Product-root approval with CAS, replay, and durable revocation."""
 
+    _approval_type = CodingWorkerNativeReleaseApprovalV1
     _error_type = staticmethod(lambda: CodingWorkerNativeApprovalError)
     _root_label = "coding_worker_native_approval_state_root"
     _failure = staticmethod(_native_approval_failure)
@@ -142,53 +144,6 @@ class CodingWorkerNativeApprovalJournal(
         self._path = product_owner.state_root / _JOURNAL_NAME
         self._scope_id = product_owner.policy.project_scope_id
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-
-    @property
-    def product_owner(self) -> PosixLocalWheelProductSessionOwner:
-        return self._product_owner
-
-    @property
-    def path(self) -> Path:
-        return self._path
-
-    def current(self) -> CodingWorkerNativeApprovalDecisionV1 | None:
-        with (
-            self._product_owner.gc_gate.guard(),
-            self._bound_journal(read_only=True) as rooted,
-        ):
-            self._product_owner.assert_root_gc_authority_current()
-            events = self._load(rooted)
-            return events[-1] if events else None
-
-    def change(
-        self,
-        *,
-        operation_id: str,
-        expected_generation: int,
-        action: Literal["approve", "revoke"],
-        approval: CodingWorkerNativeReleaseApprovalV1 | None,
-    ) -> CodingWorkerNativeApprovalDecisionV1:
-        if (
-            not _valid_opaque(operation_id)
-            or type(expected_generation) is not int
-            or expected_generation < 0
-            or action not in {"approve", "revoke"}
-            or (action == "approve")
-            != isinstance(approval, CodingWorkerNativeReleaseApprovalV1)
-        ):
-            raise ValueError("Worker native approval command is invalid")
-        with (
-            self._product_owner.gc_gate.guard(require_write=True),
-            self._bound_journal() as rooted,
-        ):
-            self._product_owner.assert_root_gc_authority_current()
-            return self._change(
-                rooted,
-                operation_id=operation_id,
-                expected_generation=expected_generation,
-                action=action,
-                approval=approval,
-            )
 
 
 __all__ = [
