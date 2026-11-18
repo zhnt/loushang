@@ -34,8 +34,8 @@ import loushang.coding.package_product_backup_types as backup_types_module
 import loushang.coding.package_product_worker_activation_state_journal as activation_state_journal_module
 import loushang.coding.package_product_worker_crash_c5_settlement as crash_c5_module
 import loushang.coding.package_product_worker_history_checkpoint as checkpoint_module
-import loushang.coding.package_product_worker_history_preflight_v2 as history_preflight_v2_module
 import loushang.coding.package_product_worker_history_retention as history_retention_module
+import loushang.coding.package_product_worker_history_stage_v2 as history_stage_v2_module
 import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
 import loushang.coding.package_product_worker_payload as worker_payload_module
 import loushang.coding.package_product_worker_receipt as receipt_journal_module
@@ -7111,7 +7111,7 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
         gc_writer_finished = Event()
         gc_writer_errors: list[BaseException] = []
         gc_writer_thread: Thread | None = None
-        preflight_bindings = history_preflight_v2_module._history_proof_bindings()
+        preflight_bindings = history_stage_v2_module._history_proof_bindings()
         read_repair_intent = preflight_bindings.registered().read
 
         def competing_gc_cutover_writer() -> None:
@@ -7136,7 +7136,7 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             return intent
 
         with patch.object(
-            history_preflight_v2_module,
+            history_stage_v2_module,
             "_history_proof_bindings",
             lambda: replace(
                 preflight_bindings,
