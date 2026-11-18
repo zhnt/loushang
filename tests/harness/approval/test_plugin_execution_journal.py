@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -57,6 +58,51 @@ def test_approved_decision_is_durable_and_projects_the_strict_v2_view(
     assert recovered.journal_revision == 1
     assert recovered.decisions == (issued,)
     assert recovered.execution_uses == ()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows journal path length")
+@pytest.mark.parametrize("eligible", [True, False])
+def test_windows_duplicate_issuance_preserves_original_journal(
+    tmp_path: Path, eligible: bool,
+) -> None:
+    root = tmp_path / ("x" * max(16, 245 - len(str(tmp_path))))
+    journal = _journal(root)
+    subject = _subject()
+    decision = _issue(journal, subject)
+    assert isinstance(journal.lookup_execution_decision(subject), PluginExecutionDecisionCurrent)
+
+    # Older builds appended a new revision 1 whenever they missed the existing
+    # long-path file. Both records below are intact but have no use reservation.
+    native_path = Path("\\\\?\\" + str(journal.path))
+    first = native_path.read_bytes()
+    repeated = json.loads(first)
+    repeated["payload"]["decision"]["decisionId"] = "3" * 48
+    legacy = first + (json.dumps(repeated) + "\n").encode()
+    native_path.write_bytes(legacy)
+
+    authorization = decision.authorization if eligible else PluginApprovalAuthorizationV1.direct(
+        actor_id="operator:bob", source="coding.settings",
+    )
+    journal.archive_windows_duplicate_initial_approvals(
+        authorization=authorization, plugin_ids=frozenset({subject.plugin_id}),
+    )
+    archive = native_path.with_suffix(".windows-duplicate-issuance.jsonl")
+    if not eligible:
+        assert not archive.exists()
+        assert native_path.read_bytes() == legacy
+        with pytest.raises(PluginExecutionJournalError, match="revision is not contiguous"):
+            journal.snapshot()
+        return
+
+    assert archive.read_bytes() == legacy
+    assert isinstance(journal.lookup_execution_decision(subject), PluginExecutionDecisionMissing)
+    replacement = _issue(journal, subject)
+    assert journal.snapshot().decisions == (replacement,)
+    journal.archive_windows_duplicate_initial_approvals(
+        authorization=authorization, plugin_ids=frozenset({subject.plugin_id}),
+    )
+    assert journal.snapshot().decisions == (replacement,)
+    assert archive.read_bytes() == legacy
 
 
 def test_denied_decision_projects_denied_but_cannot_be_consumed(

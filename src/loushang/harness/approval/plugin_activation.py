@@ -26,6 +26,7 @@ from loushang.harness.journal import (
     journal_file_lock,
     load_jsonl,
 )
+from loushang.harness.journal.jsonl import _journal_io_path
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 
@@ -1890,7 +1891,7 @@ class PluginActivationDecisionJournal:
         require_quiescent_resume: bool = False,
         starting_use_id: str | None = None,
     ) -> _ReplayedActivationJournal:
-        if not self._path.exists():
+        if not _journal_io_path(self._path).exists():
             if required_resume_parent is not None:
                 raise self._error(
                     "Original parent enrollment is missing",

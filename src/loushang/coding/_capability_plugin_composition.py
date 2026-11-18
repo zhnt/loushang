@@ -1192,6 +1192,16 @@ def _finalize_selection(
             state_root=state_root,
             clock=clock,
         )
+    approval_owner = request.approval_owner
+    windows_initial_approval_recovery = None
+    if (
+        resume_parents is None
+        and isinstance(approval_owner, _CodingDefaultCapabilityPluginApprovalOwner)
+        and approval_owner.approval_source == _DEFAULT_APPROVAL_SOURCE
+    ):
+        windows_initial_approval_recovery = (
+            _default_approval_authorization(_DEFAULT_APPROVAL_SOURCE), approval_owner.plugin_ids,
+        )
     return PluginDeclarationHost.resolve_for_product(
         seed.packages,
         bindings=seed.bindings,
@@ -1205,7 +1215,7 @@ def _finalize_selection(
         )
         if resume_parents is not None
         else frozenset(),
-        approval_owner=lambda: request.approval_owner,
+        approval_owner=lambda: approval_owner,
         distribution_evidence_resolver=lambda: (
             coding_plugin_distribution_evidence_resolver()
         ),
@@ -1217,6 +1227,7 @@ def _finalize_selection(
         error_factory=lambda message, code: CodingCapabilityPluginCompositionError(
             message, code=code
         ),
+        windows_initial_approval_recovery=windows_initial_approval_recovery,
     )
 
 
