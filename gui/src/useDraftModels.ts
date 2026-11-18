@@ -9,7 +9,9 @@ function draftModelLabel(load: DraftTarget["loadModels"], loaded: boolean, model
   return models.models.length === 0 ? "empty" : "choose";
 }
 
-export function useDraftModels(target: DraftTarget | undefined, available: boolean, preferredId?: string) {
+export function useDraftModels(
+  target: DraftTarget | undefined, available: boolean, preferredId?: string, thinking?: SessionModels["thinking"],
+) {
   const [result, setResult] = useState<{ target: DraftTarget; models: SessionModels | null }>();
   const load = target?.loadModels;
   useEffect(() => {
@@ -29,8 +31,10 @@ export function useDraftModels(target: DraftTarget | undefined, available: boole
 
   const current = available && result?.target === target ? result : undefined;
   const catalog = current?.models ?? null;
-  const models = preferredId && catalog?.models.some((model) => model.id === preferredId)
-    ? { ...catalog, currentId: preferredId } : catalog;
+  const hasPreferred = catalog?.models.some((model) => model.id === preferredId);
+  const models = preferredId && catalog
+    ? { ...catalog, currentId: hasPreferred ? preferredId : null, thinking: hasPreferred ? thinking : undefined }
+    : catalog;
   return {
     models,
     required: Boolean(load),

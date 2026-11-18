@@ -40,7 +40,10 @@ from loushang.coding.managed_bootstrap import (
 )
 from loushang.coding.resume_history import read_coding_resume_snapshot
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.transcript.kinds import MODEL_SELECTION_KIND
+from loushang.harness.transcript.kinds import (
+    MODEL_SELECTION_KIND,
+    THINKING_SELECTION_KIND,
+)
 
 from .test_hosted_bootstrap import _launch
 from .test_hosted_session import _stream
@@ -69,6 +72,14 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
     models = {
         model_id: {"displayName": model_id, "capabilities": {"input": ["text"], "stream": True}}
         for model_id in (selection_a.model_id, selection_b.model_id)
+    }
+    models[selection_b.model_id] = {
+        "displayName": "Reasoning model",
+        "capabilities": {
+            "input": ["text"], "stream": True, "reasoning": True,
+            "reasoningEfforts": ["low", "high"], "reasoningRequired": True,
+        },
+        "adapter": {"thinkingMode": "adaptive"},
     }
 
     def write_catalog():
@@ -129,9 +140,9 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
             attachment.attachment_id, attachment.controller_generation, member.member_id,
         ), member.session.session_id
 
-    async def select(client, control, model_id):
+    async def select(client, control, model_id, level=None):
         return await client.select_session_model(SessionModelSelectV1(
-            control.attachment_id, control.controller_generation, control.member_id, model_id,
+            control.attachment_id, control.controller_generation, control.member_id, model_id, level,
         ))
 
     async def require_current(client, control, current):
@@ -164,6 +175,18 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
                     WorkspaceModelsRequestV1(str(tmp_path))
                 )
                 assert project_models.current_id == second_id
+                assert project_models.thinking is None
+                reasoning_preview = await client.workspace_models(
+                    WorkspaceModelsRequestV1(str(tmp_path), second_id)
+                )
+                assert reasoning_preview.thinking.available_levels == ("low", "high")
+                assert reasoning_preview.thinking.current_level is None
+                first_preview = await client.workspace_models(
+                    WorkspaceModelsRequestV1(str(tmp_path), first_id)
+                )
+                assert first_preview.current_id == first_id
+                assert first_preview.thinking is None
+                assert settings().get_settings().default_model == selection_b
                 assert {choice.id for choice in project_models.models if choice.provider == "faux"} == available
                 assert (await client.workspace_models(WorkspaceModelsRequestV1())).current_id is None
                 with pytest.raises(AppServiceError) as unknown:
@@ -249,13 +272,20 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
             after = transcript(session_a)
             assert after.records[:-1] == before.records
             assert after.records[-1].kind == MODEL_SELECTION_KIND
+            assert (await client.list_session_models(first)).thinking.available_levels == ("low", "high")
+            assert (await select(client, first, second_id, "high")).thinking.current_level == "high"
+            after_thinking = transcript(session_a)
+            assert after_thinking.records[:-1] == after.records
+            assert after_thinking.records[-1].kind == THINKING_SELECTION_KIND
             if not managed:
+                assert product._active is None
                 assert "Sending a message resumes" in (await client.snapshot_session(first)).records[-1].text
 
         # Selection survives an additional Host restart before the first send.
         async with host() as client:
             first, _ = await open_session(client, "first", session_id=session_a)
             await require_current(client, first, second_id)
+            assert (await client.list_session_models(first)).thinking.current_level == "high"
             execution = client.execution_client
             instance = execution.service_instance_id
             submitted = await execution.submit_execution(first, instance, "retry", "Keep this input")
@@ -273,6 +303,7 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
                     break
                 await asyncio.sleep(0.01)
             assert record.state.status is ExecutionStatusV1.SUCCEEDED
+            assert (await client.list_session_models(first)).thinking.current_level == "high"
             duplicate = await execution.submit_execution(first, instance, "retry", "Keep this input")
             assert duplicate.state.execution_id == record.state.execution_id
             snapshot = await client.snapshot_session(first)

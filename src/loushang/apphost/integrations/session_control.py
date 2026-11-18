@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
 
@@ -458,7 +458,7 @@ def _validate_foreground_binding(
 
 
 def project_session_models(
-    current: str | None, details: list[object], thinking: SessionThinkingV1 | None = None,
+    current: str | None, details: Sequence[object], thinking: SessionThinkingV1 | None = None,
 ) -> SessionModelsV1:
     models: list[SessionModelChoiceV1] = []
     for choice in model_choice_data_from_details(details):

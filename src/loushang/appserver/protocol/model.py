@@ -787,10 +787,13 @@ class WorkspaceRequestV1:
 @dataclass(frozen=True, slots=True)
 class WorkspaceModelsRequestV1:
     path: str | None = None
+    model_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.path is not None:
             WorkspaceRequestV1("open", self.path)
+        if self.model_id is not None:
+            _require_text(self.model_id, field="model id", maximum=512, empty=False)
 
 
 @dataclass(frozen=True, slots=True)

@@ -55,6 +55,7 @@ graph TD
     PKG_APPHOST --> PKG_FOUNDATION
     PKG_APPHOST --> PKG_HARNESS
     PKG_APPHOST --> PKG_HOSTING
+    PKG_APPSERVER --> PKG_FOUNDATION
     PKG_APPSERVICE --> PKG_APPSERVER
     PKG_APPSERVICE --> PKG_FOUNDATION
     PKG_CHANNEL --> PKG_FOUNDATION
@@ -103,7 +104,7 @@ graph TD
 | `loushang.agent` | `loushang.ai`, `loushang.foundation` |
 | `loushang.ai` | `loushang.foundation` |
 | `loushang.apphost` | `loushang.agent`, `loushang.ai`, `loushang.appserver`, `loushang.appservice`, `loushang.foundation`, `loushang.harness`, `loushang.hosting` |
-| `loushang.appserver` | None |
+| `loushang.appserver` | `loushang.foundation` |
 | `loushang.appservice` | `loushang.appserver`, `loushang.foundation` |
 | `loushang.channel` | `loushang.foundation`, `loushang.harness`, `loushang.harnesswork` |
 | `loushang.coding` | `loushang.agent`, `loushang.ai`, `loushang.apphost`, `loushang.appserver`, `loushang.appservice`, `loushang.channel`, `loushang.foundation`, `loushang.harness`, `loushang.harnesstui`, `loushang.harnesswork`, `loushang.hosting`, `loushang.method`, `loushang.plugin`, `loushang.tui` |

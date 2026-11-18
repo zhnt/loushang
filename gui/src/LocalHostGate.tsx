@@ -422,8 +422,8 @@ export default function LocalHostGate() {
         return workspace.inspection;
       },
       openProjectPath: isTauri() && selectedId === "local" ? openLocalWorkspacePath : undefined,
-      draftModels: async (path) => validateSessionModels(
-        await webRequest({ operation: "workspace", action: "models", path }, connectionId.current),
+      draftModels: async (path, modelId) => validateSessionModels(
+        await webRequest({ operation: "workspace", action: "models", path, modelId }, connectionId.current),
       ),
       createChat,
       deleteChat,

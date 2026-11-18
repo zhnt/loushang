@@ -460,7 +460,8 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
                     "scopeFingerprint": workspace.preview.scope_fingerprint,
                 }} if workspace.preview is not None else {})}
     if operation is AppOperationV1.WORKSPACE_MODELS:
-        return {"path": cast(WorkspaceModelsRequestV1, payload).path}
+        models = cast(WorkspaceModelsRequestV1, payload)
+        return {"path": models.path, **({"modelId": models.model_id} if models.model_id is not None else {})}
     if operation is AppOperationV1.MUX_CREATE:
         return {"name": cast(MuxCreateV1, payload).name}
     if operation is AppOperationV1.MUX_LIST:
@@ -553,8 +554,10 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
                           path=_optional_string(value["path"]), session_id=_optional_string(value.get("sessionId")),
                           preview=preview)
     if operation is AppOperationV1.WORKSPACE_MODELS:
-        value = _object(raw, {"path"})
-        return _construct(WorkspaceModelsRequestV1, path=_optional_string(value["path"]))
+        has_model = isinstance(raw, dict) and "modelId" in raw
+        value = _object(raw, {"path", "modelId"} if has_model else {"path"})
+        return _construct(WorkspaceModelsRequestV1, path=_optional_string(value["path"]),
+                          model_id=_string(value["modelId"]) if has_model else None)
     if operation is AppOperationV1.MUX_CREATE:
         value = _object(raw, {"name"})
         return _construct(MuxCreateV1, name=_string(value["name"]))

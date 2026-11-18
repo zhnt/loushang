@@ -31,6 +31,12 @@ delegate to `loushang-mux service`. Closing the frontend leaves AppHost running.
 Use **Register and open** with a path on the Host, or select a registered
 Workspace. AppHost allocates the Mux and persists its Sessions.
 
+In the composer, select a model to see the reasoning efforts reported by
+AppHost for that model. This also works before the first message of a new
+Session. The first message is sent only after the chosen model and any explicit
+effort are confirmed. Reopened Sessions restore their saved effort when it is
+still available.
+
 For Windows source development, install uv and run the desktop:
 
 ```powershell
