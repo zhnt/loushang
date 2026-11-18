@@ -7,8 +7,6 @@ joined by a separate recovery owner before retirement is possible.
 
 from __future__ import annotations
 
-import os
-import re
 from dataclasses import dataclass
 from functools import partial
 
@@ -17,7 +15,6 @@ from loushang.harness.package_product._worker_windows_attempt import (
     verify_windows_product_worker_live_stage,
 )
 from loushang.harness.worker.contracts import (
-    ManagedWorkerLaunchRequestV1,
     WorkerBindingError,
     WorkerLaunchIdentityV1,
     WorkerRuntimeBindingV1,
@@ -58,7 +55,6 @@ from .package_product_worker_windows_supervisor_journal import (
     open_coding_windows_product_worker_supervisor_journal,
 )
 
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 _MAX_RETAINED_ATTEMPTS = 1024
 _MARKER = "worker-payload.json"
@@ -92,78 +88,7 @@ class CodingWindowsProductWorkerPendingLaunchV1(PendingPayloadMethods):
     _pending_invalid_message = "Windows Worker pending launch identity is invalid"
 
 
-def plan_coding_windows_product_worker_pending_launch(
-    *,
-    receipt_owner: CodingWindowsWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    attempt_id: str,
-) -> CodingWindowsProductWorkerPendingLaunchV1:
-    """Pin a current Windows Worker identity before any payload or process."""
-    if (
-        os.name != "nt"
-        or type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
-        or type(receipt) is not ProductWorkerActivationReceiptV1
-        or (type(attempt_id) is not str)
-        or (_ATTEMPT.fullmatch(attempt_id) is None)
-    ):
-        raise ValueError("Windows Worker pending launch request is invalid")
-    return _payload_program().plan(
-        receipt_owner=receipt_owner, receipt=receipt, attempt_id=attempt_id
-    )
-
-
-def materialize_coding_windows_product_worker_payload(
-    *,
-    receipt_owner: CodingWindowsWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    attempt_id: str,
-) -> CodingWindowsWorkerPayloadLeaseV1:
-    """Copy one current selected PE to a fresh, Product-private attempt stage.
-
-    A failure after directory creation deliberately leaves all bytes in place
-    as recovery debt. Retrying the same attempt ID never overwrites them.
-    """
-    if (
-        os.name != "nt"
-        or type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
-        or type(receipt) is not ProductWorkerActivationReceiptV1
-        or (type(attempt_id) is not str)
-        or (_ATTEMPT.fullmatch(attempt_id) is None)
-    ):
-        raise ValueError("Windows Worker payload request is invalid")
-    return _payload_program().materialize(
-        receipt_owner=receipt_owner, receipt=receipt, attempt_id=attempt_id
-    )
-
-
 _windows_worker_identity = worker_identity_from_receipt
-
-
-def bind_coding_windows_product_worker_launch_request(
-    *,
-    receipt_owner: CodingWindowsWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    payload_lease: CodingWindowsWorkerPayloadLeaseV1,
-    supervisor_epoch: int,
-    pending_launch: CodingWindowsProductWorkerPendingLaunchV1 | None = None,
-) -> ManagedWorkerLaunchRequestV1:
-    """Build an exact request for a staged PE; no process effect occurs here."""
-    if (
-        os.name != "nt"
-        or type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
-        or type(receipt) is not ProductWorkerActivationReceiptV1
-        or (type(payload_lease) is not CodingWindowsWorkerPayloadLeaseV1)
-    ):
-        raise CodingWindowsWorkerPayloadMaterializationError(
-            "coding_worker_payload_binding_mismatch"
-        )
-    return _payload_program().bind(
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        payload_lease=payload_lease,
-        supervisor_epoch=supervisor_epoch,
-        pending_launch=pending_launch,
-    )
 
 
 def _verify_stage_marker(
@@ -204,33 +129,38 @@ __all__ = [
 ]
 
 
-def _payload_program() -> WindowsProductWorkerPayload[
+_PAYLOAD_PROGRAM: WindowsProductWorkerPayload[
     CodingWindowsWorkerPayloadLeaseV1,
     CodingWindowsProductWorkerPendingLaunchV1,
     CodingWindowsWorkerRecoveryAttemptV1,
-]:
-    return WindowsProductWorkerPayload(
-        lease_type=CodingWindowsWorkerPayloadLeaseV1,
-        pending_type=CodingWindowsProductWorkerPendingLaunchV1,
-        inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
-        current_attempts=_current_after_verified_retirements_under_gc_guard,
-        inspect_payload=inspect_windows_worker_payload_stages,
-        supervisor_journal=open_coding_windows_product_worker_supervisor_journal,
-        admission=_RECOVERY_ADMISSION,
-        limits=lambda: (_MAX_PAYLOAD_BYTES, _MAX_RETAINED_ATTEMPTS),
-        marker_name=_MARKER,
-        error_type=CodingWindowsWorkerPayloadMaterializationError,
-        error_prefix="coding_worker_payload",
-        stale_errors=(
-            CodingWorkerReceiptError,
-            CodingWindowsWorkerInstalledBackendError,
-            CodingWindowsWorkerPayloadMaterializationError,
-            CodingWindowsWorkerPayloadInventoryError,
-            WindowsWorkerProvisioningStateJournalError,
-            WorkerSupervisorJournalError,
-            WorkerBindingError,
-            OSError,
-            ValueError,
-        ),
-        stale_message="Coding Windows Product Worker selection changed",
-    )
+] = WindowsProductWorkerPayload(
+    receipt_owner_type=CodingWindowsWorkerProductReceiptOwner,
+    lease_type=CodingWindowsWorkerPayloadLeaseV1,
+    pending_type=CodingWindowsProductWorkerPendingLaunchV1,
+    inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
+    current_attempts=_current_after_verified_retirements_under_gc_guard,
+    inspect_payload=inspect_windows_worker_payload_stages,
+    supervisor_journal=open_coding_windows_product_worker_supervisor_journal,
+    admission=_RECOVERY_ADMISSION,
+    limits=lambda: (_MAX_PAYLOAD_BYTES, _MAX_RETAINED_ATTEMPTS),
+    marker_name=_MARKER,
+    error_type=CodingWindowsWorkerPayloadMaterializationError,
+    error_prefix="coding_worker_payload",
+    stale_errors=(
+        CodingWorkerReceiptError,
+        CodingWindowsWorkerInstalledBackendError,
+        CodingWindowsWorkerPayloadMaterializationError,
+        CodingWindowsWorkerPayloadInventoryError,
+        WindowsWorkerProvisioningStateJournalError,
+        WorkerSupervisorJournalError,
+        WorkerBindingError,
+        OSError,
+        ValueError,
+    ),
+    stale_message="Coding Windows Product Worker selection changed",
+)
+
+
+plan_coding_windows_product_worker_pending_launch = _PAYLOAD_PROGRAM.plan
+materialize_coding_windows_product_worker_payload = _PAYLOAD_PROGRAM.materialize
+bind_coding_windows_product_worker_launch_request = _PAYLOAD_PROGRAM.bind

@@ -1575,6 +1575,7 @@ class WindowsProductWorkerPayload(
 ):
     """Original complete launch binding; the sole live request registry is preserved."""
 
+    receipt_owner_type: type[object]
     lease_type: Callable[..., _WindowsPayloadT]
     pending_type: type[_WindowsPendingT]
     inspect_inventory: Callable[
@@ -1593,6 +1594,22 @@ class WindowsProductWorkerPayload(
     stale_errors: tuple[type[Exception], ...]
     stale_message: str
 
+    def _require_attempt(
+        self,
+        receipt_owner: object,
+        receipt: object,
+        attempt_id: str,
+        message: str,
+    ) -> None:
+        if (
+            os.name != "nt"
+            or type(receipt_owner) is not self.receipt_owner_type
+            or type(receipt) is not ProductWorkerActivationReceiptV1
+            or type(attempt_id) is not str
+            or re.fullmatch(r"[0-9a-f]{32}\Z", attempt_id) is None
+        ):
+            raise ValueError(message)
+
     def plan(
         self,
         *,
@@ -1602,6 +1619,13 @@ class WindowsProductWorkerPayload(
         receipt: ProductWorkerActivationReceiptV1,
         attempt_id: str,
     ) -> _WindowsPendingT:
+        """Pin a current Windows Worker identity before any payload or process."""
+        self._require_attempt(
+            receipt_owner,
+            receipt,
+            attempt_id,
+            "Windows Worker pending launch request is invalid",
+        )
         product = receipt_owner.product_owner
         with product.gc_gate.guard():
             if receipt_owner.current_witness(receipt) != receipt.authority_witness:
@@ -1648,6 +1672,17 @@ class WindowsProductWorkerPayload(
         receipt: ProductWorkerActivationReceiptV1,
         attempt_id: str,
     ) -> _WindowsPayloadT:
+        """Copy one current selected PE to a fresh, Product-private attempt stage.
+
+        A failure after directory creation deliberately leaves all bytes in place
+        as recovery debt. Retrying the same attempt ID never overwrites them.
+        """
+        self._require_attempt(
+            receipt_owner,
+            receipt,
+            attempt_id,
+            "Windows Worker payload request is invalid",
+        )
         product = receipt_owner.product_owner
         stage_name = "worker-payload-" + attempt_id
         with product.gc_gate.guard(require_write=True):
@@ -1753,6 +1788,14 @@ class WindowsProductWorkerPayload(
         supervisor_epoch: int,
         pending_launch: _WindowsPendingT | None = None,
     ) -> ManagedWorkerLaunchRequestV1:
+        """Build an exact request for a staged PE; no process effect occurs here."""
+        if (
+            os.name != "nt"
+            or type(receipt_owner) is not self.receipt_owner_type
+            or type(receipt) is not ProductWorkerActivationReceiptV1
+            or type(payload_lease) is not self.lease_type
+        ):
+            raise self.error_type(self.error_prefix + "_binding_mismatch")
         if (
             type(supervisor_epoch) is not int
             or supervisor_epoch < 1

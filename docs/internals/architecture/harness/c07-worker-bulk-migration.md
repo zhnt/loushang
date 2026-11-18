@@ -552,6 +552,16 @@ C51 首轮10 passed／1 failed，失败仅为 Windows receipt 已退出直接 ac
 
 本批 Coding／系统生产 −210行，Harness／Hosting／其它生产0；测试及文档单列。累计 Coding −6,965、Harness +9,807，系统生产仍 +2,842行；C07余13,301行，距离过半退出仍差3,169行。整组多数退出和最新完整候选验证尚未完成。
 
+## Windows 载荷三个完整入口由原 owner 接管
+
+规划 pending、物化 payload 和绑定 launch request 三个 Coding 公共入口直接绑定现有 WindowsProductWorkerPayload 的三个操作。原平台／名义类型／attempt grammar 校验移到同一 owner，规划和物化复用同一校验；绑定仍先检查原名义 lease，再进入原 request 关联。Code 只保留原 nominal records、错误、容量／名称／异常 Profile 和必要 IO helper。原锁、弱引用 request registry、回执读取、持久化债务、失败清理及三段完整 H 执行体 AST 不变，未新增生命周期组件、状态账本或阶段 callback。
+
+固定 Profile 在模块导入时绑定原组件与值；原限额 lambda 仍实时读取 Code 容量值。当前执行代理按授权职责接受这三个内部 facade 的函数→bound method、module／qualname、运行时泛型 hints 和新 callable pickle 格式变化，以及不再承诺重绑旧 Code 私有 import aliases／_payload_program；实际 H／Hosting IO 故障端口未改。三个入口的参数名／关键字限制／默认值、操作文档、具体静态返回类型及六条旧全局函数 pickle 加载路由保持。Code 原 nominal dataclass／字段／slots／__all__ AST 不变。
+
+源码审计通过；68组原／新入口对照覆盖 POSIX／Windows 平台门、精确类／子类、非法 attempt、lease、错误及先后顺序，实际执行体以原 AST 和现有消费者另证。探针首次对 bind 的模块 os 绑定不完整，已修正探针并通过，未为探针修改 Product。五源 mypy 含三个具体返回断言通过，既有 Windows stage IO／live verification／intent／reserved／recovery 路线245 passed；测试、golden、selectors 和门禁零改动。本机模型不替代原生 Windows。
+
+本批 Coding −70、Harness +43、Hosting／其它生产／测试0，系统生产 −27行；文档单列。多数收益是既有完整操作入口接管和原重复外壳退出，不把原 H 物化／恢复 body 再计为新迁移。累计 Coding −7,035、Harness +9,850，系统生产仍 +2,815行；C07余13,231行，距离过半退出仍差3,099行。此交付是明确未完成的阶段成果，整组验收目标不降低。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
