@@ -23,13 +23,17 @@ class CodingWindowsPrivateReceiptError(RuntimeError):
     """A Windows Product receipt or its unpublished stage is unsafe."""
 
 
+def _rename_private_receipt(directory_fd: int, old: str, new: str) -> None:
+    return windows_rename_at(directory_fd, old, new)
+
+
 _receipt_io = WindowsPrivateReceiptIO(
     maximum_allowed_bytes=_MAX_EXTENDED_RECEIPT_BYTES,
     simple_file_attributes=_SIMPLE_FILE_ATTRIBUTES,
     simple_directory_attributes=_SIMPLE_DIRECTORY_ATTRIBUTES,
     error_type=CodingWindowsPrivateReceiptError,
     stage_suffix=_RECEIPT_STAGE_SUFFIX,
-    rename=lambda directory_fd, old, new: windows_rename_at(directory_fd, old, new),
+    rename=_rename_private_receipt,
 )
 _read_file = _receipt_io._read_file
 _require_simple_attributes = _receipt_io._require_simple_attributes
