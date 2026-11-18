@@ -7,7 +7,6 @@ member deletion is resumed from that review and never broadens its file set.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,9 +17,6 @@ from loushang.harness.package_product._windows_worker_retirement import (
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     WindowsWorkerRetirementRecords,
-)
-from loushang.harness.package_product.product_local_wheel_runtime import (
-    WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -84,23 +80,6 @@ CodingWindowsWorkerStageRetirementReceiptV1._wire_schema = RecordSchema.for_data
 )
 
 
-def retire_coding_windows_product_worker_complete_stage(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    expected_review: CodingWindowsWorkerStageReviewV1,
-) -> CodingWindowsWorkerStageRetirementReceiptV1:
-    """Retire only the reviewed stage while Package runtime remains offline."""
-
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(expected_review) is not CodingWindowsWorkerStageReviewV1
-    ):
-        raise OSError("Windows Worker stage retirement requires a Product review")
-    return _operations.retire(product, expected_review=expected_review)
-
-
 def _read_retirement_bytes(path: Path, maximum_bytes: int) -> bytes | None:
     return read_windows_private_receipt(
         path, maximum_bytes=maximum_bytes, allow_unpublished_stage=True
@@ -133,6 +112,10 @@ __all__ = [
 ]
 
 
+def _review_maximum() -> int:
+    return _MAX_REVIEW_BYTES
+
+
 _operations = WindowsProductWorkerCompleteStageRetirement(
     records=_records,
     io=_receipt_io,
@@ -140,8 +123,10 @@ _operations = WindowsProductWorkerCompleteStageRetirement(
     read_intent=_read_intent_under_gc_guard,
     review_stage=_review_complete_stage_under_gc_guard,
     inspection=_inspection,
-    review_maximum=lambda: _MAX_REVIEW_BYTES,
+    review_maximum=_review_maximum,
     error_prefix="coding_worker_stage_retirement",
+    entry_product_id="coding",
+    entry_required_message="Windows Worker stage retirement requires a Product review",
 )
 
 
@@ -153,3 +138,6 @@ _inspect_retirement_attempt_ids_under_gc_guard = _operations.inspect_attempt_ids
 _retirement_attempt_ids_from_names = _operations.attempt_ids_from_names
 _stage_exists = windows_worker_stage_exists
 _has_other_retirement_artifact = has_other_windows_worker_retirement_artifact
+
+
+retire_coding_windows_product_worker_complete_stage = _operations.retire
