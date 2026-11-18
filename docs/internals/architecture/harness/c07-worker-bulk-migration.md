@@ -782,6 +782,12 @@ C07 原文件12,433行，邻组适配4行全计，有效剩余12,437，归因退
 
 Python生产总量为Coding100,058／Harness380,062／Hosting14,235／其它154,008，共648,363行。相对已交付main `ca7091aa8` 合计Coding−280、Harness+341、系统+61；相对原Goal，C07归因Coding−7,867、Harness+10,815、系统+2,948，同期其它main变化+3,404另计，整库Python净增6,352。测试与文档单列，GUI前端/Rust等语言不在该Python表内；本批没有系统净删减收益。
 
+## 交付前门禁范围复核
+
+交付复核发现，前序候选新增了两例 Receipt factory 反射断言。工作区规则要求新增 PR 失败条件须经明确批准，本任务未获该项批准，因此交付分支移除新增的 pytest 文件，将同样的两入口检查保留为仓库外的私有本地反射验证；生产修复不变。两例不是既有门禁覆盖，不能笼统称为门禁从未扩展。原候选及此前执行结果按原源码切点保留。
+
+本次只缩减候选新增覆盖：原有 C52/C54 断言与场景不变，handoff 探针仍只同步实际 owner 调用。生产源码与冻结候选 `dcab166dd` 完全一致；其完整回归继续使用原候选，待终态后按实际输入和最终收集子集核对结果，不因移除两例就提前宣称通过。相对已交付 main，最终仓库内测试净增4行，生产代码仍为 Coding−280、Harness+341、系统+61；私有验证不进入 PR 检查路径。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
