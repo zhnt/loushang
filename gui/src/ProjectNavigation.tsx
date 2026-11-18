@@ -16,6 +16,7 @@ export interface SidebarDraft {
 export function DraftChatRow({ draft }: { draft: SidebarDraft }) {
   return <div className={draft.selected ? "session-row selected" : "session-row"}>
     <button type="button" className="project-chat"
+      title={draft.title}
       aria-current={draft.selected ? "page" : undefined} onClick={draft.onSelect}>
       <span className="project-chat-title">{draft.title}</span>
     </button>
@@ -95,6 +96,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
     }
     return <div className={selected ? "session-row selected" : "session-row"} key={session.id}>
       <button type="button" className="project-chat"
+        title={showWorkspace ? `${title}\n${workspace === TEMPORARY_WORKSPACE ? t("sidebar.temporaryChats") : workspace}` : title}
         aria-current={selected ? "true" : undefined} disabled={!navigation.available}
         onClick={() => navigation.select(workspace, session.id)}
         onContextMenu={(event) => openMenu(event, [

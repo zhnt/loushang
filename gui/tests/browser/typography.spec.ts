@@ -83,10 +83,27 @@ for (const sample of [
       const rows = await Promise.all([zh, en, mixed].map((label) => label.boundingBox()));
       expect(new Set(rows.map((row) => row?.height)).size).toBe(1);
       const section = page.locator(".project-navigation .section-label").first();
-      await expect(section).toHaveCSS("letter-spacing", sample.locale === "zh-CN" ? "normal" : "0.96px");
+      await expect(section).toHaveCSS("letter-spacing", "normal");
+      await expect(section).toHaveCSS("text-transform", "none");
+      const selectedRow = page.locator(".project-navigation .session-row.selected");
+      const selectedTitle = selectedRow.locator(".project-chat-title");
+      const selectedBackground = await selectedRow.evaluate((element) => getComputedStyle(element).backgroundColor);
+      const titleBeforeHover = await selectedTitle.boundingBox();
+      await selectedRow.hover();
+      expect(await selectedTitle.boundingBox()).toEqual(titleBeforeHover);
+      await expect(selectedRow).toHaveCSS("background-color", selectedBackground);
+      await expect(selectedTitle).toHaveCSS("font-weight", "400");
+      const pin = selectedRow.locator(".session-pin");
+      await expect(pin).toHaveCSS("opacity", "1");
+      await selectedRow.locator(".project-chat").focus();
+      await page.keyboard.press("Tab");
+      await expect(pin).toBeFocused();
+      await page.mouse.move(sample.width - 10, 10);
+      await expect(pin).toHaveCSS("opacity", "1");
       for (const label of await labels.filter({ hasText: /这是用于验证|A long English/ }).all()) {
         await expect(label).toHaveCSS("text-overflow", "ellipsis");
         expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+        await expect(label.locator("..")).toHaveAttribute("title", (await label.textContent())!);
       }
       const input = page.locator("#message-input");
       await input.fill("Mixed 中文 125");

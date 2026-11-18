@@ -17,13 +17,13 @@
 .markdown-body :is(h1, h2, h3, h4, h5, h6) {
   --heading-gap: 16px;
   font-size: var(--conversation-font-size);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   line-height: 1.4;
 }
 .markdown-body h1 { --heading-gap: 28px; font-size: var(--md-h1-size); }
 .markdown-body h2 { --heading-gap: 22px; font-size: var(--md-h2-size); }
 .markdown-body h3 { --heading-gap: 18px; font-size: var(--md-h3-size); }
-.markdown-body :is(strong, b) { font-weight: 500; }
+.markdown-body :is(strong, b) { font-weight: var(--font-weight-medium); }
 .markdown-body :is(h1, h2, h3, h4, h5, h6) :is(strong, b) { font-weight: inherit; }
 
 .markdown-body :is(ul, ol) { padding-inline-start: 1.5em; }
@@ -102,7 +102,7 @@
   vertical-align: top;
   text-align: start;
 }
-.markdown-body th { font-weight: 600; }
+.markdown-body th { font-weight: var(--font-weight-semibold); }
 .markdown-body tbody tr { border-block-start: 1px solid var(--md-border); }
 
 .markdown-code-label .secondary-button { padding: 3px 7px; }
