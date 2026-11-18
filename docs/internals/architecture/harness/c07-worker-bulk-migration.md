@@ -788,6 +788,27 @@ Python生产总量为Coding100,058／Harness380,062／Hosting14,235／其它154,
 
 本次只缩减候选新增覆盖：原有 C52/C54 断言与场景不变，handoff 探针仍只同步实际 owner 调用。生产源码与冻结候选 `dcab166dd` 完全一致；其完整回归继续使用原候选，待终态后按实际输入和最终收集子集核对结果，不因移除两例就提前宣称通过。相对已交付 main，最终仓库内测试净增4行，生产代码仍为 Coding−280、Harness+341、系统+61；私有验证不进入 PR 检查路径。
 
+## 冻结组合的完整本地检查与交付子集
+
+冻结父候选 `dcab166dd8efb8c757141311e0f13c62a93b22f6` 对 main `ca7091aa8` 的全部选中本地检查已终态通过，运行器退出0；每个范围执行前及最终结束均核对受控输入哈希不变。生产源码切点仍为 `6f101e680`。
+
+| 范围 | 实际结果 |
+| --- | --- |
+| Coding | 4,309 passed、24 skipped、77 deselected |
+| HarnessTUI | 1,078 passed、87 deselected |
+| Coding UI | 614 passed、68 deselected |
+| 回放 | 319 passed、8,222 deselected |
+| Harness | 6,356 passed、116 skipped |
+| Hosting | 515 passed、61 skipped |
+| unit Harness | 5,939 passed、113 skipped、3 deselected |
+| unit Hosting | 399 passed、57 skipped、4 deselected |
+
+文档与架构依赖事实检查也通过；unit Coding 经既有命令比较证明为 Coding 子集，去重执行。各范围有交叠，不累加测试数量。
+
+交付分支 `726414f63` 的生产源码及所有保留测试与该父候选相同，仅删除未经批准新增的两例反射测试并记录范围修正。静态比较11个选中命令范围，唯一收集变化是该文件退出；三个既有测试文件的入口、参数化和断言保持，C52仅同步一条实际消费者路径。工作流、CI配置和触发条件无差异。两入口私有反射验证及交付文档9项检查通过；父候选4,309项的结果不伪装成另一次最终分支运行。
+
+这一证据接受当前有界迁移的本地验证，不接受整个 C07：有效退出仍为7,867行，多数目标仍差2,267行，尚未远端交付。`harness_native`、`host_runtime`、`windows_shell` 为未在本地执行的平台／Actions路线，现有暂停规则不变；本地跳过、受控端口和惰性 pickle 均不代替原生 Windows LPAC/Job/崩溃验证。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
