@@ -51,27 +51,39 @@ _PayloadT = TypeVar("_PayloadT")
 _NativeT = TypeVar("_NativeT")
 
 
-class _OperatorLaunchSource(Protocol[_PayloadT, _NativeT]):
-    @property
-    def receipt(self) -> ProductWorkerActivationReceiptV1: ...
-
-    @property
-    def activation(self) -> _ActivationInputs: ...
-
-    def materialize(self, attempt_id: str) -> AbstractContextManager[_PayloadT]: ...
-    def bind_request(
-        self, payload: _PayloadT, *, supervisor_epoch: int
+class _OperatorLaunchSource(_ActivationInputs, Protocol[_PayloadT, _NativeT]):
+    def _materialize_worker_payload(
+        self, receipt: ProductWorkerActivationReceiptV1, attempt_id: str
+    ) -> AbstractContextManager[_PayloadT]: ...
+    def _bind_worker_launch_request(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        payload: _PayloadT,
+        *,
+        supervisor_epoch: int,
     ) -> ManagedWorkerLaunchRequestV1: ...
-    def read_native(self) -> _NativeT: ...
-    def start_gate(
-        self, request: ManagedWorkerLaunchRequestV1, attempt_id: str
+    def current_native_launch_material(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> _NativeT: ...
+    def _worker_start_gate(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+        attempt_id: str,
     ) -> _Gate: ...
-    def native_profile(
-        self, native: _NativeT, request: ManagedWorkerLaunchRequestV1, gate: _Gate
+    def _worker_profile_from_material(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        native: _NativeT,
+        request: ManagedWorkerLaunchRequestV1,
+        gate: _Gate,
     ) -> ProductWorkerNativeProfilePort: ...
 
 
 class _OperatorQueryPolicy(Protocol):
+    @property
+    def receipt(self) -> ProductWorkerActivationReceiptV1: ...
+
     @property
     def capability_id(self) -> str: ...
     @property
@@ -158,22 +170,28 @@ async def _query_selected_worker_once(
         if selected is None:
             raise failure(error_prefix + "_not_selected")
         source, policy = selected
-        receipt = source.receipt
-        activation = source.activation
+        receipt = policy.receipt
+        activation = source
         attempt_id = secrets.token_hex(16)
-        with source.materialize(attempt_id) as payload:
-            journal = activation.supervisor_journal()
-            probe = source.bind_request(payload, supervisor_epoch=1)
+        with source._materialize_worker_payload(receipt, attempt_id) as payload:
+            journal = activation._open_worker_supervisor_journal()
+            probe = source._bind_worker_launch_request(
+                receipt, payload, supervisor_epoch=1
+            )
             next_epoch = journal.next_supervisor_epoch(probe.identity)
             request = (
                 probe
                 if next_epoch == 1
-                else source.bind_request(payload, supervisor_epoch=next_epoch)
+                else source._bind_worker_launch_request(
+                    receipt, payload, supervisor_epoch=next_epoch
+                )
             )
-            native = source.read_native()
-            gate = source.start_gate(request, attempt_id)
+            native = source.current_native_launch_material(receipt)
+            gate = source._worker_start_gate(receipt, request, attempt_id)
             try:
-                profile = source.native_profile(native, request, gate)
+                profile = source._worker_profile_from_material(
+                    receipt, native, request, gate
+                )
             except BaseException:
                 gate.close()
                 raise
@@ -206,7 +224,7 @@ async def _query_selected_worker_once(
                     preparation=profile,
                     start_gate=bind_worker_gated_start_release(gate),
                 )
-                cleanup_evidence = activation.evidence()
+                cleanup_evidence = activation._worker_evidence(receipt)
                 coordinator = _coordinator(activation, cleanup_evidence)
                 if (
                     coordinator.evaluate(receipt.policy, receipt).get("reason")
@@ -276,7 +294,7 @@ async def _query_selected_worker_once(
                 )
                 result = await policy.query(session, symbol)
                 if (
-                    activation.authority.current_witness(receipt)
+                    activation._worker_activation_authority.current_witness(receipt)
                     != receipt.authority_witness
                 ):
                     raise failure(error_prefix + "_receipt_stale")

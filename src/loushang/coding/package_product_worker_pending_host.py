@@ -30,8 +30,6 @@ from loushang.harness.worker.product_activation import (
 
 from ._worker_preparation_inputs import (
     _CodingWorkerProviderPolicy,
-    _PosixActivationInputs,
-    _PosixLaunchInputs,
 )
 from .package_product_worker_payload import (
     CodingProductWorkerPendingLaunchV1,
@@ -86,10 +84,8 @@ class CodingProductWorkerPendingHost:
         return await CodingPreparedWorkerProvider._prepare_native(
             prepare_native=partial(
                 _prepare_posix_native_worker,
-                launch_source=_PosixLaunchInputs(
-                    self.receipt_owner, self.receipt, self.pending_launch
-                ),
-                activation=_PosixActivationInputs(self.receipt_owner),
+                launch_source=self.receipt_owner,
+                activation=self.receipt_owner,
                 pending_launch=self.pending_launch,
                 receipt=self.receipt,
                 resume_parent_context=self.resume_parent_context,

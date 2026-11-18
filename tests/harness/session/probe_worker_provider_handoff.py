@@ -347,7 +347,7 @@ def test_native_failure_before_handoff_closes_original_stack_once(
     runtime = _runtime(tmp_path)
     identity = _identity(runtime)
 
-    def materialize(attempt_id):
+    def materialize(_receipt, attempt_id):
         assert attempt_id == identity.attempt_id
         raise primary
 
@@ -362,7 +362,9 @@ def test_native_failure_before_handoff_closes_original_stack_once(
             await _BeforeHandoffPrepared._prepare_native(
                 prepare_native=partial(
                     program,
-                    launch_source=SimpleNamespace(materialize=materialize),
+                    launch_source=SimpleNamespace(
+                        _materialize_worker_payload=materialize
+                    ),
                     activation=SimpleNamespace(),
                     pending_launch=SimpleNamespace(identity=identity),
                     receipt=_receipt(),

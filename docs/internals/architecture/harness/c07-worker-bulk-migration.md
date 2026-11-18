@@ -732,6 +732,22 @@ Coding 4,309 passed／24 skipped／77 deselected；HarnessTUI 1,078 passed；Cod
 
 本地检查完成，远端交付待推送允许时段执行。C07 整组仍未完成，后续优先项为 C01 启动／插件装配；LSP 的领域职责留 Coding，通用进程和生命周期能力按实际复用另评估。
 
+## Receipt owner 直接接入两平台准备及 operator query 候选
+
+本批由原 Package Product Receipt owner 直接承担准备输入职责，真实两平台 Pending Host 与 POSIX operator query 接入，删除 Coding 的五个临时 source／activation 类及一个 operator source 类。已有 Receipt owner 本来持有选择事实、原生材料和启动规划，现在直接调用原 Payload、Journal、Cleanup、StartGate 与 Provisioning 操作；不新增 owner、Protocol、TypeVar、实例字段、缓存、资源管理器或另一执行框架。每次调用显式传入 receipt／pending，避免在共享 owner 上保存每次 attempt 状态。原生执行程序本来已在 Harness，不重复计为本次迁移收益；本批主要收益是临时适配对象退出和共享 owner 接线归一。
+
+Coding 保留原查询政策、批准与 Profile：八种私有构造／操作 Profile 共十三处平台绑定。原公开工厂及其内部晚绑定构造继续使用，未通过重新创建 recovery bindings 提前捕获事实。POSIX ordinary 与 operator 复用同一材料投影；Windows 直接复用原 `current_selected_manifest`／`plan_current_native_attempt`。父恢复证据仍走 `for_resume_parent_enrollment`，request 已有时才构造请求清理证据；未混入崩溃恢复证据。operator bind 原来省略的 pending 参数仍省略。
+
+边界复核接受该方向，整批完整回归尚待执行。原六类仅在 prepare 的临时输入中创建，不属于公开导出、记录 wire 或 Host 的持久字段；真实 Session 保存的仍是原 Code Host.prepare。源核也检查了历史公开类型和持有链，而非仅凭搜索零匹配删除。私有模块中导入别名的任意重绑定时点不作为公开承诺：现在操作 Profile 在装配模块导入时绑定，原公开工厂内的动态构造仍保持。三个冷启动导入顺序与实际 Code 工厂身份检查通过。
+
+原有交接／资源持有／完整C54合计49 passed（36.43秒）；原断言、场景、参数化和 golden 不变，交接探针仅同步实际 owner 方法名和显式 receipt 参数，C54仅删除三个退出的导入项。八源 mypy 通过，另两项负向 mypy 明确拒绝跨平台 owner。Ruff、diff 与生成依赖事实检查通过，无门禁变化。原普通两平台准备、coordinator 与 operator query 四个完整函数在明确列出的端口／参数替换后 AST 一致；另以真实 Code owner 子类和受控工厂进行三条路线44组对照、41组故障注入，组件调用／构造顺序、值和异常身份一致。该对照不等于完整原生执行证明。
+
+相对上一冻结候选的112模块／349公开入口反射，公开参数、默认、字段、slots、导出和原方法元数据不变；两类 Receipt owner 的 `get_type_hints` 新增十三项继承的私有 ClassVar，明确接受此反射差异，不声称完全一致。原基线335项公开引用的670条 protocol4／5加载与新往返全部通过，无恢复后配置字段缺失；不覆盖活动 Product、lease 或任意私有类的 pickle。
+
+本批 Coding −219、Harness +241、Hosting／其它生产0，系统 Python生产 +22；测试 −1，文档单列。必要端口和十三处 Profile 绑定的成本全部计入，不能报告为系统净删减。Coding100,096／Harness379,962／Hosting14,235／其它154,008，系统648,301行。相对已交付 main `ca7091aa8`，全部未交付候选合计 Coding−242、Harness+241、系统−1；不同切片收益不混算。
+
+C07 原文件12,433行，邻组适配4行全计，有效剩余12,437，归因退出7,829，多数目标仍差2,305。原 Goal 归因 Harness+10,715、系统+2,886；同期其它主线+3,404另计。原生 Windows LPAC／Job、真实崩溃及远端平台路线未由上述局部验证证明；完整选中检查、整组112文件处置和多数退出验收均未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

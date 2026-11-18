@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from hashlib import sha256
 from pathlib import Path
 from typing import (
@@ -72,10 +72,14 @@ from loushang.harness.transcript._attached_discovery import (
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker._native_profile_bridge import (
+    ProductWorkerNativeProfilePort,
+    _bind_posix_static_contained_product_worker_profile,
     _plan_windows_lpac_product_worker_profile,
     _require_exact_binding,
     _WindowsLpacProductWorkerProfilePlan,
+    _WindowsLpacProvisioningStateStore,
 )
+from loushang.harness.worker._ordinary_prepare import _Evidence, _Gate, _PendingLaunch
 from loushang.harness.worker.capability_query import (
     CapabilityWorkerAuthorityV1,
     CapabilityWorkerBindingV1,
@@ -106,10 +110,13 @@ from loushang.harness.worker.history._windows_record_journals import (
     WindowsOptInRecords,
     WindowsReceiptRecords,
 )
+from loushang.harness.worker.journal import WorkerSupervisorJournal
 from loushang.harness.worker.product_activation import (
     ActivationWitness,
+    ProductWorkerActivationAuthorityPort,
     ProductWorkerActivationPolicyV1,
     ProductWorkerActivationReceiptV1,
+    _ActivationStateStore,
 )
 from loushang.hosting.windows_backend_material import (
     WINDOWS_LPAC_PLATFORM_IMPORTS,
@@ -416,6 +423,49 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
         raise NotImplementedError
 
     _provider_native_platform: ClassVar[Literal["linux-x86_64", "windows-amd64"]]
+    _worker_bind_factory: ClassVar[Callable[..., ManagedWorkerLaunchRequestV1]]
+    _worker_state_store_factory: ClassVar[Callable[..., _ActivationStateStore]]
+    _worker_supervisor_factory: ClassVar[Callable[..., WorkerSupervisorJournal]]
+    _worker_evidence_type: ClassVar[type[_Evidence]]
+
+    @property
+    def product_owner(
+        self,
+    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner:
+        return self._product
+
+    @property
+    def _worker_activation_authority(self) -> ProductWorkerActivationAuthorityPort:
+        return cast(ProductWorkerActivationAuthorityPort, self)
+
+    def _open_worker_state_store(self) -> _ActivationStateStore:
+        return self._worker_state_store_factory(self.product_owner)
+
+    def _open_worker_supervisor_journal(self) -> WorkerSupervisorJournal:
+        return self._worker_supervisor_factory(self.product_owner)
+
+    def _bind_worker_launch_request(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        payload: object,
+        *,
+        supervisor_epoch: int,
+        pending_launch: _PendingLaunch | None = None,
+    ) -> ManagedWorkerLaunchRequestV1:
+        if pending_launch is None:
+            return self._worker_bind_factory(
+                receipt_owner=self,
+                receipt=receipt,
+                payload_lease=payload,
+                supervisor_epoch=supervisor_epoch,
+            )
+        return self._worker_bind_factory(
+            receipt_owner=self,
+            receipt=receipt,
+            payload_lease=payload,
+            supervisor_epoch=supervisor_epoch,
+            pending_launch=pending_launch,
+        )
 
     @contextmanager
     def serialized_admission(self) -> Iterator[None]:
@@ -850,6 +900,67 @@ class _PosixWorkerProductReceiptAuthority(
     Generic[R, PayloadT, MaterialT],
 ):
     _provider_native_platform = "linux-x86_64"
+    _worker_materialize_factory: ClassVar[Callable[..., AbstractContextManager[object]]]
+    _worker_start_gate_type: ClassVar[Callable[..., _Gate]]
+
+    def _materialize_worker_payload(
+        self, receipt: ProductWorkerActivationReceiptV1, attempt_id: str
+    ) -> AbstractContextManager[object]:
+        return self._worker_materialize_factory(
+            receipt_owner=self, receipt=receipt, attempt_id=attempt_id
+        )
+
+    def _worker_evidence(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1 | None = None,
+    ) -> _Evidence:
+        return cast(Callable[..., _Evidence], self._worker_evidence_type)(
+            self.product_owner
+        )
+
+    def _worker_start_gate(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+        attempt_id: str,
+    ) -> _Gate:
+        return self._worker_start_gate_type(
+            receipt_owner=self,
+            receipt=receipt,
+            worker_request=request,
+            attempt_id=attempt_id,
+        )
+
+    def _worker_payload_profile(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        payload: object,
+        request: ManagedWorkerLaunchRequestV1,
+        gate: _Gate,
+    ) -> ProductWorkerNativeProfilePort:
+        native = cast(
+            ProductWorkerNativeLaunchMaterialFacts, getattr(payload, "native_material")
+        )
+        return self._worker_profile_from_material(receipt, native, request, gate)
+
+    def _worker_profile_from_material(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        native: ProductWorkerNativeLaunchMaterialFacts,
+        request: ManagedWorkerLaunchRequestV1,
+        gate: _Gate,
+    ) -> ProductWorkerNativeProfilePort:
+        return _bind_posix_static_contained_product_worker_profile(
+            receipt=receipt,
+            worker_request=request,
+            native_profile_catalog_revision=native.closure.native_profile_catalog_revision,
+            launcher_path=native.launcher_path,
+            launcher_sha256=native.closure.containment_launcher_digest,
+            containment_profile_sha256=native.closure.containment_profile_digest,
+            start_gate_read_fd=gate.start_gate_read_fd,
+        )
+
     _product: PosixLocalWheelProductSessionOwner
     _native_closure_reader: ProductNativeClosureReadPort
     _session_discovery_reader: ProductSessionDiscoveryReadPort | None
@@ -1234,6 +1345,63 @@ class _WindowsWorkerProductReceiptAuthority(
     _ProductWorkerReceiptAuthority[PayloadT], Generic[R, PayloadT]
 ):
     _provider_native_platform = "windows-amd64"
+    _worker_materialize_factory: ClassVar[Callable[..., object]]
+    _worker_commit_intent_factory: ClassVar[Callable[..., object]]
+    _worker_provisioning_factory: ClassVar[
+        Callable[..., _WindowsLpacProvisioningStateStore]
+    ]
+
+    def _materialize_worker_payload(
+        self, receipt: ProductWorkerActivationReceiptV1, attempt_id: str
+    ) -> object:
+        return self._worker_materialize_factory(
+            receipt_owner=self, receipt=receipt, attempt_id=attempt_id
+        )
+
+    def _worker_evidence(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1 | None = None,
+    ) -> _Evidence:
+        if request is None:
+            return cast(
+                Callable[..., _Evidence],
+                getattr(self._worker_evidence_type, "for_resume_parent_enrollment"),
+            )(receipt_owner=self, receipt=receipt)
+        return cast(Callable[..., _Evidence], self._worker_evidence_type)(
+            receipt_owner=self, receipt=receipt, request=request
+        )
+
+    def _commit_worker_launch_intent(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+        payload: object,
+    ) -> None:
+        self._worker_commit_intent_factory(
+            self.product_owner,
+            receipt_owner=self,
+            receipt=receipt,
+            request=request,
+            payload_lease=payload,
+        )
+
+    def _worker_provisioning_store(
+        self,
+        selected: PackageProductSelectedPluginManifestV1,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+        plan: _WindowsLpacProductWorkerProfilePlan,
+    ) -> _WindowsLpacProvisioningStateStore:
+        return self._worker_provisioning_factory(
+            self.product_owner,
+            runtime=self.product_runtime,
+            selected=selected,
+            receipt=receipt,
+            worker_request=request,
+            plan=plan,
+        )
+
     _product: WindowsLocalWheelProductSessionOwner
     _journal: WindowsReceiptRecords[R]
     _native: ProductNativeClosureReadPort

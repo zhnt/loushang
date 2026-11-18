@@ -36,8 +36,6 @@ from loushang.harness.worker.product_activation import (
 
 from ._worker_preparation_inputs import (
     _CodingWorkerProviderPolicy,
-    _WindowsActivationInputs,
-    _WindowsLaunchInputs,
 )
 from .package_product_worker_provider import CodingWorkerBaseCompositionPolicyBinding
 from .package_product_worker_provider_host import (
@@ -110,10 +108,8 @@ class CodingWindowsProductWorkerPendingHost:
         return await CodingPreparedWorkerProvider._prepare_native(
             prepare_native=partial(
                 _prepare_windows_native_worker,
-                launch_source=_WindowsLaunchInputs(
-                    self.receipt_owner, self.receipt, self.pending_launch
-                ),
-                activation=_WindowsActivationInputs(self.receipt_owner, self.receipt),
+                launch_source=self.receipt_owner,
+                activation=self.receipt_owner,
                 pending_launch=self.pending_launch,
                 receipt=self.receipt,
                 resume_parent_context=self.resume_parent_context,
