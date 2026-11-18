@@ -105,16 +105,22 @@ def main() -> None:
                     view = str(uuid4())
                     snapshot = call("live", action="snapshot", viewId=view, workspace=str(workspace))
                     assert len(snapshot["sessions"]) == 1, snapshot
+                    identity = snapshot["sessions"][0]["executions"]["identity"]
                     call("live", action="close", viewId=view, workspace=str(workspace))
                     report["webAndHostSession"] = {"directory": True, "models": True, "snapshot": True}
+                    second = command("restart", "--instance", first["instanceId"])
+                    assert second["state"] == "running" and second["instanceId"] != first["instanceId"]
+                    reopened_view = str(uuid4())
+                    restored = call("live", action="snapshot", viewId=reopened_view, workspace=str(workspace))
+                    assert restored["sessions"][0]["executions"]["identity"] == identity
+                    call("live", action="close", viewId=reopened_view, workspace=str(workspace))
+                    report["sessionSurvivesHostRestart"] = True
                     call("shutdown-adapter")
                     assert web.wait(timeout=15) == 0
                 finally:
                     if web.poll() is None:
                         web.terminate()
                         web.wait(timeout=15)
-            second = command("restart", "--instance", first["instanceId"])
-            assert second["state"] == "running" and second["instanceId"] != first["instanceId"]
             rejected = command("stop", "--instance", first["instanceId"], success=False)
             assert rejected["errorCode"] == "instance_changed", rejected
             assert command("status")["instanceId"] == second["instanceId"]
