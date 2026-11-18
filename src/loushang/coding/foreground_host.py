@@ -6,6 +6,7 @@ Mux history; no second native-process registry or watchdog is introduced.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import os
@@ -123,6 +124,7 @@ async def run_host(home: Path) -> None:
 
 
 def main() -> None:
+    argparse.ArgumentParser(description=__doc__).parse_args()
     asyncio.run(run_host(resolve_platform_home()))
 
 

@@ -53,6 +53,8 @@ def main() -> None:
         assert all(Path(location).is_relative_to(APP) for location in locations), locations
         subprocess.run(["/usr/local/bin/loushang", "--help"], cwd=root, env=env,
                        check=True, timeout=45, stdout=subprocess.DEVNULL)
+        subprocess.run(["/usr/local/bin/loushang-host", "--help"], cwd=root, env=env,
+                       check=True, timeout=15, stdout=subprocess.DEVNULL)
         report["bundledPythonPaths"] = locations
         try:
             assert command("status")["state"] == "not_running"
