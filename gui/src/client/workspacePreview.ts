@@ -7,10 +7,13 @@ export type WorkspacePreview =
       readonly limited: boolean;
     };
 
-export interface WorkspacePreviewRequest {
+export interface WorkspacePreviewScope {
   readonly sessionId: string;
   readonly connectionEpoch: string;
   readonly serviceInstanceId: string;
+}
+
+export interface WorkspacePreviewRequest extends WorkspacePreviewScope {
   readonly reference: string;
   readonly base: string;
 }

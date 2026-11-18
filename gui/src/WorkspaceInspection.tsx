@@ -46,9 +46,9 @@ export function OpenWorkspacePath({ file, open }: {
   }
   const label = t("inspection.openFolder");
   return <span className={file ? "workspace-open" : "workspace-open-folder"}>
-    <button type="button" className={file ? undefined : "workspace-folder-action"} disabled={opening}
+    <button type="button" className={file ? "secondary-button" : "workspace-folder-action"} disabled={opening}
       aria-label={file ? undefined : label} title={file ? undefined : label} onClick={() => void activate()}>
-      {file ? <code>{file}</code> : <UiIcon name="folder" />}
+      {file ? t("inspection.openInSystem") : <UiIcon name="folder" />}
     </button>
     {error && <span className="workspace-open-error" role="status">{t(`inspection.${error}`)}</span>}
   </span>;

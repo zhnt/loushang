@@ -4,7 +4,7 @@ mod service;
 use crate::{
     definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlCommand,
     ControlResult, CreateSessionResult, InteractiveGoalCommand, InteractiveGoalReviewSubmission,
-    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
+    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
 };
 use live_view::{Target, View};
 use rusqlite::{params, Connection};
@@ -295,6 +295,26 @@ impl Backend {
                 };
             }
             "preview" => return preview_workspace(target, request),
+            "locate" => {
+                let instance = field(request, "serviceInstanceId")?;
+                let client = AppClient::default();
+                if client
+                    .instance(target, TIMEOUT)
+                    .map_err(|_| "connection_failed")?
+                    != instance
+                {
+                    return Err("instance_changed".into());
+                }
+                let workspace = workspace_by_fingerprint(target, field(request, "fingerprint")?)?;
+                if client
+                    .instance(target, TIMEOUT)
+                    .map_err(|_| "connection_failed")?
+                    != instance
+                {
+                    return Err("instance_changed".into());
+                }
+                return Ok(json!({ "path": workspace.path }));
+            }
             "open" => return self.open(target, field(request, "path")?),
             "list" => WorkspaceRequest::List,
             "projects" => WorkspaceRequest::Projects,
@@ -468,6 +488,13 @@ fn single(items: Vec<WorkspaceInfo>) -> Result<WorkspaceInfo> {
 fn preview_workspace(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let path = field(request, "path")?;
     let fingerprint = field(request, "fingerprint")?;
+    let located;
+    let path = if path == TEMPORARY {
+        located = workspace_by_fingerprint(target, fingerprint)?;
+        located.path.as_str()
+    } else {
+        path
+    };
     let operation = WorkspaceRequest::Preview {
         path,
         fingerprint,
@@ -484,6 +511,18 @@ fn preview_workspace(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     }
     let preview = workspace.preview.ok_or("workspace_preview_unavailable")?;
     serde_json::to_value(preview).map_err(|_| "invalid_host_reply".into())
+}
+
+fn workspace_by_fingerprint(target: AppTarget<'_>, fingerprint: &str) -> Result<WorkspaceInfo> {
+    let mut matches = workspaces(target, WorkspaceRequest::List)?
+        .into_iter()
+        .filter(|item| {
+            matches!(item.scope, WorkspaceScope::Cwd) && item.scope_fingerprint == fingerprint
+        });
+    match (matches.next(), matches.next()) {
+        (Some(workspace), None) => Ok(workspace),
+        _ => Err("workspace_unavailable".into()),
+    }
 }
 
 fn open_workspace(target: AppTarget<'_>, path: &str) -> Result<WorkspaceInfo> {

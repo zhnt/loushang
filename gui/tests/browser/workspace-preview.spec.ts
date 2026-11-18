@@ -129,3 +129,49 @@ test("reads Workspace files on demand without moving the conversation or running
   expect(await transcript.evaluate((node) => node.scrollTop)).toBe(170);
   expect(reads).toContainEqual({ base: "gui", reference: "../README.zh-CN.md" });
 });
+
+test("shows a temporary Workspace path, previews a bare artifact and copies the full turn", async ({ page }) => {
+  const path = "/host/workspaces/temporary/weather";
+  const externalUrl = "https://example.com/search?q=weather#today";
+  const progress = "正在生成天气页面。";
+  const final = `已完成：index.html。打开[参考资料](${externalUrl})。`;
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => Object.assign(window, { __LOUSHANG_MANAGED_TEST__: true }));
+  const snapshot = liveSnapshot();
+  snapshot.sessions[0].source.source.records = [
+    { kind: "user", text: "生成天气页面" },
+    { kind: "assistant", text: progress },
+    { kind: "assistant", text: final },
+  ];
+  await page.route("**/api/loushang", async (route) => {
+    const request = route.request().postDataJSON();
+    let result = {};
+    if (request.operation === "environment") result = { supported: true, workspace: "@temporary" };
+    else if (request.operation === "manage") result = { state: "running", serviceInstanceId: "service-1" };
+    else if (request.action === "navigation") result = {
+      projects: [],
+      temporarySessions: [{ id: "session-1", title: "Live session", scope: "mux:mux-1", pinned: false }],
+    };
+    else if (request.action === "snapshot") result = snapshot;
+    else if (request.action === "locate") result = { path };
+    else if (request.action === "preview") {
+      expect(request).toMatchObject({ path: "@temporary", reference: "index.html", fingerprint: "a".repeat(64) });
+      result = { kind: "file", path: "index.html", text: "<h1>Weather</h1>" };
+    }
+    return route.fulfill({ json: { result } });
+  });
+
+  await page.goto("/");
+  await expect(page.locator(".workspace-location-path code")).toHaveText(path);
+  const transcript = page.locator(".transcript");
+  await expect(transcript.locator(".reply-actions")).toHaveCount(1);
+  const copy = transcript.getByRole("button", { name: "Copy reply" });
+  await copy.focus();
+  await copy.press("Enter");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(progress + "\n\n" + final);
+  const link = transcript.getByRole("link", { name: "参考资料" });
+  await expect(link).toHaveAttribute("href", externalUrl);
+  await expect(link).toHaveAttribute("target", "_blank");
+  await transcript.getByRole("button", { name: "index.html" }).click();
+  await expect(page.getByRole("dialog").locator("pre")).toHaveText("<h1>Weather</h1>");
+});

@@ -21,6 +21,7 @@ export default interface Resources {
     "contextMenu": "Context menu",
     "deletions": "-{{value, number}}",
     "openItem": "Open {{title}} →",
+    "openLinkFailed": "Could not open the link in the system browser.",
     "status": {
       "accepted": "accepted",
       "assistant": "assistant",
@@ -558,6 +559,7 @@ export default interface Resources {
       "noBaseline": "This workspace has no available Git baseline for comparison.",
       "openFailed": "Could not open the workspace path. Check that it still exists and is available on this device.",
       "openFolder": "Open folder",
+      "openInSystem": "Open on this device",
       "refresh": "Refresh",
       "repositoryRoot": "Git repository root",
       "reviewEmptyDetail": "The workspace report contains no files to review.",

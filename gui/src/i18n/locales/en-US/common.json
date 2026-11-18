@@ -1,5 +1,6 @@
 {
   "contextMenu": "Context menu",
+  "openLinkFailed": "Could not open the link in the system browser.",
   "clipboard": {
     "cut": "Cut",
     "paste": "Paste",

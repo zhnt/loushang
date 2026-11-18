@@ -78,6 +78,7 @@ pub fn run() {
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         sync_tray,
+        web_link::open_web_link,
         quit_app,
         show_tray_window,
         project_folder::pick_project_folder,
@@ -106,6 +107,7 @@ pub fn run() {
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         sync_tray,
+        web_link::open_web_link,
         quit_app,
         show_tray_window,
         project_folder::pick_project_folder,

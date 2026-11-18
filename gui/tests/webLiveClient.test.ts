@@ -156,5 +156,27 @@ it("binds previews to the Session's live Workspace and discards replies after cl
   await client.suspend();
   complete({ ok: true, json: async () => ({ result: { kind: "file", path: "README.md", text: "old Host content" } }) });
   await expect(read).rejects.toThrow("instance_changed");
-  expect(createWebLiveClient("@temporary").previewWorkspace).toBeUndefined();
+});
+
+it("locates and previews the selected temporary Workspace using its confirmed scope", async () => {
+  const requests: Record<string, unknown>[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
+    const request = JSON.parse(String(options.body));
+    requests.push(request);
+    const result = request.action === "snapshot" ? liveSnapshot()
+      : request.action === "locate" ? { path: "/host/temporary/current" }
+      : { kind: "file", path: "index.html", text: "<h1>Weather</h1>" };
+    return { ok: true, json: async () => ({ result }) };
+  }));
+  const client = createWebLiveClient("@temporary");
+  await client.snapshot();
+  const scope = { sessionId: "session-1", serviceInstanceId: "service-1", connectionEpoch: "1" };
+  await expect(client.locateWorkspace!({ ...scope, sessionId: "other" })).rejects.toThrow("permission_denied");
+  await expect(client.locateWorkspace!(scope)).resolves.toBe("/host/temporary/current");
+  await expect(client.previewWorkspace!({ ...scope, reference: "index.html", base: "" })).resolves.toMatchObject({ path: "index.html" });
+  const requestScope = { operation: "workspace", fingerprint: "a".repeat(64), serviceInstanceId: "service-1" };
+  expect(requests.slice(1)).toEqual([
+    { ...requestScope, action: "locate" },
+    { ...requestScope, action: "preview", path: "@temporary", reference: "index.html", base: "" },
+  ]);
 });

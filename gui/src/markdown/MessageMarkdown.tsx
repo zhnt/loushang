@@ -1,4 +1,5 @@
-import { createContext, memo, useContext, type ReactNode } from "react";
+import { Children, createContext, memo, useContext, useState, type ReactNode } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { ElementContent } from "hast";
 import { CopyButton } from "../CopyButton";
 import { useTranslation } from "react-i18next";
@@ -41,13 +42,48 @@ function MarkdownLink({ url, children }: { readonly url?: string; readonly child
   const open = useContext(OpenFile);
   const label = <OpenFile.Provider value={undefined}>{children}</OpenFile.Provider>;
   if (url && /^https?:\/\//i.test(url)) {
-    return <a href={url} target="_blank" rel="noopener noreferrer">{label}</a>;
+    return isTauri() ? <DesktopWebLink url={url}>{label}</DesktopWebLink>
+      : <a href={url} target="_blank" rel="noopener noreferrer">{label}</a>;
   }
   const file = url && open ? markdownFileReference(url) : undefined;
   return file ? <FileReferenceButton file={file}>{children}</FileReferenceButton> : <span>{label}</span>;
 }
 
+function DesktopWebLink({ url, children }: { readonly url: string; readonly children: ReactNode }) {
+  const { t } = useTranslation("common");
+  const [failed, setFailed] = useState(false);
+  return <>
+    <a href={url} onClick={(event) => {
+      event.preventDefault();
+      setFailed(false);
+      void invoke("open_web_link", { url }).catch(() => setFailed(true));
+    }}>{children}</a>
+    {failed && <span className="markdown-link-error" role="alert"> {t("openLinkFailed")}</span>}
+  </>;
+}
+
+function PlainFileReferences({ children }: { readonly children: ReactNode }) {
+  const open = useContext(OpenFile);
+  if (!open) return children;
+  return Children.map(children, (child) => {
+    if (typeof child !== "string") return child;
+    const parts: ReactNode[] = [];
+    let end = 0;
+    for (const match of child.matchAll(/(?<![\w./\\:@%?-])(?:[\w.-]+[/\\])*[\w-][\w.-]*\.[a-z][\da-z]*(?![\w/\\-]|\.[\da-z])/gi)) {
+      const file = inlineFileReference(match[0]);
+      if (!file) continue;
+      parts.push(child.slice(end, match.index), <FileReferenceButton key={match.index} file={file}>{match[0]}</FileReferenceButton>);
+      end = match.index + match[0].length;
+    }
+    return parts.length ? [...parts, child.slice(end)] : child;
+  });
+}
+
 const components: Components = {
+  p: ({ children }) => <p><PlainFileReferences>{children}</PlainFileReferences></p>,
+  li: ({ node: _node, children, ...props }) => <li {...props}><PlainFileReferences>{children}</PlainFileReferences></li>,
+  strong: ({ children }) => <strong><PlainFileReferences>{children}</PlainFileReferences></strong>,
+  em: ({ children }) => <em><PlainFileReferences>{children}</PlainFileReferences></em>,
   a: ({ href, children }) => <MarkdownLink url={href}>{children}</MarkdownLink>,
   img: ({ alt }) => alt ? <span>{alt}</span> : null,
   code: function InlineCode({ node: _node, children, ...props }) {

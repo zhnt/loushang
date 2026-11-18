@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
+import { MessageMarkdown } from "../../src/markdown/MessageMarkdown";
 import { createMockAppClient } from "../support/mockAppClient";
 import type { ClientSnapshot, CreateSessionReceipt, FixturePlaybackPort, HarnessClientUiPort, SessionModels, ThinkingLevel } from "../../src/client/model";
 
@@ -26,6 +27,23 @@ function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): Fi
 }
 
 describe("GUI-B1 Workspace / Task / Review fixture", () => {
+  it("opens desktop Markdown links through the system browser bridge and reports failures", async () => {
+    const url = "https://example.org/search?q=weather#results";
+    const invoke = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce("open_failed");
+    vi.stubGlobal("isTauri", true);
+    vi.stubGlobal("__TAURI_INTERNALS__", { invoke });
+    try {
+      render(<MessageMarkdown text={`[Reference](${url})`} />);
+      const link = screen.getByRole("link", { name: "Reference" });
+      fireEvent.click(link);
+      expect(invoke).toHaveBeenCalledWith("open_web_link", { url }, undefined);
+      fireEvent.click(link);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not open the link in the system browser.");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps the composer bound to the selected conversation during a Mux switch", async () => {
     const fixture = await createMockAppClient().snapshot();
     const [a, b] = fixture.sessions;
@@ -1038,6 +1056,7 @@ describe("Hosted business choices", () => {
     const note = card.getByRole("textbox", { name: "Additional notes (optional)" });
     fireEvent.change(note, { target: { value: "Keep the public API" } });
     const confirm = card.getByRole("button", { name: "Confirm choice" });
+    expect(confirm).toHaveClass("primary-button");
     await waitFor(() => expect(confirm).toBeEnabled());
     fireEvent.click(confirm);
     fireEvent.click(confirm);

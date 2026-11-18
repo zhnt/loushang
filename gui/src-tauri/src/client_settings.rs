@@ -179,10 +179,10 @@ async fn dispatch(routed: Routed) -> Result<Value> {
 fn open_project_path(backend: &Backend, body: &Value) -> Result<Value> {
     let workspace = body["workspace"].as_str().ok_or("invalid_request")?;
     let fingerprint = body["fingerprint"].as_str().ok_or("invalid_request")?;
-    let projects = backend
-        .call(json!({"operation":"workspace","action":"projects"}))
+    let workspaces = backend
+        .call(json!({"operation":"workspace","action":"list"}))
         .map_err(|_| "connection_failed")?;
-    let admitted = projects["workspaces"].as_array().is_some_and(|rows| {
+    let admitted = workspaces["workspaces"].as_array().is_some_and(|rows| {
         rows.iter().any(|row| {
             row["path"] == workspace
                 && row["scope"] == "cwd"
@@ -198,7 +198,17 @@ fn open_project_path(backend: &Backend, body: &Value) -> Result<Value> {
         _ => return Err("invalid_request"),
     };
     let path = resolve_project_path(Path::new(workspace), relative)?;
-    open_in_desktop(&path)?;
+    if can_open_document(&path) || path.is_dir() {
+        open_in_desktop(&path).or_else(|error| {
+            if path.is_file() {
+                reveal_file(&path)
+            } else {
+                Err(error)
+            }
+        })?;
+    } else {
+        reveal_file(&path)?;
+    }
     Ok(json!({}))
 }
 
@@ -210,9 +220,10 @@ fn resolve_project_path(workspace: &Path, relative: Option<&str>) -> Result<Path
     if let Some(relative) = relative {
         use std::path::Component;
         let relative = Path::new(relative);
-        if !relative
-            .components()
-            .all(|part| matches!(part, Component::Normal(_)))
+        if relative.as_os_str().is_empty()
+            || !relative
+                .components()
+                .all(|part| matches!(part, Component::Normal(_)))
         {
             return Err("invalid_request");
         }
@@ -220,17 +231,7 @@ fn resolve_project_path(workspace: &Path, relative: Option<&str>) -> Result<Path
             .join(relative)
             .canonicalize()
             .map_err(|_| "not_found")?;
-        let supported = file
-            .extension()
-            .and_then(|value| value.to_str())
-            .is_some_and(|value| {
-                [
-                    "html", "htm", "pdf", "png", "jpg", "jpeg", "webp", "txt", "md",
-                ]
-                .iter()
-                .any(|extension| value.eq_ignore_ascii_case(extension))
-            });
-        if !file.starts_with(&root) || !file.is_file() || !supported {
+        if !file.starts_with(&root) || !(file.is_file() || file.is_dir()) {
             return Err("operation_unavailable");
         }
         Ok(file)
@@ -239,18 +240,97 @@ fn resolve_project_path(workspace: &Path, relative: Option<&str>) -> Result<Path
     }
 }
 
+fn can_open_document(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| {
+            [
+                "html", "htm", "pdf", "png", "jpg", "jpeg", "webp", "txt", "md",
+            ]
+            .iter()
+            .any(|extension| value.eq_ignore_ascii_case(extension))
+        })
+}
+
+#[cfg(target_os = "linux")]
+fn reveal_file(path: &Path) -> Result<()> {
+    use gtk::gio::{self, prelude::FileExt};
+    use gtk::glib::variant::ToVariant;
+
+    let uri = gio::File::for_path(path).uri().to_string();
+    if let Ok(bus) = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>) {
+        let parameters = (vec![uri], "").to_variant();
+        if bus
+            .call_sync(
+                Some("org.freedesktop.FileManager1"),
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1",
+                "ShowItems",
+                Some(&parameters),
+                None,
+                gio::DBusCallFlags::NONE,
+                2000,
+                None::<&gio::Cancellable>,
+            )
+            .is_ok()
+        {
+            return Ok(());
+        }
+    }
+    open_in_desktop(path.parent().ok_or("open_failed")?)
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_file(path: &Path) -> Result<()> {
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .status()
+        .ok()
+        .filter(|status| status.success())
+        .map(|_| ())
+        .ok_or("open_failed")
+}
+
 #[cfg(target_os = "windows")]
-fn open_in_desktop(path: &Path) -> Result<()> {
+fn reveal_file(path: &Path) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+    let mut argument = std::ffi::OsString::from("/select,\"");
+    argument.push(shell_path(path));
+    argument.push("\"");
+    let system_root = std::env::var_os("SystemRoot").ok_or("open_failed")?;
+    std::process::Command::new(Path::new(&system_root).join("explorer.exe"))
+        .raw_arg(argument)
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| "open_failed")
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+fn reveal_file(path: &Path) -> Result<()> {
+    open_in_desktop(path.parent().ok_or("open_failed")?)
+}
+
+#[cfg(target_os = "windows")]
+fn shell_path(path: &Path) -> std::ffi::OsString {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    let path: Vec<u16> = path.as_os_str().encode_wide().collect();
+    let verbatim_prefix = [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
+    if path.starts_with(&verbatim_prefix) && path.get(5) == Some(&(b':' as u16)) {
+        std::ffi::OsString::from_wide(&path[verbatim_prefix.len()..])
+    } else {
+        std::ffi::OsString::from_wide(&path)
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn open_in_desktop(path: &Path) -> Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::{w, PCWSTR};
     use windows::Win32::UI::Shell::ShellExecuteW;
 
-    let mut path: Vec<u16> = path.as_os_str().encode_wide().collect();
-    let verbatim_prefix = [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
     // ShellExecute expects the usual drive-path spelling for shell associations.
-    if path.starts_with(&verbatim_prefix) && path.get(5) == Some(&(b':' as u16)) {
-        path.drain(..verbatim_prefix.len());
-    }
+    let mut path: Vec<u16> = shell_path(path).encode_wide().collect();
     path.push(0);
     let result = unsafe {
         ShellExecuteW(

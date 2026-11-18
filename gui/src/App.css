@@ -231,8 +231,10 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .composer-actions { position: relative; display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) 30px; align-items: center; gap: 3px 7px; }
 .permission-label { color: var(--orange); font-size: 12px; }
 .icon-button { width: 25px; height: 25px; border: 0; border-radius: 50%; color: var(--muted); background: transparent; }
-.primary-button, .secondary-button { padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 680; }
+.primary-button, .secondary-button { padding: 6px 10px; border-radius: 8px; font-size: var(--font-size-caption); font-weight: var(--font-weight-semibold); }
 .primary-button { border: 1px solid var(--primary); color: var(--primary-text); background: var(--primary); }
+.primary-button:enabled:hover { background: color-mix(in srgb, var(--primary) 88%, var(--primary-text)); }
+.primary-button:focus-visible { outline-color: var(--primary-text); }
 .secondary-button { border: 1px solid var(--line-strong); color: var(--ink-secondary); background: var(--paper); }
 
 .quick-look { position: absolute; z-index: 10; top: 31px; left: 50%; width: min(670px, calc(100% - 60px)); overflow: hidden; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); box-shadow: 0 18px 50px rgba(30, 31, 32, 0.22); transform: translateX(-50%); }
@@ -459,7 +461,7 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 /* Keep hover feedback consistent over each control's resting background. */
 :is(button:enabled, select:enabled, summary, a[href], .sidebar-resizer, .session-row):hover { background-color: var(--control-hover); }
 .session-item:enabled:hover { background-color: transparent; }
-:is(.primary-button, .composer-submit, .session-pin):enabled:hover { color: var(--ink); }
+:is(.composer-submit, .session-pin):enabled:hover { color: var(--ink); }
 
 .project-navigation { margin: var(--navigation-group-gap) 0; }
 .project-navigation .session-row { grid-template-columns: minmax(0, 1fr) var(--sidebar-action-width); }
@@ -513,8 +515,8 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .choice-option { display: flex; align-items: baseline; gap: 8px; }
 .choice-option small { display: block; color: var(--muted); }
 .choice-notes { display: grid; gap: 4px; color: var(--muted); }
-.choice-notes input { width: 100%; min-width: 0; }
-.user-choice button { justify-self: start; }
+.choice-notes input { width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: var(--paper); }
+.user-choice .primary-button { justify-self: start; min-height: 34px; }
 .user-choice > p { margin-bottom: 0; color: var(--muted); }
 .goal-start p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
 .goal-progress > strong { display: block; padding: 8px 12px 0; }

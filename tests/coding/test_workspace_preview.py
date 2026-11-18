@@ -1,5 +1,6 @@
 import asyncio
 import os
+from pathlib import Path
 
 import pytest
 
@@ -118,6 +119,17 @@ def test_catalog_requires_the_exact_registered_workspace_scope(tmp_path):
             assert wrong_scope.value.code == AppErrorCodeV1.PERMISSION_DENIED
             result = await catalog.workspace(request(scope.fingerprint))
             assert result.workspaces[0].preview.text == "project file"
+            allocated = (await catalog.workspace(WorkspaceRequestV1("allocate-temporary"))).workspaces[0]
+            (Path(allocated.path) / "index.html").write_text("<h1>Weather</h1>", encoding="utf-8")
+            temporary_request = WorkspaceRequestV1(
+                "preview", allocated.path,
+                preview=WorkspacePreviewRequestV1("index.html", "", allocated.scope_fingerprint),
+            )
+            temporary_result = await catalog.workspace(temporary_request)
+            assert temporary_result.workspaces[0].preview.text == "<h1>Weather</h1>"
+            assert allocated.path not in {
+                workspace.path for workspace in (await catalog.workspace(WorkspaceRequestV1("projects"))).workspaces
+            }
             await catalog.workspace(WorkspaceRequestV1("unregister", str(workspace.resolve())))
             with pytest.raises(AppServiceError) as removed:
                 await catalog.workspace(request(scope.fingerprint))

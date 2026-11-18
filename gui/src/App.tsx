@@ -38,6 +38,7 @@ import { probeFixtureBridge, type BridgeProbe } from "./client/nativeFixtureBrid
 import type {
   AgentRunProjection,
   ChangeSetProjection,
+  ConversationMessage,
   ClientEvent,
   ClientSnapshot,
   ConnectionState,
@@ -54,6 +55,24 @@ import type {
 import { emptyGuiState, guiReducer, hasCapability, type DockTab, type GuiState } from "./client/state";
 
 type NoticeKey = `notice.${keyof typeof import("./i18n/locales/en-US/session.json")["notice"]}`;
+
+function copyableReplies(messages: readonly ConversationMessage[], waiting: boolean) {
+  const copies = new Map<string, string>();
+  let reply: ConversationMessage[] = [];
+  function finish() {
+    const last = reply[reply.length - 1];
+    if (last && reply.every((message) => message.phase === "complete")) {
+      copies.set(last.id, reply.map((message) => message.content).join("\n\n"));
+    }
+    reply = [];
+  }
+  for (const message of messages) {
+    if (message.role === "assistant" && message.content.trim()) reply.push(message);
+    if (message.role === "user" && !submittedChoiceLabel(message.content)) finish();
+  }
+  if (!waiting) finish();
+  return copies;
+}
 type Notice =
   | { key: Exclude<NoticeKey, "notice.rejected" | "notice.interruptReason" | "notice.playback" | "notice.modelChanged"> }
   | { key: "notice.rejected" | "notice.interruptReason"; params: { reason: string } }
@@ -701,21 +720,37 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     : selected && installedClient === client && selectionReady ? requestedSelection?.workspace : undefined;
   const workspaceFingerprint = selected?.context.scopeFingerprint;
   const workspaceSessionId = selected?.context.sessionId;
-  const workspacePath = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE ? workspaceContext : undefined;
-  const inspectWorkspace = connected && workspacePath && workspaceFingerprint && projectNavigation?.inspectWorkspace
+  const temporaryWorkspace = workspaceContext === TEMPORARY_WORKSPACE;
+  const readPreview = client.previewWorkspace;
+  const previewSource = state.remote.source.kind === "live" ? state.remote.source : null;
+  const serviceInstanceId = previewSource?.serviceInstanceId;
+  const connectionEpoch = previewSource?.connectionEpoch;
+  const scopeSessionId = selected?.id;
+  const workspaceScope = useMemo(() => connected && selectionReady && serviceInstanceId && connectionEpoch && scopeSessionId && workspaceFingerprint
+    ? { sessionId: scopeSessionId, serviceInstanceId, connectionEpoch }
+    : null, [connected, selectionReady, serviceInstanceId, connectionEpoch, scopeSessionId, workspaceFingerprint]);
+  const previewScope = readPreview ? workspaceScope : null;
+  const workspaceScopeKey = workspaceScope ? JSON.stringify([previewSource?.connectionId, workspaceFingerprint, workspaceScope]) : null;
+  const previewScopeKey = previewScope ? workspaceScopeKey : null;
+  const [workspaceLocation, setWorkspaceLocation] = useState<{ key: string; path: string }>();
+  useEffect(() => {
+    if (!temporaryWorkspace || !workspaceScope || !workspaceScopeKey || !client.locateWorkspace) return;
+    let active = true;
+    void client.locateWorkspace(workspaceScope).then((path) => {
+      if (active) setWorkspaceLocation({ key: workspaceScopeKey, path });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [client, temporaryWorkspace, workspaceScope, workspaceScopeKey]);
+  const workspacePath = temporaryWorkspace
+    ? workspaceLocation?.key === workspaceScopeKey ? workspaceLocation?.path : undefined
+    : workspaceContext ?? undefined;
+  const inspectWorkspace = connected && !temporaryWorkspace && workspacePath && workspaceFingerprint && projectNavigation?.inspectWorkspace
     ? (review: boolean) => projectNavigation.inspectWorkspace!(
       workspacePath, workspaceFingerprint, review ? workspaceSessionId : undefined,
     ) : undefined;
   const openWorkspacePath = connected && workspacePath && workspaceFingerprint && projectNavigation?.openProjectPath
-    ? (file?: string) => projectNavigation.openProjectPath!(workspacePath, workspaceFingerprint, file) : undefined;
-  const readPreview = client.previewWorkspace;
-  const previewSource = state.remote.source.kind === "live" ? state.remote.source : null;
-  const previewScope = connected && selectionReady && readPreview && previewSource && selected && workspaceFingerprint
-    ? { sessionId: selected.id, serviceInstanceId: previewSource.serviceInstanceId, connectionEpoch: previewSource.connectionEpoch }
-    : null;
-  const previewScopeKey = previewScope
-    ? JSON.stringify([previewSource?.connectionId, workspaceFingerprint, previewScope])
-    : null;
+    ? (file?: string) => projectNavigation.openProjectPath!(workspacePath, workspaceFingerprint, file)
+    : undefined;
   const [filePreview, setFilePreview] = useState<{
     scope: string; reference: FileReference; trigger: HTMLButtonElement;
   }>();
@@ -725,6 +760,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const openFilePreview = useMemo(() => previewScopeKey ? (reference: FileReference, trigger: HTMLButtonElement) => {
     setFilePreview({ scope: previewScopeKey, reference, trigger });
   } : undefined, [previewScopeKey]);
+  const replyCopies = copyableReplies(visibleMessages ?? [], selected?.status === "running"
+    || Boolean(question && choiceAnswer?.status !== "accepted") || Boolean(selected?.pendingApprovals?.length));
   const projectContext = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE
     ? workspaceName(workspaceContext) : undefined;
   const conversationTitle = selected ? displaySessionTitle(selected, liveTitles[selected.id])
@@ -921,8 +958,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                         {message.role === "assistant" && message.content
                           ? <MessageMarkdown text={message.content} openFile={openFilePreview} />
                           : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
-                        {message.role === "assistant" && message.phase === "complete" && message.content
-                          ? <div className="reply-actions"><CopyButton text={message.content}
+                        {replyCopies.has(message.id)
+                          ? <div className="reply-actions"><CopyButton text={replyCopies.get(message.id)!}
                               icon feedbackMs={1600} label={t("session:transcript.copyReply")} /></div>
                           : null}
                       </article>
@@ -979,6 +1016,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               {filePreview && filePreview.scope === previewScopeKey && previewScope && readPreview
                 ? <WorkspacePreviewDialog key={previewScopeKey} initial={filePreview.reference} theme={markdown.theme}
                   read={(reference, base) => readPreview({ ...previewScope, reference, base })}
+                  openPath={openWorkspacePath}
                   onClose={() => {
                     setFilePreview(undefined);
                     filePreview.trigger.focus({ preventScroll: true });
@@ -1038,7 +1076,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
         {selected ? (
           <WorkDock key={JSON.stringify([selectionKey, selected.id])}
             open={rightVisible} stale={!fixture && !connected} tab={state.local.dockTab}
-            state={state} session={selected} workspacePath={workspaceContext ?? undefined} selectedDocument={selectedDocument}
+            state={state} session={selected} workspacePath={workspacePath} temporaryWorkspace={temporaryWorkspace} selectedDocument={selectedDocument}
             inspectWorkspace={inspectWorkspace} openWorkspacePath={openWorkspacePath}
             goalControls={<>
               <GoalStart {...goalStart} />
@@ -1442,6 +1480,7 @@ interface WorkDockProps {
   readonly open: boolean;
   readonly stale: boolean;
   readonly workspacePath?: string;
+  readonly temporaryWorkspace?: boolean;
   readonly inspectWorkspace?: (review: boolean) => Promise<Inspection>;
   readonly openWorkspacePath?: (file?: string) => Promise<void>;
   readonly goalControls: ReactNode;
@@ -1512,7 +1551,8 @@ function WorkDock(props: WorkDockProps) {
           {showTasks && session.execution ? <ExecutionDetail execution={session.execution} stale={stale} /> : null}
         </div>
         {tab === "tasks" ? null : tab === "environment" && live ? <>
-          <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath} openPath={props.openWorkspacePath}>
+          <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath}
+            temporary={props.temporaryWorkspace} openPath={props.openWorkspacePath}>
             {open && props.inspectWorkspace && <WorkspaceInspection key={session.id} load={props.inspectWorkspace} review={false} workspacePath={props.workspacePath}
               revision={session.execution?.status ?? ""} refresh={inspectionRefresh} />}
           </LiveContextPanel>
@@ -1567,18 +1607,17 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
   );
 }
 
-function LiveContextPanel({ state, session, workspacePath, openPath, children }: {
+function LiveContextPanel({ state, session, workspacePath: path, temporary, openPath, children }: {
   readonly children?: ReactNode;
   readonly openPath?: (file?: string) => Promise<void>;
   readonly state: GuiState;
   readonly session: SessionSnapshot;
   readonly workspacePath?: string;
+  readonly temporary?: boolean;
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const source = state.remote.source;
   if (source.kind !== "live") return null;
-  const temporary = workspacePath === TEMPORARY_WORKSPACE;
-  const path = temporary ? undefined : workspacePath;
   const unavailable = t("workspace:environment.unavailable");
   const workspace = state.remote.workspaces[session.workspaceId];
   const root = workspace?.rootLabel ?? path;

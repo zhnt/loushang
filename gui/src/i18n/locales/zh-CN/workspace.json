@@ -121,6 +121,7 @@
     "workspaceUnavailable": "无法打开此工作空间。"
   },
   "inspection": {
+    "openInSystem": "在系统中打开",
     "openFolder": "打开文件夹",
     "openFailed": "无法打开该工作区路径，请确认它仍存在且可在本机访问。",
     "repositoryRoot": "Git 仓库根目录",

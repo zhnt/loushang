@@ -45,7 +45,7 @@ export function UserChoiceCard({ question, answer, enabled, onChange, onConfirm 
         <input value={notes} maxLength={1024}
           onChange={(event) => onChange({ questionId: question.questionId, optionId, notes: event.target.value })} />
       </label>
-      <button type="submit" disabled={!selected}>{t("choice.confirm")}</button>
+      <button type="submit" className="primary-button" disabled={!selected}>{t("choice.confirm")}</button>
     </fieldset>
     {status && <p role="status">{t(`choice.${status}`)}</p>}
   </form>;

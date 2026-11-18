@@ -123,7 +123,7 @@ class CodingWorkspaceCatalog(
         except (OSError, ValueError):
             raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
         catalog = self._catalogs.get(root)
-        if catalog is None or self.registry.is_temporary(root):
+        if catalog is None:
             raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
         scope = catalog.scopes[0]
         if root != Path(path) or scope.fingerprint != request.scope_fingerprint:

@@ -6,8 +6,7 @@ import { validateInteractiveGoalRecovery } from "../../contracts/interactiveGoal
 import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { webRequest } from "./hostApi";
-import { TEMPORARY_WORKSPACE } from "./projectDirectory";
-import type { WorkspacePreview, WorkspacePreviewRequest } from "./workspacePreview";
+import type { WorkspacePreview, WorkspacePreviewRequest, WorkspacePreviewScope } from "./workspacePreview";
 
 /** Same projection/contracts as desktop; authoritative snapshots arrive from AppHost. */
 export interface WebLiveClient extends HarnessClientUiPort {
@@ -77,7 +76,7 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       if (listeners.size && serial === generation) timer = setTimeout(() => void poll(serial), 500);
     }
   };
-  function previewScope(input: WorkspacePreviewRequest) {
+  function previewScope(input: WorkspacePreviewScope) {
     const source = current?.source;
     if (!viewId || source?.kind !== "live" || source.serviceInstanceId !== input.serviceInstanceId
       || source.connectionEpoch !== input.connectionEpoch) throw new Error("instance_changed");
@@ -100,7 +99,16 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
   const pageHidden = () => { void close(); };
   return {
     snapshot: refresh,
-    ...(workspace !== TEMPORARY_WORKSPACE ? { previewWorkspace } : {}),
+    previewWorkspace,
+    async locateWorkspace(input) {
+      const id = viewId;
+      const fingerprint = previewScope(input);
+      const result = await webRequest<{ path: string }>({
+        operation: "workspace", action: "locate", fingerprint, serviceInstanceId: input.serviceInstanceId,
+      }, connectionId);
+      if (id !== viewId || previewScope(input) !== fingerprint) throw new Error("instance_changed");
+      return result.path;
+    },
     subscribe: () => () => {},
     subscribeSnapshots(listener) {
       listeners.add(listener);

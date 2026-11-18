@@ -327,6 +327,7 @@ export interface HarnessClientUiPort {
   subscribeConnection?(listener: (connection: "disconnected" | "resync-required") => void): () => void;
   requestResync?(): Promise<void>;
   previewWorkspace?: ReadWorkspacePreview;
+  locateWorkspace?: (scope: import("./workspacePreview").WorkspacePreviewScope) => Promise<string>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   findSubmission?(sessionId: string, submissionId: string, serviceInstanceId: string): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
