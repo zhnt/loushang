@@ -80,6 +80,7 @@ export function AccountMenu({ compact = false, account, onSettings }: {
       </header>
       <dl>
         <div><dt>{t("accountName")}</dt><dd>{account.name}</dd></div>
+        <div><dt>{t("accountType")}</dt><dd>{t("accountTypeLocal")}</dd></div>
         {account.id ? <div>
           <dt>{t("accountId")}</dt>
           <dd className="account-id-value">

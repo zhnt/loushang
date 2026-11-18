@@ -13,6 +13,8 @@
   "closeAccountDetails": "关闭账户详情",
   "copyAccountId": "复制本地账户 ID",
   "accountName": "系统用户名",
+  "accountType": "账号类型",
+  "accountTypeLocal": "本地账号",
   "accountId": "本地账户 ID",
   "accountMenu": "用户菜单",
   "generalSettings": "常规",
