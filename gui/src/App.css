@@ -6,6 +6,11 @@
   color: var(--ink);
   background: var(--canvas);
   font-synthesis: none;
+  --conversation-font: var(--font-ui);
+  --conversation-font-size: 14px;
+  --conversation-font-weight: 400;
+  --conversation-line-height: 23px;
+  --conversation-color: var(--ink);
 }
 
 * { box-sizing: border-box; }
@@ -158,7 +163,13 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .message-meta strong { color: var(--muted); }
 .transcript-status { padding: 8px 12px; border-radius: 8px; color: var(--muted); background: var(--panel); font-size: 13px; }
 .message.user .message-meta strong { color: var(--ink); }
-.message > p { margin: 0; font-size: 14px; line-height: 23px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message > p {
+  margin: 0;
+  color: var(--conversation-color);
+  font: var(--conversation-font-weight) var(--conversation-font-size)/var(--conversation-line-height) var(--conversation-font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 .run-activity { max-width: 760px; margin: 0 auto 22px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .activity-summary { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr) 20px; align-items: center; gap: 8px; padding: 11px 2px; border: 0; color: var(--ink-secondary); background: transparent; text-align: left; }

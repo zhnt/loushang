@@ -51,11 +51,23 @@ for (const sample of [
       }
       const selectors = ['[data-font-sample="chat-0"]', '[data-font-sample="chat-1"]',
         '[data-font-sample="chat-2"]', ".project-label span", ".project-navigation .section-label",
-        ".session-heading h1", ".model-current-label", ".markdown-body > p", ".markdown-body pre code"];
+        ".session-heading h1", ".model-current-label", ".message.user > p",
+        ".markdown-body > p", ".markdown-body pre code"];
       const actualFonts = await fontsFor(page, selectors);
       for (const result of actualFonts) {
         expect(result.fonts.some((font) => font.glyphCount > 0), result.selector).toBe(true);
       }
+      const userText = page.locator(".message.user > p");
+      const assistantText = page.locator(".markdown-body > p").first();
+      await expect(assistantText).toHaveText((await userText.textContent())!);
+      const textStyles = (element: Element) => {
+        const style = getComputedStyle(element);
+        return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.color];
+      };
+      expect(await assistantText.evaluate(textStyles)).toEqual(await userText.evaluate(textStyles));
+      const renderedFonts = (selector: string) => actualFonts.find((result) => result.selector === selector)!
+        .fonts.filter((font) => font.glyphCount > 0).map((font) => font.postScriptName).sort();
+      expect(renderedFonts(".markdown-body > p")).toEqual(renderedFonts(".message.user > p"));
       const report = info.outputPath("rendered-fonts.json");
       await writeFile(report, JSON.stringify(actualFonts, null, 2));
       await info.attach("rendered-fonts", { path: report, contentType: "application/json" });

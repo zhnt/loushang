@@ -1,6 +1,4 @@
 .markdown-reading[data-markdown-theme="loushang-minimal"] {
-  --md-fg: light-dark(#373936, #d9dad6);
-  --md-heading: light-dark(#20211f, #f3f3f0);
   --md-muted: light-dark(#676765, #aeaeaa);
   --md-accent: light-dark(#0d8a70, #70d7b7);
   --md-link: light-dark(#08735f, #70d7b7);
@@ -13,15 +11,12 @@
   --md-syntax-number: light-dark(#985328, #eab88c);
   --md-syntax-symbol: light-dark(#275c91, #a4c8ed);
 
-  --md-font: var(--font-ui);
   --md-code-font: var(--font-mono);
-  --md-font-size: 15px;
-  --md-line-height: 1.72;
   --md-paragraph-gap: 12px;
   --md-list-gap: 2px;
-  --md-h1-size: 22px;
-  --md-h2-size: 19px;
-  --md-h3-size: 16px;
+  --md-h1-size: 20px;
+  --md-h2-size: 17px;
+  --md-h3-size: 15px;
   --md-table-size: 14px;
   --md-table-line-height: 1.55;
   --md-code-size: 13.5px;

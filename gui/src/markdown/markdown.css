@@ -1,7 +1,7 @@
 .markdown-body {
   min-inline-size: 0;
-  color: var(--md-fg);
-  font: 400 var(--md-font-size)/var(--md-line-height) var(--md-font);
+  color: var(--conversation-color);
+  font: var(--conversation-font-weight) var(--conversation-font-size)/var(--conversation-line-height) var(--conversation-font);
   overflow-wrap: anywhere;
 }
 .markdown-body :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, pre, hr) { margin: 0; }
@@ -15,16 +15,15 @@
 .markdown-body blockquote > * + :is(h1, h2, h3, h4, h5, h6) { margin-block-start: var(--heading-gap); }
 
 .markdown-body :is(h1, h2, h3, h4, h5, h6) {
-  --heading-gap: 18px;
-  color: var(--md-heading);
-  font-size: var(--md-font-size);
+  --heading-gap: 16px;
+  font-size: var(--conversation-font-size);
   font-weight: 600;
   line-height: 1.4;
 }
-.markdown-body h1 { --heading-gap: 32px; font-size: var(--md-h1-size); }
-.markdown-body h2 { --heading-gap: 26px; font-size: var(--md-h2-size); }
-.markdown-body h3 { --heading-gap: 22px; font-size: var(--md-h3-size); }
-.markdown-body :is(strong, b) { color: var(--md-heading); font-weight: 500; }
+.markdown-body h1 { --heading-gap: 28px; font-size: var(--md-h1-size); }
+.markdown-body h2 { --heading-gap: 22px; font-size: var(--md-h2-size); }
+.markdown-body h3 { --heading-gap: 18px; font-size: var(--md-h3-size); }
+.markdown-body :is(strong, b) { font-weight: 500; }
 .markdown-body :is(h1, h2, h3, h4, h5, h6) :is(strong, b) { font-weight: inherit; }
 
 .markdown-body :is(ul, ol) { padding-inline-start: 1.5em; }
@@ -103,7 +102,7 @@
   vertical-align: top;
   text-align: start;
 }
-.markdown-body th { color: var(--md-heading); font-weight: 600; }
+.markdown-body th { font-weight: 600; }
 .markdown-body tbody tr { border-block-start: 1px solid var(--md-border); }
 
 .markdown-code-label .secondary-button { padding: 3px 7px; }

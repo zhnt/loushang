@@ -128,12 +128,12 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   for (const box of [shortBox!, longBox!]) {
     expect(Math.abs(box.x + box.width - (composerBox!.x + composerBox!.width))).toBeLessThanOrEqual(1);
   }
-  await expect(body).toHaveCSS("color", "rgb(55, 57, 54)");
-  await expect(body).toHaveCSS("font-size", "15px");
-  await expect(body).toHaveCSS("line-height", "25.8px");
+  await expect(body).toHaveCSS("color", "rgb(37, 39, 42)");
+  await expect(body).toHaveCSS("font-size", "14px");
+  await expect(body).toHaveCSS("line-height", "23px");
   await expect(body.locator("strong")).toHaveCSS("font-weight", "500");
-  await expect(body.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "22px");
-  await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("margin-block-start", "26px");
+  await expect(body.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "20px");
+  await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("margin-block-start", "22px");
   await expect(body.getByRole("heading", { level: 2 })).toHaveCSS("border-block-end-width", "0px");
   await expect(body.getByRole("columnheader").first()).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(body.locator("pre")).toHaveCSS("font-size", "13.5px");
@@ -201,21 +201,21 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await page.keyboard.press("Escape");
   await expect(reading).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(pane).toHaveCSS("background-color", "rgb(32, 32, 31)");
-  await expect(body).toHaveCSS("color", "rgb(217, 218, 214)");
+  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
   await expect(composer).toHaveCSS("background-color", "rgb(32, 32, 31)");
   await expect(sidebar).toHaveCSS("background-color", "rgb(37, 37, 37)");
   await page.reload();
-  await expect(body).toHaveCSS("color", "rgb(217, 218, 214)");
+  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
   await openSettings(page);
   await expect(appearance).toHaveText("Dark");
   await selectAppearance("Follow system");
   await page.keyboard.press("Escape");
-  await expect(body).toHaveCSS("color", "rgb(55, 57, 54)");
+  await expect(body).toHaveCSS("color", "rgb(37, 39, 42)");
   await page.emulateMedia({ colorScheme: "dark" });
-  await expect(body).toHaveCSS("color", "rgb(217, 218, 214)");
+  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
   await openSettings(page);
   await selectAppearance("Light");
-  await expect(body).toHaveCSS("color", "rgb(55, 57, 54)");
+  await expect(body).toHaveCSS("color", "rgb(37, 39, 42)");
   await selectAppearance("Follow system");
   await page.keyboard.press("Escape");
 
@@ -240,7 +240,7 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await page.reload();
   await expect(reading).toHaveAttribute("data-markdown-theme", "loushang-minimal");
   await expect(page.locator("html")).toHaveAttribute("data-appearance", "system");
-  await expect(body).toHaveCSS("color", "rgb(217, 218, 214)");
+  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
 });
 
 test.describe("touch reading", () => {

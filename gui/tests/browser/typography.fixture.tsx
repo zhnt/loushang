@@ -18,10 +18,14 @@ const temporary = [
 
 async function mount() {
   const seed = await createMockAppClient().snapshot();
+  const sameText = "中文与 English 混排，Version 2.0 和数字 128 清晰易读。";
   const session = {
     ...seed.sessions[0], id: "mixed", title, status: "idle" as const, run: null, changeSet: null,
-    messages: [{ id: "reply", role: "assistant" as const, phase: "complete" as const,
-      content: "## 阅读布局 · Markdown\n\n中文与 English 混排。Version 2.0 使用 `cargo test`。\n\n```text\nModel ID: desktop-review\n```" }],
+    messages: [
+      { id: "prompt", role: "user" as const, phase: "complete" as const, content: sameText },
+      { id: "reply", role: "assistant" as const, phase: "complete" as const,
+        content: `## 阅读布局 · Markdown\n\n${sameText}\n\n使用 \`cargo test\`。\n\n\`\`\`text\nModel ID: desktop-review\n\`\`\`` },
+    ],
   };
   const models = { currentId: "review", models: [{
     id: "review", provider: "local", endpointId: "fixture", modelId: "Desktop 文案", label: "Desktop 文案", supportsThinking: false,
