@@ -33,12 +33,21 @@
 .markdown-body li::marker { color: var(--md-muted); }
 .markdown-body .task-list-item { list-style: none; }
 .markdown-body .task-list-item input { accent-color: var(--md-accent); }
-.markdown-body a {
+.markdown-body a[href] {
   color: var(--md-link);
+  text-decoration-color: color-mix(in srgb, currentColor 70%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 0.18em;
 }
-.markdown-body :is(a, pre, .markdown-table):focus-visible { outline-color: var(--md-accent); }
+.markdown-body a[href]:hover {
+  background-color: transparent;
+  text-decoration-color: currentColor;
+}
+.markdown-body a[href]:focus-visible {
+  outline: 1px solid var(--control-focus);
+  outline-offset: 1px;
+}
+.markdown-body :is(pre, .markdown-table):focus-visible { outline-color: var(--md-accent); }
 .markdown-link-error { color: var(--red); }
 .markdown-file-notice { color: var(--md-muted); }
 .markdown-file-notice[role="alert"] { color: var(--red); }
@@ -120,7 +129,7 @@
   background: transparent;
   font: inherit;
   text-align: start;
-  text-decoration: underline dotted var(--md-guide);
+  text-decoration: underline dotted color-mix(in srgb, var(--md-guide) 65%, var(--md-muted));
   text-underline-offset: 0.18em;
   overflow-wrap: anywhere;
   cursor: pointer;
