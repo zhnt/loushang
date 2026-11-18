@@ -1632,13 +1632,12 @@ function LiveContextPanel({ state, session, workspacePath: path, temporary, open
   return (
     <section className="workspace-environment" aria-label={t("workspace:live.context")}>
       <div className="workspace-location">
-        <div className="workspace-location-label">
-          <strong><UiIcon name="folder-closed" />{temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}</strong>
-          {root && <div className="workspace-location-path">
-            <code title={root}>{root}</code>
-            <CopyButton icon text={root} label={t("common:clipboard.copyValue", { label: t("workspace:environment.root") })} />
-          </div>}
-        </div>
+        <strong className="workspace-location-label">
+          {temporary ? t("workspace:sidebar.temporaryChats") : workspace?.title ?? (path ? workspaceName(path) : unavailable)}
+        </strong>
+        {root && <CopyButton icon text={root} feedbackMs={1600}
+          label={t("common:clipboard.copyValue", { label: t("workspace:environment.root") })} />}
+        {root && <div className="workspace-location-path"><code title={root}>{root}</code></div>}
         {openPath && <OpenWorkspacePath open={openPath} />}
       </div>
       {!workspace && !path && !temporary ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}

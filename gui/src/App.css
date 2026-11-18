@@ -607,30 +607,30 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 }
 
 .workspace-location {
+  --panel-icon-size: 24px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: .25rem .5rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 3px 2px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
 }
 
-.workspace-location-label { display: grid; gap: 3px; min-width: 0; }
-.workspace-location-label strong,
-.workspace-location-path {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.workspace-location-label {
+  grid-column: 1;
+  grid-row: 1;
+  margin-inline-end: 6px;
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
 }
-
-.workspace-location-label strong { font-weight: 600; }
-.workspace-location-label strong .ui-icon { width: 16px; color: var(--muted); flex-shrink: 0; }
+.workspace-location > .panel-copy { grid-column: 2; grid-row: 1; }
+.workspace-location .workspace-folder-action { grid-column: 3; grid-row: 1; }
+.workspace-location-path { grid-column: 1 / -1; min-width: 0; }
 .workspace-location-path code {
-  flex: 1;
+  display: block;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -658,12 +658,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 
 .panel-icon-button .ui-icon,
 .workspace-folder-action .ui-icon { width: 16px; height: 16px; }
-
-@media (hover: hover) {
-  .workspace-folder-action { opacity: 0; }
-  .workspace-location:hover .workspace-folder-action,
-  .workspace-location:focus-within .workspace-folder-action { opacity: 1; }
-}
 
 .panel-copy { position: relative; flex: none; }
 .panel-copy[data-outcome="copied"] button { color: var(--green); }
