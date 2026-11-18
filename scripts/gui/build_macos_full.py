@@ -51,7 +51,12 @@ def audit_native(root: Path) -> list[dict[str, object]]:
         if any(tuple(map(int, value.split(".")[:2])) > (12, 0) for value in versions):
             raise RuntimeError(f"Requires newer macOS: {path.relative_to(root)}: {versions}")
         linked = run("/usr/bin/otool", "-arch", "x86_64", "-L", str(path))
+        # otool -L includes LC_ID_DYLIB before its actual load dependencies.
+        # The library's own link-time identity is not an external file load.
+        identity = re.search(r"cmd LC_ID_DYLIB\s+cmdsize \d+\s+name (.+?) \(offset", load)
         for library in re.findall(r"^\s+(/\S+)\s+\(", linked, re.MULTILINE):
+            if identity is not None and library == identity[1]:
+                continue
             if not library.startswith(("/usr/lib/", "/System/Library/")):
                 raise RuntimeError(f"Unbundled native dependency: {path.relative_to(root)}: {library}")
         report.append({"path": str(path.relative_to(root)), "architectures": architectures,

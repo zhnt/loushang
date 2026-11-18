@@ -31,8 +31,10 @@ def test_native_payload_audit_rejects_wrong_arch_os_and_external_dependencies(
         if command.endswith("lipo"):
             return architectures
         if "-l" in args:
-            return f"cmd LC_BUILD_VERSION\n cmdsize 32\n minos {minimum}\n sdk 15.0"
-        return f"program:\n\t{dependency} (compatibility version 1.0.0, current version 1.0.0)"
+            return (f"cmd LC_BUILD_VERSION\n cmdsize 32\n minos {minimum}\n sdk 15.0\n"
+                    "cmd LC_ID_DYLIB\n cmdsize 152\n name /build/python/libpython.dylib (offset 24)")
+        return ("program:\n\t/build/python/libpython.dylib (compatibility version 1.0.0, current version 1.0.0)\n"
+                f"\t{dependency} (compatibility version 1.0.0, current version 1.0.0)")
 
     monkeypatch.setattr(packager, "run", run)
     if error:
