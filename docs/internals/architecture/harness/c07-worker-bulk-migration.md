@@ -576,6 +576,8 @@ Harness 首轮静态检查通过（mypy 916源文件），测试6,354 passed／1
 
 修正后的完整 Harness 检查6,356 passed／113 skipped，Hosting 513 passed／60 skipped，Harness 包级5,939 passed／110 skipped／3 deselected，Hosting 包级397 passed／56 skipped／4 deselected，全部以0退出；文档检查通过。最终候选9777f24的生产源码、脚本及 Coding／界面测试与此前通过候选587e590逐文件无差异，保留这些输入未变的通过证据；各组重叠不相加。该记录支持当前部分迁移交付，不证明多数退出目标或未执行的原生平台路线完成。
 
+任务 PR #898 首次 Linux 定向原生检查47 passed／2 failed／1 deselected：清理竞态仍访问已经退出的 Code `os` 别名，GC 互斥证据仍注入旧 preflight 工厂而非当前 staging 入口。测试改为替换同一实际标准库 `os.unlink`，并在当前 staging 适配入口注入原 history bindings；实际 Harness 存储和锁内读取程序不改。限定 AST 对照证明只变更这两个既有注入位置及对应 import，所有断言、场景、标记、等待时限和其它测试 AST 保持；未恢复无消费者 Code 别名或增加故障 hook。受影响文件保留原非 live／skip-host-runtime 选择器，本地35 passed／14 skipped／1 deselected；原生结果按既有 PR 路线复核，不将本地跳过视为原生通过。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
