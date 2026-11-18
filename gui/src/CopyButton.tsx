@@ -25,7 +25,7 @@ export function CopyButton({ text, label, icon = false, showLabel = false, feedb
       setFeedback({ outcome: "failed" });
     }
   }
-  if (icon && !showLabel) return <span className="panel-copy" data-outcome={outcome}>
+  if (icon) return <span className="panel-copy" data-outcome={outcome}>
     <button type="button" className="panel-icon-button" aria-label={label ?? t("clipboard.copy")}
       title={outcome ? t(`clipboard.${outcome}`) : label ?? t("clipboard.copy")} onClick={() => void copy()}>
       <UiIcon name={feedbackMs === undefined || !outcome ? "copy" : outcome === "copied" ? "check" : "close"} />
@@ -34,10 +34,7 @@ export function CopyButton({ text, label, icon = false, showLabel = false, feedb
   </span>;
   return <span className="copy-action">
     <button type="button" className="secondary-button" aria-label={label}
-      onClick={() => void copy()}>
-      {icon ? <UiIcon name="copy" /> : null}
-      {(showLabel && label) || t("clipboard.copy")}
-    </button>
+      onClick={() => void copy()}>{(showLabel && label) || t("clipboard.copy")}</button>
     {outcome ? <small role="status">{t(`clipboard.${outcome}`)}</small> : null}
   </span>;
 }
