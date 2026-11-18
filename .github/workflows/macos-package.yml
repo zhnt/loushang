@@ -72,6 +72,17 @@ jobs:
                   if log.exists():
                       print(log.read_text(), flush=True)
           PY
+          /Applications/loushang-gui.app/Contents/Resources/runtime/bin/python3 -I - <<'PY'
+          from pathlib import Path
+          path = Path('/Applications/loushang-gui.app/Contents/Resources/runtime/lib/python3.11/site-packages/loushang/coding/macos_service.py')
+          path.write_text(path.read_text().replace('"RunAtLoad": True,', '"LimitLoadToSessionType": "Background", "RunAtLoad": True,'))
+          PY
+          /Applications/loushang-gui.app/Contents/Resources/runtime/bin/python3 -I scripts/gui/check_macos_package.py --evidence "$RUNNER_TEMP/evidence"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-launchd-diagnostic
+          path: ${{ runner.temp }}/evidence
   package:
     if: ${{ false }}
     runs-on: macos-15-intel

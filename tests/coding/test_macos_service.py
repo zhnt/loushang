@@ -23,6 +23,7 @@ def test_launchd_agent_uses_bundled_python_and_does_not_persist_tokens(tmp_path,
     assert value["ProgramArguments"] == [str(python), "-I", "-m", "loushang.coding.foreground_host"]
     assert b"secret-must-not-enter-plist" not in content
     assert value["KeepAlive"] == {"SuccessfulExit": False}
+    assert value["LimitLoadToSessionType"] == "Background"
 
 
 def test_launchd_status_rejects_stale_pid_without_probing(tmp_path, monkeypatch):

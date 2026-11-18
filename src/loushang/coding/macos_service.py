@@ -97,6 +97,7 @@ def _write_agent(home: Path, label: str) -> Path:
         "Label": label,
         "ProgramArguments": [str(_python()), "-I", "-m", "loushang.coding.foreground_host"],
         "WorkingDirectory": str(home), "EnvironmentVariables": environment,
+        "LimitLoadToSessionType": "Background",
         "RunAtLoad": True, "KeepAlive": {"SuccessfulExit": False},
         "ExitTimeOut": 40, "ThrottleInterval": 5,
         "StandardOutPath": str(state / "host.log"),
