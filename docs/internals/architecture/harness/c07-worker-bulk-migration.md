@@ -752,7 +752,7 @@ C07 原文件12,433行，邻组适配4行全计，有效剩余12,437，归因退
 
 逐文件清单明确 `_worker_history_access` 的两个借用适配不是 Coding 产品政策。本原型将整对原 frozen/slots dataclass 归 `package_product._worker_history_access`，Coding 只保留两个原私有名称的别名；原 Receipt、Supervisor、checkpoint、snapshot 与 Windows C5 消费者使用同一对象，没有额外适配实例。现有 Worker History ports 和 Journal/Snapshot/Rooted IO owners 保持，不新增 Protocol、账本、锁、读写算法或权限。
 
-两个完整类的 AST 仅更改类名，字段与全部方法体保持。POSIX guard 仍显式传 `require_write`；Windows 默认/False 仍省略参数，仅 True 显式传入。POSIX pin 和 Windows borrowed descriptor 继续使用各自原 Product 方法，不将 Windows 读取变成 root 修复或创建入口。Ruff、格式、diff 与两源 mypy 已通过；真实消费者和既有三种访问 port 的扩大 scoped mypy 正在执行。为避免与上一候选完整回归争用，不并发启动新的运行时验证。
+两个完整类的 AST 仅更改类名，字段与全部方法体保持。POSIX guard 仍显式传 `require_write`；Windows 默认/False 仍省略参数，仅 True 显式传入。POSIX pin 和 Windows borrowed descriptor 继续使用各自原 Product 方法，不将 Windows 读取变成 root 修复或创建入口。Ruff、格式、diff、生成依赖事实与两源 mypy 已通过；扩大 scoped mypy 的11个源文件也通过，覆盖八个真实调用模块和三种既有访问 port 的显式类型关系。为避免与上一候选完整回归争用，不并发启动新的运行时验证。
 
 原型 Coding −43、Harness +54、系统生产 +11，测试0，文档单列。它消除残留中性适配的职责错位，不是新的物理 IO／恢复机制，也不将原已共享 Journal 内核重计。本原型尚未运行时验收、未计入7,829行退出或2,305行目标缺口。
 
