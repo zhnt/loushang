@@ -20,7 +20,9 @@ describe("desktop frame", () => {
     const rail = screen.getByLabelText("Workspace and Session navigation");
     expect(rail.textContent).not.toMatch(/[♢▱⌕]/);
     expect(rail.querySelectorAll('[data-icon="folder"]')).toHaveLength(3);
-    expect(rail.querySelector('.brand-name [data-icon="chevron-down"]')).toBeInTheDocument();
+    const brand = rail.querySelector(".brand-name");
+    expect(brand).toHaveTextContent(config.productName);
+    expect(brand?.querySelector("svg")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Tasks" }));
     const close = screen.getByRole("button", { name: "Close Work Dock" });
     expect(close.querySelector('[data-icon="close"]')).toBeInTheDocument();

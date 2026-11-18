@@ -135,7 +135,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
         <h2 className="section-label">{t("sidebar.projects")}</h2>
         <button type="button" className="project-action" aria-label={t("sidebar.addProject")}
           title={t("sidebar.addProject")} disabled={!editable}
-          onClick={navigation.openFolder}><span className="sidebar-add-mark" aria-hidden="true" /></button>
+          onClick={navigation.openFolder}><UiIcon name="plus" /></button>
       </div>
       {navigation.folderInput ? <form className="project-path" onSubmit={(event) => {
         event.preventDefault();
@@ -169,7 +169,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
               })}><UiIcon name={expanded ? "folder" : "folder-closed"} /><span>{label}</span></button>
             <button type="button" className="project-action" disabled={!editable}
               aria-label={t("sidebar.newProjectChat", { project: label })} title={t("sidebar.newProjectChat", { project: label })}
-              onClick={create}><span className="sidebar-add-mark" aria-hidden="true" /></button>
+              onClick={create}><UiIcon name="plus" /></button>
           </div>
           <div className="project-chats" aria-hidden={!expanded} inert={!expanded}>
             <div>

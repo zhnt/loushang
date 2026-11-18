@@ -74,7 +74,7 @@ for (const sample of [
       await page.screenshot({ path: info.outputPath("sidebar-and-markdown.png"), fullPage: true });
 
       for (const label of [zh, en, mixed]) {
-        await expect(label).toHaveCSS("font-size", "14px");
+        await expect(label).toHaveCSS("font-size", "13px");
         await expect(label).toHaveCSS("font-weight", "400");
         await expect(label).toHaveCSS("line-height", "20px");
       }
@@ -87,13 +87,22 @@ for (const sample of [
       await expect(section).toHaveCSS("text-transform", "none");
       const selectedRow = page.locator(".project-navigation .session-row.selected");
       const selectedTitle = selectedRow.locator(".project-chat-title");
+      const pin = selectedRow.locator(".session-pin");
+      const projectRow = page.locator(".project-row");
+      const projectAction = projectRow.locator(".project-action");
+      await expect(projectRow).toHaveCSS("height", await selectedRow.evaluate((row) => getComputedStyle(row).height));
+      await page.mouse.move(sample.width - 10, 10);
+      await expect(pin).toHaveCSS("opacity", "0");
+      await expect(projectAction).toHaveCSS("opacity", "0");
+      await projectRow.hover();
+      await expect(projectAction).toHaveCSS("opacity", "1");
+      await expect(pin).toHaveCSS("opacity", "0");
       const selectedBackground = await selectedRow.evaluate((element) => getComputedStyle(element).backgroundColor);
       const titleBeforeHover = await selectedTitle.boundingBox();
       await selectedRow.hover();
       expect(await selectedTitle.boundingBox()).toEqual(titleBeforeHover);
       await expect(selectedRow).toHaveCSS("background-color", selectedBackground);
       await expect(selectedTitle).toHaveCSS("font-weight", "400");
-      const pin = selectedRow.locator(".session-pin");
       await expect(pin).toHaveCSS("opacity", "1");
       await selectedRow.locator(".project-chat").focus();
       await page.keyboard.press("Tab");
