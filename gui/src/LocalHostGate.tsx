@@ -75,6 +75,7 @@ export default function LocalHostGate() {
     const result = await webRequest<ProjectDirectory>({ operation: "workspace", action: "navigation" }, connectionId.current);
     if (epoch !== workspaceEpoch.current) return;
     setDirectory(result);
+    setWorkspaceError(false);
     return result;
   }
 
@@ -230,7 +231,8 @@ export default function LocalHostGate() {
       if (result.state !== "running" || result.errorCode) setConnection("disconnected");
       if (["connect", "start", "restart"].includes(action) && result.state === "running" && !result.errorCode) {
         const directory = await refreshDirectory().catch(() => { setWorkspaceError(true); });
-        if (serial !== generation.current || !directory) return;
+        if (serial !== generation.current) return;
+        if (!directory) { setConnection("connected"); return; }
         const available = preferred === TEMPORARY_WORKSPACE
           ? directory.temporarySessions.length > 0
           : directory.projects.some((project) => project.path === preferred && project.sessions.length > 0);

@@ -42,6 +42,29 @@ def test_service_stop_rejects_an_unrelated_unit():
     assert invalid.value.code == 2
 
 
+def test_service_run_requires_systemd_notify_socket(monkeypatch, capsys):
+    monkeypatch.delenv("NOTIFY_SOCKET", raising=False)
+    assert main(["service", "run"]) == 1
+    assert "notification socket" in capsys.readouterr().err
+
+
+def test_systemd_status_uses_the_published_managed_connection_root(tmp_path, monkeypatch):
+    from loushang.coding.cli import mux_service
+
+    endpoint = tmp_path / "endpoint.json"
+    record_root = str(tmp_path / "managed/connection")
+    endpoint.write_text(json.dumps({"recordRoot": record_root}))
+    monkeypatch.setattr(mux_service, "_systemd_endpoint", lambda: endpoint)
+    monkeypatch.setattr(mux_service.subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        stdout="LoadState=loaded\nActiveState=active\nInvocationID=" + "a" * 32,
+    ))
+    assert mux_service._systemd_state()["recordRoot"] == record_root
+    endpoint.write_text('{"recordRoot": "relative"}')
+    from loushang.coding.managed_service import ServiceControlError
+    with pytest.raises(ServiceControlError, match="management_unavailable"):
+        mux_service._systemd_state()
+
+
 def _selector(root):
     return ["--connection-root", str(root / "connections"), "--endpoint", "workspace"]
 

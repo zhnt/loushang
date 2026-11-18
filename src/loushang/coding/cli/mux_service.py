@@ -20,12 +20,16 @@ if TYPE_CHECKING:
 
 
 DEFAULT_UNIT = "loushang-host.service"
-OPERATIONS = ("start", "stop", "restart", "status", "logs")
+OPERATIONS = ("start", "stop", "restart", "status", "logs", "run")
 
 
 def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if args.connection_root is not None or args.endpoint is not None:
         parser.error("service selects a systemd unit with --unit")
+    if args.operation == "run":
+        if args.unit != DEFAULT_UNIT or args.json or args.instance is not None:
+            parser.error("service run requires the default unit without client options")
+        return run_systemd_host()
     if args.instance is not None and (
         args.operation not in {"stop", "restart"} or re.fullmatch(r"[0-9a-f]{32}", args.instance) is None
     ):
@@ -35,6 +39,47 @@ def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
             parser.error("this operation requires the default local service and a lifecycle action")
         return control_local(args.operation, args.instance, as_json=args.json)
     return control(args.operation, args.unit)
+
+
+def run_systemd_host() -> int:
+    """Start the existing managed Host and hand its PID directly to systemd."""
+    from ..managed_service import ServiceControlError, control_managed_service
+
+    notify_socket = os.environ.pop("NOTIFY_SOCKET", "")
+    if sys.platform != "linux" or not notify_socket.startswith(("/", "@")):
+        print("loushang-mux service run requires a systemd notification socket", file=sys.stderr)
+        return 1
+    started = None
+    try:
+        previous = asyncio.run(control_managed_service("status", None))
+        if previous["state"] == "running":
+            raise ServiceControlError("already_running")
+        result = asyncio.run(control_managed_service("start", None))
+        pid = result.get("pid")
+        if result["state"] != "running" or type(pid) is not int or pid <= 0:
+            raise ServiceControlError("start_failed")
+        if Path(f"/proc/{pid}/cgroup").read_bytes() != Path("/proc/self/cgroup").read_bytes():
+            raise ServiceControlError("process_scope_mismatch")
+        started = result
+        endpoint = _systemd_endpoint()
+        temporary = endpoint.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"recordRoot": started["recordRoot"]}) + "\n")
+        temporary.replace(endpoint)
+        address = "\0" + notify_socket[1:] if notify_socket.startswith("@") else notify_socket
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notifier:
+            notifier.settimeout(1)
+            notifier.sendto(f"MAINPID={pid}\nREADY=1".encode(), address)
+        return 0
+    except (ServiceControlError, OSError, ValueError, KeyError):
+        if started is not None:
+            asyncio.run(control_managed_service("stop", started.get("instanceId")))
+        print("loushang-mux service: systemd_host_start_failed", file=sys.stderr)
+        return 1
+
+
+def _systemd_endpoint() -> Path:
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+    return runtime / "loushang-host" / "endpoint.json"
 
 
 def unit_name(value: str) -> str:
@@ -126,10 +171,15 @@ def _systemd_state() -> dict[str, object]:
         instance = properties.get("InvocationID", "")
         if not re.fullmatch(r"[0-9a-f]{32}", instance):
             raise ServiceControlError("management_unavailable")
-        runtime = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+        try:
+            record_root = json.loads(_systemd_endpoint().read_text())["recordRoot"]
+            if type(record_root) is not str or not Path(record_root).is_absolute():
+                raise ValueError("invalid record root")
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise ServiceControlError("management_unavailable") from error
         return {
             "state": "running", "instanceId": instance,
-            "recordRoot": str(runtime / "loushang-host" / "connections"),
+            "recordRoot": record_root,
         }
     return {"state": {
         "inactive": "not_running", "activating": "starting", "deactivating": "stopping", "failed": "exited",
