@@ -367,7 +367,7 @@ def test_retirement_root_keeps_distinct_error_contract(
         ),
     )
     monkeypatch.setattr(
-        retirement, "_inspection", lambda: SimpleNamespace(require_direct=direct)
+        type(retirement._operations.inspection()), "require_direct", direct
     )
     with pytest.raises((RuntimeError, OSError)) as caught:
         retirement._inspect_retirement_attempt_ids_under_gc_guard(product)
