@@ -574,17 +574,19 @@ Harness 首轮静态检查通过（mypy 916源文件），测试6,354 passed／1
 
 首轮两项节点复核1 passed／1 failed（发现上述旧边），最终相同两项节点2 passed（21.79秒）。失败结果保留；这次修正不改任何生产源码、业务 golden、平台选择器、超时或工作流。已通过且输入未变的 Coding／界面路线保留证据，更新文档重新检查，Harness 完整受影响检查及尚未执行的 Hosting／包级检查继续验证，未将局部复跑当作最终完整检查通过。
 
+修正后的完整 Harness 检查6,356 passed／113 skipped，Hosting 513 passed／60 skipped，Harness 包级5,939 passed／110 skipped／3 deselected，Hosting 包级397 passed／56 skipped／4 deselected，全部以0退出；文档检查通过。最终候选9777f24的生产源码、脚本及 Coding／界面测试与此前通过候选587e590逐文件无差异，保留这些输入未变的通过证据；各组重叠不相加。该记录支持当前部分迁移交付，不证明多数退出目标或未执行的原生平台路线完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
 原 staged-publication 故障用例只将读写注入点移到实际 WindowsPrivateReceiptIO，既有断言和测试入口未改变。两份现有架构清单同步当前模块归属，不新增检查、路线、平台或 PR 门禁。
 已与精确基线对照3个实际名义记录、6份原始 protocol4/5 pickle 字节、字段/slots/构造与公开方法签名及8个错误；全部一致。三个公开事务与原函数逐事件对照754组，其中688组实际注入故障，比较两次调用、锁/IO/构造顺序、异常链和剩余字节，一致；模型证据不代替原生 Windows。
 测试沿用本会话已批准的 C07 私有目录，仅设置命令环境；运行时测试首次在 sandbox 外通过管理 wrapper 执行。
-Windows 原生 LPAC/Job、真实崩溃路线尚未执行；合成事实和跨进程记录探针不作为原生平台证据。
+本轮本地验证未执行 Windows 原生 LPAC/Job、真实崩溃路线；合成事实和跨进程记录探针不作为原生平台证据，远端平台结果另见交付 PR。
 
 ## 剩余工作
 
 继续复核证据 factory、回执/批准记录、Provider/Session 消费者及全部112文件的当前处置，优先复用已有能力并删除重复机制以降低系统成本。
 全部112文件均须更新职责与处置，区分产品政策、必要名义入口、迁移、复用删除；重新审查旧轮次保留理由，Coding 类型或固定名称不单独构成保留整个实现的理由。
 每批计入 Coding/Harness/Hosting/其他生产代码及系统总量，测试和文档单列；系统成本与实际重复删除、职责迁移分别报告。
-本轮尚未达到多数退出目标，未提交 PR 或交付，不修改原轮次已完成的历史证据。
+本轮尚未达到多数退出目标；当前清单是部分迁移的阶段性交付记录，不代表整组 C07 验收完成，不修改原轮次已完成的历史证据。
