@@ -1091,7 +1091,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                         setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
                         if (!goalPanelOpen) openTasks();
                       }
-                    }}>{t("panels:interactiveGoal.shortcut")}</button> : null}
+                    }}><UiIcon name="goal" /><span>{t("panels:interactiveGoal.shortcut")}</span></button> : null}
                   model={<ModelPicker
                     models={draft ? draftModels.models : sessionModels}
                     emptyLabel={draft ? draftModels.label : modelLabel}
