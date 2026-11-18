@@ -195,8 +195,13 @@ def main() -> None:
                     "frozenTuiNativeFiles": frozen_native}
         (resources / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         for record in native:
+            # Signing the bundle's main executable also validates its siblings.
+            # Sign it with the enclosing bundle after all nested code is ready.
+            if record["path"] == "Contents/MacOS/loushang-gui":
+                continue
             run("/usr/bin/codesign", "--force", "--sign", "-", str(app / str(record["path"])))
         run("/usr/bin/codesign", "--force", "--deep", "--sign", "-", str(app))
+        run("/usr/bin/codesign", "--verify", "--deep", "--strict", str(app))
         components = work / "components.plist"
         run("/usr/bin/pkgbuild", "--analyze", "--root", str(payload), str(components))
         entries = plistlib.loads(components.read_bytes())
