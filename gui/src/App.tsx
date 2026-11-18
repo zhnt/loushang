@@ -830,6 +830,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   } : undefined;
   const draftEnabled = projectNavigation ? projectNavigation.available && !projectNavigation.pending
     : connected || Boolean(draft?.binding);
+  const draftGoalScope = draft && !fixture && draftEnabled ? draft.id : null;
+  const draftGoalOpen = draftGoalScope !== null && draftGoalScope === openGoalScope;
   const draftModelTarget = draftCreation.draft?.target;
   const draftModels = useDraftModels(
     draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled,
@@ -871,7 +873,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     && (!draftModels.required || Boolean(draftModelId));
   function submitDraft() {
     if (canSendDraft && draftModelRequest.current !== draft.target) {
-      void draftCreation.submit(draftModelId, draft?.thinking?.currentLevel ?? undefined);
+      void draftCreation.submit(draftModelId, draftModels.models?.thinking?.currentLevel ?? undefined);
     }
   }
 
@@ -1071,6 +1073,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               </details> : null}
 
               <div className="composer-stack">
+                {draftGoalScope ? <p id={goalPanelId} className="composer-goal-hint"
+                  hidden={!draftGoalOpen} role="status">{t("panels:interactiveGoal.not_ready")}</p> : null}
                 {selected && failure ? <div className={failure.pending ? "operation-notice uncertain" : "operation-notice"} role={failure.pending ? "status" : "alert"}>
                   <span><NoticeText notice={failure.notice} /></span>
                   {failure.pending ? <button type="button" className="secondary-button"
@@ -1079,11 +1083,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     onClick={clearFailure}>{t("session:composer.dismissNotice")}</button> : null}
                 </div> : null}
                 <MessageComposer {...composer} title={conversationTitle} fixture={Boolean(fixture)}
-                  leadingAction={goalPanelScope ? <button type="button" className="composer-goal"
+                  leadingAction={goalPanelScope || draftGoalScope ? <button type="button" className="composer-goal"
                     aria-label={t("panels:interactiveGoal.title")} title={t("panels:interactiveGoal.title")}
-                    aria-expanded={goalPanelOpen} aria-controls={goalPanelId} onClick={() => {
-                      setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
-                      if (!goalPanelOpen) openTasks();
+                    aria-expanded={goalPanelOpen || draftGoalOpen} aria-controls={goalPanelId} onClick={() => {
+                      if (draftGoalScope) setOpenGoalScope(draftGoalOpen ? null : draftGoalScope);
+                      else {
+                        setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
+                        if (!goalPanelOpen) openTasks();
+                      }
                     }}>{t("panels:interactiveGoal.shortcut")}</button> : null}
                   model={<ModelPicker
                     models={draft ? draftModels.models : sessionModels}

@@ -704,10 +704,13 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     "applies the draft model and effort before sending (first rejection: %s)",
     async (rejection) => {
     const inputSnapshot = await createMockAppClient().snapshot();
+    const defaultModel = { ...liveModel, supportsThinking: true };
     const second = { ...liveModel, id: "test:primary:second", modelId: "second", supportsThinking: true };
-    const choices: SessionModels = { currentId: liveModel.id, models: [liveModel, second] };
+    const choices: SessionModels = { currentId: defaultModel.id, models: [defaultModel, second] };
     const defaultModels = vi.fn(async (_path: string | null, id?: string): Promise<SessionModels> => id === second.id
       ? { ...choices, currentId: id, thinking: { currentLevel: null, availableLevels: ["high", "max"] } }
+      : id === defaultModel.id
+        ? { ...choices, thinking: { currentLevel: "high", availableLevels: ["low", "high"] } }
       : choices);
     let snapshot: ClientSnapshot = {
       ...inputSnapshot,
@@ -772,8 +775,15 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(welcome).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveFocus();
     const picker = screen.getByRole("button", { name: "Session model" });
-    await waitFor(() => expect(picker).toHaveTextContent("test · model"));
+    await waitFor(() => expect(picker).toHaveTextContent(/test · model\s*High/));
     expect(defaultModels).toHaveBeenCalledWith(null);
+    expect(defaultModels).toHaveBeenCalledWith(null, defaultModel.id);
+    const goal = screen.getByRole("button", { name: "Development goal" });
+    fireEvent.click(goal);
+    expect(screen.getByText(/Send an ordinary message/)).toBeVisible();
+    expect(createChat).not.toHaveBeenCalled();
+    fireEvent.click(goal);
+    expect(screen.getByText(/Send an ordinary message/)).not.toBeVisible();
     fireEvent.click(picker);
     fireEvent.click(screen.getByRole("menuitemradio", { name: /test · second/ }));
     await waitFor(() => expect(picker).toHaveTextContent("test · second"));

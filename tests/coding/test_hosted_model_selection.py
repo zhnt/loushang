@@ -169,7 +169,7 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
     async def scenario():
         async with host() as client:
             if managed:
-                settings().set_default_model(selection_b, scope="project")
+                settings().update_settings(scope="project", default_model=selection_b, thinking_level="low")
                 before = await client.workspace(WorkspaceRequestV1("list"))
                 project_models = await client.workspace_models(
                     WorkspaceModelsRequestV1(str(tmp_path))
@@ -180,7 +180,7 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
                     WorkspaceModelsRequestV1(str(tmp_path), second_id)
                 )
                 assert reasoning_preview.thinking.available_levels == ("low", "high")
-                assert reasoning_preview.thinking.current_level is None
+                assert reasoning_preview.thinking.current_level == "low"
                 first_preview = await client.workspace_models(
                     WorkspaceModelsRequestV1(str(tmp_path), first_id)
                 )
@@ -207,6 +207,12 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
             assert sum(record.kind == MODEL_SELECTION_KIND for record in transcript(session_b).records) == 1
             assert (await select(client, second, second_id)).current_id == second_id
             assert settings().get_settings().default_model == selection_b
+            assert (await select(client, second, second_id, "high")).thinking.current_level == "high"
+            assert settings().get_settings().thinking_level == "high"
+            inherited, inherited_id = await open_session(client, "inherited")
+            await require_current(client, inherited, second_id)
+            assert (await client.list_session_models(inherited)).thinking.current_level == "high"
+            assert transcript(inherited_id).records[-1].kind == THINKING_SELECTION_KIND
             first, _ = await open_session(client, "first")
             await require_current(client, first, first_id)
 
@@ -231,9 +237,13 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
             await require_current(client, first, first_id)
             second, _ = await open_session(client, "second", session_id=session_b)
             await require_current(client, second, second_id)
+            assert (await client.list_session_models(second)).thinking.current_level == "high"
+            inherited, _ = await open_session(client, "inherited", session_id=inherited_id)
+            assert (await client.list_session_models(inherited)).thinking.current_level == "high"
             third, _ = await open_session(client, "project-default", session_id=session_c)
             await require_current(client, third, first_id)
 
+        project_path.unlink()
         available.remove(first_id)
         del models[selection_a.model_id]
         write_catalog()
@@ -286,6 +296,10 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
             first, _ = await open_session(client, "first", session_id=session_a)
             await require_current(client, first, second_id)
             assert (await client.list_session_models(first)).thinking.current_level == "high"
+            if managed:
+                # The global model and effort persisted across Host restart.
+                preview = await client.workspace_models(WorkspaceModelsRequestV1(str(tmp_path), second_id))
+                assert preview.thinking.current_level == "high"
             execution = client.execution_client
             instance = execution.service_instance_id
             submitted = await execution.submit_execution(first, instance, "retry", "Keep this input")
