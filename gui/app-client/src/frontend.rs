@@ -357,7 +357,7 @@ impl Backend {
             // Mux members are appended in creation order and retained in that order.
             let mut result = mux["members"].as_array().ok_or("invalid_host_reply")?.iter().rev().map(|member| {
                 let id = field(&member["session"], "sessionId")?;
-                Ok(json!({"id": id, "title": member["title"], "scope": scope, "pinned": pinned.iter().any(|value| value == id)}))
+                Ok(json!({"id": id, "continuityId": member["session"]["continuityId"], "title": member["title"], "scope": scope, "pinned": pinned.iter().any(|value| value == id)}))
             }).collect::<Result<Vec<_>>>()?;
             result.sort_by_key(|chat| chat["pinned"] != true);
             Ok(result)

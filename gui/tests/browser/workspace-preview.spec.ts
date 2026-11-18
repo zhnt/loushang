@@ -65,6 +65,8 @@ test("reads Workspace files on demand without moving the conversation or running
   });
 
   await page.goto("/");
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+  await page.getByRole("button", { name: "Live session", exact: true }).click();
   const transcript = page.locator(".transcript");
   await expect(page.getByText("/workspace", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Node", exact: true })).toBeVisible();
@@ -162,6 +164,8 @@ test("shows a temporary Workspace path, previews a bare artifact and copies the 
   });
 
   await page.goto("/");
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+  await page.getByRole("button", { name: "Live session", exact: true }).click();
   await expect(page.locator(".workspace-location-path code")).toHaveText(path);
   const transcript = page.locator(".transcript");
   await expect(transcript.locator(".reply-actions")).toHaveCount(1);

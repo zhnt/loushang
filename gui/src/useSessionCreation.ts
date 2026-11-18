@@ -27,7 +27,7 @@ interface Draft {
 
 type Observation = { client: HarnessClientUiPort; snapshot: ClientSnapshot };
 type PublishedSession = { snapshot: ClientSnapshot; session: SessionSnapshot };
-type Accepted = (published: PublishedSession, text: string, receipt: SubmitReceipt, select: boolean) => void;
+type Accepted = (published: PublishedSession, text: string, receipt: SubmitReceipt, select: boolean, target: DraftTarget) => void;
 
 function publishedSession(observation: Observation | null, binding: DraftBinding, id: string): PublishedSession | null {
   if (observation?.client !== binding.client || observation.snapshot.connection !== "connected") return null;
@@ -93,9 +93,12 @@ class SessionCreation {
     });
   }
 
-  open(target: DraftTarget) {
+  open = (target: DraftTarget, adoptStartupDraft = false) => {
     if (this.inFlight) return;
-    const previous = this.drafts.get(target.key);
+    const startupDraft = adoptStartupDraft && this.current?.target.hostKey === ""
+      && this.current.status === "ready" && this.current.target.workspace === null ? this.current : null;
+    const previous = this.drafts.get(target.key) ?? startupDraft;
+    if (startupDraft && startupDraft.target.key !== target.key) this.drafts.delete(startupDraft.target.key);
     this.save(previous ? { ...previous, target, visible: true } : {
       id: `gui-draft-${crypto.randomUUID()}`, target, text: "", visible: true, status: "ready",
     });
@@ -171,7 +174,7 @@ class SessionCreation {
       return;
     }
     if (this.current?.id === input.id) {
-      onAccepted(published, input.text, receipt, this.current.visible);
+      onAccepted(published, input.text, receipt, this.current.visible, input.target);
       this.save(null);
     }
   }
@@ -186,7 +189,7 @@ class SessionCreation {
     if (published && id && pending.instanceId && binding.client.findSubmission) {
       const receipt = await binding.client.findSubmission(id, pending.id, pending.instanceId).catch(() => null);
       if (receipt?.accepted && receipt.submissionId === pending.id && this.current?.id === draft.id) {
-        onAccepted(published, draft.text, receipt, this.current.visible);
+        onAccepted(published, draft.text, receipt, this.current.visible, draft.target);
         this.save(null);
         return;
       }
@@ -214,7 +217,7 @@ export function useSessionCreation(onAccepted: Accepted) {
   useEffect(() => () => creation.dispose(), [creation]);
   return {
     draft, drafts, observe: creation.observe, hide: creation.hide,
-    open: (target: DraftTarget) => creation.open(target),
+    open: creation.open,
     change: (text: string) => creation.change(text),
     selectModel: (target: DraftTarget, id: string, thinking?: SessionModels["thinking"]) => creation.selectModel(target, id, thinking),
     check: () => creation.check(onAccepted),
@@ -246,8 +249,10 @@ async function confirmFirstModel(
 async function sendDraft(client: HarnessClientUiPort, sessionId: string, text: string): Promise<SubmitReceipt> {
   const submissionId = `gui-${crypto.randomUUID()}`;
   try {
-    return await client.submitText({ sessionId, submissionId, text });
+    const receipt = await client.submitText({ sessionId, submissionId, text });
+    if (receipt.submissionId === submissionId) return receipt;
   } catch {
-    return { accepted: false, reason: "submission_outcome_unknown", submissionId };
+    // Reconcile the outcome with the original submission ID.
   }
+  return { accepted: false, reason: "submission_outcome_unknown", submissionId };
 }

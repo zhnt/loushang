@@ -630,13 +630,12 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     }} />);
     const start = await screen.findByRole("button", { name: "New Session" });
     await waitFor(() => expect(start).toBeEnabled());
-    const heading = screen.getByRole("heading", { name: "GUI development" });
+    const heading = screen.getByRole("heading", { name: "New Session" });
     const transcript = screen.getByLabelText("Session transcript");
     const input = screen.getByRole("textbox");
     const model = screen.getByRole("button", { name: "Session model" });
-    fireEvent.click(start);
     expect(createSession).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "New Session" })).toBe(heading);
+    expect(within(screen.getByRole("navigation", { name: "Chats" })).queryByRole("button", { name: "New Session" })).toBeNull();
     expect(screen.getByLabelText("Session transcript")).toBe(transcript);
     expect(within(transcript).getByRole("heading", { name: "What would you like to work on?" })).toBeVisible();
     expect(within(transcript).queryByRole("article")).not.toBeInTheDocument();
@@ -647,6 +646,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("textbox")).toBe(input);
     expect(input).toHaveFocus();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep this draft" } });
+    fireEvent.click(screen.getByRole("button", { name: /^GUI development ·/ }));
+    expect(screen.getByRole("heading", { name: "GUI development" })).toBe(heading);
     fireEvent.click(start);
     expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
     fireEvent.click(screen.getByRole("button", { name: /^GUI development ·/ }));
@@ -681,6 +682,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const open = (project: string) => fireEvent.click(screen.getByRole("button", { name: `New chat in ${project}` }));
     open("alpha");
     expect(screen.getByRole("heading", { name: "alpha / New Session" })).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Projects" })).queryByRole("button", { name: "New Session" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Alpha draft" } });
     open("beta");
     expect(screen.getByRole("textbox")).toHaveValue("");
@@ -770,7 +772,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const chats = within(screen.getByRole("region", { name: "Chats" }));
     expect(chats.getAllByRole("button", { name: "Repeated title" })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "New Session" }));
-    expect(chats.getByRole("button", { name: "New Session" })).toHaveAttribute("aria-current", "page");
+    expect(chats.queryByRole("button", { name: "New Session" })).toBeNull();
     const welcome = screen.getByRole("heading", { name: "What would you like to work on?" });
     expect(welcome).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveFocus();
@@ -803,17 +805,24 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByText("Connected", { exact: true })).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveValue("");
     expect(screen.getByRole("heading", { name: "Use the selected model" })).toBeVisible();
-    expect(chats.getByRole("button", { name: "Use the selected model" })).toHaveAttribute("aria-current", "page");
+    expect(chats.queryByRole("button", { name: "Use the selected model" })).toBeNull();
     if (rejection !== "none") {
       expect(await screen.findByText(rejection === "model"
         ? "The selected model could not be applied. Your draft is saved."
         : "The selected reasoning effort could not be applied. Your draft is saved.")).toBeVisible();
       expect(submitText).not.toHaveBeenCalled();
       expect(screen.getByRole("textbox")).toHaveValue("Use the selected model");
+      rerender(<HarnessGui client={client} managedHostConnection={managedHostConnection} projectNavigation={{
+        ...projectNavigation, directory: { projects: [], temporarySessions: [
+          { id: snapshot.sessions[0].id, title: "New Session", scope: "temporary", pinned: false }, ...previousChats,
+        ] },
+      }} />);
+      expect(chats.queryByRole("button", { name: "New Session" })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Send" }));
     }
     await waitFor(() => expect(submitText).toHaveBeenCalledOnce());
     expect(await transcript.findByText("Waiting for a reply…")).toBeVisible();
+    expect(chats.getByRole("button", { name: "Use the selected model" })).toHaveAttribute("aria-current", "true");
     expect(transcript.getAllByText("Use the selected model")).toHaveLength(1);
 
     const session = snapshot.sessions[0];
@@ -939,6 +948,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         expect(await screen.findByText("The first message outcome is unknown. Your draft is saved.")).toBeVisible();
         expect(input).toHaveValue("First message");
         expect(send).toBeDisabled();
+        expect(screen.queryByRole("button", { name: /^New Session ·/ })).toBeNull();
         fireEvent.submit(input.closest("form")!);
         expect(submitText).toHaveBeenCalledTimes(1);
         expect(createSession).toHaveBeenCalledTimes(1);

@@ -122,7 +122,6 @@ export default function LocalHostGate() {
     } finally {
       resume?.();
     }
-    if (origin === connectionId.current) void refreshDirectory().catch(() => {});
     return {
       client: bound,
       sessionId,
@@ -201,7 +200,7 @@ export default function LocalHostGate() {
 
   const [host, setHost] = useState<HostStatus>({ state: "unknown", errorCode: null });
   const [busy, setBusy] = useState(false);
-  const [confirmation, setConfirmation] = useState<{ action: "stop" | "restart"; workspace: string; instanceId?: string } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ action: "stop" | "restart"; instanceId?: string } | null>(null);
   const [client, setClient] = useState<HarnessClientUiPort | null>(null);
   const [connection, setConnection] = useState<ConnectionState | "connecting">("disconnected");
   const [selectedId, setSelectedId] = useState("");
@@ -213,7 +212,7 @@ export default function LocalHostGate() {
   const pendingAction = useRef<Action>("status");
   const connectionId = useRef<string | undefined>(undefined);
 
-  async function perform(action: Action, preferred = workspace, expected: string | null | undefined = host.instanceId) {
+  async function perform(action: Action, expected: string | null | undefined = host.instanceId, restoreSelection = selection) {
     if ((pending.current && (action === "status" || pendingAction.current !== "status"))) return;
     const serial = ++generation.current;
     pending.current = true;
@@ -232,12 +231,12 @@ export default function LocalHostGate() {
       if (["connect", "start", "restart"].includes(action) && result.state === "running" && !result.errorCode) {
         const directory = await refreshDirectory().catch(() => { setWorkspaceError(true); });
         if (serial !== generation.current) return;
-        if (!directory) { setConnection("connected"); return; }
-        const available = preferred === TEMPORARY_WORKSPACE
-          ? directory.temporarySessions.length > 0
-          : directory.projects.some((project) => project.path === preferred && project.sessions.length > 0);
-        if (available) openConversation(preferred, selection?.workspace === preferred ? selection.id : undefined);
-        else setConnection("connected");
+        const path = restoreSelection?.workspace;
+        const chats = path === TEMPORARY_WORKSPACE ? directory?.temporarySessions
+          : directory?.projects.find((project) => project.path === path)?.sessions;
+        if (restoreSelection?.id && chats?.some((chat) => chat.id === restoreSelection.id)) {
+          openConversation(restoreSelection.workspace, restoreSelection.id);
+        } else setConnection("connected");
       }
     } catch (error) {
       if (serial === generation.current) {
@@ -286,7 +285,7 @@ export default function LocalHostGate() {
       setWorkspace(environment.workspace);
       setSupported(environment.supported);
       pending.current = false;
-      if (environment.supported) await perform("connect", environment.workspace, null);
+      if (environment.supported) await perform("connect", null, id === previous.id ? selection : null);
       else setConnection("disconnected");
     } catch (error) {
       setHost({ state: "unknown", errorCode: "connection_failed" });
@@ -308,9 +307,8 @@ export default function LocalHostGate() {
       connectionId.current = environment.connectionId;
       setSelectedId(environment.connectionId ?? "local");
       setSupported(environment.supported);
-      const selected = environment.workspace;
-      setWorkspace(selected);
-      if (environment.supported) await perform("connect", selected, undefined);
+      setWorkspace(environment.workspace);
+      if (environment.supported) await perform("connect", null, null);
     })().catch(() => { if (active && initialGeneration === generation.current) setHost({ state: "unknown", errorCode: "management_unavailable" }); });
     return () => { active = false; };
     // Native setup is process-local; workspace edits are explicit selection.
@@ -336,8 +334,8 @@ export default function LocalHostGate() {
     enabled: route === "web", selectedId, localName: i18n.t("shell:tray.localHost"),
     workspace, host, supported: supported === true, busy, connection: trayConnection,
     onSelect: (id) => activateHost(id),
-    onManage: (action, path, instanceId) => action === "connect" && connectionId.current
-      ? activateHost(connectionId.current, false) : perform(action, path, instanceId),
+    onManage: (action, _path, instanceId) => action === "connect" && connectionId.current
+      ? activateHost(connectionId.current, false) : perform(action, instanceId),
   });
   useSystemTray({ userName: account?.name ?? "", language: i18n.resolvedLanguage ?? "en-US", hosts: trayHosts.hosts },
     trayHosts.action, (error) => { setTrayError(error); requestHostSettings((value) => value + 1); });
@@ -349,9 +347,9 @@ export default function LocalHostGate() {
     : reason?.startsWith("stop_") || reason === "cleanup_incomplete" ? t("localHost.errors.stop")
     : t("localHost.errors.unknown");
   const canStart = host.manageable && ["not_running", "exited"].includes(host.state);
-  const startHost = () => void perform("start", workspace.trim());
+  const startHost = () => void perform("start");
   const stop = (action: "stop" | "restart") => {
-    setConfirmation({ action, workspace, instanceId: host.instanceId });
+    setConfirmation({ action, instanceId: host.instanceId });
   };
   const hostSettings = <>
     <section className="local-host-panel" aria-labelledby="settings-local-host">
@@ -394,7 +392,7 @@ export default function LocalHostGate() {
         <button className="host-danger" onClick={() => {
           const selected = confirmation;
           setConfirmation(null);
-          void perform(selected.action, selected.workspace, selected.instanceId);
+          void perform(selected.action, selected.instanceId);
         }}>{t(confirmation.action === "restart" ? "localHost.restart" : "localHost.confirm")}</button>
       </div>
     </div> : null}
