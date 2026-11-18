@@ -33,7 +33,7 @@ def run(*command: str, cwd: Path = ROOT) -> str:
 
 def audit_native(root: Path) -> list[dict[str, object]]:
     """Check the Intel slice of every shipped Mach-O, including dependencies."""
-    report = []
+    report: list[dict[str, object]] = []
     magics = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe",
               b"\xca\xfe\xba\xbf", b"\xbe\xba\xfe\xca", b"\xbf\xba\xfe\xca"}
     for path in sorted(root.rglob("*")):
@@ -85,6 +85,28 @@ def stage_runtime(resources: Path, wheel: Path, work: Path) -> Path:
         if entry.is_symlink() and not entry.resolve().is_relative_to(runtime):
             raise RuntimeError(f"Runtime has an external symlink: {entry}")
     return bundled
+
+
+def audit_frozen(python: str, executable: Path, work: Path) -> list[dict[str, object]]:
+    """Include the native libraries compressed inside the standalone TUI."""
+    extracted = work / "frozen-native"
+    extracted.mkdir()
+    run(python, "-c", """
+import sys
+from pathlib import Path
+from PyInstaller.archive.readers import CArchiveReader
+reader = CArchiveReader(sys.argv[1])
+root = Path(sys.argv[2]).resolve()
+for name, entry in reader.toc.items():
+    if entry[-1] != 'b':
+        continue
+    target = (root / name).resolve()
+    if not target.is_relative_to(root):
+        raise ValueError('unsafe frozen archive path')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(reader.extract(name))
+""", str(executable), str(extracted))
+    return audit_native(extracted)
 
 
 def launcher(path: Path, module: str) -> None:
@@ -160,9 +182,11 @@ def main() -> None:
         for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, resources)
         native = audit_native(app)
+        frozen_native = audit_frozen(python, binaries / "loushang", work)
         manifest = {"format": "loushang-macos-full/v1", "commit": commit,
                     "architecture": TARGET, "minimumSystemVersion": MINIMUM,
-                    "signedForDistribution": False, "nativeFiles": native}
+                    "signedForDistribution": False, "nativeFiles": native,
+                    "frozenTuiNativeFiles": frozen_native}
         (resources / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         for record in native:
             run("/usr/bin/codesign", "--force", "--sign", "-", str(app / str(record["path"])))

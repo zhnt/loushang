@@ -13,6 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from time import monotonic, sleep
 
+from loushang.apphost.managed._files import ManagedStorageError, PrivateManagedDirectory
 from loushang.appserver.local import LocalAppClientConnectionV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1
 from loushang.foundation.platform_paths import resolve_platform_home
@@ -79,7 +80,7 @@ def _status(home: Path, target: str) -> dict[str, object]:
 
 def _python() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent.parent / "Resources/runtime/bin/python3"
+        return Path(sys.executable).resolve().parent.parent / "Resources/runtime/bin/python3"
     return Path(sys.executable)
 
 
@@ -106,6 +107,16 @@ def _write_agent(home: Path, label: str) -> Path:
     return agent
 
 
+def _validate_state(state: Path) -> None:
+    directory = PrivateManagedDirectory(state, create=False, defer_open=True)
+    try:
+        directory.open()
+    except ManagedStorageError as error:
+        raise ServiceControlError("unsafe_state_directory") from error
+    finally:
+        directory.close()
+
+
 def control_launchd_service(operation: str, expected: str | None) -> dict[str, object]:
     import fcntl
 
@@ -117,6 +128,7 @@ def control_launchd_service(operation: str, expected: str | None) -> dict[str, o
         return _status(home, target)
     state_root = home / "state/macos-host"
     prepare_private_directory_chain(state_root)
+    _validate_state(state_root)
     lock = os.open(state_root / "control.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         try:

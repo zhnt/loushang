@@ -39,3 +39,13 @@ def test_launchd_stale_instance_cannot_stop_new_service(tmp_path, monkeypatch):
     monkeypatch.setattr(macos_service, "_launchctl", lambda *_: pytest.fail("must not signal service"))
     with pytest.raises(ServiceControlError, match="instance_changed"):
         macos_service.control_launchd_service("stop", "old")
+
+
+def test_launchd_refuses_other_writable_control_directory(tmp_path, monkeypatch):
+    state = tmp_path / "state/macos-host"
+    state.mkdir(parents=True)
+    state.chmod(0o777)
+    monkeypatch.setattr(macos_service, "resolve_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(macos_service, "_launchctl", lambda *_: pytest.fail("must not load an unsafe plist"))
+    with pytest.raises(ServiceControlError, match="unsafe_state_directory"):
+        macos_service.control_launchd_service("start", None)
