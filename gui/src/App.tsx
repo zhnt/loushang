@@ -468,6 +468,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
+  useEffect(() => {
+    if (goalPanelOpen && stackedRight) document.getElementById(goalPanelId)?.scrollIntoView?.({ block: "nearest" });
+  }, [goalPanelOpen, goalPanelId, stackedRight]);
   const run = selected?.run;
   const stepIndex = run ? run.tasks.findIndex((item) => item.id === run.currentTaskId) : -1;
   const runSummary = run && (stepIndex >= 0
@@ -909,14 +912,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           sessionReady={Boolean(selected)}
           connection={displayedConnection}
           dockOpen={panelOpen}
-          goalPanel={goalPanelScope ? {
-            id: goalPanelId,
-            open: goalPanelOpen,
-            toggle: () => {
-              setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
-              if (!goalPanelOpen) openTasks();
-            },
-          } : undefined}
           onOpenDock={toggleDock}
         /> : null}
 
@@ -1053,6 +1048,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     onClick={clearFailure}>{t("session:composer.dismissNotice")}</button> : null}
                 </div> : null}
                 <MessageComposer {...composer} title={conversationTitle} fixture={Boolean(fixture)}
+                  leadingAction={goalPanelScope ? <button type="button" className="composer-goal"
+                    aria-label={t("panels:interactiveGoal.title")} title={t("panels:interactiveGoal.title")}
+                    aria-expanded={goalPanelOpen} aria-controls={goalPanelId} onClick={() => {
+                      setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
+                      if (!goalPanelOpen) openTasks();
+                    }}>{t("panels:interactiveGoal.shortcut")}</button> : null}
                   model={<ModelPicker
                     models={draft ? draftModels.models : sessionModels}
                     emptyLabel={draft ? draftModels.label : modelLabel}
@@ -1371,14 +1372,13 @@ function ExecutionDetail({ execution, stale }: {
   );
 }
 
-function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen, onOpenDock, goalPanel }: {
+function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen, onOpenDock }: {
   readonly title?: string;
   readonly contextLabel?: string;
   readonly sessionReady: boolean;
   readonly connection: ConnectionState | "connecting";
   readonly dockOpen: boolean;
   readonly onOpenDock: () => void;
-  readonly goalPanel?: { readonly id: string; readonly open: boolean; readonly toggle: () => void };
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const label = connectionLabel(connection);
@@ -1386,15 +1386,13 @@ function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen
     <header className="conversation-header">
       <div className="session-heading">
         {title !== undefined ? <>
-          <UiIcon name="folder" />
+          <UiIcon name="conversation" />
           <div><h1>{title}</h1>{contextLabel ? <p>{contextLabel}</p> : null}</div>
         </> : null}
       </div>
       <div className="header-actions" data-conversation-open={title !== undefined}>
         <span className={`connection-chip ${connection}`} role="status"
           title={connection === "connecting" ? t("session:sync.live") : label}>{label}</span>
-        {goalPanel ? <button type="button" aria-expanded={goalPanel.open}
-          aria-controls={goalPanel.id} onClick={goalPanel.toggle}>{t("panels:interactiveGoal.title")}</button> : null}
         <button type="button" aria-label={t("panels:header.shareUnavailable")} disabled>{t("panels:header.share")}</button>
         <button type="button" aria-label={t("panels:header.bottomUnavailable")} title={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>
         <button type="button" aria-label={t("panels:header.openDock")} title={t("panels:header.toggleDock")} aria-pressed={dockOpen} onClick={onOpenDock} disabled={!sessionReady}><PanelIcon side="right" /></button>

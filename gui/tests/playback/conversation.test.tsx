@@ -1298,6 +1298,7 @@ describe("Interactive development goal", () => {
 
     act(() => publish(supported));
     const entry = await screen.findByRole("button", { name: "Development goal" });
+    expect(entry.closest("form")).toContainElement(screen.getByRole("textbox", { name: /message/i }));
     expect(entry).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: "Check goal status" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
@@ -1305,6 +1306,8 @@ describe("Interactive development goal", () => {
     fireEvent.click(entry);
     expect(entry).toHaveAttribute("aria-expanded", "true");
     const goal = within(await screen.findByRole("region", { name: "Development goal" }));
+    expect(within(screen.getByRole("complementary", { name: "Work Dock" }))
+      .getByRole("button", { name: "Tasks" })).toHaveAttribute("aria-pressed", "true");
     expect(await goal.findByText(/Send an ordinary message/)).toBeVisible();
     expect(goal.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
     fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));

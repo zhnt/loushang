@@ -11,6 +11,7 @@ interface ComposerProps {
   readonly submitLabel?: string;
   readonly buttonDisabled: boolean;
   readonly fixture?: boolean;
+  readonly leadingAction?: ReactNode;
   readonly model?: ReactNode;
   readonly notice?: ReactNode;
 }
@@ -21,7 +22,7 @@ function resizeEditor(input: HTMLTextAreaElement) {
 }
 
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
-  buttonDisabled, fixture, model, notice, submitLabel }: ComposerProps) {
+  buttonDisabled, fixture, leadingAction, model, notice, submitLabel }: ComposerProps) {
   const { t } = useTranslation("session");
   const editor = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
@@ -78,6 +79,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
       <div className="composer-actions">
         <div className="composer-permissions">
           <button type="button" className="icon-button" aria-label={t("composer.attachUnavailable")} title={t("composer.attachHint")} disabled>＋</button>
+          {leadingAction}
           {fixture ? <span className="permission-label">◉ {t("composer.fixtureAccess")}</span> : null}
         </div>
         {notice}
