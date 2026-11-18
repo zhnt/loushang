@@ -31,20 +31,20 @@ delegate to `loushang-mux service`. Closing the frontend leaves AppHost running.
 Use **Register and open** with a path on the Host, or select a registered
 Workspace. AppHost allocates the Mux and persists its Sessions.
 
-For Windows source development, prepare the installed command in the repository
-environment and run the desktop:
+For Windows source development, install uv and run the desktop:
 
 ```powershell
-uv sync --locked
 npm.cmd --prefix gui ci
 npm.cmd --prefix gui run dev
 ```
 
+On first launch from a checkout, the launcher runs `uv sync --locked` if
+`.venv/Scripts/loushang-mux.exe` is missing. It honors `UV_PROJECT_ENVIRONMENT`
+and reports any setup failure in the terminal. Set `LOUSHANG_MUX` to an
+absolute path to use a different management command.
+
 Development automatically connects to a running local AppHost. If AppHost is
-stopped, choose **Start and connect** from the disconnected desktop. The
-launcher looks for `.venv/Scripts/loushang-mux.exe`, honors
-`UV_PROJECT_ENVIRONMENT`, and prints the expected path if the command is
-missing. Set `LOUSHANG_MUX` to an absolute path to use a different command.
+stopped, choose **Start and connect** in the desktop window.
 
 For browser development, use `npm.cmd --prefix gui run dev:web`. Enable Web
 service controls by setting `web.manageLocal` in the BFF configuration below.
