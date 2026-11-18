@@ -578,6 +578,18 @@ Harness 首轮静态检查通过（mypy 916源文件），测试6,354 passed／1
 
 任务 PR #898 首次 Linux 定向原生检查47 passed／2 failed／1 deselected：清理竞态仍访问已经退出的 Code `os` 别名，GC 互斥证据仍注入旧 preflight 工厂而非当前 staging 入口。测试改为替换同一实际标准库 `os.unlink`，并在当前 staging 适配入口注入原 history bindings；实际 Harness 存储和锁内读取程序不改。限定 AST 对照证明只变更这两个既有注入位置及对应 import，所有断言、场景、标记、等待时限和其它测试 AST 保持；未恢复无消费者 Code 别名或增加故障 hook。受影响文件保留原非 live／skip-host-runtime 选择器，本地35 passed／14 skipped／1 deselected；原生结果按既有 PR 路线复核，不将本地跳过视为原生通过。
 
+## 历史源读取六个入口由原 Package Product 统一持有
+
+以已交付 `1a0aaa6ca` 为本批基线，原 Windows history 模块通过不可变配置 `WindowsProductWorkerHistorySources` 持有捕获、静止结算审阅、语义读取及锁内两个捕获操作。Coding 六个原函数直接绑定该组件；原平台、精确 Product 类型和产品身份校验在原时点执行。四个 Coding 名义记录的完整 AST、字段、slots、容量 getter、wire 和导出保持；无字段迁移、新 Protocol、账本、恢复器或平行生命周期组件。
+
+删除同一 Harness 私有模块中被替代的三个函数 `capture_windows_product_worker_history_sources`、`read_windows_product_worker_history_semantics`、`capture_windows_product_worker_history_semantics_under_guard`，将其原执行体直接纳入同一组件。原底层 source IO 函数及其它历史程序保持；读取、锁、恢复关联、Desired 校验和 guard 退出后构造的顺序不变。不把已经在 Harness 的执行体重复计为新迁移；本批收益是操作归属收敛和重复转接退出。
+
+当前执行代理在已授权 Coding／Harness 内部职责内接受这六个非顶层 SDK 入口由函数变为 bound method，以及其 module／qualname、泛型运行时 hints、新 callable pickle 格式和固定组件接线的变化；不承诺重绑旧 Coding 私有 import aliases 后更换 owner。参数名称、位置／关键字限制、默认值和操作文档保持，六个具体静态返回类型通过检查。十二条旧 protocol4／5 全局 callable 路由可加载，十二次当前 bound callable 往返保持同一操作和等值配置，容量仍读取原实时 getter。四份原记录布局和原 IO golden 不变；此接受不扩大其它公开数据契约的例外。
+
+原 IO 契约探针只把 GC 故障注入从旧 Coding 工厂 alias 移到实际既有 GC 组件的构造和 require_settled 方法，原场景、断言、标记和固定 golden 保持。既有消费者30 passed／1个原生 Windows skipped，原 IO 探针31 passed；三段操作体的限定 AST 等价及其它 Harness 程序、四个 Coding 类的原 AST 通过。六个具体返回断言的 scoped mypy 和 Ruff 通过。本机未执行原生 Windows；模型和源码证据不代替原生验证，没有新增或扩大 PR 门禁。
+
+本批 Coding −95、Harness +67、Hosting／其它生产0，系统生产净 −28行；测试 +2行，文档单列。累计从原 Goal 基线 Coding −7,126、Harness +9,917、系统生产仍 +2,791行，C07余13,140行，距多数退出仍差3,008行。该候选尚未合并，整组目标保持未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
