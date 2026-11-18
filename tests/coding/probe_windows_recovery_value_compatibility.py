@@ -17,6 +17,7 @@ from loushang.coding import (
 from loushang.coding import (
     package_product_worker_windows_stage_retirement as retirement,
 )
+from loushang.harness.package_product import _windows_worker_recovery as recovery_owner
 
 _FIXTURE = Path(__file__).parent / "fixtures/windows_recovery_values_v1.json"
 ATTEMPT = "7" * 32
@@ -228,8 +229,8 @@ def observe_join(case, patch):
         return read
 
     with patch.context() as bound:
-        bound.setattr(recovery, "os", SimpleNamespace(name="nt"))
-        bound.setattr(recovery, "WindowsLocalWheelProductSessionOwner", Product)
+        bound.setattr(recovery_owner, "os", SimpleNamespace(name="nt"))
+        bound.setattr(recovery_owner, "WindowsLocalWheelProductSessionOwner", Product)
         bound.setattr(
             retirement,
             "_inspect_retirement_attempt_ids_under_gc_guard",
@@ -239,26 +240,28 @@ def observe_join(case, patch):
             ),
         )
         bound.setattr(
-            recovery,
-            "inspect_coding_windows_product_worker_payload_attempts",
-            supplied("payloads", payloads),
+            type(recovery._HISTORY_INVENTORY),
+            "inspect_payloads",
+            staticmethod(supplied("payloads", payloads)),
         )
         bound.setattr(
-            recovery,
-            "_inspect_intents_under_gc_guard",
-            supplied("intents", (intent,) if populated else ()),
+            type(recovery._HISTORY_INVENTORY),
+            "inspect_intents",
+            staticmethod(supplied("intents", (intent,) if populated else ())),
         )
         bound.setattr(
-            recovery,
-            "inspect_coding_windows_product_worker_provisioning_attempts",
-            supplied("native", (native,) if populated else ()),
+            type(recovery._HISTORY_INVENTORY),
+            "inspect_native",
+            staticmethod(supplied("native", (native,) if populated else ())),
         )
         bound.setattr(
-            recovery,
-            "open_coding_windows_product_worker_supervisor_journal",
-            lambda _: SimpleNamespace(
-                inspect_records=supplied(
-                    "supervisor", (supervised,) if populated else ()
+            type(recovery._HISTORY_INVENTORY),
+            "supervisor",
+            staticmethod(
+                lambda _: SimpleNamespace(
+                    inspect_records=supplied(
+                        "supervisor", (supervised,) if populated else ()
+                    )
                 )
             ),
         )

@@ -13,7 +13,8 @@ import re
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, TypeVar, cast
+from functools import partial
+from typing import TYPE_CHECKING, Generic, Protocol, Self, TypeVar, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -41,6 +42,7 @@ from loushang.harness.worker._windows_provisioning_journal import (
     inspect_windows_worker_provisioning_attempts,
 )
 from loushang.harness.worker.activation_state_journal import _StateRecord
+from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.history._activation import (
     _RetainedAttemptFields,
     project_retained_attempts,
@@ -53,6 +55,7 @@ from loushang.harness.worker.history._retention import (
     matching_gc_revision_refs,
 )
 from loushang.harness.worker.history._windows_product_journals import (
+    WindowsActivationStateJournal,
     WindowsSupervisorJournal,
     settle_windows_crashed_supervisor_record,
 )
@@ -94,6 +97,7 @@ from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from loushang.harness.worker.payload._windows_stage_io import WindowsStageInspection
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
+    ProductWorkerActivationReceiptV1,
     WorkerCleanupSettlementV2,
     _ActivationStateStore,
 )
@@ -107,11 +111,17 @@ from ._windows_worker_history import (
     ObserveWindowsWorkerBackup,
     ReadWindowsOfflineRecovery,
 )
-from ._worker_product_authority import ClosedProductWorkerCrashRecoveryAuthority
+from ._worker_product_authority import (
+    ClosedProductWorkerCrashRecoveryAuthority,
+    _WindowsWorkerProductReceiptAuthority,
+)
 from ._worker_windows_attempt import (
     CapturedWindowsWorkerStage,
+    _AttemptFact,
     _ReceiptJournalFactory,
     _RuntimeReview,
+    capture_windows_product_worker_cleanup,
+    inspect_windows_product_worker_recovery_inventory,
     require_windows_worker_retirement_root,
     review_windows_product_worker_offline,
     settle_windows_product_worker_native_cleanup,
@@ -154,9 +164,26 @@ class _ActivationHistory(Protocol):
     ) -> tuple[bool, tuple[_StateRecord, ...]]: ...
 
 
+_AttemptT = TypeVar("_AttemptT", bound=WindowsRecoveryAttemptV1)
+
+_SnapshotT = TypeVar("_SnapshotT", bound=_RecoveryFacts)
+
+
+class _WindowsAttemptReferenceFacts(AttemptReference, Protocol):
+    @property
+    def attempt_id(self) -> str: ...
+
+
+_ReferenceFactT = TypeVar("_ReferenceFactT", bound=_WindowsAttemptReferenceFacts)
+
+_ObservationT = TypeVar("_ObservationT")
+
+
 @dataclass(frozen=True, slots=True)
-class WindowsProductWorkerHistoryJournals:
-    """The original nominal journal family, without eager reads or cached roots."""
+class WindowsProductWorkerHistoryJournals(
+    Generic[_AttemptT, _SnapshotT, _ReferenceFactT, _ObservationT]
+):
+    """Read-only recovery joins over the original nominal journal family."""
 
     opt_in: Callable[..., _OptInHistory]
     receipt: _ReceiptJournalFactory[_ReceiptRecordMethods]
@@ -166,10 +193,173 @@ class WindowsProductWorkerHistoryJournals:
     ]
     retained_type: type[_RetainedAttemptFields]
 
+    product_id: str
+    attempt_type: type[_AttemptT]
+    snapshot_type: Callable[..., _SnapshotT]
+    reference_type: Callable[..., _ReferenceFactT]
+    observation_type: Callable[..., _ObservationT]
+    inspect_retirements: Callable[
+        [WindowsLocalWheelProductSessionOwner], frozenset[str]
+    ]
+    inspect_payloads: Callable[
+        [WindowsLocalWheelProductSessionOwner], tuple[_AttemptFact, ...]
+    ]
+    inspect_intents: Callable[
+        [WindowsLocalWheelProductSessionOwner], tuple[_LaunchIntentFacts, ...]
+    ]
+    inspect_native: Callable[
+        [WindowsLocalWheelProductSessionOwner],
+        tuple[WindowsWorkerProvisioningAttemptV1, ...],
+    ]
+    observe_backup: ObserveWindowsWorkerBackup
+    error_type: type[RuntimeError]
+    error_prefix: str
+
+    def _require_product(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        message: str,
+        *,
+        check_product: bool = True,
+    ) -> None:
+        if (
+            os.name != "nt"
+            or type(product) is not WindowsLocalWheelProductSessionOwner
+            or (check_product and product.policy.product_id != self.product_id)
+        ):
+            raise OSError(message)
+
+    def observe_job_absence(self, job_name: str | None) -> bool | None:
+        """Keep an unavailable native observation distinct from proven absence."""
+        if job_name is None:
+            return None
+        try:
+            return observe_windows_worker_job_absent(job_name)
+        except OSError:
+            return None
+
+    def inspect_inventory(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> tuple[_AttemptT, ...]:
+        """Join all observed attempt IDs under one no-create Product GC read guard."""
+        self._require_product(
+            product, "Windows Worker recovery inventory requires a Product owner"
+        )
+        with product.gc_gate.read_guard():
+            return self.inspect_inventory_under_guard(product)
+
+    def inspect_inventory_under_guard(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        native_attempts: tuple[WindowsWorkerProvisioningAttemptV1, ...] | None = None,
+    ) -> tuple[_AttemptT, ...]:
+        """Reuse one already-held Product GC gate for a pre-effect admission check."""
+        self._require_product(
+            product,
+            "Windows Worker recovery inventory requires a Product owner",
+            check_product=False,
+        )
+        return inspect_windows_product_worker_recovery_inventory(
+            product,
+            inspect_retirements=self.inspect_retirements,
+            inspect_payloads=self.inspect_payloads,
+            inspect_intents=self.inspect_intents,
+            inspect_native=self.inspect_native,
+            inspect_supervisor=self._inspect_supervisor,
+            record_type=self.attempt_type,
+            native_attempts=native_attempts,
+        )
+
+    def _inspect_supervisor(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> tuple[WorkerAttemptRecordV1, ...]:
+        return self.supervisor(product).inspect_records()
+
+    def inspect_references(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> tuple[_ReferenceFactT, ...]:
+        """Project every durable launch intent with its retained Product receipt.
+
+        Partial stages without an intent remain recovery debts, not references.
+        An observed native or Supervisor effect without an intent refuses the whole
+        projection. No runtime quiescence or state mutation is needed for this read.
+        """
+        self._require_product(
+            product, "Windows Worker attempt references require a Product owner"
+        )
+        with product.gc_gate.read_guard():
+            return self.inspect_references_under_guard(product)
+
+    def inspect_references_under_guard(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> tuple[_ReferenceFactT, ...]:
+        return read_windows_product_worker_attempt_references_under_guard(
+            product,
+            journals=self,
+            inspect_inventory=self.inspect_inventory_under_guard,
+            reference_type=self.reference_type,
+            product_id=self.product_id,
+            error_type=self.error_type,
+            error_prefix=self.error_prefix + "_attempt_reference_",
+        )
+
+    def inspect_gc_observations(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> tuple[_ObservationT, ...]:
+        """Join retained launch references to active GC reservations under one gate."""
+        self._require_product(
+            product, "Windows Worker GC observations require a Product owner"
+        )
+        return read_windows_product_worker_attempt_gc_observations(
+            product,
+            read_references=self.inspect_references_under_guard,
+            observe_backup=self.observe_backup,
+            observation_type=self.observation_type,
+        )
+
+    def inspect_offline(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> _SnapshotT:
+        """Hold Package runtime quiescence while joining every Product attempt."""
+        self._require_product(
+            product, "Windows Worker offline recovery requires a Product owner"
+        )
+        return cast(
+            _SnapshotT,
+            read_windows_product_worker_offline_recovery(
+                product,
+                read_under_guard=self.inspect_offline_under_guard,
+                active_error=self.error_type,
+                active_code=self.error_prefix + "_offline_recovery_runtime_active",
+            ),
+        )
+
+    def inspect_offline_under_guard(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        store_id: str,
+        lease_owner_revision: int,
+        gc_snapshot: PluginPackageGcReservationSnapshotV1,
+    ) -> _SnapshotT:
+        """Join semantic histories under an already held Product quiescence/gate."""
+        return capture_windows_product_worker_offline_recovery_under_guard(
+            product,
+            journals=self,
+            snapshot_type=self.snapshot_type,
+            inspect_native=self.inspect_native,
+            inspect_inventory=self.inspect_inventory_under_guard,
+            inspect_intents=self.inspect_intents,
+            observe_job_absence=self.observe_job_absence,
+            observe_backup=self.observe_backup,
+            store_id=store_id,
+            lease_owner_revision=lease_owner_revision,
+            gc_snapshot=gc_snapshot,
+        )
+
 
 _AttemptT_co = TypeVar("_AttemptT_co", bound=WindowsRecoveryAttemptV1, covariant=True)
-_AttemptT = TypeVar("_AttemptT", bound=WindowsRecoveryAttemptV1)
-_SnapshotT = TypeVar("_SnapshotT", bound=_RecoveryFacts)
 _ReferenceT = TypeVar("_ReferenceT")
 
 
@@ -458,15 +648,6 @@ def current_windows_worker_attempts_after_verified_retirements(
     return tuple(current)
 
 
-class _WindowsAttemptReferenceFacts(AttemptReference, Protocol):
-    @property
-    def attempt_id(self) -> str: ...
-
-
-_ReferenceFactT = TypeVar("_ReferenceFactT", bound=_WindowsAttemptReferenceFacts)
-_ObservationT = TypeVar("_ObservationT")
-
-
 def read_windows_product_worker_attempt_gc_observations(
     product: WindowsLocalWheelProductSessionOwner,
     *,
@@ -676,6 +857,140 @@ def review_windows_product_worker_no_effect_under_guard(
 
 _OrphanReviewT = TypeVar("_OrphanReviewT", bound=_WindowsOrphanRuntimeReviewMethods)
 _CrashReviewT = TypeVar("_CrashReviewT", bound=_WindowsCrashStageReviewMethods)
+
+
+_CleanupReceiptOwnerT = TypeVar(
+    "_CleanupReceiptOwnerT", bound=_WindowsWorkerProductReceiptAuthority
+)
+_LiveCleanupReviewT = TypeVar("_LiveCleanupReviewT", bound=WindowsLiveCleanupReview)
+_CleanupActivationT = TypeVar("_CleanupActivationT", bound=_RetainedAttemptFields)
+
+
+class WindowsProductWorkerCleanupEvidence(
+    WindowsWorkerCleanupEvidence[_LiveCleanupReviewT],
+    Generic[_CleanupReceiptOwnerT, _LiveCleanupReviewT, _CleanupActivationT],
+):
+    """Bind the existing read-only evidence owner to one Product component family.
+
+    Normal, parent-enrollment and crash bindings keep the same authority and
+    mutable instance state. Product identity domains and cleanup permission
+    remain with the nominal Product subclass; no additional repair owner exists.
+    """
+
+    _product: WindowsLocalWheelProductSessionOwner
+    _cleanup_product_id: str
+    _cleanup_receipt_owner_type: type[_CleanupReceiptOwnerT]
+    _cleanup_review_under_guard: _RuntimeReview[_WindowsOrphanRuntimeReviewMethods]
+    _cleanup_inspect_native: Callable[
+        [WindowsLocalWheelProductSessionOwner],
+        tuple[WindowsWorkerProvisioningAttemptV1, ...],
+    ]
+    _cleanup_activation_journal: Callable[
+        [WindowsLocalWheelProductSessionOwner],
+        WindowsActivationStateJournal[_CleanupActivationT],
+    ]
+    _cleanup_review_runtime: Callable[..., _WindowsOrphanRuntimeReviewMethods]
+
+    def __init__(
+        self,
+        *,
+        receipt_owner: _CleanupReceiptOwnerT,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+    ) -> None:
+        if (
+            os.name != "nt"
+            or type(receipt_owner) is not self._cleanup_receipt_owner_type
+            or type(receipt) is not ProductWorkerActivationReceiptV1
+            or type(request) is not ManagedWorkerLaunchRequestV1
+            or request.identity.product_id != self._cleanup_product_id
+            or request.identity.scope_id != receipt.policy.product_scope_id
+            or request.identity.plugin_id != receipt.policy.plugin_id
+            or request.identity.owner_generation
+            != receipt.policy.owner_selection_generation
+            or receipt_owner.product_owner.policy.product_id != self._cleanup_product_id
+        ):
+            raise ValueError("Windows C5 cleanup requires one bound Product attempt")
+        receipt_owner.product_owner.assert_root_gc_authority_current()
+        self._product: WindowsLocalWheelProductSessionOwner = (
+            receipt_owner.product_owner
+        )
+        self._receipt = receipt
+        self._attempt_id = request.identity.attempt_id
+        self._owner_generation = request.identity.owner_generation
+        self._request_fingerprint = request.fingerprint
+        self._identity_fingerprint = request.identity.fingerprint
+        self._mode = "normal"
+
+    @classmethod
+    def for_resume_parent_enrollment(
+        cls,
+        *,
+        receipt_owner: _CleanupReceiptOwnerT,
+        receipt: ProductWorkerActivationReceiptV1,
+    ) -> Self:
+        """Bind the stable evidence domain before any attempt materialization.
+
+        This authority is used only to open C5 and enroll a Resume parent. It
+        carries no attempt witness and therefore cannot settle an activation.
+        """
+
+        if (
+            os.name != "nt"
+            or type(receipt_owner) is not cls._cleanup_receipt_owner_type
+            or type(receipt) is not ProductWorkerActivationReceiptV1
+            or receipt_owner.product_owner.policy.product_id != cls._cleanup_product_id
+            or receipt.policy.product_id != cls._cleanup_product_id
+        ):
+            raise ValueError("Windows C5 Resume enrollment requires one Product")
+        receipt_owner.product_owner.assert_root_gc_authority_current()
+        authority = cls.__new__(cls)
+        authority._product = receipt_owner.product_owner
+        authority._receipt = receipt
+        authority._attempt_id = "resume-parent-enrollment"
+        authority._owner_generation = receipt.policy.owner_selection_generation
+        authority._request_fingerprint = "0" * 64
+        authority._identity_fingerprint = "0" * 64
+        authority._mode = "enrollment"
+        return authority
+
+    @classmethod
+    def for_crash_recovery(
+        cls,
+        *,
+        product: WindowsLocalWheelProductSessionOwner,
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+    ) -> Self:
+        """Bind a dead Session only from its persisted Product recovery join."""
+
+        if (
+            os.name != "nt"
+            or type(product) is not WindowsLocalWheelProductSessionOwner
+            or product.policy.product_id != cls._cleanup_product_id
+            or type(receipt) is not ProductWorkerActivationReceiptV1
+        ):
+            raise ValueError("Windows C5 crash recovery requires an exact Product")
+        return cls._from_crash_recovery(
+            product=product,
+            receipt=receipt,
+            attempt_id=attempt_id,
+            review_runtime=cls._cleanup_review_runtime,
+        )
+
+    def current_tree_witness(self, *, attempt_id: str) -> _LiveCleanupReviewT:
+        if attempt_id != self._attempt_id:
+            raise ValueError("Windows C5 cleanup attempt changed")
+        runtime, native, activation = capture_windows_product_worker_cleanup(
+            self._product,
+            attempt_id=attempt_id,
+            review_runtime=self._cleanup_review_under_guard,
+            inspect_native=self._cleanup_inspect_native,
+            activation_journal=partial(self._cleanup_activation_journal, self._product),
+        )
+        return cast(Callable[..., _LiveCleanupReviewT], self._review_type)(
+            runtime=runtime, native=native, activation=activation
+        )
 
 
 def read_windows_product_worker_orphan_runtime(
