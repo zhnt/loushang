@@ -101,8 +101,8 @@ def commit_coding_windows_product_worker_launch_intent(
 ) -> CodingWindowsWorkerLaunchIntentV1:
     """Publish one exact launch identity before any native or process effect."""
     from .package_product_worker_windows_payload import (
+        _PAYLOAD_PROGRAM,
         CodingWindowsWorkerPayloadLeaseV1,
-        _payload_program,
     )
 
     _require_product(product)
@@ -123,7 +123,7 @@ def commit_coding_windows_product_worker_launch_intent(
         receipt=receipt,
         request=request,
         payload_lease=payload_lease,
-        payload_program=_payload_program(),
+        payload_program=_PAYLOAD_PROGRAM,
     )
 
 
