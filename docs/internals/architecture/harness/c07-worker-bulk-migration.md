@@ -564,6 +564,8 @@ C51 首轮10 passed／1 failed，失败仅为 Windows receipt 已退出直接 ac
 
 发布兼容补查发现，六条旧全局 callable 加载路由通过，并不能证明新 bound 入口仍可序列化：原限额 lambda 会使当前三个入口 pickle 失败。已将这一纯 Profile 限额绑定改为模块函数，保留同一时点读取两项 Code 限额；三入口的六次 protocol4／5 当前 pickle 往返、同一执行方法／等值 Profile、恢复后的动态限额及原 registry／lock 身份复核通过。原执行体、记录和测试不变。该修复 Code／系统 +4行，累计 Coding −7,031、Harness +9,850、系统生产仍 +2,819行；C07余13,235行，距过半退出还差3,103行。此前候选的并发检查出现 Session 一秒／两秒 deadline 失败，其中原 compaction 失败节点单独复跑通过；这些初始失败保留，不能当作最终完整候选通过。最终修复按原检查路线串行验证，不扩大 timeout、selector 或门禁。
 
+后续串行检查在Hosted Goal族出现16 failed／1,441 passed／13 skipped后提取失败，原因定位到执行代理额外全局设置的`PYTEST_ADDOPTS`：其`--skip-host-runtime`被保护包目录中的合同pytest继承，该目录不加载工作区注册选项的conftest。原Hosted Repository用例不带该全局覆盖时两项通过（54.12秒），恢复唯一这一环境覆盖后同一`False`用例复现失败（19.68秒）。这是验证运行器的环境污染，未修改Product、测试断言或超时；后续将安全选择器限定在各命令参数及Make的`PYTEST_RUNNER`，完整检查重新验证。初始并发deadline失败与本次环境错误分别保留，不归并为产品回归，也不将中断的检查记作通过。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。
