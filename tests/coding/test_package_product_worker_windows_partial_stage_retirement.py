@@ -48,11 +48,13 @@ def test_windows_worker_partial_retirement_requires_all_exact_receipts(
         supervisor_revision=None,
         supervisor_process_settled=None,
     )
-    monkeypatch.setattr(retirement, "_read_start", lambda *_: review)
-    monkeypatch.setattr(retirement, "_read_receipt", lambda *_: receipt)
-    monkeypatch.setattr(retirement, "_read_root_intent", lambda *_: receipt)
+    monkeypatch.setattr(type(retirement._records), "read_start", lambda *_: review)
+    monkeypatch.setattr(type(retirement._records), "read_receipt", lambda *_: receipt)
     monkeypatch.setattr(
-        retirement, "_full_retirement_artifact_present", lambda *_: False
+        type(retirement._records), "read_root_intent", lambda *_: receipt
+    )
+    monkeypatch.setattr(
+        type(retirement._operations), "other_artifact", lambda *_: False
     )
     retirement._require_completed_partial_retirement_under_gc_guard(  # type: ignore[arg-type]
         None, attempt
@@ -69,7 +71,7 @@ def test_windows_worker_partial_retirement_requires_all_exact_receipts(
             retirement._require_completed_partial_retirement_under_gc_guard(  # type: ignore[arg-type]
                 None, changed
             )
-    monkeypatch.setattr(retirement, "_read_root_intent", lambda *_: None)
+    monkeypatch.setattr(type(retirement._records), "read_root_intent", lambda *_: None)
     with pytest.raises(retirement.CodingWindowsWorkerPartialStageRetirementError):
         retirement._require_completed_partial_retirement_under_gc_guard(  # type: ignore[arg-type]
             None, attempt

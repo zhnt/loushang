@@ -11,7 +11,7 @@ import zipfile
 from collections.abc import Callable
 from hashlib import sha256
 from importlib.metadata import version
-from typing import Any, ClassVar, Protocol, Self, TypeVar, cast
+from typing import Any, ClassVar, Literal, Protocol, Self, TypeVar, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -41,14 +41,29 @@ from loushang.hosting.windows_backend_material import (
 
 from .product_worker_candidate import ProductWorkerNativeClosureFacts
 
-
-class _ApprovalOwner(Protocol):
-    def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None: ...
-    def current(self) -> _NativeDecision | None: ...
-
-
 _N = TypeVar("_N", bound=_NativeDecision)
 _N_co = TypeVar("_N_co", bound=_NativeDecision, covariant=True)
+
+
+class _ApprovalCommandJournal(Protocol[_N_co]):
+    def change(
+        self,
+        *,
+        directory_fd: int,
+        operation_id: str,
+        expected_generation: int,
+        action: Literal["approve", "revoke"],
+        approval: Any,
+    ) -> _N_co: ...
+
+
+class _ApprovalOwner(Protocol[_N_co]):
+    def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None: ...
+    def current(self) -> _N_co | None: ...
+    @property
+    def _product(self) -> WindowsLocalWheelProductSessionOwner: ...
+    @property
+    def _journal(self) -> _ApprovalCommandJournal[_N_co]: ...
 
 
 class _CurrentJournal(Protocol[_N_co]):
@@ -74,6 +89,31 @@ def current_windows_backend_approval(
         with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
             decision = journal.current(directory_fd=root)
         product.assert_root_gc_authority_current()
+        return decision
+
+
+def change_windows_backend_approval(
+    owner: _ApprovalOwner[_N],
+    *,
+    operation_id: str,
+    expected_generation: int,
+    action: Literal["approve", "revoke"],
+    review: _BackendReview | None,
+) -> _N:
+    """Use the same owner fields at their original guarded mutation points."""
+    with owner._product.gc_gate.guard(require_write=True):
+        owner._product.assert_root_gc_authority_current()
+        with (
+            owner._product.epoch_runtime.borrow_product_state_root_descriptor() as root
+        ):
+            decision = owner._journal.change(
+                directory_fd=root,
+                operation_id=operation_id,
+                expected_generation=expected_generation,
+                action=action,
+                approval=None if review is None else review.approval,
+            )
+        owner._product.assert_root_gc_authority_current()
         return decision
 
 
@@ -209,7 +249,7 @@ class _WindowsBackendInstalledMethods:
     approval_generation: int
     expectation: WindowsBackendMaterialExpectationV1
     _material_type: ClassVar[type[_WindowsBackendMaterialMethods]]
-    _approval_owner_type: ClassVar[type[_ApprovalOwner]]
+    _approval_owner_type: ClassVar[type[_ApprovalOwner[Any]]]
     _receipt_io: ClassVar[WindowsPrivateReceiptIO]
     _release_name: ClassVar[str]
     _wheel_limit: ClassVar[int]

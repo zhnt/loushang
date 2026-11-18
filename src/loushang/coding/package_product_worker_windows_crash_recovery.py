@@ -1,10 +1,13 @@
-"""Resume the ordered Product recovery of one crashed Windows Worker attempt."""
+"""Coding Product Profile and compatibility entry for the existing Windows recovery owner."""
 
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from typing import TYPE_CHECKING, cast
 
+from loushang.harness.package_product._windows_worker_recovery import (
+    WindowsProductWorkerCrashRecovery,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -12,143 +15,76 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from .package_product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
-from .package_product_worker_windows_activation_state_journal import (
-    CodingWindowsWorkerActivationStateJournal,
-)
-from .package_product_worker_windows_cleanup_evidence import (
-    CodingWindowsWorkerCleanupEvidenceAuthority,
-)
-from .package_product_worker_windows_crash_c5_settlement import (
-    settle_coding_windows_product_worker_crash_c5,
-)
-from .package_product_worker_windows_crash_cleanup_review import (
-    review_coding_windows_product_worker_crash_cleanup,
-)
-from .package_product_worker_windows_crash_lease_repair import (
-    repair_coding_windows_product_worker_crash_orphan_runtime,
-    review_coding_windows_product_worker_crash_lease_repair,
-)
-from .package_product_worker_windows_crash_native_settlement import (
-    settle_coding_windows_product_worker_crash_native,
-)
-from .package_product_worker_windows_crash_stage_retirement import (
-    retire_coding_windows_product_worker_crash_stage,
-)
-from .package_product_worker_windows_crash_stage_review import (
-    review_coding_windows_product_worker_crash_stage,
-)
-from .package_product_worker_windows_crash_supervisor_settlement import (
-    settle_coding_windows_product_worker_crash_supervisor,
-)
-from .package_product_worker_windows_orphan_review import (
-    review_coding_windows_product_worker_orphan_runtime,
-)
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product._windows_worker_recovery import (
+        CrashEvidenceFactory,
+        CrashStageRetirementProfile,
+    )
 
 
 def recover_coding_windows_product_worker_crash_attempt(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingProductWorkerRetainedAttemptV1:
     """Resume each completed edge without granting authority from a stale review."""
-
     if (
         os.name != "nt"
         or type(product) is not WindowsLocalWheelProductSessionOwner
         or product.policy.product_id != "coding"
     ):
         raise ValueError("Windows Worker crash recovery requires its Coding Product")
-    current = review_coding_windows_product_worker_orphan_runtime(
-        product, attempt_id=attempt_id
+    return cast(
+        CodingProductWorkerRetainedAttemptV1,
+        _recovery_program().recover(product, attempt_id=attempt_id),
     )
-    attempt = current.attempt
-    record = current.receipt_record
-    if attempt is None or record is None:
-        raise ValueError("Windows Worker crash attempt is absent")
-    journal = CodingWindowsWorkerActivationStateJournal(product)
-    retained = tuple(
-        item
-        for item in journal.retained_attempts_read_only()
-        if item.attempt_id == attempt_id
+
+
+def _recovery_program() -> WindowsProductWorkerCrashRecovery:
+    from . import package_product_worker_windows_activation_state_journal as activation
+    from . import package_product_worker_windows_cleanup_evidence as evidence
+    from . import package_product_worker_windows_crash_cleanup_review as cleanup
+    from . import package_product_worker_windows_crash_lease_repair as lease
+    from . import package_product_worker_windows_crash_native_settlement as native
+    from . import package_product_worker_windows_crash_stage_retirement as retirement
+    from . import package_product_worker_windows_installed_backend as backend
+    from . import package_product_worker_windows_launch_intent as intent
+    from . import package_product_worker_windows_orphan_review as orphan
+    from . import package_product_worker_windows_provisioning as provisioning
+    from . import package_product_worker_windows_recovery_inventory as inventory
+    from . import package_product_worker_windows_supervisor_journal as supervisor
+    from .package_product_worker_activation_state import (
+        open_coding_windows_product_worker_activation_state_store,
     )
-    if len(retained) != 1:
-        raise ValueError("Windows Worker crash C5 owner is missing or ambiguous")
-    [c5] = retained
-    receipt = record.receipt
-    expected_host = "coding-windows-store:" + product.epoch_runtime.registry.store_id
-    expected_boot = "coding-windows-runtime:" + receipt.policy.product_runtime_id
-    state = journal.load()
-    attempts = None if state is None else state.get("attempts")
-    exact = (
-        ()
-        if not isinstance(attempts, Mapping)
-        else tuple(
-            item
-            for item in attempts.values()
-            if isinstance(item, Mapping) and item.get("attemptId") == attempt_id
-        )
+
+    return WindowsProductWorkerCrashRecovery(
+        product_id="coding",
+        record_type=lease.CodingWindowsWorkerCrashLeaseRepairReviewV1,
+        orphan_type=orphan.CodingWindowsWorkerOrphanRuntimeReviewV1,
+        cleanup_type=cleanup.CodingWindowsWorkerCrashCleanupReviewV1,
+        cleanup_error=cleanup.CodingWindowsWorkerCrashCleanupReviewError,
+        cleanup_error_prefix="coding_worker_crash_cleanup",
+        review_runtime=orphan._review_under_gc_guard,
+        inspect_native=provisioning.inspect_coding_windows_product_worker_provisioning_attempts,
+        inspect_inventory=inventory._inspect_windows_worker_recovery_inventory_under_gc_guard,
+        read_intent=intent._read_intent_under_gc_guard,
+        supervisor_journal=supervisor.open_coding_windows_product_worker_supervisor_journal,
+        activation_journal=activation.CodingWindowsWorkerActivationStateJournal,
+        read_backend=backend.read_coding_windows_worker_installed_backend_release,
+        settlement_type=native.CodingWindowsWorkerCrashNativeSettlementV1,
+        evidence_factory=cast(
+            "CrashEvidenceFactory",
+            evidence.CodingWindowsWorkerCleanupEvidenceAuthority.for_crash_recovery,
+        ),
+        state_store=open_coding_windows_product_worker_activation_state_store,
+        evidence_authority_id=evidence.CodingWindowsWorkerCleanupEvidenceAuthority.authority_id,
+        evidence_authority_fingerprint=evidence.CodingWindowsWorkerCleanupEvidenceAuthority.authority_fingerprint,
+        host_domain="coding-windows-store:",
+        boot_domain="coding-windows-runtime:",
+        stage_retirement=cast(
+            "CrashStageRetirementProfile",
+            retirement._operations,
+        ),
     )
-    if (
-        not c5.current
-        or c5.phase
-        not in {"effect_started", "published", "cleanup_debt", "retired", "settled"}
-        or c5.receipt_fingerprint != receipt.fingerprint
-        or c5.policy_fingerprint != receipt.policy.fingerprint
-        or c5.owner_generation != receipt.policy.owner_selection_generation
-        or c5.cleanup_contract_version != 2
-        or c5.host_identity != expected_host
-        or c5.boot_identity != expected_boot
-        or len(exact) != 1
-        or exact[0].get("evidenceAuthorityId")
-        != CodingWindowsWorkerCleanupEvidenceAuthority.authority_id
-        or exact[0].get("evidenceAuthorityFingerprint")
-        != CodingWindowsWorkerCleanupEvidenceAuthority.authority_fingerprint
-    ):
-        raise ValueError("Windows Worker crash C5 owner changed")
-    if attempt.supervisor_phase != "process_settled":
-        review = review_coding_windows_product_worker_crash_cleanup(
-            product, attempt_id=attempt_id
-        )
-        settle_coding_windows_product_worker_crash_supervisor(
-            product, expected_review=review
-        )
-    current = review_coding_windows_product_worker_orphan_runtime(
-        product, attempt_id=attempt_id
-    )
-    attempt = current.attempt
-    if attempt is None:
-        raise ValueError("Windows Worker crash attempt disappeared")
-    if attempt.native_phase != "settled":
-        review = review_coding_windows_product_worker_crash_cleanup(
-            product, attempt_id=attempt_id
-        )
-        settle_coding_windows_product_worker_crash_native(
-            product, expected_review=review
-        )
-    current = review_coding_windows_product_worker_orphan_runtime(
-        product, attempt_id=attempt_id
-    )
-    if len(current.orphan_leases) == 1:
-        lease_review = review_coding_windows_product_worker_crash_lease_repair(
-            product, attempt_id=attempt_id
-        )
-        repair_coding_windows_product_worker_crash_orphan_runtime(
-            product, expected_review=lease_review
-        )
-    elif current.orphan_leases:
-        raise ValueError("Windows Worker crash orphan lease is ambiguous")
-    current = review_coding_windows_product_worker_orphan_runtime(
-        product, attempt_id=attempt_id
-    )
-    attempt = current.attempt
-    if attempt is None:
-        raise ValueError("Windows Worker crash attempt disappeared")
-    if attempt.payload_directory_identity is not None:
-        stage_review = review_coding_windows_product_worker_crash_stage(
-            product, attempt_id=attempt_id
-        )
-        retire_coding_windows_product_worker_crash_stage(
-            product, expected_review=stage_review
-        )
-    return settle_coding_windows_product_worker_crash_c5(product, attempt_id=attempt_id)
 
 
 __all__ = ["recover_coding_windows_product_worker_crash_attempt"]

@@ -104,5 +104,20 @@ class _SourceBoundBaseWireMethods(_BaseWireMethods):
             ),
         )
 
+    scope_id: str
+    store_id: str
+    source_snapshot_digest: str
+
+    def _source_identity_invalid(self) -> bool:
+        return (
+            type(self.scope_id) is not str
+            or not self.scope_id
+            or len(self.scope_id) > 128
+            or type(self.store_id) is not str
+            or not self.store_id
+            or len(self.store_id) > 128
+            or type(self.source_snapshot_digest) is not str
+        )
+
     def _unsigned_dict(self) -> dict[str, object]:
         return self._wire_unsigned_schema.encode(self, sort_keys=True)

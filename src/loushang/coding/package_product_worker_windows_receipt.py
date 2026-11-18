@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendInstalledMethods,
@@ -22,8 +21,6 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
-from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 from .package_product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .package_product_worker_policy import (
@@ -58,6 +55,12 @@ class CodingWindowsWorkerProductReceiptOwner(
 ):
     """Keep original admission/data construction; all fixed custody is Core."""
 
+    _receipt_factory_label = "Windows Worker"
+    _receipt_session_type = staticmethod(lambda: SessionManager)
+    _receipt_discovery_type = staticmethod(
+        lambda: CodingWorkerTranscriptDiscoveryReader
+    )
+
     _stale_derivation_errors = (
         CodingWorkerPolicySelectionError,
         CodingWorkerReceiptError,
@@ -68,6 +71,12 @@ class CodingWindowsWorkerProductReceiptOwner(
         ValueError,
     )
 
+    _opt_in: CodingWindowsWorkerProductOptInOwner
+    _receipt_source_trust_class = "local-worker-candidate"
+    _receipt_opt_in_factory = staticmethod(CodingWindowsWorkerProductOptInOwner)
+    _receipt_native_factory = staticmethod(CodingWindowsWorkerInstalledBackendReader)
+    _receipt_journal_factory = staticmethod(CodingWindowsWorkerReceiptJournal)
+
     def __init__(
         self,
         *,
@@ -76,48 +85,12 @@ class CodingWindowsWorkerProductReceiptOwner(
         selected: PackageProductSelectedPluginManifestV1,
         session_discovery_reader: CodingWorkerSessionDiscoveryReadPort | None = None,
     ) -> None:
-        if (
-            os.name != "nt"
-            or type(product) is not WindowsLocalWheelProductSessionOwner
-            or type(runtime) is not PackageProductRuntimeBindingV1
-            or type(selected) is not PackageProductSelectedPluginManifestV1
-            or product.policy.product_id != "coding"
-            or runtime.product_id != "coding"
-            or runtime.session_id is None
-            or runtime.product_runtime_id is None
-            or selected.snapshot.installation_key.scope_id
-            != product.policy.project_scope_id
-            or (
-                session_discovery_reader is not None
-                and (
-                    getattr(session_discovery_reader, "gc_gate", None)
-                    is not product.gc_gate
-                    or getattr(session_discovery_reader, "session_id", None)
-                    != runtime.session_id
-                    or not callable(
-                        getattr(session_discovery_reader, "current_discovery", None)
-                    )
-                )
-            )
-            or not any(
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product.policy.bindings
-            )
-        ):
-            raise ValueError("Windows Worker Product receipt owners changed")
-        product.assert_session_runtime_current(runtime)
-        runtime.assert_selected_plugin_manifest_current(selected)
-        self._product: WindowsLocalWheelProductSessionOwner = product
-        self._runtime = runtime
-        self._selected = selected
-        self._opt_in: CodingWindowsWorkerProductOptInOwner = (
-            CodingWindowsWorkerProductOptInOwner(product)
-        )
-        self._native = CodingWindowsWorkerInstalledBackendReader(product)
-        self._session_discovery_reader = session_discovery_reader
-        self._journal = CodingWindowsWorkerReceiptJournal(
-            product.state_root / "worker-activation-receipts.jsonl",
-            scope_id=product.policy.project_scope_id,
+        _WindowsWorkerProductReceiptAuthority._initialize_receipt_owner(
+            self,
+            product=product,
+            runtime=runtime,
+            selected=selected,
+            session_discovery_reader=session_discovery_reader,
         )
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:
@@ -137,81 +110,10 @@ class CodingWindowsWorkerProductReceiptOwner(
     ) -> _WindowsBackendInstalledMethods:
         return read_coding_windows_worker_installed_backend_release(product)
 
-    def current_selected_payload(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerSelectedPayloadV1:
-        """Read verified Windows PE bytes from the current Product selection."""
 
-        return super().current_selected_payload(receipt)
-
-    def current_payload_and_worker_owner_id(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> tuple[CodingWorkerSelectedPayloadV1, str]:
-        """Capture payload and owner in one Product read with two full rechecks.
-
-        Each witness verifies the complete installed backend. The selected
-        root is captured between them; the final witness rechecks receipt and
-        opt-in authority before either value is returned.
-        """
-
-        return super().current_payload_and_worker_owner_id(receipt)
-
-
-def open_coding_windows_product_selected_worker_receipt_owner(
-    *,
-    product_owner: WindowsLocalWheelProductSessionOwner,
-    runtime: PackageProductRuntimeBindingV1,
-    plugin_id: str,
-    transcript_directory: AgentTranscriptDirectoryRuntime,
-    session_manager: SessionManager,
-    active_session: bool = False,
-) -> CodingWindowsWorkerProductReceiptOwner:
-    """Bind an exact selected Windows Worker to its persisted Coding Session."""
-
-    if type(product_owner) is not WindowsLocalWheelProductSessionOwner:
-        raise TypeError("Windows Worker requires a Product owner")
-    if type(runtime) is not PackageProductRuntimeBindingV1:
-        raise TypeError("Windows Worker requires an active Product runtime")
-    if (
-        not isinstance(plugin_id, str)
-        or not plugin_id
-        or plugin_id != plugin_id.strip()
-    ):
-        raise ValueError("Windows Worker Plugin identity is invalid")
-    if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
-        raise TypeError("Windows Worker requires a Transcript directory owner")
-    if not isinstance(session_manager, SessionManager):
-        raise TypeError("Windows Worker requires a Coding Session owner")
-    selected_session_file = session_manager.get_session_file()
-    if (
-        not session_manager.is_persisted()
-        or selected_session_file is None
-        or session_manager.get_header().conversation_id != runtime.session_id
-        or Path(session_manager.get_cwd()).resolve(strict=True)
-        != product_owner.workspace
-        or not (
-            transcript_directory.is_authority_session_file(selected_session_file)
-            or transcript_directory.is_discovery_session_file(selected_session_file)
-        )
-    ):
-        raise ValueError("Windows Worker selected Session owner changed")
-    product_owner.assert_session_runtime_current(runtime)
-    selected = runtime.capture_selected_plugin_manifest_for(
-        plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
-    )
-    discovery = CodingWorkerTranscriptDiscoveryReader(
-        directory=transcript_directory,
-        gc_gate=product_owner.gc_gate,
-        session_id=runtime.session_id,
-        selected_session_file=selected_session_file,
-        attached_session=session_manager if active_session else None,
-    )
-    return CodingWindowsWorkerProductReceiptOwner(
-        product=product_owner,
-        runtime=runtime,
-        selected=selected,
-        session_discovery_reader=discovery,
-    )
+open_coding_windows_product_selected_worker_receipt_owner = (
+    CodingWindowsWorkerProductReceiptOwner._open_selected
+)
 
 
 def read_coding_windows_product_worker_receipt_record(
@@ -227,22 +129,9 @@ def read_coding_windows_product_worker_receipt_record(
         or any(char not in "0123456789abcdef" for char in receipt_fingerprint)
     ):
         raise ValueError("Windows Worker receipt lookup is invalid")
-    with product.gc_gate.guard():
-        product.assert_root_gc_authority_current()
-        journal = CodingWindowsWorkerReceiptJournal(
-            product.state_root / "worker-activation-receipts.jsonl",
-            scope_id=product.policy.project_scope_id,
-        )
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            records = journal.records(directory_fd=root)
-        return next(
-            (
-                record
-                for record in records
-                if record.receipt.fingerprint == receipt_fingerprint
-            ),
-            None,
-        )
+    return CodingWindowsWorkerProductReceiptOwner._read_retained_receipt(
+        product, receipt_fingerprint=receipt_fingerprint
+    )
 
 
 __all__ = [

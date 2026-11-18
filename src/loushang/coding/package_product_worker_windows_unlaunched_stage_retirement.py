@@ -3,32 +3,21 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
-from loushang.harness.package_product._worker_windows_attempt import (
-    windows_product_worker_offline_write,
+from loushang.harness.package_product._windows_worker_retirement import (
+    WindowsProductWorkerUnlaunchedStageRetirement,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    windows_listdir_at,
-)
-from loushang.harness.worker.history._windows_semantic_contracts import (
-    launch_matches_intent,
-    native_matches_intent,
-    no_effect_history_matches,
-)
 
 from .package_legacy_windows_receipt import (
-    write_windows_private_receipt,
+    _receipt_io,
 )
 from .package_product_worker_windows_launch_intent import (
-    CodingWindowsWorkerLaunchIntentV1,
     _read_intent_under_gc_guard,
 )
 from .package_product_worker_windows_recovery_inventory import (
-    CodingWindowsWorkerRecoveryAttemptV1,
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
 )
 from .package_product_worker_windows_reserved_review import (
@@ -38,20 +27,15 @@ from .package_product_worker_windows_reserved_review import (
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
     WindowsWorkerRetirementRecords,
-    _has_other_retirement_artifact,
     _read_retirement_bytes,
     _retirement,
-    _stage_exists,
 )
-from .package_product_worker_windows_stage_review import _require_retirement_root
+from .package_product_worker_windows_stage_review import (
+    _inspection,
+)
 
 _MAX_REVIEW_BYTES = 32768
 _MAX_RECEIPT_BYTES = 1024
-_RETIRED_DEBTS = (
-    "payload_missing",
-    "launch_intent_retained",
-    "supervisor_history_missing",
-)
 
 
 class CodingWindowsWorkerUnlaunchedRetirementError(RuntimeError):
@@ -75,200 +59,7 @@ def retire_coding_windows_product_worker_settled_unlaunched_stage(
         or expected_review.native_revision != 2
     ):
         raise OSError("Windows Worker unlaunched retirement requires a Product review")
-    with windows_product_worker_offline_write(
-        product,
-        active_error=CodingWindowsWorkerUnlaunchedRetirementError,
-        active_message='coding_worker_unlaunched_retirement_runtime_active',
-    ) as quiescence:
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            _require_retirement_root(
-                product,
-                root,
-                CodingWindowsWorkerUnlaunchedRetirementError,
-                "coding_worker_unlaunched_retirement_root_changed",
-            )
-            start = _read_start(product, expected_review.attempt_id)
-            completed = _read_receipt(product, expected_review.attempt_id)
-            if start is None:
-                if (
-                    completed is not None
-                    or _read_root_intent(product, expected_review.attempt_id)
-                    is not None
-                ):
-                    raise CodingWindowsWorkerUnlaunchedRetirementError(
-                        "coding_worker_unlaunched_retirement_start_missing"
-                    )
-                _require_history(product, expected_review, stage_present=True)
-                intent = _require_intent(product, expected_review)
-                current = _capture_reserved_stage(
-                    product,
-                    intent=intent,
-                    native_revision=2,
-                    lease_owner_revision=quiescence.owner_revision,
-                )
-                if current != expected_review:
-                    raise CodingWindowsWorkerUnlaunchedRetirementError(
-                        "coding_worker_unlaunched_retirement_review_stale"
-                    )
-                write_windows_private_receipt(
-                    _start_path(product, start_id=expected_review.attempt_id),
-                    expected_review.to_bytes(),
-                    maximum_bytes=_MAX_REVIEW_BYTES,
-                )
-                start = _read_start(product, expected_review.attempt_id)
-            if start != expected_review:
-                raise CodingWindowsWorkerUnlaunchedRetirementError(
-                    "coding_worker_unlaunched_retirement_review_stale"
-                )
-            receipt = CodingWindowsWorkerStageRetirementReceiptV1(
-                attempt_id=start.attempt_id,
-                review_fingerprint=start.fingerprint,
-                stage_identity=start.stage_identity[:2],
-            )
-            root_intent = _read_root_intent(product, start.attempt_id)
-            if root_intent is not None and root_intent != receipt:
-                raise CodingWindowsWorkerUnlaunchedRetirementError(
-                    "coding_worker_unlaunched_retirement_root_intent_changed"
-                )
-            stage_present = _stage_exists(root, start.attempt_id)
-            _require_history(product, start, stage_present=stage_present)
-            intent = _require_intent(product, start)
-            if completed is not None:
-                if completed != receipt or root_intent != receipt or stage_present:
-                    raise CodingWindowsWorkerUnlaunchedRetirementError(
-                        "coding_worker_unlaunched_retirement_completed_changed"
-                    )
-                return completed
-            if not stage_present and root_intent is None:
-                raise CodingWindowsWorkerUnlaunchedRetirementError(
-                    "coding_worker_unlaunched_retirement_stage_disappeared"
-                )
-            _remove_remaining_stage(product, root, start, intent, receipt)
-            if _stage_exists(root, start.attempt_id):
-                raise CodingWindowsWorkerUnlaunchedRetirementError(
-                    "coding_worker_unlaunched_retirement_stage_retained"
-                )
-            _records.publish_receipt(
-                product,
-                start,
-                receipt,
-                write=write_windows_private_receipt,
-                read=_read_receipt,
-                changed_message="coding_worker_unlaunched_retirement_publication_changed",
-            )
-            return receipt
-
-
-def _require_history(
-    product: WindowsLocalWheelProductSessionOwner,
-    review: CodingWindowsWorkerReservedNoEffectReviewV1,
-    *,
-    stage_present: bool,
-) -> None:
-    inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
-    matches = tuple(item for item in inventory if item.attempt_id == review.attempt_id)
-    intent = _require_intent(product, review)
-    if (
-        len(matches) != 1
-        or not no_effect_history_matches(matches[0], settled=True)
-        or matches[0].observed_debts
-        != (
-            (
-                "payload_retained",
-                "launch_intent_retained",
-                "supervisor_history_missing",
-            )
-            if stage_present
-            else _RETIRED_DEBTS
-        )
-        or (
-            stage_present
-            and matches[0].payload_directory_identity != review.stage_identity[:2]
-        )
-        or not native_matches_intent(matches[0], intent)
-        or not launch_matches_intent(matches[0], intent)
-        or matches[0].launch_stage_identity != intent.stage_identity
-        or _other_retirement_artifact_present(product, review.attempt_id)
-    ):
-        raise CodingWindowsWorkerUnlaunchedRetirementError(
-            "coding_worker_unlaunched_retirement_history_changed"
-        )
-
-
-def _require_completed_unlaunched_retirement_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    attempt: CodingWindowsWorkerRecoveryAttemptV1,
-) -> None:
-    review = _read_start(product, attempt.attempt_id)
-    completed = _read_receipt(product, attempt.attempt_id)
-    root_intent = _read_root_intent(product, attempt.attempt_id)
-    if (
-        review is None
-        or completed is None
-        or root_intent is None
-        or completed != root_intent
-        or completed.review_fingerprint != review.fingerprint
-        or completed.stage_identity != review.stage_identity[:2]
-        or attempt.observed_debts != _RETIRED_DEBTS
-        or not no_effect_history_matches(attempt, settled=True)
-        or _other_retirement_artifact_present(product, attempt.attempt_id)
-    ):
-        raise CodingWindowsWorkerUnlaunchedRetirementError(
-            "coding_worker_unlaunched_retirement_history_unverified"
-        )
-    intent = _require_intent(product, review)
-    if (
-        intent.stage_identity != completed.stage_identity
-        or not native_matches_intent(attempt, intent)
-        or not launch_matches_intent(attempt, intent)
-        or attempt.launch_stage_identity != intent.stage_identity
-    ):
-        raise CodingWindowsWorkerUnlaunchedRetirementError(
-            "coding_worker_unlaunched_retirement_history_unverified"
-        )
-
-
-def _require_intent(
-    product: WindowsLocalWheelProductSessionOwner,
-    review: CodingWindowsWorkerReservedNoEffectReviewV1,
-) -> CodingWindowsWorkerLaunchIntentV1:
-    intent = _read_intent_under_gc_guard(product, review.attempt_id)
-    if intent is None or intent.fingerprint != review.intent_fingerprint:
-        raise CodingWindowsWorkerUnlaunchedRetirementError(
-            "coding_worker_unlaunched_retirement_intent_changed"
-        )
-    return intent
-
-
-def _remove_remaining_stage(
-    product: WindowsLocalWheelProductSessionOwner,
-    root: int,
-    review: CodingWindowsWorkerReservedNoEffectReviewV1,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-    receipt: CodingWindowsWorkerStageRetirementReceiptV1,
-) -> None:
-    with _retirement().complete(root, review, intent) as stage:
-        if stage is None:
-            return
-        if windows_listdir_at(stage):
-            raise CodingWindowsWorkerUnlaunchedRetirementError(
-                "coding_worker_unlaunched_retirement_extra_member"
-            )
-        _records.ensure_root_delete_intent(
-            receipt,
-            path=lambda: _root_intent_path(product, review.attempt_id),
-            read=lambda: _read_root_intent(product, review.attempt_id),
-            write=write_windows_private_receipt,
-            changed_message="coding_worker_unlaunched_retirement_root_intent_changed",
-        )
-
-
-def _other_retirement_artifact_present(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> bool:
-    return _has_other_retirement_artifact(
-        product, attempt_id, "worker-unlaunched-stage"
-    )
+    return _operations.retire(product, expected_review=expected_review)
 
 
 _records = WindowsWorkerRetirementRecords(
@@ -285,23 +76,6 @@ _records = WindowsWorkerRetirementRecords(
 )
 
 
-def _start_path(
-    product: WindowsLocalWheelProductSessionOwner, *, start_id: str
-) -> Path:
-    return _records.start_path(product, start_id)
-
-
-def _read_start(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerReservedNoEffectReviewV1 | None:
-    review = _records.read_start(product, attempt_id)
-    if review is not None and review.native_revision != 2:
-        raise CodingWindowsWorkerUnlaunchedRetirementError(
-            "coding_worker_unlaunched_retirement_start_invalid"
-        )
-    return review
-
-
 _root_intent_path = _records.root_intent_path
 _read_receipt = _records.read_receipt
 _read_root_intent = _records.read_root_intent
@@ -311,3 +85,23 @@ __all__ = [
     "CodingWindowsWorkerUnlaunchedRetirementError",
     "retire_coding_windows_product_worker_settled_unlaunched_stage",
 ]
+
+
+_operations = WindowsProductWorkerUnlaunchedStageRetirement(
+    records=_records,
+    io=_receipt_io,
+    inspection=_inspection,
+    review_maximum=lambda: _MAX_REVIEW_BYTES,
+    inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
+    read_intent=_read_intent_under_gc_guard,
+    capture_reserved=_capture_reserved_stage,
+    physical=_retirement,
+    error_prefix="coding_worker_unlaunched_retirement",
+)
+_require_history = _operations.require_history
+_require_completed_unlaunched_retirement_under_gc_guard = _operations.require_completed
+_require_intent = _operations.require_intent
+_remove_remaining_stage = _operations.remove_remaining
+_other_retirement_artifact_present = _operations.other_artifact
+_read_start = _operations.read_start
+_start_path = _operations.start_path

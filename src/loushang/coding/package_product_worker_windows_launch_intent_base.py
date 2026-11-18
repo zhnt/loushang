@@ -27,7 +27,7 @@ from .package_product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
 from .package_product_worker_windows_history_sources import (
-    CodingWindowsWorkerHistorySemanticReadV1,
+    CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
 from .package_product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentError,
@@ -45,23 +45,12 @@ class CodingWindowsWorkerLaunchIntentReplayV1:
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerLaunchIntentSemanticBaseV1(_WindowsLaunchIntentBaseMethods):
+    _preparation_type = CodingWindowsWorkerHistoryPreparationV1
+    _preparation_label = "launch-intent"
     _intent_type = CodingWindowsWorkerLaunchIntentV1
     _replay_type = CodingWindowsWorkerLaunchIntentReplayV1
 
     retained_intents: tuple[CodingWindowsWorkerLaunchIntentV1, ...]
-
-    @classmethod
-    def from_semantic_read(
-        cls,
-        prepared: CodingWindowsWorkerHistoryPreparationV1,
-        semantic: CodingWindowsWorkerHistorySemanticReadV1,
-    ) -> CodingWindowsWorkerLaunchIntentSemanticBaseV1:
-        if type(prepared) is not CodingWindowsWorkerHistoryPreparationV1:
-            raise ValueError("Windows Worker launch-intent preparation is invalid")
-        prepared.require_semantic_read(semantic)
-        return cls._from_source_read(
-            semantic.source_snapshot, semantic.offline_recovery
-        )
 
     def replay(
         self, intents: tuple[CodingWindowsWorkerLaunchIntentV1, ...]

@@ -9,15 +9,15 @@ from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+from loushang.harness.package_product._worker_product_authority import (
+    capture_worker_startup_selection,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
-)
-from loushang.harness.plugin_management.current_preview import (
-    plugin_package_revision_fingerprint,
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
@@ -105,8 +105,7 @@ def prepare_coding_product_worker_ordinary_binding(
     base_context = ordinary.session_inputs.product_composition.authority_context
     if (
         runtime.session_id != session_manager.get_header().conversation_id
-        or ordinary.compilation.plan.context.scope_id
-        != f"session:{runtime.session_id}"
+        or ordinary.compilation.plan.context.scope_id != f"session:{runtime.session_id}"
         or base_context.product_policy_revision
         != ordinary.compilation.plan.context.policy_revision
     ):
@@ -123,7 +122,9 @@ def prepare_coding_product_worker_ordinary_binding(
     transcript_directory = AgentTranscriptDirectoryRuntime(
         session_dir=session_manager.get_session_dir()
     )
-    receipt_owner: CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    receipt_owner: (
+        CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    )
     if type(product_owner) is WindowsLocalWheelProductSessionOwner:
         receipt_owner = open_coding_windows_product_selected_worker_receipt_owner(
             product_owner=product_owner,
@@ -156,44 +157,17 @@ def prepare_coding_product_worker_ordinary_binding(
         if resume_parent_context is not None
         else None
     )
-    selected_worker = runtime.capture_selected_plugin_manifest_for(
-        plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
+    selected_worker = capture_worker_startup_selection(
+        runtime=runtime,
+        plugin_id=plugin_id,
+        receipt=receipt,
+        existing_startup=existing_startup,
+        max_files=16,
+        max_total_bytes=16 * 1024 * 1024,
+        failure=lambda code: CodingWorkerOrdinaryBootstrapError(
+            "coding_worker_ordinary_" + code
+        ),
     )
-    if (
-        selected_worker.snapshot.root_ref.artifact_digest
-        != receipt.policy.plugin_revision_digest
-    ):
-        raise CodingWorkerOrdinaryBootstrapError(
-            "coding_worker_ordinary_selection_changed"
-        )
-    if existing_startup is not None:
-        worker = existing_startup.get("workerSelection")
-        expected_revision = {
-            "pluginId": plugin_id,
-            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
-                selected_worker.snapshot.package_revision
-            ),
-            "instanceRevisionRef": selected_worker.snapshot.instance_revision_ref.to_dict(),
-        }
-        revisions = existing_startup.get("selectedRevisions")
-        if (
-            not isinstance(worker, dict)
-            or not isinstance(revisions, list)
-            or expected_revision not in revisions
-            or worker.get("pluginId") != receipt.policy.plugin_id
-            or worker.get("productPolicyRevision")
-            != receipt.policy.product_policy_revision
-            or worker.get("nativeProfileId") != receipt.policy.native_profile_id
-            or worker.get("selectedLocatorRevision")
-            != receipt.policy.selected_locator_revision
-            or worker.get("selectedLocatorFingerprint")
-            != receipt.policy.selected_locator_fingerprint
-            or worker.get("workerConfigurationFingerprint")
-            != receipt.policy.worker_configuration_fingerprint
-        ):
-            raise CodingWorkerOrdinaryBootstrapError(
-                "coding_worker_ordinary_startup_selection_changed"
-            )
     base_policy = CodingWorkerBaseCompositionPolicyBinding(
         base=ordinary.compilation,
         receipt_owner=receipt_owner,
@@ -263,7 +237,10 @@ def prepare_coding_product_worker_ordinary_binding(
             MODEL_INPUT_CAPABILITY_DEFINITION,
             WORKSPACE_CAPABILITY_DEFINITION,
             CODING_WORKER_QUERY_DEFINITION,
-            *(entry.definition for entry in ordinary.session_inputs.resolved_providers.entries),
+            *(
+                entry.definition
+                for entry in ordinary.session_inputs.resolved_providers.entries
+            ),
         )
     }
     combined = compose_coding_product_worker_with_ordinary_session(

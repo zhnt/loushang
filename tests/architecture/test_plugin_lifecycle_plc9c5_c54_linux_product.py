@@ -14,6 +14,12 @@ CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
 PRODUCT_WORKER_BOUNDED_IMPORTS = {
+    CODING_ROOT / "package_product_worker_windows_reserved_settlement.py": {
+        "loushang.harness.worker.history._windows_stage_review_wire",
+    },
+    CODING_ROOT / "package_product_worker_windows_base_files.py": {
+        "loushang.harness.worker.history._windows_sources",
+    },
     CODING_ROOT / "package_product_worker_windows_payload_inventory.py": {
         "loushang.harness.worker.payload._windows_stage_io",
     },
@@ -24,7 +30,8 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._windows_sources"
     },
     CODING_ROOT / "package_product_worker_windows_gc_history.py": {
-        "loushang.harness.worker.history._windows_sources"
+        "loushang.harness.worker.history._windows_sources",
+        "loushang.harness.worker.history._windows_recovery"
     },
     CODING_ROOT / "package_product_worker_windows_opt_in_base.py": {
         "loushang.harness.worker.history._base_codec",
@@ -44,10 +51,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package_product_worker_windows_stage_retirement.py": {
         'loushang.harness.worker.history._base_codec',
-        'loushang.harness.worker.payload._windows_stage_retirement',
-    },
-    CODING_ROOT / "package_product_worker_windows_partial_stage_retirement.py": {
-        "loushang.harness.worker.payload._windows_stage_retirement"
+        'loushang.harness.worker.history._windows_recovery',
     },
     CODING_ROOT / "package_product_worker_windows_stage_review.py": {
         'loushang.harness.worker.history._windows_stage_review_wire',
@@ -95,11 +99,8 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._windows_c5_base",
     },
     CODING_ROOT / "package_product_worker_windows_cleanup_evidence.py": {
-        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.history._windows_recovery",
         "loushang.harness.worker.contracts",
-        "loushang.harness.worker.product_activation",
-    },
-    CODING_ROOT / "package_product_worker_windows_crash_c5_settlement.py": {
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_crash_c5_settlement.py": {
@@ -113,14 +114,13 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._no_effect",
         "loushang.harness.worker.journal",
     },
-    CODING_ROOT / "package_product_worker_registered_payload_repair.py": {"loushang.harness.worker.history._retention", "loushang.harness.worker.journal", "loushang.harness.worker.payload._repair"},
+    CODING_ROOT / "package_product_worker_registered_payload_repair.py": {"loushang.harness.worker.history._retention", "loushang.harness.worker.journal", "loushang.harness.worker.payload._repair", "loushang.harness.worker.payload._records"},
     CODING_ROOT / "package_product_worker_registered_recovery.py": {
+        "loushang.harness.worker.history._retention",
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_start_gate.py": {
-        "loushang.harness.worker._native_profile_bridge",
         "loushang.harness.worker.contracts",
-        "loushang.harness.worker.gated_start",
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_start_gate_journal.py": {
@@ -141,7 +141,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._windows_supervisor_base",
         "loushang.harness.worker.journal",
     },
-    CODING_ROOT / "package_product_worker_start_gate_recovery.py": {"loushang.harness.worker.journal"},
+    CODING_ROOT / "package_product_worker_start_gate_recovery.py": {"loushang.harness.worker.journal", "loushang.harness.worker.history._start_gate"},
     CODING_ROOT / "package_product_worker_native_release.py": {
         "loushang.harness.worker._linux_native_release"
     },
@@ -149,7 +149,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._native_approval"
     },
     CODING_ROOT / "package_product_worker_payload.py": {
-        "loushang.harness.worker.payload._recovery",
         'loushang.harness.worker.contracts',
         'loushang.harness.worker.journal',
         'loushang.harness.worker.payload._records',
@@ -167,9 +166,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_provider_host.py": {
-        "loushang.harness.worker.capability_query",
         "loushang.harness.worker.facet_proxy",
-        "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_query_consumer.py": {
         "loushang.harness.worker.capability_query",
@@ -197,6 +194,8 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package_product_worker_windows_provisioning.py": {
         "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.history._windows_recovery",
+        "loushang.harness.worker.payload._selected_payload",
         "loushang.harness.worker.contracts",
         "loushang.harness.worker.product_activation",
     },
@@ -207,6 +206,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         'loushang.harness.worker.contracts',
         'loushang.harness.worker.history._base_codec',
         'loushang.harness.worker.product_activation',
+        "loushang.harness.worker.history._windows_launch_intent_base",
     },
     CODING_ROOT / "package_product_worker_windows_payload.py": {
         'loushang.harness.worker.contracts',
@@ -215,13 +215,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         'loushang.harness.worker.payload._windows_stage_io',
         'loushang.harness.worker.product_activation',
     },
-    CODING_ROOT / "package_product_worker_windows_receipt.py": {
-        "loushang.harness.worker._native_profile_bridge",
-        "loushang.harness.worker.contracts",
-        "loushang.harness.worker.product_activation",
-    },
     CODING_ROOT / "package_product_worker_windows_receipt_journal.py": {
-        "loushang.harness.worker.product_activation",
         "loushang.harness.worker.history._windows_record_journals",
     },
     CODING_ROOT / "package_product_worker_windows_opt_in_journal.py": {
@@ -238,18 +232,18 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_windows_supervisor_journal.py": {
         "loushang.harness.worker.history._windows_product_journals",
     },
+    CODING_ROOT / "package_product_worker_windows_orphan_review.py": {
+        "loushang.harness.worker.history._windows_recovery",
+    },
     CODING_ROOT / "package_product_worker_windows_crash_cleanup_review.py": {
-        'loushang.harness.worker._native_profile_bridge',
         'loushang.harness.worker.history._windows_recovery',
     },
-    CODING_ROOT / "package_product_worker_windows_crash_lease_repair.py": {
-        "loushang.harness.worker._native_profile_bridge",
-    },
     CODING_ROOT / "package_product_worker_windows_crash_stage_review.py": {
-        'loushang.harness.worker._native_profile_bridge',
+        'loushang.harness.worker.history._windows_recovery',
         'loushang.harness.worker.history._windows_stage_review_wire',
     },
     CODING_ROOT / "package_product_worker_windows_crash_supervisor_settlement.py": {
+        "loushang.harness.worker.history._windows_product_journals",
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_history_checkpoint.py": {
@@ -316,18 +310,24 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / 'package_product_worker_windows_checkpoint.py': {
         'loushang.harness.worker.history._base_codec',
+        'loushang.harness.worker.history._windows_checkpoint',
     },
     CODING_ROOT / 'package_product_worker_windows_history_cutover_record.py': {
         'loushang.harness.worker.history._base_codec',
+        'loushang.harness.worker.history._windows_persisted',
     },
     CODING_ROOT / 'package_product_worker_windows_history_preparation.py': {
         'loushang.harness.worker.history._base_codec',
+        'loushang.harness.worker.history._windows_checkpoint',
     },
     CODING_ROOT / 'package_product_worker_windows_partial_stage_review.py': {
         'loushang.harness.worker.history._windows_stage_review_wire',
     },
     CODING_ROOT / 'package_product_worker_windows_reserved_review.py': {
         'loushang.harness.worker.history._windows_stage_review_wire',
+    },
+    CODING_ROOT / "package_product_worker_windows_persisted_bases.py": {
+        "loushang.harness.worker.history._windows_persisted",
     },
     CODING_ROOT / "package_product_worker_gc_references.py": {"loushang.harness.worker.history._retention"},
 }
@@ -527,33 +527,9 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
             for imported in _imports(path)
             if imported.startswith("loushang.harness.worker")
         }
-        optional_receipt_selector: set[str] = set()
-        receipt_values = "loushang.harness.worker.history._receipts"
-        if (
-            path == CODING_ROOT / "package_product_worker_windows_receipt.py"
-            and receipt_values in actual
-            and {
-                imported
-                for imported in resolved_imports(path)
-                if imported == receipt_values
-                or imported.startswith(receipt_values + ".")
-            }
-            == {receipt_values, receipt_values + ".latest_receipt_record"}
-        ):
-            optional_receipt_selector = {receipt_values}
         if path in optional_retirement_proofs:
             actual.discard(history_proofs)
-        optional_shared_receipt_edges = (
-            {
-                "loushang.harness.worker._native_profile_bridge",
-                "loushang.harness.worker.contracts",
-            }
-            if path == CODING_ROOT / "package_product_worker_windows_receipt.py"
-            else set()
-        )
-        assert actual - optional_receipt_selector - optional_shared_receipt_edges == (
-            allowed - optional_shared_receipt_edges
-        )
+        assert actual == allowed
     assert not any(
         imported.startswith("loushang.hosting") for imported in _imports(CANARY)
     )

@@ -24,7 +24,7 @@ from .package_product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
 from .package_product_worker_windows_history_sources import (
-    CodingWindowsWorkerHistorySemanticReadV1,
+    CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
 from .package_product_worker_windows_provisioning_journal import (
     _Record as _Record,
@@ -48,26 +48,13 @@ class CodingWindowsWorkerNativeProvisioningRetainedAttemptV1(
 class CodingWindowsWorkerNativeProvisioningSemanticBaseV1(
     _WindowsProvisioningBaseMethods
 ):
+    _preparation_type = CodingWindowsWorkerHistoryPreparationV1
+    _preparation_label = "native provisioning"
     _retained_type = CodingWindowsWorkerNativeProvisioningRetainedAttemptV1
 
     retained_attempts: tuple[
         CodingWindowsWorkerNativeProvisioningRetainedAttemptV1, ...
     ]
-
-    @classmethod
-    def from_semantic_read(
-        cls,
-        prepared: CodingWindowsWorkerHistoryPreparationV1,
-        semantic: CodingWindowsWorkerHistorySemanticReadV1,
-    ) -> CodingWindowsWorkerNativeProvisioningSemanticBaseV1:
-        if type(prepared) is not CodingWindowsWorkerHistoryPreparationV1:
-            raise ValueError(
-                "Windows Worker native provisioning preparation is invalid"
-            )
-        prepared.require_semantic_read(semantic)
-        return cls._from_source_read(
-            semantic.source_snapshot, semantic.offline_recovery
-        )
 
     _wire_label = "Windows Worker native provisioning semantic base"
     _wire_lists = ("attemptIds", "retainedAttempts")

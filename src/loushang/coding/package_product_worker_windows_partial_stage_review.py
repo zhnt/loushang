@@ -10,26 +10,18 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from hashlib import sha256
 
+from loushang.harness.package_product._windows_worker_recovery import (
+    review_windows_product_worker_partial_stage,
+)
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_partial_stage,
-    review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
-    PackageWindowsRuntimeQuiescenceV1,
-)
-from loushang.harness.resources.plugins.locators import (
-    canonical_plugin_relative_path,
-)
 from loushang.harness.worker.history._windows_stage_review_wire import (
-    _WindowsStageReviewWireMethods,
+    _WindowsPartialStageReviewMethods,
 )
 
 from .package_product_worker_windows_recovery_inventory import (
@@ -41,11 +33,9 @@ from .package_product_worker_windows_stage_retirement import (
 from .package_product_worker_windows_stage_review import (
     FileIdentity,
     _inspection,
-    _valid_identity,
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_REVIEW_BYTES = 32768
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 _MAX_DEPTH = 16
@@ -64,7 +54,8 @@ class CodingWindowsWorkerPartialStageReviewError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerPartialStageReviewV1(_WindowsStageReviewWireMethods):
+class CodingWindowsWorkerPartialStageReviewV1(_WindowsPartialStageReviewMethods):
+    _fingerprint_domain = b"loushang.coding-windows-worker-partial-stage-review/v1\x00"
     _record_kind = "partial"
     _record_error = CodingWindowsWorkerPartialStageReviewError
     _record_error_code = "coding_worker_partial_stage_review_invalid"
@@ -81,95 +72,13 @@ class CodingWindowsWorkerPartialStageReviewV1(_WindowsStageReviewWireMethods):
     executable_identity: FileIdentity | None
     executable_digest: str | None
 
-    def __post_init__(self) -> None:
-        if (
-            type(self.attempt_id) is not str
-            or _ATTEMPT.fullmatch(self.attempt_id) is None
-            or type(self.lease_owner_revision) is not int
-            or self.lease_owner_revision < 1
-            or not _valid_identity(self.stage_identity)
-            or type(self.directory_identities) is not tuple
-            or len(self.directory_identities) > _MAX_DEPTH
-            or not _valid_directories(self.directory_identities)
-            or (self.entrypoint is None) != (self.executable_identity is None)
-            or (self.entrypoint is None) != (self.executable_digest is None)
-        ):
-            raise ValueError("Windows Worker partial-stage review is invalid")
-        if self.entrypoint is not None:
-            try:
-                path = canonical_plugin_relative_path(self.entrypoint)
-            except ValueError as exc:
-                raise ValueError(
-                    "Windows Worker partial-stage entrypoint is invalid"
-                ) from exc
-            parent = "/".join(path.parts[:-1])
-            last_directory = (
-                self.directory_identities[-1][0] if self.directory_identities else ""
-            )
-            if (
-                path.as_posix() != self.entrypoint
-                or parent != last_directory
-                or not _valid_identity(self.executable_identity)
-                or (
-                    self.executable_identity is not None
-                    and self.executable_identity[3] > _MAX_PAYLOAD_BYTES
-                )
-                or type(self.executable_digest) is not str
-                or _DIGEST.fullmatch(self.executable_digest) is None
-            ):
-                raise ValueError("Windows Worker partial-stage file is invalid")
+    @classmethod
+    def _payload_maximum(cls) -> int:
+        return _MAX_PAYLOAD_BYTES
 
-    def to_bytes(self) -> bytes:
-        return canonical_json_bytes(
-            {
-                "attemptId": self.attempt_id,
-                "directoryIdentities": [
-                    [path, list(identity)]
-                    for path, identity in self.directory_identities
-                ],
-                "entrypoint": self.entrypoint,
-                "executableDigest": self.executable_digest,
-                "executableIdentity": (
-                    None
-                    if self.executable_identity is None
-                    else list(self.executable_identity)
-                ),
-                "leaseOwnerRevision": self.lease_owner_revision,
-                "stageIdentity": list(self.stage_identity),
-                "version": 1,
-            }
-        )
-
-    @property
-    def fingerprint(self) -> str:
-        return sha256(
-            b"loushang.coding-windows-worker-partial-stage-review/v1\0"
-            + self.to_bytes()
-        ).hexdigest()
-
-
-def _valid_directories(
-    directories: tuple[tuple[str, FileIdentity], ...],
-) -> bool:
-    for index, member in enumerate(directories):
-        if (
-            type(member) is not tuple
-            or len(member) != 2
-            or not _valid_identity(member[1])
-        ):
-            return False
-        path = member[0]
-        if type(path) is not str:
-            return False
-        try:
-            canonical = canonical_plugin_relative_path(path)
-        except ValueError:
-            return False
-        if canonical.as_posix() != path or len(canonical.parts) != index + 1:
-            return False
-        if index and "/".join(canonical.parts[:-1]) != directories[index - 1][0]:
-            return False
-    return True
+    @classmethod
+    def _depth_maximum(cls) -> int:
+        return _MAX_DEPTH
 
 
 def review_coding_windows_product_worker_partial_stage(
@@ -186,35 +95,15 @@ def review_coding_windows_product_worker_partial_stage(
     ):
         raise OSError("Windows Worker partial-stage review requires a Product owner")
 
-    def capture(
-        quiescence: PackageWindowsRuntimeQuiescenceV1,
-    ) -> CodingWindowsWorkerPartialStageReviewV1:
-        product.assert_root_gc_authority_current()
-        inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
-        matches = tuple(item for item in inventory if item.attempt_id == attempt_id)
-        if (
-            len(matches) != 1
-            or matches[0].observed_debts != _PARTIAL_DEBTS
-            or attempt_id in _inspect_retirement_attempt_ids_under_gc_guard(product)
-        ):
-            raise CodingWindowsWorkerPartialStageReviewError(
-                "coding_worker_partial_stage_history_unverified"
-            )
-        review = _review_partial_tree(
-            product,
-            attempt_id=attempt_id,
-            expected_stage=matches[0].payload_directory_identity,
-            lease_owner_revision=quiescence.owner_revision,
-        )
-        product.assert_root_gc_authority_current()
-        return review
-
-    return review_windows_product_worker_offline(
+    return review_windows_product_worker_partial_stage(
         product,
-        active_error=lambda: CodingWindowsWorkerPartialStageReviewError(
-            "coding_worker_partial_stage_runtime_active"
-        ),
-        review=capture,
+        attempt_id=attempt_id,
+        record_type=CodingWindowsWorkerPartialStageReviewV1,
+        inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
+        inspect_retirements=_inspect_retirement_attempt_ids_under_gc_guard,
+        capture_partial=_review_partial_tree,
+        partial_debts=_PARTIAL_DEBTS,
+        error_prefix="coding_worker_partial_stage",
     )
 
 

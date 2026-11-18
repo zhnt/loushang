@@ -16,7 +16,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.session._worker_provider import _prepare_native_worker_component
+from loushang.harness.session._worker_provider import (
+    _prepare_native_worker_component,
+    _prepare_pending_worker_session_inputs,
+)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
@@ -24,8 +27,6 @@ from loushang.harness.worker._ordinary_prepare import _prepare_windows_native_wo
 from loushang.harness.worker.capability_query import (
     CapabilityWorkerAdmissionV1,
     CapabilityWorkerBindingV1,
-    _admission_for_worker,
-    _binding_for_worker,
 )
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
@@ -71,20 +72,6 @@ class CodingWindowsWorkerPendingHostError(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
-
-
-def _require_uncoupled_windows_host_c5_absent(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> None:
-    """Refuse a retained C5 owner until this Host writes and settles C5 itself."""
-
-    present, _state = CodingWindowsWorkerActivationStateJournal(
-        product
-    ).load_with_presence_read_only()
-    if present:
-        raise CodingWindowsWorkerPendingHostError(
-            "coding_worker_pending_c5_owner_requires_recovery"
-        )
 
 
 def _require_windows_host_c5_recovered(
@@ -210,42 +197,21 @@ def prepare_coding_windows_product_worker_pending_session_inputs(
         raise CodingWindowsWorkerPendingHostError(
             "coding_worker_pending_selection_invalid"
         )
-    base_policy_binding.assert_current()
-    identity = pending_launch.identity
-    binding = _binding_for_worker(
-        identity,
-        allowed_capability_ids=(CODING_WORKER_QUERY_CAPABILITY_ID,),
-        product_policy_revision=lambda: receipt.policy.product_policy_revision,
-        owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
-        revocation_epoch=0,
-    )
-    admission = _admission_for_worker(binding, identity)
-    host = CodingWindowsProductWorkerPendingHost(
+    return _prepare_pending_worker_session_inputs(
         resolved_providers=resolved_providers,
         provider_owner=provider_owner,
         receipt_owner=receipt_owner,
         receipt=receipt,
         pending_launch=pending_launch,
-        expected_admission=admission,
-        binding=binding,
-        base_policy_binding=base_policy_binding,
-        clock=clock,
-        resume_parent_context=resume_parent_context,
-        resume_settlement=resume_settlement,
-    )
-    return prepare_coding_product_worker_session_inputs(
-        resolved_providers=resolved_providers,
-        provider_owner=provider_owner,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        capability_authority=None,
-        adapter=None,
-        worker_admission=admission,
         evaluated_at=evaluated_at,
         clock=clock,
-        release_attempt=None,
         base_policy_binding=base_policy_binding,
-        deferred_prepare=host.prepare,
+        resume_parent_context=resume_parent_context,
+        resume_settlement=resume_settlement,
+        capability_id=CODING_WORKER_QUERY_CAPABILITY_ID,
+        owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
+        host_type=CodingWindowsProductWorkerPendingHost,
+        prepare_session_inputs=prepare_coding_product_worker_session_inputs,
     )
 
 

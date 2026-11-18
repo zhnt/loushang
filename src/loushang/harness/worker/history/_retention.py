@@ -9,6 +9,9 @@ from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationSnapshotV1,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochRuntimeLeaseV1,
+)
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from loushang.harness.worker.payload._records import PayloadPlan
 
@@ -34,6 +37,8 @@ class AttemptReference(Protocol):
 class BackupObservation(Protocol):
     @property
     def attempt_id(self) -> str: ...
+    @property
+    def owner_revision(self) -> str: ...
     @property
     def worker_backup_supported(self) -> Literal[False]: ...
     @property
@@ -392,3 +397,78 @@ class RetentionReviewMethods(Generic[ReferenceT]):
         elif backup.references:
             missing.append("worker_backup_reference_active")
         return tuple(missing)
+
+
+class RegisteredOrphanReviewMethods:
+    __slots__ = ()
+    _product_id: str
+    attempt_id: str
+    gate_record: _StartGateRecordMethods | None
+    activation_attempt: _RetainedAttemptFields | None
+    supervisor_attempt: WorkerAttemptRecordV1 | None
+    receipt_record: _ReceiptRecordMethods | None
+    orphan_lease: PackageEpochRuntimeLeaseV1 | None
+    payload_plan: PayloadPlan | None
+    host_identity: str
+    current_boot_identity: str
+    runtime_epoch: int
+    store_root_identity: str
+    unrecognized_worker_state_names: tuple[str, ...]
+    repaired_orphan_lease: PackageEpochRuntimeLeaseV1 | None = None
+    repaired_owner_revision: int | None = None
+
+    @property
+    def registered_candidate(self) -> bool:
+        gate = self.gate_record
+        c5 = self.activation_attempt
+        receipt = self.receipt_record
+        lease = self.orphan_lease or self.repaired_orphan_lease
+        plan = self.payload_plan
+        if (
+            gate is None
+            or c5 is None
+            or receipt is None
+            or (lease is None)
+            or (plan is None)
+        ):
+            return False
+        policy = receipt.receipt.policy
+        return bool(
+            c5.phase == "registered"
+            and c5.current
+            and (not c5.no_effect)
+            and (c5.attempt_id == self.attempt_id == gate.attempt_id == plan.attempt_id)
+            and (
+                c5.receipt_fingerprint
+                == gate.receipt_fingerprint
+                == plan.receipt_fingerprint
+                == receipt.receipt.fingerprint
+            )
+            and (c5.policy_fingerprint == gate.policy_fingerprint == policy.fingerprint)
+            and (c5.owner_generation == policy.owner_selection_generation)
+            and (c5.cleanup_contract_version == 1)
+            and (c5.host_identity == self.host_identity)
+            and (c5.boot_identity != self.current_boot_identity)
+            and (gate.phase == "intent")
+            and (gate.identity is None)
+            and (self.supervisor_attempt is None)
+            and (policy.product_id == self._product_id)
+            and (policy.product_scope_id == gate.scope_id)
+            and (lease.runtime_id == policy.product_runtime_id)
+            and (lease.runtime_epoch == self.runtime_epoch)
+            and (lease.store_root_identity == self.store_root_identity)
+            and (not self.unrecognized_worker_state_names)
+        )
+
+    @property
+    def repair_candidate(self) -> bool:
+        return self.registered_candidate and self.orphan_lease is not None
+
+    @property
+    def payload_repair_candidate(self) -> bool:
+        return bool(
+            self.registered_candidate
+            and self.orphan_lease is None
+            and (self.repaired_orphan_lease is not None)
+            and (self.repaired_owner_revision is not None)
+        )

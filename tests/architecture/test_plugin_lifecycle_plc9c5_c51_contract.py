@@ -633,6 +633,7 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         WORKER_ROOT / "history/_receipt_store.py",
         WORKER_ROOT / "history/_receipts.py",
         WORKER_ROOT / "history/_windows_record_journals.py",
+        WORKER_ROOT / "history/_windows_recovery.py",
     }
     lifecycle_consumers = {
         WORKER_ROOT / "_ordinary_prepare.py",
@@ -674,20 +675,15 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         Path("src/loushang/coding/package_product_worker_policy.py"),
         Path("src/loushang/coding/package_product_worker_resume.py"),
         Path("src/loushang/coding/package_product_worker_provider.py"),
-        Path("src/loushang/coding/package_product_worker_provider_host.py"),
         Path("src/loushang/coding/package_product_worker_session_composition.py"),
         Path("src/loushang/coding/package_product_worker_receipt.py"),
         Path("src/loushang/coding/package_product_worker_windows_provisioning.py"),
         Path("src/loushang/coding/package_product_worker_windows_cleanup_evidence.py"),
-        Path(
-            "src/loushang/coding/package_product_worker_windows_crash_c5_settlement.py"
-        ),
         Path("src/loushang/coding/package_product_worker_windows_launch_intent.py"),
         Path("src/loushang/coding/package_product_worker_windows_payload.py"),
-        Path("src/loushang/coding/package_product_worker_windows_receipt.py"),
-        Path("src/loushang/coding/package_product_worker_windows_receipt_journal.py"),
         CODING_PRODUCT_START_GATE,
         Path("src/loushang/harness/package_product/_linux_worker_recovery.py"),
+        Path("src/loushang/harness/package_product/_windows_worker_recovery.py"),
     }
     for path in WORKER_ROOT.rglob("*.py"):
         if path in {
