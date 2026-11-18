@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import type { UserChoicePromptV1 } from "../contracts/generated/bridge";
+import { UiIcon } from "./UiIcon";
 
 export interface ChoiceAnswer {
   readonly questionId: string;
@@ -54,7 +55,7 @@ export function UserChoiceCard({ question, answer, enabled, onChange, onConfirm 
 export function ChoiceReceipt({ label, text }: { readonly label: string; readonly text: string }) {
   const { t } = useTranslation("session");
   return <details className="choice-receipt">
-    <summary>{t("choice.selected")} · {label}</summary>
+    <summary><UiIcon name="chevron-down" /><span>{t("choice.selected")} · {label}</span></summary>
     <p>{text}</p>
   </details>;
 }
