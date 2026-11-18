@@ -540,6 +540,18 @@ Code 原公开构造的参数、默认值、运行时解析后的 hints、module
 
 累计 Coding −6,755、Harness +9,807、系统生产仍 +3,052行；C07余13,511行，距离过半退出还差3,379行。整组与最终完整候选检查未完成。
 
+## 二十七项重复声明退出，直接继承已有机制
+
+activation state、POSIX cleanup evidence、history retention、native approval、POSIX receipt、registered payload repair、registered recovery、Windows receipt 八份 Code 文件共删除27项重复方法／属性声明，直接继承原 Harness 方法。Harness 生产源码零变化；本批属于既有共享机制的重复删除，不重复计为新的事务迁移。保留原 Code 名义类、字段／slots、构造、Profile 和其余执行体；current_tree_witness 的 cast 转发也由具体返回类型检查证明可退出。
+
+27项具体静态返回断言及六源 mypy 通过；原有消费者回归1,509 passed，反射覆盖修正后57 passed。162组普通／中间 MRO／失败／取消分派对照、21份旧 classmethod／bound pickle 字节与路由和24条旧 unbound function pickle 路由通过。受控 leaf 探针只证明分派及旧 callable 加载，不代替真实 Product 或原生 Windows。限定 AST 审计证明仅删除选定声明和失效 imports，原三份业务 golden 逐字不变。
+
+当前执行代理按已授权内部职责接受方法归属、module／qualname、泛型运行时注解和参数绑定错误前缀跟随 Harness；不宣称所有 callable 反射值不变。新增固定元数据 fixture 只逐项记录这些内部方法的 owner／签名变化；原值、错误、wire、字段／slots 和 pickle 观测继续使用原固定 fixture。反射测试同时检查原有方法名和当前 Code 自有公共方法，避免继承后漏检，也仍可发现意外新增 API。原测试入口、业务断言和平台 selectors 不扩展。
+
+C51 首轮10 passed／1 failed，失败仅为 Windows receipt 已退出直接 activation 依赖而库存未同步；仅删除该条精确库存，原扫描和集合相等断言保持，失败节点修正后1 passed。不扩展门禁，也不将初始失败记为通过。
+
+本批 Coding／系统生产 −210行，Harness／Hosting／其它生产0；测试及文档单列。累计 Coding −6,965、Harness +9,807，系统生产仍 +2,842行；C07余13,301行，距离过半退出仍差3,169行。整组多数退出和最新完整候选验证尚未完成。
+
 ## 当前验证与限制
 
 原有 preparation/checkpoint/history join/Package reference 回归16项通过；加入原 cutover record 与 persisted bases 消费者后25项通过。最后覆盖整组六流、Desired/GC、cutover 与持久化的14个既有文件为58 passed、1 skipped；三组覆盖有交叠不相加。导入边界及原C50/C54为181 passed，六源 scoped mypy、Ruff及生成依赖事实通过。

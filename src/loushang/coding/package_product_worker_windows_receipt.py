@@ -21,7 +21,6 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 from .package_product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .package_product_worker_policy import (
@@ -110,25 +109,6 @@ class CodingWindowsWorkerProductReceiptOwner(
         self, product: WindowsLocalWheelProductSessionOwner
     ) -> _WindowsBackendInstalledMethods:
         return read_coding_windows_worker_installed_backend_release(product)
-
-    def current_selected_payload(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerSelectedPayloadV1:
-        """Read verified Windows PE bytes from the current Product selection."""
-
-        return super().current_selected_payload(receipt)
-
-    def current_payload_and_worker_owner_id(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> tuple[CodingWorkerSelectedPayloadV1, str]:
-        """Capture payload and owner in one Product read with two full rechecks.
-
-        Each witness verifies the complete installed backend. The selected
-        root is captured between them; the final witness rechecks receipt and
-        opt-in authority before either value is returned.
-        """
-
-        return super().current_payload_and_worker_owner_id(receipt)
 
 
 open_coding_windows_product_selected_worker_receipt_owner = (

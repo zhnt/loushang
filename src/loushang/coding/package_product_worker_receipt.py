@@ -346,31 +346,6 @@ class CodingWorkerProductReceiptOwner(
     ) -> ReceiptHistory[CodingWorkerReceiptRecordV1]:
         return _receipt_history_for_product(product)
 
-    def current_native_launch_material(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerNativeLaunchMaterialV1:
-        """Join an issued selected-Worker receipt to Product-owned Linux H6 bytes.
-
-        The result only locates material for Hosting's descriptor capture. The
-        activation coordinator must still hold admission through first effect.
-        """
-
-        return super().current_native_launch_material(receipt)
-
-    def current_selected_payload(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerSelectedPayloadV1:
-        """Reread the selected Store executable under the receipt/GC gate."""
-
-        return super().current_selected_payload(receipt)
-
-    def current_runtime_binding(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> tuple[CodingWorkerSelectedPayloadV1, CodingWorkerNativeLaunchMaterialV1, str]:
-        """Capture one coherent selected payload, native release, and owner."""
-
-        return super().current_runtime_binding(receipt)
-
 
 def read_coding_product_worker_receipt_record(
     product: PosixLocalWheelProductSessionOwner, *, receipt_fingerprint: str

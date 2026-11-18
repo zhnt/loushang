@@ -681,7 +681,6 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         Path("src/loushang/coding/package_product_worker_windows_cleanup_evidence.py"),
         Path("src/loushang/coding/package_product_worker_windows_launch_intent.py"),
         Path("src/loushang/coding/package_product_worker_windows_payload.py"),
-        Path("src/loushang/coding/package_product_worker_windows_receipt.py"),
         CODING_PRODUCT_START_GATE,
         Path("src/loushang/harness/package_product/_linux_worker_recovery.py"),
         Path("src/loushang/harness/package_product/_windows_worker_recovery.py"),

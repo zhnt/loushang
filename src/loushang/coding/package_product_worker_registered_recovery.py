@@ -64,20 +64,6 @@ class CodingWorkerRegisteredOrphanReviewV1(RegisteredOrphanReviewMethods):
     repaired_orphan_lease: PackageEpochRuntimeLeaseV1 | None = None
     repaired_owner_revision: int | None = None
 
-    @property
-    def registered_candidate(self) -> bool:
-        return super(CodingWorkerRegisteredOrphanReviewV1, self).registered_candidate
-
-    @property
-    def repair_candidate(self) -> bool:
-        return super(CodingWorkerRegisteredOrphanReviewV1, self).repair_candidate
-
-    @property
-    def payload_repair_candidate(self) -> bool:
-        return super(
-            CodingWorkerRegisteredOrphanReviewV1, self
-        ).payload_repair_candidate
-
 
 def review_coding_product_worker_registered_orphan(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str

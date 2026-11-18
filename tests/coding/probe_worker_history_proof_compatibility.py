@@ -1243,4 +1243,13 @@ def test_original_complete_history_proof(case, tmp_path, monkeypatch):
 
 
 def test_original_complete_history_reflection():
-    assert json.loads(json.dumps(reflect())) == FIXED["reflection"]
+    expected = json.loads(json.dumps(FIXED["reflection"]))
+    owners = json.loads(
+        (
+            Path(__file__).parent
+            / "fixtures"
+            / "worker_c07_inherited_method_owners_v1.json"
+        ).read_text()
+    )["retention_property_signatures"]
+    expected["CodingWorkerHistoryRetentionReviewV1"]["properties"].update(owners)
+    assert json.loads(json.dumps(reflect())) == expected

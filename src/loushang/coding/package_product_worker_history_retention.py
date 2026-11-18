@@ -194,20 +194,6 @@ class CodingWorkerHistoryRetentionReviewV1(
     _product_id = "coding"
     _reference_type = CodingWorkerAttemptReferenceV1
 
-    @property
-    def attempt_reference(self) -> CodingWorkerAttemptReferenceV1 | None:
-        """Project a retained gate reference without claiming it is closed."""
-        return super(CodingWorkerHistoryRetentionReviewV1, self).attempt_reference
-
-    @property
-    def no_effect_closure(self) -> bool:
-        return super(CodingWorkerHistoryRetentionReviewV1, self).no_effect_closure
-
-    @property
-    def missing_proofs(self) -> tuple[str, ...]:
-        """Conservative observations; this is never a prune authorization."""
-        return super(CodingWorkerHistoryRetentionReviewV1, self).missing_proofs
-
 
 def review_coding_product_worker_history_retention(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str

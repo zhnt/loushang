@@ -74,17 +74,6 @@ class CodingWorkerRegisteredPayloadRepairIntentV1(RegisteredPayloadRepairIntentM
     boot_identity: str
     owner_generation: int
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingWorkerRegisteredPayloadRepairIntentV1:
-        return super(CodingWorkerRegisteredPayloadRepairIntentV1, cls).from_dict(value)
-
-    @property
-    def attempt_id(self) -> str:
-        return super(CodingWorkerRegisteredPayloadRepairIntentV1, self).attempt_id
-
-    def to_dict(self) -> dict[str, object]:
-        return super(CodingWorkerRegisteredPayloadRepairIntentV1, self).to_dict()
-
 
 def _names(attempt_id: str) -> tuple[str, str]:
     if type(attempt_id) is not str or _ATTEMPT.fullmatch(attempt_id) is None:
