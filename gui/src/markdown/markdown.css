@@ -113,9 +113,9 @@
 .markdown-file-reference {
   display: inline;
   max-inline-size: 100%;
-  padding: 0;
+  padding: 0 0.18em;
   border: 0;
-  border-radius: 3px;
+  border-radius: 4px;
   color: inherit;
   background: transparent;
   font: inherit;
@@ -126,5 +126,10 @@
   cursor: pointer;
 }
 .markdown-body .markdown-file-reference > code { padding: 0; background: transparent; }
-.markdown-file-reference:is(:hover, :focus-visible) { color: var(--md-link); text-decoration: underline; }
-.markdown-file-reference:focus-visible { outline: 2px solid var(--md-accent); outline-offset: 2px; }
+.markdown-file-reference:enabled:hover,
+.markdown-file-reference:focus-visible {
+  background-color: var(--navigation-hover);
+  text-decoration-color: transparent;
+}
+.markdown-file-reference:enabled:active { background-color: var(--navigation-selected); }
+.markdown-file-reference:enabled:focus-visible { outline: 1px solid var(--control-focus); outline-offset: 1px; }
