@@ -127,3 +127,31 @@ The public endpoints use their own provider API keys. OpenAI Coding uses an
 imported ChatGPT OAuth credential and account entitlement. Both Kimi Code
 endpoints use a separate subscription key. Step 5 and ERNIE 5.5 Flash are
 documented previews and remain subject to provider access.
+
+## Review and verification
+
+Reviewed on 2026-11-18 by the Codex implementation agent for AI catalog,
+Agent and Session, AppServer, and GUI/TUI client contracts. The review accepts
+the implementation at `3dbe34591` against `f3e75c93b`. The shared Python
+vocabulary belongs to Foundation so protocol consumers can use it without an
+AI SDK dependency. Endpoint capability facts and native effort projection
+remain in the AI SDK. The model catalog refresh was committed as `9397abd8e`.
+
+- `make check-ai` passed 943 offline tests, including provider payload checks.
+  AI coverage was 90.85%. Architecture import boundary tests passed 165 cases.
+- GUI `npm run check:full` passed its web build, 165 playback and unit tests,
+  and native checks. The offline Rust AppClient suite passed 29 tests.
+- The first change-aware run reached Coding and reported 4,260 passing tests
+  and 45 failures. The task environment still had editable-install metadata
+  for an earlier worktree. After reinstalling it and correcting reasoning and
+  route fixtures, the failed cases were rerun selectively. The first
+  recheck passed 62 cases and found two fixtures with inconsistent saved
+  endpoint IDs. Both passed after their endpoint IDs were corrected.
+- Five real API smoke routes passed. OpenAI `gpt-6.2-sol` and DeepSeek
+  `deepseek-flash` streamed a tool call and then accepted the tool result
+  in a follow-up. DashScope `qwen4-max` and Moonshot `kimi-k3.1-pro`
+  streamed text at `low`. Tencent `hy4-flash` streamed text with explicit
+  Off. Other accounts, model IDs and effort combinations were checked through
+  the documented contracts and offline tests where covered.
+- The central selection module was checked with the ub-mode complexity and
+  duplication tools and a mutation-site scan.
