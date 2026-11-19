@@ -351,8 +351,52 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.queryByText("No Session is available.")).not.toBeInTheDocument();
     expect(screen.queryByText("Connecting to AppHost…")).not.toBeInTheDocument();
     await act(async () => failSnapshot());
-    expect(screen.getByText("Resync required")).toBeVisible();
+    expect(screen.getByText("Disconnected", { exact: true })).toHaveAttribute("title", "Resync required");
     expect(screen.getByText("Synchronization interrupted. Resynchronize to continue.")).toBeVisible();
+  });
+
+  it("shows the managed Host status before any conversation is open", async () => {
+    const { container, rerender } = render(<HarnessGui client={null} managedHostConnection={{ status: "connecting" }} />);
+    const chip = () => container.querySelector(".connection-chip");
+    expect(chip()).toHaveClass("connecting");
+    expect(chip()).toHaveTextContent(/^Connecting$/);
+    rerender(<HarnessGui client={null} managedHostConnection={{ status: "running", serviceInstanceId: "host" }} />);
+    expect(chip()).toHaveClass("connected");
+    expect(chip()).toHaveTextContent(/^Connected$/);
+    await act(async () => rerender(<HarnessGui client={null} managedHostConnection={{ status: "disconnected" }} />));
+    expect(chip()).toHaveClass("disconnected");
+    expect(chip()).toHaveTextContent(/^Disconnected$/);
+  });
+
+  it("reports a lost live connection until a fresh snapshot arrives", async () => {
+    const snapshot = projectNativeInitialSnapshot(liveSnapshot());
+    let resolveInitial!: (value: ClientSnapshot) => void;
+    const initial = new Promise<ClientSnapshot>((resolve) => { resolveInitial = resolve; });
+    let notify!: Parameters<NonNullable<HarnessClientUiPort["subscribeConnection"]>>[0];
+    let publish!: (value: ClientSnapshot) => void;
+    const client: HarnessClientUiPort = {
+      snapshot: () => initial,
+      subscribe: () => () => {},
+      subscribeConnection: (listener) => { notify = listener; return () => {}; },
+      subscribeSnapshots: (listener) => { publish = listener; return () => {}; },
+      submitText: async ({ submissionId }) => ({ accepted: false, submissionId }),
+      interrupt: async () => ({ accepted: false }),
+    };
+    const { container } = render(<HarnessGui client={client}
+      managedHostConnection={{ status: "running", serviceInstanceId: "service-1" }} />);
+    const chip = () => container.querySelector(".connection-chip");
+    expect(chip()).toHaveTextContent(/^Connecting$/);
+    act(() => notify("disconnected"));
+    expect(chip()).toHaveClass("disconnected");
+    expect(chip()).toHaveTextContent(/^Disconnected$/);
+    await act(async () => resolveInitial(snapshot));
+    expect(chip()).toHaveTextContent(/^Disconnected$/);
+    act(() => publish(snapshot));
+    expect(chip()).toHaveTextContent(/^Connected$/);
+    act(() => notify("disconnected"));
+    expect(chip()).toHaveTextContent(/^Disconnected$/);
+    act(() => publish(snapshot));
+    expect(chip()).toHaveTextContent(/^Connected$/);
   });
 
   it("keeps drafts editable but blocks commands while disconnected", async () => {
