@@ -135,7 +135,7 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       return () => { suspended = false; };
     },
     async requestResync() {
-      await close();
+      await close(false);
       publish(await refresh());
     },
     respondInteraction(sessionId, interactionId, outcome) {
