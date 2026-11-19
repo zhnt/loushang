@@ -20,9 +20,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from loushang.coding._plugin_lifecycle import (  # noqa: E402
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.product_runtime import (  # noqa: E402
     open_coding_fenced_product_application_owner,
 )
@@ -38,6 +35,9 @@ from loushang.coding.package.product_worker_registered_recovery import (  # noqa
 )
 from loushang.coding.package.product_worker_start_gate_journal import (  # noqa: E402
     CodingWorkerStartGateJournal,
+)
+from loushang.coding.plugin_manager.lifecycle import (  # noqa: E402
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_root_gc_runtime import (  # noqa: E402
     open_posix_local_wheel_product_root_gc,

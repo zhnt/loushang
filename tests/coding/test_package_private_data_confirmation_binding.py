@@ -7,9 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
@@ -20,6 +17,9 @@ from loushang.coding.package.product_runtime import (
     open_coding_builtin_product_runtime_owner,
     open_coding_fenced_product_application_owner,
     open_coding_package_product_state,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_management.private_data_confirmation import (

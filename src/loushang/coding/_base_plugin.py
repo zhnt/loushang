@@ -11,12 +11,12 @@ from loushang.coding._base_plugin_owners import (
     CodingBaseCommandOwner,
     CodingBaseToolOwner,
 )
-from loushang.coding._plugin_lifecycle import (
+from loushang.coding.composition_sets import CodingCompositionSetPlan
+from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
     CodingPluginSessionLease,
 )
-from loushang.coding.composition_sets import CodingCompositionSetPlan
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.coding.tool_pack import coding_workspace_tool_profile

@@ -9,10 +9,10 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Protocol, cast
 
-from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
-from loushang.coding.plugin_management_command_sdk import (
+from loushang.coding.plugin_manager.command_sdk import (
     open_coding_plugin_management_tui_command_client,
 )
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.host.types import HostActionResult
 from loushang.harness.plugin_management.desired_command import PluginDesiredActionV1
 

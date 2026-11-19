@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -23,7 +24,6 @@ from loushang.harness.plugin_management.private_data_deletion import (
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._tree_observation import require_tree_subset
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_deletion_journal import CodingArchPrivateDataDeletionEventV1
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1

@@ -4,9 +4,9 @@ from importlib import import_module as _import_module
 from typing import TYPE_CHECKING
 from typing import Any as _Any
 
-from .package import _imports as _package_imports
+from . import _component_imports
 
-_package_imports.install()
+_component_imports.install()
 
 # Preserve the public import order and resolve each symbol from its original owner.
 _EXPORTS = {

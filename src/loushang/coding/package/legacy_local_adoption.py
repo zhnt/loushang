@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
     bootstrap_reviewed_product_plugins,
@@ -16,7 +17,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from ..control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,

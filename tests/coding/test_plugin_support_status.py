@@ -4,13 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.plugin_management_read_sdk import (
-    CodingPluginManagementReadClientV1,
-)
-from loushang.coding.plugin_operation_guidance import (
+from loushang.coding.plugin_manager.operation_guidance import (
     project_coding_plugin_operation_guidance,
 )
-from loushang.coding.plugin_support_status import project_coding_plugin_support_status
+from loushang.coding.plugin_manager.read_sdk import (
+    CodingPluginManagementReadClientV1,
+)
+from loushang.coding.plugin_manager.support_status import (
+    project_coding_plugin_support_status,
+)
 from loushang.coding.ui.product_binding import (
     _format_coding_plugin_operation_explanation,
     _format_coding_plugin_support_status,
@@ -318,7 +320,7 @@ def test_read_sdk_rechecks_non_desired_owner_revisions(
             return owner_revisions
 
     monkeypatch.setattr(
-        "loushang.coding.plugin_management_read_sdk.bind_coding_current_preview_query",
+        "loushang.coding.plugin_manager.read_sdk.bind_coding_current_preview_query",
         lambda *_args, **_kwargs: FakeOwner(),
     )
     status = CodingPluginManagementReadClientV1.support_status(
@@ -355,7 +357,7 @@ def test_read_sdk_detects_management_operation_drift_without_desired_change(
             return ("policy:old", "authority:old", "settings:old")
 
     monkeypatch.setattr(
-        "loushang.coding.plugin_management_read_sdk.bind_coding_current_preview_query",
+        "loushang.coding.plugin_manager.read_sdk.bind_coding_current_preview_query",
         lambda *_args, **_kwargs: FakeOwner(),
     )
     status = CodingPluginManagementReadClientV1.support_status(

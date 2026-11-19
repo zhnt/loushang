@@ -28,11 +28,6 @@ from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.provider.protocol import ProviderRequest
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.application import run_cli
 from loushang.coding.cli.package_repair import main as package_repair_main
@@ -57,32 +52,37 @@ from loushang.coding.package.product_runtime import (
     admit_coding_external_data_wheel,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.plugin_management_cli import (
+from loushang.coding.plugin_manager.cli import (
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,
 )
-from loushang.coding.plugin_management_command_rpc import (
+from loushang.coding.plugin_manager.command_rpc import (
     bind_coding_plugin_desired_rpc_client,
 )
-from loushang.coding.plugin_management_command_sdk import (
+from loushang.coding.plugin_manager.command_sdk import (
     CodingPluginManagementCommandClientV1,
     CodingPluginManagementCommandSdkError,
     open_coding_plugin_management_command_client,
 )
-from loushang.coding.plugin_management_explanation import (
+from loushang.coding.plugin_manager.explanation import (
     bind_coding_plugin_operation_explanation_query,
 )
-from loushang.coding.plugin_management_preview import (
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.preview import (
     CodingCurrentPreviewError,
     CodingCurrentPreviewQuery,
     bind_coding_current_preview_query,
 )
-from loushang.coding.plugin_management_read_sdk import (
+from loushang.coding.plugin_manager.read_sdk import (
     bind_coding_plugin_management_rpc_query,
     open_coding_plugin_management_read_client,
 )
-from loushang.coding.plugin_management_rpc_scope import CodingPluginRpcSessionScope
-from loushang.coding.plugin_support_status import main as plugin_status_cli_main
+from loushang.coding.plugin_manager.rpc_scope import CodingPluginRpcSessionScope
+from loushang.coding.plugin_manager.support_status import main as plugin_status_cli_main
 from loushang.coding.session_manager import SessionManager
 from loushang.coding.ui import mode as coding_tui_mode
 from loushang.coding.ui.plugin_theme import select_coding_plugin_theme
@@ -6307,7 +6307,7 @@ def test_management_command_sdk_refuses_unfenced_workspace_without_writes(
 def test_management_command_sdk_refuses_workspace_replaced_during_owner_binding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.plugin_management_command_sdk as command_sdk_module
+    import loushang.coding.plugin_manager.command_sdk as command_sdk_module
 
     workspace, _layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_command_client(workspace)
@@ -6621,7 +6621,7 @@ def test_management_read_sdk_refuses_replaced_workspace_for_every_query(
 def test_management_read_sdk_refuses_workspace_replacement_during_product_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.plugin_management_read_sdk as read_sdk_module
+    import loushang.coding.plugin_manager.read_sdk as read_sdk_module
 
     workspace, _layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_read_client(workspace)
@@ -6667,7 +6667,7 @@ def test_management_read_sdk_refuses_workspace_replacement_during_product_read(
 def test_management_read_sdk_snapshot_refuses_workspace_replaced_before_owner_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.plugin_management_read_sdk as read_sdk_module
+    import loushang.coding.plugin_manager.read_sdk as read_sdk_module
 
     workspace, _layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_read_client(workspace)
@@ -6716,7 +6716,7 @@ def test_management_read_sdk_snapshot_refuses_workspace_replaced_before_owner_op
 def test_management_read_sdk_management_snapshot_pins_original_workspace_at_bind(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.plugin_management_cli as cli_module
+    import loushang.coding.plugin_manager.cli as cli_module
 
     workspace, _layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_read_client(workspace)
@@ -6773,7 +6773,7 @@ def test_management_read_sdk_projection_pins_original_workspace_at_bind(
     monkeypatch: pytest.MonkeyPatch,
     method: Literal["preview", "explain"],
 ) -> None:
-    import loushang.coding.plugin_management_read_sdk as read_sdk_module
+    import loushang.coding.plugin_manager.read_sdk as read_sdk_module
 
     workspace, _layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_read_client(workspace)

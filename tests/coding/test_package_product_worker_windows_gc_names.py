@@ -93,9 +93,6 @@ def test_windows_worker_gc_accepts_current_owned_state_names() -> None:
 def test_windows_worker_history_source_capture_is_private_and_fail_closed(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
-        resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-    )
     from loushang.coding.package.pre_b_snapshot import (
         cutover_and_bootstrap_coding_package_product,
     )
@@ -113,6 +110,9 @@ def test_windows_worker_history_source_capture_is_private_and_fail_closed(
         capture_coding_windows_worker_history_sources,
         read_coding_windows_worker_history_semantics,
         review_coding_windows_worker_settled_history_sources,
+    )
+    from loushang.coding.plugin_manager.lifecycle import (
+        resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
     from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
     from loushang.harness.config.agent import SettingsManager

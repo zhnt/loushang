@@ -12,10 +12,6 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.private_data_backup import CodingArchPrivateDataBackupOwner
 from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryOwner,
@@ -49,6 +45,10 @@ from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationOwner,
     open_coding_fenced_product_application_owner,
     open_coding_package_product_state,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.package_product.product_local_wheel_runtime import (

@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.plugin_authoring.resource_item import (
     _inspect_legacy_local_data_wheel,
 )
@@ -20,7 +21,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_configured_source import match_coding_legacy_local_skill_configured_source
 from .legacy_desired_evidence import (
     parse_coding_legacy_desired_evidence,

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .legacy_binding_catalog import (
     CodingLegacyBindingError,

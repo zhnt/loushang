@@ -294,9 +294,9 @@ A72窗口实物（历史物理行）：
 | [_base_product_composition.py](../../../../src/loushang/coding/_base_product_composition.py) | 747 |
 | [_base_plugin.py](../../../../src/loushang/coding/_base_plugin.py) | 1082 |
 | [_base_plugin_owners.py](../../../../src/loushang/coding/_base_plugin_owners.py) | 522 |
-| [_plugin_lifecycle.py](../../../../src/loushang/coding/_plugin_lifecycle.py) | 1163 |
+| [_plugin_lifecycle.py](../../../../src/loushang/coding/plugin_manager/lifecycle.py) | 1163 |
 | [_resource_catalog_adapter.py](../../../../src/loushang/coding/_resource_catalog_adapter.py) | 445 |
-| [_plugin_owner_generations.py](../../../../src/loushang/coding/_plugin_owner_generations.py) | 301 |
+| [_plugin_owner_generations.py](../../../../src/loushang/coding/plugin_manager/owner_generations.py) | 301 |
 | **合计** | **12560** |
 
 A72当时拟优先形成两条原owner的**完整审批程序**候选与全成本：

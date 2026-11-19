@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -27,7 +28,6 @@ from loushang.harness.plugin_management.private_data_deletion import (
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_backup import _private_io
 from .private_data_deletion_journal import (

@@ -839,7 +839,7 @@ def test_p0_public_update_retirement_interruption_reports_committed_revision(
     assert pending_explain["managementActorId"] == "product:coding"
     assert pending_explain["desiredCommitEvidence"] == "verified_transition"
     assert pending_explain["repairCommand"] == expected_repair
-    from loushang.coding.plugin_management_read_sdk import (
+    from loushang.coding.plugin_manager.read_sdk import (
         open_coding_plugin_management_read_client,
     )
     from loushang.coding.ui.product_binding import build_coding_ui_controller

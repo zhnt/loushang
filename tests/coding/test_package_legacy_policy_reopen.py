@@ -7,9 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.legacy_binding_catalog import (
     CodingLegacyBindingError,
     CodingLegacyLocalBindingCatalog,
@@ -23,6 +20,9 @@ from loushang.coding.package.pre_b_snapshot import (
 )
 from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import journal_file_lock

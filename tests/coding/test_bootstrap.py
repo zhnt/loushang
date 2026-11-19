@@ -12,7 +12,7 @@ from typing import Literal
 
 import pytest
 
-import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
+import loushang.coding.plugin_manager.lifecycle as plugin_lifecycle_module
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
     Capabilities,
@@ -1342,12 +1342,12 @@ def test_standalone_runtime_fenced_default_refuses_without_legacy_fallback(
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
     import loushang.coding.package.product_runtime as product_runtime
-    from loushang.coding._plugin_lifecycle import (
-        resolve_coding_plugin_lifecycle_state_layout,
-    )
     from loushang.coding.bootstrap import create_agent_session_runtime, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.plugin_manager.lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
         PackageEpochFenceError,
     )
@@ -1401,11 +1401,11 @@ def test_direct_session_fenced_default_refuses_without_legacy_fallback(
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
     import loushang.coding.package.product_runtime as product_runtime
-    from loushang.coding._plugin_lifecycle import (
-        resolve_coding_plugin_lifecycle_state_layout,
-    )
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.plugin_manager.lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
         PackageEpochFenceError,

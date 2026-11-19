@@ -1116,7 +1116,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "loushang-package-repair": "loushang.coding.cli.package_repair:main",
         "loushang-coding-plugin-smoke": "loushang.coding.plugin_author_smoke:main",
         "loushang-coding-extension": "loushang.coding.extension_author:main",
-        "loushang-coding-plugin-status": "loushang.coding.plugin_support_status:main",
+        "loushang-coding-plugin-status": "loushang.coding.plugin_manager.support_status:main",
         "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
         "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
         "loushang-worker-windows-candidate": "loushang.coding.cli.package_worker_windows_candidate:main",

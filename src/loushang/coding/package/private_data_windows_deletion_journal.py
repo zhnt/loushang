@@ -16,6 +16,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -34,7 +35,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     _windows_arch_current_root_generation,

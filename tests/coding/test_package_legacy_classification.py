@@ -6,9 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.epoch_layout import (
     CodingLifecyclePreBMembersV1,
     CodingPackagePreBStoreMembersV1,
@@ -23,6 +20,9 @@ from loushang.coding.package.pre_b_snapshot import (
 )
 from loushang.coding.package.source_snapshot import (
     hold_coding_pre_b_source_configuration,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
 

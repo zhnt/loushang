@@ -10,9 +10,6 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
@@ -21,6 +18,9 @@ from loushang.coding.package.product_runtime import (
     admit_coding_external_dependency_wheel,
     admit_coding_external_worker_wheel,
     open_coding_fenced_product_application_owner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.config.agent import SettingsManager

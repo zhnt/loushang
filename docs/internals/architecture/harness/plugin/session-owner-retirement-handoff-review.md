@@ -64,7 +64,7 @@
 | 固定实现输入 | SHA256 |
 | --- | --- |
 | `src/loushang/harness/session/_plugin_retirement.py` | `34f6498f85e0f39d13b0e7aaac4c69699a80791b5869997775d8a803f055cbca` |
-| `src/loushang/coding/_plugin_lifecycle.py` | `051d5f64dab32496d1bb260daac994ceaa78cb8a79cb4f2b19791829e9880f4b` |
+| `src/loushang/coding/plugin_manager/lifecycle.py` | `051d5f64dab32496d1bb260daac994ceaa78cb8a79cb4f2b19791829e9880f4b` |
 
 | 视角 | 结论与独立证据 | 树外代码报告 SHA256 |
 | --- | --- | --- |

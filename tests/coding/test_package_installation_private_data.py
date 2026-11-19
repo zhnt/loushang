@@ -9,9 +9,6 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
 from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.package.installation_private_data import (
@@ -24,6 +21,9 @@ from loushang.coding.package.pre_b_snapshot import (
 )
 from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.config.agent import ControlConfig, SettingsManager

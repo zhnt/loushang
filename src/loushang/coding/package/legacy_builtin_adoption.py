@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
     bootstrap_reviewed_product_plugins,
@@ -20,7 +21,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .legacy_builtin_acceptance import (
     CodingLegacyBuiltinOnlyAcceptanceV1,

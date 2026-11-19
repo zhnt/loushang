@@ -14,7 +14,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding._plugin_owner_generations import (
+from loushang.coding.plugin_manager.owner_generations import (
     CodingOwnerGenerationEvidenceEventV1,
     CodingOwnerGenerationEvidenceLedger,
     CodingOwnerGenerationFamilyEvidence,
@@ -162,6 +162,13 @@ def _prepare_private_tree(path: Path, *, private_base: Path, label: str) -> None
         label=label,
         policy=_STARTUP_POLICY,
     )
+
+
+# Public component boundary; the historical function identity remains stable.
+prepare_coding_plugin_private_tree = _prepare_private_tree
+CODING_PLUGIN_RUNTIME_BOOT_ID = _CODING_PLUGIN_RUNTIME_BOOT_ID
+hold_coding_plugin_startup_lease = _hold_process_startup_lease
+release_coding_plugin_startup_lease = _release_process_startup_lease
 
 
 def _owner_retirement_unavailable_error(

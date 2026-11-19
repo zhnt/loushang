@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Literal
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
     JournalCodecError,
@@ -27,7 +28,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .legacy_classification import classify_coding_legacy_source_configuration
 from .legacy_configured_source import match_coding_legacy_local_skill_configured_source

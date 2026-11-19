@@ -20,15 +20,6 @@ from pathlib import Path
 from time import time_ns
 from typing import Literal, Protocol
 
-from loushang.coding._plugin_lifecycle import (
-    _CODING_PLUGIN_RUNTIME_BOOT_ID,
-    CodingPluginLifecycle,
-    CodingPluginLifecycleStateLayout,
-    _hold_process_startup_lease,
-    _release_process_startup_lease,
-    build_coding_plugin_lifecycle,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.continuity import (
     CODING_EXPERIENCE_ID,
     CodingContinuityComposition,
@@ -41,8 +32,23 @@ from loushang.coding.continuity import (
 from loushang.coding.plugin_dependency_grants import (
     coding_plugin_distribution_evidence_resolver,
 )
-from loushang.coding.plugin_enablement_compatibility import (
+from loushang.coding.plugin_manager.enablement_compatibility import (
     bind_coding_plugin_enablement_compatibility,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CODING_PLUGIN_RUNTIME_BOOT_ID as _CODING_PLUGIN_RUNTIME_BOOT_ID,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycle,
+    CodingPluginLifecycleStateLayout,
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    hold_coding_plugin_startup_lease as _hold_process_startup_lease,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    release_coding_plugin_startup_lease as _release_process_startup_lease,
 )
 from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths

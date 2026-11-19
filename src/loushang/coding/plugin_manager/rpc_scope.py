@@ -4,24 +4,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .package.product_repair_rpc import (
+from loushang.coding.package.product_repair_rpc import (
     CodingPackageRepairRpcClientV1,
     bind_coding_package_repair_rpc_client,
 )
-from .package.product_runtime import CodingProductWorkspaceWitnessV1
-from .plugin_management_command_rpc import (
+from loushang.coding.package.product_runtime import CodingProductWorkspaceWitnessV1
+from loushang.coding.plugin_manager.command_rpc import (
     CodingPluginDesiredRpcClientV1,
     bind_coding_plugin_desired_rpc_client,
 )
-from .plugin_management_explanation import (
+from loushang.coding.plugin_manager.explanation import (
     CodingPluginOperationExplanationQuery,
     bind_coding_plugin_operation_explanation_query,
 )
-from .plugin_management_preview import (
+from loushang.coding.plugin_manager.preview import (
     CodingCurrentPreviewQuery,
     bind_coding_current_preview_query,
 )
-from .plugin_management_read_sdk import (
+from loushang.coding.plugin_manager.read_sdk import (
     CodingPluginManagementReadClientV1,
     CodingPluginManagementReadSdkError,
     open_coding_plugin_management_read_client,

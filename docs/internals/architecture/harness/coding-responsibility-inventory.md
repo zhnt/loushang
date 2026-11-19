@@ -1,5 +1,9 @@
 # Coding 逐文件职责与处置清单 R2
 
+源码链接跟随当前 `coding.package` 和 `coding.plugin_manager` 目录；表中原文件名、
+历史行数、SHA 与审计处置仍属于各自注明的历史基线，不代表本轮重新生成的事实。
+本轮内部组件化及其验证状态见 [Plugin Manager 迁移记录](../coding/reports/plugin-manager-component-migration.md)。
+
 本轮 C09 最新审计与候选实现见 [C09 收敛记录](c09-legacy-convergence.md)。
 C09 上轮由 PR #892/#893 合并交付时为34文件、7,624行；本组合候选因 C07 名义回执接线增加4行，当前7,628行，这4行计入 C07 适配成本，详见收敛记录。
 C07 上轮通过 PR #894/#895 交付时为112文件、20,266行，Coding −267、Harness +309、生产系统 +42；历史验证与限制见 [C07 收敛记录](c07-worker-convergence.md)。
@@ -116,8 +120,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [_hosted_repository_work.py](../../../../src/loushang/coding/_hosted_repository_work.py) | C02 | 218 | B | C02 托管与受管运行接入 | 7f15566e9445 | 218 | 7f15566e9445 |
 | [_hosted_work_observation.py](../../../../src/loushang/coding/_hosted_work_observation.py) | C02 | 53 | B | C02 托管与受管运行接入 | 1f704eb3af9e | 53 | 1f704eb3af9e |
 | [_invocation_product_profile.py](../../../../src/loushang/coding/_invocation_product_profile.py) | C06 | 108 | K | C06 其余根目录入口与策略 | 9673507c092c | 108 | 9673507c092c |
-| [_plugin_lifecycle.py](../../../../src/loushang/coding/_plugin_lifecycle.py) | C01 | 2,176 | M | A207公开default完整事务归原PM；保profile/名义生命周期/原字段 | 051d5f64dab3 | 1,035 | 444ebb21a3e4 |
-| [_plugin_owner_generations.py](../../../../src/loushang/coding/_plugin_owner_generations.py) | C01 | 548 | M | C01 启动、Plugin 与资源装配 | e7fe9e4474dc | 301 | cca9ccac7744 |
+| [_plugin_lifecycle.py](../../../../src/loushang/coding/plugin_manager/lifecycle.py) | C01 | 2,176 | M | A207公开default完整事务归原PM；保profile/名义生命周期/原字段 | 051d5f64dab3 | 1,035 | 444ebb21a3e4 |
+| [_plugin_owner_generations.py](../../../../src/loushang/coding/plugin_manager/owner_generations.py) | C01 | 548 | M | C01 启动、Plugin 与资源装配 | e7fe9e4474dc | 301 | cca9ccac7744 |
 | [_plugins/__init__.py](../../../../src/loushang/coding/_plugins/__init__.py) | C22 | 1 | K | C22 内置 Plugin 内容 | 32bed4a0499a | 1 | 32bed4a0499a |
 | [_plugins/coding_arch_default/__init__.py](../../../../src/loushang/coding/_plugins/coding_arch_default/__init__.py) | C22 | 1 | K | C22 内置 Plugin 内容 | 0c496748db17 | 1 | 0c496748db17 |
 | [_plugins/coding_arch_default/definition.py](../../../../src/loushang/coding/_plugins/coding_arch_default/definition.py) | C22 | 60 | K | C22 内置 Plugin 内容 | 3e95b07a5f4c | 60 | 3e95b07a5f4c |
@@ -457,18 +461,18 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [platform/version_check.py](../../../../src/loushang/coding/platform/version_check.py) | C27 | 45 | K | C27 版本检查 Product 绑定 | 564c53288c45 | 45 | 564c53288c45 |
 | [plugin_author_smoke.py](../../../../src/loushang/coding/plugin_author_smoke.py) | C05 | 740 | V | C05 显式 canary 与作者验证入口 | 1f7948784509 | 740 | 1f7948784509 |
 | [plugin_dependency_grants.py](../../../../src/loushang/coding/plugin_dependency_grants.py) | C01 | 98 | K | C01 启动、Plugin 与资源装配 | 2a98643f66b4 | 106 | 08d6d2e724ea |
-| [plugin_enablement_compatibility.py](../../../../src/loushang/coding/plugin_enablement_compatibility.py) | C01 | 317 | K/R | A173完整兼容cache/issuer/逐请求发布authority归Config；Code保领域capture/guard及薄profile | c4be279ad128 | 159 | d5e87bc8d497 |
-| [plugin_local_discovery.py](../../../../src/loushang/coding/plugin_local_discovery.py) | C01 | 669 | M | C01 启动、Plugin 与资源装配 | 6d30b2520bb1 | 559 | 6edcff87f3de |
-| [plugin_management_cli.py](../../../../src/loushang/coding/plugin_management_cli.py) | C06 | 282 | R/M | C06 其余根目录入口与策略 | b59458d089c7 | 282 | b59458d089c7 |
-| [plugin_management_command_rpc.py](../../../../src/loushang/coding/plugin_management_command_rpc.py) | C06 | 92 | R/M | C06 其余根目录入口与策略 | a07e5767300a | 92 | a07e5767300a |
-| [plugin_management_command_sdk.py](../../../../src/loushang/coding/plugin_management_command_sdk.py) | C06 | 226 | R/M | C06 其余根目录入口与策略 | fbcec2b38b99 | 218 | f9cfa07ef953 |
-| [plugin_management_explanation.py](../../../../src/loushang/coding/plugin_management_explanation.py) | C06 | 125 | R/M | C06 其余根目录入口与策略 | e9f5874f1930 | 125 | e9f5874f1930 |
-| [plugin_management_preview.py](../../../../src/loushang/coding/plugin_management_preview.py) | C06 | 239 | R/M | C06 其余根目录入口与策略 | f84e343151a7 | 239 | f84e343151a7 |
-| [plugin_management_read_sdk.py](../../../../src/loushang/coding/plugin_management_read_sdk.py) | C06 | 283 | R/M | C06 其余根目录入口与策略 | 6cb1deeb3501 | 275 | 74464232eec0 |
-| [plugin_management_rpc_scope.py](../../../../src/loushang/coding/plugin_management_rpc_scope.py) | C06 | 132 | R/M | C06 其余根目录入口与策略 | 2e73c9317ce5 | 132 | 2e73c9317ce5 |
-| [plugin_management_ui.py](../../../../src/loushang/coding/plugin_management_ui.py) | C06 | 292 | R/M | C06 其余根目录入口与策略 | d884a1817b7a | 292 | d884a1817b7a |
-| [plugin_operation_guidance.py](../../../../src/loushang/coding/plugin_operation_guidance.py) | C06 | 67 | R/M | C06 其余根目录入口与策略 | b4705c93566c | 67 | b4705c93566c |
-| [plugin_support_status.py](../../../../src/loushang/coding/plugin_support_status.py) | C06 | 330 | R/M | C06 其余根目录入口与策略 | 21ef1ee7edbc | 330 | 21ef1ee7edbc |
+| [plugin_enablement_compatibility.py](../../../../src/loushang/coding/plugin_manager/enablement_compatibility.py) | C01 | 317 | K/R | A173完整兼容cache/issuer/逐请求发布authority归Config；Code保领域capture/guard及薄profile | c4be279ad128 | 159 | d5e87bc8d497 |
+| [plugin_local_discovery.py](../../../../src/loushang/coding/plugin_manager/local_discovery.py) | C01 | 669 | M | C01 启动、Plugin 与资源装配 | 6d30b2520bb1 | 559 | 6edcff87f3de |
+| [plugin_management_cli.py](../../../../src/loushang/coding/plugin_manager/cli.py) | C06 | 282 | R/M | C06 其余根目录入口与策略 | b59458d089c7 | 282 | b59458d089c7 |
+| [plugin_management_command_rpc.py](../../../../src/loushang/coding/plugin_manager/command_rpc.py) | C06 | 92 | R/M | C06 其余根目录入口与策略 | a07e5767300a | 92 | a07e5767300a |
+| [plugin_management_command_sdk.py](../../../../src/loushang/coding/plugin_manager/command_sdk.py) | C06 | 226 | R/M | C06 其余根目录入口与策略 | fbcec2b38b99 | 218 | f9cfa07ef953 |
+| [plugin_management_explanation.py](../../../../src/loushang/coding/plugin_manager/explanation.py) | C06 | 125 | R/M | C06 其余根目录入口与策略 | e9f5874f1930 | 125 | e9f5874f1930 |
+| [plugin_management_preview.py](../../../../src/loushang/coding/plugin_manager/preview.py) | C06 | 239 | R/M | C06 其余根目录入口与策略 | f84e343151a7 | 239 | f84e343151a7 |
+| [plugin_management_read_sdk.py](../../../../src/loushang/coding/plugin_manager/read_sdk.py) | C06 | 283 | R/M | C06 其余根目录入口与策略 | 6cb1deeb3501 | 275 | 74464232eec0 |
+| [plugin_management_rpc_scope.py](../../../../src/loushang/coding/plugin_manager/rpc_scope.py) | C06 | 132 | R/M | C06 其余根目录入口与策略 | 2e73c9317ce5 | 132 | 2e73c9317ce5 |
+| [plugin_management_ui.py](../../../../src/loushang/coding/plugin_manager/ui.py) | C06 | 292 | R/M | C06 其余根目录入口与策略 | d884a1817b7a | 292 | d884a1817b7a |
+| [plugin_operation_guidance.py](../../../../src/loushang/coding/plugin_manager/operation_guidance.py) | C06 | 67 | R/M | C06 其余根目录入口与策略 | b4705c93566c | 67 | b4705c93566c |
+| [plugin_support_status.py](../../../../src/loushang/coding/plugin_manager/support_status.py) | C06 | 330 | R/M | C06 其余根目录入口与策略 | 21ef1ee7edbc | 330 | 21ef1ee7edbc |
 | [presentation/__init__.py](../../../../src/loushang/coding/presentation/__init__.py) | C23 | 1 | R/K | C23 呈现适配 | 8f7042fea533 | 1 | 8f7042fea533 |
 | [presentation/tui/__init__.py](../../../../src/loushang/coding/presentation/tui/__init__.py) | C23 | 1 | R/K | C23 呈现适配 | ad87c614282d | 1 | ad87c614282d |
 | [presentation/tui/history.py](../../../../src/loushang/coding/presentation/tui/history.py) | C23 | 27 | R/K | C23 呈现适配 | 1eaa343f586a | 27 | 1eaa343f586a |

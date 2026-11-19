@@ -8,6 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -16,7 +17,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_classification import CodingScopedLegacyDisableV1
 from .legacy_snapshot_member import (
     CodingLegacyInventoryDomain,

@@ -10,22 +10,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from loushang.coding._plugin_lifecycle import (
+from loushang.coding.package.epoch_layout import coding_fenced_product_exists
+from loushang.coding.package.product_management_cli import (
+    CODING_CLI_MANAGEMENT_ACTOR_ID,
+    CODING_CLI_MANAGEMENT_POLICY_REVISION,
+    build_coding_fenced_product_management_cli_ports,
+)
+from loushang.coding.plugin_manager.enablement_compatibility import (
+    bind_coding_plugin_enablement_compatibility,
+)
+from loushang.coding.plugin_manager.lifecycle import (
     _CODING_PLUGIN_RUNTIME_BOOT_ID,
     CodingPluginLifecycleStateLayout,
     _hold_process_startup_lease,
     _release_process_startup_lease,
     build_coding_plugin_management_application,
     resolve_coding_plugin_lifecycle_state_layout,
-)
-from loushang.coding.package.product_management_cli import (
-    CODING_CLI_MANAGEMENT_ACTOR_ID,
-    CODING_CLI_MANAGEMENT_POLICY_REVISION,
-    build_coding_fenced_product_management_cli_ports,
-    coding_fenced_product_exists,
-)
-from loushang.coding.plugin_enablement_compatibility import (
-    bind_coding_plugin_enablement_compatibility,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.cli.plugin_management import (

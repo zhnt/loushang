@@ -907,7 +907,7 @@ def test_plc9_inventory_names_existing_owner_and_peer_source_sites() -> None:
         "src/loushang/harness/plugin_management/instance_runtime.py",
         "src/loushang/harness/plugin_management/security_acceptance.py",
         "src/loushang/harness/plugin_management/package_lifecycle.py",
-        "src/loushang/coding/_plugin_lifecycle.py",
+        "src/loushang/coding/plugin_manager/lifecycle.py",
         "src/loushang/harness/cli/resource_toggles.py",
         "src/loushang/harness/cli/plugin_listing.py",
         "src/loushang/harness/cli/profile.py",
@@ -1647,7 +1647,7 @@ def test_plc9_classifies_compatibility_candidates_before_plc9e() -> None:
             "src/loushang/harness/extensions/loader.py"
         ): "_adapt_legacy_extension_object",
         Path(
-            "src/loushang/coding/_plugin_lifecycle.py"
+            "src/loushang/coding/plugin_manager/lifecycle.py"
         ): "CodingPluginLifecycle.publish_session_owner_generations",
         Path(
             "src/loushang/harness/plugin_management/continuity_adapter.py"

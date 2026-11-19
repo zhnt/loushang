@@ -1,6 +1,6 @@
-"""Legacy module identities for this component's relocated implementation.
+"""Legacy module identities for relocated Coding components.
 
-Only the frozen package-module inventory is redirected. Implementations are
+Only frozen module inventories are redirected. Implementations are
 loaded once from their canonical location; old names retain pickle lookup.
 """
 
@@ -14,10 +14,20 @@ from importlib.machinery import ModuleSpec
 from types import ModuleType
 from typing import Any
 
-from ._legacy_names import NAMES
+from .package._legacy_names import NAMES as _PACKAGE_NAMES
+from .plugin_manager._legacy_names import NAMES as _MANAGER_NAMES
 
-_OLD = "loushang.coding.package_"
-_NEW = "loushang.coding.package."
+_ROUTES = {
+    **{
+        f"loushang.coding.package_{name}": f"loushang.coding.package.{name}"
+        for name in _PACKAGE_NAMES
+    },
+    **{
+        f"loushang.coding.{old}": f"loushang.coding.plugin_manager.{new}"
+        for old, new in _MANAGER_NAMES.items()
+    },
+}
+_LEGACY = {canonical: legacy for legacy, canonical in _ROUTES.items()}
 
 
 def _restore_identity(value: Any, canonical: str, legacy: str, seen: set[int]) -> None:
@@ -108,7 +118,7 @@ class _LegacyLoader(_ComponentLoader):
         module.__spec__ = self._spec
 
 
-class _PackageImports(MetaPathFinder):
+class _ComponentImports(MetaPathFinder):
     def _implementation_spec(
         self, fullname: str, path: Any, target: ModuleType | None = None
     ) -> ModuleSpec | None:
@@ -130,9 +140,9 @@ class _PackageImports(MetaPathFinder):
         path: Any = None,
         target: ModuleType | None = None,
     ) -> ModuleSpec | None:
-        if fullname.startswith(_OLD) and fullname[len(_OLD) :] in NAMES:
-            canonical = _NEW + fullname[len(_OLD) :]
-            package = sys.modules[_NEW.removesuffix(".")]
+        if fullname in _ROUTES:
+            canonical = _ROUTES[fullname]
+            package = import_module(canonical.rpartition(".")[0])
             original = self._implementation_spec(canonical, package.__path__)
             if original is None or original.loader is None:
                 return None
@@ -143,16 +153,14 @@ class _PackageImports(MetaPathFinder):
             )
             legacy_spec.has_location = original.has_location
             return legacy_spec
-        if fullname.startswith(_NEW) and fullname[len(_NEW) :] in NAMES:
+        if fullname in _LEGACY:
             spec = self._implementation_spec(fullname, path, target)
             if spec is not None and spec.loader is not None:
-                spec.loader = _ComponentLoader(
-                    spec.loader, fullname, _OLD + fullname[len(_NEW) :]
-                )
+                spec.loader = _ComponentLoader(spec.loader, fullname, _LEGACY[fullname])
             return spec
         return None
 
 
 def install() -> None:
-    if not any(isinstance(finder, _PackageImports) for finder in sys.meta_path):
-        sys.meta_path.insert(0, _PackageImports())
+    if not any(isinstance(finder, _ComponentImports) for finder in sys.meta_path):
+        sys.meta_path.insert(0, _ComponentImports())

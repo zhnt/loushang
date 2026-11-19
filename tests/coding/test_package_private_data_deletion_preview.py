@@ -6,9 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.installation_private_data import (
     prepare_coding_product_arch_private_data_root,
 )
@@ -21,6 +18,9 @@ from loushang.coding.package.private_data_deletion_preview import (
 )
 from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.config.agent import SettingsManager

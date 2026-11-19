@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
@@ -17,7 +18,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .legacy_disabled_acceptance import CodingLegacyDisabledOnlyAcceptanceError
 from .legacy_removed_review import (

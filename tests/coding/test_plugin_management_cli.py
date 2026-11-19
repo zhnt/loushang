@@ -17,14 +17,9 @@ from typing import cast
 
 import pytest
 
-import loushang.coding._plugin_lifecycle as lifecycle_module
 import loushang.coding.cli.application as application_module
-import loushang.coding.plugin_management_cli as cli_module
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleError,
-    build_coding_plugin_lifecycle,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
+import loushang.coding.plugin_manager.cli as cli_module
+import loushang.coding.plugin_manager.lifecycle as lifecycle_module
 from loushang.coding.cli.application import run_cli
 from loushang.coding.cli.args import (
     current_preview_option_requested,
@@ -32,24 +27,29 @@ from loushang.coding.cli.args import (
     plugin_repair_option_requested,
 )
 from loushang.coding.control import SettingsManager
-from loushang.coding.plugin_enablement_compatibility import (
-    CodingPluginEnablementCompatibilityError,
-    bind_coding_plugin_enablement_compatibility,
-)
-from loushang.coding.plugin_management_cli import (
+from loushang.coding.plugin_manager.cli import (
     CodingPluginManagementCliError,
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,
 )
-from loushang.coding.plugin_management_explanation import (
+from loushang.coding.plugin_manager.enablement_compatibility import (
+    CodingPluginEnablementCompatibilityError,
+    bind_coding_plugin_enablement_compatibility,
+)
+from loushang.coding.plugin_manager.explanation import (
     CodingPluginOperationExplanationError,
 )
-from loushang.coding.plugin_management_preview import (
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleError,
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.preview import (
     CodingCurrentPreviewError,
     _capture_disabled_skills,
     bind_coding_current_preview_query,
 )
-from loushang.coding.plugin_management_read_sdk import (
+from loushang.coding.plugin_manager.read_sdk import (
     open_coding_plugin_management_read_client,
 )
 from loushang.harness.cli.plugin_listing import list_plugin_records
@@ -579,7 +579,7 @@ def test_current_preview_refuses_settings_fifo_without_blocking(tmp_path: Path) 
             sys.executable,
             "-c",
             "from pathlib import Path; "
-            "from loushang.coding.plugin_management_preview import _read_settings_bytes; "
+            "from loushang.coding.plugin_manager.preview import _read_settings_bytes; "
             f"_read_settings_bytes(Path({str(settings_path)!r}))",
         ],
         capture_output=True,

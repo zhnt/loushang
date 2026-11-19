@@ -10,6 +10,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    prepare_coding_plugin_private_tree as _prepare_private_tree,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -37,7 +43,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout, _prepare_private_tree
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_backup_records import (

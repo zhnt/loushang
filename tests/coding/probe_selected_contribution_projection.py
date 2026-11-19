@@ -9,7 +9,7 @@ import pytest
 
 import loushang.coding._base_product_composition as code
 import loushang.harness.session.product_composition_assembly as core
-from loushang.coding._plugin_lifecycle import package_revision_ref
+from loushang.coding.plugin_manager.lifecycle import package_revision_ref
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
 )

@@ -4237,9 +4237,6 @@ def _exercise_posix_local_wheel_product_composition(
     from loushang.coding._base_product_composition import (
         compile_coding_base_product_selection,
     )
-    from loushang.coding._plugin_lifecycle import (
-        resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-    )
     from loushang.coding._product_capability_plugin_composition import (
         prepare_coding_builtin_product_composition,
         prepare_coding_product_capability_plugin_composition,
@@ -4281,6 +4278,9 @@ def _exercise_posix_local_wheel_product_composition(
     )
     from loushang.coding.plugin_dependency_grants import (
         coding_plugin_distribution_evidence_resolver,
+    )
+    from loushang.coding.plugin_manager.lifecycle import (
+        resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.approval.plugin_execution import (
@@ -9298,7 +9298,7 @@ from pathlib import Path
 
 sys.path.insert(0, sys.argv[1])
 from test_plc9b_adversarial import _closure_environment, _configured_product_gc_owner
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.cli.package_gc import _CodingPackageGcRepairAuthority, _run
 from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.package.product_runtime import open_coding_package_product_state

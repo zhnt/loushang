@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from hashlib import sha256
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.resources.packages.materializer import (
     _plugin_binding_from_json,
@@ -16,7 +17,6 @@ from loushang.harness.resources.plugins.dependencies import (
 )
 from loushang.harness.resources.plugins.types import PluginSourceBinding
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
     read_coding_first_b_snapshot_member,

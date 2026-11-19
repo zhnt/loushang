@@ -712,7 +712,7 @@ def test_windows_hosted_ordinary_session_enters_fresh_b_product(
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
     import loushang.coding.package.product_runtime as product_runtime
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
 
@@ -813,10 +813,10 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
     import loushang.coding.package.product_runtime as product_runtime
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
     from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
         PackageEpochFenceError,
     )
@@ -895,10 +895,10 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
 def test_hosted_default_preserves_effective_old_settings_without_product_cutover(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
 
     settings = tmp_path / "settings.json"
     old_bytes = b'{"disabled_plugins":["coding.base"]}'
