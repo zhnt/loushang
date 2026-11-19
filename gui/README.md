@@ -28,8 +28,8 @@ Both connect to an independently started AppHost.
 The installed desktop can start, stop, and restart its local AppHost from the
 main window, Host settings, and tray. The desktop and the loopback Web server
 delegate to `loushang-mux service`. Closing the frontend leaves AppHost running.
-Use **Create workspace** to start with no folders, or **Add project** to
-start with a linked folder. **Manage workspace** shows the folder aliases,
+Open the Projects context menu and choose **Create workspace** to start with
+no folders. **Add project** starts with a linked folder. **Manage workspace** shows the folder aliases,
 individual availability, and the default folder. Folder paths are interpreted
 on the connected AppHost. Workspace and Mux identities survive a folder change,
 and Session history stays in the existing AppHost-owned transcript store.

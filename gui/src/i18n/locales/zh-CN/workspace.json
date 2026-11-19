@@ -2,6 +2,10 @@
   "workspaceEditor": {
     "create": "创建工作空间",
     "manage": "管理工作空间",
+    "manageUnavailable": "管理工作空间 · 部分目录不可用",
+    "pathActions": "{{alias}} 的操作",
+    "defaultPath": "默认目录",
+    "cancel": "取消",
     "name": "工作空间名称",
     "rename": "重命名",
     "paths": "关联目录",
@@ -23,7 +27,6 @@
     "unsafe": "目录或上级目录已被链接替换",
     "not_directory": "路径指向的对象不是目录",
     "permission_denied": "权限不足",
-    "unavailablePaths": "部分关联目录不可用",
     "deleteBlocked": "此工作空间仍保留会话历史。"
   },
   "sidebar": {
@@ -51,7 +54,7 @@
     "projects": "项目",
     "addProject": "添加项目",
     "newProjectChat": "在 {{project}} 中新建会话",
-    "temporaryChats": "普通会话",
+    "temporaryChats": "临时会话",
     "chats": "会话",
     "pinned": "置顶",
     "unassigned": "未归属工作区",
