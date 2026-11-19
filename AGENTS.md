@@ -71,6 +71,9 @@ of truth for this local execution rule.
 ## Commit & Pull Request Guidelines
 Recent history uses short summaries and occasional conventional prefixes such as `test(integration): ...`. Prefer concise, imperative commit messages; use `type(scope): summary` when helpful. PRs should explain the user-visible change, list validation performed, and call out config or API contract changes. Link related issues or design docs when relevant.
 
+Authorized remote pushes and PR operations may proceed at any time; there are no
+remote publication quiet hours.
+
 Use `make plan-checks` to inspect the change scope and `make check-changed` to run
 the applicable local checks. When the plan selects AI, run `make check-ai` (also
 included by `check-changed`) and fix/report failures before committing or pushing.
