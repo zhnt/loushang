@@ -28,13 +28,13 @@ def test_launch_material_does_not_import_backend(tmp_path, frontend):
 import sys
 from loushang.coding.hosted.managed.process import coding_managed_process_request
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
-assert 'loushang.coding.managed_local' not in sys.modules
+assert 'loushang.coding.hosted.managed.local' not in sys.modules
 request = coding_managed_process_request(
     ManagedChildInvocationV1.from_json(sys.argv[1]), 7,
     executable=sys.executable, environment={},
 )
-assert request.argv[2] == 'loushang.coding.managed_process'
-assert 'loushang.coding.managed_local' not in sys.modules
+assert request.argv[2] == 'loushang.coding.hosted.managed.process'
+assert 'loushang.coding.hosted.managed.local' not in sys.modules
 """
     if frontend:
         script = "import loushang.coding.cli.lmux_command\n" + script
@@ -58,7 +58,7 @@ def test_backend_import_failure_closes_adopted_endpoint(tmp_path, monkeypatch, c
     original_import = builtins.__import__
 
     def import_module(name, *args, **kwargs):
-        if name == "managed_local":
+        if name == "loushang.coding.hosted.managed.local":
             raise ImportError("private-backend-failure")
         return original_import(name, *args, **kwargs)
 

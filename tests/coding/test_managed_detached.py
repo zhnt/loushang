@@ -41,6 +41,7 @@ from tests.apphost.test_managed_bootstrap import deployment as deployment
 from tests.hosting._pidfd_signal import send_signal as _send_signal
 
 from .test_hosted_local import _local_launch
+from .test_managed_process_entry import _same_control_operation
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux detached Product")
 
@@ -153,6 +154,7 @@ def test_actual_coding_service_outlives_starter_and_reconnects(deployment, tmp_p
                 )
                 try:
                     deadline = monotonic() + 5
+
                     await asyncio.to_thread(registry.open, deadline=deadline, wait_for_lock=True)
                     await asyncio.to_thread(manager_journal.open, deadline=deadline, wait_for_lock=True)
                     manager = ManagedMuxManagerV1(registry, manager_journal, namespace, service,
@@ -161,9 +163,13 @@ def test_actual_coding_service_outlives_starter_and_reconnects(deployment, tmp_p
                         registry.resolve, "dev", deadline=deadline, wait_for_lock=True,
                     )
                     assert reservation is not None
-                    permit = manager.issue_create(reservation, deadline=deadline)
+                    permit = await _same_control_operation(
+                        lambda: manager.issue_create(reservation, deadline=deadline), deadline=deadline,
+                    )
                     mux = await client.managed_mux_client.create_managed_mux(permit)
-                    assert manager.record_created(permit, mux, deadline=deadline) == mux
+                    assert await _same_control_operation(
+                        lambda: manager.record_created(permit, mux, deadline=deadline), deadline=deadline,
+                    ) == mux
                 finally:
                     manager_journal.close()
                     registry.close()

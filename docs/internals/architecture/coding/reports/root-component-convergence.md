@@ -182,8 +182,8 @@ inputs even though they contain no runtime implementation.
 | All production Python | 648,769 | 649,041 | +272 |
 | Production type declarations | 0 | 143 | +143 |
 | CI/development Python scripts | 19,944 | 19,986 | +42 |
-| Test Python | 706,028 | 706,326 | +298 |
-| Documentation Markdown | 288,601 | 289,118 | +517 |
+| Test Python | 706,028 | 706,332 | +304 |
+| Documentation Markdown | 288,601 | 289,133 | +532 |
 
 All production Python plus type declarations grows by **415 lines**. No business
 mechanism is counted as duplicate deletion: this batch relocates owners and
@@ -270,6 +270,7 @@ require reassessment rather than borrowing results from the earlier placement.
 | AppService | Complete command returns zero: 2,652 passed, 18 skipped; 1,075.22 seconds; lint and mypy pass |
 | Component unit routes | All seven selected routes complete, reusing identical covered cases where recorded and running uncovered example contracts |
 | GUI | TypeScript compilation passes; all 22 test files and 167 existing tests pass with original assertions/deadlines |
+| Additional PR integration route | Original 72-path route is separate normal PR validation; 28 focused managed cases and the correctly activated installed CLI canary pass after test-only corrections |
 
 The complete Coding route includes the existing persistence/resume/close and
 terminal cancellation smoke cases. The original full UI manifest, 2,200-line
@@ -331,6 +332,19 @@ passes, and no literal reference to the 97 old root owners remains in workflows.
 
 ### Diagnosed Failures And Remaining Limits
 
+The first PR integration route reported five failures beyond the default local
+plan: three stale module/fault-injection names and two transient `busy` results
+from the nonblocking Mux lifecycle lock. The test caller now reuses the existing
+`_same_control_operation` helper for the same immutable operations, retaining
+its original five-second deadline, 35-second scenario budget, assertions and
+parameter combinations. Only explicit `busy` is retried; other errors propagate.
+Product locking and production source remain unchanged. Both original baseline
+cases passed locally, so this is not described as a reproduced baseline failure
+or a Product lock fix. The complete original PR integration selection is separate
+acceptance evidence from the 23-scope default local plan. Installed CLI tests
+require the candidate environment's PATH as well as its Python interpreter;
+results from accidentally selecting the global CLI are excluded.
+
 Earlier validation exposed a real relocated asset-anchor bug. Package revision
 policy now uses the complete source-location fact from the dependency-grant
 owner; exact-root trust checks remain unchanged, with no path-search fallback.
@@ -373,7 +387,8 @@ do not imply remote execution. Final evidence must name jobs actually run and
 retain remaining platform gaps. No native Windows or frozen-executable result
 is inferred from Linux simulation or inert installed-wheel observations.
 
-All 23 runnable local scopes return zero. The eight workflow-only exclusions
+All 23 scopes in the default local plan return zero. The additional PR
+integration route is recorded separately above. The eight workflow-only exclusions
 above remain explicit. Normal remote checks, accepted merge and local sync are
 separate delivery evidence; local success alone does not establish them.
 
