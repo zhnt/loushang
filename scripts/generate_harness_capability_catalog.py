@@ -103,25 +103,25 @@ SOURCE_BACKED_SEAMS = (
     ),
     CapabilitySeam(
         definition=(
-            "loushang.coding.package_product_worker_query_consumer:"
+            "loushang.coding.package.product_worker_query_consumer:"
             "CODING_WORKER_QUERY_DEFINITION"
         ),
         providers=(
-            "loushang.coding.package_product_worker_provider:"
+            "loushang.coding.package.product_worker_provider:"
             "coding_worker_query_capability_provider",
         ),
         consumers=(
             (
-                "loushang.coding.package_product_worker_query_consumer:"
+                "loushang.coding.package.product_worker_query_consumer:"
                 "CodingWorkerQueryCapabilityConsumer",
                 (
-                    "loushang.coding.package_product_worker_query_consumer:"
+                    "loushang.coding.package.product_worker_query_consumer:"
                     "CODING_WORKER_QUERY_REQUIREMENT",
                 ),
             ),
         ),
         production_mounts=(
-            "loushang.coding.package_product_worker_operator_query:"
+            "loushang.coding.package.product_worker_operator_query:"
             "query_coding_product_worker",
         ),
     ),

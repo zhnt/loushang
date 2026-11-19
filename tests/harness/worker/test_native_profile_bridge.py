@@ -13,11 +13,11 @@ from typing import Any
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_payload_inventory import (
+from loushang.coding.package.product_worker_windows_payload_inventory import (
     CodingWindowsWorkerPayloadInventoryError,
     inspect_windows_worker_payload_stages,
 )
-from loushang.coding.package_product_worker_windows_provisioning_journal import (
+from loushang.coding.package.product_worker_windows_provisioning_journal import (
     WindowsWorkerProvisioningStateJournal,
     WindowsWorkerProvisioningStateJournalError,
     _inventory_identity,

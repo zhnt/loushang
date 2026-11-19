@@ -27,32 +27,32 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding import package_product_worker_history_retention as code
-from loushang.coding import package_product_worker_posix_gc_history as gc_code
-from loushang.coding import package_product_worker_start_gate_recovery as gated_code
-from loushang.coding.package_product_backup_types import _topology_bytes
-from loushang.coding.package_product_worker_activation_state_journal import (
+from loushang.coding.package import product_worker_history_retention as code
+from loushang.coding.package import product_worker_posix_gc_history as gc_code
+from loushang.coding.package import product_worker_start_gate_recovery as gated_code
+from loushang.coding.package.product_backup_types import _topology_bytes
+from loushang.coding.package.product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )
-from loushang.coding.package_product_worker_installed_native import (
+from loushang.coding.package.product_worker_installed_native import (
     CodingProductInstalledWorkerReleaseReader,
 )
-from loushang.coding.package_product_worker_native_release import (
+from loushang.coding.package.product_worker_native_release import (
     CodingWorkerNativeReleaseError,
 )
-from loushang.coding.package_product_worker_opt_in import (
+from loushang.coding.package.product_worker_opt_in import (
     CodingWorkerOptInJournal,
     _opt_in_line,
 )
-from loushang.coding.package_product_worker_payload import _STORAGE
-from loushang.coding.package_product_worker_receipt import (
+from loushang.coding.package.product_worker_payload import _STORAGE
+from loushang.coding.package.product_worker_receipt import (
     CodingWorkerReceiptRecordV1,
     _linux_receipt_line,
 )
-from loushang.coding.package_product_worker_start_gate_journal import (
+from loushang.coding.package.product_worker_start_gate_journal import (
     CodingWorkerStartGateJournal,
 )
-from loushang.coding.package_product_worker_supervisor_journal import (
+from loushang.coding.package.product_worker_supervisor_journal import (
     CodingProductWorkerSupervisorJournal,
 )
 from loushang.harness.journal import _rooted_io
@@ -399,11 +399,11 @@ def observe(name, base, patch):
         if inject("snapshot-error"):
             fault()
         if inject("snapshot-mismatch"):
-            from loushang.coding.package_product_worker_history_segments import (
+            from loushang.coding.package.product_worker_history_segments import (
                 _head_bytes,
                 _head_name,
             )
-            from loushang.coding.package_product_worker_opt_in import (
+            from loushang.coding.package.product_worker_opt_in import (
                 CodingWorkerOptInDecisionV1,
             )
 
@@ -537,14 +537,14 @@ def observe(name, base, patch):
     (root / "coding-backup-types.json").chmod(0o600)
 
     if program == "v2":
-        from loushang.coding.package_product_worker_history_deletion_v2 import (
+        from loushang.coding.package.product_worker_history_deletion_v2 import (
             CodingWorkerV2DeletionLedger,
         )
-        from loushang.coding.package_product_worker_history_segments import (
+        from loushang.coding.package.product_worker_history_segments import (
             _head_name,
             _segment_name,
         )
-        from loushang.coding.package_product_worker_history_v2_names import (
+        from loushang.coding.package.product_worker_history_v2_names import (
             DELETION_LEDGER_NAME,
             PRODUCT_OWNER_INDEX_NAME,
         )
@@ -601,7 +601,7 @@ def observe(name, base, patch):
         )
 
         def write_stream(stem, raw):
-            from loushang.coding.package_product_worker_history_segments import (
+            from loushang.coding.package.product_worker_history_segments import (
                 _head_bytes,
                 _head_name,
             )
@@ -718,7 +718,7 @@ def observe(name, base, patch):
             for f in root.glob("worker-activation-state*"):
                 f.unlink()
         if case == "repair-empty":
-            from loushang.coding.package_product_worker_payload import (
+            from loushang.coding.package.product_worker_payload import (
                 CodingWorkerEmptyPayloadDebtPlanV1,
             )
 
@@ -731,7 +731,7 @@ def observe(name, base, patch):
         if case in {"repair-bad", "repair-stage"}:
             (root / f"worker-empty-repair-{ATTEMPT}.json").write_bytes(b"{}")
         if case == "repair-unmarked":
-            from loushang.coding.package_product_worker_payload import (
+            from loushang.coding.package.product_worker_payload import (
                 CodingWorkerUnmarkedPayloadDebtReviewV1,
                 CodingWorkerUnmarkedPayloadMemberV1,
             )
@@ -752,7 +752,7 @@ def observe(name, base, patch):
             finally:
                 os.close(fd)
         if case == "repair-complete":
-            from loushang.coding.package_product_worker_payload import (
+            from loushang.coding.package.product_worker_payload import (
                 CodingWorkerPayloadDebtPlanV1,
             )
             from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -778,10 +778,10 @@ def observe(name, base, patch):
             "repair-registered-mismatch",
             "repair-registered-duplicate",
         }:
-            from loushang.coding.package_product_worker_payload import (
+            from loushang.coding.package.product_worker_payload import (
                 CodingWorkerPayloadDebtPlanV1,
             )
-            from loushang.coding.package_product_worker_registered_payload_repair import (
+            from loushang.coding.package.product_worker_registered_payload_repair import (
                 CodingWorkerRegisteredPayloadRepairIntentV1,
                 _repair_journal,
             )
@@ -813,7 +813,7 @@ def observe(name, base, patch):
             "global-supervisor-active",
             "global-opt-in-unverified",
         }:
-            from loushang.coding.package_product_worker_history_segments import (
+            from loushang.coding.package.product_worker_history_segments import (
                 _head_bytes,
                 _head_name,
             )
@@ -914,29 +914,29 @@ def observe(name, base, patch):
                 )
 
         if case.startswith("archive-"):
-            from loushang.coding.package_product_worker_history_checkpoint import (
+            from loushang.coding.package.product_worker_history_checkpoint import (
                 publish_coding_product_worker_history_checkpoint,
             )
-            from loushang.coding.package_product_worker_history_commit_v2 import (
+            from loushang.coding.package.product_worker_history_commit_v2 import (
                 commit_coding_worker_v2_owner_under_guard,
             )
-            from loushang.coding.package_product_worker_history_deletion_v2 import (
+            from loushang.coding.package.product_worker_history_deletion_v2 import (
                 CodingWorkerV2DeletionLedger,
             )
-            from loushang.coding.package_product_worker_history_preflight_v2 import (
+            from loushang.coding.package.product_worker_history_preflight_v2 import (
                 _prepare_coding_product_worker_history_cutover_under_guard,
             )
-            from loushang.coding.package_product_worker_history_segments import (
+            from loushang.coding.package.product_worker_history_segments import (
                 CodingWorkerSegmentManifestV1,
                 _head_name,
                 _segment_name,
                 read_coding_worker_segmented_history,
                 seal_coding_worker_active_segment,
             )
-            from loushang.coding.package_product_worker_history_stage_v2 import (
+            from loushang.coding.package.product_worker_history_stage_v2 import (
                 stage_coding_worker_v2_preparation,
             )
-            from loushang.coding.package_product_worker_history_v2_names import (
+            from loushang.coding.package.product_worker_history_v2_names import (
                 DELETION_LEDGER_NAME,
             )
             from loushang.harness.resources.packages.plugin_lifecycle.records import (

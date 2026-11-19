@@ -11,7 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.session import AgentSession

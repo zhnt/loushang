@@ -11,7 +11,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-import loushang.coding.package_private_data_restore as code
+import loushang.coding.package.private_data_restore as code
 import loushang.harness.plugin_management.private_data_backup as archive
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 

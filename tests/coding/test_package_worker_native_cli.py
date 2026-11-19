@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_worker_payload as worker_payload_module
+import loushang.coding.package.product_worker_payload as worker_payload_module
 from loushang.ai.types import UserMessage
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
@@ -26,20 +26,20 @@ from loushang.coding.cli.package_worker_native import (
 from loushang.coding.cli.package_worker_native import (
     main as worker_native_main,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_activation_state_journal import (
+from loushang.coding.package.product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )
-from loushang.coding.package_product_worker_operator_query import (
+from loushang.coding.package.product_worker_operator_query import (
     query_coding_product_worker,
 )
-from loushang.coding.package_product_worker_payload import (
+from loushang.coding.package.product_worker_payload import (
     CodingWorkerPayloadDebtPlanV1,
     open_coding_product_worker_supervisor_journal,
     repair_coding_product_worker_unmarked_payload_debt,
@@ -360,6 +360,7 @@ def test_worker_native_cli_repairs_empty_pre_marker_stage_across_processes(
         assert partial_review.fingerprint == unmarked_id
 
         def interrupt_unmarked_repair(
+            _storage: object,
             root_fd: int,
             stage_fd: int,
             stage_name: str,
@@ -382,8 +383,9 @@ def test_worker_native_cli_repairs_empty_pre_marker_stage_across_processes(
             raise OSError("injected pre-marker cleanup interruption")
 
         with monkeypatch.context() as patch:
+            # The shared storage owns deletion; the Coding name is a bound alias.
             patch.setattr(
-                worker_payload_module,
+                type(worker_payload_module._STORAGE),
                 "_remove_unmarked_repair_remainder",
                 interrupt_unmarked_repair,
             )

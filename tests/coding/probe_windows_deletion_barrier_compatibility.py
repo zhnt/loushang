@@ -8,10 +8,10 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding.package_private_data_backup_expiry_records import (
+from loushang.coding.package.private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
 )
-from loushang.coding.package_private_data_restore_records import (
+from loushang.coding.package.private_data_restore_records import (
     CodingArchPrivateDataRestorePlanV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
@@ -31,10 +31,10 @@ CASES = (
 
 def observe(case, patch):
     journal = importlib.import_module(
-        "loushang.coding.package_private_data_windows_restore_journal"
+        'loushang.coding.package.private_data_windows_restore_journal'
     )
     code = importlib.import_module(
-        "loushang.coding.package_private_data_windows_backup_expiry_recovery"
+        'loushang.coding.package.private_data_windows_backup_expiry_recovery'
     )
     key = PluginInstallationKeyV1("coding", "workspace", "scope", "coding.arch.default")
     foreign = PluginInstallationKeyV1(

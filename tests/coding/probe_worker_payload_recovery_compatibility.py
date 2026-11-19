@@ -24,8 +24,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding import package_product_worker_payload as code
-from loushang.coding.package_product_worker_history_read_v2 import _HISTORY_READER
+from loushang.coding.package import product_worker_payload as code
+from loushang.coding.package.product_worker_history_read_v2 import _HISTORY_READER
 from loushang.harness.package_product import _linux_worker_recovery as payload_custody
 from loushang.harness.worker.history._rooted_supervisor import RootedSupervisorJournal
 from loushang.harness.worker.payload._repair import RepairJournal

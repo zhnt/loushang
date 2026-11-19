@@ -4,10 +4,10 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_orphan_review import (
+from loushang.coding.package.product_worker_windows_orphan_review import (
     CodingWindowsWorkerOrphanRuntimeReviewV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAdmissionError,
     CodingWindowsWorkerRecoveryAttemptV1,
     require_coding_windows_worker_current_attempt,

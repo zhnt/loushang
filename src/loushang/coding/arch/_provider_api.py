@@ -33,7 +33,7 @@ from loushang.coding.arch.tool import (
     ImportGraphInspectionRuntime as CodingArchToolRuntimePort,
 )
 from loushang.coding.capabilities import CODING_ARCH_CAPABILITY
-from loushang.coding.package_arch_private_cache import (
+from loushang.coding.package.arch_private_cache import (
     write_coding_arch_private_windows_snapshot,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID

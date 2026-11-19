@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import package_arch_private_cache as coding
+from loushang.coding.package import arch_private_cache as coding
 from loushang.harness.resources.packages import _file_consumption
 from loushang.harness.resources.packages.plugin_lifecycle import windows_snapshot_io
 

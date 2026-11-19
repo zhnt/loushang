@@ -10,33 +10,31 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_product_worker_history_commit_v2 import (
+from loushang.coding.package.product_worker_history_commit_v2 import (
     commit_coding_worker_v2_owner_under_guard,
 )
-from loushang.coding.package_product_worker_history_deletion_v2 import (
+from loushang.coding.package.product_worker_history_deletion_v2 import (
     CodingWorkerV2DeletionLedger,
 )
-from loushang.coding.package_product_worker_history_read_v2 import (
+from loushang.coding.package.product_worker_history_read_v2 import (
     CodingWorkerV2ReadError,
     read_coding_worker_v2_retained_history,
 )
-from loushang.coding.package_product_worker_history_retire_v2 import (
+from loushang.coding.package.product_worker_history_retire_v2 import (
     CodingWorkerV2RetirementError,
     retire_coding_product_worker_v2_history,
     retire_coding_worker_v2_history_under_guard,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     _head_name,
     _segment_name,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     capture_coding_worker_history_streams_under_gc_guard,
 )
-from loushang.coding.package_product_worker_history_v2_names import (
-    DELETION_LEDGER_NAME,
-)
-from loushang.coding.package_product_worker_posix_gc_history import (
+from loushang.coding.package.product_worker_history_v2_names import DELETION_LEDGER_NAME
+from loushang.coding.package.product_worker_posix_gc_history import (
     _require_committed_v2_history,
 )
 from loushang.harness.journal._rooted_io import RootedFile

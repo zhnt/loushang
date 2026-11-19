@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_worker_history_rotate_v2 as coding
+import loushang.coding.package.product_worker_history_rotate_v2 as coding
 import loushang.harness.worker.history._publication as publication
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.worker.history._snapshot import (

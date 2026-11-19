@@ -33,7 +33,7 @@ from loushang.coding._plugin_lifecycle import (
 )
 from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.application import run_cli
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
 from loushang.coding.session_manager import SessionManager

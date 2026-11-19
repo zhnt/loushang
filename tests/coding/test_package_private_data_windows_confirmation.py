@@ -8,11 +8,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_legacy_windows_receipt import (
+from loushang.coding.package.legacy_windows_receipt import (
     CodingWindowsPrivateReceiptError,
     _require_simple_attributes,
 )
-from loushang.coding.package_private_data_windows_confirmation import (
+from loushang.coding.package.private_data_windows_confirmation import (
     CodingWindowsArchPrivateDataConfirmationOwner,
 )
 from loushang.harness.plugin_management.private_data_confirmation import (

@@ -21,9 +21,9 @@ from loushang.appserver.protocol import (
     TurnTextV1,
 )
 from loushang.coding.hosted_local import CodingLocalCommandV1
+from tests.apphost.test_managed_child import binding as binding
+from tests.apphost.test_managed_child import until
 
-from ..apphost.test_managed_child import binding as binding
-from ..apphost.test_managed_child import until
 from ._hosted_product_child import scripted_stream
 from .test_hosted_local import _local_launch, _model
 

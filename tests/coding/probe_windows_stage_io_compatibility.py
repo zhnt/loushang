@@ -13,25 +13,25 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import (
-    package_product_worker_windows_crash_stage_retirement as crash,
+from loushang.coding.package import (
+    product_worker_windows_crash_stage_retirement as crash,
 )
-from loushang.coding import (
-    package_product_worker_windows_partial_stage_retirement as partial,
+from loushang.coding.package import (
+    product_worker_windows_partial_stage_retirement as partial,
 )
-from loushang.coding import package_product_worker_windows_payload as payload
-from loushang.coding import package_product_worker_windows_stage_retirement as full
-from loushang.coding import package_product_worker_windows_stage_review as review_module
-from loushang.coding import (
-    package_product_worker_windows_unlaunched_stage_retirement as unlaunched,
+from loushang.coding.package import product_worker_windows_payload as payload
+from loushang.coding.package import product_worker_windows_stage_retirement as full
+from loushang.coding.package import product_worker_windows_stage_review as review_module
+from loushang.coding.package import (
+    product_worker_windows_unlaunched_stage_retirement as unlaunched,
 )
-from loushang.coding.package_product_worker_windows_launch_intent import (
+from loushang.coding.package.product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentV1,
 )
-from loushang.coding.package_product_worker_windows_partial_stage_review import (
+from loushang.coding.package.product_worker_windows_partial_stage_review import (
     CodingWindowsWorkerPartialStageReviewV1,
 )
-from loushang.coding.package_product_worker_windows_reserved_review import (
+from loushang.coding.package.product_worker_windows_reserved_review import (
     CodingWindowsWorkerReservedNoEffectReviewV1,
 )
 from loushang.harness.worker.payload._windows_stage_io import (

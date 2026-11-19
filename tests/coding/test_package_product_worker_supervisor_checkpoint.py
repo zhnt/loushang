@@ -8,23 +8,23 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointV1,
 )
-from loushang.coding.package_product_worker_history_checkpoint_anchor import (
+from loushang.coding.package.product_worker_history_checkpoint_anchor import (
     CodingWorkerCheckpointAnchorV1,
     write_coding_worker_checkpoint_anchor,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerSegmentedHistoryV1,
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
 )
-from loushang.coding.package_product_worker_payload import (
+from loushang.coding.package.product_worker_payload import (
     open_coding_product_worker_supervisor_journal,
 )
 from loushang.harness.journal._rooted_io import RootedFileIO

@@ -16,8 +16,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-import loushang.coding.package_product_worker_receipt as p
-import loushang.coding.package_product_worker_windows_receipt as w
+import loushang.coding.package.product_worker_receipt as p
+import loushang.coding.package.product_worker_windows_receipt as w
 import loushang.harness.package_product.product_worker_candidate as c
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,

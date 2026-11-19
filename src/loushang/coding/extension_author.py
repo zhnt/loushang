@@ -25,7 +25,7 @@ from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.bootstrap import create_agent_session, create_services
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
 from loushang.coding.resource_runtime import CodingResourceLoader

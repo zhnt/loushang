@@ -9,21 +9,21 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_product_worker_activation_history import (
+from loushang.coding.package.product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
-from loushang.coding.package_product_worker_receipt import CodingWorkerReceiptRecordV1
-from loushang.coding.package_product_worker_windows_cleanup_evidence import (
+from loushang.coding.package.product_worker_receipt import CodingWorkerReceiptRecordV1
+from loushang.coding.package.product_worker_windows_cleanup_evidence import (
     CodingWindowsWorkerCleanupEvidenceAuthority,
     CodingWindowsWorkerLiveCleanupReviewV1,
 )
-from loushang.coding.package_product_worker_windows_orphan_review import (
+from loushang.coding.package.product_worker_windows_orphan_review import (
     CodingWindowsWorkerOrphanRuntimeReviewV1,
 )
-from loushang.coding.package_product_worker_windows_provisioning_journal import (
+from loushang.coding.package.product_worker_windows_provisioning_journal import (
     WindowsWorkerProvisioningAttemptV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
 )
 from loushang.harness.worker._native_profile_bridge import (

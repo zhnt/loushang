@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
-import loushang.coding.package_product_worker_activation_state_journal as activation_module
-from loushang.coding.package_product_worker_activation_state_journal import (
+import loushang.coding.package.product_worker_activation_state_journal as activation_module
+from loushang.coding.package.product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )
 from loushang.harness.worker.activation_state_journal import (

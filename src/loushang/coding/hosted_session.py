@@ -90,9 +90,7 @@ from .hosted_user_choice import (
     pending_choice_from_transcript,
 )
 from .hosted_workspace import CodingHostedWorkspace
-from .package_product_runtime import (
-    CodingFencedProductApplicationSelection,
-)
+from .package.product_runtime import CodingFencedProductApplicationSelection
 from .resume_history import CodingResumeHistoryPreview
 from .resume_input_lookup import (
     CodingResumeInputLookupQueryV1,

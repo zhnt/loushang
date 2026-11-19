@@ -29,7 +29,7 @@ from ._plugin_lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from .package_product_management_cli import (
+from .package.product_management_cli import (
     build_coding_fenced_product_management_cli_ports,
     coding_fenced_product_exists,
 )

@@ -69,7 +69,7 @@ from .hosted_session import (
     _resolve_hosted_saved_model,
 )
 from .hosted_workspace import CodingHostedWorkspace
-from .package_product_runtime import CodingFencedProductApplicationSelection
+from .package.product_runtime import CodingFencedProductApplicationSelection
 from .resume_activation_plan import SessionActivationPlanV1
 from .resume_input_lookup import (
     CodingResumeInputLookupQueryV1,

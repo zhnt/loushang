@@ -15,7 +15,7 @@ from loushang.coding._base_plugin import (
     prepare_coding_base_product_plan,
 )
 from loushang.coding.composition_sets import CodingCompositionSetPlan
-from loushang.coding.package_legacy_data_trust import (
+from loushang.coding.package.legacy_data_trust import (
     EXTERNAL_DATA_TRUST_CLASSES,
     EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
     permits_external_data_owner,

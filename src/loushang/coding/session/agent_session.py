@@ -67,7 +67,7 @@ from loushang.coding.lsp.commands import (
 )
 from loushang.coding.lsp.runtime import CodingLspSessionAccess
 from loushang.coding.lsp.status import LspSessionStatus, disabled_lsp_session_status
-from loushang.coding.package_product_runtime import CodingProductWorkspaceWitnessV1
+from loushang.coding.package.product_runtime import CodingProductWorkspaceWitnessV1
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -189,10 +189,10 @@ from loushang.harness.workspace.exec import ExecResult, ExecService, ExecUpdateC
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 if TYPE_CHECKING:
-    from loushang.coding.package_product_worker_session_composition import (
+    from loushang.coding.package.product_worker_session_composition import (
         CodingProductWorkerOrdinarySessionBinding,
     )
-    from loushang.coding.package_product_worker_turn_tool import (
+    from loushang.coding.package.product_worker_turn_tool import (
         CodingWorkerTurnToolBinding,
     )
 
@@ -606,7 +606,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         ):
             raise ValueError("Coding base Product cannot mix Plugin session routes")
         if coding_product_worker_ordinary_binding is not None:
-            from loushang.coding.package_product_worker_session_composition import (
+            from loushang.coding.package.product_worker_session_composition import (
                 CodingProductWorkerOrdinarySessionBinding,
                 validate_coding_product_worker_ordinary_session_inputs,
             )
@@ -1204,7 +1204,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
     async def query_worker_symbol(self, symbol: str) -> str:
         """Use the explicitly selected, read-only Coding Worker query facet."""
 
-        from loushang.coding.package_product_worker_query_consumer import (
+        from loushang.coding.package.product_worker_query_consumer import (
             bind_coding_worker_query_consumer,
         )
 

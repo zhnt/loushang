@@ -17,7 +17,7 @@ from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.interaction.resume_history import (
     build_coding_resume_history_screen,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.resume_activation_attempt import CodingActivationAttemptV1

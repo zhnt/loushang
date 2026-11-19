@@ -13,8 +13,8 @@ from loushang.coding._plugin_lifecycle import (
 )
 from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.control import SettingsManager
-from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.session_manager import SessionManager

@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from loushang.coding.package_legacy_configured_source import (
+from loushang.coding.package.legacy_configured_source import (
     match_coding_legacy_local_skill_configured_source,
 )
 

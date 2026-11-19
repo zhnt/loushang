@@ -48,7 +48,7 @@ def run_probe(kind: str, case: str) -> dict[str, object]:
         owner = transaction
     else:
         restore_module = importlib.import_module(
-            "loushang.coding.package_private_data_windows_restore_journal"
+            'loushang.coding.package.private_data_windows_restore_journal'
         )
         owner = restore_module.CodingWindowsArchPrivateDataRestoreTransaction(
             SimpleNamespace(), product, 7

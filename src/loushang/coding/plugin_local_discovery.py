@@ -28,8 +28,8 @@ from ._resource_catalog_adapter import (
     CodingResourceCatalogAdmissionError,
     build_coding_initial_resource_catalog_adapter,
 )
-from .package_product_management_cli import coding_fenced_product_exists
-from .package_product_preview import CodingFencedProductReadOnlyPreviewOwner
+from .package.product_management_cli import coding_fenced_product_exists
+from .package.product_preview import CodingFencedProductReadOnlyPreviewOwner
 from .plugin_management_preview import _capture_disabled_skills
 from .plugin_management_read_sdk import CodingPluginManagementReadClientV1
 from .resource_runtime import CodingResourceLoader

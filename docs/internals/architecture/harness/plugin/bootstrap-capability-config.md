@@ -20,7 +20,7 @@
 | 输入已由原分支选定 | 同文件 1500–1531、1687–1720 记录 desired selection、维护 enabled IDs；空集合不进入配置块 | helper 仅消费原选定 list，不重新捕获、排序、过滤或修改它 |
 | 配置前已建立本分支临时状态 | 1533–1551、1722–1742；`arch_private_ephemeral_state` 为原外层 cell，后续还交接 cleanup | 保留原赋值和 owner；不把这些状态转给新 helper |
 | 配置表达式有顺序与副作用 | LSP 先构造；Arch 先求 `workspace_root`，再求 temporary Path 或 prepare 私有根，然后构造配置 | 不把 Arch path 作为预先求好的 helper 参数 |
-| 私有根准备有当前性与目录操作 | [private-data adapter](../../../../../src/loushang/coding/package_installation_private_data.py#L109) 109–173 校验安装/Session、捕获 selected manifest、准备私有目录；Windows 处理身份/ACL 后再次捕获 | 继续调用原 adapter、原参数、原阶段；不缓存 Path 或授权结果 |
+| 私有根准备有当前性与目录操作 | [private-data adapter](../../../../../src/loushang/coding/package/installation_private_data.py#L109) 109–173 校验安装/Session、捕获 selected manifest、准备私有目录；Windows 处理身份/ACL 后再次捕获 | 继续调用原 adapter、原参数、原阶段；不缓存 Path 或授权结果 |
 | 原两个 composer try 仅从配置块之后开始 | bootstrap 1581–1608 和 1772–1811 | helper 调用仍在各原 try 之前，不扩大捕获范围或修复原清理语义 |
 
 LSP 配置 constructor [173–229 行](../../../../../src/loushang/coding/lsp/_provider_api.py#L173) 自身负责路径、Definitions 与环境校验/正规化；Arch 配置 constructor [115–159 行](../../../../../src/loushang/coding/arch/_provider_api.py#L115) 负责路径与 quota。新函数不再复制这些规则。

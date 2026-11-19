@@ -15,7 +15,7 @@ from loushang.coding._plugin_lifecycle import (
 )
 from loushang.coding.cli.application import run_cli
 from loushang.coding.cli.package_cutover import main as cutover_cli_main
-from loushang.coding.package_product_preview import (
+from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
 )
 from loushang.coding.resource_runtime import CodingResourceLoader

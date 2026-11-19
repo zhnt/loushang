@@ -15,8 +15,6 @@ from unittest.mock import patch
 import pytest
 
 from loushang.ai.model import Capabilities, Model
-from loushang.coding import package_legacy_removed_adoption as removed_adoption_module
-from loushang.coding import package_legacy_source_consumption as source_consumption
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
@@ -29,33 +27,33 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.package_epoch_layout import (
+from loushang.coding.package import legacy_removed_adoption as removed_adoption_module
+from loushang.coding.package import legacy_source_consumption as source_consumption
+from loushang.coding.package.epoch_layout import (
     resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
 )
-from loushang.coding.package_legacy_binding_catalog import CodingLegacyBindingError
-from loushang.coding.package_legacy_builtin_review import (
+from loushang.coding.package.legacy_binding_catalog import CodingLegacyBindingError
+from loushang.coding.package.legacy_builtin_review import (
     CodingLegacyBuiltinOnlyReviewV1,
 )
-from loushang.coding.package_legacy_lock_evidence import (
+from loushang.coding.package.legacy_lock_evidence import (
     parse_coding_legacy_local_binding_heads,
 )
-from loushang.coding.package_legacy_removed_adoption import (
+from loushang.coding.package.legacy_removed_adoption import (
     adopt_coding_first_b_removed_local,
 )
-from loushang.coding.package_legacy_removed_review import (
+from loushang.coding.package.legacy_removed_review import (
     CodingLegacyRemovedReviewV1,
     admit_coding_removed_local_snapshot,
     review_coding_first_b_removed_local,
 )
-from loushang.coding.package_legacy_review import (
-    CodingLegacyLocalAdoptionReviewV1,
-)
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.legacy_review import CodingLegacyLocalAdoptionReviewV1
+from loushang.coding.package.pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     _bootstrap_coding_builtin_plugin,
     open_coding_fenced_product_application_owner,

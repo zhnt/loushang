@@ -23,20 +23,20 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from loushang.coding._plugin_lifecycle import (  # noqa: E402
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_runtime import (  # noqa: E402
+from loushang.coding.package.product_runtime import (  # noqa: E402
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_payload import (  # noqa: E402
+from loushang.coding.package.product_worker_payload import (  # noqa: E402
     open_coding_product_worker_supervisor_journal,
 )
-from loushang.coding.package_product_worker_posix_gc_history import (  # noqa: E402
+from loushang.coding.package.product_worker_posix_gc_history import (  # noqa: E402
     CodingPosixWorkerGcHistoryAuthority,
 )
-from loushang.coding.package_product_worker_registered_recovery import (  # noqa: E402
+from loushang.coding.package.product_worker_registered_recovery import (  # noqa: E402
     recover_coding_product_worker_registered_no_effect,
     review_coding_product_worker_registered_orphan,
 )
-from loushang.coding.package_product_worker_start_gate_journal import (  # noqa: E402
+from loushang.coding.package.product_worker_start_gate_journal import (  # noqa: E402
     CodingWorkerStartGateJournal,
 )
 from loushang.harness.package_product.product_root_gc_runtime import (  # noqa: E402

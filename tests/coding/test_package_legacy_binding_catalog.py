@@ -8,18 +8,16 @@ from typing import Literal
 
 import pytest
 
-from loushang.coding.package_legacy_binding_catalog import (
+from loushang.coding.package.legacy_binding_catalog import (
     CodingLegacyBindingError,
     CodingLegacyLocalBindingCatalog,
     CodingLegacyLocalBindingV1,
 )
-from loushang.coding.package_legacy_local_acceptance import (
+from loushang.coding.package.legacy_local_acceptance import (
     CodingLegacyLocalAcceptanceV1,
 )
-from loushang.coding.package_legacy_local_wheel import (
-    CodingLegacyLocalWheelCandidateV1,
-)
-from loushang.coding.package_legacy_review import CodingLegacyLocalAdoptionReviewV1
+from loushang.coding.package.legacy_local_wheel import CodingLegacyLocalWheelCandidateV1
+from loushang.coding.package.legacy_review import CodingLegacyLocalAdoptionReviewV1
 from loushang.harness.journal import JournalCodecError, journal_file_lock
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,

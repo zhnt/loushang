@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_preview as code
+import loushang.coding.package.product_preview as code
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,

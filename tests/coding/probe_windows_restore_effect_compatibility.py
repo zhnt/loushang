@@ -50,23 +50,23 @@ CASES = (
 
 
 def _observe(case, base, monkeypatch):
-    from loushang.coding.package_private_data_deletion_preview import (
+    from loushang.coding.package.private_data_deletion_preview import (
         CodingArchPrivateDataMemberV1 as Member,
     )
-    from loushang.coding.package_private_data_deletion_preview import (
+    from loushang.coding.package.private_data_deletion_preview import (
         CodingArchPrivateDataTargetSnapshotV1 as Snapshot,
     )
-    from loushang.coding.package_private_data_restore_records import (
+    from loushang.coding.package.private_data_restore_records import (
         CodingArchPrivateDataRestorePlanV1,
     )
     from loushang.harness.plugin_management.records import PluginInstallationKeyV1
     from loushang.harness.resources.packages._tree_observation import metadata_identity
 
     owner_module = importlib.import_module(
-        "loushang.coding.package_private_data_windows_restore_owner"
+        'loushang.coding.package.private_data_windows_restore_owner'
     )
     adapter = importlib.import_module(
-        "loushang.coding.package_private_data_windows_restore_journal"
+        'loushang.coding.package.private_data_windows_restore_journal'
     )
     core = importlib.import_module(
         "loushang.harness.plugin_management._private_data_restore_windows"

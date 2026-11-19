@@ -55,7 +55,7 @@ from .bootstrap import (
 )
 from .composition_sets import resolve_coding_composition_set
 from .hosted_workspace import CodingHostedWorkspace
-from .package_product_runtime import CodingFencedProductApplicationSelection
+from .package.product_runtime import CodingFencedProductApplicationSelection
 from .resume_activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,

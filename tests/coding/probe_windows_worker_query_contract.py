@@ -13,13 +13,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import package_product_worker_windows_orphan_review as orphan
-from loushang.coding import package_product_worker_windows_payload_inventory as payload
-from loushang.coding import (
-    package_product_worker_windows_recovery_inventory as recovery,
+from loushang.coding.package import product_worker_windows_orphan_review as orphan
+from loushang.coding.package import product_worker_windows_payload_inventory as payload
+from loushang.coding.package import (
+    product_worker_windows_recovery_inventory as recovery,
 )
-from loushang.coding import (
-    package_product_worker_windows_stage_retirement as retirement,
+from loushang.coding.package import (
+    product_worker_windows_stage_retirement as retirement,
 )
 from loushang.harness.package_product import _windows_worker_recovery as recovery_owner
 from loushang.harness.package_product import _worker_windows_attempt as product_queries
@@ -443,8 +443,8 @@ def test_payload_and_native_share_original_gc_read_program(
         target = payload.inspect_coding_windows_product_worker_payload_attempts
         leaf = "inspect_windows_worker_payload_stages"
     else:
-        from loushang.coding import (
-            package_product_worker_windows_provisioning as native,
+        from loushang.coding.package import (
+            product_worker_windows_provisioning as native,
         )
 
         module = native

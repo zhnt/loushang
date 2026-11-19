@@ -40201,8 +40201,8 @@
     "evidence": "a70-linux-product-native-release/observations-stable; original source guards unchanged; original random-name observations retained separately",
     "observer_sha256": "5a22ebf6a4aaea7d14da1c6beefc8e197fb9278051e3d51c050596caad60f1d3",
     "source": {
-      "package_product_worker_installed_native.py": "37a6d190243e660f7f64fda98440025715401976b3e8a37a2b17c16fda54c9c2",
-      "package_product_worker_native_install.py": "f8df22d51d92dab175a7f5727f87be99f3a3f8fc1dac564128ec24510d1894be"
+      "package/product_worker_installed_native.py": "37a6d190243e660f7f64fda98440025715401976b3e8a37a2b17c16fda54c9c2",
+      "package/product_worker_native_install.py": "f8df22d51d92dab175a7f5727f87be99f3a3f8fc1dac564128ec24510d1894be"
     }
   }
 }

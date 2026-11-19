@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_product_worker_start_gate_journal import (
+from loushang.coding.package.product_worker_start_gate_journal import (
     CodingWorkerStartGateJournal,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (

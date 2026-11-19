@@ -58,7 +58,7 @@
         ".github/workflows/worker-registered-reboot-drill.yml",
         "scripts/dev/worker_registered_reboot_drill.py",
         "scripts/dev/worker_registered_qemu_reboot_drill.sh",
-        "src/loushang/coding/package_product_worker_registered_recovery.py",
+        "src/loushang/coding/package/product_worker_registered_recovery.py",
         "tests/coding/test_package_worker_candidate_wheel.py"
       ],
       "checks": ["registered_reboot"],
@@ -298,14 +298,14 @@
     },
     {
       "paths": [
-        "src/loushang/coding/package_legacy_*",
-        "src/loushang/coding/package_pre_b_snapshot.py",
-        "src/loushang/coding/package_installation_private_data.py",
-        "src/loushang/coding/package_product_runtime.py",
+        "src/loushang/coding/package/legacy_*",
+        "src/loushang/coding/package/pre_b_snapshot.py",
+        "src/loushang/coding/package/installation_private_data.py",
+        "src/loushang/coding/package/product_runtime.py",
         "src/loushang/coding/bootstrap.py",
         "src/loushang/coding/hosted_session.py",
-        "src/loushang/coding/package_external_worker_wheel.py",
-        "src/loushang/coding/package_epoch_layout.py",
+        "src/loushang/coding/package/external_worker_wheel.py",
+        "src/loushang/coding/package/epoch_layout.py",
         "src/loushang/coding/cli/package_cutover.py",
         "src/loushang/coding/cli/package_gc.py",
         "tests/coding/test_package_windows_*",
@@ -320,10 +320,10 @@
     },
     {
       "paths": [
-        "src/loushang/coding/package_private_data_windows_*.py",
-        "src/loushang/coding/package_private_data_restore_records.py",
+        "src/loushang/coding/package/private_data_windows_*.py",
+        "src/loushang/coding/package/private_data_restore_records.py",
         "tests/coding/test_package_private_data_windows_*.py",
-        "src/loushang/coding/package_private_data_backup_records.py",
+        "src/loushang/coding/package/private_data_backup_records.py",
         "src/loushang/foundation/windows_private_acl.py",
         "src/loushang/harness/package_product/product_local_wheel_runtime.py"
       ],
@@ -460,7 +460,7 @@
     },
     {
       "paths": [
-        "src/loushang/coding/package_product_worker_*.py",
+        "src/loushang/coding/package/product_worker_*.py",
         "src/loushang/coding/cli/package_worker_native.py",
         "src/loushang/plugin/__init__.py",
         "src/loushang/plugin/__main__.py",

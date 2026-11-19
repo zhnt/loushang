@@ -9,12 +9,12 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_legacy_desired_evidence import (
+from loushang.coding.package.legacy_desired_evidence import (
     CodingLegacyDesiredError,
     parse_coding_legacy_desired_evidence,
     read_coding_legacy_desired_evidence,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
 )

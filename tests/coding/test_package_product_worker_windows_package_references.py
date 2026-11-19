@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_backup_types import (
+from loushang.coding.package.product_backup_types import (
     CodingWorkerBackupReferenceObservationV1,
 )
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     _coding_windows_worker_desired_history_digest,
 )
-from loushang.coding.package_product_worker_windows_package_references import (
+from loushang.coding.package.product_worker_windows_package_references import (
     CodingWindowsWorkerPackageReferenceReviewV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (

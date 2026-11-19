@@ -48,9 +48,9 @@ FIXTURE = Path(__file__).with_name("fixtures") / "posix_expiry_journal_v1.json"
 
 def observe(case, base, monkeypatch):
     mod = importlib.import_module(
-        "loushang.coding.package_private_data_backup_expiry_journal"
+        'loushang.coding.package.private_data_backup_expiry_journal'
     )
-    from loushang.coding.package_private_data_deletion_preview import (
+    from loushang.coding.package.private_data_deletion_preview import (
         CodingArchPrivateDataTargetSnapshotV1,
     )
     from loushang.harness.plugin_management.records import PluginInstallationKeyV1

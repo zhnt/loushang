@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointError,
     CodingWorkerHistoryCheckpointV1,
     _anchor_for_records,
@@ -17,20 +17,20 @@ from loushang.coding.package_product_worker_history_checkpoint import (
     _read_records_or_repair_empty_bootstrap,
     read_coding_worker_checkpoint_writer_fence,
 )
-from loushang.coding.package_product_worker_history_checkpoint_anchor import (
+from loushang.coding.package.product_worker_history_checkpoint_anchor import (
     ANCHOR_NAME,
     CodingWorkerCheckpointAnchorError,
     CodingWorkerCheckpointAnchorV1,
     read_coding_worker_checkpoint_anchor,
     write_coding_worker_checkpoint_anchor,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
     rollback_coding_worker_uncommitted_active_tail,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
 )
@@ -204,7 +204,9 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                     )
                     == settled
                 )
-                from loushang.coding import package_product_worker_history_checkpoint
+                from loushang.coding.package import (
+                    product_worker_history_checkpoint as package_product_worker_history_checkpoint,
+                )
 
                 with monkeypatch.context() as limits:
                     limits.setattr(

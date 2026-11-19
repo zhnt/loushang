@@ -7,21 +7,21 @@ from hashlib import sha256
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceFileV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_launch_intent import (
+from loushang.coding.package.product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentV1,
 )
-from loushang.coding.package_product_worker_windows_launch_intent_base import (
+from loushang.coding.package.product_worker_windows_launch_intent_base import (
     CodingWindowsWorkerLaunchIntentSemanticBaseV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
     CodingWindowsWorkerRecoveryAttemptV1,
 )

@@ -724,12 +724,12 @@
   },
   "original_head": "f2c7a6fe79ae246aa13f128a2d423a5c740e1134",
   "original_sources": {
-    "src/loushang/coding/package_product_worker_gc_references.py": "e325fde0e88f5c2079b814c6af48b6b570c72265fab90bec196d5ba565741193",
-    "src/loushang/coding/package_product_worker_history_retention.py": "d70502fd399f69b01de92fc5e8a7bfb193b22455c3c4bd8d628000d61a4c25d5",
-    "src/loushang/coding/package_product_worker_posix_gc_history.py": "37c6040e01b4012e5c9aa46eec8e93e683a2676248ceb94fe9f525f5093798a7",
-    "src/loushang/coding/package_product_worker_receipt.py": "36a26fa92721892f8a4782d3e40c9a6ad833b741ffbbb718081bd5ced20aaa84",
-    "src/loushang/coding/package_product_worker_registered_payload_repair.py": "f15543141776cb0f13fcac07f182f012ef3f81f4e925b55f9d879148c389207d",
-    "src/loushang/coding/package_product_worker_start_gate_recovery.py": "9628c983845b3a4849703edf730fb27ca924fafa57c36d74fe9c5b197d82d71b"
+    "src/loushang/coding/package/product_worker_gc_references.py": "e325fde0e88f5c2079b814c6af48b6b570c72265fab90bec196d5ba565741193",
+    "src/loushang/coding/package/product_worker_history_retention.py": "d70502fd399f69b01de92fc5e8a7bfb193b22455c3c4bd8d628000d61a4c25d5",
+    "src/loushang/coding/package/product_worker_posix_gc_history.py": "37c6040e01b4012e5c9aa46eec8e93e683a2676248ceb94fe9f525f5093798a7",
+    "src/loushang/coding/package/product_worker_receipt.py": "36a26fa92721892f8a4782d3e40c9a6ad833b741ffbbb718081bd5ced20aaa84",
+    "src/loushang/coding/package/product_worker_registered_payload_repair.py": "f15543141776cb0f13fcac07f182f012ef3f81f4e925b55f9d879148c389207d",
+    "src/loushang/coding/package/product_worker_start_gate_recovery.py": "9628c983845b3a4849703edf730fb27ca924fafa57c36d74fe9c5b197d82d71b"
   },
   "reflection": {
     "CodingWorkerAttemptReferenceV1": {

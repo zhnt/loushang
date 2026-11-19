@@ -10,30 +10,30 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     read_coding_product_worker_history_checkpoints_under_gc_guard,
 )
-from loushang.coding.package_product_worker_history_commit_v2 import (
+from loushang.coding.package.product_worker_history_commit_v2 import (
     CodingWorkerV2OwnerCommitError,
     commit_coding_product_worker_v2_owner,
     commit_coding_worker_v2_owner_under_guard,
 )
-from loushang.coding.package_product_worker_history_read_v2 import (
+from loushang.coding.package.product_worker_history_read_v2 import (
     CodingWorkerV2ReadError,
 )
-from loushang.coding.package_product_worker_history_retire_v2 import (
+from loushang.coding.package.product_worker_history_retire_v2 import (
     retire_coding_product_worker_v2_history,
 )
-from loushang.coding.package_product_worker_history_segments import _head_name
-from loushang.coding.package_product_worker_history_stage_v2 import (
+from loushang.coding.package.product_worker_history_segments import _head_name
+from loushang.coding.package.product_worker_history_stage_v2 import (
     CodingWorkerV2PreparationError,
     rollback_coding_worker_v2_preparation,
     stage_coding_product_worker_v2_preparation,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
 )
-from loushang.coding.package_product_worker_history_v2_names import (
+from loushang.coding.package.product_worker_history_v2_names import (
     PRODUCT_OWNER_INDEX_NAME,
 )
 from loushang.harness.journal._rooted_io import RootedFile

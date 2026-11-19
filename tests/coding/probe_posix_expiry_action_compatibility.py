@@ -39,21 +39,21 @@ FIXTURE = Path(__file__).with_name("fixtures") / "posix_expiry_action_v1.json"
 
 
 def observe(case, base, monkeypatch):
-    from loushang.coding.package_private_data_backup_expiry_journal import (
+    from loushang.coding.package.private_data_backup_expiry_journal import (
         CodingArchPrivateDataBackupExpiryJournal as Journal,
     )
-    from loushang.coding.package_private_data_backup_expiry_records import (
+    from loushang.coding.package.private_data_backup_expiry_records import (
         CodingArchPrivateDataBackupExpiryConfirmationV1 as Confirmation,
     )
-    from loushang.coding.package_private_data_backup_expiry_records import (
+    from loushang.coding.package.private_data_backup_expiry_records import (
         CodingArchPrivateDataBackupExpiryPlanV1 as Plan,
     )
-    from loushang.coding.package_private_data_backup_expiry_records import (
+    from loushang.coding.package.private_data_backup_expiry_records import (
         CodingArchPrivateDataBackupExpiryReceiptV1 as Receipt,
     )
     from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
-    code = importlib.import_module("loushang.coding.package_private_data_backup_expiry")
+    code = importlib.import_module('loushang.coding.package.private_data_backup_expiry')
     cls = code.CodingArchPrivateDataBackupExpiryOwner
     core = (
         importlib.import_module(

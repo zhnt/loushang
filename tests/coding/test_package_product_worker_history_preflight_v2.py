@@ -10,12 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import package_product_worker_history_preflight_v2 as preflight
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package import product_worker_history_preflight_v2 as preflight
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     initialize_coding_worker_active_head,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     capture_coding_worker_history_streams_under_gc_guard,
     read_coding_worker_histories_under_gc_guard,

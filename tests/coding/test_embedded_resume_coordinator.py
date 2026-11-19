@@ -15,10 +15,10 @@ from loushang.coding.embedded_resume import (
     EmbeddedResumeApprovalInteraction,
     EmbeddedResumeInputCoordinator,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
-from loushang.coding.package_product_worker_resume import (
+from loushang.coding.package.product_worker_resume import (
     prepare_coding_worker_resume_effect_owner,
 )
 from loushang.coding.resume_activation_attempt_v2 import CodingActivationAttemptV2

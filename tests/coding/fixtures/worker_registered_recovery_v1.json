@@ -431,12 +431,12 @@
   "original": {
     "head": "9756a965df7cbd4c25b0c8ff783ecc6b34b76502",
     "sources": {
-      "src/loushang/coding/package_product_worker_activation_state.py": "2313329e19acfd15d2853bf411094e12b8e65de37cb4b7b4a32c926824c4b992",
-      "src/loushang/coding/package_product_worker_cleanup_evidence.py": "4c30a41c6675c36b49b55ef9a0e9689e7b6057c0e84d64afbbddebd24123fb3b",
-      "src/loushang/coding/package_product_worker_crash_c5_settlement.py": "0abac69de136e03f417e6e5d7071a329b15947cbe591fd4cb42f12c73004dc52",
-      "src/loushang/coding/package_product_worker_registered_c5_settlement.py": "4e651980106b368fa0277609cbadae940d913f5c565c2545c80b214e9e1deffa",
-      "src/loushang/coding/package_product_worker_registered_payload_repair.py": "1c9a00483d69ba2fce97ea409749ffb94250d7c45dc8a94c50f4c4db4523de8a",
-      "src/loushang/coding/package_product_worker_registered_recovery.py": "a4f687231e216b4c9e46731f673b2ee6df071f8cbd1c909d5fe6b2d76d0f64b7",
+      "src/loushang/coding/package/product_worker_activation_state.py": "2313329e19acfd15d2853bf411094e12b8e65de37cb4b7b4a32c926824c4b992",
+      "src/loushang/coding/package/product_worker_cleanup_evidence.py": "4c30a41c6675c36b49b55ef9a0e9689e7b6057c0e84d64afbbddebd24123fb3b",
+      "src/loushang/coding/package/product_worker_crash_c5_settlement.py": "0abac69de136e03f417e6e5d7071a329b15947cbe591fd4cb42f12c73004dc52",
+      "src/loushang/coding/package/product_worker_registered_c5_settlement.py": "4e651980106b368fa0277609cbadae940d913f5c565c2545c80b214e9e1deffa",
+      "src/loushang/coding/package/product_worker_registered_payload_repair.py": "1c9a00483d69ba2fce97ea409749ffb94250d7c45dc8a94c50f4c4db4523de8a",
+      "src/loushang/coding/package/product_worker_registered_recovery.py": "a4f687231e216b4c9e46731f673b2ee6df071f8cbd1c909d5fe6b2d76d0f64b7",
       "src/loushang/harness/package_product/_linux_worker_history.py": "89fd8bf76cd540fca391309b6481d4f7edc6ed60f4b078533bae07575d6ad84e",
       "src/loushang/harness/worker/history/_retention.py": "08bf19e2f3438baf5775a0bfe3185d72ae80e3aa5cf1ada0da3a88c8da098c64",
       "src/loushang/harness/worker/payload/_repair.py": "8ec779fb128aee51ee33275a5fb35d3f9d3114c62dfa1fa6e04ba5982a06e804",

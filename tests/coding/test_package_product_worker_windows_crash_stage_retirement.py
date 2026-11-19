@@ -8,15 +8,15 @@ from typing import Any
 
 import pytest
 
-import loushang.coding.package_product_worker_windows_crash_stage_retirement as retirement
-import loushang.coding.package_product_worker_windows_stage_retirement as stage_retirement
+import loushang.coding.package.product_worker_windows_crash_stage_retirement as retirement
+import loushang.coding.package.product_worker_windows_stage_retirement as stage_retirement
 import loushang.harness.package_product._windows_worker_recovery as recovery_owner
 import loushang.harness.package_product._windows_worker_retirement as retirement_owner
 import loushang.harness.package_product._worker_windows_attempt as worker_attempt
-from loushang.coding.package_product_worker_windows_crash_stage_review import (
+from loushang.coding.package.product_worker_windows_crash_stage_review import (
     CodingWindowsWorkerCrashStageReviewV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
     _current_after_verified_retirements_under_gc_guard,
 )

@@ -163,7 +163,7 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
     # The read-only Product preview lists Catalog-selected Skill identities;
     # it does not read Skill bodies or activate the previewed composition.
     (
-        Path("src/loushang/coding/package_product_preview.py"),
+        Path("src/loushang/coding/package/product_preview.py"),
         "CodingFencedProductReadOnlyPreviewOwner.preview_current_data_resources",
     ),
     # The Catalog bootstrap projects immutable Skill summaries for the
@@ -612,7 +612,7 @@ def test_rcp0_skill_fallback_is_deleted_and_eager_body_sinks_are_exact() -> None
             expected_skill_sites
             - {
                 (
-                    Path("src/loushang/coding/package_product_preview.py"),
+                    Path("src/loushang/coding/package/product_preview.py"),
                     "CodingFencedProductReadOnlyPreviewOwner.preview_current_data_resources",
                 )
             }

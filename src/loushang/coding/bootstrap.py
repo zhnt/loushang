@@ -113,16 +113,16 @@ from loushang.coding.lsp.discovery import (
 )
 from loushang.coding.lsp.model import LspServerDefinition
 from loushang.coding.lsp.ports import WorkspaceTextReader
-from loushang.coding.package_installation_private_data import (
+from loushang.coding.package.installation_private_data import (
     prepare_coding_product_arch_private_data_root,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingApplicationWorkerProductRuntimeFactory,
     CodingFencedProductApplicationSelection,
     CodingSessionOwnedProductRuntimeFactory,
     bind_coding_product_workspace_witness,
 )
-from loushang.coding.package_product_worker_ordinary_error import (
+from loushang.coding.package.product_worker_ordinary_error import (
     CodingWorkerOrdinaryBootstrapError,
 )
 from loushang.coding.plugin_enablement_compatibility import (
@@ -2210,7 +2210,7 @@ def _create_agent_session(
         )
         worker_ordinary_binding = None
         if worker_candidate_plugin_id is not None:
-            from loushang.coding.package_product_worker_ordinary_bootstrap import (
+            from loushang.coding.package.product_worker_ordinary_bootstrap import (
                 prepare_coding_product_worker_ordinary_binding,
             )
 
@@ -2237,7 +2237,7 @@ def _create_agent_session(
         worker_turn_tool = None
         worker_tool_registry = registry
         if worker_ordinary_binding is not None and worker_query_turn_tool:
-            from loushang.coding.package_product_worker_turn_tool import (
+            from loushang.coding.package.product_worker_turn_tool import (
                 CODING_WORKER_QUERY_TOOL_NAME,
                 CodingWorkerTurnToolBinding,
             )

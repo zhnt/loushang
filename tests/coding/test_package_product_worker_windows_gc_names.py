@@ -10,18 +10,18 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding.package_product_worker_activation_history import (
+from loushang.coding.package.product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
-from loushang.coding.package_product_worker_windows_gc_history import (
+from loushang.coding.package.product_worker_windows_gc_history import (
     _require_c5_gc_history,
     _require_known_windows_worker_state_names,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySourceFileV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
 )
 
@@ -96,19 +96,19 @@ def test_windows_worker_history_source_capture_is_private_and_fail_closed(
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.package_pre_b_snapshot import (
+    from loushang.coding.package.pre_b_snapshot import (
         cutover_and_bootstrap_coding_package_product,
     )
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.package_product_worker_windows_checkpoint import (
+    from loushang.coding.package.product_worker_windows_checkpoint import (
         publish_coding_windows_worker_history_checkpoint,
     )
-    from loushang.coding.package_product_worker_windows_history_preparation import (
+    from loushang.coding.package.product_worker_windows_history_preparation import (
         prepare_coding_windows_worker_history,
     )
-    from loushang.coding.package_product_worker_windows_history_sources import (
+    from loushang.coding.package.product_worker_windows_history_sources import (
         CodingWindowsWorkerHistorySemanticReadV1,
         capture_coding_windows_worker_history_sources,
         read_coding_windows_worker_history_semantics,

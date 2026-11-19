@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import package_product_worker_windows_history_sources as sources
+from loushang.coding.package import product_worker_windows_history_sources as sources
 from tests.coding.probe_windows_recovery_value_compatibility import canonical, outcome
 
 pytestmark = pytest.mark.skipif(

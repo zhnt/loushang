@@ -128,7 +128,7 @@ def _hold_process_startup_lease(
     layout: CodingPluginLifecycleStateLayout, *, startup_id: str
 ) -> bool:
     def resolve_epoch() -> _legacy_runtime._LegacyEpoch:
-        from loushang.coding.package_epoch_layout import (
+        from loushang.coding.package.epoch_layout import (
             resolve_coding_package_epoch_layout,
         )
 

@@ -289,7 +289,7 @@ async def bind_coding_configured_continuity(
     retry operation.
     """
 
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CodingFencedProductApplicationSelection,
     )
 

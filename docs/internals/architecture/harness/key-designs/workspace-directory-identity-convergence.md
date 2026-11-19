@@ -4,8 +4,8 @@
 
 原[read SDK](../../../../../src/loushang/coding/plugin_management_read_sdk.py)、
 [command SDK](../../../../../src/loushang/coding/plugin_management_command_sdk.py)、
-[backup SDK](../../../../../src/loushang/coding/package_private_data_backup_sdk.py)三份18行guard，
-以及[private read owner](../../../../../src/loushang/coding/package_private_data_read_owner.py)的12行函数，
+[backup SDK](../../../../../src/loushang/coding/package/private_data_backup_sdk.py)三份18行guard，
+以及[private read owner](../../../../../src/loushang/coding/package/private_data_read_owner.py)的12行函数，
 共66方法span，是同一完整程序的四个生产实现。原[Workspace路径组件](../../../../../src/loushang/harness/workspace/paths.py)
 已有路径解析/规范化，但没有相同strict/身份/错误合同，故最小扩充一个固定身份检查入口。
 

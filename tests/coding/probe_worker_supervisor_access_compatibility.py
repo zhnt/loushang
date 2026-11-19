@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_product_worker_supervisor_journal import (
+from loushang.coding.package.product_worker_supervisor_journal import (
     CodingProductWorkerSupervisorJournal,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (

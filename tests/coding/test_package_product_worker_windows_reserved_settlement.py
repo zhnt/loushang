@@ -4,10 +4,10 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_reserved_review import (
+from loushang.coding.package.product_worker_windows_reserved_review import (
     CodingWindowsWorkerReservedNoEffectReviewV1,
 )
-from loushang.coding.package_product_worker_windows_reserved_settlement import (
+from loushang.coding.package.product_worker_windows_reserved_settlement import (
     CodingWindowsWorkerReservedSettlementError,
     _settled_document,
 )

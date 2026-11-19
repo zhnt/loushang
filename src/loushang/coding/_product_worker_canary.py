@@ -49,9 +49,7 @@ from loushang.harness.worker.product_activation import (
 )
 
 if TYPE_CHECKING:
-    from .package_product_worker_start_gate import (
-        CodingProductWorkerStartGate,
-    )
+    from .package.product_worker_start_gate import CodingProductWorkerStartGate
 
 CODING_PRODUCT_WORKER_CANARY_VERSION = 1
 CODING_PRODUCT_WORKER_CANARY_ENTRYPOINTS = ("cli", "product", "tui")
@@ -415,7 +413,7 @@ def bind_coding_product_worker_canary(
     assert activation_state_store is not None
     assert containment_launcher_sha256 is not None
     assert containment_profile_sha256 is not None
-    from .package_product_worker_start_gate import (
+    from .package.product_worker_start_gate import (
         CodingProductWorkerStartGate,
         CodingWorkerStartGateError,
     )

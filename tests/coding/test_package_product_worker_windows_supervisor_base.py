@@ -7,18 +7,18 @@ from hashlib import sha256
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceFileV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_supervisor_base import (
+from loushang.coding.package.product_worker_windows_supervisor_base import (
     CodingWindowsWorkerSupervisorSemanticBaseV1,
 )
 from loushang.harness.worker.journal import WorkerAttemptPhase, WorkerAttemptRecordV1

@@ -7,24 +7,24 @@ from hashlib import sha256
 
 import pytest
 
-from loushang.coding.package_product_worker_opt_in import CodingWorkerOptInDecisionV1
-from loushang.coding.package_product_worker_policy import (
+from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInDecisionV1
+from loushang.coding.package.product_worker_policy import (
     CodingWorkerOptInV1,
     coding_worker_session_scope_id,
 )
-from loushang.coding.package_product_worker_receipt import CodingWorkerReceiptRecordV1
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_receipt import CodingWorkerReceiptRecordV1
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceFileV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_receipt_base import (
+from loushang.coding.package.product_worker_windows_receipt_base import (
     CodingWindowsWorkerReceiptSemanticBaseV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
 )
 from loushang.harness.worker.product_activation import (

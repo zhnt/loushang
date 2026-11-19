@@ -144,7 +144,7 @@ Harness 核心继续不依赖 Coding、HarnessWork/Method、AppService/AppHost�
 
 ### F01 私有数据操作机制大量留在 Product：优先整体替换
 
-31 文件中有 303 个直接 `os.*` 调用点。实际实现包括 [POSIX 备份复制](../../../../src/loushang/coding/package_private_data_backup.py#L304)、[恢复 staging](../../../../src/loushang/coding/package_private_data_restore.py#L370)、[物理删除](../../../../src/loushang/coding/package_private_data_deletion_owner.py#L101)、[过期清理](../../../../src/loushang/coding/package_private_data_backup_expiry.py#L172)及对应 Windows 路径。
+31 文件中有 303 个直接 `os.*` 调用点。实际实现包括 [POSIX 备份复制](../../../../src/loushang/coding/package/private_data_backup.py#L304)、[恢复 staging](../../../../src/loushang/coding/package/private_data_restore.py#L370)、[物理删除](../../../../src/loushang/coding/package/private_data_deletion_owner.py#L101)、[过期清理](../../../../src/loushang/coding/package/private_data_backup_expiry.py#L172)及对应 Windows 路径。
 
 优先复用 Harness rooted IO、现有 tree/file 原语、[私有数据删除协调器](../../../../src/loushang/harness/plugin_management/private_data_deletion.py#L232)和[确认 Journal](../../../../src/loushang/harness/plugin_management/private_data_confirmation.py)。缺口是这些原语与当前私有数据 owner 合同之间的共享执行适配，不是“再建一套安全文件系统”。确认协调器本身只委托；不能把已有端口冒称为完整备份/恢复执行实现。
 
@@ -152,13 +152,13 @@ Harness 核心继续不依赖 Coding、HarnessWork/Method、AppService/AppHost�
 
 ### F02 Worker 已有共享状态机，Product 存储/历史适配仍过厚
 
-[Coding Supervisor Journal](../../../../src/loushang/coding/package_product_worker_supervisor_journal.py#L67)继承原 Harness `WorkerSupervisorJournal`，说明状态迁移引擎已经复用。残留 [分段历史原语](../../../../src/loushang/coding/package_product_worker_history_segments.py)、多条 opt-in/receipt/start-gate/activation 流及 Windows 原生读写，应按统一 rooted/segmented storage 合同收敛。
+[Coding Supervisor Journal](../../../../src/loushang/coding/package/product_worker_supervisor_journal.py#L67)继承原 Harness `WorkerSupervisorJournal`，说明状态迁移引擎已经复用。残留 [分段历史原语](../../../../src/loushang/coding/package/product_worker_history_segments.py)、多条 opt-in/receipt/start-gate/activation 流及 Windows 原生读写，应按统一 rooted/segmented storage 合同收敛。
 
 不要另建 Worker 引擎，也不要把每种 Journal 合成一份“统一业务日志”：启动批准、物理进程结清、声明选用和回执是不同事实。共享的是读取、codec、CAS/append、checkpoint/replay、身份固定和平台操作；Product 保留具体允许与选择政策。110 文件的 41,167 行是审查范围，不是承诺全部删除量。
 
 ### F03 四个 Journal 的重复读取与十处严格 JSON 检查
 
-[删除](../../../../src/loushang/coding/package_private_data_deletion_journal.py#L305)、[恢复](../../../../src/loushang/coding/package_private_data_restore_journal.py#L279)、[过期](../../../../src/loushang/coding/package_private_data_backup_expiry_journal.py#L282)、[恢复确认](../../../../src/loushang/coding/package_private_data_restore_confirmation.py#L274)先调用 `load_jsonl()`，再重新打开文件逐行 `json.loads()` 拒绝重复键。私有数据文件中还有十个 `_unique_object`，主要差异是错误文本。
+[删除](../../../../src/loushang/coding/package/private_data_deletion_journal.py#L305)、[恢复](../../../../src/loushang/coding/package/private_data_restore_journal.py#L279)、[过期](../../../../src/loushang/coding/package/private_data_backup_expiry_journal.py#L282)、[恢复确认](../../../../src/loushang/coding/package/private_data_restore_confirmation.py#L274)先调用 `load_jsonl()`，再重新打开文件逐行 `json.loads()` 拒绝重复键。私有数据文件中还有十个 `_unique_object`，主要差异是错误文本。
 
 应在原 Journal/序列化 owner 对同一份字节完成一次严格解析，保留各记录类型的状态投影。现有通用解析并不等价提供该检查，不能直接删除第二遍、改变旧格式接受范围或扩散全局严格策略。此项是私有数据纵向切片的一部分，不单独建设 JSON 框架或全局缓存。
 
@@ -168,21 +168,21 @@ Harness 核心继续不依赖 Coding、HarnessWork/Method、AppService/AppHost�
 
 | 候选 | 证据 | 合并边界 |
 | --- | --- | --- |
-| entry existence | [Coding backup](../../../../src/loushang/coding/package_private_data_backup.py#L616)、deletion owner、Harness POSIX snapshot/materialization | 同一 `stat(dir_fd, follow_symlinks=False)`；只共享观察，不授予路径操作权 |
+| entry existence | [Coding backup](../../../../src/loushang/coding/package/private_data_backup.py#L616)、deletion owner、Harness POSIX snapshot/materialization | 同一 `stat(dir_fd, follow_symlinks=False)`；只共享观察，不授予路径操作权 |
 | link/reparse | [Coding lifecycle](../../../../src/loushang/coding/_plugin_lifecycle.py#L2100)与[Harness Journal](../../../../src/loushang/harness/journal/jsonl.py#L1229) | 共享分类，原错误/准入留原 owner |
-| deletion receipt / tombstone | [POSIX Journal](../../../../src/loushang/coding/package_private_data_deletion_journal.py#L181)、[Windows transaction](../../../../src/loushang/coding/package_private_data_windows_deletion_journal.py#L139)及两处 tombstone 派生 | 共享纯记录查询/身份；锁、事务活性和持久名称不变 |
+| deletion receipt / tombstone | [POSIX Journal](../../../../src/loushang/coding/package/private_data_deletion_journal.py#L181)、[Windows transaction](../../../../src/loushang/coding/package/private_data_windows_deletion_journal.py#L139)及两处 tombstone 派生 | 共享纯记录查询/身份；锁、事务活性和持久名称不变 |
 | method descriptor | [Hosted application](../../../../src/loushang/coding/hosted_application.py#L901)、[AppHost composition](../../../../src/loushang/coding/apphost_composition.py#L548) | 共用轻量验证机制；Product 端口要求保留 |
 | stream TTY probe | [Coding CLI](../../../../src/loushang/coding/cli/__main__.py#L24)与[Harness host](../../../../src/loushang/harness/host/product_host.py#L321) | 复用原机制，同时保留早期启动的轻量导入约束 |
 | Provider exact mapping | [Arch](../../../../src/loushang/coding/arch/_provider_api.py#L571)与[LSP](../../../../src/loushang/coding/lsp/_provider_api.py#L473) | 算法相同，`_reject` 的领域异常不同；通过已有边界校验/错误投影统一 |
-| Windows Worker raw journal read | [native approval](../../../../src/loushang/coding/package_product_worker_windows_native_approval_journal.py#L305)、[opt-in](../../../../src/loushang/coding/package_product_worker_windows_opt_in_journal.py#L315)、receipt 等 | `_NAME`/上限/stream 校验可能不同，参数化原 native IO，不能删除 ACL 检查 |
-| 完整写入循环 | [Coding backup](../../../../src/loushang/coding/package_private_data_backup.py#L593)、[Continuity](../../../../src/loushang/coding/continuity.py#L1240)、Harness rooted/snapshot IO | offset 续写、fsync、错误语义分别保留；复用已有写原语 |
+| Windows Worker raw journal read | [native approval](../../../../src/loushang/coding/package/product_worker_windows_native_approval_journal.py#L305)、[opt-in](../../../../src/loushang/coding/package/product_worker_windows_opt_in_journal.py#L315)、receipt 等 | `_NAME`/上限/stream 校验可能不同，参数化原 native IO，不能删除 ACL 检查 |
+| 完整写入循环 | [Coding backup](../../../../src/loushang/coding/package/private_data_backup.py#L593)、[Continuity](../../../../src/loushang/coding/continuity.py#L1240)、Harness rooted/snapshot IO | offset 续写、fsync、错误语义分别保留；复用已有写原语 |
 | 私有目录准备 | [Plugin](../../../../src/loushang/coding/_plugin_lifecycle.py#L2134)与[Continuity](../../../../src/loushang/coding/continuity_bootstrap.py#L1437) | 共同准入算法；现有 `create_private_directory_chain` 不负责修改已有目录，不能直接互换 |
 
 部分 `_bind_source` 方法只是重复的薄委托，已经调用同一 `prepare_session_work_source`；不把它升级成第二套执行机制，也不为十行转发引入 mixin/service。字符串相同的 codec 若构造不同领域记录，也只合并机械骨架，不合并事实。
 
 ### F05 私有数据树检查与 Harness 已有机制重叠
 
-[Coding `_verify_files`](../../../../src/loushang/coding/package_private_data_backup.py#L427)自行做完整遍历、成员对照、身份/大小/摘要核验；Harness 已有 [tree validation](../../../../src/loushang/harness/resources/packages/plugin_lifecycle/_tree_validation.py#L45)、POSIX/Windows snapshot IO 与 file sinks。共享树观察和数据传输应优先用原窄端口。
+[Coding `_verify_files`](../../../../src/loushang/coding/package/private_data_backup.py#L427)自行做完整遍历、成员对照、身份/大小/摘要核验；Harness 已有 [tree validation](../../../../src/loushang/harness/resources/packages/plugin_lifecycle/_tree_validation.py#L45)、POSIX/Windows snapshot IO 与 file sinks。共享树观察和数据传输应优先用原窄端口。
 
 私有数据还要求用户/权限、部分备份续接、目标恢复和发布身份；Package manifest 的结构也不同。应以可配置的内容/身份投影接入已有机制，不能把现有 Package 校验器当作全部替代品，更不能复写新的第三套树引擎。并行 Harness lane 的 tree-sink 收敛在实施前优先核对复用。
 

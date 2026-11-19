@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 
-from loushang.coding.package_product_repair import CodingPackageRepairResultV1
-from loushang.coding.package_product_repair_ui import (
+from loushang.coding.package.product_repair import CodingPackageRepairResultV1
+from loushang.coding.package.product_repair_ui import (
     execute_coding_package_repair_ui_command,
 )
 from loushang.coding.plugin_management_ui import (

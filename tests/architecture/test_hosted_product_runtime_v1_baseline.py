@@ -881,13 +881,13 @@ def test_current_worker_route_keeps_explicit_query_separate_and_no_fallback() ->
     required_consumers = {Path("src/loushang/coding/_product_worker_canary.py")}
     assert required_consumers <= consumers <= {
         *required_consumers,
-        Path("src/loushang/coding/package_product_worker_operator_query.py"),
-        Path("src/loushang/coding/package_product_worker_pending_host.py"),
-        Path("src/loushang/coding/package_product_worker_windows_pending_host.py"),
+        Path("src/loushang/coding/package/product_worker_operator_query.py"),
+        Path("src/loushang/coding/package/product_worker_pending_host.py"),
+        Path("src/loushang/coding/package/product_worker_windows_pending_host.py"),
         Path("src/loushang/harness/session/_worker_operator_query.py"),
     }
     explicit_query = _read(
-        Path("src/loushang/coding/package_product_worker_operator_query.py")
+        Path("src/loushang/coding/package/product_worker_operator_query.py")
     )
     assert "async def query_coding_product_worker(" in explicit_query
     assert "WorkerSessionOwnerRouter" not in explicit_query

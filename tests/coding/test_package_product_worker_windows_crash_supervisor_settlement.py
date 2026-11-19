@@ -6,16 +6,16 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_worker_windows_crash_supervisor_settlement as supervisor_settlement
-import loushang.coding.package_product_worker_windows_launch_intent as intent_owner
-import loushang.coding.package_product_worker_windows_orphan_review as orphan_owner
-import loushang.coding.package_product_worker_windows_recovery_inventory as inventory_owner
-import loushang.coding.package_product_worker_windows_supervisor_journal as supervisor_owner
+import loushang.coding.package.product_worker_windows_crash_supervisor_settlement as supervisor_settlement
+import loushang.coding.package.product_worker_windows_launch_intent as intent_owner
+import loushang.coding.package.product_worker_windows_orphan_review as orphan_owner
+import loushang.coding.package.product_worker_windows_recovery_inventory as inventory_owner
+import loushang.coding.package.product_worker_windows_supervisor_journal as supervisor_owner
 import loushang.harness.package_product._windows_worker_recovery as recovery
-from loushang.coding.package_product_worker_windows_crash_cleanup_review import (
+from loushang.coding.package.product_worker_windows_crash_cleanup_review import (
     CodingWindowsWorkerCrashCleanupReviewV1,
 )
-from loushang.coding.package_product_worker_windows_crash_supervisor_settlement import (
+from loushang.coding.package.product_worker_windows_crash_supervisor_settlement import (
     _settle_crashed_supervisor_record,
 )
 from loushang.harness.worker import WorkerLaunchIdentityV1

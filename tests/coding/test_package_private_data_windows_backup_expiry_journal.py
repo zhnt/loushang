@@ -10,18 +10,18 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_private_data_windows_backup_expiry_journal as journal
+import loushang.coding.package.private_data_windows_backup_expiry_journal as journal
 import loushang.harness.plugin_management._private_data_expiry_windows as core
-from loushang.coding.package_private_data_backup_expiry_records import (
+from loushang.coding.package.private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
     CodingArchPrivateDataBackupExpiryPlanV1,
     CodingArchPrivateDataBackupExpiryReceiptV1,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
 )
-from loushang.coding.package_private_data_windows_archive_snapshot import (
+from loushang.coding.package.private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
 )
 from loushang.harness.plugin_management._private_data_expiry import (

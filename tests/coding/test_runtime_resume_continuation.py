@@ -9,7 +9,7 @@ import pytest
 from loushang.ai.types import UserMessage
 from loushang.coding import bootstrap
 from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.resume_activation_attempt import (
@@ -41,7 +41,7 @@ def test_formal_selection_allows_native_reads_and_refuses_nested_writes(tmp_path
     probe = '''
 import asyncio, os, sys
 from pathlib import Path
-from loushang.coding.package_product_runtime import CodingFencedProductApplicationSelection
+from loushang.coding.package.product_runtime import CodingFencedProductApplicationSelection
 from loushang.coding.session_manager import SessionManager
 
 async def main():
@@ -226,7 +226,7 @@ def test_selected_resume_epoch_is_native_readonly_and_never_repairs_tail(tmp_pat
 
 @pytest.mark.parametrize("existing_epoch", [False, True])
 def test_formal_epoch_rechecks_original_approval_before_epoch_state_recovery(tmp_path, monkeypatch, existing_epoch):
-    from loushang.coding import package_product_runtime as product
+    from loushang.coding.package import product_runtime as product
     from loushang.harness.plugin_management.service import PluginManagementService
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))

@@ -7,18 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_history_deletion_v2 import (
+from loushang.coding.package.product_worker_history_deletion_v2 import (
     CodingWorkerV2DeletionLedger,
 )
-from loushang.coding.package_product_worker_history_prepared_v2 import (
+from loushang.coding.package.product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
 )
-from loushang.coding.package_product_worker_history_read_v2 import (
+from loushang.coding.package.product_worker_history_read_v2 import (
     CodingWorkerV2ReadError,
     read_coding_worker_v2_retained_history,
     verify_coding_worker_v2_precommit_history,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     _head_bytes,
     _head_name,
     _segment_name,
@@ -26,17 +26,17 @@ from loushang.coding.package_product_worker_history_segments import (
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
-from loushang.coding.package_product_worker_history_stage_v2 import (
+from loushang.coding.package.product_worker_history_stage_v2 import (
     stage_coding_worker_v2_preparation,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
 )
-from loushang.coding.package_product_worker_history_v2_names import (
+from loushang.coding.package.product_worker_history_v2_names import (
     DELETION_LEDGER_NAME,
     PRODUCT_OWNER_INDEX_NAME,
 )
-from loushang.coding.package_product_worker_opt_in import _opt_in_line
+from loushang.coding.package.product_worker_opt_in import _opt_in_line
 from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,

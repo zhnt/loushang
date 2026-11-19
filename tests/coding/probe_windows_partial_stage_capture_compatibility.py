@@ -365,7 +365,7 @@ class Observer(shared.Observer):
 
 def observed(case):
     module = importlib.import_module(
-        "loushang.coding.package_product_worker_windows_partial_stage_review"
+        'loushang.coding.package.product_worker_windows_partial_stage_review'
     )
     io = importlib.import_module("loushang.harness.worker.payload._windows_stage_io")
     effect = importlib.import_module(

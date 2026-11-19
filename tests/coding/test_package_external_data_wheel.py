@@ -36,23 +36,23 @@ from loushang.coding._plugin_lifecycle import (
 from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.application import run_cli
 from loushang.coding.cli.package_repair import main as package_repair_main
-from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
-from loushang.coding.package_external_data_wheel import (
+from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package.external_data_wheel import (
     CodingExternalDataWheelCatalog,
     CodingExternalDataWheelError,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_product_management_cli import (
+from loushang.coding.package.product_management_cli import (
     build_coding_fenced_product_management_cli_ports,
     explain_coding_fenced_package_operation,
 )
-from loushang.coding.package_product_preview import (
+from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
 )
-from loushang.coding.package_product_repair import open_coding_package_repair_client
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_repair import open_coding_package_repair_client
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
     admit_coding_external_data_wheel,
     open_coding_fenced_product_application_owner,
@@ -1054,7 +1054,7 @@ def test_reopened_coding_product_selected_cross_runtime_rebind_and_preflight(
         return
 
     if scenario == "sdk_retryable":
-        from loushang.coding.package_product_repair import (
+        from loushang.coding.package.product_repair import (
             open_coding_package_repair_client,
         )
 
@@ -1082,10 +1082,10 @@ def test_reopened_coding_product_selected_cross_runtime_rebind_and_preflight(
         return
 
     if scenario == "rpc_retryable":
-        from loushang.coding.package_product_repair import (
+        from loushang.coding.package.product_repair import (
             open_coding_package_repair_client,
         )
-        from loushang.coding.package_product_repair_rpc import (
+        from loushang.coding.package.product_repair_rpc import (
             CodingPackageRepairRpcClientV1,
         )
 
@@ -1732,10 +1732,10 @@ def test_reopened_coding_product_selected_cross_runtime_rebind_and_preflight(
         )
         try:
             if scenario.startswith("rpc_"):
-                from loushang.coding.package_product_repair import (
+                from loushang.coding.package.product_repair import (
                     open_coding_package_repair_client,
                 )
-                from loushang.coding.package_product_repair_rpc import (
+                from loushang.coding.package.product_repair_rpc import (
                     CodingPackageRepairRpcClientV1,
                 )
 
@@ -2119,10 +2119,10 @@ def test_reopened_coding_product_selected_cross_runtime_rebind_and_preflight(
                                 workspace, settings, tmp_path / f"{scenario}-sessions"
                             )
                             if scenario == "transaction_pinned_stage_rpc_crash":
-                                from loushang.coding.package_product_repair import (
+                                from loushang.coding.package.product_repair import (
                                     open_coding_package_repair_client,
                                 )
-                                from loushang.coding.package_product_repair_rpc import (
+                                from loushang.coding.package.product_repair_rpc import (
                                     CodingPackageRepairRpcClientV1,
                                 )
 
@@ -2740,10 +2740,10 @@ def test_reopened_coding_product_selected_cross_runtime_rebind_and_preflight(
                             assert_published_repair_committed()
                             return
                         if scenario == "transaction_pinned_published_rpc_crash":
-                            from loushang.coding.package_product_repair import (
+                            from loushang.coding.package.product_repair import (
                                 open_coding_package_repair_client,
                             )
-                            from loushang.coding.package_product_repair_rpc import (
+                            from loushang.coding.package.product_repair_rpc import (
                                 CodingPackageRepairRpcClientV1,
                             )
 
@@ -5605,7 +5605,7 @@ def test_external_update_recovers_interrupted_retention_handoff(
         )
         assert json.loads(capsys.readouterr().out)["operationId"] == operation_id
     elif repair_mode == "rpc":
-        from loushang.coding.package_product_repair_rpc import (
+        from loushang.coding.package.product_repair_rpc import (
             bind_coding_package_repair_rpc_client,
         )
         from loushang.harness.host.rpc.commands.package_repair import (
@@ -5634,7 +5634,7 @@ def test_external_update_recovers_interrupted_retention_handoff(
         assert response["data"]["operationId"] == operation_id
         assert response["data"]["disposition"] == "committed"
     elif repair_mode == "tui":
-        from loushang.coding.package_product_repair_ui import (
+        from loushang.coding.package.product_repair_ui import (
             execute_coding_package_repair_ui_command,
         )
 
@@ -6355,7 +6355,7 @@ def test_management_command_sdk_refuses_workspace_replaced_during_owner_binding(
 def test_management_command_sdk_refuses_workspace_replaced_after_product_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.package_product_management_cli as management_cli_module
+    import loushang.coding.package.product_management_cli as management_cli_module
 
     workspace, layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_command_client(workspace)
@@ -6851,7 +6851,7 @@ def test_management_read_sdk_projection_pins_original_workspace_at_bind(
 def test_management_read_sdk_preview_refuses_workspace_replaced_after_epoch_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.package_product_preview as preview_module
+    import loushang.coding.package.product_preview as preview_module
 
     workspace, _layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_read_client(workspace)

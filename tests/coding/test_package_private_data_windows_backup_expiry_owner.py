@@ -11,15 +11,15 @@ from typing import cast
 import pytest
 
 import loushang.harness.resources.packages._private_tree_windows as native
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
     _identity,
 )
-from loushang.coding.package_private_data_windows_archive_snapshot import (
+from loushang.coding.package.private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
 )
-from loushang.coding.package_private_data_windows_preview import _native_io
+from loushang.coding.package.private_data_windows_preview import _native_io
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,

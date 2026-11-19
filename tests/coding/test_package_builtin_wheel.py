@@ -7,7 +7,7 @@ from hashlib import sha256
 
 import pytest
 
-from loushang.coding.package_builtin_wheel import (
+from loushang.coding.package.builtin_wheel import (
     CODING_BASE_PRODUCT_WHEEL_FILENAME,
     _read_member,
     build_coding_base_product_wheel,

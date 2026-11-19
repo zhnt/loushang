@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_stage_review import (
+from loushang.coding.package.product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewError,
     CodingWindowsWorkerStageReviewV1,
 )

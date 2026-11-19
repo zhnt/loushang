@@ -12,15 +12,15 @@ from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.control import SettingsManager
-from loushang.coding.package_legacy_classification import (
+from loushang.coding.package.legacy_classification import (
     CodingScopedLegacyDisableV1,
     classify_coding_legacy_source_configuration,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     hold_coding_pre_b_snapshot_owner,
     prepare_coding_package_cutover_roots,
 )
-from loushang.coding.package_source_snapshot import (
+from loushang.coding.package.source_snapshot import (
     hold_coding_pre_b_source_configuration,
     read_coding_settings_patch_without_writes,
 )

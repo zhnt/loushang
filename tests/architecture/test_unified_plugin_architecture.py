@@ -76,7 +76,7 @@ SOURCE_ROOT = Path("src/loushang")
 EXPECTED_PLUGIN_JSON_STATIC_SITES = {
     # Builtin publication and selected Product Wheel verification name an exact
     # member; the shared PluginManifestParser remains the only parser owner.
-    Path("src/loushang/coding/package_builtin_wheel.py"),
+    Path("src/loushang/coding/package/builtin_wheel.py"),
     Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
     Path("src/loushang/harness/package_product/product_local_wheel_runtime.py"),
     Path("src/loushang/harness/package_product/product_worker_candidate.py"),

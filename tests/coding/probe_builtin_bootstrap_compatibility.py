@@ -9,7 +9,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-import loushang.coding.package_product_runtime as module
+import loushang.coding.package.product_runtime as module
 from loushang.harness.plugin_management.records import (
     PluginDesiredSelectionV1,
     PluginDesiredStateMutationV1,

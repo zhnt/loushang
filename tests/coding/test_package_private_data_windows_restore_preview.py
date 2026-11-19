@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import stat
 
-from loushang.coding.package_private_data_backup_records import (
+from loushang.coding.package.private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
     backup_id,
 )
-from loushang.coding.package_private_data_deletion_journal import (
+from loushang.coding.package.private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
 from loushang.harness.plugin_management.private_data_deletion import (

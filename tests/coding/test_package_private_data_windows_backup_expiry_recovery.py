@@ -10,13 +10,13 @@ from typing import cast
 
 import pytest
 
-import loushang.coding.package_private_data_windows_backup_expiry_recovery as recovery
+import loushang.coding.package.private_data_windows_backup_expiry_recovery as recovery
 import loushang.harness.resources.packages._private_tree_windows as native_tree
 from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
-from loushang.coding.package_private_data_backup_expiry_records import (
+from loushang.coding.package.private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
 )
-from loushang.coding.package_private_data_windows_restore_journal import (
+from loushang.coding.package.private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreTransaction,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (

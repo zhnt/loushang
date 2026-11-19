@@ -11,28 +11,28 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import package_product_worker_history_stage_v2 as stage_module
-from loushang.coding.package_product_worker_history_prepared_v2 import (
+from loushang.coding.package import product_worker_history_stage_v2 as stage_module
+from loushang.coding.package.product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
 )
-from loushang.coding.package_product_worker_history_retention import (
+from loushang.coding.package.product_worker_history_retention import (
     _known_worker_state_name,
 )
-from loushang.coding.package_product_worker_history_stage_v2 import (
+from loushang.coding.package.product_worker_history_stage_v2 import (
     CodingWorkerV2PreparationError,
     CodingWorkerV2PreparationIntent,
     read_coding_worker_v2_preparation,
     rollback_coding_worker_v2_preparation,
     stage_coding_worker_v2_preparation,
 )
-from loushang.coding.package_product_worker_history_v2_names import (
+from loushang.coding.package.product_worker_history_v2_names import (
     NO_EFFECT_ARCHIVE_NAME,
     PREPARATION_INTENT_NAME,
     PREPARATION_STATE_NAMES,
     PRODUCT_OWNER_INDEX_NAME,
     semantic_base_name,
 )
-from loushang.coding.package_product_worker_posix_gc_history import (
+from loushang.coding.package.product_worker_posix_gc_history import (
     CodingPosixWorkerGcHistoryAuthority,
 )
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
