@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import os
-
 from loushang.harness.package_product._windows_worker_retirement import (
     WindowsProductWorkerUnlaunchedStageRetirement,
-)
-from loushang.harness.package_product.product_local_wheel_runtime import (
-    WindowsLocalWheelProductSessionOwner,
 )
 
 from .package_legacy_windows_receipt import (
@@ -44,24 +39,6 @@ class CodingWindowsWorkerUnlaunchedRetirementError(RuntimeError):
         self.code = code
 
 
-def retire_coding_windows_product_worker_settled_unlaunched_stage(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    expected_review: CodingWindowsWorkerReservedNoEffectReviewV1,
-) -> CodingWindowsWorkerStageRetirementReceiptV1:
-    """Delete only the reviewed payload after proving no native or process effect."""
-
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(expected_review) is not CodingWindowsWorkerReservedNoEffectReviewV1
-        or expected_review.native_revision != 2
-    ):
-        raise OSError("Windows Worker unlaunched retirement requires a Product review")
-    return _operations.retire(product, expected_review=expected_review)
-
-
 _records = WindowsWorkerRetirementRecords(
     stem="worker-unlaunched-stage",
     review_type=CodingWindowsWorkerReservedNoEffectReviewV1,
@@ -87,16 +64,22 @@ __all__ = [
 ]
 
 
+def _review_maximum() -> int:
+    return _MAX_REVIEW_BYTES
+
+
 _operations = WindowsProductWorkerUnlaunchedStageRetirement(
     records=_records,
     io=_receipt_io,
     inspection=_inspection,
-    review_maximum=lambda: _MAX_REVIEW_BYTES,
+    review_maximum=_review_maximum,
     inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
     read_intent=_read_intent_under_gc_guard,
     capture_reserved=_capture_reserved_stage,
     physical=_retirement,
     error_prefix="coding_worker_unlaunched_retirement",
+    entry_product_id="coding",
+    entry_required_message="Windows Worker unlaunched retirement requires a Product review",
 )
 _require_history = _operations.require_history
 _require_completed_unlaunched_retirement_under_gc_guard = _operations.require_completed
@@ -105,3 +88,6 @@ _remove_remaining_stage = _operations.remove_remaining
 _other_retirement_artifact_present = _operations.other_artifact
 _read_start = _operations.read_start
 _start_path = _operations.start_path
+
+
+retire_coding_windows_product_worker_settled_unlaunched_stage = _operations.retire

@@ -573,12 +573,33 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
         )
 
 
+def read_windows_product_worker_launch_intent(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    records: Callable[[], WindowsProductWorkerIntentRecords[IntentT]],
+) -> IntentT | None:
+    """Construct the original record owner inside the Product's read guard."""
+    with product.gc_gate.read_guard():
+        return records().read(attempt_id, allow_unpublished_stage=False)
+
+
+def inspect_windows_product_worker_launch_intents(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    records: Callable[[], WindowsProductWorkerIntentRecords[IntentT]],
+) -> tuple[IntentT, ...]:
+    """Keep inventory construction and IO in the original GC read scope."""
+    with product.gc_gate.read_guard():
+        return records().inspect()
+
+
 class WindowsProductWorkerProvisioningAccess:
     """Load/CAS on the original actual Code object; policy hooks keep its rules.
 
     Binding, intent validation and stale native cleanup use the original
-    selection, payload recovery and Journal owners; Code supplies its Profile
-    and exact public constructor admission. No parallel state is introduced.
+    selection, payload recovery and Journal owners, including exact constructor
+    admission. The Product supplies its Profile; no parallel state is introduced.
     """
 
     _product: WindowsLocalWheelProductSessionOwner
@@ -605,6 +626,42 @@ class WindowsProductWorkerProvisioningAccess:
         WindowsWorkerLaunchPayload, _PendingPayload, WindowsRecoveryAttemptV1
     ]:
         raise NotImplementedError("the existing Product recovery owner is required")
+
+    def __init__(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        runtime: PackageProductRuntimeBindingV1,
+        selected: PackageProductSelectedPluginManifestV1,
+        receipt: ProductWorkerActivationReceiptV1,
+        worker_request: ManagedWorkerLaunchRequestV1,
+        plan: _WindowsLpacProductWorkerProfilePlan,
+    ) -> None:
+        if os.name != "nt" or type(product) is not WindowsLocalWheelProductSessionOwner:
+            raise OSError("Windows Worker Product provisioning owner is unavailable")
+        if (
+            type(selected) is not PackageProductSelectedPluginManifestV1
+            or type(receipt) is not ProductWorkerActivationReceiptV1
+            or type(worker_request) is not ManagedWorkerLaunchRequestV1
+            or (type(plan) is not _WindowsLpacProductWorkerProfilePlan)
+        ):
+            raise ValueError("Windows Worker Product selection is invalid")
+        if (
+            type(runtime) is not PackageProductRuntimeBindingV1
+            or runtime.product_id != self._product_id
+            or (not runtime.lifecycle.active)
+            or (runtime.session_id != receipt.policy.session_id)
+            or (runtime.product_runtime_id != receipt.policy.product_runtime_id)
+        ):
+            raise ValueError("Windows Worker Product runtime binding is invalid")
+        self._bind_provisioning_attempt(
+            product,
+            runtime=runtime,
+            selected=selected,
+            receipt=receipt,
+            worker_request=worker_request,
+            plan=plan,
+        )
 
     def _bind_provisioning_attempt(
         self,

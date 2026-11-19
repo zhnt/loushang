@@ -71,15 +71,17 @@ class _Evidence(Protocol):
 
 class _ActivationInputs(Protocol):
     @property
-    def authority(self) -> ProductWorkerActivationAuthorityPort: ...
+    def _worker_activation_authority(self) -> ProductWorkerActivationAuthorityPort: ...
 
-    def evidence(
-        self, request: ManagedWorkerLaunchRequestV1 | None = None
+    def _worker_evidence(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1 | None = None,
     ) -> _Evidence: ...
 
-    def state_store(self) -> _ActivationStateStore: ...
+    def _open_worker_state_store(self) -> _ActivationStateStore: ...
 
-    def supervisor_journal(self) -> WorkerSupervisorJournal: ...
+    def _open_worker_supervisor_journal(self) -> WorkerSupervisorJournal: ...
 
 
 class _Gate(Protocol):
@@ -92,35 +94,70 @@ class _Gate(Protocol):
 
 
 class _PosixSource(Protocol[PayloadT]):
-    def materialize(self, attempt_id: str) -> AbstractContextManager[PayloadT]: ...
+    def _materialize_worker_payload(
+        self, receipt: ProductWorkerActivationReceiptV1, attempt_id: str
+    ) -> AbstractContextManager[PayloadT]: ...
 
-    def bind_request(self, payload: PayloadT) -> ManagedWorkerLaunchRequestV1: ...
+    def _bind_worker_launch_request(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        payload: PayloadT,
+        *,
+        supervisor_epoch: int,
+        pending_launch: _PendingLaunch | None = None,
+    ) -> ManagedWorkerLaunchRequestV1: ...
 
-    def start_gate(self, request: ManagedWorkerLaunchRequestV1) -> _Gate: ...
+    def _worker_start_gate(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+        attempt_id: str,
+    ) -> _Gate: ...
 
-    def native_profile(
-        self, payload: PayloadT, request: ManagedWorkerLaunchRequestV1, gate: _Gate
+    def _worker_payload_profile(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        payload: PayloadT,
+        request: ManagedWorkerLaunchRequestV1,
+        gate: _Gate,
     ) -> ProductWorkerNativeProfilePort: ...
 
 
 class _WindowsSource(Protocol[PayloadT, SelectedT]):
-    def materialize(self, attempt_id: str) -> PayloadT: ...
+    def _materialize_worker_payload(
+        self, receipt: ProductWorkerActivationReceiptV1, attempt_id: str
+    ) -> PayloadT: ...
 
-    def bind_request(self, payload: PayloadT) -> ManagedWorkerLaunchRequestV1: ...
+    def _bind_worker_launch_request(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        payload: PayloadT,
+        *,
+        supervisor_epoch: int,
+        pending_launch: _PendingLaunch | None = None,
+    ) -> ManagedWorkerLaunchRequestV1: ...
 
-    def selected_manifest(self) -> SelectedT: ...
+    def current_selected_manifest(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> SelectedT: ...
 
-    def native_plan(
-        self, request: ManagedWorkerLaunchRequestV1
+    def plan_current_native_attempt(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
     ) -> _WindowsLpacProductWorkerProfilePlan: ...
 
-    def commit_launch_intent(
-        self, request: ManagedWorkerLaunchRequestV1, payload: PayloadT
+    def _commit_worker_launch_intent(
+        self,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+        payload: PayloadT,
     ) -> None: ...
 
-    def provisioning_store(
+    def _worker_provisioning_store(
         self,
         selected: SelectedT,
+        receipt: ProductWorkerActivationReceiptV1,
         request: ManagedWorkerLaunchRequestV1,
         plan: _WindowsLpacProductWorkerProfilePlan,
     ) -> _WindowsLpacProvisioningStateStore: ...
@@ -149,11 +186,11 @@ def _coordinator(
     inputs: _ActivationInputs, evidence: _Evidence
 ) -> ProductWorkerActivationCoordinator:
     return ProductWorkerActivationCoordinator(
-        authority=inputs.authority,
+        authority=inputs._worker_activation_authority,
         evidence_authority=evidence,
         trusted_evidence_authority_id=evidence.authority_id,
         trusted_evidence_authority_fingerprint=evidence.authority_fingerprint,
-        state_store=inputs.state_store(),
+        state_store=inputs._open_worker_state_store(),
     )
 
 
@@ -225,7 +262,7 @@ async def _prepare_posix_native_worker(
 
     try:
         if resume_parent_context is not None:
-            cleanup_evidence = activation.evidence()
+            cleanup_evidence = activation._worker_evidence(receipt)
             coordinator = _coordinator(activation, cleanup_evidence)
             if (
                 coordinator.evaluate(receipt.policy, receipt).get("reason")
@@ -239,14 +276,23 @@ async def _prepare_posix_native_worker(
                 failure=parent_failure,
             )
         payload = stack.enter_context(
-            launch_source.materialize(pending_launch.identity.attempt_id)
+            launch_source._materialize_worker_payload(
+                receipt, pending_launch.identity.attempt_id
+            )
         )
-        request = launch_source.bind_request(payload)
+        request = launch_source._bind_worker_launch_request(
+            receipt,
+            payload,
+            supervisor_epoch=pending_launch.identity.supervisor_epoch,
+            pending_launch=pending_launch,
+        )
         if request.identity != pending_launch.identity:
             raise failure("launch_identity_changed")
-        gate = launch_source.start_gate(request)
+        gate = launch_source._worker_start_gate(
+            receipt, request, request.identity.attempt_id
+        )
         stack.callback(gate.close)
-        profile = launch_source.native_profile(payload, request, gate)
+        profile = launch_source._worker_payload_profile(receipt, payload, request, gate)
         stack.push_async_callback(profile.close)
         host = create_child_session_host(
             max_sessions=1, enable_posix_static_capture=True
@@ -254,7 +300,7 @@ async def _prepare_posix_native_worker(
         stack.push_async_callback(host.close)
         supervisor = WorkerSupervisor(
             identity=request.identity,
-            journal=activation.supervisor_journal(),
+            journal=activation._open_worker_supervisor_journal(),
             protocol=request.runtime.protocol,
             protocol_version=request.runtime.protocol_version,
         )
@@ -276,7 +322,7 @@ async def _prepare_posix_native_worker(
 
         stack.push_async_callback(settle_supervisor)
         if coordinator is None:
-            cleanup_evidence = activation.evidence()
+            cleanup_evidence = activation._worker_evidence(receipt)
             coordinator = _coordinator(activation, cleanup_evidence)
             if (
                 coordinator.evaluate(receipt.policy, receipt).get("reason")
@@ -436,7 +482,7 @@ async def _prepare_windows_native_worker(
 
     try:
         if resume_parent_context is not None:
-            enrollment_evidence = activation.evidence()
+            enrollment_evidence = activation._worker_evidence(receipt)
             enrollment_coordinator = _coordinator(activation, enrollment_evidence)
             if (
                 enrollment_coordinator.evaluate(receipt.policy, receipt).get("reason")
@@ -449,14 +495,23 @@ async def _prepare_windows_native_worker(
                 context=resume_parent_context,
                 failure=parent_failure,
             )
-        payload = launch_source.materialize(pending_launch.identity.attempt_id)
-        request = launch_source.bind_request(payload)
+        payload = launch_source._materialize_worker_payload(
+            receipt, pending_launch.identity.attempt_id
+        )
+        request = launch_source._bind_worker_launch_request(
+            receipt,
+            payload,
+            supervisor_epoch=pending_launch.identity.supervisor_epoch,
+            pending_launch=pending_launch,
+        )
         if request.identity != pending_launch.identity:
             raise failure("launch_identity_changed")
-        selected = launch_source.selected_manifest()
-        plan = launch_source.native_plan(request)
-        launch_source.commit_launch_intent(request, payload)
-        native_store = launch_source.provisioning_store(selected, request, plan)
+        selected = launch_source.current_selected_manifest(receipt)
+        plan = launch_source.plan_current_native_attempt(receipt, request)
+        launch_source._commit_worker_launch_intent(receipt, request, payload)
+        native_store = launch_source._worker_provisioning_store(
+            selected, receipt, request, plan
+        )
         profile = cast(
             _WindowsLpacContainedProductWorkerProfile,
             _bind_windows_lpac_contained_product_worker_profile(
@@ -473,7 +528,7 @@ async def _prepare_windows_native_worker(
                 await cast(_WindowsLpacContainedProductWorkerProfile, profile).close()
 
         stack.push_async_callback(close_unowned_profile)
-        cleanup_evidence = activation.evidence(request)
+        cleanup_evidence = activation._worker_evidence(receipt, request)
         coordinator = _coordinator(activation, cleanup_evidence)
         if coordinator.evaluate(receipt.policy, receipt).get("reason") != "admitted":
             raise failure("c5_admission_refused")
@@ -483,7 +538,7 @@ async def _prepare_windows_native_worker(
         stack.push_async_callback(host.close)
         supervisor = WorkerSupervisor(
             identity=request.identity,
-            journal=activation.supervisor_journal(),
+            journal=activation._open_worker_supervisor_journal(),
             protocol=request.runtime.protocol,
             protocol_version=request.runtime.protocol_version,
         )
@@ -492,7 +547,7 @@ async def _prepare_windows_native_worker(
             if supervisor.status.state == "healthy":
                 try:
                     selected = (
-                        activation.authority.current_witness(receipt)
+                        activation._worker_activation_authority.current_witness(receipt)
                         == receipt.authority_witness
                     )
                 except PackageProductRuntimeReadError:

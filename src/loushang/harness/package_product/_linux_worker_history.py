@@ -19,6 +19,9 @@ from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.package_product._linux_worker_native_release import (
     _LinuxWorkerNativeReleaseCustody,
 )
+from loushang.harness.package_product._worker_history_access import (
+    PosixProductWorkerHistoryAccess,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -36,6 +39,7 @@ from loushang.harness.worker.history._checkpoint_commands import (
     CheckpointCommands,
     _BackupRevision,
 )
+from loushang.harness.worker.history._checkpoint_history import _AnchorT, _CheckpointT
 from loushang.harness.worker.history._cutover import _IndexMethods
 from loushang.harness.worker.history._no_effect import (
     _NoEffectArchiveMethods,
@@ -140,6 +144,47 @@ _HISTORY_STEMS = (
 
 
 _PUBLIC_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
+
+
+_SEGMENTED_STEMS = (*CODING_WORKER_HISTORY_STREAM_STEMS, "worker-history-checkpoints")
+_SEGMENTED_SUFFIX = re.compile(
+    r"(?:\.jsonl(?:\.lock)?|\.segments\.json|\.head\.json|"
+    r"\.g[0-9]{8}\.(?:jsonl|head\.json))\Z"
+)
+_PAYLOAD_STAGE = re.compile(r"worker-payload-[0-9a-f]{32}\Z")
+_PAYLOAD_REPAIR = re.compile(
+    r"worker-(?P<kind>empty|complete|unmarked|registered)-repair-"
+    r"(?P<attempt>[0-9a-f]{32})\.json\Z"
+)
+_REGISTERED_REPAIR_STAGING = re.compile(
+    r"\.worker-registered-repair-[0-9a-f]{32}\.json\.stage\Z"
+)
+
+
+def known_worker_state_name(name: str) -> bool:
+    if name in (
+        *PREPARATION_STATE_NAMES,
+        NO_EFFECT_ARCHIVE_NAME,
+        PRODUCT_OWNER_INDEX_NAME,
+        DELETION_LEDGER_NAME,
+    ) or name in {
+        "worker-native-release-v1",
+        "worker-native-release-approvals.jsonl",
+        "worker-native-release-approvals.jsonl.lock",
+        "worker-history-checkpoint-owner.json",
+    }:
+        return True
+    if (
+        _PAYLOAD_STAGE.fullmatch(name)
+        or _PAYLOAD_REPAIR.fullmatch(name)
+        or _REGISTERED_REPAIR_STAGING.fullmatch(name)
+    ):
+        return True
+    return any(
+        _SEGMENTED_SUFFIX.fullmatch(name[len(stem) :]) is not None
+        for stem in _SEGMENTED_STEMS
+        if name.startswith(stem)
+    )
 
 
 def review_history(
@@ -1213,6 +1258,27 @@ def seal_product_history_v1(
                 error_type=error_type,
                 max_segment_bytes=segment_limit(),
             )
+
+
+@contextmanager
+def bound_product_worker_history_checkpoint(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    commands: Callable[[], CheckpointCommands[_CheckpointT, _AnchorT]],
+) -> Iterator[RootedFile]:
+    """Borrow the original command binding without capturing its live limits."""
+    with commands().bound(PosixProductWorkerHistoryAccess(product)) as rooted:
+        yield rooted
+
+
+def read_product_worker_history_checkpoints(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    commands: Callable[[], CheckpointCommands[_CheckpointT, _AnchorT]],
+) -> tuple[_CheckpointT, ...]:
+    """Own the full bound read, preserving two original command constructions."""
+    with bound_product_worker_history_checkpoint(product, commands=commands) as rooted:
+        return commands().read(rooted, access=PosixProductWorkerHistoryAccess(product))
 
 
 def publish_product_worker_history_checkpoint(

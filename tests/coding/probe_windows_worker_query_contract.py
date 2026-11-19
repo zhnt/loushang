@@ -21,6 +21,7 @@ from loushang.coding import (
 from loushang.coding import (
     package_product_worker_windows_stage_retirement as retirement,
 )
+from loushang.harness.package_product import _windows_worker_recovery as recovery_owner
 from loushang.harness.package_product import _worker_windows_attempt as product_queries
 from loushang.harness.worker.payload import _windows_stage_io as stage_io
 
@@ -295,7 +296,9 @@ def test_orphan_join_retains_read_order_and_native_error(
         if case == "native-error":
             assert caught.value is native_error
             assert events == prefix + ["current", "native"]
-            monkeypatch.setattr(recovery, "observe_windows_worker_job_absent", observe)
+            monkeypatch.setattr(
+                recovery_owner, "observe_windows_worker_job_absent", observe
+            )
             assert recovery._observe_native_job_absence("job") is None
         elif case == "stale":
             assert caught.value is stale_error
@@ -367,7 +370,7 @@ def test_retirement_root_keeps_distinct_error_contract(
         ),
     )
     monkeypatch.setattr(
-        retirement, "_inspection", lambda: SimpleNamespace(require_direct=direct)
+        type(retirement._operations.inspection()), "require_direct", direct
     )
     with pytest.raises((RuntimeError, OSError)) as caught:
         retirement._inspect_retirement_attempt_ids_under_gc_guard(product)

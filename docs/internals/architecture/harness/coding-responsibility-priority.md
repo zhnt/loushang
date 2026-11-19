@@ -2,18 +2,20 @@
 
 ## 2026-11-18 阶段交付后的候选评估
 
-按当前源码 `578202e15` 重核，Coding为434份Python源码、99,399物理行。当前用户要求先交付已有修改、同步本地，再评估下一块；本节是候选建议，尚未实施新迁移，也不改变C07超过一半退出的原验收标准。C07仍有13,235行，距离目标还差3,103行；其当前成果不作为整组完成。
+阶段交付已通过任务 PR #901、集成 PR #902 合入 main `4100b4f65` 并同步本地；该提交下 Coding 为442份Python源码、100,763物理行。上游功能增长单列，不计入 C07 迁移收益。原 C07 Goal 继续：已交付版本剩余13,104行，距离多数退出仍差2,972行，整组未完成。以下为后续独立大块的候选顺序，不表示已开始 C01 或结束 C07。
 
-排序依据是剩余完整机制、已有owner可接管程度、旧流程退出、系统净成本和兼容／验证负担。组行数仅表示审计范围；原型必须计入所有Code适配和Harness增长，不能预先承诺迁移行数或比例。
+2026-11-18按用户反馈调整：**C01 → C04 → C10／C02 → C13**。优先考虑职责是否通用、跨产品复用价值、完整机制能否退出 Coding，再比较已有 owner、系统净成本和兼容／验证负担。此前将 C13 排首位，过于看重已有传输接缝；LSP 的领域归属应降低其迁移优先级。组行数仅表示审计范围，不能预先当作迁移预算；所有适配和 Harness 增长均计入成本。
 
 | 顺序 | 当前范围 | 首个完整候选链 | 已有能力与保留边界 |
 | --- | ---: | --- | --- |
-| 1．C13 LSP | 21文件／5,228行 | 协议初始化与有界请求→文档版本同步→运行实例诊断替换→退休释放；先核`client`、`supervisor`、`documents`、`diagnostics`、`positions`五文件，共1,278行，包含必要保留代码 | 已有JSON-RPC传输、`ProcessClientSupervisor`和授权启动／Workspace读取。保留Coding服务器选择、Plugin准入、只读／批准边界、Tool呈现与必要名义类型；原传输和进程寿命不重复计益 |
-| 2．C04 Continuity | 2文件／2,809行 | 配置源获取→启动重放→准备／发布→失败交接 | 复用Continuity staging、binding lifetime、Plugin Management与RuntimeProfileBinder；Code保来源／限额／cwd和canonical restore政策，已共享shutdown／Task不重计，保真实Path／FileCopy／引用支持 |
-| 3．C01 启动／Plugin／资源装配 | 22文件／12,134行 | 选一条准备根保管→审批／选择→构图→发布／失败交接 | 复用`PreparationRootCustody`、`SelectedProductPreparationScope`和原Construction／Product composition；Code保组合集、信任、模型／工具选择及Profile。不能把大`bootstrap`整体当机制，先前接口税过高的原型不重做 |
-| 4．C10 Product runtime／C02托管接入 | 分别5,185／7,925行 | 剩余freshness／open／repair／release或普通／Resume交接 | 分别接既有Package Product／Session／Transcript或AppHost owner；已共享Catalog读取、factory release、托管进程控制不重计，不把AppHost职责塞进Harness |
+| 1．C01 启动／Plugin／资源装配 | 22文件／12,145行 | 准备根保管→产品审批／选择→依赖构图与装配→发布→失败交接与资源释放 | 优先复用 `PreparationRootCustody`、`SelectedProductPreparationScope` 和现有 Construction／Product composition。Harness 持有通用装配事务；Code 保留默认组合集、信任／批准、模型／工具选择及 Profile。历史高成本原型作为约束，不重复同形搬运 |
+| 2．C04 Continuity | 2文件／2,809行 | 配置源获取→启动重放→准备／发布→失败交接 | 复用 Continuity staging、binding lifetime、Plugin Management 与 RuntimeProfileBinder；Code 保来源／限额／cwd和 canonical restore 政策，已共享 shutdown／Task 不重计，保真实 Path／FileCopy／引用支持 |
+| 3．C10 Product runtime／C02托管接入 | 分别5,185／9,175行 | 剩余 freshness／open／repair／release 或普通／Resume交接 | 分别接既有 Package Product／Session／Transcript 或 AppHost owner；已共享 Catalog 读取、factory release、托管进程控制不重计，不把 AppHost 职责塞进 Harness |
+| 4．C13 LSP | 21文件／5,228行 | 只审查仍有明确跨产品消费者的进程、传输或通用实例寿命机制 | JSON-RPC 传输及 `ProcessClientSupervisor` 已共享，不重复计益。LSP 初始化／请求语义、文档版本与诊断关联、服务器选择和 Tool 呈现可保留 Coding；不因协议代码量大就新增 Harness LSP 框架 |
 
-首选C13的具体依据是：[`LspClient`](../../../../src/loushang/coding/lsp/client.py)已继承原[`ContentLengthJsonRpcProcessTransport`](../../../../src/loushang/harness/workspace/process/json_rpc.py)，而握手、LSP请求和协议关闭仍在Code；[`LspServerSupervisor`](../../../../src/loushang/coding/lsp/supervisor.py)已复用原[`ProcessClientSupervisor`](../../../../src/loushang/harness/workspace/process/supervision.py)，剩余文档／诊断关联可以沿同一实例审查。应由共享协议层承接完整链，不新增第二套传输、进程注册或生命周期管理。Harness当前通用DiagnosticsService是运行诊断服务，不能仅凭名称相同就替代带文档版本的LSP诊断收件箱。这个候选仍需端到端成本原型和兼容验证，尚不构成新增LSP组件的接受记录。
+C01 首轮应围绕一条真实启动链核实政策与机制边界，复用既有接收组件接管完整事务，实际调用方接入后同步删除旧协调体。不能把整个 `bootstrap` 文件都视为通用机制，也不能以大量回调把原函数拆散搬迁。若完整迁移的通用化成本过高，应记录具体边界和替代方案，而非用薄转发充作大块收益。
+
+C13 已有 [`LspClient`](../../../../src/loushang/coding/lsp/client.py) 复用 [`ContentLengthJsonRpcProcessTransport`](../../../../src/loushang/harness/workspace/process/json_rpc.py)，[`LspServerSupervisor`](../../../../src/loushang/coding/lsp/supervisor.py) 复用 [`ProcessClientSupervisor`](../../../../src/loushang/harness/workspace/process/supervision.py)。这些事实支持继续复用底层能力，不足以说明其余 LSP 领域实现都应下沉。Harness 通用 DiagnosticsService 与带文档版本的 LSP 诊断收件箱也不能仅凭名称合并。
 
 C08／C09的归档、恢复、接受事务已有共享owner，余量应优先证明具体旧流程可退出；C11／C12包含真实语法、呈现、仓库检查和评审政策，不按整目录行数排序。C07继续保留未完成清单，不能依靠字段搬运、压行或薄转发达到多数目标。
 

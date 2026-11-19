@@ -6,34 +6,19 @@ retirement, new Worker attempt, or Package GC authority.
 
 from __future__ import annotations
 
-import os
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from loushang.harness.package_product._windows_worker_history import (
+    WindowsProductWorkerHistorySources,
     _WindowsHistorySemanticReadMethods,
-    capture_windows_product_worker_history_semantics_under_guard,
-    capture_windows_product_worker_history_sources,
-    capture_windows_product_worker_sources_under_guard,
-    read_windows_product_worker_history_semantics,
 )
 from loushang.harness.package_product._windows_worker_references import (
     windows_worker_desired_history_digest,
-)
-from loushang.harness.package_product.product_local_wheel_runtime import (
-    WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationSnapshotV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
-    PackageWindowsEpochRuntimeLeaseRegistry,
-    PackageWindowsRuntimeQuiescenceV1,
-)
 from loushang.harness.worker.history._windows_sources import (
     WINDOWS_WORKER_BASE_STAGE_NAMES as WINDOWS_WORKER_BASE_STAGE_NAMES,
 )
@@ -140,90 +125,6 @@ class CodingWindowsWorkerHistorySemanticReadV1(_WindowsHistorySemanticReadMethod
     desired_transitions: tuple[PluginDesiredStateJournalTransition, ...] | None = None
 
 
-def capture_coding_windows_worker_history_sources(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> CodingWindowsWorkerHistorySourceSnapshotV1:
-    """Hash all recognized Worker-owned files without changing Product state."""
-
-    return _capture_coding_windows_worker_history_sources(
-        product, require_settled_history=False
-    )
-
-
-def review_coding_windows_worker_settled_history_sources(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> CodingWindowsWorkerHistorySettlementReviewV1:
-    """Join source bytes to GC's complete-attempt retirement proof."""
-
-    return CodingWindowsWorkerHistorySettlementReviewV1.create(
-        _capture_coding_windows_worker_history_sources(
-            product, require_settled_history=True
-        )
-    )
-
-
-def read_coding_windows_worker_history_semantics(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> CodingWindowsWorkerHistorySemanticReadV1:
-    """Join settled source bytes and retained semantics without publication."""
-
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
-        raise ValueError("Windows Worker history requires its Product owner")
-    return read_windows_product_worker_history_semantics(
-        product,
-        capture_semantic=_capture_coding_windows_worker_semantics_under_gc_guard,
-    )
-
-
-def _capture_coding_windows_worker_history_sources(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    require_settled_history: bool,
-) -> CodingWindowsWorkerHistorySourceSnapshotV1:
-    """Capture source bytes and optionally verify GC's settlement proof."""
-
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
-        raise ValueError("Windows Worker history requires its Product owner")
-    return capture_windows_product_worker_history_sources(
-        product,
-        snapshot_type=CodingWindowsWorkerHistorySourceSnapshotV1,
-        settlement_type=CodingWindowsWorkerGcHistoryAuthority,
-        require_settled_history=require_settled_history,
-    )
-
-
-def _capture_coding_windows_worker_history_sources_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    store_id: str,
-    lease_owner_revision: int,
-    require_settled_history: bool,
-    allow_preparation_stage: bool = False,
-    allow_checkpoint_stage: bool = False,
-    allow_base_stage: bool = False,
-) -> CodingWindowsWorkerHistorySourceSnapshotV1:
-    """Pin original Product roots through the shared source owner."""
-    return capture_windows_product_worker_sources_under_guard(
-        product,
-        snapshot_type=CodingWindowsWorkerHistorySourceSnapshotV1,
-        settlement_type=CodingWindowsWorkerGcHistoryAuthority,
-        store_id=store_id,
-        lease_owner_revision=lease_owner_revision,
-        require_settled_history=require_settled_history,
-        allow_preparation_stage=allow_preparation_stage,
-        allow_checkpoint_stage=allow_checkpoint_stage,
-        allow_base_stage=allow_base_stage,
-    )
-
-
 __all__ = [
     "CodingWindowsWorkerHistorySourceFileV1",
     "CodingWindowsWorkerHistorySourceSnapshotV1",
@@ -235,26 +136,30 @@ __all__ = [
 ]
 
 
-def _capture_coding_windows_worker_semantics_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    store: PackageWindowsEpochRuntimeLeaseRegistry | PackageWindowsRuntimeQuiescenceV1,
-    quiescence: PackageWindowsRuntimeQuiescenceV1,
-    gc_snapshot: PluginPackageGcReservationSnapshotV1,
-    allow_preparation_stage: bool = False,
-    allow_checkpoint_stage: bool = False,
-    allow_base_stage: bool = False,
-) -> Callable[[], CodingWindowsWorkerHistorySemanticReadV1]:
-    """Bind nominal record/recovery families to the shared capture owner."""
-    return capture_windows_product_worker_history_semantics_under_guard(
-        product,
-        semantic_type=CodingWindowsWorkerHistorySemanticReadV1,
-        settlement_type=CodingWindowsWorkerGcHistoryAuthority,
-        recovery_reader=_inspect_coding_windows_product_worker_offline_recovery_under_gc_guard,
-        store=store,
-        quiescence=quiescence,
-        gc_snapshot=gc_snapshot,
-        allow_preparation_stage=allow_preparation_stage,
-        allow_checkpoint_stage=allow_checkpoint_stage,
-        allow_base_stage=allow_base_stage,
-    )
+_HISTORY_SOURCES: WindowsProductWorkerHistorySources[
+    CodingWindowsWorkerHistorySourceSnapshotV1,
+    CodingWindowsWorkerHistorySemanticReadV1,
+    CodingWindowsWorkerHistorySettlementReviewV1,
+] = WindowsProductWorkerHistorySources(
+    product_id="coding",
+    snapshot_type=CodingWindowsWorkerHistorySourceSnapshotV1,
+    semantic_type=CodingWindowsWorkerHistorySemanticReadV1,
+    settlement_review=CodingWindowsWorkerHistorySettlementReviewV1.create,
+    settlement_type=CodingWindowsWorkerGcHistoryAuthority,
+    recovery_reader=_inspect_coding_windows_product_worker_offline_recovery_under_gc_guard,
+)
+
+capture_coding_windows_worker_history_sources = _HISTORY_SOURCES.capture_sources
+review_coding_windows_worker_settled_history_sources = (
+    _HISTORY_SOURCES.review_settled_sources
+)
+read_coding_windows_worker_history_semantics = _HISTORY_SOURCES.read_semantics
+_capture_coding_windows_worker_history_sources = (
+    _HISTORY_SOURCES.capture_sources_with_settlement
+)
+_capture_coding_windows_worker_history_sources_under_gc_guard = (
+    _HISTORY_SOURCES.capture_sources_under_guard
+)
+_capture_coding_windows_worker_semantics_under_gc_guard = (
+    _HISTORY_SOURCES.capture_semantics_under_guard
+)

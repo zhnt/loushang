@@ -267,26 +267,6 @@ class _ProviderSelectionPolicy(Protocol):
     ) -> CapabilityProviderCandidateEnvelope: ...
 
 
-_PreparedT = TypeVar("_PreparedT")
-_PreparedCo = TypeVar("_PreparedCo", covariant=True)
-_ReleaseContra = TypeVar(
-    "_ReleaseContra", bound=_WorkerAttemptRelease, contravariant=True
-)
-
-
-class _PreparedFactory(Protocol[_ReleaseContra, _PreparedCo]):
-    def __call__(
-        self,
-        *,
-        binding: CapabilityBundleProviderBinding,
-        facet: CapabilityWorkerReadOnlyFacetProxy,
-        receipt_fingerprint: str,
-        worker_admission_fingerprint: str,
-        _release: _ReleaseContra,
-        _commit: Callable[[], None] | None,
-    ) -> _PreparedCo: ...
-
-
 _ReceiptOwnerT = TypeVar("_ReceiptOwnerT")
 _QueryAuthorityT = TypeVar("_QueryAuthorityT", bound=_QueryAuthority)
 _BasePolicyT = TypeVar("_BasePolicyT", bound=_BasePolicyGuard)
@@ -403,90 +383,90 @@ class _PreparedWorkerProviderMethods(
             _commit=on_graph_publication,
         )
 
-
-async def _prepare_native_worker_component(
-    *,
-    prepare_native: Callable[[], Coroutine[None, None, _NativeWorkerAttempt]],
-    policy: _ProviderSelectionPolicy,
-    receipt: ProductWorkerActivationReceiptV1,
-    resolved_providers: ResolvedCapabilityProviderSet,
-    expected_admission: CapabilityWorkerAdmissionV1,
-    graph_generation: int,
-    clock: Callable[[], int],
-    base_policy_binding: _BasePolicyGuard | None,
-    renewing_provider_owner: CapabilityProviderOwnerAuthority,
-    release_type: type[_ReleaseT],
-    prepared_factory: _PreparedFactory[_ReleaseT, _PreparedT],
-    pending_failure: Callable[[str], RuntimeError],
-    provider_error_type: Callable[[str], RuntimeError],
-    provider_error_prefix: str,
-    fingerprint_namespace: bytes,
-    cleanup_note: str,
-) -> _PreparedT:
-    attempt: _NativeWorkerAttempt | None = None
-    try:
-        attempt = await prepare_native()
-        authority = policy.bind_authority(attempt.request)
-        adapter = bind_capability_query_worker_adapter(
-            supervisor=attempt.supervisor,
-            binding=authority.binding,
-            authority_reader=authority.current_authority,
-            enabled=True,
-        )
-        admitted = adapter.admit()
-        if admitted != expected_admission:
-            raise pending_failure("admission_changed")
-        descriptors = await adapter.describe()
-        if (
-            len(descriptors) != 1
-            or descriptors[0].capability_id != policy.capability_id
-            or descriptors[0].facet_ids != (policy.facet_id,)
-        ):
-            raise pending_failure("descriptor_mismatch")
-        [resolved] = resolved_providers.entries
-        candidate, binding = policy.capture(
-            resolved=resolved,
-            capability_authority=authority,
-            adapter=adapter,
-            worker_admission=admitted,
-            graph_generation=graph_generation,
-            release_attempt=attempt.release,
-            on_graph_publication=attempt.commit_activation,
-        )
-        graph_binding, facet, release = _prepare_worker_provider_binding(
-            resolved=resolved,
-            receipt=receipt,
-            binding=binding,
-            capability_authority=authority,
-            adapter=adapter,
-            worker_admission=admitted,
-            graph_generation=graph_generation,
-            clock=clock,
-            release_attempt=attempt.release,
-            candidate=candidate,
-            read_candidate=lambda: policy.read_candidate(resolved),
-            base_policy_binding=base_policy_binding,
-            renewing_provider_owner=renewing_provider_owner,
-            error_type=provider_error_type,
-            error_prefix=provider_error_prefix,
-            fingerprint_namespace=fingerprint_namespace,
-            release_type=release_type,
-        )
-        return prepared_factory(
-            binding=graph_binding,
-            facet=facet,
-            receipt_fingerprint=receipt.fingerprint,
-            worker_admission_fingerprint=admitted.fingerprint,
-            _release=release,
-            _commit=attempt.commit_activation,
-        )
-    except BaseException as error:
-        if attempt is not None:
-            try:
-                await attempt.release()
-            except BaseException as cleanup_error:
-                error.add_note(cleanup_note + type(cleanup_error).__name__)
-        raise
+    @classmethod
+    async def _prepare_native(
+        cls,
+        *,
+        prepare_native: Callable[[], Coroutine[None, None, _NativeWorkerAttempt]],
+        policy: _ProviderSelectionPolicy,
+        receipt: ProductWorkerActivationReceiptV1,
+        resolved_providers: ResolvedCapabilityProviderSet,
+        expected_admission: CapabilityWorkerAdmissionV1,
+        graph_generation: int,
+        clock: Callable[[], int],
+        base_policy_binding: _BasePolicyGuard | None,
+        renewing_provider_owner: CapabilityProviderOwnerAuthority,
+        pending_failure: Callable[[str], RuntimeError],
+        cleanup_note: str,
+    ) -> Self:
+        release_type = cls._provider_release_type
+        provider_error_type = cls._provider_error_type
+        provider_error_prefix = cls._provider_error_prefix
+        fingerprint_namespace = cls._provider_fingerprint_namespace
+        attempt: _NativeWorkerAttempt | None = None
+        try:
+            attempt = await prepare_native()
+            authority = policy.bind_authority(attempt.request)
+            adapter = bind_capability_query_worker_adapter(
+                supervisor=attempt.supervisor,
+                binding=authority.binding,
+                authority_reader=authority.current_authority,
+                enabled=True,
+            )
+            admitted = adapter.admit()
+            if admitted != expected_admission:
+                raise pending_failure("admission_changed")
+            descriptors = await adapter.describe()
+            if (
+                len(descriptors) != 1
+                or descriptors[0].capability_id != policy.capability_id
+                or descriptors[0].facet_ids != (policy.facet_id,)
+            ):
+                raise pending_failure("descriptor_mismatch")
+            [resolved] = resolved_providers.entries
+            candidate, binding = policy.capture(
+                resolved=resolved,
+                capability_authority=authority,
+                adapter=adapter,
+                worker_admission=admitted,
+                graph_generation=graph_generation,
+                release_attempt=attempt.release,
+                on_graph_publication=attempt.commit_activation,
+            )
+            graph_binding, facet, release = _prepare_worker_provider_binding(
+                resolved=resolved,
+                receipt=receipt,
+                binding=binding,
+                capability_authority=authority,
+                adapter=adapter,
+                worker_admission=admitted,
+                graph_generation=graph_generation,
+                clock=clock,
+                release_attempt=attempt.release,
+                candidate=candidate,
+                read_candidate=lambda: policy.read_candidate(resolved),
+                base_policy_binding=base_policy_binding,
+                renewing_provider_owner=renewing_provider_owner,
+                error_type=provider_error_type,
+                error_prefix=provider_error_prefix,
+                fingerprint_namespace=fingerprint_namespace,
+                release_type=release_type,
+            )
+            return cast(Callable[..., Self], cls)(
+                binding=graph_binding,
+                facet=facet,
+                receipt_fingerprint=receipt.fingerprint,
+                worker_admission_fingerprint=admitted.fingerprint,
+                _release=release,
+                _commit=attempt.commit_activation,
+            )
+        except BaseException as error:
+            if attempt is not None:
+                try:
+                    await attempt.release()
+                except BaseException as cleanup_error:
+                    error.add_note(cleanup_note + type(cleanup_error).__name__)
+            raise
 
 
 def _read_worker_provider_inputs(

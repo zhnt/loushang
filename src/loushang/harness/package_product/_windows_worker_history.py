@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from typing import ClassVar, Protocol, TypeVar, cast
+from dataclasses import dataclass
+from typing import ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product._windows_worker_references import (
@@ -310,62 +311,6 @@ def capture_windows_product_worker_sources_under_guard(
     )
 
 
-def capture_windows_product_worker_history_sources(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    snapshot_type: type[_SourceSnapshotT],
-    settlement_type: Callable[
-        [WindowsLocalWheelProductSessionOwner], WindowsHistorySettlement
-    ],
-    require_settled_history: bool,
-) -> _SourceSnapshotT:
-    """Capture under original runtime/GC lifetimes; approval stays at the caller."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker history runtime remains active")
-        product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            snapshot = capture_windows_product_worker_sources_under_guard(
-                product,
-                snapshot_type=snapshot_type,
-                settlement_type=settlement_type,
-                store_id=registry.store_id,
-                lease_owner_revision=quiescence.owner_revision,
-                require_settled_history=require_settled_history,
-            )
-        product.assert_root_gc_authority_current()
-    return snapshot
-
-
-def read_windows_product_worker_history_semantics(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    capture_semantic: CapturePreparedWindowsSemantic[_SemanticT],
-) -> _SemanticT:
-    """Keep the original read guards and construct immutable values after exit."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker history runtime remains active")
-        product.assert_root_gc_authority_current()
-        with product.gc_gate.read_snapshot_guard() as gc_snapshot:
-            if gc_snapshot.active:
-                raise ValueError("Windows Worker history GC reservation remains")
-            build_semantic = capture_semantic(
-                product,
-                store=registry,
-                quiescence=quiescence,
-                gc_snapshot=gc_snapshot,
-            )
-        product.assert_root_gc_authority_current()
-    return build_semantic()
-
-
 class _WindowsHistorySemanticReadMethods:
     __slots__ = ()
     _source_snapshot_type: ClassVar[type[_WindowsHistorySourceSnapshotMethods]]
@@ -435,68 +380,190 @@ class ReadWindowsOfflineRecovery(Protocol):
 
 
 _SemanticRecordT = TypeVar("_SemanticRecordT", bound=_WindowsHistorySemanticReadMethods)
+_SettlementReviewT = TypeVar("_SettlementReviewT")
 
 
-def capture_windows_product_worker_history_semantics_under_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    semantic_type: type[_SemanticRecordT],
+@dataclass(frozen=True, slots=True)
+class WindowsProductWorkerHistorySources(
+    Generic[_SourceSnapshotT, _SemanticRecordT, _SettlementReviewT]
+):
+    """Configured source and semantic reads using the original history owners.
+
+    Only nominal factories and Product identity are bound here. Runtime/GC
+    guards, source IO, settlement and recovery keep their existing owners.
+    """
+
+    product_id: str
+    snapshot_type: type[_SourceSnapshotT]
+    semantic_type: type[_SemanticRecordT]
+    settlement_review: Callable[[_SourceSnapshotT], _SettlementReviewT]
     settlement_type: Callable[
         [WindowsLocalWheelProductSessionOwner], WindowsHistorySettlement
-    ],
-    recovery_reader: ReadWindowsOfflineRecovery,
-    store: PackageWindowsEpochRuntimeLeaseRegistry | PackageWindowsRuntimeQuiescenceV1,
-    quiescence: PackageWindowsRuntimeQuiescenceV1,
-    gc_snapshot: PluginPackageGcReservationSnapshotV1,
-    allow_preparation_stage: bool = False,
-    allow_checkpoint_stage: bool = False,
-    allow_base_stage: bool = False,
-) -> Callable[[], _SemanticRecordT]:
-    """Capture source/recovery/Desired/source in order, then build a pure value."""
-    source = capture_windows_product_worker_sources_under_guard(
-        product,
-        snapshot_type=semantic_type._source_snapshot_type,
-        settlement_type=settlement_type,
-        store_id=store.store_id,
-        lease_owner_revision=quiescence.owner_revision,
-        require_settled_history=True,
-        allow_preparation_stage=allow_preparation_stage,
-        allow_checkpoint_stage=allow_checkpoint_stage,
-        allow_base_stage=allow_base_stage,
-    )
-    recovery = recovery_reader(
-        product,
-        store_id=store.store_id,
-        lease_owner_revision=quiescence.owner_revision,
-        gc_snapshot=gc_snapshot,
-    )
-    desired_snapshot, desired_transitions, desired_digest = (
-        capture_windows_product_worker_desired_history(product)
-    )
-    if source != capture_windows_product_worker_sources_under_guard(
-        product,
-        snapshot_type=semantic_type._source_snapshot_type,
-        settlement_type=settlement_type,
-        store_id=store.store_id,
-        lease_owner_revision=quiescence.owner_revision,
-        require_settled_history=False,
-        allow_preparation_stage=allow_preparation_stage,
-        allow_checkpoint_stage=allow_checkpoint_stage,
-        allow_base_stage=allow_base_stage,
-    ):
-        raise ValueError("Windows Worker history sources changed")
+    ]
+    recovery_reader: ReadWindowsOfflineRecovery
 
-    def build_semantic() -> _SemanticRecordT:
-        return cast(Callable[..., _SemanticRecordT], semantic_type)(
-            source_snapshot=source,
-            offline_recovery=recovery,
-            desired_inventory_revision=desired_snapshot.inventory_revision,
-            desired_history_digest=desired_digest,
-            desired_snapshot=desired_snapshot,
-            desired_transitions=desired_transitions,
+    def _require_product(self, product: WindowsLocalWheelProductSessionOwner) -> None:
+        if (
+            os.name != "nt"
+            or type(product) is not WindowsLocalWheelProductSessionOwner
+            or product.policy.product_id != self.product_id
+        ):
+            raise ValueError("Windows Worker history requires its Product owner")
+
+    def capture_sources(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> _SourceSnapshotT:
+        """Hash all recognized Worker-owned files without changing Product state."""
+        return self.capture_sources_with_settlement(
+            product, require_settled_history=False
         )
 
-    return build_semantic
+    def review_settled_sources(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> _SettlementReviewT:
+        """Join source bytes to GC's complete-attempt retirement proof."""
+        return self.settlement_review(
+            self.capture_sources_with_settlement(
+                product, require_settled_history=True
+            )
+        )
+
+    def capture_sources_with_settlement(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        require_settled_history: bool,
+    ) -> _SourceSnapshotT:
+        """Capture source bytes and optionally verify GC's settlement proof."""
+        self._require_product(product)
+        snapshot_type = self.snapshot_type
+        settlement_type = self.settlement_type
+        registry = product.epoch_runtime.registry
+        with registry.exclusive_runtime_quiescence(
+            store_id=registry.store_id
+        ) as quiescence:
+            if quiescence.active_runtime_lease_ids:
+                raise ValueError("Windows Worker history runtime remains active")
+            product.assert_root_gc_authority_current()
+            with product.gc_gate.guard(require_write=True):
+                snapshot = capture_windows_product_worker_sources_under_guard(
+                    product,
+                    snapshot_type=snapshot_type,
+                    settlement_type=settlement_type,
+                    store_id=registry.store_id,
+                    lease_owner_revision=quiescence.owner_revision,
+                    require_settled_history=require_settled_history,
+                )
+            product.assert_root_gc_authority_current()
+        return snapshot
+
+    def read_semantics(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> _SemanticRecordT:
+        """Join settled source bytes and retained semantics without publication."""
+        self._require_product(product)
+        registry = product.epoch_runtime.registry
+        with registry.exclusive_runtime_quiescence(
+            store_id=registry.store_id
+        ) as quiescence:
+            if quiescence.active_runtime_lease_ids:
+                raise ValueError("Windows Worker history runtime remains active")
+            product.assert_root_gc_authority_current()
+            with product.gc_gate.read_snapshot_guard() as gc_snapshot:
+                if gc_snapshot.active:
+                    raise ValueError("Windows Worker history GC reservation remains")
+                build_semantic = self.capture_semantics_under_guard(
+                    product,
+                    store=registry,
+                    quiescence=quiescence,
+                    gc_snapshot=gc_snapshot,
+                )
+            product.assert_root_gc_authority_current()
+        return build_semantic()
+
+    def capture_sources_under_guard(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        store_id: str,
+        lease_owner_revision: int,
+        require_settled_history: bool,
+        allow_preparation_stage: bool = False,
+        allow_checkpoint_stage: bool = False,
+        allow_base_stage: bool = False,
+    ) -> _SourceSnapshotT:
+        """Pin original Product roots through the shared source owner."""
+        return capture_windows_product_worker_sources_under_guard(
+            product,
+            snapshot_type=self.snapshot_type,
+            settlement_type=self.settlement_type,
+            store_id=store_id,
+            lease_owner_revision=lease_owner_revision,
+            require_settled_history=require_settled_history,
+            allow_preparation_stage=allow_preparation_stage,
+            allow_checkpoint_stage=allow_checkpoint_stage,
+            allow_base_stage=allow_base_stage,
+        )
+
+    def capture_semantics_under_guard(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        *,
+        store: PackageWindowsEpochRuntimeLeaseRegistry | PackageWindowsRuntimeQuiescenceV1,
+        quiescence: PackageWindowsRuntimeQuiescenceV1,
+        gc_snapshot: PluginPackageGcReservationSnapshotV1,
+        allow_preparation_stage: bool = False,
+        allow_checkpoint_stage: bool = False,
+        allow_base_stage: bool = False,
+    ) -> Callable[[], _SemanticRecordT]:
+        """Bind nominal record/recovery families to the shared capture owner."""
+        semantic_type = self.semantic_type
+        settlement_type = self.settlement_type
+        recovery_reader = self.recovery_reader
+        source = capture_windows_product_worker_sources_under_guard(
+            product,
+            snapshot_type=semantic_type._source_snapshot_type,
+            settlement_type=settlement_type,
+            store_id=store.store_id,
+            lease_owner_revision=quiescence.owner_revision,
+            require_settled_history=True,
+            allow_preparation_stage=allow_preparation_stage,
+            allow_checkpoint_stage=allow_checkpoint_stage,
+            allow_base_stage=allow_base_stage,
+        )
+        recovery = recovery_reader(
+            product,
+            store_id=store.store_id,
+            lease_owner_revision=quiescence.owner_revision,
+            gc_snapshot=gc_snapshot,
+        )
+        desired_snapshot, desired_transitions, desired_digest = (
+            capture_windows_product_worker_desired_history(product)
+        )
+        if source != capture_windows_product_worker_sources_under_guard(
+            product,
+            snapshot_type=semantic_type._source_snapshot_type,
+            settlement_type=settlement_type,
+            store_id=store.store_id,
+            lease_owner_revision=quiescence.owner_revision,
+            require_settled_history=False,
+            allow_preparation_stage=allow_preparation_stage,
+            allow_checkpoint_stage=allow_checkpoint_stage,
+            allow_base_stage=allow_base_stage,
+        ):
+            raise ValueError("Windows Worker history sources changed")
+
+        def build_semantic() -> _SemanticRecordT:
+            return cast(Callable[..., _SemanticRecordT], semantic_type)(
+                source_snapshot=source,
+                offline_recovery=recovery,
+                desired_inventory_revision=desired_snapshot.inventory_revision,
+                desired_history_digest=desired_digest,
+                desired_snapshot=desired_snapshot,
+                desired_transitions=desired_transitions,
+            )
+
+        return build_semantic
 
 
 _ReferenceT = TypeVar("_ReferenceT", bound=_WindowsPackageReferenceMethods)
