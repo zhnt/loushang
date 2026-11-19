@@ -329,7 +329,7 @@ export default function LocalHostGate() {
 
   const trayConnection: TrayConnection = busy && ["connect", "start", "restart"].includes(pendingAction.current) ? "connecting"
     : connection === "connected" ? "connected"
-    : connection === "connecting" || connection === "resync-required" ? "connecting" : "disconnected";
+    : connection === "connecting" ? "connecting" : "disconnected";
   const trayHosts = useTrayHosts({
     enabled: route === "web", selectedId, localName: i18n.t("shell:tray.localHost"),
     workspace, host, supported: supported === true, busy, connection: trayConnection,
@@ -402,8 +402,9 @@ export default function LocalHostGate() {
     startLocalHost={canStart ? <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={client ? setConnection : undefined}
     managedHostConnection={busy ? { status: pendingAction.current === "stop" ? "disconnected" : "connecting" }
-      : host.state === "running" && !host.errorCode ? { status: "running", serviceInstanceId: host.serviceInstanceId }
-        : { status: "disconnected" }}
+      : supported === null && !host.errorCode ? { status: "connecting" }
+        : host.state === "running" && !host.errorCode ? { status: "running", serviceInstanceId: host.serviceInstanceId }
+          : { status: "disconnected" }}
     projectNavigation={{
       directory, available: host.state === "running" && !host.errorCode && !busy,
       pending: workspacePending, error: workspaceError, folderInput, selection,

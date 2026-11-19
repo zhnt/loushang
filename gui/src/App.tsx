@@ -268,7 +268,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     let pending = false;
     let buffered: ClientEvent[] = [];
     let overflow = false;
-    let latestSnapshot: ClientSnapshot | null = null;
+    // null records a lost connection after this refresh began.
+    let latestSnapshot: ClientSnapshot | null | undefined;
     function install(snapshot: ClientSnapshot, fallbackNotice: Notice) {
       dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
       setInstalledClient(client);
@@ -281,14 +282,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       syncPendingRef.current = true;
       buffered = [];
       overflow = false;
-      latestSnapshot = null;
+      latestSnapshot = undefined;
       setSyncing(true);
       try {
         const snapshot = await client.snapshot();
         if (snapshot.source.kind === "live") {
           await updateSidebarPreferences(sidebarPreferencesKey(snapshot.source)).catch(() => {});
         }
-        if (!active) return;
+        if (!active || latestSnapshot === null) return;
         if (overflow) throw new Error("Snapshot event buffer exceeded its limit.");
         install(latestSnapshot ?? snapshot, snapshot.source.kind === "fixture"
           ? { key: "notice.fixtureReady" }
@@ -298,7 +299,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
         for (const event of buffered) dispatch({ type: "event.received", event });
         setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
       } catch {
-        if (active) dispatch({
+        if (active && latestSnapshot !== null) dispatch({
           type: "sync.failed",
           message: fixture
             ? "Fixture synchronization failed. Retry to load a fresh snapshot."
@@ -330,6 +331,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     }) ?? (() => undefined);
     const unsubscribeConnection = client.subscribeConnection?.((connection) => {
       if (!active) return;
+      latestSnapshot = null;
       observeDraft(client, null);
       dispatch({
         type: "connection.changed",
@@ -338,7 +340,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           ? "Live AppHost disconnected. Reconnecting from a fresh snapshot."
           : "Live event continuity was lost. Requesting a fresh snapshot.",
       });
-      setSyncing(true);
+      if (connection === "disconnected") setSyncing(false);
     }) ?? (() => undefined);
     void refresh();
     if (fixture) void probeFixtureBridge().then((probe) => {
@@ -362,13 +364,18 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     }
     if (!client.requestResync || resyncRequestedRef.current) return;
     resyncRequestedRef.current = true;
+    let active = true;
+    setSyncing(true);
     void client.requestResync().catch(() => {
+      if (!active) return;
+      setSyncing(false);
       dispatch({
         type: "connection.changed",
         connection: "disconnected",
         message: "Unable to request live resynchronization.",
       });
     });
+    return () => { active = false; };
   }, [client, state.remote.connection]);
 
   useEffect(() => {
@@ -412,14 +419,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     || requestedSelection.id === selectedId;
   const selectionKey = liveSelectionKey(state.remote.source);
   const expectedInstance = managedHostConnection?.status === "running" ? managedHostConnection.serviceInstanceId : undefined;
-  const awaitingHostSnapshot = expectedInstance && attachedClient
+  const awaitingHostSnapshot = expectedInstance && attachedClient && !state.diagnostic
     && (state.remote.source.kind !== "live" || state.remote.source.serviceInstanceId !== expectedInstance);
   const connection = managedHostConnection && managedHostConnection.status !== "running" ? managedHostConnection.status
     : (attachedClient && !fixture && syncing) || awaitingHostSnapshot ? "connecting" : state.remote.connection;
   // The verified Host stays connected while a draft opens or attaches its Workspace view.
   const draftHostConnected = draft && managedHostConnection?.status === "running" && !state.diagnostic
     && (state.remote.source.kind !== "live" || !expectedInstance || state.remote.source.serviceInstanceId === expectedInstance);
-  const displayedConnection = draftHostConnected ? "connected" : connection;
+  const hostConnectedWithoutSession = managedHostConnection?.status === "running" && !attachedClient;
+  const displayedConnection = draftHostConnected || hostConnectedWithoutSession ? "connected" : connection;
   const liveConnecting = connection === "connecting";
   const connected = installedClient === client && connection === "connected";
   useEffect(() => {
@@ -988,7 +996,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }} onLostPointerCapture={() => { sidebarDrag.current = null; }} />
         </div>
 
-        {conversationOpen || (attachedClient && !fixture) ? <SessionHeader
+        {conversationOpen || managedHostConnection || (attachedClient && !fixture) ? <SessionHeader
           title={conversationOpen ? conversationTitle : undefined}
           contextLabel={workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats")
             : selected ? projectContext : undefined}
@@ -1002,7 +1010,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           {startLocalHost ? <div className="diagnostic">{startLocalHost}</div> : null}
           {attachedClient && !liveConnecting && (syncing || state.diagnostic || state.remote.connection === "disconnected") ? (
             <div className="diagnostic" role="status">
-              <span>{syncing ? t("session:sync.fixture") : t("session:diagnostic.title")}</span>
+              <span>{syncing ? t("session:sync.fixture") : state.remote.connection === "disconnected"
+                ? t("session:sync.disconnected") : t("session:diagnostic.title")}</span>
               {state.diagnostic ? <details><summary>{t("session:diagnostic.details")}</summary><pre>{state.diagnostic}</pre></details> : null}
               {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>{t("session:sync.retry")}</button> : null}
             </div>
@@ -1467,7 +1476,8 @@ function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen
       </div>
       <div className="header-actions" data-conversation-open={title !== undefined}>
         <span className={`connection-chip ${connection}`} role="status"
-          title={connection === "connecting" ? t("session:sync.live") : label}>{label}</span>
+          title={connection === "connecting" ? t("session:sync.live")
+            : connection === "resync-required" ? t("common:connection.resync") : label}>{label}</span>
         <button type="button" aria-label={t("panels:header.shareUnavailable")} disabled>{t("panels:header.share")}</button>
         <button type="button" aria-label={t("panels:header.bottomUnavailable")} title={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>
         <button type="button" aria-label={t("panels:header.openDock")} title={t("panels:header.toggleDock")} aria-pressed={dockOpen} onClick={onOpenDock} disabled={!sessionReady}><PanelIcon side="right" /></button>
@@ -1930,8 +1940,8 @@ function connectionLabel(connection: ConnectionState | "connecting"): string {
     case "fixture-offline": return i18n.t("workspace:sidebar.offline");
     case "connecting": return i18n.t("common:connection.connecting");
     case "connected": return i18n.t("common:connection.connected");
-    case "disconnected": return i18n.t("common:connection.disconnected");
-    case "resync-required": return i18n.t("common:connection.resync");
+    case "disconnected":
+    case "resync-required": return i18n.t("common:connection.disconnected");
   }
 }
 
