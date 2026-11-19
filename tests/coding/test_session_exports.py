@@ -5,6 +5,7 @@ from pathlib import Path
 
 from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
+from loushang.ai.model import Model
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -25,6 +26,11 @@ from loushang.harness.transcript.jsonl_file import (
 )
 
 
+def _export_agent() -> Agent:
+    model = Model(id="faux-model", provider="faux", endpoint="anthropic-messages")
+    return Agent(initial_state={"model": model})
+
+
 def _build_export_session(
     tmp_path, *, tool_registry: ToolRegistry | None = None
 ) -> AgentSession:
@@ -43,7 +49,7 @@ def _build_export_session(
     asyncio.run(
         manager.append_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[
                     TextPart(type="text", text="Calling read"),
@@ -85,7 +91,7 @@ def _build_export_session(
         )
     )
     return AgentSession(
-        agent=Agent(), session_manager=manager, tool_registry=tool_registry
+        agent=_export_agent(), session_manager=manager, tool_registry=tool_registry
     )
 
 
@@ -131,7 +137,7 @@ def test_export_session_to_bundle_defaults_to_generated_portable_backup(
             persist=False,
         )
     )
-    session = AgentSession(agent=Agent(), session_manager=manager)
+    session = AgentSession(agent=_export_agent(), session_manager=manager)
 
     output = Path(export_session_to_bundle(session))
 
@@ -150,7 +156,7 @@ def test_export_session_to_jsonl_defaults_to_generated_filename(tmp_path) -> Non
             session_dir=tmp_path / "sessions", cwd=str(cwd), persist=False
         )
     )
-    session = AgentSession(agent=Agent(), session_manager=manager)
+    session = AgentSession(agent=_export_agent(), session_manager=manager)
 
     output = export_session_to_jsonl(session)
 
@@ -194,7 +200,7 @@ def test_export_session_to_jsonl_rechains_current_branch_parent_ids(tmp_path) ->
             )
         )
     )
-    session = AgentSession(agent=Agent(), session_manager=manager)
+    session = AgentSession(agent=_export_agent(), session_manager=manager)
 
     output = export_session_to_jsonl(
         session, output_path=str(tmp_path / "branch.jsonl")
@@ -245,7 +251,7 @@ def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting
     html = render_transcript(
         [
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[
                     TextPart(
@@ -494,7 +500,7 @@ def test_render_tool_sections_uses_shared_renderer_runtime_state() -> None:
     html = render_tool_sections(
         [
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[
                     ToolCall(
@@ -558,7 +564,7 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
     asyncio.run(
         manager.append_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[TextPart(type="text", text="main branch")],
                 api="anthropic-messages",
@@ -591,7 +597,7 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
         )
     )
     asyncio.run(manager.append_label(summary_id, "summary label"))
-    session = AgentSession(agent=Agent(), session_manager=manager)
+    session = AgentSession(agent=_export_agent(), session_manager=manager)
 
     output = export_session_to_html(session, output_path=str(tmp_path / "session.html"))
     html = Path(output).read_text(encoding="utf-8")
@@ -728,7 +734,7 @@ def test_export_session_to_html_uses_custom_renderer_and_theme(tmp_path) -> None
         manager.append_custom_message_entry("demo.card", "custom payload", True)
     )
     session = AgentSession(
-        agent=Agent(),
+        agent=_export_agent(),
         session_manager=manager,
         extension_runner=ExtensionRunner(
             [
