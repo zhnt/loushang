@@ -17,7 +17,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.session._worker_provider import (
-    _prepare_native_worker_component,
     _prepare_pending_worker_session_inputs,
 )
 from loushang.harness.session.capability_composition_inputs import (
@@ -28,20 +27,19 @@ from loushang.harness.worker.capability_query import (
     CapabilityWorkerAdmissionV1,
     CapabilityWorkerBindingV1,
 )
+from loushang.harness.worker.history._windows_product_journals import (
+    WindowsActivationStateJournal,
+)
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
 from ._worker_preparation_inputs import (
     _CodingWorkerProviderPolicy,
-    _WindowsActivationInputs,
-    _WindowsLaunchInputs,
 )
 from .package_product_worker_provider import CodingWorkerBaseCompositionPolicyBinding
 from .package_product_worker_provider_host import (
     CodingPreparedWorkerProvider,
-    CodingWorkerProviderHostError,
-    _WorkerAttemptRelease,
 )
 from .package_product_worker_query_consumer import (
     CODING_WORKER_QUERY_CAPABILITY_ID,
@@ -79,22 +77,12 @@ def _require_windows_host_c5_recovered(
 ) -> None:
     """Keep interrupted initialization and unfinished attempts out of a new Host."""
 
-    present, state = CodingWindowsWorkerActivationStateJournal(
-        product
-    ).load_with_presence_read_only()
-    if present and state is None:
-        raise CodingWindowsWorkerPendingHostError(
+    WindowsActivationStateJournal.require_recovered(
+        lambda: CodingWindowsWorkerActivationStateJournal(product),
+        failure=lambda: CodingWindowsWorkerPendingHostError(
             "coding_worker_pending_c5_owner_requires_recovery"
-        )
-    if state is not None and any(
-        attempt.phase != "settled"
-        for attempt in CodingWindowsWorkerActivationStateJournal(
-            product
-        ).retained_attempts_read_only()
-    ):
-        raise CodingWindowsWorkerPendingHostError(
-            "coding_worker_pending_c5_owner_requires_recovery"
-        )
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,13 +105,11 @@ class CodingWindowsProductWorkerPendingHost:
             raise TypeError("Windows Worker graph generation is invalid")
         self.base_policy_binding.assert_current()
         _require_windows_host_c5_recovered(self.receipt_owner.product_owner)
-        return await _prepare_native_worker_component(
+        return await CodingPreparedWorkerProvider._prepare_native(
             prepare_native=partial(
                 _prepare_windows_native_worker,
-                launch_source=_WindowsLaunchInputs(
-                    self.receipt_owner, self.receipt, self.pending_launch
-                ),
-                activation=_WindowsActivationInputs(self.receipt_owner, self.receipt),
+                launch_source=self.receipt_owner,
+                activation=self.receipt_owner,
                 pending_launch=self.pending_launch,
                 receipt=self.receipt,
                 resume_parent_context=self.resume_parent_context,
@@ -152,14 +138,9 @@ class CodingWindowsProductWorkerPendingHost:
             clock=self.clock,
             base_policy_binding=self.base_policy_binding,
             renewing_provider_owner=self.provider_owner,
-            release_type=_WorkerAttemptRelease,
-            prepared_factory=CodingPreparedWorkerProvider,
             pending_failure=lambda suffix: CodingWindowsWorkerPendingHostError(
                 "coding_worker_pending_" + suffix
             ),
-            provider_error_type=CodingWorkerProviderHostError,
-            provider_error_prefix="coding_worker_provider",
-            fingerprint_namespace=b"loushang.coding-worker-provider-binding/v1\x00",
             cleanup_note="Windows Worker pending graph cleanup also failed: ",
         )
 

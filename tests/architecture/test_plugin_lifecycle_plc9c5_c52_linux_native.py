@@ -215,7 +215,7 @@ def test_c52_bridge_has_bounded_explicit_product_consumers_and_adapter_stays_bli
     }
     assert consumers == {
         Path("src/loushang/coding/_product_worker_canary.py"),
-        Path("src/loushang/coding/_worker_preparation_inputs.py"),
+        Path("src/loushang/harness/package_product/_worker_product_authority.py"),
     }
     adapter = _read(HOSTING_ADAPTER)
     assert "ProductWorkerNativeProfilePort" in adapter

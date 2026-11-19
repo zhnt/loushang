@@ -180,6 +180,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_windows_pending_host.py": {
         'loushang.harness.worker._ordinary_prepare',
         'loushang.harness.worker.capability_query',
+        'loushang.harness.worker.history._windows_product_journals',
         'loushang.harness.worker.product_activation',
     },
     CODING_ROOT / "package_product_worker_session_composition.py": {
@@ -295,11 +296,8 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._start_gate"
     },
     CODING_ROOT / '_worker_preparation_inputs.py': {
-        'loushang.harness.worker._native_profile_bridge',
-        'loushang.harness.worker._ordinary_prepare',
         'loushang.harness.worker.capability_query',
         'loushang.harness.worker.contracts',
-        'loushang.harness.worker.journal',
         'loushang.harness.worker.product_activation',
     },
     CODING_ROOT / 'package_product_worker_windows_checkpoint.py': {

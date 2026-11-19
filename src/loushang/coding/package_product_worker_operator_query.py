@@ -47,16 +47,8 @@ from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
-from ._worker_preparation_inputs import (
-    _PosixActivationInputs,
-    _PosixSelectedWorkerSource,
-)
+from ._worker_preparation_inputs import CodingWorkerProductReceiptOwner
 from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
-from .package_product_worker_installed_native import CodingWorkerNativeLaunchMaterialV1
-from .package_product_worker_payload import (
-    CodingProductWorkerPayloadLeaseV1,
-    bind_coding_product_worker_launch_request,
-)
 from .package_product_worker_provider import (
     coding_worker_query_capability_provider,
     prepare_coding_selected_worker_provider_candidate,
@@ -73,14 +65,12 @@ from .package_product_worker_query_consumer import (
     validate_coding_worker_query_symbol,
 )
 from .package_product_worker_receipt import (
-    CodingWorkerProductReceiptOwner,
     open_coding_product_selected_worker_receipt_owner,
 )
 from .package_product_worker_session_composition import (
     _WORKER_SESSION_COMPOSITION,
     prepare_coding_product_worker_session_inputs,
 )
-from .package_product_worker_start_gate import CodingProductWorkerStartGate
 from .session_manager import SessionManager
 
 
@@ -103,43 +93,6 @@ class _QueryOnlyFooter:
 
 async def _no_model_execution(*_args: object, **_kwargs: object) -> NoReturn:
     raise CodingWorkerOperatorQueryError("coding_worker_query_model_execution_refused")
-
-
-@dataclass(frozen=True, slots=True)
-class _CodingOperatorLaunchSource(_PosixSelectedWorkerSource):
-    """Product-selected facts and original IO adapters; no execution state."""
-
-    receipt_owner: CodingWorkerProductReceiptOwner
-    receipt: ProductWorkerActivationReceiptV1
-
-    @property
-    def activation(self) -> _PosixActivationInputs:
-        return _PosixActivationInputs(self.receipt_owner)
-
-    def bind_request(
-        self, payload: CodingProductWorkerPayloadLeaseV1, *, supervisor_epoch: int
-    ) -> ManagedWorkerLaunchRequestV1:
-        return bind_coding_product_worker_launch_request(
-            receipt_owner=self.receipt_owner,
-            receipt=self.receipt,
-            payload_lease=payload,
-            supervisor_epoch=supervisor_epoch,
-        )
-
-    def read_native(self) -> CodingWorkerNativeLaunchMaterialV1:
-        return self.receipt_owner.current_native_launch_material(self.receipt)
-
-    def start_gate(
-        self, request: ManagedWorkerLaunchRequestV1, attempt_id: str
-    ) -> CodingProductWorkerStartGate:
-        return CodingProductWorkerStartGate(
-            receipt_owner=self.receipt_owner,
-            receipt=self.receipt,
-            worker_request=request,
-            attempt_id=attempt_id,
-        )
-
-    native_profile = _PosixSelectedWorkerSource._profile_from_material
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,7 +224,7 @@ def _open_coding_operator_query(
     plugin_id: str,
     session_file: Path,
     manager: SessionManager,
-) -> tuple[_CodingOperatorLaunchSource, _CodingOperatorQueryPolicy] | None:
+) -> tuple[CodingWorkerProductReceiptOwner, _CodingOperatorQueryPolicy] | None:
     receipt_owner = open_coding_product_selected_worker_receipt_owner(
         product_owner=product,
         runtime=runtime,
@@ -285,7 +238,7 @@ def _open_coding_operator_query(
     if receipt is None:
         return None
     return (
-        _CodingOperatorLaunchSource(receipt_owner, receipt),
+        receipt_owner,
         _CodingOperatorQueryPolicy(receipt_owner, receipt, plugin_id, manager),
     )
 

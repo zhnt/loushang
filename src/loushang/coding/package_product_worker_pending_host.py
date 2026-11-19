@@ -14,7 +14,6 @@ from loushang.harness.capabilities.provider_selection import (
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.session._worker_provider import (
-    _prepare_native_worker_component,
     _prepare_pending_worker_session_inputs,
 )
 from loushang.harness.session.capability_composition_inputs import (
@@ -31,8 +30,6 @@ from loushang.harness.worker.product_activation import (
 
 from ._worker_preparation_inputs import (
     _CodingWorkerProviderPolicy,
-    _PosixActivationInputs,
-    _PosixLaunchInputs,
 )
 from .package_product_worker_payload import (
     CodingProductWorkerPendingLaunchV1,
@@ -40,8 +37,6 @@ from .package_product_worker_payload import (
 from .package_product_worker_provider import CodingWorkerBaseCompositionPolicyBinding
 from .package_product_worker_provider_host import (
     CodingPreparedWorkerProvider,
-    CodingWorkerProviderHostError,
-    _WorkerAttemptRelease,
 )
 from .package_product_worker_query_consumer import (
     CODING_WORKER_QUERY_CAPABILITY_ID,
@@ -86,13 +81,11 @@ class CodingProductWorkerPendingHost:
             raise TypeError("Coding Worker graph generation is invalid")
         if self.base_policy_binding is not None:
             self.base_policy_binding.assert_current()
-        return await _prepare_native_worker_component(
+        return await CodingPreparedWorkerProvider._prepare_native(
             prepare_native=partial(
                 _prepare_posix_native_worker,
-                launch_source=_PosixLaunchInputs(
-                    self.receipt_owner, self.receipt, self.pending_launch
-                ),
-                activation=_PosixActivationInputs(self.receipt_owner),
+                launch_source=self.receipt_owner,
+                activation=self.receipt_owner,
                 pending_launch=self.pending_launch,
                 receipt=self.receipt,
                 resume_parent_context=self.resume_parent_context,
@@ -121,14 +114,9 @@ class CodingProductWorkerPendingHost:
             clock=self.clock,
             base_policy_binding=self.base_policy_binding,
             renewing_provider_owner=self.provider_owner,
-            release_type=_WorkerAttemptRelease,
-            prepared_factory=CodingPreparedWorkerProvider,
             pending_failure=lambda suffix: CodingWorkerPendingHostError(
                 "coding_worker_pending_" + suffix
             ),
-            provider_error_type=CodingWorkerProviderHostError,
-            provider_error_prefix="coding_worker_provider",
-            fingerprint_namespace=b"loushang.coding-worker-provider-binding/v1\x00",
             cleanup_note="Coding Worker pending graph cleanup also failed: ",
         )
 

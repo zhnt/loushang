@@ -1,9 +1,9 @@
 # Coding 逐文件职责与处置清单 R2
 
 本轮 C09 最新审计与候选实现见 [C09 收敛记录](c09-legacy-convergence.md)。
-C09 已完成本地验证与 PR #892/#893 合并交付，交付时34文件、7,624行；本 C07 退休入口候选将相关 rename 端口具名化增加4行，当前34文件、7,628行，成本计入本轮 Coding 总量。
+C09 上轮由 PR #892/#893 合并交付时为34文件、7,624行；本组合候选因 C07 名义回执接线增加4行，当前7,628行，这4行计入 C07 适配成本，详见收敛记录。
 C07 上轮通过 PR #894/#895 交付时为112文件、20,266行，Coding −267、Harness +309、生产系统 +42；历史验证与限制见 [C07 收敛记录](c07-worker-convergence.md)。
-本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；PR #903/#904 已合入 main `0dac793d9`，主线 C07余12,799行，累计 Coding −7,467、Harness +10,315、系统生产 +2,848。后续独立提交 `fe61edcee` 将批准 Journal／状态名归原 owner，C07余12,714行。再后续三个退休入口候选为 C07 −39、相关 C09 Coding +4、Harness +58，系统 +23；112文件实物余12,675行，额外4行适配一并计入 Goal，按目标口径余12,679行。累计 Coding −7,587、Harness +10,474、系统生产 +2,887，多数退出仍差2,547行。后续两批仍待各自完整验证和交付，整组未完成，见 [C07 大块迁移记录](c07-worker-bulk-migration.md)。
+本轮原 Goal 基线仍为 `06f8a3f6`／20,266行；已交付 main `ca7091aa8` 的 C07 原文件为112个、12,675行。源码候选 `6f101e680` 当前112文件12,395行，加相邻适配4行，有效剩余12,399；C07归因退出7,867行、Harness增加10,815行、系统生产增加2,948行，多数目标仍差2,267行。相对该 main，全部未交付候选 Coding−280、Harness+341、系统+61；访问适配与读取作用域切片自身 Coding−38、Harness+100、系统+62，不能混称去重。前序直接 Receipt owner 候选在精确C52路径修正后既定本地检查全部通过；本候选真实消费者238 passed、9 skipped，冻结父候选完整选中本地检查已通过，最终交付仅删除两例新增反射测试，保留范围已核对为通过候选的子集；原生平台和远端交付仍待完成。全部112文件的当前行数、SHA、具体保留边界与待处理接缝见 [当前逐文件处置](c07-worker-current-dispositions.md)；成本、原失败及未执行的平台见 [大块迁移记录](c07-worker-bulk-migration.md)，这些候选尚未远端交付。
 
 
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
@@ -91,7 +91,7 @@ A74三类payload恢复原接受范围见[交付记录](key-designs/worker-payloa
 A73审批协调原接受范围见[交付记录](key-designs/product-approval-closure-convergence.md)。
 A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)按28组连接当前复用、产品保留语义与退出义务；继承K/R/M建议不作为最终处置或不可削减下界。
 
-每个文件均纳入静态清点。C01–C28 的唯一职责、已有组件、Product 保留项和复用优先顺序见整体方案；“拆分”表示需要分离文件内混合职责，不表示整文件可下沉或可删除。原审计列针对冻结切点，当前列针对本任务专用worktree实物。
+每个文件均纳入静态清点。C01–C28 的唯一职责、已有组件、Product 保留项和复用优先顺序见整体方案；“拆分”表示需要分离文件内混合职责，不表示整文件可下沉或可删除。原审计列和下方434文件的当前列均保留各自历史审计切点；它们不是此刻整个 Coding 的实时快照。C07 的最新112文件计量与具体处置以上方独立当前清单为准，不把旧列或旧 K/M 建议当作已完成或不可迁移证据。
 
 处置缩写：K=保留领域能力/Profile；R=已共享的适配，直接复用；M=混合职责需按所属组拆分、复用后删旧体；B=共享桥接归正确集成层；E=根据支持/存量证据决定退出；V=先核实真实产品依赖再决定验证入口归位；C=保留已接受兼容转发。所有 M/B/E/V 均为候选，不是已实施状态。SHA 前12位用于定位证据，完整指纹与原始导入/AST 清单保留在产品树外。
 
@@ -380,7 +380,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_ordinary_bootstrap.py](../../../../src/loushang/coding/package_product_worker_ordinary_bootstrap.py) | C07 | 312 | M | C07 插件 Worker 执行/持久化/恢复 | 7d97151fe500 | 265 | d33796ff12d6 |
 | [package_product_worker_ordinary_error.py](../../../../src/loushang/coding/package_product_worker_ordinary_error.py) | C07 | 12 | M | C07 插件 Worker 执行/持久化/恢复 | 69d14f793272 | 12 | 69d14f793272 |
 | [package_product_worker_payload.py](../../../../src/loushang/coding/package_product_worker_payload.py) | C07 | 2,360 | M | 完整载荷／规划／绑定及三种修复入口直接归原POSIX custody；保原名义DTO、值约束和固定产品Profile | 331b1fd4706a | 319 | fb90e24bf8ee |
-| [package_product_worker_pending_host.py](../../../../src/loushang/coding/package_product_worker_pending_host.py) | C07 | 473 | M | C07 插件 Worker 执行/持久化/恢复 | 08074e856b21 | 187 | 756ffa0fb297 |
+| [package_product_worker_pending_host.py](../../../../src/loushang/coding/package_product_worker_pending_host.py) | C07 | 473 | M | 复用PreparedWorkerProvider既有Profile并直调其共享原生交接方法；保名义Host、产品准入和平台输入接线 | 08074e856b21 | 179 | dc055730c136 |
 | [package_product_worker_policy.py](../../../../src/loushang/coding/package_product_worker_policy.py) | C07 | 335 | M | A160复用原RecordSchema字段遍历；保实际DTO及产品policy/准入，非整簇退出；A204中性facts基类无新存储，实际领域DTO与policy保Code | 1b9092a94b4f | 194 | 9176ca39e56f |
 | [package_product_worker_posix_gc_history.py](../../../../src/loushang/coding/package_product_worker_posix_gc_history.py) | C07 | 343 | M | C07 插件 Worker 执行/持久化/恢复 | 3e4710cfe431 | 60 | 565127c20648 |
 | [package_product_worker_provider.py](../../../../src/loushang/coding/package_product_worker_provider.py) | C07 | 288 | M | C07 插件 Worker 执行/持久化/恢复 | 33ebd66f42c1 | 165 | f9d3c9cddc51 |
@@ -436,7 +436,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_partial_stage_review.py](../../../../src/loushang/coding/package_product_worker_windows_partial_stage_review.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 8d715c51e57b | 146 | 20b47e8f118d |
 | [package_product_worker_windows_payload.py](../../../../src/loushang/coding/package_product_worker_windows_payload.py) | C07 | 726 | M | C07 插件 Worker 执行/持久化/恢复 | 3b269028908c | 170 | d1d0071cd2ed |
 | [package_product_worker_windows_payload_inventory.py](../../../../src/loushang/coding/package_product_worker_windows_payload_inventory.py) | C07 | 150 | M | C07 插件 Worker 执行/持久化/恢复 | 9464816cc608 | 86 | 7de98ea1fd47 |
-| [package_product_worker_windows_pending_host.py](../../../../src/loushang/coding/package_product_worker_windows_pending_host.py) | C07 | 593 | M | C07 插件 Worker 执行/持久化/恢复 | 543a2c4a6116 | 222 | d77ad8d02cb5 |
+| [package_product_worker_windows_pending_host.py](../../../../src/loushang/coding/package_product_worker_windows_pending_host.py) | C07 | 593 | M | 复用PreparedWorkerProvider既有Profile并直调其共享原生交接方法；保名义Host、产品准入和平台输入接线；Windows C5检查仍由原Journal持有 | 543a2c4a6116 | 207 | 0d373ede6f84 |
 | [package_product_worker_windows_persisted_bases.py](../../../../src/loushang/coding/package_product_worker_windows_persisted_bases.py) | C07 | 315 | M | C07 插件 Worker 执行/持久化/恢复 | 28438d7a4fed | 195 | d0c09ff5dc8b |
 | [package_product_worker_windows_provisioning.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning.py) | C07 | 344 | M | 原 Harness ProvisioningAccess 持有准入/绑定/intent/CAS/恢复；保名义类、Product Profile及直接载荷 owner 接线 | 98ffbd480b88 | 116 | 4f692e01aa98 |
 | [package_product_worker_windows_provisioning_base.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning_base.py) | C07 | 410 | M | C07 插件 Worker 执行/持久化/恢复 | 0e8ef6cd61ab | 93 | fe3513dd7f00 |
@@ -544,7 +544,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-18：逐文件当前行／SHA和下表重新核对 main `4100b4f65` 加清理证据、POSIX 载荷入口及 Windows 恢复读取族、后续批准 Journal／状态名及退休入口候选，共442文件、100,338物理行；原审计列、历史批次数字与建议处置保留。清单旧C07汇总20,533行包含本轮基线前已交付的267行差异，本轮收益仍严格从主线20,266行计算，不重复计入。上游新增8份 Coding 文件及其余功能变化单列，不算 C07 成本或收益。当前计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
+2026-11-18：逐文件当前行／SHA和下表对应已交付 main `ca7091aa8` 加C5恢复资格／Provider Profile 复用候选，共442文件、100,315物理行；后续 Receipt 运行时注解修复不改任何 Coding 源文件；原审计列、历史批次数字与建议处置保留。旧C07汇总20,533行含本轮基线前已交付的267行差异，本轮收益仍从20,266行计算，不重复计入。同期主线其它 Coding 变化不计为 C07 成本或收益；邻组适配4行则完整计入。计量和继承的M／K等建议不代表整组最终验收；后续候选见 [迁移优先级评估](coding-responsibility-priority.md)。
 
 A215完整捕获资源族五源形状−111/+276/系统+165未采用，全部2063生产源保持A214
 实物SHA/行数；候选成本不进入下列当前列，公共字段与该族不据此成为最终领域下界。
@@ -570,7 +570,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,809 |
 | C05 | 6 | 3,417 |
 | C06 | 27 | 4,640 |
-| C07 | 112 | 12,675 |
+| C07 | 112 | 12,652 |
 | C08 | 31 | 6,593 |
 | C09 | 34 | 7,628 |
 | C10 | 12 | 5,185 |
@@ -592,7 +592,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 442 | 100,338 |
+| 合计 | 442 | 100,315 |
 
 A217计量口径：2063源账本661370含31份GUI测试/support4524行，生产2032源656846；
 Code108032/Harness367396/AppHost20629，系统本批raw+14，不作净减。

@@ -573,6 +573,27 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
         )
 
 
+def read_windows_product_worker_launch_intent(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    records: Callable[[], WindowsProductWorkerIntentRecords[IntentT]],
+) -> IntentT | None:
+    """Construct the original record owner inside the Product's read guard."""
+    with product.gc_gate.read_guard():
+        return records().read(attempt_id, allow_unpublished_stage=False)
+
+
+def inspect_windows_product_worker_launch_intents(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    records: Callable[[], WindowsProductWorkerIntentRecords[IntentT]],
+) -> tuple[IntentT, ...]:
+    """Keep inventory construction and IO in the original GC read scope."""
+    with product.gc_gate.read_guard():
+        return records().inspect()
+
+
 class WindowsProductWorkerProvisioningAccess:
     """Load/CAS on the original actual Code object; policy hooks keep its rules.
 

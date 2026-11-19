@@ -36,8 +36,10 @@ from loushang.harness.resources.plugins.declarations import (
 )
 from loushang.harness.session._worker_provider import (
     _abort_worker_provider,
+    _BasePolicyGuard,
     _commit_worker_provider,
-    _prepare_native_worker_component,
+    _PreparedWorkerProviderMethods,
+    _QueryAuthority,
     _WorkerAttemptRelease,
 )
 from loushang.harness.worker._ordinary_prepare import _NativeWorkerAttempt
@@ -67,13 +69,25 @@ from tests.harness.worker.test_product_activation import _policy, _receipt
 
 
 @dataclass(frozen=True)
-class _Prepared:
+class _Prepared(
+    _PreparedWorkerProviderMethods[object, _QueryAuthority, _BasePolicyGuard]
+):
     binding: CapabilityBundleProviderBinding
     facet: CapabilityWorkerReadOnlyFacetProxy
     receipt_fingerprint: str
     worker_admission_fingerprint: str
     _release: _WorkerAttemptRelease
     _commit: Callable[[], None] | None
+
+    _provider_error_type = RuntimeError
+    _provider_error_prefix = "handoff"
+    _provider_fingerprint_namespace = b"handoff-test/v1\0"
+    _provider_release_type = _WorkerAttemptRelease
+
+
+class _BeforeHandoffPrepared(_Prepared):
+    _provider_error_prefix = "test"
+    _provider_fingerprint_namespace = b"test/v1\0"
 
 
 async def _scenario(tmp_path: Path, case: str) -> None:
@@ -236,7 +250,7 @@ async def _scenario(tmp_path: Path, case: str) -> None:
         return 150
 
     task = asyncio.create_task(
-        _prepare_native_worker_component(
+        _Prepared._prepare_native(
             prepare_native=native,
             policy=policy,
             receipt=receipt,
@@ -246,12 +260,7 @@ async def _scenario(tmp_path: Path, case: str) -> None:
             clock=clock,
             base_policy_binding=None,
             renewing_provider_owner=owner,
-            release_type=_WorkerAttemptRelease,
-            prepared_factory=_Prepared,
             pending_failure=RuntimeError,
-            provider_error_type=RuntimeError,
-            provider_error_prefix="handoff",
-            fingerprint_namespace=b"handoff-test/v1\0",
             cleanup_note="cleanup failed: ",
         )
     )
@@ -338,7 +347,7 @@ def test_native_failure_before_handoff_closes_original_stack_once(
     runtime = _runtime(tmp_path)
     identity = _identity(runtime)
 
-    def materialize(attempt_id):
+    def materialize(_receipt, attempt_id):
         assert attempt_id == identity.attempt_id
         raise primary
 
@@ -350,10 +359,12 @@ def test_native_failure_before_handoff_closes_original_stack_once(
 
     async def scenario():
         with pytest.raises(ValueError) as observed:
-            await _prepare_native_worker_component(
+            await _BeforeHandoffPrepared._prepare_native(
                 prepare_native=partial(
                     program,
-                    launch_source=SimpleNamespace(materialize=materialize),
+                    launch_source=SimpleNamespace(
+                        _materialize_worker_payload=materialize
+                    ),
                     activation=SimpleNamespace(),
                     pending_launch=SimpleNamespace(identity=identity),
                     receipt=_receipt(),
@@ -374,12 +385,7 @@ def test_native_failure_before_handoff_closes_original_stack_once(
                 clock=lambda: 150,
                 base_policy_binding=None,
                 renewing_provider_owner=None,
-                release_type=_WorkerAttemptRelease,
-                prepared_factory=_Prepared,
                 pending_failure=RuntimeError,
-                provider_error_type=RuntimeError,
-                provider_error_prefix="test",
-                fingerprint_namespace=b"test/v1\0",
                 cleanup_note="cleanup failed: ",
             )
         assert observed.value is primary
