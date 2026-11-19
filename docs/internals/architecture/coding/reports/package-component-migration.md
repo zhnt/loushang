@@ -116,6 +116,15 @@ selected Coding unit route, so the earlier Coding pass does not cover it.
 The same recovery case also passes in the complete uninstrumented AppService
 target.
 
+The first remote Ubuntu platform route exposes a stale payload-cleanup fault
+hook: the test patches a Coding bound alias while deletion calls the existing
+Harness `PayloadStorage` method. The identical `DID NOT RAISE` failure is
+reproduced on clean main `23b60edb7`. The test now patches that actual owner,
+retaining its fault body, exception checks and recovery assertions. The complete
+file locally passes five cases; its existing host-runtime journey is skipped by
+the local selector and remains with the unchanged remote route. No production
+forwarder, test case, assertion or gate condition is added.
+
 An isolated build produces the actual distribution wheel. It is installed with
 `uv pip install --target --no-deps --no-index` into a separate directory outside
 the repository. Its 190 component Python files include all 187 relocated

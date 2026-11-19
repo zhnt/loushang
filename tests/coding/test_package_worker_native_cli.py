@@ -360,6 +360,7 @@ def test_worker_native_cli_repairs_empty_pre_marker_stage_across_processes(
         assert partial_review.fingerprint == unmarked_id
 
         def interrupt_unmarked_repair(
+            _storage: object,
             root_fd: int,
             stage_fd: int,
             stage_name: str,
@@ -382,8 +383,9 @@ def test_worker_native_cli_repairs_empty_pre_marker_stage_across_processes(
             raise OSError("injected pre-marker cleanup interruption")
 
         with monkeypatch.context() as patch:
+            # The shared storage owns deletion; the Coding name is a bound alias.
             patch.setattr(
-                worker_payload_module,
+                type(worker_payload_module._STORAGE),
                 "_remove_unmarked_repair_remainder",
                 interrupt_unmarked_repair,
             )
