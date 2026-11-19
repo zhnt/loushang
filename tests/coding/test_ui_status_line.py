@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from loushang.ai.model import Capabilities, Defaults, Model
 from loushang.coding.model_reasoning import (
     effective_reasoning_label,
-    reasoning_choice_label,
     reasoning_description,
 )
 from loushang.harnesstui.status.line import (
@@ -112,7 +111,7 @@ def test_statusline_projects_live_reasoning_level_beside_model() -> None:
     ].text.startswith("gpt-6-sol xhigh |")
 
 
-def test_unset_agent_effort_projects_model_default() -> None:
+def test_default_and_off_reasoning_are_distinct() -> None:
     session = SimpleNamespace(
         model=Model(
             id="gpt-6-sol",
@@ -121,9 +120,10 @@ def test_unset_agent_effort_projects_model_default() -> None:
             capabilities=Capabilities(reasoning=True),
             defaults=Defaults({"reasoningEffort": "medium"}),
         ),
-        thinking_level="off",
+        thinking_level=None,
     )
 
-    assert effective_reasoning_label(session) == "medium"
-    assert reasoning_choice_label("off") == "default"
-    assert reasoning_description(session, "off") == "current · model default: medium"
+    assert effective_reasoning_label(session) == "default"
+    session.thinking_level = "off"
+    assert effective_reasoning_label(session) == "off"
+    assert reasoning_description(session, "off") == "current"
