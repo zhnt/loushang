@@ -524,6 +524,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         package_product_lifecycle_mode: PackageProductLifecycleMode = "legacy",
         package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
         session_id: str,
+        package_product_workspace: Path | None = None,
         cwd: str,
         extension_flag_values: ExtensionFlagValues | None,
         catalog_authoritative: bool = False,
@@ -730,7 +731,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     PackageProductRuntimeRequestV1(
                         product_id=self.product_id,
                         session_id=session_id,
-                        cwd=str(Path(cwd).resolve(strict=False)),
+                        cwd=str((package_product_workspace or Path(cwd)).resolve(strict=False)),
                     ),
                 )
                 package_product_lifecycle = package_runtime.lifecycle

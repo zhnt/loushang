@@ -205,6 +205,7 @@ def encode_response(response: AppResponseV1) -> bytes:
     if type(result) is WorkspaceResultV1:
         result_type, value = "workspaces", {"workspaces": [
             {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint,
+             **({"workspace": item.workspace} if item.workspace is not None else {}),
              **({"inspection": item.inspection} if item.inspection is not None else {}),
              **({"preview": _encode_workspace_preview(item.preview)} if item.preview is not None else {})}
             for item in result.workspaces]}
@@ -275,17 +276,18 @@ def decode_response(payload: bytes) -> AppResponseV1:
     if result_type == "workspaces":
         value = _object(raw, {"workspaces"})
         rows = value["workspaces"]
-        if type(rows) is not list or len(rows) > 128:
+        if type(rows) is not list or len(rows) > 129:
             raise InvalidAppMessageError()
         workspaces = []
         for row in rows:
             fields = {"path", "scope", "scopeFingerprint"}
             if isinstance(row, dict):
-                fields.update({"inspection", "preview"} & row.keys())
+                fields.update({"inspection", "preview", "workspace"} & row.keys())
             item = _object(row, fields)
             workspaces.append(_construct(WorkspaceInfoV1, path=_string(item["path"]),
                 scope=_enum(SessionScopeV1, item["scope"]),
                 scope_fingerprint=_string(item["scopeFingerprint"]), inspection=item.get("inspection"),
+                workspace=item.get("workspace"),
                 preview=_decode_workspace_preview(item["preview"]) if "preview" in item else None))
         result = _construct(WorkspaceResultV1, workspaces=tuple(workspaces))
     elif result_type == "ack":
@@ -454,14 +456,20 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
     if operation is AppOperationV1.WORKSPACE:
         workspace = cast(WorkspaceRequestV1, payload)
         return {"action": workspace.action, "path": workspace.path,
+                **({"workspaceId": workspace.workspace_id} if workspace.workspace_id is not None else {}),
+                **({"name": workspace.name} if workspace.name is not None else {}),
+                **({"pathId": workspace.path_id} if workspace.path_id is not None else {}),
+                **({"alias": workspace.alias} if workspace.alias is not None else {}),
                 **({"sessionId": workspace.session_id} if workspace.session_id is not None else {}),
+                **({"scopeFingerprint": workspace.scope_fingerprint} if workspace.scope_fingerprint is not None else {}),
                 **({"preview": {
                     "reference": workspace.preview.reference, "base": workspace.preview.base,
                     "scopeFingerprint": workspace.preview.scope_fingerprint,
                 }} if workspace.preview is not None else {})}
     if operation is AppOperationV1.WORKSPACE_MODELS:
         models = cast(WorkspaceModelsRequestV1, payload)
-        return {"path": models.path, **({"modelId": models.model_id} if models.model_id is not None else {})}
+        return {"path": models.path, **({"modelId": models.model_id} if models.model_id is not None else {}),
+                **({"workspaceId": models.workspace_id} if models.workspace_id is not None else {})}
     if operation is AppOperationV1.MUX_CREATE:
         return {"name": cast(MuxCreateV1, payload).name}
     if operation is AppOperationV1.MUX_LIST:
@@ -543,7 +551,7 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
     if operation is AppOperationV1.WORKSPACE:
         fields = {"action", "path"}
         if isinstance(raw, dict):
-            fields.update({"sessionId", "preview"} & raw.keys())
+            fields.update({"sessionId", "preview", "workspaceId", "name", "pathId", "alias", "scopeFingerprint"} & raw.keys())
         value = _object(raw, fields)
         preview = None
         if "preview" in value:
@@ -552,12 +560,16 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
                                  base=_string(spec["base"]), scope_fingerprint=_string(spec["scopeFingerprint"]))
         return _construct(WorkspaceRequestV1, action=_string(value["action"]),
                           path=_optional_string(value["path"]), session_id=_optional_string(value.get("sessionId")),
-                          preview=preview)
+                          preview=preview, workspace_id=_optional_string(value.get("workspaceId")),
+                          name=_optional_string(value.get("name")), path_id=_optional_string(value.get("pathId")),
+                          alias=_optional_string(value.get("alias")),
+                          scope_fingerprint=_optional_string(value.get("scopeFingerprint")))
     if operation is AppOperationV1.WORKSPACE_MODELS:
-        has_model = isinstance(raw, dict) and "modelId" in raw
-        value = _object(raw, {"path", "modelId"} if has_model else {"path"})
+        fields = {"path"} | ({"modelId", "workspaceId"} & raw.keys() if isinstance(raw, dict) else set())
+        value = _object(raw, fields)
         return _construct(WorkspaceModelsRequestV1, path=_optional_string(value["path"]),
-                          model_id=_string(value["modelId"]) if has_model else None)
+                          model_id=_optional_string(value.get("modelId")),
+                          workspace_id=_optional_string(value.get("workspaceId")))
     if operation is AppOperationV1.MUX_CREATE:
         value = _object(raw, {"name"})
         return _construct(MuxCreateV1, name=_string(value["name"]))

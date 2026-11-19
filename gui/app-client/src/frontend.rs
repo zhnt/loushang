@@ -162,7 +162,7 @@ impl Backend {
             };
             let mux = workspace
                 .as_ref()
-                .map_or_else(|| TEMPORARY_MUX.into(), |item| mux_name(&item.path));
+                .map_or_else(|| TEMPORARY_MUX.into(), workspace_mux_name);
             let epoch = {
                 let mut counter = self
                     .next_view_epoch
@@ -262,7 +262,10 @@ impl Backend {
             "create-chat" => return create_chat(target, request),
             "delete-chat" => return delete_chat(target, request),
             "models" => {
-                let path = optional_workspace_path(request)?;
+                let selector = optional_workspace_path(request)?;
+                let (workspace, path) = selector
+                    .filter(|value| workspace_id(value))
+                    .map_or((None, selector), |value| (Some(value), None));
                 let model_id = request
                     .get("modelId")
                     .map(|id| id.as_str().ok_or("invalid_request"))
@@ -270,16 +273,22 @@ impl Backend {
                 let client = AppClient::default();
                 return models(
                     client
-                        .workspace_models(target, TIMEOUT, path, model_id)
+                        .workspace_models(target, TIMEOUT, path, workspace, model_id)
                         .map_err(|_| client.failure_code())?,
                 );
             }
             "inspect" => {
                 let path = field(request, "path")?;
-                let inspect = WorkspaceRequest::Inspect {
-                    path,
-                    session: request.get("sessionId").and_then(Value::as_str),
-                };
+                let session = request.get("sessionId").and_then(Value::as_str);
+                if workspace_id(path) {
+                    let operation = WorkspaceRequest::Logical {
+                        action: "inspect-workspace",
+                        path: None,
+                        fields: json!({"workspaceId": path, "sessionId": session, "scopeFingerprint": request["fingerprint"]}),
+                    };
+                    return Ok(json!({"workspaces": workspaces(target, operation)?}));
+                }
+                let inspect = WorkspaceRequest::Inspect { path, session };
                 return match workspaces(target, inspect) {
                     Ok(items) => Ok(json!({"workspaces": items})),
                     Err(code)
@@ -320,6 +329,15 @@ impl Backend {
                 return Ok(json!({ "path": workspace.path }));
             }
             "open" => return self.open(target, field(request, "path")?),
+            "create-workspace" | "rename-workspace" | "delete-workspace" | "add-path"
+            | "update-path" | "remove-path" | "set-default-path" => WorkspaceRequest::Logical {
+                action,
+                path: optional_workspace_path(request)?,
+                fields: json!({
+                    "workspaceId": request["workspaceId"], "name": request["name"],
+                    "pathId": request["pathId"], "alias": request["alias"],
+                }),
+            },
             "list" => WorkspaceRequest::List,
             "projects" => WorkspaceRequest::Projects,
             "create" => WorkspaceRequest::Create(workspace_creation_path(request)?),
@@ -332,7 +350,7 @@ impl Backend {
 
     fn open(&self, target: AppTarget<'_>, path: &str) -> Result<Value> {
         let opened = open_workspace(target, path)?;
-        let mux = mux_name(&opened.path);
+        let mux = workspace_mux_name(&opened);
         let mut connection = options(target, &mux, Some(&opened));
         connection.prepare_default_session = true;
         AppClient::default()
@@ -343,7 +361,14 @@ impl Backend {
     }
 
     fn navigation(&self, target: AppTarget<'_>) -> Result<Value> {
-        let projects = workspaces(target, WorkspaceRequest::Projects)?;
+        let projects = workspaces(
+            target,
+            WorkspaceRequest::Logical {
+                action: "workspaces",
+                path: None,
+                fields: json!({}),
+            },
+        )?;
         let muxes = AppClient::default()
             .muxes(target, TIMEOUT)
             .map_err(|_| "connection_failed")?;
@@ -362,11 +387,25 @@ impl Backend {
             result.sort_by_key(|chat| chat["pinned"] != true);
             Ok(result)
         };
-        let projects = projects
-            .iter()
-            .map(|item| Ok(json!({"path": item.path, "sessions": chats(&mux_name(&item.path))?})))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(json!({"projects": projects, "temporarySessions": chats(TEMPORARY_MUX)?}))
+        let mut entries = vec![];
+        let mut default_chats = vec![];
+        for item in projects {
+            let workspace = item.workspace.ok_or("invalid_host_reply")?;
+            let sessions = chats(&workspace.mux_name)?;
+            if workspace.default {
+                default_chats = sessions;
+                continue;
+            }
+            let mut entry = serde_json::to_value(&workspace).map_err(|_| "invalid_host_reply")?;
+            entry["sessions"] = json!(sessions);
+            entry["path"] = json!(workspace
+                .paths
+                .iter()
+                .find(|link| Some(&link.id) == workspace.default_path_id.as_ref())
+                .map(|link| &link.path));
+            entries.push(entry);
+        }
+        Ok(json!({"projects": entries, "temporarySessions": default_chats}))
     }
 
     fn database(&self) -> Result<Connection> {
@@ -499,18 +538,32 @@ fn preview_workspace(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     } else {
         path
     };
-    let operation = WorkspaceRequest::Preview {
-        path,
-        fingerprint,
-        instance: field(request, "serviceInstanceId")?,
-        reference: field(request, "reference")?,
-        base: request
-            .get("base")
-            .and_then(Value::as_str)
-            .ok_or("invalid_request")?,
+    let instance = field(request, "serviceInstanceId")?;
+    let reference = field(request, "reference")?;
+    let base = request
+        .get("base")
+        .and_then(Value::as_str)
+        .ok_or("invalid_request")?;
+    let logical = workspace_id(path);
+    let operation = if logical {
+        WorkspaceRequest::LogicalPreview {
+            workspace_id: path,
+            instance,
+            reference,
+            base,
+            fingerprint,
+        }
+    } else {
+        WorkspaceRequest::Preview {
+            path,
+            instance,
+            reference,
+            base,
+            fingerprint,
+        }
     };
     let workspace = single(workspaces(target, operation)?)?;
-    if workspace.path != path || workspace.scope_fingerprint != fingerprint {
+    if (!logical && workspace.path != path) || workspace.scope_fingerprint != fingerprint {
         return Err("invalid_host_reply".into());
     }
     let preview = workspace.preview.ok_or("workspace_preview_unavailable")?;
@@ -529,8 +582,32 @@ fn workspace_by_fingerprint(target: AppTarget<'_>, fingerprint: &str) -> Result<
     }
 }
 
+fn workspace_id(value: &str) -> bool {
+    value == "default"
+        || (value.len() == 32
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+}
+
+fn workspace_mux_name(info: &WorkspaceInfo) -> String {
+    info.workspace.as_ref().map_or_else(
+        || mux_name(&info.path),
+        |workspace| workspace.mux_name.clone(),
+    )
+}
+
 fn open_workspace(target: AppTarget<'_>, path: &str) -> Result<WorkspaceInfo> {
-    single(workspaces(target, WorkspaceRequest::Open(path))?)
+    let operation = if workspace_id(path) {
+        WorkspaceRequest::Logical {
+            action: "open-workspace",
+            path: None,
+            fields: json!({"workspaceId": path}),
+        }
+    } else {
+        WorkspaceRequest::Open(path)
+    };
+    single(workspaces(target, operation)?)
 }
 
 fn status(target: Option<AppTarget<'_>>, action: &str) -> Result<Value> {
@@ -635,6 +712,8 @@ fn delete_chat(target: AppTarget<'_>, input: &Value) -> Result<Value> {
     let instance = field(input, "serviceInstanceId")?;
     let mux = if path == TEMPORARY {
         TEMPORARY_MUX.to_owned()
+    } else if workspace_id(path) {
+        workspace_mux_name(&open_workspace(target, path)?)
     } else {
         mux_name(path)
     };
@@ -717,15 +796,13 @@ fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let workspace_path = optional_workspace_path(request)?;
     let scope = match workspace_path {
         Some(path) => open_workspace(target, path),
-        None => workspaces(target, WorkspaceRequest::AllocateTemporary).and_then(single),
+        None => open_workspace(target, "default"),
     };
     let Ok(scope) = scope else {
         return Ok(json!({"accepted": false}));
     };
-    let (path, mux) = match workspace_path {
-        Some(_) => (scope.path.as_str(), mux_name(&scope.path)),
-        None => (TEMPORARY, TEMPORARY_MUX.into()),
-    };
+    let path = workspace_path.unwrap_or(TEMPORARY);
+    let mux = workspace_mux_name(&scope);
     match control(options(target, &mux, Some(&scope)), command)? {
         CreateSessionResult::Accepted(session_id) => {
             Ok(json!({"workspace": path, "sessionId": session_id}))

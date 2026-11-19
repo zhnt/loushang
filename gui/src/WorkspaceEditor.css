@@ -1,0 +1,6 @@
+.workspace-editor { width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+.workspace-editor form, .workspace-editor li { display: grid; gap: 8px; margin-block: 12px; }
+.workspace-editor label { display: grid; gap: 4px; }
+.workspace-editor ul { list-style: none; padding-inline-start: 0; }
+.workspace-editor code { overflow-wrap: anywhere; }
+.workspace-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }

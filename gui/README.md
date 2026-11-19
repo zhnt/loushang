@@ -28,8 +28,21 @@ Both connect to an independently started AppHost.
 The installed desktop can start, stop, and restart its local AppHost from the
 main window, Host settings, and tray. The desktop and the loopback Web server
 delegate to `loushang-mux service`. Closing the frontend leaves AppHost running.
-Use **Register and open** with a path on the Host, or select a registered
-Workspace. AppHost allocates the Mux and persists its Sessions.
+Use **Create workspace** to start with no folders, or **Add project** to
+start with a linked folder. **Manage workspace** shows the folder aliases,
+individual availability, and the default folder. Folder paths are interpreted
+on the connected AppHost. Workspace and Mux identities survive a folder change,
+and Session history stays in the existing AppHost-owned transcript store.
+Ordinary chats use the default Workspace without any user folder.
+
+File and command operations go through the existing authorization flow and are
+limited to the admitted folder identities. A relative path uses the default
+folder. An absolute path or an explicit command working directory can target
+another linked folder. Commands require the Host's supported filesystem sandbox.
+Removing or replacing a linked folder immediately revokes that folder for
+new tool actions. Clearing or changing the default stops relative access
+through the previous default. Restart AppHost to activate a newly linked
+folder or a new default in already loaded Sessions.
 
 In the composer, select a model to see the reasoning efforts reported by
 AppHost for that model. This also works before the first message of a new

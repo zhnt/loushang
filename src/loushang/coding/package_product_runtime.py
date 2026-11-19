@@ -271,7 +271,7 @@ class CodingPosixLocalWheelProductRuntimeOwner:
         session_id = manager.get_header().conversation_id
         return self.product_owner.factory_for_session(
             session_id=session_id,
-            cwd=Path(manager.get_cwd()),
+            cwd=manager.package_product_workspace(),
             runtime_id="coding-session:" + sha256(session_id.encode()).hexdigest(),
         )
 
@@ -389,14 +389,17 @@ class CodingFencedProductApplicationSelection:
         # The legacy Session API permits a not-yet-created cwd. Use the same
         # canonical workspace identity as its lifecycle layout; a present B
         # fence still requires the Product owner to validate the real root.
-        workspace = Path(manager.get_cwd()).resolve(strict=False)
+        workspace = manager.package_product_workspace().resolve(strict=False)
         with self._workspace_selection_scope():
-            owner = self._select_workspace_unlocked(workspace, settings_manager=settings_manager)
+            owner = self._select_workspace_unlocked(
+                workspace, settings_manager=settings_manager, historical_origin=manager.legacy_plugin_workspace(),
+            )
             return owner.factory_for_session(manager) if owner is not None else None
 
     def prepare_resume_epoch(
         self, workspace: Path, *, require_current_admission: Callable[[], None],
         settings_manager: SettingsManager | None = None,
+        historical_origin: Path | None = None,
     ) -> str:
         """Select original workspace storage without creating a Session lease.
 
@@ -426,6 +429,7 @@ class CodingFencedProductApplicationSelection:
             current()
             self._select_workspace_unlocked(
                 workspace, settings_manager=settings_manager, require_current_admission=current,
+                historical_origin=historical_origin,
             )
             current()
             return self.resume_epoch_fingerprint(workspace)
@@ -433,14 +437,15 @@ class CodingFencedProductApplicationSelection:
     def _select_workspace_unlocked(
         self, workspace: Path, *, settings_manager: SettingsManager | None,
         require_current_admission: Callable[[], None] | None = None,
+        historical_origin: Path | None = None,
     ) -> CodingFencedProductApplicationOwner | None:
         """Use the original selection/recovery path while its lock is held."""
 
         if self._fenced:
             raise RuntimeError("Coding Product application is closing")
         owner = self._owners.get(workspace)
+        lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace, historical_origin=historical_origin)
         if owner is None:
-            lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
             epoch = resolve_coding_package_epoch_layout(lifecycle)
             unadmitted_platform = (
                 os.name == "posix" and not sys.platform.startswith("linux")
@@ -498,10 +503,7 @@ class CodingFencedProductApplicationSelection:
             )
             self._owners[workspace] = owner
             self._legacy_workspaces.pop(workspace, None)
-        elif not self._external_bindings_current(
-            owner, lifecycle=resolve_coding_plugin_lifecycle_state_layout(workspace)
-        ):
-            lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+        elif not self._external_bindings_current(owner, lifecycle=lifecycle):
             replacement = open_coding_fenced_product_application_owner(
                 lifecycle,
                 workspace=workspace,
@@ -1459,12 +1461,10 @@ def _open_coding_product_runtime_owner(
         or workspace != workspace.resolve(strict=True)
     ):
         raise ValueError("Coding Product workspace is not canonical")
-    scope_id = (
-        "workspace:"
-        + sha256(
-            b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
-        ).hexdigest()
+    expected_layout = resolve_coding_plugin_lifecycle_state_layout(
+        workspace, historical_origin=lifecycle.historical_origin,
     )
+    scope_id = expected_layout.scope_id
     if lifecycle.scope_id != scope_id:
         raise ValueError("Coding Product workspace scope changed")
     if not isinstance(runtime_version, str) or not runtime_version:

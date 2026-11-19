@@ -54,6 +54,7 @@ from .bootstrap import (
     _create_resume_agent_session,
 )
 from .composition_sets import resolve_coding_composition_set
+from .hosted_workspace import CodingHostedWorkspace
 from .package_product_runtime import CodingFencedProductApplicationSelection
 from .resume_activation_attempt import (
     CodingActivationAttemptV1,
@@ -209,6 +210,7 @@ async def prepare_coding_resume_continuation(
         RuntimeProfileBinding,
     ]
     | None = None,
+    _hosted_workspace: CodingHostedWorkspace | None = None,
     worker_candidates: bool = False,
     worker_candidate_plugin_id: str | None = None,
 ) -> CodingResumePreparedContinuation:
@@ -302,7 +304,9 @@ async def prepare_coding_resume_continuation(
                 else frozenset()
             ),
             _factory=resume_writer_factory,
+            **({"_hosted_workspace": _hosted_workspace} if _hosted_workspace is not None else {}),
         )
+        manager._hosted_workspace = _hosted_workspace
         with manager._lifecycle_session.sync_operation_scope():
             current()
             if any(record.record_id in {input_record_id, attempt.attempt_id} for record in manager.get_entries()):

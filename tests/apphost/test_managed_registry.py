@@ -570,10 +570,6 @@ def test_registry_is_host_owned_persistent_and_does_not_change_cwd(tmp_path):
         assert owner.select(str(alias)) == a
         with pytest.raises(ValueError):
             owner.register("relative")
-        temporary = owner.allocate_temporary()
-        assert temporary.is_dir() and owner.is_temporary(temporary)
-        assert not owner.is_temporary(a)
-        assert owner.select(str(temporary)) == temporary
         assert not list(a.iterdir()), "registration must not create Session or Runtime files"
         assert Path.cwd() == before
     finally:
@@ -581,10 +577,10 @@ def test_registry_is_host_owned_persistent_and_does_not_change_cwd(tmp_path):
     reopened = WorkspaceRegistry(tmp_path / "registry")
     try:
         reopened.open()
-        assert reopened.list() == (a, b, temporary)
+        assert reopened.list() == (a, b)
         reopened.unregister(str(a))
         reopened.unregister(str(a))
-        assert reopened.list() == (b, temporary)
+        assert reopened.list() == (b,)
         with pytest.raises(ValueError, match="workspace_not_registered"):
             reopened.select(str(a))
     finally:

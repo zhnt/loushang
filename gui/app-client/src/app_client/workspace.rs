@@ -2,7 +2,7 @@
 use super::attachment::{decode_app_error, request};
 use super::transport_auth::Channel;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
 
@@ -24,12 +24,23 @@ pub enum WorkspaceRequest<'a> {
         base: &'a str,
         fingerprint: &'a str,
     },
+    LogicalPreview {
+        workspace_id: &'a str,
+        instance: &'a str,
+        reference: &'a str,
+        base: &'a str,
+        fingerprint: &'a str,
+    },
     Unregister(&'a str),
-    AllocateTemporary,
+    Logical {
+        action: &'a str,
+        path: Option<&'a str>,
+        fields: Value,
+    },
 }
 
 impl<'a> WorkspaceRequest<'a> {
-    fn wire_fields(self) -> (&'static str, Option<&'a str>) {
+    fn wire_fields(self) -> (&'a str, Option<&'a str>) {
         match self {
             Self::List => ("list", None),
             Self::Projects => ("projects", None),
@@ -38,8 +49,9 @@ impl<'a> WorkspaceRequest<'a> {
             Self::Inspect { path, .. } => ("inspect", Some(path)),
             Self::Open(path) => ("open", Some(path)),
             Self::Preview { path, .. } => ("preview", Some(path)),
+            Self::LogicalPreview { .. } => ("preview-workspace", None),
             Self::Unregister(path) => ("unregister", Some(path)),
-            Self::AllocateTemporary => ("allocate-temporary", None),
+            Self::Logical { action, path, .. } => (action, path),
         }
     }
 }
@@ -58,9 +70,31 @@ pub struct WorkspaceInfo {
     pub scope: WorkspaceScope,
     pub scope_fingerprint: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<LogicalWorkspace>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inspection: Option<WorkspaceInspection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<WorkspacePreview>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LogicalWorkspace {
+    pub id: String,
+    pub name: String,
+    pub paths: Vec<WorkspacePath>,
+    pub default_path_id: Option<String>,
+    pub default: bool,
+    pub mux_name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspacePath {
+    pub id: String,
+    pub alias: String,
+    pub path: String,
+    pub status: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -219,6 +253,17 @@ pub(super) fn workspace_request<R: Read, W: Write>(
         } => {
             json!({"preview":{"reference": reference, "base": base, "scopeFingerprint": fingerprint}})
         }
+        WorkspaceRequest::LogicalPreview {
+            workspace_id,
+            reference,
+            base,
+            fingerprint,
+            ..
+        } => {
+            json!({"workspaceId": workspace_id,
+                   "preview":{"reference": reference, "base": base, "scopeFingerprint": fingerprint}})
+        }
+        WorkspaceRequest::Logical { fields, .. } => fields.clone(),
         _ => json!({}),
     };
     let (action, path) = operation.wire_fields();
@@ -238,7 +283,7 @@ pub(super) fn workspace_request<R: Read, W: Write>(
     }
     let directory: Directory = serde_json::from_str(response.result.get()).map_err(|_| ())?;
     let mut paths = BTreeSet::new();
-    if directory.workspaces.len() > 128
+    if directory.workspaces.len() > 129
         || !directory
             .workspaces
             .iter()
