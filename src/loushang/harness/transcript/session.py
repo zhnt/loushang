@@ -314,7 +314,7 @@ class AgentTranscriptSession:
             self._notify_commit(result)
         return result
 
-    async def append_thinking_level_change(self, thinking_level: str) -> str:
+    async def append_thinking_level_change(self, thinking_level: str | None) -> str:
         return self._complete_commit(
             await self._transcript.append_thinking_selection(
                 ThinkingSelectionSnapshot(level=thinking_level)

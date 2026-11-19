@@ -286,14 +286,14 @@ export interface ModelChoice {
   readonly supportsThinking: boolean;
 }
 
-export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingLevel = (typeof thinkingLevels)[number];
 
 export interface SessionModels {
   readonly currentId: string | null;
   readonly models: readonly ModelChoice[];
   readonly thinking?: {
-    readonly currentLevel: ThinkingLevel;
+    readonly currentLevel: ThinkingLevel | null;
     readonly availableLevels: readonly ThinkingLevel[];
   };
 }

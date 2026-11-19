@@ -50,6 +50,67 @@
                 "input": 4,
                 "output": 18
               }
+            },
+            "ernie-5.5-flash-preview": {
+              "displayName": "ERNIE 5.5 Flash Preview",
+              "family": "ernie",
+              "alias": "fast-chat",
+              "defaults": {
+                "maxOutputTokens": 16384
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 1000000,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "reasoningEfforts": [],
+                "reasoningRequired": true
+              }
+            },
+            "ernie-light-dt-1.0": {
+              "displayName": "ERNIE Light DT 1.0",
+              "family": "ernie",
+              "alias": "balanced-chat",
+              "defaults": {
+                "maxOutputTokens": 16384,
+                "reasoningEffort": "max"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 131072,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "reasoningRequired": false
+              },
+              "adapter": {
+                "reasoningFormat": "deepseek",
+                "reasoningEffort": true
+              }
             }
           },
           "adapter": {
@@ -81,13 +142,13 @@
           "preferred": true,
           "docs": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
           "models": {
-            "qwen3.7-max": {
-              "displayName": "Qwen3.7 Max",
+            "qwen4-max": {
+              "displayName": "Qwen4 Max",
               "family": "qwen-max",
               "alias": "qwen-main",
               "defaults": {
                 "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
+                "reasoningEffort": "high"
               },
               "capabilities": {
                 "contextWindow": 1000000,
@@ -103,12 +164,19 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "maxTokens": 262144,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high",
+                  "xhigh"
+                ]
               },
               "pricing": {
                 "currency": "CNY",
-                "input": 12,
-                "output": 36
+                "input": 10,
+                "output": 30
               }
             },
             "qwen3.7-plus": {
@@ -116,8 +184,7 @@
               "family": "qwen-plus",
               "alias": "qwen-balanced",
               "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
+                "maxOutputTokens": 32000
               },
               "capabilities": {
                 "contextWindow": 1000000,
@@ -133,12 +200,88 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningRequired": false
               },
               "pricing": {
                 "currency": "CNY",
                 "input": 2,
                 "output": 8
+              }
+            },
+            "qwen3.8-flash": {
+              "displayName": "Qwen3.8 Flash",
+              "family": "qwen-flash",
+              "alias": "qwen-fast",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "xhigh"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "maxTokens": 131072,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "xhigh"
+                ]
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 0.8,
+                "output": 2.7,
+                "cacheRead": 0.1
+              }
+            },
+            "qwen3.8-max": {
+              "displayName": "Qwen3.8 Max",
+              "family": "qwen-max",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "xhigh"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "maxTokens": 131072,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "xhigh"
+                ]
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 12,
+                "output": 36,
+                "cacheRead": 1.5
               }
             }
           },
@@ -182,7 +325,6 @@
                 ],
                 "reasoning": true,
                 "reasoningEfforts": [
-                  "none",
                   "low",
                   "high",
                   "max"
@@ -191,40 +333,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 0.3,
-                "output": 1.2,
-                "cacheRead": 0.006
-              }
-            },
-            "deepseek-v4-flash": {
-              "displayName": "DeepSeek V4.1 Flash (legacy ID)",
-              "family": "deepseek-v4.1",
-              "capabilities": {
-                "contextWindow": 1048576,
-                "maxTokens": 393216,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "none",
-                  "low",
-                  "high",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningRequired": false
               },
               "pricing": {
                 "currency": "USD",
@@ -248,7 +358,6 @@
                 ],
                 "reasoning": true,
                 "reasoningEfforts": [
-                  "none",
                   "low",
                   "high",
                   "max"
@@ -257,7 +366,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningRequired": false
               },
               "pricing": {
                 "currency": "USD",
@@ -272,12 +382,6 @@
             "developerRole": false,
             "streamingUsage": true,
             "reasoningEffort": true,
-            "reasoningEffortMap": {
-              "low": "high",
-              "medium": "high",
-              "high": "high",
-              "xhigh": "max"
-            },
             "strictSchema": true,
             "maxOutputTokensField": "max_tokens",
             "assistantReasoningContent": true,
@@ -324,18 +428,29 @@
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
-                "temperature": true
+                "temperature": false,
+                "reasoningEfforts": [],
+                "reasoningRequired": false
+              },
+              "adapter": {
+                "thinkingMode": "adaptive"
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.06
               }
             },
-            "MiniMax-M2.7": {
-              "displayName": "MiniMax-M2.7",
-              "family": "MiniMax-M2.7",
+            "MiniMax-M3.1-Flash": {
+              "displayName": "MiniMax M3.1 Flash",
+              "family": "MiniMax-M3.1",
               "alias": "balanced-chat",
               "capabilities": {
-                "contextWindow": 204800,
-                "maxTokens": 131072,
+                "contextWindow": 1000000,
                 "input": [
-                  "text"
+                  "text",
+                  "image"
                 ],
                 "output": [
                   "text"
@@ -345,7 +460,28 @@
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
-                "temperature": true
+                "temperature": false,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "thinkingMode": "adaptive"
+              },
+              "defaults": {
+                "reasoningEffort": "max",
+                "maxTokens": 32000
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.15,
+                "output": 0.6,
+                "cacheRead": 0.015
               }
             }
           }
@@ -369,68 +505,6 @@
           "preferred": true,
           "docs": "https://platform.kimi.ai/docs/api-reference",
           "models": {
-            "kimi-k2.6": {
-              "displayName": "Kimi K2.6",
-              "family": "kimi-k2",
-              "alias": "balanced-chat",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 262144,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": false
-              },
-              "pricing": {
-                "currency": "CNY",
-                "input": 6.5,
-                "output": 27,
-                "cacheRead": 1.1
-              }
-            },
-            "kimi-k2.7-code": {
-              "displayName": "Kimi K2.7 Code",
-              "family": "kimi-k2-code",
-              "alias": "default-coding",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 262144,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": false
-              },
-              "pricing": {
-                "currency": "CNY",
-                "input": 6.5,
-                "output": 27,
-                "cacheRead": 1.3
-              }
-            },
             "kimi-k3.1-pro": {
               "displayName": "Kimi K3.1 Pro",
               "family": "kimi-k3.1",
@@ -463,15 +537,9 @@
               "adapter": {
                 "reasoningEffort": true,
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
-              }
+                "reasoningFormat": "openai"
+              },
+              "alias": "default-chat"
             },
             "kimi-k3.1-pro-highspeed": {
               "displayName": "Kimi K3.1 Pro Highspeed",
@@ -505,52 +573,9 @@
               "adapter": {
                 "reasoningEffort": true,
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
-              }
-            },
-            "kimi-k3": {
-              "displayName": "Kimi K3",
-              "family": "kimi-k3",
-              "alias": "default-chat",
-              "defaults": {
-                "maxOutputTokens": 131072,
-                "reasoningEffort": "high"
+                "reasoningFormat": "openai"
               },
-              "capabilities": {
-                "contextWindow": 1048576,
-                "maxTokens": 1048576,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "low",
-                  "high",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": false
-              },
-              "pricing": {
-                "currency": "CNY",
-                "input": 20,
-                "output": 100,
-                "cacheRead": 2
-              }
+              "alias": "default-coding"
             }
           },
           "adapter": {
@@ -585,15 +610,15 @@
           "docs": "https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents",
           "models": {
             "kimi-for-coding": {
-              "displayName": "Kimi Code K2.7",
+              "displayName": "Kimi Code K2.8 Preview",
               "family": "kimi-coding",
               "alias": "balanced-coding",
               "defaults": {
-                "maxOutputTokens": 32768
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "max"
               },
               "capabilities": {
-                "contextWindow": 262144,
-                "maxTokens": 32768,
+                "contextWindow": 1048576,
                 "input": [
                   "text",
                   "image"
@@ -611,12 +636,15 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": false
               },
               "adapter": {
                 "streamingUsage": false,
-                "reasoningEffort": false,
-                "strictSchema": true
+                "reasoningEffort": true,
+                "strictSchema": true,
+                "reasoningFormat": "openai",
+                "assistantReasoningContent": true
               }
             },
             "k3.1-pro": {
@@ -652,15 +680,9 @@
                 "reasoningEffort": true,
                 "maxOutputTokensField": "max_completion_tokens",
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
-              }
+                "reasoningFormat": "openai"
+              },
+              "alias": "default-coding"
             },
             "k3.1-pro-highspeed": {
               "displayName": "Kimi Code K3.1 Pro Highspeed",
@@ -695,58 +717,7 @@
                 "reasoningEffort": true,
                 "maxOutputTokensField": "max_completion_tokens",
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
-              }
-            },
-            "k3": {
-              "displayName": "Kimi Code K3",
-              "family": "kimi-k3",
-              "alias": "default-coding",
-              "defaults": {
-                "maxOutputTokens": 131072,
-                "reasoningEffort": "high"
-              },
-              "capabilities": {
-                "contextWindow": 1048576,
-                "maxTokens": 131072,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "low",
-                  "high",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": false
-              },
-              "adapter": {
-                "reasoningEffort": true,
-                "maxOutputTokensField": "max_completion_tokens",
-                "assistantReasoningContent": true,
-                "reasoningFormat": "openai",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
+                "reasoningFormat": "openai"
               }
             }
           },
@@ -766,15 +737,15 @@
           "docs": "https://www.kimi.com/code/docs/en/",
           "models": {
             "kimi-for-coding": {
-              "displayName": "Kimi Code K2.7",
+              "displayName": "Kimi Code K2.8 Preview",
               "family": "kimi-coding",
               "alias": "balanced-coding",
               "defaults": {
-                "maxOutputTokens": 32768
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "max"
               },
               "capabilities": {
-                "contextWindow": 262144,
-                "maxTokens": 32768,
+                "contextWindow": 1048576,
                 "input": [
                   "text",
                   "image"
@@ -792,7 +763,11 @@
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": false
+              },
+              "adapter": {
+                "thinkingMode": "adaptive"
               }
             },
             "k3.1-pro": {
@@ -825,15 +800,9 @@
                 "reasoningRequired": true
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
-              }
+                "thinkingMode": "adaptive"
+              },
+              "alias": "default-coding"
             },
             "k3.1-pro-highspeed": {
               "displayName": "Kimi Code K3.1 Pro Highspeed",
@@ -865,55 +834,7 @@
                 "reasoningRequired": true
               },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
-              }
-            },
-            "k3": {
-              "displayName": "Kimi Code K3",
-              "family": "kimi-k3",
-              "alias": "default-coding",
-              "defaults": {
-                "maxOutputTokens": 131072,
-                "reasoningEffort": "high"
-              },
-              "capabilities": {
-                "contextWindow": 1048576,
-                "maxTokens": 131072,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "low",
-                  "high",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": false,
-                "attachment": false,
-                "temperature": false
-              },
-              "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "high",
-                  "high": "high",
-                  "xhigh": "max"
-                }
+                "thinkingMode": "adaptive"
               }
             }
           },
@@ -940,10 +861,9 @@
             "prefix": "Bearer "
           },
           "models": {
-            "gpt-5.5": {
-              "displayName": "GPT-5.5",
-              "family": "gpt-5",
-              "knowledge": "2025-12-01",
+            "gpt-6.2-astra": {
+              "displayName": "GPT-6.2 Astra",
+              "family": "gpt-6.2",
               "defaults": {
                 "maxOutputTokens": 32000,
                 "reasoningEffort": "medium"
@@ -960,47 +880,6 @@
                 ],
                 "reasoning": true,
                 "reasoningEfforts": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true,
-                "providerCompaction": "openai-responses"
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 5,
-                "output": 30,
-                "cacheRead": 0.5
-              }
-            },
-            "gpt-6-sol": {
-              "displayName": "GPT-6 Sol",
-              "family": "gpt-6",
-              "knowledge": "2026-04-20",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 1050000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "none",
                   "low",
                   "medium",
                   "high",
@@ -1012,93 +891,58 @@
                 "structuredOutput": true,
                 "attachment": false,
                 "temperature": false,
-                "providerCompaction": "openai-responses"
+                "providerCompaction": "openai-responses",
+                "reasoningRequired": true
               },
+              "lastUpdated": "2026-11-17",
+              "pricing": {
+                "currency": "USD",
+                "input": 8,
+                "output": 40,
+                "cacheRead": 0.4,
+                "cacheWrite": 10
+              }
+            },
+            "gpt-6.2-sol": {
+              "displayName": "GPT-6.2 Sol",
+              "family": "gpt-6.2",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false,
+                "providerCompaction": "openai-responses",
+                "reasoningRequired": true
+              },
+              "lastUpdated": "2026-11-17",
               "pricing": {
                 "currency": "USD",
                 "input": 2,
                 "output": 10,
-                "cacheRead": 0.2
-              }
-            },
-            "gpt-6-astra": {
-              "displayName": "GPT-6 Astra",
-              "family": "gpt-6",
-              "knowledge": "2026-04-30",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 1050000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": false,
-                "providerCompaction": "openai-responses"
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 10,
-                "output": 50,
-                "cacheRead": 1
-              }
-            },
-            "gpt-6.1-sol": {
-              "displayName": "GPT-6.1 Sol",
-              "family": "gpt-6.1",
-              "knowledge": "2026-04-30",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 1050000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": false,
-                "providerCompaction": "openai-responses"
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 2,
-                "output": 10,
-                "cacheRead": 0.1
+                "cacheRead": 0.1,
+                "cacheWrite": 2.5
               }
             },
             "gpt-6.1-terra": {
@@ -1182,46 +1026,6 @@
                 "output": 0.5,
                 "cacheRead": 0.01
               }
-            },
-            "gpt-5.4-mini": {
-              "displayName": "GPT-5.4 mini",
-              "family": "gpt-5",
-              "knowledge": "2025-08-31",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 400000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true,
-                "providerCompaction": "openai-responses"
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 0.75,
-                "output": 4.5,
-                "cacheRead": 0.075
-              }
             }
           },
           "adapter": {
@@ -1243,74 +1047,9 @@
             "OpenAI-Beta": "responses=experimental"
           },
           "models": {
-            "gpt-5.5": {
-              "displayName": "GPT-5.5-oauth",
-              "family": "gpt-5",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 400000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true
-              }
-            },
-            "gpt-6-sol": {
-              "displayName": "GPT-6 Sol oauth",
-              "family": "gpt-6",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 1050000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": false
-              }
-            },
-            "gpt-6-astra": {
-              "displayName": "GPT-6 Astra oauth",
-              "family": "gpt-6",
+            "gpt-6.2-astra": {
+              "displayName": "GPT-6.2 Astra oauth",
+              "family": "gpt-6.2",
               "defaults": {
                 "maxOutputTokens": 32000,
                 "reasoningEffort": "medium"
@@ -1337,12 +1076,14 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
-              }
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "lastUpdated": "2026-11-17"
             },
-            "gpt-6.1-sol": {
-              "displayName": "GPT-6.1 Sol oauth",
-              "family": "gpt-6.1",
+            "gpt-6.2-sol": {
+              "displayName": "GPT-6.2 Sol oauth",
+              "family": "gpt-6.2",
               "defaults": {
                 "maxOutputTokens": 32000,
                 "reasoningEffort": "medium"
@@ -1369,8 +1110,10 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
-              }
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "lastUpdated": "2026-11-17"
             },
             "gpt-6.1-terra": {
               "displayName": "GPT-6.1 Terra oauth",
@@ -1471,7 +1214,7 @@
             "step-3.7-flash": {
               "displayName": "Step 3.7 Flash",
               "family": "step-3",
-              "alias": "default-chat",
+              "alias": "fast-chat",
               "lastUpdated": "2026-05-29",
               "defaults": {
                 "maxOutputTokens": 4096,
@@ -1504,6 +1247,37 @@
                 "output": 1.15,
                 "cacheRead": 0.04
               }
+            },
+            "step-5-preview": {
+              "displayName": "Step 5 Preview",
+              "family": "step-5",
+              "alias": "default-chat",
+              "defaults": {
+                "maxOutputTokens": 4096,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "maxTokens": 65536
+              }
             }
           },
           "adapter": {
@@ -1511,12 +1285,6 @@
             "developerRole": false,
             "streamingUsage": true,
             "reasoningEffort": true,
-            "reasoningEffortMap": {
-              "low": "low",
-              "medium": "medium",
-              "high": "high",
-              "xhigh": "high"
-            },
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens"
           }
@@ -1541,40 +1309,76 @@
           "preferred": true,
           "docs": "https://cloud.tencent.com/document/product/1823/132252",
           "models": {
-            "hy3": {
-              "displayName": "Hy3",
-              "family": "hy3",
+            "hy4": {
+              "displayName": "Hy4",
+              "family": "hy4",
               "alias": "default-chat",
-              "lastUpdated": "2026-07-24",
               "defaults": {
-                "maxOutputTokens": 4096
+                "maxOutputTokens": 16384,
+                "reasoningEffort": "high"
               },
               "capabilities": {
-                "contextWindow": 262144,
-                "maxTokens": 131072,
+                "contextWindow": 1000000,
+                "maxTokens": 65536,
                 "input": [
-                  "text"
+                  "text",
+                  "image"
                 ],
                 "output": [
                   "text"
                 ],
                 "reasoning": true,
-                "reasoningEfforts": [
-                  "none",
-                  "low",
-                  "high"
-                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningEfforts": [
+                  "none",
+                  "high"
+                ]
               },
               "pricing": {
                 "currency": "CNY",
-                "input": 1,
-                "output": 4,
-                "cacheRead": 0.25
+                "input": 6,
+                "output": 18,
+                "cacheRead": 0.3
+              }
+            },
+            "hy4-flash": {
+              "displayName": "Hy4 Flash",
+              "family": "hy4",
+              "alias": "fast-chat",
+              "defaults": {
+                "maxOutputTokens": 16384,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 65536,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "reasoningEfforts": [
+                  "none",
+                  "high"
+                ]
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 0.5,
+                "output": 2,
+                "cacheRead": 0.02
               }
             }
           },
@@ -1623,21 +1427,31 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high"
+                ]
               },
               "pricing": {
                 "currency": "CNY",
                 "input": 6,
                 "output": 30,
                 "cacheRead": 1.2
+              },
+              "defaults": {
+                "reasoningEffort": "high",
+                "maxOutputTokens": 4096
               }
             },
-            "doubao-seed-2-1-pro-260628": {
+            "doubao-seed-2-1-pro-260915": {
               "displayName": "Doubao Seed 2.1 Pro",
               "family": "doubao-seed-2.1",
               "alias": "default-chat",
               "capabilities": {
-                "contextWindow": 262144,
+                "contextWindow": 1048576,
                 "maxTokens": 262144,
                 "input": [
                   "text",
@@ -1651,7 +1465,17 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "defaults": {
+                "reasoningEffort": "high",
+                "maxOutputTokens": 4096
               },
               "pricing": {
                 "currency": "CNY",
@@ -1660,12 +1484,12 @@
                 "cacheRead": 1.2
               }
             },
-            "doubao-seed-2-1-turbo-260628": {
-              "displayName": "Doubao Seed 2.1 Turbo",
+            "doubao-seed-2-1-lite-260915": {
+              "displayName": "Doubao Seed 2.1 Lite",
               "family": "doubao-seed-2.1",
               "alias": "fast-chat",
               "capabilities": {
-                "contextWindow": 262144,
+                "contextWindow": 1048576,
                 "maxTokens": 262144,
                 "input": [
                   "text",
@@ -1679,20 +1503,30 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "defaults": {
+                "reasoningEffort": "high",
+                "maxOutputTokens": 4096
               },
               "pricing": {
                 "currency": "CNY",
-                "input": 3,
-                "output": 15,
-                "cacheRead": 0.6
+                "input": 0.8,
+                "output": 2.7,
+                "cacheRead": 0.16
               }
             }
           },
           "adapter": {
             "store": false,
             "developerRole": false,
-            "reasoningEffort": false,
+            "reasoningEffort": true,
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens"
           }
@@ -1716,12 +1550,13 @@
           "preferred": true,
           "docs": "https://docs.z.ai/guides/overview/quick-start",
           "models": {
-            "glm-5.2": {
-              "displayName": "GLM-5.2",
+            "glm-5.3": {
+              "displayName": "GLM-5.3",
               "family": "glm-5",
               "alias": "default-chat",
               "defaults": {
-                "maxOutputTokens": 4096
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "max"
               },
               "capabilities": {
                 "contextWindow": 1000000,
@@ -1737,7 +1572,13 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "reasoningRequired": true
               },
               "pricing": {
                 "currency": "USD",
@@ -1746,18 +1587,20 @@
                 "cacheRead": 0.26
               }
             },
-            "glm-4.7": {
-              "displayName": "GLM-4.7",
-              "family": "glm-4",
+            "glm-5.3-flash": {
+              "displayName": "GLM-5.3 Flash",
+              "family": "glm-5",
               "alias": "balanced-chat",
               "defaults": {
-                "maxOutputTokens": 4096
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "max"
               },
               "capabilities": {
-                "contextWindow": 200000,
+                "contextWindow": 1000000,
                 "maxTokens": 131072,
                 "input": [
-                  "text"
+                  "text",
+                  "image"
                 ],
                 "output": [
                   "text"
@@ -1767,13 +1610,57 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "reasoningRequired": true
               },
               "pricing": {
                 "currency": "USD",
-                "input": 0.6,
-                "output": 2.2,
-                "cacheRead": 0.11
+                "input": 0.15,
+                "output": 0.5,
+                "cacheRead": 0.03
+              }
+            },
+            "glm-5.3-flashx": {
+              "displayName": "GLM-5.3 FlashX",
+              "family": "glm-5",
+              "alias": "fast-chat",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "max"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 131072,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "reasoningRequired": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.37,
+                "output": 1.25,
+                "cacheRead": 0.075
               }
             }
           },
@@ -1781,11 +1668,11 @@
             "store": false,
             "developerRole": false,
             "streamingUsage": true,
-            "reasoningEffort": false,
+            "reasoningEffort": true,
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens",
-            "assistantReasoningContent": false,
-            "reasoningFormat": "zai-thinking"
+            "assistantReasoningContent": true,
+            "reasoningFormat": "openai"
           }
         }
       }
@@ -1810,11 +1697,98 @@
           "preferred": true,
           "docs": "https://docs.anthropic.com/en/api/messages",
           "models": {
-            "claude-fable-5": {
-              "displayName": "Claude Fable 5",
-              "family": "claude-fable-5",
+            "claude-fable-5-2": {
+              "displayName": "Claude Fable 5.2",
+              "family": "claude-fable-5-2",
               "defaults": {
-                "maxTokens": 32000
+                "maxTokens": 32000,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "thinkingMode": "adaptive"
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 8,
+                "output": 40,
+                "cacheRead": 0.8,
+                "cacheWrite": 10
+              }
+            },
+            "claude-opus-5-5": {
+              "displayName": "Claude Opus 5.5",
+              "family": "claude-opus-5-5",
+              "defaults": {
+                "maxTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "thinkingMode": "adaptive"
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 4,
+                "output": 20,
+                "cacheRead": 0.4,
+                "cacheWrite": 5
+              }
+            },
+            "claude-sonnet-5-5": {
+              "displayName": "Claude Sonnet 5.5",
+              "family": "claude-sonnet-5-5",
+              "defaults": {
+                "maxTokens": 32000,
+                "reasoningEffort": "high"
               },
               "capabilities": {
                 "contextWindow": 1000000,
@@ -1840,29 +1814,23 @@
                 "attachment": false,
                 "temperature": false
               },
+              "adapter": {
+                "thinkingMode": "adaptive"
+              },
               "pricing": {
                 "currency": "USD",
-                "input": 10,
-                "output": 50,
-                "cacheRead": 1,
-                "cacheWrite": 12.5
-              },
-              "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "medium",
-                  "high": "high",
-                  "xhigh": "xhigh"
-                }
+                "input": 2,
+                "output": 10,
+                "cacheRead": 0.2,
+                "cacheWrite": 2.5
               }
             },
-            "claude-opus-5": {
-              "displayName": "Claude Opus 5",
-              "family": "claude-opus-5",
+            "claude-haiku-5-5": {
+              "displayName": "Claude Haiku 5.5",
+              "family": "claude-haiku-5-5",
               "defaults": {
-                "maxTokens": 32000
+                "maxTokens": 32000,
+                "reasoningEffort": "medium"
               },
               "capabilities": {
                 "contextWindow": 1000000,
@@ -1888,102 +1856,15 @@
                 "attachment": false,
                 "temperature": false
               },
-              "pricing": {
-                "currency": "USD",
-                "input": 5,
-                "output": 25,
-                "cacheRead": 0.5,
-                "cacheWrite": 6.25
-              },
               "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "medium",
-                  "high": "high",
-                  "xhigh": "xhigh"
-                }
-              }
-            },
-            "claude-sonnet-5": {
-              "displayName": "Claude Sonnet 5",
-              "family": "claude-sonnet-5",
-              "defaults": {
-                "maxTokens": 32000
-              },
-              "capabilities": {
-                "contextWindow": 1000000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": false,
-                "attachment": false,
-                "temperature": false
+                "thinkingMode": "adaptive"
               },
               "pricing": {
                 "currency": "USD",
-                "input": 3,
-                "output": 15,
-                "cacheRead": 0.3,
-                "cacheWrite": 3.75
-              },
-              "adapter": {
-                "thinkingMode": "adaptive",
-                "reasoningEffortMap": {
-                  "minimal": "low",
-                  "low": "low",
-                  "medium": "medium",
-                  "high": "high",
-                  "xhigh": "xhigh"
-                }
-              }
-            },
-            "claude-haiku-4-5": {
-              "displayName": "Claude Haiku 4.5",
-              "family": "claude-haiku-4-5",
-              "defaults": {
-                "maxTokens": 16000
-              },
-              "capabilities": {
-                "contextWindow": 200000,
-                "maxTokens": 64000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": false,
-                "attachment": false,
-                "temperature": true
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 1,
-                "output": 5,
-                "cacheRead": 0.1,
-                "cacheWrite": 1.25
+                "input": 0.1,
+                "output": 0.5,
+                "cacheRead": 0.01,
+                "cacheWrite": 0.125
               }
             }
           },

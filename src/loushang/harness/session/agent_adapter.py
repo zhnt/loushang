@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 from loushang.agent import Agent, ThinkingLevel
-from loushang.ai.model import Model, ModelSelection
+from loushang.ai.model import (
+    Model,
+    ModelSelection,
+    available_thinking_levels,
+    normalize_model_selection,
+)
 from loushang.ai.types import AssistantMessage
 from loushang.harness.approval import (
     ApprovalPermissionsSnapshot,
@@ -192,14 +197,18 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         self, session_context: AgentTranscriptContext
     ) -> None:
         resolved_model = self._session_default_model
-        if session_context.model is not None and self.model_registry is not None:
+        if session_context.model is not None:
             selection = ModelSelection(
                 provider=session_context.model["provider"],
                 endpoint_id=session_context.model["endpoint_id"],
                 model_id=session_context.model["model_id"],
             )
-            with suppress(KeyError, ValueError):
-                resolved_model = self.model_registry.build_model(selection)
+            if self.model_registry is not None:
+                with suppress(KeyError):
+                    resolved_model = self.model_registry.build_model(selection)
+            # An explicitly supplied Model may live outside the registry.
+            if normalize_model_selection(resolved_model) != selection:
+                raise ValueError(f"Saved model is unavailable: {selection.provider}:{selection.endpoint_id}:{selection.model_id}")
         if (
             session_context.provider_window is not None
             and not session_context.provider_window.matches(resolved_model)
@@ -210,9 +219,10 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         self.agent.state.set_messages(list(session_context.messages))
         self.agent.state.provider_window = session_context.provider_window
         if self.session_manager.get_entries():
-            self.agent.thinking_level = cast(
-                ThinkingLevel,
-                session_context.thinking_level,
+            level = session_context.thinking_level
+            self.agent.thinking_level = (
+                cast(ThinkingLevel, level)
+                if level in available_thinking_levels(resolved_model) else None
             )
         self.agent.model = resolved_model
 

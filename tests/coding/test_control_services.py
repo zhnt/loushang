@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import AnthropicMessagesConfig, Capabilities, Model
 from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
 
 
@@ -17,14 +17,18 @@ def _model(
     provider: str = "faux",
     endpoint: str = "anthropic-messages",
     name: str | None = None,
+    reasoning: bool = False,
 ) -> Model:
     return Model(
         id=model_id,
         name=name,
         provider=provider,
         endpoint=endpoint,
+        api=("openai-responses" if endpoint == "responses" else "anthropic-messages") if reasoning else None,
+        adapter=AnthropicMessagesConfig(thinking_mode="adaptive") if reasoning and endpoint == "anthropic-messages" else None,
         capabilities=Capabilities(
-            reasoning=False,
+            reasoning=reasoning,
+            reasoning_efforts=("minimal", "high") if reasoning else None,
             input=("text",),
             context_window=128000,
             max_tokens=4096,
@@ -134,7 +138,7 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     from loushang.coding.session_manager import SessionManager
 
     services = create_services(ai_model_registry=AiModelRegistry())
-    services.model_registry.register_model(_model("alpha", name="Alpha"))
+    services.model_registry.register_model(_model("alpha", name="Alpha", reasoning=True))
     services.settings_manager.set_default_model(
         ModelSelection(
             endpoint_id="anthropic-messages", provider="faux", model_id="alpha"
@@ -254,7 +258,7 @@ def test_runtime_uses_latest_settings_for_new_sessions(tmp_path) -> None:
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))
     services.model_registry.register_model(
-        _model("beta", endpoint="responses", name="Beta")
+        _model("beta", endpoint="responses", name="Beta", reasoning=True)
     )
     services.settings_manager.set_default_model(
         ModelSelection(
@@ -337,7 +341,7 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(
         ai_model_registry=AiModelRegistry(),
         settings_manager=settings_manager,
     )
-    services.model_registry.register_model(_model("alpha", name="Alpha"))
+    services.model_registry.register_model(_model("alpha", name="Alpha", reasoning=True))
 
     manager = asyncio.run(
         SessionManager.new(

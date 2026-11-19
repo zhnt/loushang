@@ -584,6 +584,8 @@ class CodingRealHostedSessionFactoryV1:
                 await manager.append_model_change(
                     selection.provider, selection.model_id, endpoint_id=selection.endpoint_id,
                 )
+                if session.agent.thinking_level is not None:
+                    await manager.append_thinking_level_change(session.agent.thinking_level)
             real_binding = CodingRealHostedSessionV1(
                 session, identity, approval, workspace=opaque_session_binding.record.scope.cwd,
             )

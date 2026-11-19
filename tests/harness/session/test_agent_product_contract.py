@@ -1130,7 +1130,7 @@ def test_catalog_prompt_commits_exact_resource_evidence_before_transport(
                     name="Catalog Evidence Model",
                     provider="test",
                     api=adapter.api,
-                    endpoint="test",
+                    endpoint="test-endpoint",
                     base_url="https://provider.test/v1",
                     auth=Auth(kind="none"),
                     capabilities=Capabilities(
@@ -1234,11 +1234,11 @@ def test_catalog_queued_prompt_keeps_exact_resource_evidence(
             initial_state={
                 "system_prompt": "catalog evidence prompt",
                 "model": Model(
-                    id="catalog-evidence-queue-model",
+                    id=f"{product_id}-model",
                     name="Catalog Evidence Queue Model",
                     provider="test",
                     api=adapter.api,
-                    endpoint="test",
+                    endpoint="test-endpoint",
                     base_url="https://provider.test/v1",
                     auth=Auth(kind="none"),
                     capabilities=Capabilities(
@@ -3426,7 +3426,7 @@ def _model(product_id: str) -> Model:
         id=f"{product_id}-model",
         name=f"{product_id.title()} Model",
         provider="test",
-        endpoint="test",
+        endpoint="test-endpoint",
         capabilities=Capabilities(
             input=("text",),
             context_window=128_000,

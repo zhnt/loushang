@@ -252,12 +252,12 @@ class Agent:
         self._state.model = value
 
     @property
-    def thinking_level(self) -> ThinkingLevel:
+    def thinking_level(self) -> ThinkingLevel | None:
         """Get the current thinking/reasoning level."""
         return self._state.thinking_level
 
     @thinking_level.setter
-    def thinking_level(self, value: ThinkingLevel) -> None:
+    def thinking_level(self, value: ThinkingLevel | None) -> None:
         """Set the thinking/reasoning level."""
         self._state.thinking_level = value
 
@@ -902,13 +902,13 @@ def _create_agent_state(
 ) -> AgentState:
     if initial_state is None:
         return AgentState(
-            system_prompt="", model=_default_model(), thinking_level="off"
+            system_prompt="", model=_default_model(), thinking_level=None
         )
 
     return AgentState(
         system_prompt=_initial_state_value(initial_state, "system_prompt", ""),
         model=_initial_state_value(initial_state, "model", _default_model()),
-        thinking_level=_initial_state_value(initial_state, "thinking_level", "off"),
+        thinking_level=_initial_state_value(initial_state, "thinking_level", None),
         tools=_initial_state_value(initial_state, "tools", []),
         messages=_initial_state_value(initial_state, "messages", []),
         is_streaming=_initial_state_value(initial_state, "is_streaming", False),
@@ -923,11 +923,13 @@ def _create_agent_state(
 
 
 def _reasoning_options(
-    thinking_level: ThinkingLevel,
+    thinking_level: ThinkingLevel | None,
     thinking_budgets: Mapping[str, int] | None,
 ) -> ReasoningOptions | None:
-    if thinking_level == "off":
+    if thinking_level is None:
         return None
+    if thinking_level == "off":
+        return ReasoningOptions(enabled=False)
     budget_tokens = None
     if thinking_budgets is not None:
         budget = thinking_budgets.get(thinking_level)

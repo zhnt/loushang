@@ -45,7 +45,7 @@ beforeEach(() => {
     const id = request.connectionId ?? selected;
     const input = request.operation === "host/request" ? request.request : request;
     if (input.operation === "environment") return { supported: true, workspace: `/${id}`, connectionId: id };
-    if (input.operation === "workspace") return { projects: [{ path: `/${id}`, sessions: [{ id, title: id }] }], temporarySessions: [] };
+    if (input.operation === "workspace") return { projects: [{ path: `/${id}`, sessions: [{ id, title: `${id} chat` }] }], temporarySessions: [] };
     if (input.operation === "manage") return { state: "running", errorCode: null, workspace: `/${id}`, instanceId: `${id}-instance` };
     throw new Error("Unexpected request");
   });
@@ -78,14 +78,17 @@ describe("tray selection integration", () => {
       request: { operation: "manage", action: "connect" } });
     expect(backend.settings.mock.calls.some(([request]) => request.request?.action === "register")).toBe(false);
   });
-  it("switches the bound client and Web destination while retaining the mounted draft", async () => {
+  it("switches the directory and Web destination while retaining the mounted draft", async () => {
     render(<LocalHostGate />);
     await waitFor(() => expect(projection()?.hosts[1]?.enable).toBe(true));
     const draft = screen.getByLabelText("Draft");
     // Flush the queued tray projection before clicking its revisioned menu.
     await act(async () => { fireEvent.change(draft, { target: { value: "Unsent work" } }); });
     click("office", "enable");
-    await waitFor(() => expect(backend.create).toHaveBeenCalledWith("/office", "office"));
+    const officeChat = await screen.findByRole("button", { name: "office chat" });
+    expect(backend.create).not.toHaveBeenCalled();
+    fireEvent.click(officeChat);
+    expect(backend.create).toHaveBeenCalledWith("/office", "office");
     await waitFor(() => expect(projection().currentLabel).toBe("Current Host: Office · Connected"));
     expect(projection().webUrl).toBe("https://office.example");
     expect(backend.settings).toHaveBeenCalledWith({ operation: "host/request", connectionId: "office",

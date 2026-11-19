@@ -463,7 +463,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const selectModel = vi.fn(async (_sessionId: string, modelId: string, level?: ThinkingLevel): Promise<SessionModels> => ({
       ...models,
       currentId: modelId,
-      thinking: { currentLevel: level ?? "medium", availableLevels: ["off", "low", "medium", "high"] },
+      thinking: { currentLevel: level ?? null, availableLevels: ["off", "xhigh", "max"] },
     }));
     render(<HarnessGui client={{
       snapshot: async () => ({
@@ -497,18 +497,19 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ }));
     expect(selectModel).toHaveBeenCalledWith("session-gui", "provider-b:endpoint-b:shared-model");
     const effort = await screen.findByRole("menu", { name: "Reasoning effort" });
-    expect(within(effort).getByRole("menuitemradio", { name: "Medium" })).toBeChecked();
-    expect(within(effort).getByRole("menuitemradio", { name: "Default" })).toBeVisible();
-    await user.click(within(effort).getByRole("menuitemradio", { name: "High" }));
-    expect(selectModel).toHaveBeenLastCalledWith("session-gui", "provider-b:endpoint-b:shared-model", "high");
+    expect(selector).toHaveTextContent("Default");
+    expect(within(effort).getByRole("menuitemradio", { name: "Extra high" })).not.toBeChecked();
+    expect(within(effort).queryByRole("menuitemradio", { name: "Medium" })).not.toBeInTheDocument();
+    await user.click(within(effort).getByRole("menuitemradio", { name: "Maximum" }));
+    expect(selectModel).toHaveBeenLastCalledWith("session-gui", "provider-b:endpoint-b:shared-model", "max");
     expect(selector).toHaveTextContent("provider-b · shared-model");
-    expect(selector).toHaveTextContent("High");
+    expect(selector).toHaveTextContent("Maximum");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     await user.click(selector);
     await user.click(screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Default" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "Off" }));
     expect(selectModel).toHaveBeenLastCalledWith("session-gui", "provider-b:endpoint-b:shared-model", "off");
-    expect(selector).toHaveTextContent("Default");
+    expect(selector).toHaveTextContent("Off");
   });
 
   it.each(["empty", "failed"])("blocks sending while the model query is pending or %s", async (result) => {
@@ -629,13 +630,12 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     }} />);
     const start = await screen.findByRole("button", { name: "New Session" });
     await waitFor(() => expect(start).toBeEnabled());
-    const heading = screen.getByRole("heading", { name: "GUI development" });
+    const heading = screen.getByRole("heading", { name: "New Session" });
     const transcript = screen.getByLabelText("Session transcript");
     const input = screen.getByRole("textbox");
     const model = screen.getByRole("button", { name: "Session model" });
-    fireEvent.click(start);
     expect(createSession).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "New Session" })).toBe(heading);
+    expect(within(screen.getByRole("navigation", { name: "Chats" })).queryByRole("button", { name: "New Session" })).toBeNull();
     expect(screen.getByLabelText("Session transcript")).toBe(transcript);
     expect(within(transcript).getByRole("heading", { name: "What would you like to work on?" })).toBeVisible();
     expect(within(transcript).queryByRole("article")).not.toBeInTheDocument();
@@ -646,6 +646,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("textbox")).toBe(input);
     expect(input).toHaveFocus();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep this draft" } });
+    fireEvent.click(screen.getByRole("button", { name: /^GUI development ·/ }));
+    expect(screen.getByRole("heading", { name: "GUI development" })).toBe(heading);
     fireEvent.click(start);
     expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
     fireEvent.click(screen.getByRole("button", { name: /^GUI development ·/ }));
@@ -680,6 +682,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const open = (project: string) => fireEvent.click(screen.getByRole("button", { name: `New chat in ${project}` }));
     open("alpha");
     expect(screen.getByRole("heading", { name: "alpha / New Session" })).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Projects" })).queryByRole("button", { name: "New Session" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Alpha draft" } });
     open("beta");
     expect(screen.getByRole("textbox")).toHaveValue("");
@@ -699,11 +702,18 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(createChat).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])("sends only with the model selected before creation (selection fails first: %s)", async (rejectFirstModel) => {
+  it.each(["none", "model", "reasoning"] as const)(
+    "applies the draft model and effort before sending (first rejection: %s)",
+    async (rejection) => {
     const inputSnapshot = await createMockAppClient().snapshot();
-    const second = { ...liveModel, id: "test:primary:second", modelId: "second" };
-    const choices: SessionModels = { currentId: liveModel.id, models: [liveModel, second] };
-    const defaultModels = vi.fn(async () => choices);
+    const defaultModel = { ...liveModel, supportsThinking: true };
+    const second = { ...liveModel, id: "test:primary:second", modelId: "second", supportsThinking: true };
+    const choices: SessionModels = { currentId: defaultModel.id, models: [defaultModel, second] };
+    const defaultModels = vi.fn(async (_path: string | null, id?: string): Promise<SessionModels> => id === second.id
+      ? { ...choices, currentId: id, thinking: { currentLevel: null, availableLevels: ["high", "max"] } }
+      : id === defaultModel.id
+        ? { ...choices, thinking: { currentLevel: "high", availableLevels: ["low", "high"] } }
+      : choices);
     let snapshot: ClientSnapshot = {
       ...inputSnapshot,
       connection: "connected",
@@ -712,12 +722,22 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     };
     let publish: ((value: ClientSnapshot) => void) | undefined;
     let activeModel = liveModel.id;
-    const selectModel = vi.fn(async (_sessionId: string, modelId: string) => {
-      if (!rejectFirstModel || selectModel.mock.calls.length > 1) activeModel = modelId;
-      return { ...choices, currentId: activeModel };
+    let activeLevel: ThinkingLevel | null = null;
+    let rejected = false;
+    const settings = (): SessionModels => ({ ...choices, currentId: activeModel, thinking: activeModel === second.id
+      ? { currentLevel: activeLevel, availableLevels: ["high", "max"] } : undefined });
+    const selectModel = vi.fn(async (_sessionId: string, modelId: string, level?: ThinkingLevel) => {
+      if (!rejected && rejection === (level === undefined ? "model" : "reasoning")) {
+        rejected = true;
+        return settings();
+      }
+      activeModel = modelId;
+      if (level !== undefined) activeLevel = level;
+      return settings();
     });
     const submitText = vi.fn<HarnessClientUiPort["submitText"]>(async ({ submissionId }) => {
       expect(activeModel).toBe(second.id);
+      expect(activeLevel).toBe("max");
       return { accepted: true, submissionId };
     });
     const client: HarnessClientUiPort = {
@@ -725,7 +745,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       subscribe: () => () => {},
       subscribeSnapshots: (listener) => { publish = listener; return () => {}; },
       interrupt: async () => ({ accepted: false }),
-      sessionModels: async () => ({ ...choices, currentId: activeModel }),
+      sessionModels: async () => settings(),
       selectModel, submitText,
     };
     const createChat = vi.fn(async (_path: string | null, continuityId: string) => {
@@ -752,16 +772,26 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const chats = within(screen.getByRole("region", { name: "Chats" }));
     expect(chats.getAllByRole("button", { name: "Repeated title" })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "New Session" }));
-    expect(chats.getByRole("button", { name: "New Session" })).toHaveAttribute("aria-current", "page");
+    expect(chats.queryByRole("button", { name: "New Session" })).toBeNull();
     const welcome = screen.getByRole("heading", { name: "What would you like to work on?" });
     expect(welcome).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveFocus();
     const picker = screen.getByRole("button", { name: "Session model" });
-    await waitFor(() => expect(picker).toHaveTextContent("test · model"));
+    await waitFor(() => expect(picker).toHaveTextContent(/test · model\s*High/));
     expect(defaultModels).toHaveBeenCalledWith(null);
+    expect(defaultModels).toHaveBeenCalledWith(null, defaultModel.id);
+    const goal = screen.getByRole("button", { name: "Development goal" });
+    fireEvent.click(goal);
+    expect(screen.getByText(/Send an ordinary message/)).toBeVisible();
+    expect(createChat).not.toHaveBeenCalled();
+    fireEvent.click(goal);
+    expect(screen.getByText(/Send an ordinary message/)).not.toBeVisible();
     fireEvent.click(picker);
     fireEvent.click(screen.getByRole("menuitemradio", { name: /test · second/ }));
     await waitFor(() => expect(picker).toHaveTextContent("test · second"));
+    const effort = await screen.findByRole("menu", { name: "Reasoning effort" });
+    fireEvent.click(within(effort).getByRole("menuitemradio", { name: "Maximum" }));
+    expect(picker).toHaveTextContent("Maximum");
     expect(createChat).not.toHaveBeenCalled();
     expect(selectModel).not.toHaveBeenCalled();
     expect(submitText).not.toHaveBeenCalled();
@@ -775,15 +805,24 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByText("Connected", { exact: true })).toBeVisible();
     expect(screen.getByRole("textbox")).toHaveValue("");
     expect(screen.getByRole("heading", { name: "Use the selected model" })).toBeVisible();
-    expect(chats.getByRole("button", { name: "Use the selected model" })).toHaveAttribute("aria-current", "page");
-    if (rejectFirstModel) {
-      expect(await screen.findByText("The selected model could not be applied. Your draft is saved.")).toBeVisible();
+    expect(chats.queryByRole("button", { name: "Use the selected model" })).toBeNull();
+    if (rejection !== "none") {
+      expect(await screen.findByText(rejection === "model"
+        ? "The selected model could not be applied. Your draft is saved."
+        : "The selected reasoning effort could not be applied. Your draft is saved.")).toBeVisible();
       expect(submitText).not.toHaveBeenCalled();
       expect(screen.getByRole("textbox")).toHaveValue("Use the selected model");
+      rerender(<HarnessGui client={client} managedHostConnection={managedHostConnection} projectNavigation={{
+        ...projectNavigation, directory: { projects: [], temporarySessions: [
+          { id: snapshot.sessions[0].id, title: "New Session", scope: "temporary", pinned: false }, ...previousChats,
+        ] },
+      }} />);
+      expect(chats.queryByRole("button", { name: "New Session" })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Send" }));
     }
     await waitFor(() => expect(submitText).toHaveBeenCalledOnce());
     expect(await transcript.findByText("Waiting for a reply…")).toBeVisible();
+    expect(chats.getByRole("button", { name: "Use the selected model" })).toHaveAttribute("aria-current", "true");
     expect(transcript.getAllByText("Use the selected model")).toHaveLength(1);
 
     const session = snapshot.sessions[0];
@@ -810,9 +849,12 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(chats.getByRole("button", { name: "Model selection summary" })).toBeVisible();
     expect(transcript.getByText(message.content)).toBeVisible();
     expect(createChat).toHaveBeenCalledExactlyOnceWith(null, expect.any(String), "New Session");
-    expect(selectModel.mock.calls).toEqual(rejectFirstModel
-      ? [["first-model", second.id], ["first-model", second.id]]
-      : [["first-model", second.id]]);
+    expect(selectModel.mock.calls).toEqual([
+      ["first-model", second.id],
+      ...(rejection === "model" ? [["first-model", second.id]] : []),
+      ["first-model", second.id, "max"],
+      ...(rejection === "reasoning" ? [["first-model", second.id, "max"]] : []),
+    ]);
   });
 
   it.each(["rejected", "lost-create", "unconfirmed-create", "rejected-submit", "lost-submit"] as const)(
@@ -906,6 +948,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         expect(await screen.findByText("The first message outcome is unknown. Your draft is saved.")).toBeVisible();
         expect(input).toHaveValue("First message");
         expect(send).toBeDisabled();
+        expect(screen.queryByRole("button", { name: /^New Session ·/ })).toBeNull();
         fireEvent.submit(input.closest("form")!);
         expect(submitText).toHaveBeenCalledTimes(1);
         expect(createSession).toHaveBeenCalledTimes(1);

@@ -112,10 +112,10 @@ def test_provider_matrix_example_targets_curated_provider_models() -> None:
         for item in module.PROVIDER_EXAMPLES
     }
 
-    assert examples[("moonshot", "openai-completions", "kimi-k2.6")]
+    assert examples[("moonshot", "openai-completions", "kimi-k3.1-pro")]
     assert examples[("baidu-qianfan", "openai-completions-cn", "ernie-5.1")]
     assert examples[("stepfun", "openai-completions", "step-3.7-flash")]
-    assert examples[("tencent-hunyuan", "openai-responses", "hy3")]
+    assert examples[("tencent-hunyuan", "openai-responses", "hy4")]
     assert len(examples) == 11
     assert "openrouter" not in {item.provider_id for item in module.PROVIDER_EXAMPLES}
     assert "amazon-bedrock" not in {
@@ -133,7 +133,7 @@ def test_provider_matrix_example_formats_curated_model_line() -> None:
     )
     line = module._format_model_line(moonshot)
 
-    assert "moonshot:openai-completions:kimi-k2.6" in line
+    assert "moonshot:openai-completions:kimi-k3.1-pro" in line
     assert "env=MOONSHOT_API_KEY" in line
 
 
@@ -192,7 +192,7 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
             api="openai-completions",
             provider="moonshot",
             endpoint="test-endpoint",
-            model="kimi-k2.6",
+            model="kimi-k3.1-pro",
             response_id="resp_1",
             usage=Usage(
                 input=1,
@@ -372,7 +372,7 @@ def test_openai_codex_import_example_calls_public_responses_path(
                 api="openai-responses",
                 provider="openai",
                 endpoint="test-endpoint",
-                model="gpt-5.5",
+                model="gpt-6.2-sol",
                 response_id="resp_1",
                 usage=None,
                 stop_reason="stop",
@@ -404,7 +404,7 @@ def test_openai_codex_import_example_calls_public_responses_path(
     assert captured["model_id"] == (
         "openai",
         "coding-responses",
-        "gpt-5.5",
+        "gpt-6.2-sol",
     )
     assert captured["model"] is model
     assert captured["status_model"] is model
@@ -533,7 +533,7 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                                     "reasoningFormat": "moonshot",
                                 },
                                 "models": {
-                                    "kimi-k2.6": {
+                                    "kimi-k3.1-pro": {
                                         "adapter": {
                                             "reasoningEffort": True,
                                             "streamingUsage": True,
@@ -561,7 +561,7 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert contract["endpoint"] == "openai-completions"
     assert contract["api"] == "openai-completions"
     assert contract["adapterScope"] == "endpoint-default"
-    assert contract["model"] == "kimi-k2.6"
+    assert contract["model"] == "kimi-k3.1-pro"
     assert contract["adapter"]["store"] is False
     assert contract["adapter"]["developerRole"] is False
     assert contract["adapter"]["strictSchema"] is False
@@ -593,14 +593,14 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
 
     assert contract["provider"] == "moonshot"
     assert contract["endpoint"] == "openai-completions"
-    assert contract["model"] == "kimi-k2.6"
+    assert contract["model"] == "kimi-k3.1-pro"
     assert contract["adapter"]["store"] is False
     assert contract["adapter"]["developerRole"] is False
     assert contract["adapter"]["streamingUsage"] is True
     assert contract["adapter"]["reasoningEffort"] is False
     assert contract["adapter"]["maxOutputTokensField"] == "max_tokens"
     assert contract["adapter"]["reasoningFormat"] == "moonshot"
-    assert contract["requestAdapter"]["reasoningEffort"] is False
+    assert contract["requestAdapter"]["reasoningEffort"] is True
     assert contract["requestBaseUrl"] == "https://api.moonshot.cn/v1"
 
 
@@ -874,7 +874,7 @@ def test_complete_example_builds_expected_context() -> None:
     assert context["system_prompt"]
     assert context["messages"][0]["role"] == "user"
     assert summary == {
-        "model": "moonshot:openai-completions:kimi-k2.6",
+        "model": "moonshot:openai-completions:kimi-k3.1-pro",
         "maxOutputTokens": 256,
         "messageCount": 1,
         "responseId": "offline-complete-demo",
@@ -888,7 +888,7 @@ def test_stream_example_reports_text_delta() -> None:
 
     summary = module.inspect_stream()
 
-    assert summary["model"] == "moonshot:openai-completions:kimi-k2.6"
+    assert summary["model"] == "moonshot:openai-completions:kimi-k3.1-pro"
     assert summary["responseId"] == "offline-stream-demo"
     assert summary["stopReason"] == "stop"
     assert summary["text"] == "mock hello from offline fixture"
@@ -944,7 +944,7 @@ def test_typed_context_example_uses_public_types() -> None:
     assert context.tools is not None
     assert context.tools[0].name == "add"
     assert summary == {
-        "model": "moonshot:openai-completions:kimi-k2.6",
+        "model": "moonshot:openai-completions:kimi-k3.1-pro",
         "messageCount": 1,
         "toolCount": 1,
         "stopReason": "stop",

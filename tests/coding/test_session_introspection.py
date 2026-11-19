@@ -81,7 +81,7 @@ def _usage() -> Usage:
 
 def _assistant_with_tool_call() -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[
             TextPart(type="text", text="Calling read"),
@@ -129,7 +129,7 @@ def _build_session_with_tool_turn(tmp_path):
             )
         )
     )
-    return coding_session.AgentSession(agent=Agent(), session_manager=manager)
+    return coding_session.AgentSession(agent=Agent(initial_state={"model": _model()}), session_manager=manager)
 
 
 def _model() -> Model:
@@ -240,7 +240,7 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
     asyncio.run(
         manager.append_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[TextPart(type="text", text="first response")],
                 api="anthropic-messages",
@@ -273,7 +273,7 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
     asyncio.run(
         manager.append_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[TextPart(type="text", text="second response")],
                 api="anthropic-messages",
@@ -307,7 +307,7 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
     asyncio.run(
         manager.append_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[TextPart(type="text", text="third response")],
                 api="anthropic-messages",

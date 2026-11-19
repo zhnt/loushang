@@ -32,6 +32,7 @@
     "createUnknown": "Session creation is unconfirmed. Your draft is saved.",
     "firstSubmissionUnknown": "The first message outcome is unknown. Your draft is saved.",
     "firstModelUnavailable": "The selected model could not be applied. Your draft is saved.",
+    "firstThinkingUnavailable": "The selected reasoning effort could not be applied. Your draft is saved.",
     "firstSubmitRejected": "The first message was rejected. Your draft is saved.",
     "createFailed": "New Session could not be created.",
     "createSyncFailed": "New Session was created, but it could not be shown yet.",
@@ -82,12 +83,14 @@
     "thinking": "Reasoning effort",
     "back": "Models",
     "levels": {
-      "off": "Default",
+      "default": "Default",
+      "off": "Off",
       "minimal": "Minimal",
       "low": "Low",
       "medium": "Medium",
       "high": "High",
-      "xhigh": "Extra high"
+      "xhigh": "Extra high",
+      "max": "Maximum"
     }
   },
   "transcript": {

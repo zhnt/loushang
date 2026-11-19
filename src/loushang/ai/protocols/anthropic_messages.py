@@ -320,6 +320,9 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
                     else 1024,
                 }
 
+        if resolved.reasoning_enabled is False and model.capabilities.supports_thinking:
+            thinking_cfg = {"type": "disabled"}
+
         params: dict[str, Any] = {
             "model": upstream_model_id,
             "messages": messages_param,
@@ -332,13 +335,12 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
         if thinking_cfg:
             params["thinking"] = thinking_cfg
         # 若存在自适应思考的 effort，注入 output_config
-        if want_thinking and self.supports_adaptive_thinking(adapter_config):
-            effort = self.map_thinking_level_to_effort(
-                resolved.reasoning_effort,
-                adapter_config,
-            )
-            if effort:
-                params["output_config"] = {"effort": effort}
+        if (
+            want_thinking
+            and self.supports_adaptive_thinking(adapter_config)
+            and resolved.reasoning_effort is not None
+        ):
+            params["output_config"] = {"effort": resolved.reasoning_effort}
         # 透传 tool_choice（auto/any/none 或 {type:'tool', name:...}）
         tool_choice = getattr(options, "tool_choice", None)
         if tool_choice is not None:

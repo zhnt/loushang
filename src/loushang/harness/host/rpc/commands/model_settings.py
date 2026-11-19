@@ -20,7 +20,7 @@ from loushang.harness.session import SessionOperationRuntime
 
 
 class _ModelSettingsState(Protocol):
-    thinking_level: str
+    thinking_level: str | None
 
 
 class _ModelSettingsSession(Protocol):

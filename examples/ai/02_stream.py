@@ -9,7 +9,7 @@ from loushang.ai import AssistantMessage, TextPart, get_model
 
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"
-MODEL_ID = "kimi-k2.6"
+MODEL_ID = "kimi-k3.1-pro"
 
 
 def _offline_events() -> list[dict[str, object]]:

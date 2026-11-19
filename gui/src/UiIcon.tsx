@@ -1,4 +1,4 @@
-export type UiIconName = "close" | "check" | "chevron-down" | "chevron-up" | "chevron-right" | "search" | "back" | "forward" | "folder" | "folder-closed" | "conversation" | "new-session" | "plus" | "pull-request" | "scheduled" | "plugins" | "settings" | "account" | "host" | "pin" | "copy" | "refresh" | "review";
+export type UiIconName = "close" | "check" | "chevron-down" | "chevron-up" | "chevron-right" | "search" | "back" | "forward" | "folder" | "folder-closed" | "conversation" | "new-session" | "plus" | "goal" | "pull-request" | "scheduled" | "plugins" | "settings" | "account" | "host" | "pin" | "copy" | "refresh" | "review";
 
 // Shared presentation icons: fixed boxes avoid font-dependent glyph baselines.
 export function UiIcon({ name }: { name: UiIconName }) {
@@ -19,6 +19,7 @@ export function UiIcon({ name }: { name: UiIconName }) {
     {name === "conversation" && <path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />}
     {name === "new-session" && <><path d="M10 5H5v14h14v-5M9 15l1-4L18 3l3 3-8 8zM16 5l3 3" /></>}
     {name === "plus" && <path d="M4 12h16M12 4v16" />}
+    {name === "goal" && <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></>}
     {name === "pull-request" && <><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="19" r="2" /><path d="M6 7v10m8-13-3 3 3 3m-3-3h4a3 3 0 0 1 3 3v7" /></>}
     {name === "scheduled" && <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l-3 3" /></>}
     {name === "plugins" && <><path d="M9 3v4m6-4v4M7 7h10v5a5 5 0 0 1-10 0zm5 10v4" /></>}

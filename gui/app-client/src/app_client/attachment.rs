@@ -1200,7 +1200,7 @@ impl ControlAuthority {
     }
 }
 
-const THINKING_LEVELS: [&str; 6] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+const THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 pub(super) fn decode_model_result(
     result_type: &str,
@@ -1229,18 +1229,20 @@ pub(super) fn decode_model_result(
     }
     if let Some(thinking) = root.get("thinking") {
         let settings = thinking.as_object().ok_or(())?;
-        let current = settings
-            .get("currentLevel")
-            .and_then(Value::as_str)
-            .ok_or(())?;
+        let current = settings.get("currentLevel").ok_or(())?;
         let levels = settings
             .get("availableLevels")
             .and_then(Value::as_array)
             .ok_or(())?;
         if settings.len() != 2
             || root["currentId"].is_null()
+            || levels.is_empty()
             || levels.len() > THINKING_LEVELS.len()
-            || !levels.iter().any(|level| level.as_str() == Some(current))
+            || (!current.is_null() && !levels.contains(current))
+            || levels
+                .iter()
+                .enumerate()
+                .any(|(index, level)| levels[..index].contains(level))
             || levels.iter().any(|level| {
                 !level
                     .as_str()
@@ -1684,6 +1686,29 @@ mod tests {
             ),
             Ok(None),
         );
+    }
+
+    #[test]
+    fn session_model_result_keeps_default_and_both_top_efforts() {
+        let raw = RawValue::from_string(
+            json!({
+                "currentId": "provider:endpoint:model",
+                "models": [],
+                "thinking": {
+                    "currentLevel": null,
+                    "availableLevels": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let ModelControlResult::Accepted(result) =
+            decode_model_result("sessionModels", &raw).unwrap()
+        else {
+            panic!("model result was rejected");
+        };
+        assert!(result["thinking"]["currentLevel"].is_null());
+        assert_eq!(result["thinking"]["availableLevels"][6], "max");
     }
 
     #[test]

@@ -167,7 +167,7 @@ def test_model_instances_do_not_expose_call_facades() -> None:
     model = get_default_model_registry().get_model(
         "moonshot",
         "openai-completions",
-        "kimi-k2.6",
+        "kimi-k3.1-pro",
     )
 
     for name in ("complete", "stream", "complete_simple", "stream_simple"):

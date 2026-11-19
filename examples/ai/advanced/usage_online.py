@@ -49,7 +49,7 @@ ROUTES: dict[str, Route] = {
     "moonshot-openai": Route(
         provider="moonshot",
         endpoint="openai-completions",
-        model="kimi-k2.6",
+        model="kimi-k3.1-pro",
         api_key_envs=("MOONSHOT_API_KEY",),
     ),
     "dashscope-responses": Route(

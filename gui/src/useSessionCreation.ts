@@ -1,22 +1,24 @@
 import { useEffect, useState } from "react";
-import type { ClientSnapshot, DraftBinding, HarnessClientUiPort, SessionModels, SessionSnapshot, SubmitReceipt } from "./client/model";
+import type { ClientSnapshot, DraftBinding, HarnessClientUiPort, SessionModels, SessionSnapshot, SubmitReceipt, ThinkingLevel } from "./client/model";
 
 export interface DraftTarget {
   readonly key: string;
   readonly hostKey: string;
   readonly workspace: string | null;
-  readonly loadModels?: () => Promise<SessionModels>;
+  readonly loadModels?: (modelId?: string) => Promise<SessionModels>;
   readonly create: (continuityId: string) => Promise<DraftBinding | null>;
 }
 
 type DraftStatus = "ready" | "creating" | "sending" | "createFailed" | "createUnknown"
-  | "createSyncFailed" | "firstModelUnavailable" | "firstSubmitRejected" | "firstSubmissionUnknown";
+  | "createSyncFailed" | FirstModelFailure | "firstSubmitRejected" | "firstSubmissionUnknown";
+type FirstModelFailure = "firstModelUnavailable" | "firstThinkingUnavailable";
 
 interface Draft {
   readonly id: string;
   readonly target: DraftTarget;
   readonly text: string;
   readonly modelId?: string;
+  readonly thinking?: SessionModels["thinking"];
   readonly visible: boolean;
   readonly status: DraftStatus;
   readonly binding?: DraftBinding;
@@ -25,7 +27,7 @@ interface Draft {
 
 type Observation = { client: HarnessClientUiPort; snapshot: ClientSnapshot };
 type PublishedSession = { snapshot: ClientSnapshot; session: SessionSnapshot };
-type Accepted = (published: PublishedSession, text: string, receipt: SubmitReceipt, select: boolean) => void;
+type Accepted = (published: PublishedSession, text: string, receipt: SubmitReceipt, select: boolean, target: DraftTarget) => void;
 
 function publishedSession(observation: Observation | null, binding: DraftBinding, id: string): PublishedSession | null {
   if (observation?.client !== binding.client || observation.snapshot.connection !== "connected") return null;
@@ -91,9 +93,12 @@ class SessionCreation {
     });
   }
 
-  open(target: DraftTarget) {
+  open = (target: DraftTarget, adoptStartupDraft = false) => {
     if (this.inFlight) return;
-    const previous = this.drafts.get(target.key);
+    const startupDraft = adoptStartupDraft && this.current?.target.hostKey === ""
+      && this.current.status === "ready" && this.current.target.workspace === null ? this.current : null;
+    const previous = this.drafts.get(target.key) ?? startupDraft;
+    if (startupDraft && startupDraft.target.key !== target.key) this.drafts.delete(startupDraft.target.key);
     this.save(previous ? { ...previous, target, visible: true } : {
       id: `gui-draft-${crypto.randomUUID()}`, target, text: "", visible: true, status: "ready",
     });
@@ -108,8 +113,10 @@ class SessionCreation {
     if (this.current?.visible && !this.inFlight) this.save({ ...this.current, text });
   }
 
-  selectModel(id: string) {
-    if (this.current?.visible && !this.inFlight) this.save({ ...this.current, modelId: id });
+  selectModel(target: DraftTarget, id: string, thinking?: SessionModels["thinking"]) {
+    if (!this.current?.visible || this.inFlight || this.current.target !== target) return false;
+    this.save({ ...this.current, modelId: id, thinking });
+    return true;
   }
 
   private update(id: string, patch: Partial<Draft>) {
@@ -133,14 +140,14 @@ class SessionCreation {
     return published;
   }
 
-  async submit(onAccepted: Accepted, modelId?: string) {
+  async submit(onAccepted: Accepted, modelId?: string, level?: ThinkingLevel) {
     const input = this.current;
     if (this.inFlight || !canSubmitDraft(input)) return;
     this.inFlight = true;
     this.update(input.id, { status: input.binding?.sessionId ? "sending" : "creating" });
     try {
       const published = await this.resolveBinding(input);
-      if (published) await this.send(input, published, onAccepted, modelId);
+      if (published) await this.send(input, published, onAccepted, modelId, level);
     } catch {
       this.update(input.id, { status: "createUnknown" });
     } finally {
@@ -148,14 +155,14 @@ class SessionCreation {
     }
   }
 
-  private async send(input: Draft, published: PublishedSession, onAccepted: Accepted, modelId?: string) {
+  private async send(input: Draft, published: PublishedSession, onAccepted: Accepted, modelId?: string, level?: ThinkingLevel) {
     const binding = this.current?.binding;
     if (!this.current?.visible || !binding?.show(published.session.id)) {
       this.update(input.id, { status: "createSyncFailed" });
       return;
     }
     this.update(input.id, { status: "sending" });
-    if (modelId && !await this.applyFirstModel(binding, published.session.id, input.id, modelId)) return;
+    if (modelId && !await this.applyFirstModel(binding, published.session.id, input.id, modelId, level)) return;
     const receipt = await sendDraft(binding.client, published.session.id, input.text);
     if (!receipt.accepted) {
       const unknown = receipt.reason === "submission_outcome_unknown";
@@ -167,7 +174,7 @@ class SessionCreation {
       return;
     }
     if (this.current?.id === input.id) {
-      onAccepted(published, input.text, receipt, this.current.visible);
+      onAccepted(published, input.text, receipt, this.current.visible, input.target);
       this.save(null);
     }
   }
@@ -182,7 +189,7 @@ class SessionCreation {
     if (published && id && pending.instanceId && binding.client.findSubmission) {
       const receipt = await binding.client.findSubmission(id, pending.id, pending.instanceId).catch(() => null);
       if (receipt?.accepted && receipt.submissionId === pending.id && this.current?.id === draft.id) {
-        onAccepted(published, draft.text, receipt, this.current.visible);
+        onAccepted(published, draft.text, receipt, this.current.visible, draft.target);
         this.save(null);
         return;
       }
@@ -190,9 +197,10 @@ class SessionCreation {
     await binding.client.requestResync?.().catch(() => {});
   }
 
-  private async applyFirstModel(binding: DraftBinding, sessionId: string, draftId: string, modelId: string) {
-    if (!await confirmFirstModel(binding.client, sessionId, modelId)) {
-      this.update(draftId, { status: "firstModelUnavailable" });
+  private async applyFirstModel(binding: DraftBinding, sessionId: string, draftId: string, modelId: string, level?: ThinkingLevel) {
+    const failure = await confirmFirstModel(binding.client, sessionId, modelId, level);
+    if (failure) {
+      this.update(draftId, { status: failure });
       return false;
     }
     if (this.current?.id === draftId && this.current.visible) return true;
@@ -209,30 +217,42 @@ export function useSessionCreation(onAccepted: Accepted) {
   useEffect(() => () => creation.dispose(), [creation]);
   return {
     draft, drafts, observe: creation.observe, hide: creation.hide,
-    open: (target: DraftTarget) => creation.open(target),
+    open: creation.open,
     change: (text: string) => creation.change(text),
-    selectModel: (id: string) => creation.selectModel(id),
+    selectModel: (target: DraftTarget, id: string, thinking?: SessionModels["thinking"]) => creation.selectModel(target, id, thinking),
     check: () => creation.check(onAccepted),
-    submit: (modelId?: string) => creation.submit(onAccepted, modelId),
+    submit: (modelId?: string, level?: ThinkingLevel) => creation.submit(onAccepted, modelId, level),
   };
 }
 
-async function confirmFirstModel(client: HarnessClientUiPort, sessionId: string, modelId: string) {
+async function confirmFirstModel(
+  client: HarnessClientUiPort, sessionId: string, modelId: string, level?: ThinkingLevel,
+): Promise<FirstModelFailure | null> {
+  let failure: FirstModelFailure = "firstModelUnavailable";
   try {
-    const current = await client.sessionModels?.(sessionId);
-    if (current?.currentId === modelId) return true;
-    if (!current?.models.some((model) => model.id === modelId)) return false;
-    return (await client.selectModel?.(sessionId, modelId))?.currentId === modelId;
+    let current = await client.sessionModels?.(sessionId);
+    if (current?.currentId !== modelId) {
+      if (!current?.models.some((model) => model.id === modelId)) return failure;
+      current = await client.selectModel?.(sessionId, modelId);
+      if (current?.currentId !== modelId) return failure;
+    }
+    if (level === undefined || current.thinking?.currentLevel === level) return null;
+    failure = "firstThinkingUnavailable";
+    if (!current.thinking?.availableLevels.includes(level)) return failure;
+    const selected = await client.selectModel?.(sessionId, modelId, level);
+    return selected?.currentId === modelId && selected.thinking?.currentLevel === level ? null : failure;
   } catch {
-    return false;
+    return failure;
   }
 }
 
 async function sendDraft(client: HarnessClientUiPort, sessionId: string, text: string): Promise<SubmitReceipt> {
   const submissionId = `gui-${crypto.randomUUID()}`;
   try {
-    return await client.submitText({ sessionId, submissionId, text });
+    const receipt = await client.submitText({ sessionId, submissionId, text });
+    if (receipt.submissionId === submissionId) return receipt;
   } catch {
-    return { accepted: false, reason: "submission_outcome_unknown", submissionId };
+    // Reconcile the outcome with the original submission ID.
   }
+  return { accepted: false, reason: "submission_outcome_unknown", submissionId };
 }

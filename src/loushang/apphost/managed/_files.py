@@ -161,7 +161,7 @@ class PrivateManagedDirectory:
         self._exclusive_create = exclusive_create
         self._inherit_windows_children = inherit_windows_children
         self._attempted = self._opened = self._closing = False
-        if sys.platform not in {"linux", "win32"}:
+        if sys.platform not in {"linux", "darwin", "win32"}:
             raise ManagedStorageError("unsupported")
         if (type(create) is not bool or type(defer_open) is not bool or not isinstance(root, Path)
                 or type(create_parents) is not bool or (create_parents and not create)
@@ -1282,13 +1282,14 @@ def _rename_data_noreplace(parent: int, source: str, target: str) -> None:
     # to rename/replace: absence checks cannot prevent destination overwrite.
     import ctypes
 
-    function = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+    darwin = sys.platform == "darwin"
+    function = getattr(ctypes.CDLL(None, use_errno=True), "renameatx_np" if darwin else "renameat2", None)
     if function is None:
         raise ManagedStorageError("unsupported")
     function.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
     function.restype = ctypes.c_int
     ctypes.set_errno(0)
-    if function(parent, os.fsencode(source), parent, os.fsencode(target), 1) != 0:
+    if function(parent, os.fsencode(source), parent, os.fsencode(target), 4 if darwin else 1) != 0:
         raise ManagedStorageError("conflict" if ctypes.get_errno() == errno.EEXIST else "unavailable")
 
 

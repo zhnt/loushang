@@ -9,7 +9,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai import CallOptions, ReasoningOptions
+from loushang.ai import CallOptions, ReasoningOptions, get_model
 from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
@@ -1191,12 +1191,7 @@ def test_openai_responses_payload_maps_reasoning_option(
 
 
 def test_openai_responses_explicit_reasoning_disable_overrides_effort() -> None:
-    model = bound_test_model(
-        _Model(reasoning=True),
-        api="openai-responses",
-        options=CallOptions(auth=ApiKeyAuth("test-key")),
-        defaults={"reasoningEffort": "medium"},
-    )
+    model = get_model("openai", "openai-responses", "gpt-6-luna")
     request = resolve_request_for_model(
         model,
         options=CallOptions(
@@ -1207,6 +1202,8 @@ def test_openai_responses_explicit_reasoning_disable_overrides_effort() -> None:
 
     assert request.reasoning_enabled is False
     assert request.reasoning_effort is None
+    payload = OpenAIResponsesAdapter().prepare_request(request).payload
+    assert payload["reasoning"] == {"effort": "none"}
 
 
 def test_openai_responses_uses_resolved_temperature(

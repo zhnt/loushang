@@ -66,7 +66,7 @@ class AgentSettingsUpdate:
     """One typed update command before conversion to a raw layer patch."""
 
     default_model: ModelSelection | None | Unset = UNSET
-    thinking_level: ThinkingLevel | Unset = UNSET
+    thinking_level: ThinkingLevel | None | Unset = UNSET
     steering_mode: QueueMode | Unset = UNSET
     follow_up_mode: QueueMode | Unset = UNSET
     theme: str | None | Unset = UNSET

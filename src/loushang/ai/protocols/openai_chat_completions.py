@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, cast
@@ -70,7 +70,6 @@ class OpenAIChatCompletionsAdapter:
         supports_store = adapter_config.store
         max_tokens_field = adapter_config.max_output_tokens_field or "max_tokens"
         thinking_format = adapter_config.reasoning_format
-        reasoning_effort_map = dict(adapter_config.reasoning_effort_map)
         supports_reasoning_effort = adapter_config.reasoning_effort
 
         capabilities = model.capabilities
@@ -117,7 +116,6 @@ class OpenAIChatCompletionsAdapter:
             thinking_format=thinking_format,
             reasoning_enabled=resolved.reasoning_enabled,
             reasoning_effort=reasoning_effort,
-            reasoning_effort_map=reasoning_effort_map,
             supports_reasoning_effort=supports_reasoning_effort,
             capabilities=capabilities,
         )
@@ -648,69 +646,19 @@ def _apply_reasoning_params(
     thinking_format: str | None,
     reasoning_enabled: bool | None,
     reasoning_effort: str | None,
-    reasoning_effort_map: Mapping[str, str | None],
     supports_reasoning_effort: bool,
     capabilities: object | None = None,
 ) -> None:
-    if not _supports_reasoning(model, capabilities):
+    if reasoning_enabled is None or not _supports_reasoning(model, capabilities):
         return
-    if reasoning_enabled is None:
-        return
-    if thinking_format == "moonshot":
+    if thinking_format in {"moonshot", "deepseek", "zai-thinking"}:
         extra_body["thinking"] = {
             "type": "enabled" if reasoning_enabled else "disabled"
         }
-        return
-    if thinking_format == "deepseek":
-        extra_body["thinking"] = {
-            "type": "enabled" if reasoning_enabled else "disabled"
-        }
-        _apply_reasoning_effort_if_supported(
-            params,
-            reasoning_effort,
-            reasoning_effort_map,
-            supports_reasoning_effort,
-        )
-        return
-    if thinking_format == "zai-thinking":
-        params["thinking"] = {"type": "enabled" if reasoning_enabled else "disabled"}
-        _apply_reasoning_effort_if_supported(
-            params,
-            reasoning_effort,
-            reasoning_effort_map,
-            supports_reasoning_effort,
-        )
-        return
-    if reasoning_enabled:
-        _apply_reasoning_effort_if_supported(
-            params,
-            reasoning_effort,
-            reasoning_effort_map,
-            supports_reasoning_effort,
-        )
-    elif supports_reasoning_effort:
+    elif not reasoning_enabled and supports_reasoning_effort:
         params["reasoning_effort"] = "none"
-
-
-def _apply_reasoning_effort_if_supported(
-    params: dict[str, Any],
-    reasoning_effort: str | None,
-    reasoning_effort_map: Mapping[str, str | None],
-    supports_reasoning_effort: bool,
-) -> None:
-    if isinstance(reasoning_effort, str) and supports_reasoning_effort:
-        params["reasoning_effort"] = _map_reasoning_effort(
-            reasoning_effort, reasoning_effort_map
-        )
-
-
-def _map_reasoning_effort(
-    effort: str | None,
-    reasoning_effort_map: Mapping[str, str | None],
-) -> str | None:
-    if not isinstance(effort, str):
-        return "none"
-    return reasoning_effort_map.get(effort, effort)
+    if reasoning_enabled and reasoning_effort is not None and supports_reasoning_effort and thinking_format != "moonshot":
+        params["reasoning_effort"] = reasoning_effort
 
 
 def _supports_image_input(model: object, capabilities: object | None = None) -> bool:

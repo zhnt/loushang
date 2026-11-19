@@ -87,7 +87,7 @@ class SessionModelBinding:
     cycle_model_selection_callback: Callable[
         [str], ModelSelection | None | Awaitable[ModelSelection | None]
     ]
-    set_thinking_level_callback: Callable[[ThinkingLevel], Awaitable[None]]
+    set_thinking_level_callback: Callable[[ThinkingLevel | None], Awaitable[None]]
     cycle_thinking_level_callback: Callable[[], Awaitable[ThinkingLevel | None]]
     supports_thinking_callback: Callable[[], bool]
     available_thinking_levels_callback: Callable[[], list[ThinkingLevel]]
@@ -127,7 +127,7 @@ class SessionModelBinding:
             return
         await callback(selection)
 
-    async def set_thinking_level(self, level: ThinkingLevel) -> None:
+    async def set_thinking_level(self, level: ThinkingLevel | None) -> None:
         await self.set_thinking_level_callback(level)
 
     async def cycle_thinking_level(self) -> ThinkingLevel | None:

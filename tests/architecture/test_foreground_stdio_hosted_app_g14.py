@@ -26,6 +26,7 @@ def test_G14_BOUNDARIES_connection_has_no_reverse_semantic_or_process_dependency
         for imported in _imports(path):
             assert (
                 imported.startswith("loushang.appserver.")
+                or (path == ROOT / "protocol/model.py" and imported == "loushang.foundation.reasoning")
                 or imported.partition(".")[0] in sys.stdlib_module_names
             ), (path, imported)
             assert imported.partition(".")[0] != "subprocess"

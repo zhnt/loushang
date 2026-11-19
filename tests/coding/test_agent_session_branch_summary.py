@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import AnthropicMessagesConfig, Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.session import operations_runtime as operations_runtime_module
 
@@ -26,8 +26,11 @@ def _model(model_id: str = "faux-model") -> Model:
         name=model_id,
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
+        adapter=AnthropicMessagesConfig(thinking_mode="adaptive"),
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_efforts=("low", "high"),
             input=("text",),
             context_window=128000,
             max_tokens=4096,
@@ -41,7 +44,7 @@ def _assistant_text_message(
     model_id: str = "faux-model",
 ) -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",

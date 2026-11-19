@@ -8,7 +8,7 @@ import sys
 
 import loushang.ai as ai
 
-MODEL_REF = ("openai", "coding-responses", "gpt-5.5")
+MODEL_REF = ("openai", "coding-responses", "gpt-6.2-sol")
 USER_PROMPT = (
     "Explain the architecture of this repository briefly."
 )

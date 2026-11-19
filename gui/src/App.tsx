@@ -5,7 +5,7 @@ import { ContextMenuProvider, useContextMenu } from "./ContextMenu";
 import { CopyButton } from "./CopyButton";
 import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
@@ -22,14 +22,14 @@ import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import type { FileReference } from "./markdown/fileReference";
 import { WorkspacePreviewDialog } from "./WorkspacePreviewDialog";
 import { readMarkdownPreferences } from "./markdown/preferences";
-import { DraftChatRow, ProjectNavigation, type SidebarDraft } from "./ProjectNavigation";
-import { TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectNavigationProps } from "./client/projectDirectory";
+import { ProjectNavigation } from "./ProjectNavigation";
+import { TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
-import { canSubmitDraft, isSendingDraft, useSessionCreation } from "./useSessionCreation";
+import { canSubmitDraft, isSendingDraft, useSessionCreation, type DraftTarget } from "./useSessionCreation";
 import { useDraftModels } from "./useDraftModels";
 import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
@@ -140,6 +140,14 @@ interface FirstMessagePreview {
   readonly executionId?: string;
 }
 
+function directoryHasChat(
+  directory: ProjectNavigationProps["directory"] | undefined, entry: { workspace: string; chat: ProjectChat },
+) {
+  const chats = entry.workspace === TEMPORARY_WORKSPACE ? directory?.temporarySessions
+    : directory?.projects.find((project) => project.path === entry.workspace)?.sessions;
+  return chats?.some((chat) => chat.id === entry.chat.id);
+}
+
 function waitingForFirstReply(session: SessionSnapshot, preview: FirstMessagePreview) {
   const execution = session.execution;
   const finished = execution && (!preview.executionId || execution.id === preview.executionId)
@@ -212,7 +220,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }>>>({});
   const [choiceAnswers, setChoiceAnswers] = useState<Readonly<Record<string, ChoiceAnswer>>>({});
   const [firstMessages, setFirstMessages] = useState<Readonly<Record<string, FirstMessagePreview>>>({});
-  const draftCreation = useSessionCreation(({ session, snapshot }, text, receipt, select) => {
+  const [publishedChats, setPublishedChats] = useState<readonly {
+    hostKey: string; workspace: string; chat: ProjectChat;
+  }[]>([]);
+  const draftCreation = useSessionCreation(({ session, snapshot }, text, receipt, select, target) => {
+    if (projectNavigation && snapshot.source.kind === "live") {
+      const chat = { id: session.id, title: firstPromptTitle(text), scope: `mux:${snapshot.source.muxSpaceId}`, pinned: false };
+      setPublishedChats((current) => [{ hostKey: target.hostKey, workspace: target.workspace ?? TEMPORARY_WORKSPACE, chat }, ...current]);
+    }
     setFirstMessages((current) => ({
       ...current, [session.id]: { continuityId: session.context.continuityId, text, executionId: receipt.executionId },
     }));
@@ -224,11 +239,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     setNotice({ key: "notice.liveAccepted" });
   });
   const observeDraft = draftCreation.observe;
+  const openSessionDraft = draftCreation.open;
   const draftHost = projectNavigation?.hostKey ?? "native";
   const hideDraft = draftCreation.hide;
   useEffect(() => { hideDraft(); }, [draftHost, hideDraft]);
-  const draft = draftCreation.draft?.visible && draftCreation.draft.target.hostKey === draftHost
-    ? draftCreation.draft : null;
+  const initialDraftHost = useRef<string | null>(null);
+  useEffect(() => () => { initialDraftHost.current = null; }, []);
+  const activeDraft = draftCreation.draft;
+  const draft = activeDraft?.visible && (activeDraft.target.hostKey === draftHost || activeDraft.target.hostKey === "")
+    ? activeDraft : null;
   const [draftFocus, setDraftFocus] = useState(0);
   const draftId = draft?.id;
   useLayoutEffect(() => {
@@ -358,6 +377,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     }
   }, [state.local.quickLookDocumentId]);
 
+  const hiddenSessions = new Set(draftCreation.drafts.filter((item) => item.target.hostKey === draftHost)
+    .flatMap((item) => item.binding?.sessionId ? [item.id, item.binding.sessionId] : [item.id]));
   const requestedSelection = projectNavigation?.selection;
   const appliedSelection = useRef<typeof requestedSelection>(null);
   const [knownTitles, setKnownTitles] = useState<Readonly<Record<string, string>>>({});
@@ -403,18 +424,21 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   useEffect(() => {
     onConnectionChange?.(displayedConnection);
   }, [displayedConnection, onConnectionChange]);
+  const selectedSession = selectedId ? state.remote.sessions[selectedId] : undefined;
+  const selected = !draft && selectedSession && !hiddenSessions.has(selectedSession.id)
+    && !hiddenSessions.has(selectedSession.context.continuityId ?? "") ? selectedSession : undefined;
+  const visibleSessionId = selected?.id ?? null;
   useEffect(() => {
-    if (connected && selectionKey && selectedId) rememberSessionSelection(selectionKey, selectedId);
-  }, [connected, selectionKey, selectedId]);
+    if (connected && selectionKey && visibleSessionId) rememberSessionSelection(selectionKey, visibleSessionId);
+  }, [connected, selectionKey, visibleSessionId]);
   function selectSession(sessionId: string) {
     draftCreation.hide();
     dispatch({ type: "session.selected", sessionId });
   }
-  const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, selectSession);
+  const history = useSessionHistory(selectionKey ?? client, visibleSessionId, state.remote.sessions, selectSession);
   const panelOpen = state.local.dockOpen;
   const environmentOpen = state.local.dockOpen && state.local.dockTab === "environment";
   const tasksOpen = state.local.dockOpen && state.local.dockTab === "tasks";
-  const selected = !draft && selectedId ? state.remote.sessions[selectedId] : undefined;
   const visibleMessages = selected?.messages.filter((message) => message.systemNotice !== "resumesRuntime");
   const conversationOpen = Boolean(selected || draft);
   const firstMessage = selected && firstMessages[selected.id];
@@ -494,7 +518,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     : sessionModels.models.length === 0 ? "empty" : "choose";
   const canChangeModel = Boolean(client.selectModel && sessionModels && (
     sessionModels.models.some((model) => model.id !== sessionModels.currentId)
-    || (sessionModels.thinking?.availableLevels.length ?? 0) > 1
+    || (sessionModels.thinking?.availableLevels.length ?? 0) > 0
   ));
   useEffect(() => {
     if (!modelScope || !selectedId || modelRunning || !client.sessionModels) return;
@@ -661,6 +685,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
   async function selectModel(modelId: string, level?: ThinkingLevel): Promise<SessionModels | null> {
     if (!selected || !modelScope || !client.selectModel || modelRunning || modelPending || awaitingPublication || controlPendingRef.current) return null;
+    if (level === undefined && sessionModels?.currentId === modelId) return sessionModels;
     const request = ++modelRequest.current;
     setModelPending(true);
     try {
@@ -670,6 +695,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       if (request !== modelRequest.current) return null;
       const choice = models.models.find((model) => model.id === models.currentId);
       if (!choice || choice.id !== modelId) throw new Error("Unconfirmed model selection");
+      if (level !== undefined && models.thinking?.currentLevel !== level) throw new Error("Unconfirmed reasoning effort");
       setModelResult({ scope: modelScope, query: modelQuery, models });
       if (!failure?.pending) clearFailure();
       setNotice(level === undefined ? { key: "notice.modelChanged", params: { model: choice.label } } : { key: "notice.thinkingChanged" });
@@ -771,24 +797,22 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const conversationTitle = selected ? displaySessionTitle(selected, liveTitles[selected.id])
     : draftPending ? firstPromptTitle(draft.text)
       : projectContext ? `${projectContext} / ${draftTitle}` : draftTitle;
-  const newSessionEnabled = !draftPending && (projectNavigation
-    ? projectNavigation.available && !projectNavigation.pending
-    : Boolean(client.createSession) && connected);
+  const draftsSupported = Boolean(projectNavigation || client.createSession);
+  const newSessionEnabled = draftsSupported && !isSendingDraft(draftCreation.draft);
 
-  function openDraft(path: string | null) {
-    if (!newSessionEnabled) return;
-    const sourceSessionId = state.local.selectedSessionId ?? undefined;
+  const openDraft = useCallback((path: string | null, sourceSessionId?: string, adoptStartupDraft = false) => {
     const loadModels = projectNavigation?.draftModels;
-    draftCreation.open({
+    openSessionDraft({
       key: JSON.stringify([draftHost, path]),
       hostKey: draftHost,
       workspace: path,
-      loadModels: loadModels ? () => loadModels(path) : undefined,
+      loadModels: loadModels ? (modelId) => modelId === undefined ? loadModels(path) : loadModels(path, modelId) : undefined,
       create: async (continuityId) => {
         if (projectNavigation) return projectNavigation.createChat(path, continuityId, draftTitle);
         let sessionId: string | undefined;
         try {
-          const receipt = await client.createSession!({ sourceSessionId, title: draftTitle, continuityId });
+          const receipt = await client.createSession?.({ sourceSessionId, title: draftTitle, continuityId });
+          if (!receipt) return null;
           if ("rejected" in receipt) return null;
           sessionId = receipt.sessionId;
         } catch {
@@ -796,31 +820,43 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
         }
         return { client, sessionId, show: () => true, refresh: client.requestResync };
       },
-    });
+    }, adoptStartupDraft);
     setDraftFocus((focus) => focus + 1);
-  }
+  }, [client, draftHost, draftTitle, openSessionDraft, projectNavigation]);
 
-  const sidebarDrafts: SidebarDraft[] = draftCreation.drafts.filter((item) => item.target.hostKey === draftHost)
-    .map((item) => ({
-      id: item.id, workspace: item.target.workspace, sessionId: item.binding?.sessionId,
-      title: isSendingDraft(item) ? firstPromptTitle(item.text) : draftTitle, selected: draftId === item.id, onSelect: () => openDraft(item.target.workspace),
-    }));
-  // The connected Session can arrive before the background directory refresh.
-  if (projectNavigation && workspaceContext && selected?.context.continuityId?.startsWith("gui-draft-")) {
-    const directory = projectNavigation.directory;
-    const chats = workspaceContext === TEMPORARY_WORKSPACE ? directory.temporarySessions
-      : directory.projects.find((project) => project.path === workspaceContext)?.sessions;
-    if (!chats?.some((chat) => chat.id === selected.id)) sidebarDrafts.unshift({
-      id: selected.id, workspace: workspaceContext === TEMPORARY_WORKSPACE ? null : workspaceContext,
-      title: conversationTitle, selected: true, onSelect: () => selectSession(selected.id),
-    });
-  }
+  useEffect(() => {
+    if (!newSessionEnabled || initialDraftHost.current === draftHost) return;
+    initialDraftHost.current = draftHost;
+    if (!requestedSelection?.id) openDraft(null, undefined, true);
+  }, [draftHost, newSessionEnabled, openDraft, requestedSelection?.id]);
 
+  const directory = projectNavigation?.directory;
+  useEffect(() => {
+    const listed = publishedChats.filter((entry) => entry.hostKey === draftHost && directoryHasChat(directory, entry));
+    if (listed.length) setPublishedChats((current) => current.filter((entry) => !listed.includes(entry)));
+  }, [directory, draftHost, publishedChats]);
+
+  const unlisted = publishedChats.filter((entry) => entry.hostKey === draftHost && !directoryHasChat(directory, entry));
+  const unlistedChats = (workspace: string) => unlisted.filter((entry) => entry.workspace === workspace).map((entry) => entry.chat);
+  const deleteProjectChat = projectNavigation?.deleteChat;
   const navigation: ProjectNavigationProps | undefined = projectNavigation ? {
     ...projectNavigation,
+    directory: unlisted.length ? {
+      projects: projectNavigation.directory.projects.map((project) => ({
+        ...project, sessions: [...unlistedChats(project.path), ...project.sessions],
+      })),
+      temporarySessions: [...unlistedChats(TEMPORARY_WORKSPACE), ...projectNavigation.directory.temporarySessions],
+    } : projectNavigation.directory,
     selection: draft ? null : projectNavigation.selection,
     pending: projectNavigation.pending || draftPending,
-    create: openDraft,
+    create: (path) => openDraft(path),
+    createDisabled: !newSessionEnabled,
+    deleteChat: deleteProjectChat && (async (workspace, chat) => {
+      if (!await deleteProjectChat(workspace, chat)) return false;
+      setPublishedChats((current) => current.filter((entry) =>
+        entry.hostKey !== draftHost || entry.workspace !== workspace || entry.chat.id !== chat.id));
+      return true;
+    }),
     select: (workspace, id) => {
       draftCreation.hide();
       projectNavigation.select(workspace, id);
@@ -828,20 +864,51 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   } : undefined;
   const draftEnabled = projectNavigation ? projectNavigation.available && !projectNavigation.pending
     : connected || Boolean(draft?.binding);
+  const draftGoalScope = draft && !fixture && draftEnabled ? draft.id : null;
+  const draftGoalOpen = draftGoalScope !== null && draftGoalScope === openGoalScope;
   const draftModelTarget = draftCreation.draft?.target;
   const draftModels = useDraftModels(
-    draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled, draftCreation.draft?.modelId,
+    draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled,
+    draft?.modelId, draft?.thinking,
   );
-  async function selectDraftModel(id: string) {
-    if (!draftModels.models?.models.some((model) => model.id === id)) return null;
-    draftCreation.selectModel(id);
-    return { ...draftModels.models, currentId: id };
+  const draftModelRequest = useRef<DraftTarget | null>(null);
+  const [pendingDraftModel, setPendingDraftModel] = useState<DraftTarget | null>(null);
+  const draftModelBusy = Boolean(draft && pendingDraftModel === draft.target);
+  async function selectDraftModel(id: string, level?: ThinkingLevel): Promise<SessionModels | null> {
+    const models = draftModels.models;
+    const choice = models?.models.find((model) => model.id === id);
+    if (!draft || !models || !choice || draftModelRequest.current === draft.target) return null;
+    let thinking: SessionModels["thinking"];
+    if (level !== undefined) {
+      if (models.currentId !== id || !models.thinking?.availableLevels.includes(level)) return null;
+      thinking = { ...models.thinking, currentLevel: level };
+    } else if (models.currentId === id && models.thinking) {
+      return models;
+    } else if (choice.supportsThinking && draft.target.loadModels) {
+      draftModelRequest.current = draft.target;
+      setPendingDraftModel(draft.target);
+      try {
+        const preview = await draft.target.loadModels(id).catch(() => null);
+        if (draftModelRequest.current !== draft.target) return null;
+        // Older Hosts can still select the model without a reasoning preview.
+        if (preview?.currentId === id) thinking = preview.thinking;
+      } finally {
+        if (draftModelRequest.current === draft.target) {
+          draftModelRequest.current = null;
+          setPendingDraftModel(null);
+        }
+      }
+    }
+    if (!draftCreation.selectModel(draft.target, id, thinking)) return null;
+    return { ...models, currentId: id, thinking };
   }
   const draftModelId = draftModels.models?.currentId ?? undefined;
-  const canSendDraft = draftEnabled && !draftPending && canSubmitDraft(draft)
+  const canSendDraft = draftEnabled && !draftPending && !draftModelBusy && canSubmitDraft(draft)
     && (!draftModels.required || Boolean(draftModelId));
   function submitDraft() {
-    if (canSendDraft) void draftCreation.submit(draftModelId);
+    if (canSendDraft && draftModelRequest.current !== draft.target) {
+      void draftCreation.submit(draftModelId, draftModels.models?.thinking?.currentLevel ?? undefined);
+    }
   }
 
   const composer = draft ? {
@@ -868,7 +935,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
         {...history}
         onSettings={openSettings}
-        onNewSession={newSessionEnabled ? () => openDraft(null) : undefined}
+        onNewSession={newSessionEnabled ? () => openDraft(null, selectedSession?.id) : undefined}
         onOpenFolder={projectNavigation?.available && !projectNavigation.pending ? projectNavigation.openFolder : undefined}
         onFocusComposer={selected || draft ? () => document.getElementById("message-input")?.focus() : undefined}
         environmentOpen={environmentOpen}
@@ -889,10 +956,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           managedLocal={Boolean(hostSettings)}
           onSelect={selectSession}
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
-          onNewSession={() => openDraft(null)}
+          onNewSession={() => openDraft(null, selectedSession?.id)}
           newSessionEnabled={newSessionEnabled}
           activeSessionId={selected?.id ?? null}
-          drafts={sidebarDrafts}
+          hiddenSessions={hiddenSessions}
           projectNavigation={navigation}
           projectTitles={{ ...knownTitles, ...liveTitles }}
         />
@@ -1040,6 +1107,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               </details> : null}
 
               <div className="composer-stack">
+                {draftGoalScope ? <p id={goalPanelId} className="composer-goal-hint"
+                  hidden={!draftGoalOpen} role="status">{t("panels:interactiveGoal.not_ready")}</p> : null}
                 {selected && failure ? <div className={failure.pending ? "operation-notice uncertain" : "operation-notice"} role={failure.pending ? "status" : "alert"}>
                   <span><NoticeText notice={failure.notice} /></span>
                   {failure.pending ? <button type="button" className="secondary-button"
@@ -1048,20 +1117,23 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     onClick={clearFailure}>{t("session:composer.dismissNotice")}</button> : null}
                 </div> : null}
                 <MessageComposer {...composer} title={conversationTitle} fixture={Boolean(fixture)}
-                  leadingAction={goalPanelScope ? <button type="button" className="composer-goal"
+                  leadingAction={goalPanelScope || draftGoalScope ? <button type="button" className="composer-goal"
                     aria-label={t("panels:interactiveGoal.title")} title={t("panels:interactiveGoal.title")}
-                    aria-expanded={goalPanelOpen} aria-controls={goalPanelId} onClick={() => {
-                      setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
-                      if (!goalPanelOpen) openTasks();
-                    }}>{t("panels:interactiveGoal.shortcut")}</button> : null}
+                    aria-expanded={goalPanelOpen || draftGoalOpen} aria-controls={goalPanelId} onClick={() => {
+                      if (draftGoalScope) setOpenGoalScope(draftGoalOpen ? null : draftGoalScope);
+                      else {
+                        setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
+                        if (!goalPanelOpen) openTasks();
+                      }
+                    }}><UiIcon name="goal" /><span>{t("panels:interactiveGoal.shortcut")}</span></button> : null}
                   model={<ModelPicker
                     models={draft ? draftModels.models : sessionModels}
                     emptyLabel={draft ? draftModels.label : modelLabel}
                     disabled={draft
                       ? draftPending || draft.status === "firstSubmissionUnknown"
-                        || !draftModels.models?.models.some((model) => model.id !== draftModelId)
+                        || !draftModels.models?.models.some((model) => model.id !== draftModelId || model.supportsThinking)
                       : !canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
-                    busy={Boolean(selected) && modelPending}
+                    busy={draft ? draftModelBusy : Boolean(selected) && modelPending}
                     onSelect={draft ? selectDraftModel : selectModel}
                   />}
                 />
@@ -1122,13 +1194,13 @@ interface SidebarProps {
   readonly onToggleWorkspace: (workspaceId: string) => void;
   readonly onNewSession: () => void;
   readonly newSessionEnabled: boolean;
-  readonly drafts: readonly SidebarDraft[];
+  readonly hiddenSessions: ReadonlySet<string>;
   readonly activeSessionId: string | null;
   readonly projectNavigation?: ProjectNavigationProps;
   readonly projectTitles: Readonly<Record<string, string>>;
 }
 
-function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, drafts, onToggleSidebar, onSettings, activeSessionId, projectNavigation, projectTitles }: SidebarProps) {
+function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, hiddenSessions, onToggleSidebar, onSettings, activeSessionId, projectNavigation, projectTitles }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   const preferencesKey = sidebarPreferencesKey(state.remote.source);
@@ -1157,8 +1229,8 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
       {!managedLocal ? <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div> : null}
 
       {projectNavigation
-        ? <ProjectNavigation navigation={projectNavigation} selectedId={activeSessionId} titles={projectTitles} drafts={drafts} />
-        : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state} activeSessionId={activeSessionId} drafts={drafts}
+        ? <ProjectNavigation navigation={projectNavigation} selectedId={activeSessionId} titles={projectTitles} hiddenSessions={hiddenSessions} />
+        : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state} activeSessionId={activeSessionId} hiddenSessions={hiddenSessions}
             projectTitles={projectTitles} onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />}
 
       </div>
@@ -1167,8 +1239,8 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
   );
 }
 
-function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace, activeSessionId, drafts, projectTitles }: Pick<SidebarProps,
-  "state" | "onSelect" | "onToggleWorkspace" | "activeSessionId" | "drafts" | "projectTitles"> & { readonly preferencesKey: string }) {
+function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace, activeSessionId, hiddenSessions, projectTitles }: Pick<SidebarProps,
+  "state" | "onSelect" | "onToggleWorkspace" | "activeSessionId" | "hiddenSessions" | "projectTitles"> & { readonly preferencesKey: string }) {
   const { t } = useTranslation("workspace");
   const [preferences, setPreferences] = useState(() => readSidebarPreferences(preferencesKey));
   const list = useRef<HTMLElement>(null);
@@ -1215,7 +1287,10 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace,
       .find((button) => button.dataset.pinSession === id)?.focus();
   }, [preferences.pinned]);
 
-  const knownSessions = new Set(sessionOrder.filter((id) => !drafts.some((draft) => draft.sessionId === id)));
+  const knownSessions = new Set(sessionOrder.filter((id) => {
+    const continuityId = sessions[id].context.continuityId;
+    return !hiddenSessions.has(id) && !(continuityId && hiddenSessions.has(continuityId));
+  }));
   const pinned = new Set(preferences.pinned);
   const orderedIds = state.remote.source.kind === "live" ? [...sessionOrder].reverse()
     : [...new Set([...preferences.recent, ...recentSessionIds, ...sessionOrder])];
@@ -1261,7 +1336,6 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace,
     </section> : null}
     <section className="sidebar-session-section" aria-labelledby="chat-sessions">
       <h2 id="chat-sessions" className="section-label">{t("sidebar.chats")}</h2>
-      {drafts.map((draft) => <DraftChatRow key={draft.id} draft={draft} />)}
       {ungrouped.length ? <div className="workspace-group">
         {grouped.size ? <p className="section-label">{t("sidebar.unassigned")}</p> : null}
         {ungrouped.map((session) => renderSession(session))}

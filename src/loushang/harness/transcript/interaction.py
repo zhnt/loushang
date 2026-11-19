@@ -18,7 +18,6 @@ from loushang.ai.model import (
     Model,
     ModelSelection,
     available_thinking_levels,
-    preferred_thinking_level,
 )
 from loushang.ai.types import (
     AssistantMessage,
@@ -28,6 +27,7 @@ from loushang.ai.types import (
     UserMessage,
 )
 from loushang.foundation.json import JSONValue, require_json_value
+from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.events import (
     BranchSummaryCompleted,
     BranchSummaryStarted,
@@ -46,15 +46,6 @@ from loushang.harness.transcript.kinds import (
 )
 from loushang.harness.transcript.session import AgentTranscriptSession
 from loushang.harness.transcript.types import ApplicationMessage
-
-_THINKING_LEVEL_ORDER: tuple[ThinkingLevel, ...] = (
-    "off",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-)
 
 RuntimeEventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None] | None]
 NavigationFailureHandler = Callable[[Exception], Awaitable[None] | None]
@@ -238,8 +229,8 @@ class AgentTranscriptSelectionRuntime:
     session: AgentTranscriptSession
     get_model: Callable[[], Model]
     set_model: Callable[[Model], None]
-    get_thinking_level: Callable[[], ThinkingLevel]
-    set_thinking_level_value: Callable[[ThinkingLevel], None]
+    get_thinking_level: Callable[[], ThinkingLevel | None]
+    set_thinking_level_value: Callable[[ThinkingLevel | None], None]
     get_model_catalog: Callable[[], ModelSelectionCatalog | None]
     _scoped_models: list[dict[str, object]] = field(default_factory=list)
 
@@ -277,10 +268,9 @@ class AgentTranscriptSelectionRuntime:
             endpoint_id=endpoint_id,
         )
         self.set_model(validated)
-        if self.get_thinking_level() not in self.get_available_thinking_levels():
-            preferred = preferred_thinking_level(validated)
-            if preferred is not None:
-                await self.set_thinking_level(cast(ThinkingLevel, preferred))
+        current_level = self.get_thinking_level()
+        if current_level is not None and current_level not in self.get_available_thinking_levels():
+            await self.set_thinking_level(None)
 
     def cycle_model_selection(
         self, direction: str = "forward"
@@ -312,7 +302,7 @@ class AgentTranscriptSelectionRuntime:
                     selection,
                     (
                         cast(ThinkingLevel, thinking)
-                        if thinking in _THINKING_LEVEL_ORDER
+                        if thinking in THINKING_LEVELS
                         else None
                     ),
                 )
@@ -359,9 +349,9 @@ class AgentTranscriptSelectionRuntime:
             )
         return None
 
-    async def set_thinking_level(self, level: ThinkingLevel) -> None:
+    async def set_thinking_level(self, level: ThinkingLevel | None) -> None:
         available = self.get_available_thinking_levels()
-        if level not in available:
+        if level is not None and level not in available:
             raise ValueError(f"Thinking level {level!r} is not available for this model")
         if level == self.get_thinking_level():
             return
@@ -369,14 +359,11 @@ class AgentTranscriptSelectionRuntime:
         self.set_thinking_level_value(level)
 
     async def cycle_thinking_level(self) -> ThinkingLevel | None:
-        if not self.supports_thinking():
-            await self.set_thinking_level("off")
-            return None
         levels = self.get_available_thinking_levels()
         if not levels:
             return None
         current = self.get_thinking_level()
-        index = levels.index(current) if current in levels else 0
+        index = levels.index(current) if current is not None and current in levels else -1
         next_level = levels[(index + 1) % len(levels)]
         await self.set_thinking_level(next_level)
         return next_level
@@ -385,10 +372,7 @@ class AgentTranscriptSelectionRuntime:
         return bool(getattr(self.get_model(), "reasoning", False))
 
     def get_available_thinking_levels(self) -> list[ThinkingLevel]:
-        return [
-            cast(ThinkingLevel, level)
-            for level in available_thinking_levels(self.get_model())
-        ]
+        return list(available_thinking_levels(self.get_model()))
 
 
 @dataclass

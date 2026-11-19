@@ -29,7 +29,7 @@ from loushang.ai import (
 调用前选择具体模型：
 
 ```python
-model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+model = get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 ```
 
 模型始终用 `provider:endpoint:model` 三元组定位。返回的 `Model` 已包含有效 API、
@@ -202,7 +202,7 @@ credential，不执行 ChatGPT OAuth login。live 示例不解析 token 文件�
 实验 credential source；它调用 `get_auth(model)`，把结果传给请求，然后调用：
 
 ```python
-get_model("openai", "coding-responses", "gpt-5.5")
+get_model("openai", "coding-responses", "gpt-6.2-sol")
 ```
 
 详见
@@ -210,12 +210,18 @@ get_model("openai", "coding-responses", "gpt-5.5")
 
 ## 自定义 Catalog
 
+升级后，若已保存的模型 ID 从内置目录移除，可在模型选择器中切换到当前型号。如需继续使用服务商仍提供的旧 ID，可通过自定义 catalog 恢复该条目。详见[推理档位来源与旧模型恢复](../../internals/architecture/ai/model-reasoning-effort-sources.md)。
+
 内置 catalog 是 `src/loushang/ai/model/models.json`。自定义文件使用同一严格形状：
 
-`capabilities.reasoningEfforts` 可选，按展示顺序列出服务商原生推理级别。缺省表示
-级别未知，`[]` 表示已确认没有可调节级别。该元数据本身不会使 adapter 自动传递
-推理参数。若声明 `defaults.reasoningEffort`，其值必须在列表中。仅当服务商将
-`none` 作为 effort 值接受时才列入；有些服务商用独立参数关闭推理。
+统一推理强度为 `minimal`、`low`、`medium`、`high`、`xhigh` 和 `max`。
+省略推理选项会使用目录或厂商默认行为。只有确认端点支持关闭时，才可显式传入
+`ReasoningOptions(enabled=False)`。
+
+`capabilities.reasoningEfforts` 声明厂商原生值。缺省表示可调档位未知，`[]`
+表示没有可调档位。同名强度直接对应，异名强度使用 `adapter.reasoningEffortMap`。
+`defaults.reasoningEffort` 使用原生值。对于通过独立参数关闭推理的端点，使用
+`capabilities.reasoningRequired: false` 声明确认可关闭。
 
 Kimi K3.1 Pro 在 Kimi API 的 `moonshot/openai-completions` 下使用
 `kimi-k3.1-pro`（高速版为 `kimi-k3.1-pro-highspeed`）；在 Kimi Code 的 OpenAI

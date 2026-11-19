@@ -334,9 +334,11 @@ export function validateSessionModels(value: unknown): SessionModels {
   if (root.thinking === undefined) return { currentId: root.currentId, models };
   const { currentLevel, availableLevels } = object(root.thinking);
   const validLevel = (level: unknown): level is ThinkingLevel => thinkingLevels.some((known) => known === level);
-  if (root.currentId === null || !validLevel(currentLevel) || !Array.isArray(availableLevels)
+  if (root.currentId === null || (currentLevel !== null && !validLevel(currentLevel))
+    || !Array.isArray(availableLevels) || availableLevels.length === 0
     || availableLevels.length > thinkingLevels.length || !availableLevels.every(validLevel)
-    || new Set(availableLevels).size !== availableLevels.length || !availableLevels.includes(currentLevel)) {
+    || new Set(availableLevels).size !== availableLevels.length
+    || (currentLevel !== null && !availableLevels.includes(currentLevel))) {
     throw new Error("session thinking settings");
   }
   return { currentId: root.currentId, models, thinking: { currentLevel, availableLevels } };

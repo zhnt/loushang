@@ -32,6 +32,7 @@
     "createUnknown": "会话创建结果待确认，草稿已保留。",
     "firstSubmissionUnknown": "首条消息的提交结果待确认，草稿已保留。",
     "firstModelUnavailable": "无法应用选中的模型，已保留草稿。",
+    "firstThinkingUnavailable": "无法应用选中的推理等级，已保留草稿。",
     "firstSubmitRejected": "首条消息被拒绝，草稿已保留。",
     "createFailed": "无法创建新会话。",
     "createSyncFailed": "新会话已创建，暂时无法显示。",
@@ -82,12 +83,14 @@
     "thinking": "推理强度",
     "back": "模型",
     "levels": {
-      "off": "默认",
+      "default": "默认",
+      "off": "关闭",
       "minimal": "最低",
       "low": "低",
       "medium": "中",
       "high": "高",
-      "xhigh": "极高"
+      "xhigh": "极高",
+      "max": "最高"
     }
   },
   "transcript": {

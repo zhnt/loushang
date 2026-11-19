@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.cli.types import (
     UNSET,
     CliArgumentSpec,
@@ -197,7 +198,7 @@ STANDARD_CLI_PROFILE = CliProfile(
         _argument("session.cwd", "--cwd", dest="cwd"),
         _argument("ai.provider", "--provider", dest="provider"),
         _argument("ai.model", "--model", dest="model"),
-        _argument("ai.thinking", "--thinking", dest="thinking", choices=("off", "minimal", "low", "medium", "high", "xhigh")),
+        _argument("ai.thinking", "--thinking", dest="thinking", choices=THINKING_LEVELS),
         _argument("tools.select", "--tools", "-t", dest="tools", action="append", default=[]),
         _argument("tools.disable", "--no-tools", "-nt", dest="no_tools", action="store_true"),
         _argument("tools.no_builtin", "--no-builtin-tools", "-nbt", dest="no_builtin_tools", action="store_true"),
