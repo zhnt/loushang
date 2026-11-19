@@ -2,7 +2,6 @@
   "workspaceEditor": {
     "create": "创建工作空间",
     "manage": "管理工作空间",
-    "manageUnavailable": "管理工作空间 · 部分目录不可用",
     "pathActions": "{{alias}} 的操作",
     "defaultPath": "默认目录",
     "cancel": "取消",

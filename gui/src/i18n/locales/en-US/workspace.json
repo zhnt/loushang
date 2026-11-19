@@ -2,7 +2,6 @@
   "workspaceEditor": {
     "create": "Create workspace",
     "manage": "Manage workspace",
-    "manageUnavailable": "Manage workspace · linked folders unavailable",
     "pathActions": "Actions for {{alias}}",
     "defaultPath": "Default folder",
     "cancel": "Cancel",

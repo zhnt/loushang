@@ -574,6 +574,8 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 
 
 .app-context-menu { position: fixed; z-index: 100; min-inline-size: 150px; max-inline-size: calc(100vw - 8px); padding: 4px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); color: var(--ink); box-shadow: 0 6px 20px #0002; font-size: var(--font-size-small); line-height: var(--line-height-ui); }
+/* WebKit can paint the native overlay scrollbar above a sidebar menu. */
+body:has(> .app-context-menu[data-sidebar-menu]) .workspace-scroll { scrollbar-color: transparent transparent; }
 .app-context-menu button { display: block; width: 100%; min-height: 32px; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: start; }
 .app-context-menu .context-menu-danger { color: var(--red); }
 .context-menu-error { position: fixed; inset: auto 16px 16px auto; z-index: 110; margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 13px; }
