@@ -702,3 +702,61 @@ def test_workspace_catalog_reopens_previous_project_store(tmp_path):
             await catalog.close()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("replacement", ["missing", "file", "symlink"])
+def test_workspace_catalog_starts_with_an_unavailable_registered_project(tmp_path, replacement):
+    async def scenario():
+        project = tmp_path / "project"
+        healthy = tmp_path / "healthy"
+        project.mkdir()
+        healthy.mkdir()
+
+        def owner():
+            return CodingWorkspaceCatalog(
+                WorkspaceRegistry(tmp_path / "registry"), tmp_path / "sessions", tmp_path / "stores",
+            )
+
+        original = owner()
+        await original.load()
+        try:
+            await original.register(str(project))
+            await original.register(str(healthy))
+            scope = await original.select(str(project))
+            candidate = await original.create_candidate(_intent(scope))
+            await candidate.close()
+            rows = await original.workspace_identities(scope.fingerprint, scope.discovery_scope, limit=2)
+        finally:
+            await original.close()
+        before = (tmp_path / "registry/workspaces.json").read_bytes()
+        project.rmdir()
+        if replacement == "file":
+            project.write_text("unavailable directory")
+        elif replacement == "symlink":
+            project.symlink_to(healthy, target_is_directory=True)
+
+        reopened = owner()
+        try:
+            await reopened.load()
+            assert [item.cwd for item in reopened.scopes] == [healthy]
+            selected = await reopened.select(str(healthy))
+            candidate = await reopened.create_candidate(_intent(selected))
+            await candidate.close()
+            assert await asyncio.to_thread(reopened.registry.list) == (healthy, project)
+            assert (tmp_path / "registry/workspaces.json").read_bytes() == before
+        finally:
+            await reopened.close()
+        if replacement != "missing":
+            project.unlink()
+        project.mkdir()
+
+        restored = owner()
+        try:
+            await restored.load()
+            selected = await restored.select(str(project))
+            found = await restored.workspace_identities(selected.fingerprint, selected.discovery_scope, limit=2)
+            assert [item.reference for item in found] == [item.reference for item in rows]
+        finally:
+            await restored.close()
+
+    asyncio.run(scenario())

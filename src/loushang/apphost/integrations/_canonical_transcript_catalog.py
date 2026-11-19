@@ -814,7 +814,16 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
 
     def _load_paths(self) -> tuple[Path, ...]:
         self.registry.open()
-        return self.registry.list()
+        available = []
+        for path in self.registry.list():
+            try:
+                if path.is_dir() and path == path.resolve():
+                    available.append(path)
+            except (OSError, RuntimeError):
+                continue
+        # Keep unavailable registrations and their transcript stores intact so
+        # restoring the original directory makes its Sessions available again.
+        return tuple(available)
 
     @property
     def scopes(self):
