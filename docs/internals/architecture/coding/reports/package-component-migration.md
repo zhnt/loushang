@@ -94,8 +94,27 @@ the declared source-relative rebases remain. Public identity and pickle checks
 pass again after this restoration. Coding UI passes 614 cases, including its
 existing size budget without a threshold change; TUI units pass 1,322 cases and
 the existing render-contract route passes 319 cases.
+The existing Harness target passes 6,356 cases and skips 116; Hosting passes
+515 and skips 61. Their lint and typechecks pass. The complete AppHost target
+passes on retry: 3,246 primary cases pass, 23 skip, its supplemental groups pass
+19/16/15 cases with their existing manifest verifiers, and the installed POSIX
+canary passes. AppService passes 2,652 cases and skips 18. CI selection
+regressions pass all 150 cases. Foundation passes 112 cases; the remaining owned
+Agent and Harness example cases pass (two and three respectively). Unit routes
+whose complete file sets are subsets of those passing broader routes reuse
+that coverage with their narrower marker expressions recorded separately.
 Remote platform checks are still pending. These local results are not delivery
 acceptance.
+
+The first AppHost attempt stopped after 462 passes when the cross-process
+stdio recovery case returned `service_closed`. That case then passes alone,
+its complete file passes (three cases), and the entire AppHost target passes
+on retry with a private reader-close observer. Product/test sources, assertions
+and deadlines are unchanged. The cause remains unresolved; the observation is
+not attributed to baseline or migration. This integration file is outside the
+selected Coding unit route, so the earlier Coding pass does not cover it.
+The same recovery case also passes in the complete uninstrumented AppService
+target.
 
 An isolated build produces the actual distribution wheel. It is installed with
 `uv pip install --target --no-deps --no-index` into a separate directory outside
@@ -107,12 +126,14 @@ bytes identical to the source-tree builders; the native launcher source hash
 also matches. These are package-content and inert construction checks, not
 native binary or installed console-launch acceptance.
 
-The selected AI route passes 941 tests, skips two existing host-runtime OAuth
-cases and deselects seven cases under the local selectors. Both this candidate
-and untouched synchronized main report core coverage 6,767/7,544 (89.70%, against
-the existing 90% minimum), with overall coverage 89.96%. Their 9,409 instrumented
-line and branch entries match exactly. The full AI gate is not claimed passed
-locally; selectors, thresholds and the existing CI gate remain unchanged.
+The original `make check-ai` offline target passes all 943 selected tests and
+deselects seven, with overall coverage 90.86% and core coverage 6,852/7,544
+(90.83%, against the existing 90% minimum). Its other coverage targets pass.
+An earlier local launcher added `--skip-host-runtime`, excluding two tests
+that use only local simulated OAuth services; its lower coverage was not a
+result of the original Make target. The final run retains the target's original
+`not live` selector and coverage thresholds, without that additional filter.
+No live provider, browser action or external OAuth service is used.
 
 The ordinary machine test-runtime directory failed the unchanged SDK runtime
 baseline with `transcript_writer:unsafe`. The user authorized a private test
