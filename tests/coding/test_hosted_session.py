@@ -353,9 +353,9 @@ def test_hosted_session_sets_only_supported_thinking_levels(tmp_path: Path) -> N
     async def scenario() -> None:
         model = Model(
             id="thinking-model", name="Thinking test", provider="faux",
-            endpoint="anthropic-messages",
+            endpoint="responses", api="openai-responses",
             capabilities=Capabilities(
-                reasoning=True, reasoning_efforts=("low", "high"),
+                reasoning=True, reasoning_efforts=("none", "low", "high", "xhigh", "max"),
                 input=("text",), context_window=128000, max_tokens=4096,
             ),
         )
@@ -365,12 +365,13 @@ def test_hosted_session_sets_only_supported_thinking_levels(tmp_path: Path) -> N
             before = await hosted.list_models()
             assert before.current_id is not None
             assert before.thinking is not None
-            assert before.thinking.available_levels == ("off", "low", "high")
+            assert before.thinking.current_level is None
+            assert before.thinking.available_levels == ("off", "low", "high", "xhigh", "max")
             with pytest.raises(ValueError, match="coding_thinking_level_unavailable"):
                 await hosted.select_model(before.current_id, "medium")
-            after = await hosted.select_model(before.current_id, "high")
-            assert after.thinking is not None and after.thinking.current_level == "high"
-            assert binding.control.thinking_level == "high"
+            after = await hosted.select_model(before.current_id, "max")
+            assert after.thinking is not None and after.thinking.current_level == "max"
+            assert binding.control.thinking_level == "max"
         finally:
             await hosted.close()
 

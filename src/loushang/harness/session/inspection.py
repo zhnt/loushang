@@ -69,7 +69,7 @@ class AgentInspectionPort(Protocol):
     def model(self) -> object: ...
 
     @property
-    def thinking_level(self) -> str: ...
+    def thinking_level(self) -> str | None: ...
 
     @property
     def state(self) -> AgentStateInspectionPort: ...
@@ -85,7 +85,7 @@ class AgentSessionState:
     active_tool_names: list[str] = field(default_factory=list)
     is_compacting: bool = False
     is_retrying: bool = False
-    thinking_level: str = "off"
+    thinking_level: str | None = None
     model_selection: ModelSelection | None = None
 
 

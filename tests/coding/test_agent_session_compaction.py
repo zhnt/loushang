@@ -43,7 +43,7 @@ def _model() -> Model:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -66,7 +66,7 @@ def _assistant_message(
     timestamp: float = 0.0,
 ) -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -977,7 +977,7 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
 
     events: list[object] = []
     assistant = AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text="recent reply")],
         api="anthropic-messages",
@@ -1199,7 +1199,7 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(
 
     events: list[object] = []
     assistant = AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text="recent reply")],
         api="anthropic-messages",
@@ -1270,12 +1270,12 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     stale_assistant = AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text="stale usage before compaction")],
-        api="test",
-        provider="test",
-        model="test",
+        api="anthropic-messages",
+        provider="faux",
+        model="small-model",
         response_id=None,
         usage=Usage(
             input=95, output=5, cache_read=0, cache_write=0, total_tokens=100, cost={}
@@ -1778,7 +1778,7 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
 
     events: list[object] = []
     assistant = AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text="overflow error")],
         api="anthropic-messages",
@@ -1896,7 +1896,7 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
 
     events: list[object] = []
     assistant = AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text="overflow error")],
         api="anthropic-messages",
@@ -1946,7 +1946,7 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
         )
         await asyncio.sleep(0)
         second_assistant = AssistantMessage(
-            endpoint="test-endpoint",
+            endpoint="anthropic-messages",
             role="assistant",
             content=[TextPart(type="text", text="overflow after recovery")],
             api="anthropic-messages",

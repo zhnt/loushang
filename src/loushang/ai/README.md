@@ -58,7 +58,7 @@ Model
 ```python
 from loushang.ai import get_model
 
-model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+model = get_model("moonshot", "openai-completions", "kimi-k3.1-pro")
 ```
 
 当前精简目录位于 `src/loushang/ai/model/models.json`；重构前的完整目录只作为历史
@@ -257,7 +257,7 @@ endpoint 静态 headers 是协议事实，不属于 auth。模型调用前，res
 OpenAI Codex credential import 示例直接调用：
 
 ```python
-get_model("openai", "coding-responses", "gpt-5.5")
+get_model("openai", "coding-responses", "gpt-6.2-sol")
 ```
 
 `AuthResolver` 拥有标准 `apiKey`、`oauth`、`none` 能力。`AuthRegistry` 只在

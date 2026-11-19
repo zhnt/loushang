@@ -139,7 +139,7 @@ class StatusLineControlSettings:
 @dataclass(frozen=True)
 class ControlConfig:
     default_model: ModelSelection | None = None
-    thinking_level: ThinkingLevel = "off"
+    thinking_level: ThinkingLevel | None = None
     steering_mode: QueueMode = "one-at-a-time"
     follow_up_mode: QueueMode = "one-at-a-time"
     theme: str | None = None

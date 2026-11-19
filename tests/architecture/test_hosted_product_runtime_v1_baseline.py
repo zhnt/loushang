@@ -144,6 +144,7 @@ CURRENT_SOURCE_SEAMS = (
     Path("src/loushang/coding/managed_local.py"),
     Path("src/loushang/coding/managed_process.py"),
     Path("src/loushang/coding/managed_service.py"),
+    Path("src/loushang/coding/macos_service.py"),
     Path("src/loushang/coding/cli/lmux.py"),
     Path("src/loushang/coding/cli/lmux_command.py"),
     Path("src/loushang/coding/cli/lmux_stop_all.py"),
@@ -712,6 +713,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/client_settings.py"),
         # G1: desktop composition over the existing managed lifecycle owners.
         Path("src/loushang/coding/managed_service.py"),
+        Path("src/loushang/coding/macos_service.py"),
         Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),

@@ -245,7 +245,7 @@ pub(crate) fn start_live_connection(app: tauri::AppHandle) -> Result<(), String>
                 let mut installed = false;
                 let outcome = client.run_stream(
                     ConnectionOptions {
-                        prepare_default_session: true,
+                        prepare_default_session: false,
                         workspace_scope: None,
                         target: loushang_app_client::AppTarget::Local(&launch.record_root),
                         timeout: Duration::from_secs(5),

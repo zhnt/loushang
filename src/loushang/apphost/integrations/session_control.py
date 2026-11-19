@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
 
@@ -458,7 +458,7 @@ def _validate_foreground_binding(
 
 
 def project_session_models(
-    current: str | None, details: list[object], thinking: SessionThinkingV1 | None = None,
+    current: str | None, details: Sequence[object], thinking: SessionThinkingV1 | None = None,
 ) -> SessionModelsV1:
     models: list[SessionModelChoiceV1] = []
     for choice in model_choice_data_from_details(details):
@@ -486,12 +486,12 @@ def project_session_models(
 def _thinking_settings(control: object) -> SessionThinkingV1 | None:
     getter = getattr(control, 'get_available_thinking_levels', None)
     current = getattr(control, 'thinking_level', None)
-    if not callable(getter) or not isinstance(current, str):
+    if not callable(getter):
         return None
     levels = tuple(getter())
-    if current not in levels or levels == ('off',):
+    if not levels:
         return None
-    return SessionThinkingV1(current, levels)
+    return SessionThinkingV1(current if current in levels else None, levels)
 
 
 class _HostedAgentExecutionWork:

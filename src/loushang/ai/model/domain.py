@@ -119,6 +119,7 @@ OPENAI_RESPONSES_ADAPTER_KEYS = frozenset(
         "maxOutputTokens",
         "promptCacheKey",
         "longCacheRetention",
+        "reasoningEffortMap",
     }
 )
 ANTHROPIC_MESSAGES_ADAPTER_KEYS = frozenset(
@@ -132,7 +133,7 @@ ANTHROPIC_MESSAGES_ADAPTER_KEYS = frozenset(
 )
 
 _ANTHROPIC_THINKING_MODES = frozenset({"adaptive", "budgeted"})
-_ANTHROPIC_REASONING_LEVELS = frozenset({"minimal", "low", "medium", "high", "xhigh"})
+_ANTHROPIC_REASONING_LEVELS = frozenset({"minimal", "low", "medium", "high", "xhigh", "max"})
 _ANTHROPIC_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
@@ -260,12 +261,14 @@ _OPENAI_RESPONSES_ATTR_TO_KEY = {
     "developer_role": "developerRole",
     "max_output_tokens": "maxOutputTokens",
     "prompt_cache_key": "promptCacheKey",
+    "reasoning_effort_map": "reasoningEffortMap",
     "long_cache_retention": "longCacheRetention",
 }
 _OPENAI_RESPONSES_DEFAULTS = {
     "developerRole": True,
     "maxOutputTokens": True,
     "promptCacheKey": True,
+    "reasoningEffortMap": {},
     "longCacheRetention": True,
 }
 
@@ -390,6 +393,7 @@ class OpenAIResponsesConfig:
     developer_role: bool = True
     max_output_tokens: bool = True
     prompt_cache_key: bool = True
+    reasoning_effort_map: Mapping[str, str | None] = field(default_factory=dict, kw_only=True)
     long_cache_retention: bool = True
     _explicit_keys: frozenset[str] | None = field(
         default=None,
@@ -406,6 +410,7 @@ class OpenAIResponsesConfig:
             "prompt_cache_key",
             "long_cache_retention",
         )
+        object.__setattr__(self, "reasoning_effort_map", MappingProxyType(dict(self.reasoning_effort_map)))
         _set_explicit_adapter_keys(
             self,
             attr_to_key=_OPENAI_RESPONSES_ATTR_TO_KEY,
@@ -434,16 +439,19 @@ class OpenAIResponsesConfig:
                 "longCacheRetention",
                 cls.long_cache_retention,
             ),
+            reasoning_effort_map=_string_or_none_dict_from_raw(raw, "reasoningEffortMap"),
             _explicit_keys=frozenset(raw),
         )
 
     def to_raw(self) -> dict[str, object]:
-        return {
+        raw: dict[str, object] = {
             "developerRole": self.developer_role,
             "maxOutputTokens": self.max_output_tokens,
             "promptCacheKey": self.prompt_cache_key,
             "longCacheRetention": self.long_cache_retention,
         }
+        _with_raw_value(raw, "reasoningEffortMap", dict(self.reasoning_effort_map))
+        return raw
 
 
 @dataclass(frozen=True)
@@ -778,7 +786,7 @@ class Capabilities:
     context_window: int | None = None
     max_tokens: int | None = None
     reasoning: bool = False
-    reasoning_required: bool = False
+    reasoning_required: bool | None = None
     stream: bool = False
     tool_use: bool = False
     structured_output: bool = False
@@ -790,7 +798,6 @@ class Capabilities:
     def __post_init__(self) -> None:
         for attr in (
             "reasoning",
-            "reasoning_required",
             "stream",
             "tool_use",
             "structured_output",
@@ -806,7 +813,9 @@ class Capabilities:
             ):
                 raise ValueError(f"capability field must be a positive integer: {attr}")
         efforts = self.reasoning_efforts
-        if self.reasoning_required and not self.reasoning:
+        if self.reasoning_required is not None and type(self.reasoning_required) is not bool:
+            raise ValueError("capability field must be a boolean: reasoning_required")
+        if self.reasoning_required is True and not self.reasoning:
             raise ValueError("capability field reasoning_required requires reasoning")
         if efforts is not None:
             if (
@@ -861,7 +870,8 @@ class Capabilities:
             context_window=_positive_int_from_raw(raw, "contextWindow"),
             max_tokens=_positive_int_from_raw(raw, "maxTokens"),
             reasoning=_capability_bool_from_raw(raw, "reasoning"),
-            reasoning_required=_capability_bool_from_raw(raw, "reasoningRequired"),
+            reasoning_required=_capability_bool_from_raw(raw, "reasoningRequired")
+            if "reasoningRequired" in raw else None,
             reasoning_efforts=raw.get("reasoningEfforts"),  # type: ignore[arg-type]
             stream=_capability_bool_from_raw(raw, "stream"),
             tool_use=_capability_bool_from_raw(raw, "toolUse"),
@@ -886,8 +896,8 @@ class Capabilities:
         }
         if self.reasoning_efforts is not None:
             capabilities["reasoningEfforts"] = list(self.reasoning_efforts)
-        if self.reasoning_required:
-            capabilities["reasoningRequired"] = True
+        if self.reasoning_required is not None:
+            capabilities["reasoningRequired"] = self.reasoning_required
         if self.provider_compaction is not None:
             capabilities["providerCompaction"] = self.provider_compaction
         return {"capabilities": capabilities}

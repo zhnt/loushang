@@ -4,13 +4,17 @@ import asyncio
 
 import pytest
 
+from loushang.agent import Agent
 from loushang.agent.types import ThinkingLevel
+from loushang.ai import ApiKeyAuth, CallOptions
 from loushang.ai.model import (
     Capabilities,
     Model,
     ModelSelection,
     load_builtin_model_registry,
 )
+from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
+from loushang.ai.provider import resolve_request_for_model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.conversation import (
     ConversationHeader,
@@ -37,8 +41,10 @@ def _model(model_id: str = "one", *, reasoning: bool = True) -> Model:
         name=model_id,
         provider="test",
         endpoint="responses",
+        api="openai-responses",
         capabilities=Capabilities(
             reasoning=reasoning,
+            reasoning_efforts=("low", "high") if reasoning else None,
             input=("text",),
             context_window=128_000,
             max_tokens=4_096,
@@ -257,7 +263,7 @@ def test_selection_runtime_uses_product_catalog_but_owns_persisted_state() -> No
         first = _model("one")
         second = _model("two")
         active_model = first
-        active_thinking: ThinkingLevel = "low"
+        active_thinking: ThinkingLevel | None = "low"
         runtime = AgentTranscriptSelectionRuntime(
             session=session,
             get_model=lambda: active_model,
@@ -271,7 +277,7 @@ def test_selection_runtime_uses_product_catalog_but_owns_persisted_state() -> No
             nonlocal active_model
             active_model = model
 
-        def _set_thinking(level: ThinkingLevel) -> None:
+        def _set_thinking(level: ThinkingLevel | None) -> None:
             nonlocal active_thinking
             active_thinking = level
 
@@ -296,43 +302,45 @@ def test_selection_runtime_uses_product_catalog_but_owns_persisted_state() -> No
     asyncio.run(scenario())
 
 
-def test_selection_runtime_uses_model_efforts_and_persists_required_default() -> None:
+def test_selection_runtime_persists_and_sends_model_effort() -> None:
     async def scenario() -> None:
         session = await _session()
         first = _model()
         k31 = load_builtin_model_registry().get_model(
             "kimi-code", "kimi-code-openai", "k3.1-pro"
         )
-        active_model = first
-        active_thinking: ThinkingLevel = "off"
-
-        def set_model(model: Model) -> None:
-            nonlocal active_model
-            active_model = model
-
-        def set_thinking(level: ThinkingLevel) -> None:
-            nonlocal active_thinking
-            active_thinking = level
-
+        agent = Agent(
+            initial_state={"system_prompt": "", "model": first, "thinking_level": "off"},
+            call_options=CallOptions(auth=ApiKeyAuth("test")),
+        )
         runtime = AgentTranscriptSelectionRuntime(
             session=session,
-            get_model=lambda: active_model,
-            set_model=set_model,
-            get_thinking_level=lambda: active_thinking,
-            set_thinking_level_value=set_thinking,
+            get_model=lambda: agent.model,
+            set_model=lambda model: setattr(agent, "model", model),
+            get_thinking_level=lambda: agent.thinking_level,
+            set_thinking_level_value=lambda level: setattr(agent, "thinking_level", level),
             get_model_catalog=lambda: None,
         )
 
         await runtime.apply_model(k31)
-        assert runtime.get_available_thinking_levels() == ["low", "high", "xhigh"]
-        assert active_thinking == "high"
-        assert session.build_context().thinking_level == "high"
+        assert runtime.get_available_thinking_levels() == ["low", "high", "max"]
+        assert agent.thinking_level is None
+        assert session.build_context().thinking_level is None
 
         with pytest.raises(ValueError, match="not available"):
             await runtime.set_thinking_level("off")
-        assert session.build_context().thinking_level == "high"
+        assert session.build_context().thinking_level is None
 
-        await runtime.set_thinking_level("xhigh")
-        assert session.build_context().thinking_level == "xhigh"
+        await runtime.set_thinking_level("max")
+        assert session.build_context().thinking_level == "max"
+        request = resolve_request_for_model(
+            agent.model, options=agent.get_effective_call_options()
+        )
+        payload = OpenAIChatCompletionsAdapter().prepare_request(request).payload
+        assert payload["reasoning_effort"] == "max"
+
+        await runtime.apply_model(first)
+        assert agent.thinking_level is None
+        assert session.build_context().thinking_level is None
 
     asyncio.run(scenario())

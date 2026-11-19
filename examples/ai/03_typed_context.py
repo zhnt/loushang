@@ -8,7 +8,7 @@ from loushang.ai import Context, TextPart, Tool, UserMessage
 
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"
-MODEL_ID = "kimi-k2.6"
+MODEL_ID = "kimi-k3.1-pro"
 
 
 def _build_context() -> Context:

@@ -87,11 +87,6 @@ def test_adaptive_thinking_is_declared_by_typed_adapter_config() -> None:
     assert base.supports_adaptive_thinking(adaptive) is True
     assert base.supports_adaptive_thinking(budgeted) is False
     assert base.supports_adaptive_thinking(None) is False
-    assert base.map_thinking_level_to_effort("high", adaptive) == "high"
-    assert base.map_thinking_level_to_effort("xhigh", adaptive) == "max"
-    assert base.map_thinking_level_to_effort("future", adaptive) is None
-    assert base.map_thinking_level_to_effort("high", budgeted) is None
-    assert base.map_thinking_level_to_effort(None, adaptive) is None
 
 
 def test_anthropic_provider_sends_sonnet_5_xhigh_adaptive_thinking(
@@ -1235,7 +1230,7 @@ def test_call_options_rejects_max_tokens_before_anthropic_provider() -> None:
         CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=0)
 
 
-def test_anthropic_explicit_reasoning_disable_omits_thinking(
+def test_anthropic_explicit_reasoning_disable_sends_disabled_thinking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
@@ -1264,7 +1259,7 @@ def test_anthropic_explicit_reasoning_disable_omits_thinking(
         )
     )
 
-    assert "thinking" not in _FakeAsyncAnthropic.last_stream_kwargs
+    assert _FakeAsyncAnthropic.last_stream_kwargs["thinking"] == {"type": "disabled"}
 
 
 def test_anthropic_uses_resolved_temperature(

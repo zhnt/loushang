@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import Any
 
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import CacheRetention
@@ -24,18 +24,6 @@ class AnthropicMessagesProtocol:
             adapter_config is not None
             and adapter_config.thinking_mode == "adaptive"
         )
-
-    @staticmethod
-    def map_thinking_level_to_effort(
-        level: str | None,
-        adapter_config: AnthropicMessagesConfig | None,
-    ) -> Literal["low", "medium", "high", "xhigh", "max"] | None:
-        if level is None or adapter_config is None:
-            return None
-        effort = adapter_config.reasoning_effort_map.get(level)
-        if effort in ("low", "medium", "high", "xhigh", "max"):
-            return cast(Literal["low", "medium", "high", "xhigh", "max"], effort)
-        return None
 
     @staticmethod
     def resolve_cache_retention(

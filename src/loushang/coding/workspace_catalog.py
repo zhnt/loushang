@@ -7,7 +7,13 @@ import os
 import sys
 from pathlib import Path
 
-from loushang.ai.model import Model, ModelSelection, model_selection_ref
+from loushang.ai.model import (
+    Model,
+    ModelSelection,
+    model_selection_ref,
+    normalize_model_selection,
+)
+from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost.integrations._canonical_transcript_catalog import (
     _WorkspaceTranscriptCatalogMethods,
@@ -24,6 +30,7 @@ from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionModelsV1,
     SessionScopeV1,
+    SessionThinkingV1,
     WorkspaceInfoV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
@@ -74,7 +81,7 @@ class CodingWorkspaceCatalog(
     def _create_catalog(self, path: Path) -> CodingHostedSessionCatalogV1:
         leaf = hashlib.sha256(str(path).encode()).hexdigest()
         root = self._root / "workspaces" / leaf
-        if sys.platform == "win32":
+        if sys.platform in {"win32", "darwin"}:
             # Use the native hosted Session writer with separate scope roots.
             return CodingHostedSessionCatalogV1(
                 tuple(
@@ -100,7 +107,7 @@ class CodingWorkspaceCatalog(
         catalog = self._find(lambda scope: scope.fingerprint == identity.scope_fingerprint)
         await catalog.delete_session_history(identity)
 
-    async def workspace_models(self, path: str | None) -> SessionModelsV1:
+    async def workspace_models(self, path: str | None, model_id: str | None = None) -> SessionModelsV1:
         if self._closed:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         workspace = None
@@ -109,11 +116,25 @@ class CodingWorkspaceCatalog(
                 workspace = await settled_io(self.registry.select, path)
             except (OSError, ValueError):
                 raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
-        selection, choices = await settled_io(preview_workspace_models, workspace, self._model)
+        active, choices, default_level = await settled_io(preview_workspace_models, workspace, self._model)
+        default_selection = normalize_model_selection(active)
+        if model_id is not None:
+            active = next((
+                model for model in choices
+                if (selection := normalize_model_selection(model)) is not None
+                and model_selection_ref(selection) == model_id
+            ), None)
+        selection = normalize_model_selection(active)
         current = None
         if selection is not None and is_usable_model_selection(selection):
             current = model_selection_ref(selection)
-        return project_session_models(current, choices)
+        if model_id is not None and current != model_id:
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
+        # A model-specific preview opts in to reasoning. Older draft clients
+        # reuse the initial catalog across selections and expect no settings.
+        levels = available_thinking_levels(active) if model_id is not None and active is not None else ()
+        level = default_level if selection == default_selection and default_level in levels else None
+        return project_session_models(current, choices, SessionThinkingV1(level, levels) if levels else None)
 
     async def _preview_workspace(self, path: str, request: WorkspacePreviewRequestV1) -> WorkspaceResultV1:
         if self._closed:
@@ -189,7 +210,7 @@ class CodingWorkspaceCatalog(
     async def _open_workspace_candidate(
         self, catalog: CodingHostedSessionCatalogV1, reference
     ):
-        if sys.platform == "win32":
+        if sys.platform in {"win32", "darwin"}:
             return await catalog.open_candidate(reference)
         return await catalog.open_history_candidate(
             reference, max_bytes=_MAX_TRANSCRIPT_BYTES

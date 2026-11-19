@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from loushang.agent.types import ThinkingLevel
+from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.extensions.api import ExtensionContributionAPI
 from loushang.harness.extensions.types import RegisteredRuntimeCapabilityReplacement
 from loushang.harness.runtime import SIDE_QUESTION_PROVIDER_SLOT
@@ -63,12 +64,12 @@ class ExtensionAPI(ExtensionContributionAPI):
         if callable(callback):
             await callback(selection)
 
-    def get_thinking_level(self) -> ThinkingLevel:
+    def get_thinking_level(self) -> ThinkingLevel | None:
         callback = getattr(self._runtime_bindings(), "get_thinking_level", None)
         value = callback() if callable(callback) else None
-        if value in {"off", "minimal", "low", "medium", "high", "xhigh"}:
+        if value in THINKING_LEVELS:
             return value
-        return "off"
+        return None
 
     async def set_thinking_level(self, level: ThinkingLevel) -> None:
         callback = getattr(self._runtime_bindings(), "set_thinking_level", None)

@@ -250,13 +250,14 @@ class OpenAIResponsesAdapter:
             params["temperature"] = resolved.temperature
         if _supports_reasoning(capabilities):
             if resolved.reasoning_enabled is True:
-                reasoning: dict[str, str] = {
-                    "effort": resolved.reasoning_effort or "medium",
-                }
+                reasoning: dict[str, str] = {}
+                if resolved.reasoning_effort is not None:
+                    reasoning["effort"] = resolved.reasoning_effort
                 reasoning_summary = get_reasoning_summary(options)
                 if reasoning_summary is not None:
                     reasoning["summary"] = reasoning_summary
-                params["reasoning"] = reasoning
+                if reasoning:
+                    params["reasoning"] = reasoning
                 params["include"] = ["reasoning.encrypted_content"]
             elif resolved.reasoning_enabled is False:
                 params["reasoning"] = {"effort": "none"}

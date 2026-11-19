@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any, cast
 
 from loushang.ai.model import ModelSelection
+from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.host.json_projection import project_host_value
 from loushang.harness.host.rpc.types import RpcModel, RpcModelCost, RpcSessionState
 
 _MISSING = object()
-_THINKING_LEVELS = frozenset({"off", "minimal", "low", "medium", "high", "xhigh"})
 
 
 def project_session_state(session: Any) -> RpcSessionState:
@@ -38,11 +38,9 @@ def project_session_state(session: Any) -> RpcSessionState:
 
     steering = _list_attr(state, "steering")
     follow_up = _list_attr(state, "follow_up")
-    thinking_level = _safe_getattr(state, "thinking_level", "off")
-    if not isinstance(thinking_level, str):
-        thinking_level = _safe_string(thinking_level) or "off"
-    if thinking_level not in _THINKING_LEVELS:
-        thinking_level = "off"
+    thinking_level = _safe_getattr(state, "thinking_level", None)
+    if thinking_level not in THINKING_LEVELS:
+        thinking_level = None
     try:
         model = project_state_model(session, state)
     except Exception:

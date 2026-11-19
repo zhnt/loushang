@@ -4,30 +4,11 @@ import { useContextMenu } from "./ContextMenu";
 import { UiIcon } from "./UiIcon";
 import { TEMPORARY_WORKSPACE, workspaceName, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
 
-export interface SidebarDraft {
-  readonly id: string;
-  readonly workspace: string | null;
-  readonly sessionId?: string;
-  readonly title: string;
-  readonly selected: boolean;
-  readonly onSelect: () => void;
-}
-
-export function DraftChatRow({ draft }: { draft: SidebarDraft }) {
-  return <div className={draft.selected ? "session-row selected" : "session-row"}>
-    <button type="button" className="project-chat"
-      title={draft.title}
-      aria-current={draft.selected ? "page" : undefined} onClick={draft.onSelect}>
-      <span className="project-chat-title">{draft.title}</span>
-    </button>
-  </div>;
-}
-
-export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] }: {
+export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessions }: {
   navigation: ProjectNavigationProps;
   selectedId: string | null;
   titles: Readonly<Record<string, string>>;
-  drafts?: readonly SidebarDraft[];
+  hiddenSessions?: ReadonlySet<string>;
 }) {
   const { t } = useTranslation("workspace");
   const openMenu = useContextMenu();
@@ -42,16 +23,14 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [path, setPath] = useState("");
   const editable = navigation.available && !navigation.pending;
+  const createDisabled = navigation.createDisabled ?? !editable;
   const { projects, temporarySessions } = navigation.directory;
-  const inDraft = (session: ProjectChat) => drafts.some((draft) => draft.sessionId === session.id);
-  function draftRows(workspace: string | null) {
-    return drafts.filter((draft) => draft.workspace === workspace)
-      .map((draft) => <DraftChatRow key={draft.id} draft={draft} />);
-  }
+  const visible = (chat: ProjectChat) => !hiddenSessions?.has(chat.id)
+    && !(chat.continuityId && hiddenSessions?.has(chat.continuityId));
   const pinned = [
-    ...projects.flatMap((project) => project.sessions.filter((session) => session.pinned && !inDraft(session))
+    ...projects.flatMap((project) => project.sessions.filter((session) => session.pinned && visible(session))
       .map((session) => ({ workspace: project.path, session }))),
-    ...temporarySessions.filter((session) => session.pinned && !inDraft(session))
+    ...temporarySessions.filter((session) => session.pinned && visible(session))
       .map((session) => ({ workspace: TEMPORARY_WORKSPACE, session })),
   ];
   const sidebar = useRef<HTMLDivElement>(null);
@@ -158,7 +137,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
           <div className="project-heading project-row">
             <button type="button" className="project-label" aria-expanded={expanded} title={project.path}
               onContextMenu={(event) => openMenu(event, [
-                { label: t("sidebar.newSession"), disabled: !editable, run: create },
+                { label: t("sidebar.newSession"), disabled: createDisabled, run: create },
                 { label: t("sidebar.copyProjectPath"), run: () => navigator.clipboard.writeText(project.path) },
               ])}
               onClick={() => setCollapsed((old) => {
@@ -167,14 +146,13 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
                 else next.delete(project.path);
                 return next;
               })}><UiIcon name={expanded ? "folder" : "folder-closed"} /><span>{label}</span></button>
-            <button type="button" className="project-action" disabled={!editable}
+            <button type="button" className="project-action" disabled={createDisabled}
               aria-label={t("sidebar.newProjectChat", { project: label })} title={t("sidebar.newProjectChat", { project: label })}
               onClick={create}><UiIcon name="plus" /></button>
           </div>
           <div className="project-chats" aria-hidden={!expanded} inert={!expanded}>
             <div>
-              {draftRows(project.path)}
-              {project.sessions.filter((session) => !session.pinned && !inDraft(session)).map((session) => chat(project.path, session))}
+              {project.sessions.filter((session) => !session.pinned && visible(session)).map((session) => chat(project.path, session))}
             </div>
           </div>
         </div>;
@@ -182,8 +160,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, drafts = [] 
     </section>
     <section className="project-navigation" aria-label={t("sidebar.chats")}>
       <h2 className="section-label">{t("sidebar.temporaryChats")}</h2>
-      {draftRows(null)}
-      {temporarySessions.filter((session) => !session.pinned && !inDraft(session)).map((session) => chat(TEMPORARY_WORKSPACE, session))}
+      {temporarySessions.filter((session) => !session.pinned && visible(session)).map((session) => chat(TEMPORARY_WORKSPACE, session))}
     </section>
     {navigation.deleteChat ? <dialog ref={deleteDialog} className="frame-dialog session-delete-dialog" aria-labelledby="delete-chat-heading"
       onClose={() => setDeletion(null)} onCancel={(event) => { if (deleting) event.preventDefault(); }}>

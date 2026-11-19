@@ -1643,14 +1643,14 @@ def test_model_surface_selects_reasoning_and_updates_statusline() -> None:
 
     assert session.thinking_changes == ["xhigh"]
     assert app.active_surface is None
-    assert app.state.status_message == "Reasoning: max"
+    assert app.state.status_message == "Reasoning: xhigh"
     snapshot = app.statusline_preview_snapshot()
-    assert snapshot.reasoning_label == "max"
+    assert snapshot.reasoning_label == "xhigh"
     assert status_line_fields(snapshot, StatusLineSettings())[0].text.endswith(
-        "gpt-5.4 max"
+        "gpt-5.4 xhigh"
     )
     rendered = app.render(RenderConstraints(width=160, max_height=30))
-    assert "gpt-5.4 max |" in "\n".join(
+    assert "gpt-5.4 xhigh |" in "\n".join(
         strip_control_sequences(line.text) for line in rendered.lines
     )
 

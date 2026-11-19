@@ -13,6 +13,7 @@ import pytest
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
+    AnthropicMessagesConfig,
     Capabilities,
     Endpoint,
     Model,
@@ -182,7 +183,7 @@ def _usage() -> Usage:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -313,8 +314,12 @@ def _model() -> Model:
         name="Faux",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
+        adapter=AnthropicMessagesConfig(thinking_mode="adaptive"),
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_required=False,
+            reasoning_efforts=("low", "medium", "high", "xhigh", "max"),
             input=("text",),
             context_window=128000,
             max_tokens=4096,
@@ -427,7 +432,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
                 {
                     "type": "error",
                     "error": AssistantMessage(
-                        endpoint="test-endpoint",
+                        endpoint="anthropic-messages",
                         role="assistant",
                         content=[TextPart(type="text", text="")],
                         api="anthropic-messages",
@@ -513,7 +518,7 @@ def test_persisted_session_abort_tool_then_prompt_and_resume_keeps_revision_chai
         if text == "use tool":
             return _stream_with_assistant_message(
                 AssistantMessage(
-                    endpoint="test-endpoint",
+                    endpoint="anthropic-messages",
                     role="assistant",
                     content=[
                         ToolCall(
@@ -1329,7 +1334,7 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
         assert options is not None
         return _stream_with_assistant_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[
                     ToolCall(
@@ -2204,7 +2209,7 @@ def test_agent_session_extension_command_context_navigate_tree(tmp_path) -> None
         await manager.append_message(_user_message("second"))
         old_leaf_id = manager.get_leaf_id()
         session = AgentSession(
-            agent=Agent(),
+            agent=Agent(initial_state={"model": _model()}),
             session_manager=manager,
             extension_runner=ExtensionRunner(
                 [
@@ -2431,7 +2436,7 @@ def test_agent_session_lists_user_messages_for_forking(tmp_path) -> None:
     )
     second_id = asyncio.run(manager.append_message(_user_message("second")))
 
-    session = AgentSession(agent=Agent(), session_manager=manager)
+    session = AgentSession(agent=Agent(initial_state={"model": _model()}), session_manager=manager)
 
     assert session.get_user_messages_for_forking() == [
         {"entry_id": first_id, "text": "first"},
@@ -2682,8 +2687,10 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
         name="Alt",
         provider="alt",
         endpoint="responses",
+        api="openai-responses",
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_efforts=("none", "low", "medium", "high"),
             input=("text",),
             context_window=64000,
             max_tokens=2048,
@@ -2942,8 +2949,10 @@ def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
         name="Alt",
         provider="alt",
         endpoint="responses",
+        api="openai-responses",
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_efforts=("none", "low", "medium", "high"),
             input=("text",),
             context_window=64000,
             max_tokens=2048,
@@ -3320,8 +3329,10 @@ def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) ->
         name="Alt",
         provider="alt",
         endpoint="responses",
+        api="openai-responses",
         capabilities=Capabilities(
             reasoning=True,
+            reasoning_efforts=("none", "low", "medium", "high"),
             input=("text",),
             context_window=64000,
             max_tokens=2048,
@@ -3383,25 +3394,7 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
     asyncio.run(session.session_manager.append_message(_user_message("hello")))
 
     assert session.supports_thinking() is True
-    assert session.supports_thinking() is True
-    assert session.supports_thinking() is True
-    assert session.supports_thinking() is True
-    assert session.get_available_thinking_levels() == [
-        "off",
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-    ]
-    assert session.get_available_thinking_levels() == [
-        "off",
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-    ]
+    assert session.get_available_thinking_levels() == ["off", "low", "medium", "high", "xhigh", "max"]
     assert asyncio.run(session.cycle_thinking_level()) == "medium"
     assert session.get_context_usage()["messageCount"] == 1
 
@@ -3420,13 +3413,9 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
     asyncio.run(session.set_model(non_reasoning))
 
     assert session.supports_thinking() is False
-    assert session.supports_thinking() is False
-    assert session.supports_thinking() is False
-    assert session.supports_thinking() is False
-    assert session.get_available_thinking_levels() == ["off"]
-    assert session.get_available_thinking_levels() == ["off"]
+    assert session.get_available_thinking_levels() == []
     assert asyncio.run(session.cycle_thinking_level()) is None
-    assert session.thinking_level == "off"
+    assert session.thinking_level is None
 
 
 def test_agent_session_exposes_standard_runtime_facades(tmp_path) -> None:
@@ -5460,7 +5449,7 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
     asyncio.run(
         manager.append_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[
                     TextPart(type="text", text="reading"),

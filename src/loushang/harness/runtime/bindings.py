@@ -60,7 +60,7 @@ class ProductRuntimeBindings:
     is_idle: Callable[[], bool] = lambda: True
     has_pending_messages: Callable[[], bool] = lambda: False
     get_context_usage: Callable[[], object | None] = lambda: None
-    get_thinking_level: Callable[[], str] = lambda: "off"
+    get_thinking_level: Callable[[], str | None] = lambda: None
     set_thinking_level: Callable[[str], Awaitable[None]] = _ignore_thinking_level
     register_provider: Callable[[str, object], None] | None = None
     unregister_provider: Callable[[str], None] | None = None

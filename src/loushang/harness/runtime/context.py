@@ -110,7 +110,7 @@ class UnboundProductRuntimeContext:
     async def set_model(self, selection) -> None:
         del selection
 
-    def get_thinking_level(self) -> str:
+    def get_thinking_level(self) -> str | None:
         return "off"
 
     async def set_thinking_level(self, level: str) -> None:
@@ -362,8 +362,8 @@ class BoundProductRuntimeContext:
     async def set_model(self, selection) -> None:
         await self._require_bindings().set_model(selection)
 
-    def get_thinking_level(self) -> str:
-        return str(self._require_bindings().get_thinking_level())
+    def get_thinking_level(self) -> str | None:
+        return self._require_bindings().get_thinking_level()
 
     async def set_thinking_level(self, level: str) -> None:
         await self._require_bindings().set_thinking_level(level)

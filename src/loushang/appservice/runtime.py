@@ -605,7 +605,9 @@ class AppServiceV1:
             owner = self._workspaces
             if not isinstance(owner, HostedWorkspaceModelsPort):
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-            return await owner.workspace_models(request.path)
+            if request.model_id is None:
+                return await owner.workspace_models(request.path)
+            return await owner.workspace_models(request.path, request.model_id)
 
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         async with self._workspace_lock:

@@ -6,7 +6,6 @@ from collections.abc import Awaitable, Callable
 
 from loushang.coding.model_reasoning import (
     effective_reasoning_label,
-    reasoning_choice_label,
     reasoning_choices,
     reasoning_description,
     select_reasoning_level,
@@ -26,7 +25,7 @@ def build_reasoning_selector(session: object) -> ScreenSurfaceView | None:
         purpose="reasoning",
         items=(
             SelectItem(
-                label=reasoning_choice_label(level),
+                label=level,
                 value=level,
                 description=reasoning_description(session, level),
             )

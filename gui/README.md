@@ -31,6 +31,12 @@ delegate to `loushang-mux service`. Closing the frontend leaves AppHost running.
 Use **Register and open** with a path on the Host, or select a registered
 Workspace. AppHost allocates the Mux and persists its Sessions.
 
+In the composer, select a model to see the reasoning efforts reported by
+AppHost for that model. This also works before the first message of a new
+Session. The first message is sent only after the chosen model and any explicit
+effort are confirmed. Reopened Sessions restore their saved effort when it is
+still available.
+
 For Windows source development, install uv and run the desktop:
 
 ```powershell
@@ -308,14 +314,12 @@ Linux evidence and the remaining graphical acceptance limits are recorded in
 The record root and Mux selection are parsed and retained by Rust; the WebView
 cannot provide or read them. Native admission still validates the private record
 directory and file before authentication. The published payload contains no
-attachment ID, controller generation or authentication key. Live snapshots are
-prepared with a default Session when the selected Mux is empty. The native
-adapter uses the authenticated record's admitted `cwd` scope (or its home scope
-when no workspace scope is published), asks AppHost to open a stable per-Mux
-continuity identity, and reattaches before publishing the snapshot. Existing
-members are retained; reconnecting does not append another default Session.
-New Session can also use this admitted context without an existing selection.
-See [default Session acceptance](tests/playback/default-session-acceptance.md).
+attachment ID, controller generation or authentication key. The window opens
+on the new conversation page, including when the Mux is empty. Opening that page from the sidebar or from a project keeps the draft
+in the GUI. Sending the first message creates the Session. The sidebar shows
+it when AppHost accepts the message. In direct native mode, creation without
+a source Session uses the authenticated record's admitted `cwd` scope or its
+home scope. Existing Mux members remain available in the sidebar.
 
 Live snapshots are
 visibly labelled as AppHost-controlled. Send and Interrupt use controller facts
@@ -656,3 +660,18 @@ The standalone GUI package includes `bin/loushang-web` and `web/` assets. Invoke
 `loushang-gui web` to run them. The Host is packaged separately. After staging
 both programs, verify their independent startup and connection with
 `uv run python scripts/gui/check_split_linux_programs.py /path/to/host /path/to/gui`.
+
+### macOS Intel full installer
+
+Build the full macOS 12+ Intel test installer on an Intel Mac:
+
+```sh
+uv run --no-project --python 3.11 python scripts/gui/build_macos_full.py
+```
+
+It includes GUI, Web, the frozen TUI and a backend Python runtime. The macOS
+service adapter uses launchd; the Host continues running after GUI exit.
+The manual Actions job uses `macos-15-intel` and audits the Intel slice and
+minimum OS versions of packaged native code, including the frozen TUI's libraries.
+See [macOS packaging instructions](../scripts/gui/macos-package.md) for manual
+dispatch, installation, artifacts and the remaining macOS 12 acceptance boundary.

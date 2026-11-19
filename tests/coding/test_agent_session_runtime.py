@@ -95,7 +95,7 @@ def _user_message(text: str) -> UserMessage:
 
 def _assistant_message(text: str) -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -2351,7 +2351,7 @@ async def test_extension_command_context_fork_uses_runtime_host(tmp_path) -> Non
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
-            agent=Agent(),
+            agent=Agent(initial_state={"model": _model()}),
             session_manager=manager,
             session_start_event=session_start_event,
             extension_runner=ExtensionRunner(
@@ -2421,7 +2421,7 @@ async def test_extension_command_context_fork_supports_before_position(
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
-            agent=Agent(),
+            agent=Agent(initial_state={"model": _model()}),
             session_manager=manager,
             session_start_event=session_start_event,
             extension_runner=ExtensionRunner(
@@ -2489,7 +2489,7 @@ async def test_extension_command_context_fork_defaults_to_before_position(
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
-            agent=Agent(),
+            agent=Agent(initial_state={"model": _model()}),
             session_manager=manager,
             session_start_event=session_start_event,
             extension_runner=ExtensionRunner(
@@ -2567,7 +2567,7 @@ async def test_extension_command_context_fork_before_runs_with_session_on_new_fo
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
-            agent=Agent(),
+            agent=Agent(initial_state={"model": _model()}),
             session_manager=manager,
             session_start_event=session_start_event,
             extension_runner=ExtensionRunner(

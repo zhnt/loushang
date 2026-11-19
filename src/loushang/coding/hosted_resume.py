@@ -14,6 +14,7 @@ from typing import cast
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
+from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
@@ -106,6 +107,21 @@ class _DeferredHostedControlV1(_DeferredSessionControl):
 
     async def set_model(self, selection: ModelSelection) -> None:
         await self._binding.set_model(selection)
+
+    @property
+    def thinking_level(self) -> object:
+        if self._delegate is not None:
+            return super().thinking_level
+        return self._binding._source.history_binding.context.thinking_level
+
+    def get_available_thinking_levels(self) -> tuple[str, ...]:
+        if self._delegate is not None:
+            return super().get_available_thinking_levels()
+        model = self._binding.current_model
+        return available_thinking_levels(model) if model is not None else ()
+
+    async def set_thinking_level(self, level: str) -> None:
+        await self._binding.set_thinking_level(level)
 
 
 class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
@@ -210,11 +226,23 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         )
 
     async def set_model(self, selection: ModelSelection) -> None:
+        await self._update_model_settings(selection)
+
+    async def set_thinking_level(self, level: str) -> None:
+        await self._update_model_settings(level)
+
+    async def _update_model_settings(self, value: ModelSelection | str) -> None:
         async with self._activation_lock:
             if self._close_task is not None:
                 raise CodingHostedCatalogError()
             if self._active is not None:
-                await apply_session_model_selection(self._active.control, selection)
+                if isinstance(value, str):
+                    setter = getattr(self._active.control, "set_thinking_level", None)
+                    if not callable(setter):
+                        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                    await setter(value)
+                else:
+                    await apply_session_model_selection(self._active.control, value)
                 return
             scope, control, digest = ScopedAppServicePortV1.current_resume_subject()
 
@@ -229,16 +257,25 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 self._source.require_current_source()
 
             require_current()
-            model = self._services.model_registry.build_model(selection)
             context = self._source.history_binding.context
-            if (
-                context.provider_window is not None
-                and not context.provider_window.matches(model)
-            ):
-                raise ValueError(
-                    "Selected model is incompatible with the active provider compaction checkpoint"
-                )
-            validate_image_input_compatibility(model, context.messages)
+            if isinstance(value, str):
+                model = self.current_model
+                if model is None or value not in available_thinking_levels(model):
+                    raise ValueError(
+                        "Thinking level is unavailable for the saved session model"
+                    )
+                if value == context.thinking_level:
+                    return
+            else:
+                model = self._services.model_registry.build_model(value)
+                if (
+                    context.provider_window is not None
+                    and not context.provider_window.matches(model)
+                ):
+                    raise ValueError(
+                        "Selected model is incompatible with the active provider compaction checkpoint"
+                    )
+                validate_image_input_compatibility(model, context.messages)
             plan = await self._current_plan()
             require_current()
             manager = await self._source.manager_type._load_resume_writer(
@@ -249,11 +286,14 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             )
             try:
                 require_current()
-                await manager.append_model_change(
-                    selection.provider,
-                    selection.model_id,
-                    endpoint_id=selection.endpoint_id,
-                )
+                if isinstance(value, str):
+                    await manager.append_thinking_level_change(value)
+                else:
+                    await manager.append_model_change(
+                        value.provider,
+                        value.model_id,
+                        endpoint_id=value.endpoint_id,
+                    )
                 await self._source.refresh_after_model_change(manager)
             finally:
                 await manager.dispose_runtime_profile()
