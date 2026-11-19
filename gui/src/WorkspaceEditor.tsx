@@ -59,12 +59,12 @@ export function WorkspaceEditor({ project, save, onClose }: WorkspaceEditorProps
     setPath({ id: link.id, alias: link.alias, path: link.path });
   }
 
-  return <dialog ref={dialog} className="frame-dialog session-delete-dialog" aria-labelledby="workspace-editor-heading"
+  return <dialog ref={dialog} className="frame-dialog session-delete-dialog workspace-editor" aria-labelledby="workspace-editor-heading"
     onClose={onClose} onCancel={(event) => { if (busy) event.preventDefault(); }}>
     <div className="local-host-panel">
       <div className="local-host-heading">
         <h2 id="workspace-editor-heading">{t(workspaceId ? "manage" : "create")}</h2>
-        <button type="button" className="icon-button" aria-label={t("close")} disabled={busy} onClick={close}>
+        <button type="button" className="icon-close" aria-label={t("close")} disabled={busy} onClick={close}>
           <UiIcon name="close" />
         </button>
       </div>
