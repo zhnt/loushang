@@ -2,6 +2,10 @@
   "workspaceEditor": {
     "create": "Create workspace",
     "manage": "Manage workspace",
+    "manageUnavailable": "Manage workspace · linked folders unavailable",
+    "pathActions": "Actions for {{alias}}",
+    "defaultPath": "Default folder",
+    "cancel": "Cancel",
     "name": "Workspace name",
     "rename": "Rename",
     "paths": "Linked folders",
@@ -23,7 +27,6 @@
     "unsafe": "Folder or parent was replaced by a link",
     "not_directory": "Path is not a folder",
     "permission_denied": "Permission denied",
-    "unavailablePaths": "Some linked folders are unavailable",
     "deleteBlocked": "This workspace still retains session history."
   },
   "sidebar": {
@@ -51,7 +54,7 @@
     "projects": "Projects",
     "addProject": "Add project",
     "newProjectChat": "New chat in {{project}}",
-    "temporaryChats": "Chats",
+    "temporaryChats": "Temporary chats",
     "chats": "Chats",
     "pinned": "Pinned",
     "unassigned": "Without a workspace",

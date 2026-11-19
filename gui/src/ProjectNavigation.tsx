@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useContextMenu } from "./ContextMenu";
 import { UiIcon } from "./UiIcon";
@@ -109,6 +109,13 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
     </div>;
   }
 
+  function projectMenu(event: MouseEvent<HTMLElement>) {
+    if (navigation.editWorkspace) openMenu(event, [
+      { label: t("sidebar.addProject"), disabled: !editable, run: navigation.openFolder },
+      { label: t("workspaceEditor.create"), disabled: !editable, run: () => setEditing({ host: navigation.hostKey }) },
+    ]);
+  }
+
   return <div ref={sidebar}>
     {pinned.length ? <section className="project-navigation" aria-label={t("sidebar.pinned")}>
       <h2 className="section-label">{t("sidebar.pinned")}</h2>
@@ -116,13 +123,11 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
     </section> : null}
     <section className="project-navigation" aria-label={t("sidebar.projects")}>
       <div className="project-heading">
-        <h2 className="section-label">{t("sidebar.projects")}</h2>
+        <h2 className="section-label" onContextMenu={projectMenu}>{t("sidebar.projects")}</h2>
         <button type="button" className="project-action" aria-label={t("sidebar.addProject")}
           title={t("sidebar.addProject")} disabled={!editable}
-          onClick={navigation.openFolder}><UiIcon name="plus" /></button>
+          onClick={navigation.openFolder} onContextMenu={projectMenu}><UiIcon name="plus" /></button>
       </div>
-      {navigation.editWorkspace ? <button type="button" className="secondary-button"
-        disabled={!editable} onClick={() => setEditing({ host: navigation.hostKey })}>{t("workspaceEditor.create")}</button> : null}
       {navigation.folderInput ? <form className="project-path" onSubmit={(event) => {
         event.preventDefault();
         if (path.trim() && editable) void navigation.register(path.trim()).then((accepted) => { if (accepted) setPath(""); });
@@ -137,17 +142,20 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
         const workspace = projectKey(project);
         const label = project.name ?? workspaceName(project.path ?? workspace);
         const expanded = !collapsed.has(workspace);
+        const unavailable = project.paths?.filter((link) => link.status !== "available") ?? [];
+        const pathStatus = unavailable.map((link) => `${link.alias} · ${t(`workspaceEditor.${link.status}`)}`).join("\n");
         function create() {
           expand(workspace);
           navigation.create(workspace);
         }
         return <div key={workspace}>
           <div className="project-heading project-row">
-            <button type="button" className="project-label" aria-expanded={expanded} title={project.path ?? undefined}
+            <button type="button" className="project-label" aria-expanded={expanded} aria-description={pathStatus || undefined}
+              title={[project.path, pathStatus].filter(Boolean).join("\n") || undefined}
               onContextMenu={(event) => openMenu(event, [
                 { label: t("sidebar.newSession"), disabled: createDisabled, run: create },
                 ...(project.id && navigation.editWorkspace ? [{
-                  label: t("workspaceEditor.manage"), disabled: !editable,
+                  label: t(unavailable.length ? "workspaceEditor.manageUnavailable" : "workspaceEditor.manage"), disabled: !editable,
                   run: () => setEditing({ host: navigation.hostKey, workspace }),
                 }] : []),
                 ...(project.path ? [{
@@ -164,8 +172,6 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
               aria-label={t("sidebar.newProjectChat", { project: label })} title={t("sidebar.newProjectChat", { project: label })}
               onClick={create}><UiIcon name="plus" /></button>
           </div>
-          {expanded && project.paths?.some((link) => link.status !== "available") ? <button className="project-error"
-            type="button" onClick={() => setEditing({ host: navigation.hostKey, workspace })}>{t("workspaceEditor.unavailablePaths")}</button> : null}
           <div className="project-chats" aria-hidden={!expanded} inert={!expanded}>
             <div>
               {project.sessions.filter((session) => !session.pinned && visible(session)).map((session) => chat(workspace, session))}
@@ -178,7 +184,8 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
       <h2 className="section-label">{t("sidebar.temporaryChats")}</h2>
       {temporarySessions.filter((session) => !session.pinned && visible(session)).map((session) => chat(TEMPORARY_WORKSPACE, session))}
     </section>
-    {editing?.host === navigation.hostKey && navigation.editWorkspace ?
+    {editing?.host === navigation.hostKey && navigation.editWorkspace
+      && (!editing.workspace || projects.some((project) => projectKey(project) === editing.workspace)) ?
       <WorkspaceEditor
         key={editing.workspace ?? "new"}
         project={projects.find((project) => projectKey(project) === editing.workspace)}
