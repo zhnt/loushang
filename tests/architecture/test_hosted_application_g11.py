@@ -66,6 +66,8 @@ def test_G11_DEPENDENCY_GRAPH_appserver_remains_contract_and_client_only() -> No
                 "loushang.appserver."
             ):
                 continue
+            if path == APPSERVER / "protocol/model.py" and imported == "loushang.foundation.reasoning":
+                continue
             assert imported.partition(".")[0] in sys.stdlib_module_names, (
                 path,
                 imported,
@@ -159,6 +161,7 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/apphost/managed/mux_management.py"),
         Path("src/loushang/apphost/managed/mux_probe.py"),
         Path("src/loushang/coding/managed_local.py"),
+        Path("src/loushang/coding/foreground_host.py"),
         Path("src/loushang/coding/managed_bootstrap.py"),
         Path("src/loushang/coding/managed_catalog.py"),
     }
@@ -325,7 +328,8 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # codec by 20 lines (12 model, 8 codec). See the delivery review.
         # Workspace preview adds 140 net lines of closed request/result values,
         # errors and codec projection. Native file IO remains in AppHost.
-        "appserver": 2_360 + 126 + 20 + 140,
+        # Unified reasoning adds 9 lines across model and codec.
+        "appserver": 2_360 + 126 + 20 + 140 + 9,
         # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity
@@ -337,7 +341,8 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # Managed Workspace open provisions its Mux on the existing owner.
         # Workspace model queries and close/delete ordering add 48 lines
         # across runtime (+33), ports (+11), and the scoped client (+4).
-        "appservice-core": 1_961 + 5 + 54 + 18 + 48,
+        # Default and explicit Off projection adds two lines to the scoped runtime.
+        "appservice-core": 1_961 + 5 + 54 + 18 + 48 + 2,
         # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
         # same continuity schema/recovery boundary; no owner split or activation.
         # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;

@@ -183,7 +183,7 @@ def _usage() -> Usage:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -432,7 +432,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
                 {
                     "type": "error",
                     "error": AssistantMessage(
-                        endpoint="test-endpoint",
+                        endpoint="anthropic-messages",
                         role="assistant",
                         content=[TextPart(type="text", text="")],
                         api="anthropic-messages",
@@ -518,7 +518,7 @@ def test_persisted_session_abort_tool_then_prompt_and_resume_keeps_revision_chai
         if text == "use tool":
             return _stream_with_assistant_message(
                 AssistantMessage(
-                    endpoint="test-endpoint",
+                    endpoint="anthropic-messages",
                     role="assistant",
                     content=[
                         ToolCall(
@@ -1334,7 +1334,7 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
         assert options is not None
         return _stream_with_assistant_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[
                     ToolCall(
@@ -2209,7 +2209,7 @@ def test_agent_session_extension_command_context_navigate_tree(tmp_path) -> None
         await manager.append_message(_user_message("second"))
         old_leaf_id = manager.get_leaf_id()
         session = AgentSession(
-            agent=Agent(),
+            agent=Agent(initial_state={"model": _model()}),
             session_manager=manager,
             extension_runner=ExtensionRunner(
                 [
@@ -2436,7 +2436,7 @@ def test_agent_session_lists_user_messages_for_forking(tmp_path) -> None:
     )
     second_id = asyncio.run(manager.append_message(_user_message("second")))
 
-    session = AgentSession(agent=Agent(), session_manager=manager)
+    session = AgentSession(agent=Agent(initial_state={"model": _model()}), session_manager=manager)
 
     assert session.get_user_messages_for_forking() == [
         {"entry_id": first_id, "text": "first"},
@@ -5449,7 +5449,7 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
     asyncio.run(
         manager.append_message(
             AssistantMessage(
-                endpoint="test-endpoint",
+                endpoint="anthropic-messages",
                 role="assistant",
                 content=[
                     TextPart(type="text", text="reading"),
