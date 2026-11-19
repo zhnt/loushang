@@ -23,7 +23,7 @@ describe("desktop frame", () => {
     const brand = rail.querySelector(".brand-name");
     expect(brand).toHaveTextContent(config.productName);
     expect(brand?.querySelector("svg")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Tasks" }));
+    await user.click(screen.getByRole("button", { name: "Execution" }));
     const close = screen.getByRole("button", { name: "Close Work Dock" });
     expect(close.querySelector('[data-icon="close"]')).toBeInTheDocument();
     await user.click(close);
@@ -163,11 +163,11 @@ describe("desktop frame", () => {
     await screen.findByRole("heading", { name: "GUI development" });
     await user.click(screen.getByRole("button", { name: "Close environment" }));
     await user.click(screen.getByRole("button", { name: /^Operational ontology ·/ }));
-    await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Tasks" }));
+    await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Execution" }));
     await user.click(screen.getByRole("button", { name: /^GUI development ·/ }));
     expect(screen.queryByRole("complementary", { name: /Work Dock|Environment summary/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Operational ontology ·/ }));
-    expect(within(screen.getByRole("complementary", { name: "Work Dock" })).getByRole("button", { name: "Tasks" }))
+    expect(within(screen.getByRole("complementary", { name: "Work Dock" })).getByRole("button", { name: "Execution" }))
       .toHaveAttribute("aria-pressed", "true");
   });
 

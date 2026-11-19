@@ -136,22 +136,30 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
       ? t(`interactiveGoal.${availability}`)
       : view === null || !scope ? t("interactiveGoal.unavailable")
       : view === undefined ? t("interactiveGoal.loading") : null;
+  const idle = session.status === "idle" && !session.userChoice && !session.pendingApprovals?.some(({ status }) => status === "pending")
+    && (availability === "ready" || availability === "not_ready") && !creating && !unknown;
   return <section className="execution-detail interactive-goal" aria-label={t("interactiveGoal.title")}>
-    {lastKnown ? <p role="status">{t("goalProgress.lastConfirmed")}</p> : null}
+    {idle && !lastKnown && <p>{t("execution.states.idle")}</p>}
     {note && !lastKnown && (!unknown || availability) ? <p role="status">{note}</p> : null}
     {unknown ? <p role="status">{t("interactiveGoal.unknown")}</p> : null}
-    {view?.availability === "present" ? <dl>
-      <dt>{t("goalProgress.status")}</dt><dd>{t(`goalProgress.states.${view.status ?? "unknown"}`)}</dd>
-    </dl> : null}
+    {view?.availability === "present" ? <>
+      <h3>{t("interactiveGoal.title")}</h3>
+      <dl>
+        <dt>{t("goalProgress.status")}</dt><dd>{t(`goalProgress.states.${view.status ?? "unknown"}`)}</dd>
+      </dl>
+    </> : null}
     {view?.availability === "present" && view.goalId && session.supportsInteractiveGoalCommands && client.controlInteractiveGoal ? (
       <GoalCommandControls view={view} disabled={controlsDisabled || readingReview}
         send={(action) => void sendGoalCommand(action, view.goalId!, (address, commandId) =>
           client.controlInteractiveGoal?.({ ...address, action, goalId: view.goalId!, commandId }))} />
     ) : null}
     {view?.reviewAvailable && view.goalId && scope && client.interactiveGoalReview && client.submitInteractiveGoalReview ? (
-      <GoalReview key={JSON.stringify([scope.connectionEpoch, view.goalId, view.revision, view.epoch])}
-        client={client} scope={scope} goalId={view.goalId} revision={view.revision} epoch={view.epoch}
-        disabled={controlsDisabled} setReading={setReadingReview} submit={submitReview} reviewDiff={reviewDiff} />
+      <div className="goal-review-entry">
+        <h3>{t("execution.reviewNeeded")}</h3>
+        <GoalReview key={JSON.stringify([scope.connectionEpoch, view.goalId, view.revision, view.epoch])}
+          client={client} scope={scope} goalId={view.goalId} revision={view.revision} epoch={view.epoch}
+          disabled={controlsDisabled} setReading={setReadingReview} submit={submitReview} reviewDiff={reviewDiff} />
+      </div>
     ) : null}
     {command?.action === "accept" && command.status === "finished" ? <p role="status">{t("interactiveGoal.review.accepted")}</p> : null}
     {command?.action === "reject" && command.status === "finished" ? <p role="status">{t("interactiveGoal.review.feedbackRecorded")}</p> : null}
@@ -159,7 +167,7 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
       <p role="status">{t("interactiveGoal.review.failed")}</p>
     ) : null}
     {sendingCommand ? <p role="status">{t("interactiveGoal.commands.sending")}</p>
-      : unconfirmed ? <p role="status">{t("interactiveGoal.commands.unconfirmed", { id: unconfirmed })}</p> : null}
+      : unconfirmed ? <p role="status">{t("interactiveGoal.commands.unconfirmed")}</p> : null}
     {observation?.scope === scope && observation?.stale ? <p role="status">{t("interactiveGoal.unavailable")}</p> : null}
     {availability === "ready" && !formOpen && canCreate ? <button type="button" className="secondary-button"
       onClick={() => setFormOpen(true)}>{t("interactiveGoal.open")}</button> : null}
@@ -168,19 +176,20 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
       void create();
     }}>
       <label>{t("interactiveGoal.target")}
-        <textarea value={target} onChange={(event) => setTarget(event.target.value)} disabled={creating || unknown} />
+        <textarea value={target} onChange={(event) => setTarget(event.target.value)} disabled={!enabled || creating || unknown} />
       </label>
       <button type="submit" className="secondary-button" disabled={!canCreate || !validTarget}>
         {t("interactiveGoal.create")}
       </button>
     </form> : null}
+    {view?.executionUnresolved && <p role="status">{t("execution.unresolved")}</p>}
     {view?.availability === "present" ? <details className="goal-technical">
       <summary>{t("execution.details")}</summary>
       <dl>
         <dt>{t("goalProgress.goal")}</dt><dd><code>{view.goalId}</code></dd>
         <dt>{t("interactiveGoal.revision")}</dt><dd>{view.revision}</dd>
         <dt>{t("interactiveGoal.epoch")}</dt><dd>{view.epoch}</dd>
-        <dt>{t("goalProgress.unresolved")}</dt><dd>{t(view.executionUnresolved ? "goalProgress.yes" : "goalProgress.no")}</dd>
+        {unconfirmed && <><dt>{t("interactiveGoal.commands.id")}</dt><dd><code>{unconfirmed}</code></dd></>}
       </dl>
     </details> : null}
     <button type="button" className="secondary-button" disabled={!scope || creating || sendingCommand}

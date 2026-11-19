@@ -93,7 +93,7 @@ for (const scenario of scenarios) {
       await verifyLayout(page, info, "closed");
       await page.getByRole("button", { name: "Open Work Dock" }).click();
       const tabs = page.getByRole("navigation", { name: "Work Dock panels" });
-      await tabs.getByRole("button", { name: "Tasks" }).click();
+      await tabs.getByRole("button", { name: "Execution" }).click();
       await verifyLayout(page, info, "work-panel");
       await tabs.getByRole("button", { name: "Environment" }).click();
       await expect(page.getByRole("complementary", { name: "Work Dock", exact: true })).toHaveCount(0);

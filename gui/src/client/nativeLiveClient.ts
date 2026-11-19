@@ -608,6 +608,8 @@ function projectSession(
     },
     messages,
     execution: projectExecution(snapshot),
+    latestTerminalExecution: snapshot.executions.latestTerminal
+      ? projectExecution(snapshot, snapshot.executions.latestTerminal) : null,
     supportsGoalProgress: snapshot.supportsGoalProgress,
     supportsGoalStart: snapshot.supportsGoalStart,
     supportsInteractiveGoal: snapshot.supportsInteractiveGoal,
@@ -621,21 +623,24 @@ function projectSession(
   };
 }
 
-function projectExecution(snapshot: ExecutionSessionSnapshotV1): ExecutionProjection | null {
-  const state = snapshot.executions.active ?? snapshot.executions.latestTerminal;
+function projectExecution(
+  snapshot: ExecutionSessionSnapshotV1,
+  state = snapshot.executions.active ?? snapshot.executions.latestTerminal,
+): ExecutionProjection | null {
   const observation = snapshot.source.observation;
   const id = state?.executionId ?? observation.executionId;
-  if (!id) return null;
   const status = state?.status ?? observation.status;
-  if (!status) return null;
+  if (!id || !status) return null;
+  const matchingObservation = [observation, snapshot.executions.quiescent]
+    .find((entry) => entry.executionId === id);
   return {
     id,
-    errorCode: state?.outcome?.errorCode ?? undefined,
     status,
+    errorCode: state?.outcome?.errorCode ?? undefined,
     revision: state?.revision ?? 0,
     interruptRequested: state?.interruptRequested ?? false,
-    sourceStatus: observation.status === "accepted" ? null : observation.status,
-    finalCursor: observation.finalCursor,
+    sourceStatus: matchingObservation?.status === "accepted" ? null : matchingObservation?.status ?? null,
+    finalCursor: matchingObservation?.finalCursor ?? null,
     truncated: snapshot.source.truncated,
   };
 }

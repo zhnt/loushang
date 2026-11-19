@@ -3,7 +3,8 @@ import type { InteractionOutcome, PendingApproval } from "./client/model";
 
 const outcomes = ["approve", "deny", "cancel"] as const;
 
-export function ToolApproval({ approval, enabled, scope, onRespond }: {
+export function ToolApproval({ approval, enabled, scope, onRespond, anchorId }: {
+  anchorId?: string;
   approval: PendingApproval;
   enabled: boolean;
   scope?: string;
@@ -12,7 +13,7 @@ export function ToolApproval({ approval, enabled, scope, onRespond }: {
   const { t } = useTranslation("session");
   const unavailable = !enabled || approval.status === "unavailable";
   return (
-    <section className="tool-approval" aria-label={t("approval.title")} aria-busy={approval.status === "submitting"}>
+    <section className="tool-approval" id={anchorId} tabIndex={anchorId ? -1 : undefined} aria-label={t("approval.title")} aria-busy={approval.status === "submitting"}>
       <strong>{t("approval.title")}</strong>
       {scope ? <p className="approval-scope">{t("approval.scope", { scope })}</p> : null}
       <pre>{approval.text}</pre>

@@ -190,6 +190,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       sessionModels: async () => ({ currentId: liveModel.id, models: [liveModel] }),
     }} />);
     const input = await screen.findByRole("textbox", { name: "Message for GUI development" });
+    await user.click(screen.getByRole("button", { name: "Execution" }));
+    const current = within(screen.getByRole("region", { name: "Current work" }));
+    expect(current.getByText("No work is running.")).toBeVisible();
     await user.type(input, "Keep this message");
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
@@ -208,7 +211,11 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(await screen.findByText(/^Execution failed$/i)).toBeVisible();
     expect(input).toHaveValue("Keep this message");
     await user.click(within(screen.getByLabelText("Session transcript")).getByText(/^Execution failed$/i));
-    await user.click(within(screen.getByLabelText("Work Dock")).getByText("Live execution details"));
+    const recent = within(screen.getByRole("region", { name: "Most recent execution" }));
+    expect(recent.getByText("Failed", { exact: true })).toBeVisible();
+    await user.click(recent.getByRole("button", { name: "View conversation" }));
+    expect(screen.getByLabelText("Session transcript")).toHaveFocus();
+    await user.click(recent.getByText("Execution details"));
     expect(screen.getByText("execution_start_failed")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(submit).toHaveBeenCalledTimes(2);
@@ -287,12 +294,12 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.queryByLabelText("Quick look gui-interface-specification.md")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Step 1 / 4" })).not.toBeInTheDocument();
     expect(screen.queryByText("git · main")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Tasks" }));
+    await user.click(screen.getByRole("button", { name: "Execution" }));
     const dock = screen.getByLabelText("Work Dock");
-    for (const label of ["Tasks", "Subagents", "Review"]) {
-      await user.click(within(dock).getByRole("button", { name: label }));
-      expect(within(dock).getByText(new RegExp(`${label} capability`))).toBeVisible();
-    }
+    expect(within(dock).queryByRole("button", { name: "Subagents" })).not.toBeInTheDocument();
+    expect(within(dock).queryByLabelText("Task details")).not.toBeInTheDocument();
+    await user.click(within(dock).getByRole("button", { name: "Review" }));
+    expect(within(dock).getByText(/Review capability/)).toBeVisible();
     view.rerender(<HarnessGui client={withSnapshot(client, snapshot)} />);
     expect(await screen.findByLabelText("Fixture changes")).toBeVisible();
     expect(screen.getByLabelText("Read-only review")).toBeVisible();
@@ -1044,7 +1051,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(within(review).getByRole("article", { name: "gui-interface-specification.md" })).toBeVisible();
     expect(within(review).getByRole("button", { name: "Commit or push" })).toBeDisabled();
 
-    await user.click(within(dock).getByRole("button", { name: "Tasks" }));
+    await user.click(within(dock).getByRole("button", { name: "Execution" }));
     const taskPanel = within(dock).getByLabelText("Task details");
     await user.click(within(taskPanel).getByRole("button", { name: /Inspect GUI workspace/ }));
     await user.click(within(taskPanel).getByRole("button", { name: "Open Primary agent →" }));
@@ -1081,8 +1088,12 @@ it("keeps approvals in their own session and removes them on dismissal or discon
     respondInteraction,
   };
   render(<HarnessGui client={client} />);
-  await screen.findByRole("region", { name: "Tool approval" });
+  const approval = await screen.findByRole("region", { name: "Tool approval" });
+  fireEvent.click(screen.getByRole("button", { name: "Execution" }));
+  fireEvent.click(screen.getByRole("button", { name: "Go to tool approval" }));
+  expect(approval).toHaveFocus();
   fireEvent.click(screen.getByRole("button", { name: `${b.title} · Idle` }));
+  expect(screen.queryByRole("button", { name: "Go to tool approval" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Tool approval" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: `${a.title} · Idle` }));
   fireEvent.click(screen.getByRole("button", { name: "Cancel operation" }));
@@ -1126,7 +1137,11 @@ describe("Hosted business choices", () => {
       sessionModels: async () => ({ currentId: liveModel.id, models: [liveModel] }),
     };
     render(<HarnessGui client={client} />);
-    const card = within(await screen.findByRole("form", { name: "Choose a direction" }));
+    const form = await screen.findByRole("form", { name: "Choose a direction" });
+    fireEvent.click(screen.getByRole("button", { name: "Execution" }));
+    fireEvent.click(screen.getByRole("button", { name: "Go to question" }));
+    expect(form).toHaveFocus();
+    const card = within(form);
     expect(card.getByText("Which plan?")).toBeVisible();
     fireEvent.click(card.getByRole("radio", { name: "Rewrite" }));
     const note = card.getByRole("textbox", { name: "Additional notes (optional)" });
@@ -1204,10 +1219,10 @@ describe("Hosted Goal observation", () => {
     expect(goalProgress).toHaveBeenCalledTimes(1);
 
     act(() => publish(initial));
-    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Execution" }));
     const panel = within(await screen.findByRole("region", { name: "Goal progress" }));
     expect(panel.getByText("real-goal")).not.toBeVisible();
-    fireEvent.click(panel.getByText("Live execution details"));
+    fireEvent.click(panel.getByText("Execution details"));
     expect(panel.getByText("real-goal")).toBeVisible();
     expect(panel.getByText("Paused")).toBeVisible();
     expect(panel.getByText("advance_budget_exhausted")).toBeVisible();
@@ -1269,7 +1284,7 @@ describe("Hosted Goal start", () => {
     await screen.findByRole("textbox", { name: /message/i });
     expect(screen.queryByRole("button", { name: "Start Goal" })).not.toBeInTheDocument();
     act(() => publish(ready));
-    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Execution" }));
     const button = await screen.findByRole("button", { name: "Start Goal" });
     act(() => { fireEvent.click(button); fireEvent.click(button); });
     expect(button).toBeDisabled();
@@ -1293,11 +1308,18 @@ describe("Hosted Goal start", () => {
     expect(screen.queryByText(unknown)).not.toBeInTheDocument();
     expect(within(screen.getByLabelText("Session transcript")).getByText("Execution Running")).toBeVisible();
     expect(startGoal).toHaveBeenCalledTimes(1);
+    const current = within(screen.getByRole("region", { name: "Current work" }));
+    expect(current.getByRole("status")).toHaveTextContent("Running");
+    expect(current.getByRole("button", { name: "Stop execution" })).toBeEnabled();
+    act(() => disconnect("disconnected"));
+    expect(current.getByRole("status")).toHaveTextContent("Running");
+    expect(current.getByText(/last confirmed information/i)).toBeVisible();
+    expect(current.getByRole("button", { name: "Stop execution" })).toBeDisabled();
 
     act(() => publish({ ...ready, source: { ...source, serviceInstanceId: "new-host", connectionEpoch: "3" } }));
     const dock = screen.queryByLabelText("Work Dock");
     if (!dock || !within(dock).queryByRole("button", { name: "Start Goal" })) {
-      fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+      fireEvent.click(screen.getByRole("button", { name: "Execution" }));
     }
     expect(await screen.findByRole("button", { name: "Start Goal" })).toBeEnabled();
     expect(startGoal).toHaveBeenCalledTimes(1);
@@ -1350,7 +1372,7 @@ describe("Interactive development goal", () => {
     expect(entry).toHaveAttribute("aria-expanded", "true");
     const goal = within(await screen.findByRole("region", { name: "Development goal" }));
     expect(within(screen.getByRole("complementary", { name: "Work Dock" }))
-      .getByRole("button", { name: "Tasks" })).toHaveAttribute("aria-pressed", "true");
+      .getByRole("button", { name: "Execution" })).toHaveAttribute("aria-pressed", "true");
     expect(await goal.findByText(/Send an ordinary message/)).toBeVisible();
     expect(goal.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
     fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
@@ -1371,7 +1393,7 @@ describe("Interactive development goal", () => {
 
     fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
     expect(await goal.findByText("Goal created. Execution has not started.")).toBeVisible();
-    fireEvent.click(goal.getByText("Live execution details"));
+    fireEvent.click(goal.getByText("Execution details"));
     expect(goal.getByText("goal-original")).toBeVisible();
     expect(goal.getByText("Goal created. Execution has not started.")).toBeVisible();
     expect(goal.queryByRole("button", { name: "Create goal" })).not.toBeInTheDocument();
@@ -1427,7 +1449,7 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
   };
   render(<HarnessGui client={client} />);
   const entry = await screen.findByRole("button", { name: "Development goal" });
-  fireEvent.click(entry);
+  fireEvent.click(screen.getByRole("button", { name: "Execution" }));
   const goal = within(await screen.findByRole("region", { name: "Development goal" }));
   fireEvent.click(await goal.findByRole("button", { name: "Step" }));
   expect(await goal.findByText("Goal command finished")).toBeVisible();
@@ -1500,6 +1522,7 @@ it("offers Goal review only for a current candidate and gates acceptance on chec
   const entry = await screen.findByRole("button", { name: "Development goal" });
   fireEvent.click(entry);
   const goal = within(await screen.findByRole("region", { name: "Development goal" }));
+  expect(goal.getByRole("heading", { name: "Goal review needed" })).toBeVisible();
   const review = await goal.findByRole("button", { name: "Review result" });
   fireEvent.click(review);
   expect(await goal.findByText(/Current candidate unavailable/)).toBeVisible();
@@ -1572,13 +1595,11 @@ it.each([
     source: { kind: "live", serviceInstanceId: "second-host", muxSpaceId: "mux", connectionEpoch: "2" },
   }));
   const entry = await screen.findByRole("button", { name: "Development goal" });
-  expect(entry).toHaveAttribute("aria-expanded", "false");
-  expect(recover).not.toHaveBeenCalled();
-  fireEvent.click(entry);
+  expect(entry).toHaveAttribute("aria-expanded", "true");
   const panel = within(await screen.findByRole("region", { name: "Historical Goal" }));
   expect(await panel.findByText(label)).toBeVisible();
   expect(panel.getByText(reason)).not.toBeVisible();
-  fireEvent.click(panel.getByText("Live execution details"));
+  fireEvent.click(panel.getByText("Execution details"));
   expect(panel.getByText(reason)).toBeVisible();
   expect(panel.queryAllByText(/Some execution results are unconfirmed/)).toHaveLength(unresolved ? 1 : 0);
   expect(panel.queryAllByRole("button")).toHaveLength(0);

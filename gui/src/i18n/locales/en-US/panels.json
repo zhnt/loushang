@@ -47,7 +47,8 @@
       "failed": "Goal command failed",
       "unknown": "Goal command outcome is unknown",
       "sending": "Sending Goal command…",
-      "unconfirmed": "Goal command {{id}} is not yet confirmed."
+      "unconfirmed": "The Goal command has not been confirmed yet.",
+      "id": "Command ID"
     },
     "title": "Development goal",
     "shortcut": "Goal",
@@ -107,7 +108,7 @@
     },
     "title": "Goal progress",
     "goal": "Goal ID",
-    "status": "Status",
+    "status": "Goal status",
     "batches": "Recorded batches",
     "models": "Model calls",
     "advances": "Advances",
@@ -128,11 +129,12 @@
       "superseded": "Superseded",
       "not_checked": "Not checked",
       "unknown": "Unknown"
-    }
+    },
+    "latestBatch": "Latest batch"
   },
   "execution": {
     "failureCode": "Failure code",
-    "details": "Live execution details",
+    "details": "Execution details",
     "title": "Execution",
     "source": "Source",
     "notObserved": "not observed",
@@ -145,7 +147,29 @@
     "completeSnapshot": "complete snapshot",
     "status": "Execution {{status}}",
     "lastKnownStatus": "Last known execution state: {{status}} (disconnected)",
-    "revision": "Execution state version"
+    "revision": "Execution state version",
+    "current": "Current work",
+    "stale": "Showing the last confirmed information. The current state may have changed.",
+    "stop": "Stop execution",
+    "stopping": "Stop requested",
+    "attention": "Needs your attention",
+    "openApproval": "Go to tool approval",
+    "openQuestion": "Go to question",
+    "reviewNeeded": "Goal review needed",
+    "recent": "Most recent execution",
+    "openConversation": "View conversation",
+    "openReview": "Review workspace",
+    "unresolved": "Some work results are still unconfirmed.",
+    "states": {
+      "idle": "No work is running.",
+      "accepted": "Preparing",
+      "running": "Running",
+      "waiting": "Waiting for you",
+      "succeeded": "Completed",
+      "failed": "Failed",
+      "interrupted": "Interrupted",
+      "unknown": "Current state unavailable"
+    }
   },
   "header": {
     "actions": "Session actions",
@@ -185,7 +209,7 @@
     "title": "Work Dock",
     "close": "Close Work Dock",
     "panels": "Work Dock panels",
-    "tasks": "Tasks",
+    "tasks": "Execution",
     "agents": "Subagents"
   },
   "tasks": {

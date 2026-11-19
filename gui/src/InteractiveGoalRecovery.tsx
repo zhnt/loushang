@@ -8,13 +8,14 @@ interface Props {
   sessionId: string;
   instanceId: string;
   epoch: string | null;
+  visible: boolean;
 }
 
-export function InteractiveGoalRecovery({ client, sessionId, instanceId, epoch }: Props) {
+export function InteractiveGoalRecovery({ client, sessionId, instanceId, epoch, visible }: Props) {
   const { t } = useTranslation("panels");
   const [observed, setObserved] = useState<{ epoch: string; recovery: InteractiveGoalRecoveryV1 | null }>();
   useEffect(() => {
-    if (epoch === null) return;
+    if (!visible || epoch === null) return;
     let current = true;
     void client.interactiveGoalRecovery?.({
       sessionId, serviceInstanceId: instanceId, connectionEpoch: epoch,
@@ -24,11 +25,12 @@ export function InteractiveGoalRecovery({ client, sessionId, instanceId, epoch }
       if (current) setObserved({ epoch, recovery: null });
     });
     return () => { current = false; };
-  }, [client, sessionId, instanceId, epoch]);
+  }, [client, sessionId, instanceId, epoch, visible]);
 
-  const recovery = observed?.epoch === epoch ? observed?.recovery : undefined;
-  if (!epoch || recovery?.presence === "absent") return null;
+  const recovery = !epoch || observed?.epoch === epoch ? observed?.recovery : undefined;
+  if (recovery?.presence === "absent" || (!epoch && recovery?.presence !== "present")) return null;
   return <section className="execution-detail interactive-goal" aria-label={t("interactiveGoal.recovery.title")}>
+    <h3>{t("interactiveGoal.recovery.title")}</h3>
     <p>{t("interactiveGoal.recovery.readOnly")}</p>
     {recovery?.presence === "present" ? <dl>
       <dt>{t("goalProgress.status")}</dt><dd>{recovery.goalStatus === "active"

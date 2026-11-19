@@ -157,6 +157,7 @@ export interface SessionSnapshot {
   readonly context: ContextIdentity;
   readonly messages: readonly ConversationMessage[];
   readonly execution?: ExecutionProjection | null;
+  readonly latestTerminalExecution?: ExecutionProjection | null;
   readonly supportsGoalProgress?: true;
   readonly supportsGoalStart?: true;
   readonly supportsInteractiveGoal?: true;

@@ -47,7 +47,8 @@
       "failed": "目标命令失败",
       "unknown": "目标命令结果未知",
       "sending": "正在发送目标命令…",
-      "unconfirmed": "目标命令 {{id}} 尚未确认。"
+      "unconfirmed": "目标命令尚未确认。",
+      "id": "命令 ID"
     },
     "title": "开发目标",
     "shortcut": "目标",
@@ -107,7 +108,7 @@
     },
     "title": "Goal 进度",
     "goal": "Goal ID",
-    "status": "状态",
+    "status": "目标状态",
     "batches": "已记录批次",
     "models": "模型调用次数",
     "advances": "推进次数",
@@ -128,11 +129,12 @@
       "superseded": "已被替代",
       "not_checked": "未检查",
       "unknown": "未知"
-    }
+    },
+    "latestBatch": "最近一批"
   },
   "execution": {
     "failureCode": "失败代码",
-    "details": "在线执行详情",
+    "details": "执行详情",
     "title": "执行",
     "source": "来源",
     "notObserved": "未观测到",
@@ -145,7 +147,29 @@
     "completeSnapshot": "完整快照",
     "status": "执行{{status}}",
     "lastKnownStatus": "执行的最后已知状态：{{status}}（连接已断开）",
-    "revision": "执行状态版本"
+    "revision": "执行状态版本",
+    "current": "当前工作",
+    "stale": "显示最后确认的信息，当前状态可能已变化。",
+    "stop": "停止执行",
+    "stopping": "已请求停止",
+    "attention": "需要你处理",
+    "openApproval": "前往工具审批",
+    "openQuestion": "前往会话问题",
+    "reviewNeeded": "等待目标评审",
+    "recent": "最近一次执行",
+    "openConversation": "查看会话",
+    "openReview": "审阅工作区",
+    "unresolved": "部分工作结果尚未确认。",
+    "states": {
+      "idle": "当前没有正在执行的工作。",
+      "accepted": "准备中",
+      "running": "运行中",
+      "waiting": "等待你处理",
+      "succeeded": "已完成",
+      "failed": "已失败",
+      "interrupted": "已中断",
+      "unknown": "当前状态暂不可确认"
+    }
   },
   "header": {
     "actions": "会话操作",
@@ -184,7 +208,7 @@
     "title": "工作面板",
     "close": "关闭工作面板",
     "panels": "工作面板选项卡",
-    "tasks": "任务",
+    "tasks": "执行",
     "agents": "子智能体"
   },
   "tasks": {

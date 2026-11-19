@@ -11,7 +11,8 @@ export interface ChoiceAnswer {
   readonly executionId?: string;
 }
 
-export function UserChoiceCard({ question, answer, enabled, onChange, onConfirm }: {
+export function UserChoiceCard({ question, answer, enabled, onChange, onConfirm, anchorId }: {
+  anchorId?: string;
   question: UserChoicePromptV1;
   answer?: ChoiceAnswer;
   enabled: boolean;
@@ -28,7 +29,7 @@ export function UserChoiceCard({ question, answer, enabled, onChange, onConfirm 
     return <ChoiceReceipt label={selected.label} text={[question.question, notes.trim()].filter(Boolean).join("\n")} />;
   }
 
-  return <form className="user-choice" aria-label={t("choice.title")} onSubmit={(event) => {
+  return <form className="user-choice" id={anchorId} tabIndex={anchorId ? -1 : undefined} aria-label={t("choice.title")} onSubmit={(event) => {
     event.preventDefault();
     if (!editable || !selected) return;
     const parts: string[] = [t("choice.answer", { question: question.question, id: selected.id, label: selected.label })];

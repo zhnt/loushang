@@ -9,6 +9,7 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
+import { ExecutionPanel } from "./ExecutionPanel";
 import { GoalProgress } from "./GoalProgress";
 import { InteractiveGoalRecovery } from "./InteractiveGoalRecovery";
 import { InteractiveGoal } from "./InteractiveGoal";
@@ -130,8 +131,8 @@ function fixturePlayback(client: HarnessClientUiPort): FixturePlaybackPort | nul
 const dockTabs = [
   { id: "environment", label: "workspace:environment.title" },
   { id: "tasks", label: "panels:dock.tasks" },
-  { id: "agents", label: "panels:dock.agents" },
   { id: "review", label: "panels:changes.review" },
+  { id: "agents", label: "panels:dock.agents" },
 ] as const;
 
 interface FirstMessagePreview {
@@ -438,7 +439,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const history = useSessionHistory(selectionKey ?? client, visibleSessionId, state.remote.sessions, selectSession);
   const panelOpen = state.local.dockOpen;
   const environmentOpen = state.local.dockOpen && state.local.dockTab === "environment";
-  const tasksOpen = state.local.dockOpen && state.local.dockTab === "tasks";
   const visibleMessages = selected?.messages.filter((message) => message.systemNotice !== "resumesRuntime");
   const conversationOpen = Boolean(selected || draft);
   const firstMessage = selected && firstMessages[selected.id];
@@ -475,7 +475,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     }
     refreshRef.current?.();
   }
-  const [openGoalScope, setOpenGoalScope] = useState<string | null>(null);
+  const [openDraftGoal, setOpenDraftGoal] = useState<string | null>(null);
   const goalPanelId = useId();
   const goalSource = state.remote.source.kind === "live" ? state.remote.source : null;
   const canReadGoalHistory = selected?.supportsInteractiveGoalRecovery && client.interactiveGoalRecovery;
@@ -483,12 +483,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     && client.createInteractiveGoal && client.interactiveGoalStatus;
   const goalPanelScope = selected && goalSource && (canReadGoalHistory || canControlGoal)
     ? JSON.stringify([goalSource.connectionId, goalSource.serviceInstanceId, goalSource.muxSpaceId, selected.id]) : null;
-  const goalPanelOpen = tasksOpen && goalPanelScope !== null && goalPanelScope === openGoalScope;
+  const goalEpoch = connected && selectionReady && !syncing ? goalSource?.connectionEpoch ?? null : null;
+  const dockTab = state.local.dockTab === "agents" && !hasCapability(state, "agents")
+    ? "tasks" : state.local.dockTab;
+  const goalPanelOpen = state.local.dockOpen && dockTab === "tasks" && goalPanelScope !== null;
   const rightVisible = Boolean(selected) && state.local.dockOpen;
   const openTasks = () => dispatch({ type: "dock.opened", tab: "tasks" });
   const toggleEnvironment = () => dispatch(environmentOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: "environment" });
   const toggleDock = () => dispatch(panelOpen ? { type: "dock.closed" }
-    : { type: "dock.opened", tab: state.local.dockTab });
+    : { type: "dock.opened", tab: dockTab });
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
@@ -563,9 +566,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     (state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline")
     || (state.remote.source.kind === "live" && connected)
   );
-  const goalStart = useGoalStart(client, selected, connected && state.remote.source.kind === "live"
-    ? state.remote.source : null, controlsAllowed);
   const mutationsAllowed = controlsAllowed && !awaitingPublication && !modelPending;
+  const goalStart = useGoalStart(client, selected, goalSource, mutationsAllowed && !goalBusy);
+  const interruptAllowed = controlsAllowed && !goalBusy && !selected?.execution?.interruptRequested;
   const submitAllowed = mutationsAllowed && !goalBusy && !failure?.pending && (
     state.remote.source.kind === "fixture"
     || sessionModels?.models.some((model) => model.id === sessionModels.currentId)
@@ -603,6 +606,19 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const choiceAnswer = question && storedAnswer?.questionId === question.questionId ? storedAnswer : undefined;
   const rejectedBeforeInput = choiceAnswer?.executionId && selected?.execution?.id === choiceAnswer.executionId
     && (selected.execution.status === "failed" || selected.execution.status === "interrupted");
+
+  const interactionId = useId();
+  const pendingApproval = selected?.pendingApprovals?.find((approval) => approval.status === "pending");
+  const questionNeedsAnswer = question && (rejectedBeforeInput || !choiceAnswer?.status || choiceAnswer.status === "rejected");
+  function showTranscriptTarget(targetId?: string) {
+    const transcript = transcriptRef.current;
+    if (!transcript) return;
+    const target = targetId ? document.getElementById(targetId) : transcript;
+    if (!target || !transcript.contains(target)) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView?.({ block: "nearest" });
+    if (!targetId) transcript.scrollTop = transcript.scrollHeight;
+  }
 
   function updateAnswer(answer: ChoiceAnswer) {
     if (choiceKey) setChoiceAnswers((current) => ({ ...current, [choiceKey]: answer }));
@@ -667,7 +683,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }
 
   async function interrupt(): Promise<void> {
-    if (!selected || syncPendingRef.current || controlPendingRef.current || !controlsAllowed || selected.status !== "running") return;
+    if (!selected || syncPendingRef.current || controlPendingRef.current || !interruptAllowed || selected.status !== "running") return;
     controlPendingRef.current = true;
     setControlPending("interrupt");
     try {
@@ -865,7 +881,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const draftEnabled = projectNavigation ? projectNavigation.available && !projectNavigation.pending
     : connected || Boolean(draft?.binding);
   const draftGoalScope = draft && !fixture && draftEnabled ? draft.id : null;
-  const draftGoalOpen = draftGoalScope !== null && draftGoalScope === openGoalScope;
+  const draftGoalOpen = draftGoalScope !== null && draftGoalScope === openDraftGoal;
   const draftModelTarget = draftCreation.draft?.target;
   const draftModels = useDraftModels(
     draftModelTarget?.hostKey === draftHost ? draftModelTarget : undefined, draftEnabled,
@@ -924,7 +940,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     onSubmit: () => void submit(state.local.drafts[selected.id] ?? ""),
     disabled: installedClient !== client || !selectionReady,
     onInterrupt: selected.status === "running" ? () => void interrupt() : undefined,
-    buttonDisabled: selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim(),
+    buttonDisabled: selected.status === "running" ? !interruptAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim(),
     notice: <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>,
   } : null;
 
@@ -995,7 +1011,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
             <>
               <div className="transcript markdown-reading"
                 data-markdown-theme={markdown.theme}
-                aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
+                aria-label={t("session:transcript.label")} aria-live="polite" tabIndex={-1} ref={transcriptRef}
                 onScroll={selected ? (event) => {
                   const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
                   const following = !fixture && scrollHeight - clientHeight - scrollTop <= 32;
@@ -1029,7 +1045,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                       </article>
                     ); })}
                     {selected.pendingApprovals?.map((approval) => (
-                      <ToolApproval key={approval.interactionId} approval={approval}
+                      <ToolApproval key={approval.interactionId} approval={approval} anchorId={`${interactionId}-${approval.interactionId}`}
                         scope={projectContext ?? (workspaceContext === TEMPORARY_WORKSPACE ? t("workspace:sidebar.temporaryChats") : undefined)}
                         enabled={connected && selectionReady && !syncing && Boolean(client.respondInteraction)}
                         onRespond={(outcome) => {
@@ -1038,11 +1054,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                           }
                         }} />
                     ))}
-                    {question && choiceKey ? <UserChoiceCard key={question.questionId} question={question}
+                    {question && choiceKey ? <UserChoiceCard key={question.questionId} question={question} anchorId={interactionId}
                       answer={rejectedBeforeInput && choiceAnswer ? { ...choiceAnswer, status: "rejected" } : choiceAnswer}
                       enabled={Boolean(submitAllowed && selected.status !== "running")}
                       onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
-                    {selected.execution || (tasksAvailable && selected.run) || goalStart.start || goalStart.attempt ? <button
+                    {selected.execution || (fixture && tasksAvailable && selected.run) || goalStart.start || goalStart.attempt ? <button
                       className="execution-summary" type="button" onClick={openTasks}>
                       {selected.execution ? t(!fixture && !connected ? "panels:execution.lastKnownStatus" : "panels:execution.status",
                         { status: valueLabel(selected.execution.status) })
@@ -1120,11 +1136,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   leadingAction={goalPanelScope || draftGoalScope ? <button type="button" className="composer-goal"
                     aria-label={t("panels:interactiveGoal.title")} title={t("panels:interactiveGoal.title")}
                     aria-expanded={goalPanelOpen || draftGoalOpen} aria-controls={goalPanelId} onClick={() => {
-                      if (draftGoalScope) setOpenGoalScope(draftGoalOpen ? null : draftGoalScope);
-                      else {
-                        setOpenGoalScope(goalPanelOpen ? null : goalPanelScope);
-                        if (!goalPanelOpen) openTasks();
-                      }
+                      if (draftGoalScope) setOpenDraftGoal(draftGoalOpen ? null : draftGoalScope);
+                      else if (goalPanelOpen) dispatch({ type: "dock.closed" });
+                      else openTasks();
                     }}><UiIcon name="goal" /><span>{t("panels:interactiveGoal.shortcut")}</span></button> : null}
                   model={<ModelPicker
                     models={draft ? draftModels.models : sessionModels}
@@ -1149,26 +1163,38 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
 
         {selected ? (
           <WorkDock key={JSON.stringify([selectionKey, selected.id])}
-            open={rightVisible} stale={!fixture && !connected} tab={state.local.dockTab}
+            open={rightVisible} tab={dockTab}
             state={state} session={selected} workspacePath={workspacePath} temporaryWorkspace={temporaryWorkspace} selectedDocument={selectedDocument}
             inspectWorkspace={inspectWorkspace} openWorkspacePath={openWorkspacePath}
-            goalControls={<>
-              <GoalStart {...goalStart} />
-              {goalPanelScope && goalSource ? <div id={goalPanelId} hidden={!goalPanelOpen}>
-                {canReadGoalHistory && goalPanelOpen ? <InteractiveGoalRecovery
-                  key={JSON.stringify([goalPanelScope, goalSource.connectionEpoch])}
-                  client={client} sessionId={selected.id} instanceId={goalSource.serviceInstanceId}
-                  epoch={connected && selectionReady && !syncing ? goalSource.connectionEpoch : null} /> : null}
-                {canControlGoal ? <InteractiveGoal key={goalPanelScope}
-                  client={client} session={selected} instanceId={goalSource.serviceInstanceId}
-                  epoch={connected && selectionReady && !syncing ? goalSource.connectionEpoch : null}
-                  enabled={goalPanelOpen && mutationsAllowed} reviewDiff={reviewDiff} scopeKey={modelScope} setBusyScope={setGoalBusyScope} /> : null}
-              </div> : null}
-            </>}
-            goalProgress={selected.execution && selected.supportsGoalProgress && client.goalProgress && goalSource ? (
-              <GoalProgress key={JSON.stringify([goalSource.serviceInstanceId, goalSource.muxSpaceId, selected.id, selected.execution.id])}
-                client={client} sessionId={selected.id} execution={selected.execution} connected={connected} />
-            ) : null}
+            executionPanel={{
+              stale: !fixture && !goalEpoch,
+              hasInteractiveGoal: Boolean(canControlGoal),
+              goalControls: <>
+                <GoalStart {...goalStart} />
+                {goalPanelScope && goalSource ? <div id={goalPanelId}>
+                  {canReadGoalHistory ? <InteractiveGoalRecovery key={goalPanelScope}
+                    client={client} sessionId={selected.id} instanceId={goalSource.serviceInstanceId}
+                    epoch={goalEpoch} visible={goalPanelOpen} /> : null}
+                  {canControlGoal ? <InteractiveGoal key={goalPanelScope}
+                    client={client} session={selected} instanceId={goalSource.serviceInstanceId}
+                    epoch={goalEpoch} enabled={goalPanelOpen && mutationsAllowed}
+                    reviewDiff={reviewDiff} scopeKey={modelScope} setBusyScope={setGoalBusyScope} /> : null}
+                </div> : null}
+              </>,
+              goalProgress: selected.execution && selected.supportsGoalProgress && client.goalProgress && goalSource ? (
+                <GoalProgress key={JSON.stringify([goalSource.connectionId, goalSource.serviceInstanceId, goalSource.muxSpaceId, selected.id, selected.execution.id])}
+                  client={client} sessionId={selected.id} execution={selected.execution}
+                  connected={Boolean(goalEpoch)} showGoalStatus={!canControlGoal && !canReadGoalHistory} />
+              ) : null,
+              onInterrupt: !fixture && selected.status === "running" && !goalBusy ? () => void interrupt() : undefined,
+              interruptDisabled: !interruptAllowed,
+              onApproval: pendingApproval && client.respondInteraction
+                ? () => showTranscriptTarget(`${interactionId}-${pendingApproval.interactionId}`) : undefined,
+              onQuestion: questionNeedsAnswer ? () => showTranscriptTarget(interactionId) : undefined,
+              onConversation: visibleMessages?.length ? () => showTranscriptTarget() : undefined,
+              onReview: inspectWorkspace || (changesAvailable && selected.changeSet?.files.length)
+                ? () => dispatch({ type: "dock.opened", tab: "review" }) : undefined,
+            }}
             onClose={() => dispatch({ type: "dock.closed" })}
             onTab={(tab) => dispatch({ type: "dock.opened", tab })}
             onSelectDocument={(documentId) => dispatch({ type: "document.selected", sessionId: selected.id, documentId })}
@@ -1421,31 +1447,6 @@ function isStale(state: GuiState): boolean {
   return state.remote.connection === "disconnected" || state.remote.connection === "resync-required";
 }
 
-function ExecutionDetail({ execution, stale }: {
-  readonly execution: NonNullable<SessionSnapshot["execution"]>;
-  readonly stale: boolean;
-}) {
-  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
-  return (
-    <details className="execution-detail" aria-label={t("panels:execution.details")}>
-      <summary>
-        <span className={`run-indicator ${stale ? "unknown" : execution.status}`} aria-hidden="true">◌</span>
-        <strong>{t("panels:execution.details")}</strong>
-        <span className="execution-disclosure" aria-hidden="true">⌄</span>
-      </summary>
-      <dl>
-        <dt>{t("panels:execution.title")}</dt><dd><code>{execution.id}</code></dd>
-        <dt>{t("panels:execution.revision")}</dt><dd>{execution.revision}</dd>
-        {execution.errorCode ? <><dt>{t("panels:execution.failureCode")}</dt><dd><code>{execution.errorCode}</code></dd></> : null}
-        <dt>{t("panels:execution.source")}</dt><dd>{(execution.sourceStatus ? valueLabel(execution.sourceStatus) : null) ?? t("panels:execution.notObserved")}</dd>
-        <dt>{t("panels:execution.finalCursor")}</dt><dd>{execution.finalCursor ?? t("panels:execution.notTerminal")}</dd>
-        <dt>{t("session:composer.interrupt")}</dt><dd>{execution.interruptRequested ? t("panels:execution.requested") : t("panels:execution.notRequested")}</dd>
-        <dt>{t("panels:execution.transcript")}</dt><dd>{execution.truncated ? t("panels:execution.truncated") : t("panels:execution.completeSnapshot")}</dd>
-      </dl>
-    </details>
-  );
-}
-
 function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen, onOpenDock }: {
   readonly title?: string;
   readonly contextLabel?: string;
@@ -1551,13 +1552,11 @@ function QuickLook({ document, onClose, onOpenReview }: {
 
 interface WorkDockProps {
   readonly open: boolean;
-  readonly stale: boolean;
   readonly workspacePath?: string;
   readonly temporaryWorkspace?: boolean;
   readonly inspectWorkspace?: (review: boolean) => Promise<Inspection>;
   readonly openWorkspacePath?: () => Promise<unknown>;
-  readonly goalControls: ReactNode;
-  readonly goalProgress: ReactNode;
+  readonly executionPanel: Omit<React.ComponentProps<typeof ExecutionPanel>, "session" | "fixtureRun">;
   readonly tab: DockTab;
   readonly state: GuiState;
   readonly session: SessionSnapshot;
@@ -1572,14 +1571,14 @@ interface WorkDockProps {
 
 function WorkDock(props: WorkDockProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
-  const { open, stale, tab, state, session, selectedDocument, goalControls, goalProgress,
+  const { open, tab, state, session, selectedDocument, executionPanel,
     onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
   const facet = tab === "environment" ? "workspace" : tab === "review" ? "changes" : tab;
   const available = hasCapability(state, facet);
   const live = state.remote.source.kind === "live";
   const [inspectionRefresh, setInspectionRefresh] = useState(0);
   const showRefresh = live && props.inspectWorkspace && (tab === "environment" || tab === "review");
-  const showTasks = tab === "tasks" && open;
+  const agentsAvailable = hasCapability(state, "agents");
   const visibleRun = session.run ? {
     ...session.run,
     tasks: hasCapability(state, "tasks") ? session.run.tasks : [],
@@ -1599,7 +1598,7 @@ function WorkDock(props: WorkDockProps) {
         </div>
       </header>
       <nav className="dock-tabs" aria-label={t("panels:dock.panels")}>
-        {dockTabs.map((item) => (
+        {dockTabs.filter((item) => item.id !== "agents" || agentsAvailable).map((item) => (
           <button type="button" key={item.id} aria-pressed={tab === item.id} onClick={() => onTab(item.id)}>
             {t(item.label)}
           </button>
@@ -1607,21 +1606,13 @@ function WorkDock(props: WorkDockProps) {
       </nav>
       <div className="dock-content">
         <div className="dock-task-content" hidden={tab !== "tasks"}>
-          {showTasks && (session.execution ? <p className="task-summary">
-            {t(stale ? "panels:execution.lastKnownStatus" : "panels:execution.status",
-              { status: valueLabel(session.execution.status) })}
-          </p> : visibleRun && hasCapability(state, "tasks") ? <p className="task-summary">{visibleRun.title}</p> : null)}
-          {goalControls}
-          {showTasks && (visibleRun && hasCapability(state, "tasks") ? <>
-            <RunActivity run={visibleRun} expanded={Boolean(state.local.expandedActivities[visibleRun.id])}
-              onToggle={() => props.onToggleActivity(visibleRun.id)} onSelectTask={onSelectTask} />
-            <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId}
-              onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
-          </> : !session.execution && !session.supportsInteractiveGoal && !session.supportsInteractiveGoalRecovery
-            ? <UnavailablePanel label={hasCapability(state, "tasks") ? t("panels:tasks.projection")
-              : t("workspace:capability.missing", { capability: capabilityLabel("tasks") })} /> : null)}
-          {goalProgress}
-          {showTasks && session.execution ? <ExecutionDetail execution={session.execution} stale={stale} /> : null}
+          <ExecutionPanel {...executionPanel} session={session}
+            fixtureRun={open && tab === "tasks" && state.remote.source.kind === "fixture" && visibleRun && hasCapability(state, "tasks") ? <>
+              <RunActivity run={visibleRun} expanded={Boolean(state.local.expandedActivities[visibleRun.id])}
+                onToggle={() => props.onToggleActivity(visibleRun.id)} onSelectTask={onSelectTask} />
+              <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId}
+                onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
+            </> : null} />
         </div>
         {tab === "tasks" ? null : tab === "environment" && live ? <>
           <LiveContextPanel state={state} session={session} workspacePath={props.workspacePath}

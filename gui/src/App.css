@@ -187,13 +187,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .activity-summary strong { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 570; text-overflow: ellipsis; white-space: nowrap; }
 .activity-summary small { margin-top: 3px; color: var(--faint); font-size: 12px; }
 .run-indicator.running { color: var(--control-focus); animation: spin 1.25s linear infinite; }
-.execution-detail { margin: 10px 0; border-block: 1px solid var(--line); padding: 10px 0; color: var(--ink); }
-.execution-detail summary { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 8px; cursor: pointer; }
-.execution-disclosure { color: var(--muted); font-size: 11px; }
-.execution-detail[open] .execution-disclosure { transform: rotate(180deg); }
-.execution-detail dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 7px 12px; margin: 12px 26px 2px; font-size: 12px; }
-.execution-detail dt { color: var(--muted); }
-.execution-detail dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .activity-list { display: grid; gap: 9px; margin: 0; padding: 0 1px 12px 28px; list-style: none; }
 .activity-list li { display: grid; grid-template-columns: 23px minmax(0, 1fr) auto; align-items: start; gap: 5px; color: var(--faint); font-size: 12px; }
 .activity-list li > div { min-width: 0; display: grid; gap: 3px; }
@@ -250,7 +243,7 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .dock-header { display: flex; align-items: center; justify-content: space-between; padding-inline: 16px 12px; }
 .dock-header strong { font-size: 14px; font-weight: 600; }
 .dock-header-actions { display: flex; align-items: center; gap: 4px; }
-.dock-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-inline: 16px; border-bottom: 1px solid var(--line); }
+.dock-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); padding-inline: 16px; border-bottom: 1px solid var(--line); }
 .dock-tabs button { position: relative; padding: 0 2px; border: 0; border-radius: 6px 6px 0 0; color: var(--muted); background: transparent; font-size: 13px; }
 .dock-tabs button:hover { color: var(--ink); background: var(--control-hover); }
 .dock-tabs button[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
@@ -532,7 +525,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .user-choice .primary-button { justify-self: start; min-height: 34px; }
 .user-choice > p { margin-bottom: 0; color: var(--muted); }
 .goal-start p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
-.goal-progress > strong { display: block; padding: 8px 12px 0; }
 .goal-work { margin: 12px 12px 0; font-size: 12px; }
 .goal-work > summary { display: list-item; padding-block: 6px; font-weight: 680; }
 .goal-work table { width: 100%; border-collapse: collapse; text-align: start; }
@@ -791,3 +783,25 @@ summary.inspection-file-row:focus-visible,
 }
 .inspection-stat span:first-child, .inspection-diff .added { color: var(--green); }
 .inspection-stat span:last-child, .inspection-diff .removed { color: var(--red); }
+
+.execution-section { min-width: 0; padding: 4px 0 10px; border-bottom: 1px solid var(--line); }
+.execution-section h2 { margin: 0 0 8px; color: var(--ink-secondary); font-size: 13px; font-weight: 600; }
+.execution-section h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.execution-state { margin: 0 0 8px; color: var(--ink); font-size: 13px; }
+.execution-state[data-status="idle"] { color: var(--muted); }
+.execution-state[data-status="running"] { color: var(--control-focus); }
+.execution-state[data-status="succeeded"] { color: var(--green); }
+.execution-state[data-status="failed"] { color: var(--red); }
+.execution-state[data-status="waiting"] { color: var(--warning); }
+.execution-note { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.execution-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.execution-section .execution-detail { padding: 6px 0 0; }
+.execution-section details > summary { display: list-item; color: var(--muted); cursor: pointer; font-size: 12px; }
+.execution-section :is(.goal-work, .goal-work-note) { margin-inline: 0; }
+.execution-section .goal-technical { padding-inline: 0; }
+.execution-section dl { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: 6px 10px; margin: 6px 0; font-size: 12px; }
+.execution-section dt { color: var(--muted); }
+.execution-section dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.execution-section > button + .goal-start { margin-top: 8px; }
+.goal-review-entry { margin-block-start: 8px; }
+.tool-approval:focus-visible, .user-choice:focus-visible { outline: 2px solid var(--control-focus); outline-offset: 2px; }

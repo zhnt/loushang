@@ -70,6 +70,23 @@ describe("native live initial snapshot", () => {
     expect(messages[2].systemNotice).toBe("resumesRuntime");
     expect(messages[2].content).toBe("Sending a message resumes the session runtime.");
   });
+  it("projects the latest terminal execution separately from a newer active execution", () => {
+    const snapshot = nativeSnapshot();
+    const { executions, source } = snapshot.sessions[0];
+    source.observation = { executionId: "new", status: "running", finalCursor: null };
+    executions.active = { executionId: "new", status: "running", revision: 2, interruptRequested: false, outcome: null };
+    executions.latestTerminal = {
+      executionId: "previous", status: "interrupted", revision: 3, interruptRequested: true,
+      outcome: { status: "interrupted", errorCode: null, legacyResult: {} },
+    };
+    executions.quiescent = { executionId: "previous", status: "interrupted", finalCursor: 42 };
+
+    const [session] = projectNativeInitialSnapshot(snapshot).sessions;
+    expect(session.execution).toMatchObject({ id: "new", status: "running", finalCursor: null });
+    expect(session.latestTerminalExecution).toMatchObject({
+      id: "previous", status: "interrupted", sourceStatus: "interrupted", finalCursor: 42,
+    });
+  });
   it("accepts restored execution submission mode and rejects noncanonical values", () => {
     const snapshot = nativeSnapshot();
     expect(() => projectNativeInitialSnapshot(snapshot)).not.toThrow();

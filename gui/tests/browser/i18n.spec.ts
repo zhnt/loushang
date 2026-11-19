@@ -125,7 +125,7 @@ test("open panels and raw documents survive language changes through complete pl
   await page.getByRole("button", { name: "打开完整审阅 →" }).click();
   await expect(page.getByRole("button", { name: "提交或推送" })).toBeDisabled();
   await expect(page.locator(".review-panel pre")).toHaveText(rawDiff);
-  await page.locator(".dock-tabs").getByRole("button", { name: "任务", exact: true }).click();
+  await page.locator(".dock-tabs").getByRole("button", { name: "执行", exact: true }).click();
   const taskTitle = await page.locator(".selection-detail h2").innerText();
   await changeLanguage(page, "en-US");
   await expect(page.locator(".selection-detail h2")).toHaveText(taskTitle);
