@@ -44,6 +44,7 @@ from loushang.harness.worker.journal import (
 )
 
 from ._activation import (
+    _RetainedAttemptFields,
     decode_activation_history,
     project_retained_attempts,
     validate_activation_attempt_history,
@@ -310,6 +311,9 @@ class WindowsSupervisorJournal(WorkerSupervisorJournal):
         windows_flush_file(lock.fileno())
 
 
+_RecoveredAttemptT = TypeVar("_RecoveredAttemptT", bound=_RetainedAttemptFields)
+
+
 class WindowsActivationStateJournal(Generic[_T]):
     """Append and reopen C5 CAS revisions under the original Windows root."""
 
@@ -353,6 +357,26 @@ class WindowsActivationStateJournal(Generic[_T]):
         """Inventory historical attempts without creating or pruning state."""
         _present, records = self._read_records_with_presence()
         return project_retained_attempts(records, record_type=self._retained_type)
+
+    @staticmethod
+    def require_recovered(
+        journal: Callable[[], WindowsActivationStateJournal[_RecoveredAttemptT]],
+        *,
+        failure: Callable[[], RuntimeError],
+    ) -> None:
+        """Refuse interrupted ownership or unsettled attempts using only reads.
+
+        Construct each journal at its original read site; the second read must
+        not reuse a potentially stale journal or manufacture a missing owner.
+        """
+        present, state = journal().load_with_presence_read_only()
+        if present and state is None:
+            raise failure()
+        if state is not None and any(
+            attempt.phase != "settled"
+            for attempt in journal().retained_attempts_read_only()
+        ):
+            raise failure()
 
     def records_with_presence_read_only(self) -> tuple[bool, tuple[_StateRecord, ...]]:
         """Expose the same validated read to guarded Product history capture."""
