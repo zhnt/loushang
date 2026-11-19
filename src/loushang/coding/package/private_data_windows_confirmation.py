@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal.codec import decode_json_record
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -28,7 +29,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     coding_arch_installation_private_data_root,

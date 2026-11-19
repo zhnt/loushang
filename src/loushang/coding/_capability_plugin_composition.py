@@ -15,16 +15,16 @@ from loushang.coding._capability_plugin_specs import (
     CodingCapabilityToolOwner,
     ordered_coding_capability_plugin_specs,
 )
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycle,
-    CodingPluginManagementChange,
-    CodingPluginSessionLease,
-)
 from loushang.coding._resource_catalog_adapter import (
     complete_coding_package_plugin_selection_seed,
 )
 from loushang.coding.plugin_dependency_grants import (
     coding_plugin_distribution_evidence_resolver,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycle,
+    CodingPluginManagementChange,
+    CodingPluginSessionLease,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.coding.resource_runtime import CodingPackageMaterializer

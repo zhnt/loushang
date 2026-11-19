@@ -71,10 +71,10 @@ flowchart TD
 
 ### S3 禁用插件
 
-1. 本地 SDK `CodingPluginManagementCommandClientV1.submit_desired`、Coding RPC adapter 均调用 `submit_plugin_desired_command`；RPC handler 本身只绑定 Product 提供的 client，并不拥有管理状态。[SDK](../../../../../src/loushang/coding/plugin_management_command_sdk.py)、[Coding RPC](../../../../../src/loushang/coding/plugin_management_command_rpc.py)、[Harness RPC](../../../../../src/loushang/harness/host/rpc/commands/plugin_desired.py)
+1. 本地 SDK `CodingPluginManagementCommandClientV1.submit_desired`、Coding RPC adapter 均调用 `submit_plugin_desired_command`；RPC handler 本身只绑定 Product 提供的 client，并不拥有管理状态。[SDK](../../../../../src/loushang/coding/plugin_manager/command_sdk.py)、[Coding RPC](../../../../../src/loushang/coding/plugin_manager/command_rpc.py)、[Harness RPC](../../../../../src/loushang/harness/host/rpc/commands/plugin_desired.py)
 2. 共享函数将 disable 映射为 `installed_disabled`，携带 Product scope、operation identity 和 expected inventory revision，经 command application 进入 `PluginManagementService.submit`。[desired command](../../../../../src/loushang/harness/plugin_management/desired_command.py)、[application](../../../../../src/loushang/harness/plugin_management/application.py)
 3. Service 在原 GC reference guard / journal lock 下重放操作、处理幂等，再写 accepted、提交 desired transition、交接 retirement 并推进结果；各阶段通过既有恢复逻辑衔接，并非多文件原子事务。[Service](../../../../../src/loushang/harness/plugin_management/service.py)、[Desired ledger](../../../../../src/loushang/harness/plugin_management/ledger.py)
-4. 活动 Session 的租约保留原代。Coding `_prepare_resource_refresh` 检查管理变化，遇到 `restart_required` 记录诊断并拒绝该刷新；它不是立即卸载已经运行的 Plugin。[Session](../../../../../src/loushang/coding/session/agent_session.py)、[租约判断](../../../../../src/loushang/coding/_plugin_lifecycle.py)
+4. 活动 Session 的租约保留原代。Coding `_prepare_resource_refresh` 检查管理变化，遇到 `restart_required` 记录诊断并拒绝该刷新；它不是立即卸载已经运行的 Plugin。[Session](../../../../../src/loushang/coding/session/agent_session.py)、[租约判断](../../../../../src/loushang/coding/plugin_manager/lifecycle.py)
 
 **判定：**入口已有共同管理服务，不应再造“统一插件管理器”。desired 与 effective 的短暂差异是代际租约语义，不应简单当成冗余。对用户应分别解释“已禁用、当前 Session 仍固定原代、需要重启”。
 
@@ -85,7 +85,7 @@ flowchart TD
 1. `AgentProductSession.dispose` 先 `prepare_execution_release`，再进入 adapter/operations 的停止资源 watch、关闭 refresh、发送 shutdown 等流程；runtime 关闭执行准入并等待 backend。[Session](../../../../../src/loushang/harness/session/agent_product.py)、[operations](../../../../../src/loushang/harness/session/operations_runtime.py)、[runtime](../../../../../src/loushang/harness/session/runtime.py)
 2. Coding `_dispose_session_runtime_profile` 先关闭借用父依赖的 deferred LSP，再处理 Worker tool lease，调用共享父实现；LSP 关闭抛错时保留原对象与依赖以便重试。[Coding hook](../../../../../src/loushang/coding/session/agent_session.py)
 3. Harness 父实现停止模型调用/输出生产者、结清 output capture，撤销 owner generations，再调用原 Graph Binder dispose。Graph 将可见节点失效并保留待退役节点；`is_closed` 不等于没有 pending retirements。[共享 hook](../../../../../src/loushang/harness/session/agent_product.py)、[Binder](../../../../../src/loushang/harness/capabilities/graph_binding.py)
-4. Coding 获取原 retirement receipts，核验 graph/owner/component 清理状态后 `release_management`、清理 private state；Session lease 的 close 还核对 owner-generation evidence 才释放 family。其后按原职责清理 sandbox / Product runtime 等资源，错误向上返回。[assembly](../../../../../src/loushang/coding/_capability_plugin_composition.py)、[lease](../../../../../src/loushang/coding/_plugin_lifecycle.py)
+4. Coding 获取原 retirement receipts，核验 graph/owner/component 清理状态后 `release_management`、清理 private state；Session lease 的 close 还核对 owner-generation evidence 才释放 family。其后按原职责清理 sandbox / Product runtime 等资源，错误向上返回。[assembly](../../../../../src/loushang/coding/_capability_plugin_composition.py)、[lease](../../../../../src/loushang/coding/plugin_manager/lifecycle.py)
 
 **判定：**关停存在多个协作 owner，不是重复关闭同一个对象的充分证据。已证实公共清理模式分散，但本轮没有证明双重释放或死锁。重构必须保留子组件先退役、失败凭据与依赖仍可重试的约束。
 
@@ -113,7 +113,7 @@ flowchart TD
 | LSP、Workspace、sandbox、output captures | 具体 Provider/process/output owner；Session 持清理句柄 | 子组件先关、原依赖后放；失败仍保留重试凭据 | 保留；Product 只注入领域参数与实现 |
 | 兼容输入、migration 与旧格式投影 | 原 migration journal 和 Coding 兼容桥接 | 正式状态驱动兼容投影；按升级/降级契约退出 | 有退出债务，尚不能直接删除 |
 
-主要源码：[_plugin_lifecycle](../../../../../src/loushang/coding/_plugin_lifecycle.py)、[owner evidence](../../../../../src/loushang/coding/_plugin_owner_generations.py)、[instance runtime](../../../../../src/loushang/harness/plugin_management/instance_runtime.py)、[package lifecycle](../../../../../src/loushang/harness/plugin_management/package_lifecycle.py)、[Product runtime](../../../../../src/loushang/coding/package/product_runtime.py)、[资源装载](../../../../../src/loushang/harness/resources/_loader_pipeline.py)。Product layout 决定物理位置不等于 Product 重新实现各账本。
+主要源码：[_plugin_lifecycle](../../../../../src/loushang/coding/plugin_manager/lifecycle.py)、[owner evidence](../../../../../src/loushang/coding/plugin_manager/owner_generations.py)、[instance runtime](../../../../../src/loushang/harness/plugin_management/instance_runtime.py)、[package lifecycle](../../../../../src/loushang/harness/plugin_management/package_lifecycle.py)、[Product runtime](../../../../../src/loushang/coding/package/product_runtime.py)、[资源装载](../../../../../src/loushang/harness/resources/_loader_pipeline.py)。Product layout 决定物理位置不等于 Product 重新实现各账本。
 
 ## 3. 发现与证据等级
 

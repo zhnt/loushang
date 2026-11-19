@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -29,7 +30,6 @@ from loushang.harness.resources.packages._private_tree_windows_observation impor
     capture_private_windows_tree,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     coding_arch_installation_private_data_root,

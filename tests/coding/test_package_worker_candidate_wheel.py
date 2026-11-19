@@ -57,10 +57,6 @@ from loushang.coding._base_product_composition import (
     compile_coding_base_product_selection,
     extend_coding_base_product_data_resources,
 )
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding._resource_catalog_shadow import (
     build_coding_initial_resource_catalog_adapter,
 )
@@ -247,6 +243,10 @@ from loushang.coding.package.product_worker_start_gate_recovery import (
 from loushang.coding.package.product_worker_turn_tool import (
     CODING_WORKER_QUERY_TOOL_NAME,
     CodingWorkerTurnToolBinding,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session_manager import SessionManager

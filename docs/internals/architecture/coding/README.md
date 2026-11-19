@@ -45,8 +45,13 @@ truth, or terminal primitives.
 
 The internal [package component migration](reports/package-component-migration.md)
 records the complete 187-file mapping, preserved import/pickle identities,
-compatibility costs and outstanding delivery validation. It reorganizes Coding
+compatibility costs and PR #913 delivery evidence. It reorganizes Coding
 internally; subsequent root components and Harness extraction remain separate work.
+
+The [Plugin Manager component migration](reports/plugin-manager-component-migration.md)
+records the next fourteen-file batch, its state/lifecycle owner and current
+validation status. It remains in progress until the recorded acceptance work
+and normal delivery checks complete.
 
 The current console entrypoints resolve to Coding CLI/UI implementations; see
 the generated

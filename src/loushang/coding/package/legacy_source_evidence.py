@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.json import _unique_json_object_hook
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_classification import (
     CodingLegacySourceConfigurationV1,
     classify_coding_legacy_source_configuration,

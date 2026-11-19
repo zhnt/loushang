@@ -9000,10 +9000,10 @@ def test_run_cli_lists_pending_plugin_operation_without_recovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.cli.__main__ import run_cli
     from loushang.harness.journal import journal_file_lock
     from loushang.harness.plugin_management import (
         PluginDesiredStateMutationV1,
@@ -9373,13 +9373,13 @@ def test_run_cli_reports_migration_in_progress_code(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
-        build_coding_plugin_lifecycle,
-        resolve_coding_plugin_lifecycle_state_layout,
-    )
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
+    from loushang.coding.plugin_manager.lifecycle import (
+        build_coding_plugin_lifecycle,
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.harness.plugin_management import (
         PluginDesiredStateMutationV1,
         PluginEnablementMigrationRequestV1,
@@ -9462,13 +9462,13 @@ def test_run_cli_reports_compatibility_publish_failure_after_commit(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
-        build_coding_plugin_lifecycle,
-        resolve_coding_plugin_lifecycle_state_layout,
-    )
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
+    from loushang.coding.plugin_manager.lifecycle import (
+        build_coding_plugin_lifecycle,
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.harness.plugin_management import (
         PluginPackageRevisionRefV1,
         plugin_enablement_legacy_input_fingerprint,
@@ -9587,12 +9587,12 @@ def test_run_cli_plugin_aliases_only_change_source_configuration(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
-        resolve_coding_plugin_lifecycle_state_layout,
-    )
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
+    from loushang.coding.plugin_manager.lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     settings_path = tmp_path / ".loushang" / "settings.json"
@@ -10262,13 +10262,13 @@ def test_run_cli_persists_skill_and_plugin_toggles(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
-        build_coding_plugin_lifecycle,
-        resolve_coding_plugin_lifecycle_state_layout,
-    )
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
+    from loushang.coding.plugin_manager.lifecycle import (
+        build_coding_plugin_lifecycle,
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.harness.plugin_management import (
         PluginPackageRevisionRefV1,
         plugin_enablement_legacy_input_fingerprint,

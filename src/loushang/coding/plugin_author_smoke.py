@@ -28,13 +28,13 @@ from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.provider.protocol import ProviderRequest
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.application import run_cli
 from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.coding.ui.plugin_theme import (

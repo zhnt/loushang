@@ -22,9 +22,6 @@ from loushang.coding._invocation_product_profile import (
     CodingAgentInvocationProductProfile,
     resolve_coding_agent_invocation_product_profile,
 )
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding._worker_tool_identity import (
     CODING_WORKER_QUERY_TOOL_NAME,
 )
@@ -87,35 +84,38 @@ from loushang.coding.model_selection import (
     apply_model_selection,
     persistence_warning_message,
 )
+from loushang.coding.package.epoch_layout import coding_fenced_product_exists
 from loushang.coding.package.product_cli import (
     route_coding_fenced_data_wheels,
     uninstall_coding_fenced_data_wheels,
 )
 from loushang.coding.package.product_management_cli import (
-    coding_fenced_product_exists,
     repair_coding_fenced_cli_desired_operation,
 )
 from loushang.coding.package.product_runtime import (
     require_fresh_coding_product_inputs_without_writes,
 )
-from loushang.coding.plugin_local_discovery import (
+from loushang.coding.plugin_manager.cli import (
+    build_coding_plugin_management_cli_binding,
+    build_coding_plugin_management_cli_read_binding,
+)
+from loushang.coding.plugin_manager.explanation import (
+    CodingPluginOperationExplanationError,
+    bind_coding_plugin_operation_explanation_query,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.local_discovery import (
     blocked_coding_local_discovery,
     discover_coding_local_plugins,
     format_coding_local_discovery,
 )
-from loushang.coding.plugin_management_cli import (
-    build_coding_plugin_management_cli_binding,
-    build_coding_plugin_management_cli_read_binding,
-)
-from loushang.coding.plugin_management_explanation import (
-    CodingPluginOperationExplanationError,
-    bind_coding_plugin_operation_explanation_query,
-)
-from loushang.coding.plugin_management_preview import (
+from loushang.coding.plugin_manager.preview import (
     CodingCurrentPreviewError,
     bind_coding_current_preview_query,
 )
-from loushang.coding.plugin_management_read_sdk import (
+from loushang.coding.plugin_manager.read_sdk import (
     CodingPluginManagementReadClientV1,
     CodingPluginManagementReadSdkError,
     open_coding_plugin_management_read_client,
@@ -341,7 +341,7 @@ async def _run_coding_rpc_host(
     stderr: TextIO,
     render_tool_events: bool = False,
 ) -> int:
-    from loushang.coding.plugin_management_rpc_scope import CodingPluginRpcSessionScope
+    from loushang.coding.plugin_manager.rpc_scope import CodingPluginRpcSessionScope
 
     session_scope = CodingPluginRpcSessionScope()
     return await run_rpc_host(

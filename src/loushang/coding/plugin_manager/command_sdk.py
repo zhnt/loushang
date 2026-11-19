@@ -12,6 +12,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.package.epoch_layout import coding_fenced_product_exists
+from loushang.coding.package.product_management_cli import (
+    build_coding_fenced_product_management_cli_ports,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.plugin_management.application import (
     PluginManagementApplicationPorts,
     PluginManagementQueryV1,
@@ -24,16 +33,6 @@ from loushang.harness.plugin_management.desired_command import (
     submit_plugin_desired_command,
 )
 from loushang.harness.workspace.paths import assert_workspace_directory_identity
-
-from ._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
-from .package.product_management_cli import (
-    build_coding_fenced_product_management_cli_ports,
-    coding_fenced_product_exists,
-)
-from .product_plan import CODING_PRODUCT_ID
 
 
 class CodingPluginManagementCommandSdkError(RuntimeError):

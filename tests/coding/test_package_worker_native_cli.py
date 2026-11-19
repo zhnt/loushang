@@ -17,9 +17,6 @@ import pytest
 
 import loushang.coding.package.product_worker_payload as worker_payload_module
 from loushang.ai.types import UserMessage
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.cli.package_worker_native import (
     _read_candidate_status_document,
 )
@@ -44,6 +41,9 @@ from loushang.coding.package.product_worker_payload import (
     open_coding_product_worker_supervisor_journal,
     repair_coding_product_worker_unmarked_payload_debt,
     review_coding_product_worker_unmarked_payload_debt,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.config.agent import SettingsManager

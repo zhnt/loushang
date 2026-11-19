@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_runtime import _LegacyFirstSnapshot
 from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
     PackageLegacyStateEvidenceV1,
@@ -16,7 +17,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 
 CodingLegacyEvidenceDomain = Literal[

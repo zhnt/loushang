@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeInventorySnapshotV1,
     inspect_gracefully_retired_instance_capture,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_desired_evidence import CodingLegacyDesiredEvidenceV1
 from .legacy_operation_evidence import CodingLegacyRetirementCaptureV1
 

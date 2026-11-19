@@ -12,6 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    prepare_coding_plugin_private_tree as _prepare_private_tree,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -26,7 +32,6 @@ from loushang.harness.plugin_management.private_data_deletion import (
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._file_consumption import closing_descriptor
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout, _prepare_private_tree
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_backup import (
     _archive_codec,

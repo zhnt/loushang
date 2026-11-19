@@ -17,10 +17,6 @@ from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.coding._base_plugin import prepare_coding_base_plugin_assembly
-from loushang.coding._plugin_lifecycle import (
-    build_coding_plugin_lifecycle,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding._resource_catalog_shadow import (
     CodingResourceCatalogAdmissionError,
     CodingResourceCatalogShadowAdmissionError,
@@ -35,6 +31,10 @@ from loushang.coding.bootstrap import (
 )
 from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.control import SettingsManager
+from loushang.coding.plugin_manager.lifecycle import (
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from loushang.coding.prompt import (
     CODING_KERNEL_SYSTEM_PROMPT,
     CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
@@ -2230,7 +2230,7 @@ def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
     from loushang.coding.resource_runtime import CodingPackageMaterializer

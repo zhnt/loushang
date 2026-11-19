@@ -46,12 +46,6 @@ from loushang.coding._invocation_product_profile import (
     CodingAgentInvocationProductProfile,
     canonical_coding_agent_invocation_product_profile,
 )
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycle,
-    build_coding_plugin_lifecycle,
-    resolve_coding_plugin_lifecycle_state_layout,
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding._product_capability_plugin_composition import (
     CodingBuiltinProductCompositionPreparation,
     prepare_coding_builtin_product_composition,
@@ -125,8 +119,14 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.package.product_worker_ordinary_error import (
     CodingWorkerOrdinaryBootstrapError,
 )
-from loushang.coding.plugin_enablement_compatibility import (
+from loushang.coding.plugin_manager.enablement_compatibility import (
     bind_coding_plugin_enablement_compatibility,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycle,
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
 from loushang.coding.prompt.defaults import (

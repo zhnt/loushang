@@ -2,8 +2,8 @@
 
 状态：本批有界接受；完整Coding重构仍partial。2026-11-14。
 
-原[read SDK](../../../../../src/loushang/coding/plugin_management_read_sdk.py)、
-[command SDK](../../../../../src/loushang/coding/plugin_management_command_sdk.py)、
+原[read SDK](../../../../../src/loushang/coding/plugin_manager/read_sdk.py)、
+[command SDK](../../../../../src/loushang/coding/plugin_manager/command_sdk.py)、
 [backup SDK](../../../../../src/loushang/coding/package/private_data_backup_sdk.py)三份18行guard，
 以及[private read owner](../../../../../src/loushang/coding/package/private_data_read_owner.py)的12行函数，
 共66方法span，是同一完整程序的四个生产实现。原[Workspace路径组件](../../../../../src/loushang/harness/workspace/paths.py)

@@ -10,27 +10,26 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.control.settings_store import (
+    default_global_settings_path,
+    default_project_settings_path,
+)
+from loushang.coding.package.epoch_layout import coding_fenced_product_exists
+from loushang.coding.package.product_preview import (
+    CodingCurrentDataResourcePreviewV1,
+    CodingFencedProductReadOnlyPreviewOwner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.config.agent._settings_codec import CONTROL_CONFIG_CODEC
 from loushang.harness.config.agent.types import ControlConfig
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
 )
-
-from ._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
-from .composition_sets import resolve_coding_composition_set
-from .control.settings_store import (
-    default_global_settings_path,
-    default_project_settings_path,
-)
-from .package.product_management_cli import coding_fenced_product_exists
-from .package.product_preview import (
-    CodingCurrentDataResourcePreviewV1,
-    CodingFencedProductReadOnlyPreviewOwner,
-)
-from .product_plan import CODING_PRODUCT_ID
 
 _MAX_SETTINGS_BYTES = 1024 * 1024
 

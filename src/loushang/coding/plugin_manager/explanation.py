@@ -7,17 +7,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
+from loushang.coding.package.epoch_layout import coding_fenced_product_exists
 from loushang.coding.package.product_management_cli import (
-    coding_fenced_product_exists,
     explain_coding_fenced_plugin_operation,
     read_coding_fenced_handoff_desired_commit,
     read_coding_fenced_package_handoff,
 )
-from loushang.coding.plugin_operation_guidance import (
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.operation_guidance import (
     project_coding_plugin_operation_guidance,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID

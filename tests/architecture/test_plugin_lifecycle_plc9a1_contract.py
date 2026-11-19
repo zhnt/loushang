@@ -16,8 +16,8 @@ CLI_BINDING = Path("src/loushang/harness/cli/plugin_management.py")
 CLI_LISTING = Path("src/loushang/harness/cli/plugin_listing.py")
 CLI_TOGGLES = Path("src/loushang/harness/cli/resource_toggles.py")
 CLI_PROFILE = Path("src/loushang/harness/cli/profile.py")
-CODING_BINDING = Path("src/loushang/coding/plugin_management_cli.py")
-CODING_COMPATIBILITY = Path("src/loushang/coding/plugin_enablement_compatibility.py")
+CODING_BINDING = Path("src/loushang/coding/plugin_manager/cli.py")
+CODING_COMPATIBILITY = Path("src/loushang/coding/plugin_manager/enablement_compatibility.py")
 CODING_BOOTSTRAP = Path("src/loushang/coding/bootstrap.py")
 CODING_CONTINUITY = Path("src/loushang/coding/continuity_bootstrap.py")
 SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
@@ -29,7 +29,7 @@ DESIRED_LEDGER = Path("src/loushang/harness/plugin_management/ledger.py")
 ENABLEMENT_MIGRATION = Path(
     "src/loushang/harness/plugin_management/enablement_migration.py"
 )
-CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
+CODING_LIFECYCLE = Path("src/loushang/coding/plugin_manager/lifecycle.py")
 ENABLEMENT_CAPTURE = Path(
     "src/loushang/harness/plugin_management/_enablement_capture.py"
 )
@@ -65,7 +65,7 @@ def test_plc9a1_contract_and_new_owner_sites_are_indexed() -> None:
         "enablement_migration.py::PluginEnablementCompatibilityProjector" in inventory
     )
     assert (
-        "plugin_enablement_compatibility.py::"
+        "plugin_manager/enablement_compatibility.py::"
         "CodingPluginEnablementCompatibilityWriter" in inventory
     )
     assert "build_coding_plugin_management_cli_binding" in inventory

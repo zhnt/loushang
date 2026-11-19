@@ -114,7 +114,7 @@ as `already_authoritative` and is never re-enabled by a Product default. A
 never-seen disabled Installation is published to an exact immutable revision,
 seeded disabled, and left unmounted.
 
-`src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
+`src/loushang/coding/plugin_manager/enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
 retains the Coding migration admission and domain projection. Its capture already
 delegates to the shared Plugin Management owner. On POSIX that owner pins the existing
 private workspace root with a no-follow directory handle. On Windows it

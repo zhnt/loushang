@@ -10,6 +10,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -26,7 +27,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_classification import CodingScopedLegacyDisableV1
 from .legacy_configured_source import match_coding_legacy_local_skill_configured_source
 from .legacy_desired_evidence import parse_coding_legacy_desired_evidence

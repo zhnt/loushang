@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_local_migration import (
     _LegacyLocalInstallation,
 )
@@ -25,7 +26,6 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_data_trust import trust_class_for_legacy_data_resource
 from .legacy_local_acceptance import (
     CodingLegacyLocalAcceptanceV1,

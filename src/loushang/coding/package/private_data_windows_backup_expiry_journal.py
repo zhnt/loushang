@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Literal
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal.codec import decode_json_record
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -32,7 +33,6 @@ from loushang.harness.resources.packages._private_tree_windows import (
     PrivateWindowsTreeIO,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_windows_receipt import _receipt_io
 from .private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,

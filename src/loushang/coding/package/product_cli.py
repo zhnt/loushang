@@ -11,6 +11,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Literal, TextIO
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeRequestV1,
@@ -26,7 +27,6 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .product_management_cli import (
     build_coding_fenced_product_management_cli_ports,
     explain_coding_fenced_plugin_operation,

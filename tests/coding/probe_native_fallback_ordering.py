@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.plugin_local_discovery as coding
+import loushang.coding.plugin_manager.local_discovery as coding
 import loushang.harness.resources._loader_discovery_filesystem as core
 
 ORACLE = Path(__file__).parent / "fixtures" / "native_fallback_observations_v1.jsonl"

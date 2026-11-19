@@ -9,6 +9,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
@@ -25,10 +29,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
-from .._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_backup import (

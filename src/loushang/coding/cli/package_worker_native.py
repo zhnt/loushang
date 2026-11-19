@@ -16,9 +16,6 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
     CodingWorkerCandidateReadEvidenceV1,
@@ -71,6 +68,9 @@ from loushang.coding.package.product_worker_start_gate_recovery import (
     review_coding_product_worker_gated_recovery,
     review_coding_product_worker_orphan_runtime,
     settle_coding_product_worker_gated_attempt,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,

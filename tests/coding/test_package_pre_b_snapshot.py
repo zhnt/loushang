@@ -15,9 +15,6 @@ from unittest.mock import patch
 import pytest
 
 from loushang.ai.model import Capabilities, Model
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.bootstrap import (
     create_agent_session,
     create_agent_session_runtime,
@@ -34,6 +31,9 @@ from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
     bootstrap_coding_builtin_product_plugins,
     open_coding_fenced_product_application_owner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.cli.package_lifecycle import (

@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.plugin_management.retirement import (
     inspect_removed_installation_epoch,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_desired_evidence import (
     CodingLegacyDesiredEvidenceV1,
     read_coding_legacy_desired_evidence,

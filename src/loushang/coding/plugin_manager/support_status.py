@@ -7,6 +7,9 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+from loushang.coding.plugin_manager.operation_guidance import (
+    coding_desired_repair_command,
+)
 from loushang.harness.plugin_management.current_preview import (
     plugin_package_revision_fingerprint,
 )
@@ -15,8 +18,6 @@ from loushang.harness.plugin_management.records import (
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
-
-from .plugin_operation_guidance import coding_desired_repair_command
 
 
 def project_coding_plugin_support_status(
@@ -310,7 +311,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--composition-set", default="coding-standard")
     args = parser.parse_args(argv)
-    from loushang.coding.plugin_management_read_sdk import (
+    from loushang.coding.plugin_manager.read_sdk import (
         open_coding_plugin_management_read_client,
     )
 

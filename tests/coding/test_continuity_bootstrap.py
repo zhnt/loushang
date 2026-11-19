@@ -12,12 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
 import loushang.coding.continuity_bootstrap as continuity_bootstrap_module
-from loushang.coding._plugin_lifecycle import (
-    build_coding_plugin_lifecycle,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
+import loushang.coding.plugin_manager.lifecycle as plugin_lifecycle_module
 from loushang.coding.continuity import (
     bind_coding_continuity,
     shutdown_coding_continuity,
@@ -34,6 +30,10 @@ from loushang.coding.continuity_bootstrap import (
 from loushang.coding.control import SettingsManager
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.config.agent.types import ControlConfig
@@ -1119,7 +1119,7 @@ def test_empty_selected_continuity_still_completes_common_startup_recovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import CodingPluginLifecycle
+    from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycle
 
     workspace = tmp_path / "workspace"
     layout = _test_layout(tmp_path / "state", workspace)

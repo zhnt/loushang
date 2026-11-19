@@ -15,16 +15,18 @@ from loushang.coding.diagnostics.debug_status import debug_status_text
 from loushang.coding.package.product_repair_ui import (
     execute_coding_package_repair_ui_command,
 )
-from loushang.coding.plugin_management_read_sdk import (
+from loushang.coding.plugin_manager.operation_guidance import (
+    coding_desired_repair_command,
+)
+from loushang.coding.plugin_manager.read_sdk import (
     open_coding_plugin_management_read_client,
 )
-from loushang.coding.plugin_management_ui import (
+from loushang.coding.plugin_manager.ui import (
     execute_coding_plugin_management_ui_command,
 )
-from loushang.coding.plugin_management_ui import (
+from loushang.coding.plugin_manager.ui import (
     format_coding_plugin_support_status as _format_coding_plugin_support_status,
 )
-from loushang.coding.plugin_operation_guidance import coding_desired_repair_command
 from loushang.foundation.observability import get_log
 from loushang.harness.commands import CommandEffectKind
 from loushang.harness.conversation import CommandExecutionRecord

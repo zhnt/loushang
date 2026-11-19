@@ -8,9 +8,6 @@ from time import sleep
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.control import SettingsManager
 from loushang.coding.package.legacy_classification import (
     CodingScopedLegacyDisableV1,
@@ -23,6 +20,9 @@ from loushang.coding.package.pre_b_snapshot import (
 from loushang.coding.package.source_snapshot import (
     hold_coding_pre_b_source_configuration,
     read_coding_settings_patch_without_writes,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (

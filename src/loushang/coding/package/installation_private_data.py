@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    prepare_coding_plugin_private_tree as _prepare_private_tree,
+)
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
@@ -22,7 +28,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     prepare_windows_product_private_directory_chain,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout, _prepare_private_tree
 from . import legacy_windows_receipt as _receipts
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .legacy_windows_receipt import CodingWindowsPrivateReceiptError

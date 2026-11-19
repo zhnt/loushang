@@ -11,20 +11,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.product_management_cli import (
     build_coding_fenced_product_management_cli_ports,
 )
-from loushang.coding.plugin_management_cli import (
+from loushang.coding.plugin_manager.cli import (
     build_coding_plugin_management_cli_read_binding,
 )
-from loushang.coding.plugin_management_explanation import (
+from loushang.coding.plugin_manager.explanation import (
     bind_coding_plugin_operation_explanation_query,
 )
-from loushang.coding.plugin_management_preview import (
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.preview import (
     bind_coding_current_preview_query,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
@@ -151,7 +151,7 @@ class CodingPluginManagementReadClientV1:
     ) -> dict[str, object]:
         """Join management and Product preview without asserting Session use."""
 
-        from loushang.coding.plugin_support_status import (
+        from loushang.coding.plugin_manager.support_status import (
             project_coding_plugin_support_status,
         )
 

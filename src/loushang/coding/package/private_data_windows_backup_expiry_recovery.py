@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -12,7 +13,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .installation_private_data import (
     coding_arch_installation_private_data_root,
     inspect_coding_windows_arch_installation_root,

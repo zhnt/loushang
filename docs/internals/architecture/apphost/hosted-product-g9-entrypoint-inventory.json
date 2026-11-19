@@ -77,7 +77,7 @@
       "importsComposition": false,
       "omissionOwner": null,
       "packagingBinding": "project.scripts.loushang-coding-plugin-status",
-      "source": "src/loushang/coding/plugin_support_status.py",
+      "source": "src/loushang/coding/plugin_manager/support_status.py",
       "supportStatus": "installed",
       "surface": "cli"
     },

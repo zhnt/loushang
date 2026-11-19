@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.plugin_manager.command_sdk import (
+    CodingPluginManagementCommandClientV1,
+    open_coding_plugin_management_command_client,
+)
+from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.plugin_management.application import (
     PluginManagementApplicationResultV1,
 )
@@ -16,12 +21,6 @@ from loushang.harness.plugin_management.desired_command import (
     resume_plugin_desired_operation,
     submit_plugin_desired_command,
 )
-
-from .plugin_management_command_sdk import (
-    CodingPluginManagementCommandClientV1,
-    open_coding_plugin_management_command_client,
-)
-from .product_plan import CODING_PRODUCT_ID
 
 
 @dataclass(frozen=True, slots=True)

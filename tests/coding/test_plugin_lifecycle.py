@@ -14,14 +14,20 @@ from pathlib import Path
 import pytest
 
 import loushang.coding._base_plugin as base_plugin_module
-import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
+import loushang.coding.plugin_manager.lifecycle as plugin_lifecycle_module
 from loushang.ai.model import Capabilities, Model
 from loushang.coding._base_plugin import (
     CodingBasePluginAssemblyError,
     coding_base_plugin_root,
     prepare_managed_coding_base_plugin_assembly,
 )
-from loushang.coding._plugin_lifecycle import (
+from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.package.epoch_layout import (
+    resolve_coding_lifecycle_pre_b_members,
+    resolve_coding_package_epoch_layout,
+    resolve_coding_package_pre_b_store_members,
+)
+from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleError,
     build_coding_plugin_lifecycle,
     build_coding_plugin_management_application,
@@ -30,14 +36,8 @@ from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding._plugin_owner_generations import (
+from loushang.coding.plugin_manager.owner_generations import (
     CodingOwnerGenerationEvidenceError,
-)
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.package.epoch_layout import (
-    resolve_coding_lifecycle_pre_b_members,
-    resolve_coding_package_epoch_layout,
-    resolve_coding_package_pre_b_store_members,
 )
 from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths

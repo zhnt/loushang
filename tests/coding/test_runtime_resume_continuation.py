@@ -317,7 +317,7 @@ def test_root_owns_native_resume_preparation_and_delivery(tmp_path, monkeypatch,
 
     async def scenario():
         if mode == "legacy":
-            from loushang.coding._plugin_lifecycle import (
+            from loushang.coding.plugin_manager.lifecycle import (
                 resolve_coding_plugin_lifecycle_state_layout,
             )
 

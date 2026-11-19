@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     inspect_legacy_product_member_names,
 )
@@ -299,3 +299,18 @@ __all__ = [
     "resolve_coding_lifecycle_pre_b_members",
     "resolve_coding_package_pre_b_store_members",
 ]
+
+
+def coding_fenced_product_exists(layout: CodingPluginLifecycleStateLayout) -> bool:
+    """Only an existing fence selects B; malformed existing B fails closed later."""
+
+    epoch = resolve_coding_package_epoch_layout(layout)
+    try:
+        (epoch.control_root / "epoch.jsonl").lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+# Preserve the deployed callable/pickle route after moving its implementation.
+coding_fenced_product_exists.__module__ = "loushang.coding.package_product_management_cli"

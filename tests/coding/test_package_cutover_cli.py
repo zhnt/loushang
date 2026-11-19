@@ -15,9 +15,6 @@ from unittest.mock import patch
 import pytest
 
 from loushang.ai.model import Capabilities, Model
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding._resource_catalog_shadow import (
     CodingResourceCatalogAdmissionError,
 )
@@ -57,6 +54,9 @@ from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     _bootstrap_coding_builtin_plugin,
     open_coding_fenced_product_application_owner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.coding.ui.plugin_theme import select_coding_plugin_theme

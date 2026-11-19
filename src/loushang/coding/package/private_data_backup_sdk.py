@@ -16,11 +16,10 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
+from loushang.coding.package.epoch_layout import (
+    coding_fenced_product_exists,
+    resolve_coding_package_epoch_layout,
 )
-from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.package.private_data_backup import (
     CodingArchPrivateDataBackupOwner,
     CodingArchPrivateDataBackupReadSource,
@@ -45,11 +44,14 @@ from loushang.coding.package.private_data_restore import (
 from loushang.coding.package.private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationV1,
 )
-from loushang.coding.package.product_management_cli import coding_fenced_product_exists
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     CodingFencedProductApplicationOwner,
     open_coding_fenced_product_application_owner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,

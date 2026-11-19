@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 
-from loushang.coding._plugin_lifecycle import (
+from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     _capture_existing_plugin_enablement_state,
     project_coding_plugin_enablement_compatibility,

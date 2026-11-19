@@ -8,6 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -21,7 +22,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 

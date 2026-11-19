@@ -9,9 +9,6 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
     open_coding_fenced_product_application_owner,
@@ -31,6 +28,9 @@ from loushang.coding.package.product_worker_windows_pending_host import (
 )
 from loushang.coding.package.product_worker_windows_recovery_inventory import (
     inspect_coding_windows_product_worker_offline_recovery,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl

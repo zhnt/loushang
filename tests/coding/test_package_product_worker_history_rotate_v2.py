@@ -10,9 +10,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
@@ -36,6 +33,9 @@ from loushang.coding.package.product_worker_history_stream_snapshot import (
 from loushang.coding.package.product_worker_history_v2_names import (
     PREPARATION_INTENT_NAME,
     PREPARED_INDEX_NAME,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal._rooted_io import RootedFile

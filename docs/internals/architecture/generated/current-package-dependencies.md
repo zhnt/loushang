@@ -128,7 +128,7 @@ graph TD
 | `loushang` | `loushang.coding.cli.__main__:main` |
 | `loushang-coding-extension` | `loushang.coding.extension_author:main` |
 | `loushang-coding-plugin-smoke` | `loushang.coding.plugin_author_smoke:main` |
-| `loushang-coding-plugin-status` | `loushang.coding.plugin_support_status:main` |
+| `loushang-coding-plugin-status` | `loushang.coding.plugin_manager.support_status:main` |
 | `loushang-hosted` | `loushang.coding.cli.hosted:main` |
 | `loushang-hosted-tui` | `loushang.coding.cli.hosted_client:main` |
 | `loushang-mux` | `loushang.coding.cli.mux:main` |

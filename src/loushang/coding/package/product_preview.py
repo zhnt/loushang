@@ -11,6 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 from types import TracebackType
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.capabilities.consumer_requirements import ProductCompositionError
 from loushang.harness.environment.probe import LocalHostEnvironmentProbe
 from loushang.harness.journal import JournalLoadPolicy
@@ -66,7 +67,6 @@ from .._external_data_product_composition import (
     CodingExternalDataProductCompilation,
     compile_coding_external_data_product_selection,
 )
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .._resource_catalog_adapter import (
     CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
     CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,

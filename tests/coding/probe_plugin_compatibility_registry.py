@@ -11,8 +11,8 @@ from threading import Condition, Event, Thread
 
 import pytest
 
-import loushang.coding.plugin_enablement_compatibility as code
-from loushang.coding._plugin_lifecycle import (
+import loushang.coding.plugin_manager.enablement_compatibility as code
+from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent.manager import LegacyPluginCompatibilityProjectionV1

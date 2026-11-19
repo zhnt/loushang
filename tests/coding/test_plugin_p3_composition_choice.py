@@ -14,9 +14,6 @@ from loushang.ai.types import TextPart, UserMessage
 from loushang.coding._capability_plugin_composition import (
     CodingCapabilityPluginCompositionError,
 )
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding._tool_authority import (
     CODING_ARCH_EXACT_OWNER_TOOL_NAMES,
     CODING_LSP_EXACT_OWNER_TOOL_NAMES,
@@ -42,6 +39,9 @@ from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.config.agent import (

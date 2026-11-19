@@ -169,14 +169,14 @@ Harness 核心继续不依赖 Coding、HarnessWork/Method、AppService/AppHost�
 | 候选 | 证据 | 合并边界 |
 | --- | --- | --- |
 | entry existence | [Coding backup](../../../../src/loushang/coding/package/private_data_backup.py#L616)、deletion owner、Harness POSIX snapshot/materialization | 同一 `stat(dir_fd, follow_symlinks=False)`；只共享观察，不授予路径操作权 |
-| link/reparse | [Coding lifecycle](../../../../src/loushang/coding/_plugin_lifecycle.py#L2100)与[Harness Journal](../../../../src/loushang/harness/journal/jsonl.py#L1229) | 共享分类，原错误/准入留原 owner |
+| link/reparse | [Coding lifecycle](../../../../src/loushang/coding/plugin_manager/lifecycle.py#L2100)与[Harness Journal](../../../../src/loushang/harness/journal/jsonl.py#L1229) | 共享分类，原错误/准入留原 owner |
 | deletion receipt / tombstone | [POSIX Journal](../../../../src/loushang/coding/package/private_data_deletion_journal.py#L181)、[Windows transaction](../../../../src/loushang/coding/package/private_data_windows_deletion_journal.py#L139)及两处 tombstone 派生 | 共享纯记录查询/身份；锁、事务活性和持久名称不变 |
 | method descriptor | [Hosted application](../../../../src/loushang/coding/hosted_application.py#L901)、[AppHost composition](../../../../src/loushang/coding/apphost_composition.py#L548) | 共用轻量验证机制；Product 端口要求保留 |
 | stream TTY probe | [Coding CLI](../../../../src/loushang/coding/cli/__main__.py#L24)与[Harness host](../../../../src/loushang/harness/host/product_host.py#L321) | 复用原机制，同时保留早期启动的轻量导入约束 |
 | Provider exact mapping | [Arch](../../../../src/loushang/coding/arch/_provider_api.py#L571)与[LSP](../../../../src/loushang/coding/lsp/_provider_api.py#L473) | 算法相同，`_reject` 的领域异常不同；通过已有边界校验/错误投影统一 |
 | Windows Worker raw journal read | [native approval](../../../../src/loushang/coding/package/product_worker_windows_native_approval_journal.py#L305)、[opt-in](../../../../src/loushang/coding/package/product_worker_windows_opt_in_journal.py#L315)、receipt 等 | `_NAME`/上限/stream 校验可能不同，参数化原 native IO，不能删除 ACL 检查 |
 | 完整写入循环 | [Coding backup](../../../../src/loushang/coding/package/private_data_backup.py#L593)、[Continuity](../../../../src/loushang/coding/continuity.py#L1240)、Harness rooted/snapshot IO | offset 续写、fsync、错误语义分别保留；复用已有写原语 |
-| 私有目录准备 | [Plugin](../../../../src/loushang/coding/_plugin_lifecycle.py#L2134)与[Continuity](../../../../src/loushang/coding/continuity_bootstrap.py#L1437) | 共同准入算法；现有 `create_private_directory_chain` 不负责修改已有目录，不能直接互换 |
+| 私有目录准备 | [Plugin](../../../../src/loushang/coding/plugin_manager/lifecycle.py#L2134)与[Continuity](../../../../src/loushang/coding/continuity_bootstrap.py#L1437) | 共同准入算法；现有 `create_private_directory_chain` 不负责修改已有目录，不能直接互换 |
 
 部分 `_bind_source` 方法只是重复的薄委托，已经调用同一 `prepare_session_work_source`；不把它升级成第二套执行机制，也不为十行转发引入 mixin/service。字符串相同的 codec 若构造不同领域记录，也只合并机械骨架，不合并事实。
 

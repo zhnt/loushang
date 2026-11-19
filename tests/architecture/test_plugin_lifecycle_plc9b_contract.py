@@ -2253,6 +2253,7 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             assert (
                 path.parent == Path("src/loushang/coding/package")
                 or path.name.startswith("package_")
+                or path == Path("src/loushang/coding/plugin_manager/lifecycle.py")
                 or path.name in {
                     "_plugin_lifecycle.py",
                     "_external_data_product_composition.py",

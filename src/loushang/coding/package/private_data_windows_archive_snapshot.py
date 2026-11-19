@@ -7,12 +7,12 @@ import stat
 from dataclasses import dataclass
 from hashlib import sha256
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
     _digest,

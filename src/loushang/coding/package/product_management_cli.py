@@ -10,6 +10,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.plugin_management import (
     PluginInstallationKeyV1,
@@ -62,8 +63,12 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
-from .epoch_layout import resolve_coding_package_epoch_layout
+from .epoch_layout import (
+    coding_fenced_product_exists as coding_fenced_product_exists,
+)
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout,
+)
 from .external_data_wheel import (
     CodingExternalDataWheelBindingV1,
     CodingExternalDataWheelCatalog,
@@ -73,17 +78,6 @@ from .product_runtime import open_coding_package_product_state
 
 CODING_CLI_MANAGEMENT_ACTOR_ID = "coding:cli"
 CODING_CLI_MANAGEMENT_POLICY_REVISION = "coding-plugin-management-cli-v1"
-
-
-def coding_fenced_product_exists(layout: CodingPluginLifecycleStateLayout) -> bool:
-    """Only an existing fence selects B; malformed existing B fails closed later."""
-
-    epoch = resolve_coding_package_epoch_layout(layout)
-    try:
-        (epoch.control_root / "epoch.jsonl").lstat()
-    except FileNotFoundError:
-        return False
-    return True
 
 
 def explain_coding_fenced_package_operation(
