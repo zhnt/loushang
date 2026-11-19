@@ -104,7 +104,7 @@ def test_workspace_continuity_survives_directory_loss_and_rebinding(tmp_path, mo
             await app.close()
             await attempt.close()
 
-    async def member(client, info, title, *, existing_mux=False):
+    async def member(client, info, continuity, *, title=None, existing_mux=False):
         assert info.workspace is not None
         mux_name = info.workspace["muxName"]
         assert isinstance(mux_name, str)
@@ -113,7 +113,7 @@ def test_workspace_continuity_survives_directory_loss_and_rebinding(tmp_path, mo
             await client.create_mux(MuxCreateV1(mux_name))
         await client.attach_mux(MuxAttachV1(selector))
         created = await client.open_member(MuxMemberOpenV1(
-            selector, SessionOpenSpecV1("coding", title, info.scope, info.scope_fingerprint, title),
+            selector, SessionOpenSpecV1("coding", continuity, info.scope, info.scope_fingerprint, title or continuity),
         ))
         return created.members[-1].session
 
@@ -168,13 +168,21 @@ def test_workspace_continuity_survives_directory_loss_and_rebinding(tmp_path, mo
             workspace_id = project.workspace["id"]
             mux = project.workspace["muxName"]
             legacy = (await client.workspace(WorkspaceRequestV1("open", str(old)))).workspaces[0]
-            original = await member(client, replace(legacy, workspace=project.workspace), "original")
-            chat = await member(client, default, "chat")
+            original = await member(client, replace(legacy, workspace=project.workspace), "gui-draft-original", title="新会话")
+            chat = await member(client, default, "gui-draft-chat", title="New Session")
             await talk(client, mux, original, "before")
             await talk(client, "gui-temporary", chat, "default-before")
+            for name, identity in ((mux, original), ("gui-temporary", chat)):
+                request = await control(client, name, identity)
+                async with asyncio.timeout(5):
+                    while (await client.snapshot_session(request)).title != "real Coding response":
+                        await asyncio.sleep(0.01)
 
         shutil.rmtree(old)
         async with host() as client:
+            directory = await client.list_muxes()
+            titles = {entry.session: entry.title for space in directory.mux_spaces for entry in space.members}
+            assert titles[original] == titles[chat] == "real Coding response"
             retained = (await client.workspace(WorkspaceRequestV1("open-workspace", workspace_id=workspace_id))).workspaces[0]
             link = retained.workspace["paths"][0]
             assert link["status"] == "missing"

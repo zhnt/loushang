@@ -173,6 +173,9 @@ class CodingHostedHistoryBindingV1:
             raise RuntimeError("coding_hosted_session_closed")
         return self._history
 
+    def project_title(self) -> str:
+        return self._projection.title
+
     def project_snapshot(self, *, resume_on_submit: bool = False) -> CodingHostedSnapshotProjectionV1:
         if self._closed:
             raise RuntimeError("coding_hosted_session_closed")
@@ -280,6 +283,9 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
             raise CodingHostedCatalogError()
         return await manager.lookup_resume_input(query)
 
+    def project_title(self) -> str:
+        return _session_title(self._session.session_name, _title_messages(self._session))
+
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
         records: list[TranscriptRecordV1] = []
         remaining = _TEXT_LIMIT
@@ -305,7 +311,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
                 ),
             )
         return CodingHostedSnapshotProjectionV1(
-            title=_session_title(self._session.session_name, _title_messages(self._session)),
+            title=self.project_title(),
             revision=self._revision,
             running=self._session.is_streaming,
             records=tuple(records),
@@ -677,8 +683,9 @@ def _uses_automatic_title(identity: SessionIdentityV1) -> bool:
 def _title_messages(session: AgentSession) -> Iterable[object]:
     manager = getattr(session, "session_manager", None)
     if isinstance(manager, SessionManager):
-        return (entry.payload for entry in manager.entries)
-    return session.messages
+        yield from (entry.payload for entry in manager.entries)
+    else:
+        yield from session.messages
 
 
 def _session_title(name: str | None, messages: Iterable[object]) -> str:

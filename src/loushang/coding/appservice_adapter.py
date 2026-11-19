@@ -97,6 +97,8 @@ class CodingHostedSessionBindingV1(Protocol):
 
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1: ...
 
+    def project_title(self) -> str: ...
+
     def project_event(
         self,
         event: RuntimeEvent[object],
@@ -131,6 +133,14 @@ class CodingHostedSessionV1(
         execution_submission: bool = False,
     ) -> None:
         super().__init__(binding, execution_submission=execution_submission)
+
+    def display_title(self) -> str | None:
+        from .hosted_session import _uses_automatic_title
+
+        if not _uses_automatic_title(self.identity):
+            return None
+        title = self._binding.project_title()
+        return None if title == "New Session" else title
 
     async def _select_model(self, model_id: str, thinking_level: str | None) -> SessionModelsV1:
         result = await super()._select_model(model_id, thinking_level)

@@ -320,6 +320,9 @@ class _LeasedCodingHostedBinding:
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
         return self._binding.project_snapshot()
 
+    def project_title(self) -> str:
+        return self._binding.project_title()
+
     def project_event(self, event: object) -> CodingHostedEventProjectionV1 | None:
         return self._binding.project_event(event)  # type: ignore[arg-type]
 
