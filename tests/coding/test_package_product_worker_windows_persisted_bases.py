@@ -7,22 +7,22 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_checkpoint import (
+from loushang.coding.package.product_worker_windows_checkpoint import (
     CodingWindowsWorkerHistoryCheckpointV1,
 )
-from loushang.coding.package_product_worker_windows_history_join import (
+from loushang.coding.package.product_worker_windows_history_join import (
     CodingWindowsWorkerHistorySemanticJoinV1,
 )
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_opt_in_base import (
+from loushang.coding.package.product_worker_windows_opt_in_base import (
     CodingWindowsWorkerOptInSemanticBaseV1,
 )
-from loushang.coding.package_product_worker_windows_package_references import (
+from loushang.coding.package.product_worker_windows_package_references import (
     CodingWindowsWorkerPackageReferenceReviewV1,
 )
-from loushang.coding.package_product_worker_windows_persisted_bases import (
+from loushang.coding.package.product_worker_windows_persisted_bases import (
     CodingWindowsWorkerPersistedBasesV1,
 )
 from tests.coding.test_package_product_worker_windows_history_join import _empty_read

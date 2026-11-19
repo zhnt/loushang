@@ -4827,17 +4827,29 @@ def test_resource_package_runtime_has_harness_owners() -> None:
 def test_coding_internal_resource_consumers_use_harness_owners() -> None:
     from importlib.util import find_spec
 
-    retired_directories = (
+    # The package namespace now owns Coding's product package implementations.
+    # Its former shared resource modules remain retired under Harness ownership.
+    retired_paths = (
         Path("src/loushang/coding/loader"),
-        Path("src/loushang/coding/package"),
+        Path("src/loushang/coding/package/manifest.py"),
+        Path("src/loushang/coding/package/materializer.py"),
+        Path("src/loushang/coding/package/projection.py"),
+        Path("src/loushang/coding/package/resource_roots.py"),
+        Path("src/loushang/coding/package/source.py"),
+        Path("src/loushang/coding/package/source_manager.py"),
         Path("src/loushang/coding/plugin"),
         Path("src/loushang/coding/skill"),
     )
-    assert all(not path.exists() for path in retired_directories)
+    assert all(not path.exists() for path in retired_paths)
 
     retired_prefixes = (
         "loushang.coding.loader",
-        "loushang.coding.package",
+        "loushang.coding.package.manifest",
+        "loushang.coding.package.materializer",
+        "loushang.coding.package.projection",
+        "loushang.coding.package.resource_roots",
+        "loushang.coding.package.source",
+        "loushang.coding.package.source_manager",
         "loushang.coding.plugin",
         "loushang.coding.skill",
     )

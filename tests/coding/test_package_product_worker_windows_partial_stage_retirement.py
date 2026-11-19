@@ -4,16 +4,16 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding import (
-    package_product_worker_windows_partial_stage_retirement as retirement,
+from loushang.coding.package import (
+    product_worker_windows_partial_stage_retirement as retirement,
 )
-from loushang.coding.package_product_worker_windows_partial_stage_review import (
+from loushang.coding.package.product_worker_windows_partial_stage_review import (
     CodingWindowsWorkerPartialStageReviewV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
 )
-from loushang.coding.package_product_worker_windows_stage_retirement import (
+from loushang.coding.package.product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
 )
 

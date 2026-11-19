@@ -19,34 +19,34 @@ from typing import Literal
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_preview import (
+from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
     CodingWorkerCandidateReadEvidenceV1,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     admit_coding_external_worker_wheel,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_crash_c5_settlement import (
+from loushang.coding.package.product_worker_crash_c5_settlement import (
     settle_coding_product_worker_crash_c5,
 )
-from loushang.coding.package_product_worker_native_approval import (
+from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalJournal,
 )
-from loushang.coding.package_product_worker_native_install import (
+from loushang.coding.package.product_worker_native_install import (
     install_coding_product_worker_native_release,
     repair_coding_product_worker_native_release,
     review_coding_product_worker_native_release,
 )
-from loushang.coding.package_product_worker_operator_query import (
+from loushang.coding.package.product_worker_operator_query import (
     query_coding_product_worker,
 )
-from loushang.coding.package_product_worker_opt_in import CodingWorkerOptInDecisionV1
-from loushang.coding.package_product_worker_opt_in_owner import (
+from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInDecisionV1
+from loushang.coding.package.product_worker_opt_in_owner import (
     CodingWorkerProductOptInOwner,
 )
-from loushang.coding.package_product_worker_payload import (
+from loushang.coding.package.product_worker_payload import (
     CodingWorkerPayloadDebtPlanV1,
     preview_coding_product_worker_empty_payload_debt,
     preview_coding_product_worker_payload_debt,
@@ -58,13 +58,13 @@ from loushang.coding.package_product_worker_payload import (
     repair_coding_product_worker_unmarked_payload_debt,
     review_coding_product_worker_unmarked_payload_debt,
 )
-from loushang.coding.package_product_worker_registered_recovery import (
+from loushang.coding.package.product_worker_registered_recovery import (
     recover_coding_product_worker_registered_no_effect,
 )
-from loushang.coding.package_product_worker_start_gate_journal import (
+from loushang.coding.package.product_worker_start_gate_journal import (
     CodingWorkerStartGateJournal,
 )
-from loushang.coding.package_product_worker_start_gate_recovery import (
+from loushang.coding.package.product_worker_start_gate_recovery import (
     CodingWorkerGatedRecoveryError,
     CodingWorkerGatedRecoveryReviewV1,
     repair_coding_product_worker_orphan_runtime,

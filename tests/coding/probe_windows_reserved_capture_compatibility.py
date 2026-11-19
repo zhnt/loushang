@@ -143,14 +143,14 @@ def value(instance):
 
 def scenario(case):
     module = importlib.import_module(
-        "loushang.coding.package_product_worker_windows_reserved_review"
+        'loushang.coding.package.product_worker_windows_reserved_review'
     )
     io = importlib.import_module("loushang.harness.worker.payload._windows_stage_io")
     consumption = importlib.import_module(
         "loushang.harness.resources.packages._file_consumption"
     )
     intent_module = importlib.import_module(
-        "loushang.coding.package_product_worker_windows_launch_intent"
+        'loushang.coding.package.product_worker_windows_launch_intent'
     )
     root, stage, entrypoint = shared.seeded(case)
     observer = ReservedObserver(case, root)

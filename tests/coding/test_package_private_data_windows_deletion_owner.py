@@ -7,11 +7,11 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
 )
-from loushang.coding.package_private_data_windows_deletion_owner import (
+from loushang.coding.package.private_data_windows_deletion_owner import (
     _require_remaining_subset,
 )
 

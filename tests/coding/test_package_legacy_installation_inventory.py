@@ -17,77 +17,77 @@ from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.provider.protocol import APIAdapter, ProviderRequest
-from loushang.coding import package_legacy_local_acceptance as local_acceptance_module
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.package_cutover import main as cutover_main
-from loushang.coding.package_legacy_binding_catalog import (
+from loushang.coding.package import legacy_local_acceptance as local_acceptance_module
+from loushang.coding.package.legacy_binding_catalog import (
     CodingLegacyBindingError,
     CodingLegacyLocalBindingCatalog,
 )
-from loushang.coding.package_legacy_desired_evidence import (
+from loushang.coding.package.legacy_desired_evidence import (
     CodingLegacyDesiredError,
     CodingLegacyDesiredEvidenceV1,
     parse_coding_legacy_desired_evidence,
 )
-from loushang.coding.package_legacy_installation_inventory import (
+from loushang.coding.package.legacy_installation_inventory import (
     CodingLegacyBuiltinIntentV1,
     CodingLegacyInventoryError,
     classify_coding_legacy_installations,
     classify_coding_legacy_removed_local_installations,
     read_coding_legacy_installation_inventory,
 )
-from loushang.coding.package_legacy_local_acceptance import (
+from loushang.coding.package.legacy_local_acceptance import (
     CodingLegacyLocalAcceptanceError,
     CodingLegacyLocalAcceptanceV1,
     accept_coding_legacy_installed_local_review,
     read_coding_legacy_installed_local_acceptance,
     reopen_coding_legacy_installed_local_acceptance,
 )
-from loushang.coding.package_legacy_local_adoption import (
+from loushang.coding.package.legacy_local_adoption import (
     adopt_coding_legacy_local_skill_review,
 )
-from loushang.coding.package_legacy_local_binding_owner import (
+from loushang.coding.package.legacy_local_binding_owner import (
     bind_coding_accepted_legacy_local_source,
 )
-from loushang.coding.package_legacy_local_installation import (
+from loushang.coding.package.legacy_local_installation import (
     CodingLegacyLocalInstallationError,
     enable_coding_accepted_legacy_local_data_plugin,
     enable_coding_accepted_legacy_local_skill,
     install_coding_accepted_legacy_local_plugin,
 )
-from loushang.coding.package_legacy_local_wheel import (
+from loushang.coding.package.legacy_local_wheel import (
     reacquire_coding_legacy_local_plugin_wheel,
 )
-from loushang.coding.package_legacy_lock_evidence import (
+from loushang.coding.package.legacy_lock_evidence import (
     parse_coding_legacy_local_binding_heads,
 )
-from loushang.coding.package_legacy_reacquisition import (
+from loushang.coding.package.legacy_reacquisition import (
     reacquire_coding_legacy_installed_local_source,
 )
-from loushang.coding.package_legacy_review import (
+from loushang.coding.package.legacy_review import (
     CodingLegacyLocalAdoptionReviewV1,
     review_coding_legacy_installed_local_source,
 )
-from loushang.coding.package_legacy_skill_cutover_admission import (
+from loushang.coding.package.legacy_skill_cutover_admission import (
     admit_coding_single_legacy_skill_snapshot,
     inspect_coding_legacy_local_data_wheel,
     require_coding_fenced_single_legacy_data,
 )
-from loushang.coding.package_legacy_snapshot_member import (
+from loushang.coding.package.legacy_snapshot_member import (
     CodingFirstBLegacyStateObserver,
     CodingLegacySnapshotError,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
 )
-from loushang.coding.package_product_preview import (
+from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
     _bootstrap_coding_builtin_plugin,
     admit_coding_external_data_wheel,

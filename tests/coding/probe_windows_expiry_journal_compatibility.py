@@ -35,7 +35,7 @@ FIXTURES = Path(__file__).with_name("fixtures")
 
 def observe(case, monkeypatch):
     journal = importlib.import_module(
-        "loushang.coding.package_private_data_windows_backup_expiry_journal"
+        'loushang.coding.package.private_data_windows_backup_expiry_journal'
     )
     from loushang.harness.resources.packages.plugin_lifecycle.records import (
         canonical_json_bytes,
@@ -213,7 +213,7 @@ def observe(case, monkeypatch):
 
 
 def api_shape():
-    from loushang.coding.package_private_data_windows_backup_expiry_journal import (
+    from loushang.coding.package.private_data_windows_backup_expiry_journal import (
         CodingWindowsArchBackupExpiryTransaction as T,
     )
 

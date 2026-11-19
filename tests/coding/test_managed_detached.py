@@ -37,9 +37,9 @@ from loushang.appserver.protocol import (
 from loushang.coding.managed_bootstrap import CodingManagedApplicationLaunchV1
 from loushang.coding.managed_local import CodingManagedLocalLaunchV1
 from loushang.hosting.service import LinuxServiceObserverV1
+from tests.apphost.test_managed_bootstrap import deployment as deployment
+from tests.hosting._pidfd_signal import send_signal as _send_signal
 
-from ..apphost.test_managed_bootstrap import deployment as deployment
-from ..hosting._pidfd_signal import send_signal as _send_signal
 from .test_hosted_local import _local_launch
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux detached Product")

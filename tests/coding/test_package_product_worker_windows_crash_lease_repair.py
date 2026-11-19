@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-import loushang.coding.package_product_worker_windows_crash_lease_repair as repair
-import loushang.coding.package_product_worker_windows_orphan_review as orphan_owner
-import loushang.coding.package_product_worker_windows_provisioning as provisioning_owner
+import loushang.coding.package.product_worker_windows_crash_lease_repair as repair
+import loushang.coding.package.product_worker_windows_orphan_review as orphan_owner
+import loushang.coding.package.product_worker_windows_provisioning as provisioning_owner
 import loushang.harness.package_product._windows_worker_recovery as recovery
 
 

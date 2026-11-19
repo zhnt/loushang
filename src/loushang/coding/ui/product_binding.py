@@ -12,7 +12,7 @@ from typing import Any, TextIO, cast
 
 from loushang.ai.types import ImagePart
 from loushang.coding.diagnostics.debug_status import debug_status_text
-from loushang.coding.package_product_repair_ui import (
+from loushang.coding.package.product_repair_ui import (
     execute_coding_package_repair_ui_command,
 )
 from loushang.coding.plugin_management_read_sdk import (

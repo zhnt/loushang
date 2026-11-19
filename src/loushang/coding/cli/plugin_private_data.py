@@ -16,37 +16,35 @@ from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_private_data_backup import (
-    CodingArchPrivateDataBackupOwner,
-)
-from loushang.coding.package_private_data_backup_expiry import (
+from loushang.coding.package.private_data_backup import CodingArchPrivateDataBackupOwner
+from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryOwner,
     CodingArchPrivateDataBackupExpiryPlanV1,
 )
-from loushang.coding.package_private_data_backup_expiry_journal import (
+from loushang.coding.package.private_data_backup_expiry_journal import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
 )
-from loushang.coding.package_private_data_backup_sdk import (
+from loushang.coding.package.private_data_backup_sdk import (
     open_coding_arch_private_data_backup_client,
 )
-from loushang.coding.package_private_data_deletion_owner import (
+from loushang.coding.package.private_data_deletion_owner import (
     CodingArchPrivateDataDeletionOwner,
 )
-from loushang.coding.package_private_data_read_owner import (
+from loushang.coding.package.private_data_read_owner import (
     CodingArchPrivateDataReadOwner,
 )
-from loushang.coding.package_private_data_restore import (
+from loushang.coding.package.private_data_restore import (
     CodingArchPrivateDataRestoreOwner,
     CodingArchPrivateDataRestorePlanV1,
 )
-from loushang.coding.package_private_data_restore_journal import (
+from loushang.coding.package.private_data_restore_journal import (
     CodingArchPrivateDataRestoreJournal,
     restore_id_for,
 )
-from loushang.coding.package_private_data_windows_backup_client import (
+from loushang.coding.package.private_data_windows_backup_client import (
     open_coding_windows_arch_backup_candidate_client,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     CodingFencedProductApplicationOwner,
     open_coding_fenced_product_application_owner,

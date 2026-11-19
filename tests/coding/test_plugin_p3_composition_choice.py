@@ -39,7 +39,7 @@ from loushang.coding.composition_provenance import (
     startup_composition_record,
 )
 from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
 )

@@ -25,10 +25,10 @@ from unittest.mock import patch
 
 import pytest
 
-import loushang.coding.package_legacy_windows_receipt as windows_receipt_module
-import loushang.coding.package_private_data_windows_backup as windows_backup_module
-import loushang.coding.package_private_data_windows_restore_journal as windows_restore_journal_module
-import loushang.coding.package_product_backup_types as backup_types_module
+import loushang.coding.package.legacy_windows_receipt as windows_receipt_module
+import loushang.coding.package.private_data_windows_backup as windows_backup_module
+import loushang.coding.package.private_data_windows_restore_journal as windows_restore_journal_module
+import loushang.coding.package.product_backup_types as backup_types_module
 import loushang.harness.plugin_management._private_data_backup_windows as windows_archive_action
 import loushang.harness.plugin_management._private_data_expiry_windows as windows_expiry_action
 import loushang.harness.resources.packages._private_tree_windows as windows_deletion_module
@@ -64,83 +64,78 @@ from loushang.coding.cli.package_worker_windows_candidate import (
     main as windows_worker_candidate_main,
 )
 from loushang.coding.cli.plugin_private_data import main as private_data_cli_main
-from loushang.coding.package_arch_private_cache import (
+from loushang.coding.package.arch_private_cache import (
     write_coding_arch_private_windows_snapshot,
 )
-from loushang.coding.package_cutover_backup import (
-    inspect_coding_package_cutover_backup,
-)
-from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
-from loushang.coding.package_external_worker_wheel import (
+from loushang.coding.package.cutover_backup import inspect_coding_package_cutover_backup
+from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package.external_worker_wheel import (
     CodingExternalWorkerWheelError,
     CodingWindowsExternalWorkerWheelCatalog,
 )
-from loushang.coding.package_installation_private_data import (
+from loushang.coding.package.installation_private_data import (
     coding_arch_installation_private_data_root,
     inspect_coding_windows_arch_installation_root,
     prepare_coding_product_arch_private_data_root,
 )
-from loushang.coding.package_legacy_builtin_acceptance import (
+from loushang.coding.package.legacy_builtin_acceptance import (
     CodingLegacyBuiltinOnlyAcceptanceError,
     accept_coding_first_b_builtin_only,
     read_coding_first_b_builtin_only_acceptance,
 )
-from loushang.coding.package_legacy_builtin_adoption import (
+from loushang.coding.package.legacy_builtin_adoption import (
     adopt_coding_first_b_builtin_only,
 )
-from loushang.coding.package_legacy_builtin_review import (
+from loushang.coding.package.legacy_builtin_review import (
     admit_coding_builtin_only_snapshot,
     review_coding_first_b_builtin_only,
 )
-from loushang.coding.package_legacy_installation_inventory import (
+from loushang.coding.package.legacy_installation_inventory import (
     read_coding_legacy_installation_inventory,
 )
-from loushang.coding.package_legacy_snapshot_member import (
+from loushang.coding.package.legacy_snapshot_member import (
     CodingFirstBLegacyStateObserver,
     CodingLegacySnapshotError,
     list_coding_first_b_snapshot_domain_members,
     read_coding_first_b_snapshot_member,
 )
-from loushang.coding.package_legacy_windows_receipt import (
+from loushang.coding.package.legacy_windows_receipt import (
     CodingWindowsPrivateReceiptError,
     write_windows_private_receipt,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
     reopen_coding_package_cutover,
 )
-from loushang.coding.package_private_data_backup_expiry_records import (
+from loushang.coding.package.private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
 )
-from loushang.coding.package_private_data_backup_records import (
-    backup_id,
-    backup_parent,
-)
-from loushang.coding.package_private_data_windows_backup import (
+from loushang.coding.package.private_data_backup_records import backup_id, backup_parent
+from loushang.coding.package.private_data_windows_backup import (
     CodingWindowsArchPrivateDataBackupOwner,
 )
-from loushang.coding.package_private_data_windows_backup_client import (
+from loushang.coding.package.private_data_windows_backup_client import (
     open_coding_windows_arch_backup_candidate_client,
 )
-from loushang.coding.package_private_data_windows_confirmation import (
+from loushang.coding.package.private_data_windows_confirmation import (
     CodingWindowsArchPrivateDataConfirmationOwner,
 )
-from loushang.coding.package_private_data_windows_deletion_journal import (
+from loushang.coding.package.private_data_windows_deletion_journal import (
     CodingWindowsArchPrivateDataDeletionJournal,
     windows_arch_deletion_receipt_id,
 )
-from loushang.coding.package_private_data_windows_deletion_owner import (
+from loushang.coding.package.private_data_windows_deletion_owner import (
     CodingWindowsArchPrivateDataDeletionOwner,
 )
-from loushang.coding.package_private_data_windows_preview import (
+from loushang.coding.package.private_data_windows_preview import (
     CodingWindowsArchPrivateDataReadPreview,
 )
-from loushang.coding.package_private_data_windows_restore_preview import (
+from loushang.coding.package.private_data_windows_restore_preview import (
     CodingWindowsArchPrivateDataRestorePreview,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
     admit_coding_external_worker_wheel,
     bootstrap_coding_builtin_product_plugins,
@@ -148,146 +143,144 @@ from loushang.coding.package_product_runtime import (
     open_coding_fenced_product_application_owner,
     open_coding_package_product_state,
 )
-from loushang.coding.package_product_worker_activation_state import (
+from loushang.coding.package.product_worker_activation_state import (
     open_coding_windows_product_worker_activation_state_store,
 )
-from loushang.coding.package_product_worker_native_approval import (
+from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalError,
     CodingWorkerNativeReleaseApprovalV1,
 )
-from loushang.coding.package_product_worker_opt_in import (
-    CodingWorkerOptInJournalError,
-)
-from loushang.coding.package_product_worker_opt_in_owner import (
+from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInJournalError
+from loushang.coding.package.product_worker_opt_in_owner import (
     CodingWorkerProductOptInError,
 )
-from loushang.coding.package_product_worker_ordinary_error import (
+from loushang.coding.package.product_worker_ordinary_error import (
     CodingWorkerOrdinaryBootstrapError,
 )
-from loushang.coding.package_product_worker_policy import (
+from loushang.coding.package.product_worker_policy import (
     CodingWorkerOptInV1,
     coding_worker_session_scope_id,
 )
-from loushang.coding.package_product_worker_provider import (
+from loushang.coding.package.product_worker_provider import (
     CodingWorkerProviderCandidateError,
     coding_worker_query_capability_provider,
     prepare_coding_selected_worker_provider_candidate,
 )
-from loushang.coding.package_product_worker_query_consumer import (
+from loushang.coding.package.product_worker_query_consumer import (
     CODING_WORKER_QUERY_DEFINITION,
     bind_coding_worker_query_consumer,
 )
-from loushang.coding.package_product_worker_receipt import CodingWorkerReceiptError
-from loushang.coding.package_product_worker_turn_tool import (
+from loushang.coding.package.product_worker_receipt import CodingWorkerReceiptError
+from loushang.coding.package.product_worker_turn_tool import (
     CODING_WORKER_QUERY_TOOL_NAME,
 )
-from loushang.coding.package_product_worker_windows_activation_state_journal import (
+from loushang.coding.package.product_worker_windows_activation_state_journal import (
     CodingWindowsWorkerActivationStateJournal,
 )
-from loushang.coding.package_product_worker_windows_backend_release import (
+from loushang.coding.package.product_worker_windows_backend_release import (
     review_coding_windows_worker_backend_release,
 )
-from loushang.coding.package_product_worker_windows_cleanup_evidence import (
+from loushang.coding.package.product_worker_windows_cleanup_evidence import (
     CodingWindowsWorkerCleanupEvidenceAuthority,
 )
-from loushang.coding.package_product_worker_windows_crash_c5_settlement import (
+from loushang.coding.package.product_worker_windows_crash_c5_settlement import (
     settle_coding_windows_product_worker_crash_c5,
 )
-from loushang.coding.package_product_worker_windows_crash_cleanup_review import (
+from loushang.coding.package.product_worker_windows_crash_cleanup_review import (
     review_coding_windows_product_worker_crash_cleanup,
 )
-from loushang.coding.package_product_worker_windows_crash_lease_repair import (
+from loushang.coding.package.product_worker_windows_crash_lease_repair import (
     repair_coding_windows_product_worker_crash_orphan_runtime,
     review_coding_windows_product_worker_crash_lease_repair,
 )
-from loushang.coding.package_product_worker_windows_crash_native_settlement import (
+from loushang.coding.package.product_worker_windows_crash_native_settlement import (
     settle_coding_windows_product_worker_crash_native,
 )
-from loushang.coding.package_product_worker_windows_crash_recovery import (
+from loushang.coding.package.product_worker_windows_crash_recovery import (
     recover_coding_windows_product_worker_crash_attempt,
 )
-from loushang.coding.package_product_worker_windows_crash_stage_retirement import (
+from loushang.coding.package.product_worker_windows_crash_stage_retirement import (
     retire_coding_windows_product_worker_crash_stage,
 )
-from loushang.coding.package_product_worker_windows_crash_stage_review import (
+from loushang.coding.package.product_worker_windows_crash_stage_review import (
     review_coding_windows_product_worker_crash_stage,
 )
-from loushang.coding.package_product_worker_windows_crash_supervisor_settlement import (
+from loushang.coding.package.product_worker_windows_crash_supervisor_settlement import (
     settle_coding_windows_product_worker_crash_supervisor,
 )
-from loushang.coding.package_product_worker_windows_gc_history import (
+from loushang.coding.package.product_worker_windows_gc_history import (
     CodingWindowsWorkerGcHistoryAuthority,
 )
-from loushang.coding.package_product_worker_windows_installed_backend import (
+from loushang.coding.package.product_worker_windows_installed_backend import (
     CodingWindowsWorkerInstalledBackendError,
     CodingWindowsWorkerInstalledBackendReader,
     install_coding_windows_worker_backend_release,
     read_coding_windows_worker_installed_backend_release,
 )
-from loushang.coding.package_product_worker_windows_launch_intent import (
+from loushang.coding.package.product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentError,
     CodingWindowsWorkerLaunchIntentV1,
     commit_coding_windows_product_worker_launch_intent,
     inspect_coding_windows_product_worker_launch_intents,
     read_coding_windows_product_worker_launch_intent,
 )
-from loushang.coding.package_product_worker_windows_native_approval_journal import (
+from loushang.coding.package.product_worker_windows_native_approval_journal import (
     CodingWindowsWorkerNativeApprovalJournal,
 )
-from loushang.coding.package_product_worker_windows_native_approval_owner import (
+from loushang.coding.package.product_worker_windows_native_approval_owner import (
     CodingWindowsWorkerNativeApprovalOwner,
 )
-from loushang.coding.package_product_worker_windows_opt_in_journal import (
+from loushang.coding.package.product_worker_windows_opt_in_journal import (
     CodingWindowsWorkerOptInJournal,
 )
-from loushang.coding.package_product_worker_windows_opt_in_owner import (
+from loushang.coding.package.product_worker_windows_opt_in_owner import (
     CodingWindowsWorkerProductOptInOwner,
 )
-from loushang.coding.package_product_worker_windows_orphan_review import (
+from loushang.coding.package.product_worker_windows_orphan_review import (
     repair_coding_windows_product_worker_clean_exit_orphan_runtime,
     review_coding_windows_product_worker_orphan_runtime,
 )
-from loushang.coding.package_product_worker_windows_partial_stage_retirement import (
+from loushang.coding.package.product_worker_windows_partial_stage_retirement import (
     retire_coding_windows_product_worker_partial_stage,
 )
-from loushang.coding.package_product_worker_windows_partial_stage_review import (
+from loushang.coding.package.product_worker_windows_partial_stage_review import (
     review_coding_windows_product_worker_partial_stage,
 )
-from loushang.coding.package_product_worker_windows_payload import (
+from loushang.coding.package.product_worker_windows_payload import (
     CodingWindowsWorkerPayloadMaterializationError,
     bind_coding_windows_product_worker_launch_request,
     materialize_coding_windows_product_worker_payload,
     plan_coding_windows_product_worker_pending_launch,
 )
-from loushang.coding.package_product_worker_windows_payload_inventory import (
+from loushang.coding.package.product_worker_windows_payload_inventory import (
     inspect_coding_windows_product_worker_payload_attempts,
 )
-from loushang.coding.package_product_worker_windows_provisioning import (
+from loushang.coding.package.product_worker_windows_provisioning import (
     inspect_coding_windows_product_worker_provisioning_attempts,
     open_coding_windows_product_worker_provisioning_state_store,
 )
-from loushang.coding.package_product_worker_windows_receipt import (
+from loushang.coding.package.product_worker_windows_receipt import (
     open_coding_windows_product_selected_worker_receipt_owner,
     read_coding_windows_product_worker_receipt_record,
 )
-from loushang.coding.package_product_worker_windows_receipt_journal import (
+from loushang.coding.package.product_worker_windows_receipt_journal import (
     CodingWindowsWorkerReceiptJournal,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAdmissionError,
     inspect_coding_windows_product_worker_attempt_gc_observations,
     inspect_coding_windows_product_worker_attempt_references,
     inspect_coding_windows_product_worker_offline_recovery,
     inspect_coding_windows_product_worker_recovery_inventory,
 )
-from loushang.coding.package_product_worker_windows_stage_retirement import (
+from loushang.coding.package.product_worker_windows_stage_retirement import (
     retire_coding_windows_product_worker_complete_stage,
 )
-from loushang.coding.package_product_worker_windows_stage_review import (
+from loushang.coding.package.product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewError,
     review_coding_windows_product_worker_complete_stage,
 )
-from loushang.coding.package_product_worker_windows_supervisor_journal import (
+from loushang.coding.package.product_worker_windows_supervisor_journal import (
     open_coding_windows_product_worker_supervisor_journal,
 )
 from loushang.coding.session_manager import SessionManager
@@ -2153,8 +2146,8 @@ import sys
 from pathlib import Path
 
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_installation_private_data import prepare_coding_product_arch_private_data_root
-from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
+from loushang.coding.package.installation_private_data import prepare_coding_product_arch_private_data_root
+from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
 
@@ -2516,7 +2509,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_product_runtime import CodingFencedProductApplicationSelection
+from loushang.coding.package.product_runtime import CodingFencedProductApplicationSelection
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
@@ -2620,7 +2613,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_product_runtime import CodingFencedProductApplicationSelection
+from loushang.coding.package.product_runtime import CodingFencedProductApplicationSelection
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
@@ -3906,53 +3899,53 @@ def _retain_windows_c5_test_attempt(
 def _assert_windows_worker_retired_history_allows_gc(
     tmp_path: Path, *, partial_attempt_id: str | None
 ) -> None:
-    from loushang.coding.package_product_worker_windows_c5_base import (
+    from loushang.coding.package.product_worker_windows_c5_base import (
         CodingWindowsWorkerC5SemanticBaseV1,
     )
-    from loushang.coding.package_product_worker_windows_checkpoint import (
+    from loushang.coding.package.product_worker_windows_checkpoint import (
         publish_coding_windows_worker_history_checkpoint,
         read_coding_windows_worker_history_checkpoint,
     )
-    from loushang.coding.package_product_worker_windows_desired_references import (
+    from loushang.coding.package.product_worker_windows_desired_references import (
         CodingWindowsWorkerDesiredReferenceReviewV1,
     )
-    from loushang.coding.package_product_worker_windows_history_bases import (
+    from loushang.coding.package.product_worker_windows_history_bases import (
         publish_coding_windows_worker_history_bases,
         read_coding_windows_worker_history_bases,
     )
-    from loushang.coding.package_product_worker_windows_history_cutover_preflight import (
+    from loushang.coding.package.product_worker_windows_history_cutover_preflight import (
         review_coding_windows_worker_history_cutover_candidate,
     )
-    from loushang.coding.package_product_worker_windows_history_cutover_record import (
+    from loushang.coding.package.product_worker_windows_history_cutover_record import (
         WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
         CodingWindowsWorkerHistoryCutoverRecordV1,
     )
-    from loushang.coding.package_product_worker_windows_history_join import (
+    from loushang.coding.package.product_worker_windows_history_join import (
         CodingWindowsWorkerHistorySemanticJoinV1,
     )
-    from loushang.coding.package_product_worker_windows_history_preparation import (
+    from loushang.coding.package.product_worker_windows_history_preparation import (
         CodingWindowsWorkerHistoryPreparationV1,
         prepare_coding_windows_worker_history,
     )
-    from loushang.coding.package_product_worker_windows_history_sources import (
+    from loushang.coding.package.product_worker_windows_history_sources import (
         read_coding_windows_worker_history_semantics,
         review_coding_windows_worker_settled_history_sources,
     )
-    from loushang.coding.package_product_worker_windows_launch_intent_base import (
+    from loushang.coding.package.product_worker_windows_launch_intent_base import (
         CodingWindowsWorkerLaunchIntentSemanticBaseV1,
     )
-    from loushang.coding.package_product_worker_windows_package_references import (
+    from loushang.coding.package.product_worker_windows_package_references import (
         review_coding_windows_worker_package_references,
     )
-    from loushang.coding.package_product_worker_windows_persisted_bases import (
+    from loushang.coding.package.product_worker_windows_persisted_bases import (
         _read_coding_windows_worker_persisted_bases_under_gc_guard,
         read_coding_windows_worker_persisted_bases,
         read_coding_windows_worker_persisted_cutover,
     )
-    from loushang.coding.package_product_worker_windows_provisioning_base import (
+    from loushang.coding.package.product_worker_windows_provisioning_base import (
         CodingWindowsWorkerNativeProvisioningSemanticBaseV1,
     )
-    from loushang.coding.package_product_worker_windows_supervisor_base import (
+    from loushang.coding.package.product_worker_windows_supervisor_base import (
         CodingWindowsWorkerSupervisorSemanticBaseV1,
     )
 
@@ -4766,7 +4759,7 @@ def _exercise_windows_worker_wheel_transaction(
 import json
 import sys
 from pathlib import Path
-from loushang.coding.package_external_worker_wheel import CodingWindowsExternalWorkerWheelCatalog
+from loushang.coding.package.external_worker_wheel import CodingWindowsExternalWorkerWheelCatalog
 from loushang.harness.resources.packages.product_windows_epoch_guard import PackageProductWindowsFencedRuntimeOwner
 
 owner = PackageProductWindowsFencedRuntimeOwner.open(
@@ -6434,8 +6427,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
-from loushang.coding.package_product_worker_windows_orphan_review import (
+from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
+from loushang.coding.package.product_worker_windows_orphan_review import (
     repair_coding_windows_product_worker_clean_exit_orphan_runtime,
     review_coding_windows_product_worker_orphan_runtime,
 )
@@ -6552,16 +6545,16 @@ preimport_worker_files = sorted(
     if item.name.startswith("worker-")
 )
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
-from loushang.coding.package_product_worker_windows_native_approval_owner import CodingWindowsWorkerNativeApprovalOwner
-from loushang.coding.package_product_worker_windows_opt_in_owner import CodingWindowsWorkerProductOptInOwner
-from loushang.coding.package_product_worker_windows_crash_cleanup_review import CodingWindowsWorkerCrashCleanupReviewError, review_coding_windows_product_worker_crash_cleanup
-from loushang.coding.package_product_worker_windows_provisioning import inspect_coding_windows_product_worker_provisioning_attempts
-from loushang.coding.package_product_worker_windows_receipt import read_coding_windows_product_worker_receipt_record
-from loushang.coding.package_product_worker_windows_recovery_inventory import inspect_coding_windows_product_worker_offline_recovery, inspect_coding_windows_product_worker_recovery_inventory
-from loushang.coding.package_product_worker_windows_partial_stage_review import CodingWindowsWorkerPartialStageReviewError, review_coding_windows_product_worker_partial_stage
-from loushang.coding.package_product_worker_windows_reserved_review import CodingWindowsWorkerReservedReviewError, review_coding_windows_product_worker_reserved_no_effect
-from loushang.coding.package_product_worker_windows_stage_review import CodingWindowsWorkerStageReviewError, review_coding_windows_product_worker_complete_stage
+from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
+from loushang.coding.package.product_worker_windows_native_approval_owner import CodingWindowsWorkerNativeApprovalOwner
+from loushang.coding.package.product_worker_windows_opt_in_owner import CodingWindowsWorkerProductOptInOwner
+from loushang.coding.package.product_worker_windows_crash_cleanup_review import CodingWindowsWorkerCrashCleanupReviewError, review_coding_windows_product_worker_crash_cleanup
+from loushang.coding.package.product_worker_windows_provisioning import inspect_coding_windows_product_worker_provisioning_attempts
+from loushang.coding.package.product_worker_windows_receipt import read_coding_windows_product_worker_receipt_record
+from loushang.coding.package.product_worker_windows_recovery_inventory import inspect_coding_windows_product_worker_offline_recovery, inspect_coding_windows_product_worker_recovery_inventory
+from loushang.coding.package.product_worker_windows_partial_stage_review import CodingWindowsWorkerPartialStageReviewError, review_coding_windows_product_worker_partial_stage
+from loushang.coding.package.product_worker_windows_reserved_review import CodingWindowsWorkerReservedReviewError, review_coding_windows_product_worker_reserved_no_effect
+from loushang.coding.package.product_worker_windows_stage_review import CodingWindowsWorkerStageReviewError, review_coding_windows_product_worker_complete_stage
 
 workspace = Path(sys.argv[1])
 lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(Path(sys.argv[2]), cwd=workspace)
@@ -6770,12 +6763,12 @@ from pathlib import Path
 from unittest.mock import patch
 from loushang.harness.worker.payload._windows_stage_retirement import WindowsStageRetirement
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
-from loushang.coding.package_product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
-from loushang.coding.package_product_worker_windows_partial_stage_review import review_coding_windows_product_worker_partial_stage
-from loushang.coding.package_product_worker_windows_partial_stage_retirement import retire_coding_windows_product_worker_partial_stage
-from loushang.coding.package_product_worker_windows_stage_review import review_coding_windows_product_worker_complete_stage
-from loushang.coding.package_product_worker_windows_stage_retirement import retire_coding_windows_product_worker_complete_stage
+from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
+from loushang.coding.package.product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
+from loushang.coding.package.product_worker_windows_partial_stage_review import review_coding_windows_product_worker_partial_stage
+from loushang.coding.package.product_worker_windows_partial_stage_retirement import retire_coding_windows_product_worker_partial_stage
+from loushang.coding.package.product_worker_windows_stage_review import review_coding_windows_product_worker_complete_stage
+from loushang.coding.package.product_worker_windows_stage_retirement import retire_coding_windows_product_worker_complete_stage
 
 workspace = Path(sys.argv[1])
 lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(Path(sys.argv[2]), cwd=workspace)
@@ -6928,15 +6921,15 @@ import json
 import sys
 from pathlib import Path
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
-from loushang.coding.package_product_worker_windows_launch_intent import commit_coding_windows_product_worker_launch_intent
-from loushang.coding.package_product_worker_windows_payload import bind_coding_windows_product_worker_launch_request, materialize_coding_windows_product_worker_payload
-from loushang.coding.package_product_worker_windows_provisioning import open_coding_windows_product_worker_provisioning_state_store
-from loushang.coding.package_product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
-from loushang.coding.package_product_worker_windows_recovery_inventory import inspect_coding_windows_product_worker_offline_recovery
-from loushang.coding.package_product_worker_windows_stage_review import review_coding_windows_product_worker_complete_stage
-from loushang.coding.package_product_worker_windows_stage_retirement import retire_coding_windows_product_worker_complete_stage
-from loushang.coding.package_product_worker_windows_supervisor_journal import open_coding_windows_product_worker_supervisor_journal
+from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
+from loushang.coding.package.product_worker_windows_launch_intent import commit_coding_windows_product_worker_launch_intent
+from loushang.coding.package.product_worker_windows_payload import bind_coding_windows_product_worker_launch_request, materialize_coding_windows_product_worker_payload
+from loushang.coding.package.product_worker_windows_provisioning import open_coding_windows_product_worker_provisioning_state_store
+from loushang.coding.package.product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
+from loushang.coding.package.product_worker_windows_recovery_inventory import inspect_coding_windows_product_worker_offline_recovery
+from loushang.coding.package.product_worker_windows_stage_review import review_coding_windows_product_worker_complete_stage
+from loushang.coding.package.product_worker_windows_stage_retirement import retire_coding_windows_product_worker_complete_stage
+from loushang.coding.package.product_worker_windows_supervisor_journal import open_coding_windows_product_worker_supervisor_journal
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
 from loushang.harness.worker import WorkerSupervisor
 from loushang.harness.worker._native_profile_bridge import _bind_windows_lpac_contained_product_worker_profile
@@ -7110,13 +7103,13 @@ import json
 import sys
 from pathlib import Path
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
-from loushang.coding.package_product_worker_windows_launch_intent import commit_coding_windows_product_worker_launch_intent
-from loushang.coding.package_product_worker_windows_payload import bind_coding_windows_product_worker_launch_request, materialize_coding_windows_product_worker_payload
-from loushang.coding.package_product_worker_windows_provisioning import open_coding_windows_product_worker_provisioning_state_store
-from loushang.coding.package_product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
-from loushang.coding.package_product_worker_windows_stage_review import review_coding_windows_product_worker_complete_stage
-from loushang.coding.package_product_worker_windows_stage_retirement import retire_coding_windows_product_worker_complete_stage
+from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
+from loushang.coding.package.product_worker_windows_launch_intent import commit_coding_windows_product_worker_launch_intent
+from loushang.coding.package.product_worker_windows_payload import bind_coding_windows_product_worker_launch_request, materialize_coding_windows_product_worker_payload
+from loushang.coding.package.product_worker_windows_provisioning import open_coding_windows_product_worker_provisioning_state_store
+from loushang.coding.package.product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
+from loushang.coding.package.product_worker_windows_stage_review import review_coding_windows_product_worker_complete_stage
+from loushang.coding.package.product_worker_windows_stage_retirement import retire_coding_windows_product_worker_complete_stage
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
 from loushang.harness.worker._native_profile_bridge import _windows_lpac_provisioning_identity
 
@@ -7196,15 +7189,15 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
-from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
-import loushang.coding.package_product_worker_windows_payload as payload_module
+from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
+import loushang.coding.package.product_worker_windows_payload as payload_module
 from loushang.harness.worker.payload._windows_stage_retirement import WindowsStageRetirement
-from loushang.coding.package_product_worker_windows_payload import CodingWindowsWorkerPayloadMaterializationError, materialize_coding_windows_product_worker_payload
-from loushang.coding.package_product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, _inspect_windows_worker_recovery_inventory_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
-from loushang.coding.package_product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
-from loushang.coding.package_product_worker_windows_reserved_review import review_coding_windows_product_worker_reserved_no_effect, review_coding_windows_product_worker_settled_unlaunched
-from loushang.coding.package_product_worker_windows_reserved_settlement import settle_coding_windows_product_worker_reserved_no_effect
-from loushang.coding.package_product_worker_windows_unlaunched_stage_retirement import retire_coding_windows_product_worker_settled_unlaunched_stage
+from loushang.coding.package.product_worker_windows_payload import CodingWindowsWorkerPayloadMaterializationError, materialize_coding_windows_product_worker_payload
+from loushang.coding.package.product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, _inspect_windows_worker_recovery_inventory_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
+from loushang.coding.package.product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
+from loushang.coding.package.product_worker_windows_reserved_review import review_coding_windows_product_worker_reserved_no_effect, review_coding_windows_product_worker_settled_unlaunched
+from loushang.coding.package.product_worker_windows_reserved_settlement import settle_coding_windows_product_worker_reserved_no_effect
+from loushang.coding.package.product_worker_windows_unlaunched_stage_retirement import retire_coding_windows_product_worker_settled_unlaunched_stage
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
 
 workspace = Path(sys.argv[1])

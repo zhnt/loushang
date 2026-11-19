@@ -12,23 +12,23 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding import (
-    package_product_worker_windows_history_preparation as preparation,
+from loushang.coding.package import (
+    product_worker_windows_history_preparation as preparation,
 )
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceFileV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
     _coding_windows_worker_desired_history_digest,
 )
-from loushang.coding.package_product_worker_windows_provisioning_journal import (
+from loushang.coding.package.product_worker_windows_provisioning_journal import (
     WindowsWorkerProvisioningAttemptV1,
     _Record,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
 )
 from loushang.harness.package_product import _windows_worker_history as history_owner

@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.coding.package_private_data_windows_preview import (
-    _native_io,
-)
+from loushang.coding.package.private_data_windows_preview import _native_io
 
 
 @pytest.mark.parametrize(

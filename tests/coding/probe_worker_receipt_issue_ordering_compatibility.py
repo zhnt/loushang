@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_worker_receipt as code
-import loushang.coding.package_product_worker_windows_receipt as windows
+import loushang.coding.package.product_worker_receipt as code
+import loushang.coding.package.product_worker_windows_receipt as windows
 import loushang.harness.worker.history._receipt_store as storage
 import loushang.harness.worker.history._receipts as receipt_values
 import loushang.harness.worker.history._windows_record_journals as windows_records
@@ -311,8 +311,8 @@ def observe(case, monkeypatch):
 def source_guard():
     root = Path(__file__).resolve().parents[2]
     modules = (
-        (code, "src/loushang/coding/package_product_worker_receipt.py"),
-        (windows, "src/loushang/coding/package_product_worker_windows_receipt.py"),
+        (code, "src/loushang/coding/package/product_worker_receipt.py"),
+        (windows, "src/loushang/coding/package/product_worker_windows_receipt.py"),
         (storage, "src/loushang/harness/worker/history/_receipt_store.py"),
         (receipt_values, "src/loushang/harness/worker/history/_receipts.py"),
         (

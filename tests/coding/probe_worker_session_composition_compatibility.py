@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding import package_product_worker_session_composition as original
-from loushang.coding.package_product_worker_query_consumer import (
+from loushang.coding.package import product_worker_session_composition as original
+from loushang.coding.package.product_worker_query_consumer import (
     CODING_WORKER_QUERY_DEFINITION,
     CODING_WORKER_QUERY_REQUIREMENT,
 )

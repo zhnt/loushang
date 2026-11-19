@@ -3510,7 +3510,7 @@
       "restore-wrong-predecessor": "ebe2ce62eef13e832500e0829830b166b4e46d099ade154da1187c6708fc8c03"
     },
     "scope": "Real filesystem receipt bytes/FD IO and original deletion decoder/sequence; Windows ACL/native identity ports and exact Product path binding emulated; no native execution. Raw ordered traces frozen outside Product under a71-windows-installation-root-lineage/observations-original.",
-    "source": "src/loushang/coding/package_installation_private_data.py",
+    "source": "src/loushang/coding/package/installation_private_data.py",
     "source_sha256": "ce3661ea7b5d126fa140953bb2ad494b006a341742f262c7649a63dc0ac08df3"
   }
 }

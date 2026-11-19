@@ -1002,7 +1002,7 @@ A45保留为历史：五canonical reader复用Code−60/Core+16/系统−44，�
 | P3 托管、Continuity与执行适配 | 嵌入式与AppService入口复用业务owner；原导入/恢复及Goal/Method/Work适配沿原权威执行 | 无第二桥接业务、队列、日志或状态投影；owned/non-owned与平台差异按原合同处理，不提前采纳未就绪bytes设计 |
 | P4 入口与存量收敛 | CLI/SDK/UI声明和投影、包管理与兼容入口最终归位 | 无支持义务且无生产消费者的代码才退出；逐组完成保留/复用/迁移/删除说明，最终核算与整项代码评审 |
 
-**首项建议：先做P1的Worker专项设计，选一条“既有Supervisor记录→查询→重开恢复→结清”的纵向路径。** 当前[产品Journal](../../../../src/loushang/coding/package_product_worker_supervisor_journal.py)已继承原[WorkerSupervisorJournal](../../../../src/loushang/harness/worker/journal.py)，[历史入口](../../../../src/loushang/coding/package_product_worker_history_segments.py)也已薄转发至原Worker；应从其余产品存储/恢复协调与实际callee入手，先证明哪些能由现成能力覆盖，再决定接口扩充，不把110文件整包搬家。
+**首项建议：先做P1的Worker专项设计，选一条“既有Supervisor记录→查询→重开恢复→结清”的纵向路径。** 当前[产品Journal](../../../../src/loushang/coding/package/product_worker_supervisor_journal.py)已继承原[WorkerSupervisorJournal](../../../../src/loushang/harness/worker/journal.py)，[历史入口](../../../../src/loushang/coding/package/product_worker_history_segments.py)也已薄转发至原Worker；应从其余产品存储/恢复协调与实际callee入手，先证明哪些能由现成能力覆盖，再决定接口扩充，不把110文件整包搬家。
 
 其它波次可因依赖或确定性调整顺序，但须记录理由。按一个业务职责簇交付，不为填数字长期追逐零散helper；某候选不能形成职责或净删收益时记录保留/拒绝，转向下一完整场景。新接口若实际需要改变既有合同，明确列为行为变更、单独设计验证，不冒称机械迁移。
 

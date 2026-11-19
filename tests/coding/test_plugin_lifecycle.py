@@ -34,7 +34,7 @@ from loushang.coding._plugin_owner_generations import (
     CodingOwnerGenerationEvidenceError,
 )
 from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.package_epoch_layout import (
+from loushang.coding.package.epoch_layout import (
     resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
@@ -454,7 +454,7 @@ def test_product_arch_management_change_pins_active_session_and_blocks_new_mount
     from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -578,7 +578,7 @@ def test_product_base_lsp_and_arch_share_one_session_runtime_lease(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -1476,7 +1476,7 @@ def test_product_runtime_identity_rejects_another_process_until_orphan_repair(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -1536,7 +1536,7 @@ def test_product_process_death_requires_exact_orphan_repair_before_new_session(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -1616,7 +1616,7 @@ def test_product_hard_crash_after_lease_registration_repairs_exact_orphan(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -1845,7 +1845,7 @@ def test_product_base_replay_refuses_changed_committed_root_without_live_lease(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -1948,7 +1948,7 @@ def test_product_base_replay_refuses_corrupt_authority_journal_without_lease(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -2031,7 +2031,7 @@ def test_nonpersistent_transcript_honors_durable_product_disable(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -2338,7 +2338,7 @@ def test_product_session_resume_reacquires_lease_for_same_selected_base(
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -2554,7 +2554,7 @@ def test_product_base_change_keeps_active_selection_and_omits_new_base(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -2669,7 +2669,7 @@ def test_product_owner_cleanup_failure_keeps_runtime_lease_until_exact_retry(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -2754,7 +2754,7 @@ def test_nonpersistent_product_sessions_release_runtime_without_erasing_state(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -2823,7 +2823,7 @@ def test_product_session_runtime_release_failure_retains_lease_until_retry(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -2918,7 +2918,7 @@ def test_product_dual_capability_construction_failure_releases_unbound_runtime(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
@@ -3058,7 +3058,7 @@ def test_product_bootstrap_preserves_lsp_only_when_base_is_unselected(
         INSPECT_SYMBOL_TOOL_NAME,
         LspServerDefinition,
     )
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )

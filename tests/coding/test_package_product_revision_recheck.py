@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_product_revisions import _ProductSelectedRevisionHandle
+from loushang.coding.package.product_revisions import _ProductSelectedRevisionHandle
 from loushang.harness.resources.plugins.revisions import PluginRevisionError
 
 

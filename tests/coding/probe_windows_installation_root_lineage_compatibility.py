@@ -14,13 +14,13 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding import package_installation_private_data as code
-from loushang.coding import package_legacy_windows_receipt as receipts
-from loushang.coding import package_private_data_windows_deletion_journal as deletion
-from loushang.coding.package_private_data_deletion_journal import (
+from loushang.coding.package import installation_private_data as code
+from loushang.coding.package import legacy_windows_receipt as receipts
+from loushang.coding.package import private_data_windows_deletion_journal as deletion
+from loushang.coding.package.private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1 as Event,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1 as Target,
 )
 from loushang.harness.plugin_management import _private_data_deletion_windows as history

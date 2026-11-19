@@ -9,22 +9,20 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_legacy_classification import (
-    CodingScopedLegacyDisableV1,
-)
-from loushang.coding.package_legacy_installation_inventory import (
+from loushang.coding.package.legacy_classification import CodingScopedLegacyDisableV1
+from loushang.coding.package.legacy_installation_inventory import (
     CodingLegacyInventoryError,
     read_coding_legacy_installation_inventory,
 )
-from loushang.coding.package_legacy_snapshot_member import (
+from loushang.coding.package.legacy_snapshot_member import (
     list_coding_first_b_snapshot_domain_members,
 )
-from loushang.coding.package_legacy_source_evidence import (
+from loushang.coding.package.legacy_source_evidence import (
     CodingLegacySourceEvidenceError,
     parse_coding_legacy_source_evidence,
     read_coding_legacy_source_evidence,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
 )

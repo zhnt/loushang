@@ -14,17 +14,17 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_external_dependency_wheel import (
+from loushang.coding.package.external_dependency_wheel import (
     CodingExternalDependencyWheelCatalog,
     CodingExternalDependencyWheelError,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_product_preview import (
+from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     admit_coding_external_dependency_wheel,
     open_coding_fenced_product_application_owner,
 )

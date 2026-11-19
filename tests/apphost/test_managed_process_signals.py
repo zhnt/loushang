@@ -12,8 +12,7 @@ from time import monotonic
 import pytest
 
 from loushang.hosting.service import LinuxServiceObserverV1
-
-from ..hosting._pidfd_signal import send_signal
+from tests.hosting._pidfd_signal import send_signal
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process-shell signal policy")
 

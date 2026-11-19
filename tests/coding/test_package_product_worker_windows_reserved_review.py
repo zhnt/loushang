@@ -5,13 +5,13 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_launch_intent import (
+from loushang.coding.package.product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
 )
-from loushang.coding.package_product_worker_windows_reserved_review import (
+from loushang.coding.package.product_worker_windows_reserved_review import (
     CodingWindowsWorkerReservedNoEffectReviewV1,
     CodingWindowsWorkerReservedReviewError,
 )

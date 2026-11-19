@@ -17,9 +17,9 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding import package_private_data_windows_confirmation as module
-from loushang.coding.package_legacy_windows_receipt import write_windows_private_receipt
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package import private_data_windows_confirmation as module
+from loushang.coding.package.legacy_windows_receipt import write_windows_private_receipt
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
 from loushang.harness.plugin_management.private_data_confirmation import (

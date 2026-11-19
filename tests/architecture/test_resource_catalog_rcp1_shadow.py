@@ -144,7 +144,7 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
     }
     expected_consumers = {
         # Existing Product preview/discovery consume immutable Catalog data.
-        Path("src/loushang/coding/package_product_preview.py"),
+        Path("src/loushang/coding/package/product_preview.py"),
         Path("src/loushang/coding/plugin_local_discovery.py"),
         # Original Session fingerprints its selected snapshot for Resume use.
         Path("src/loushang/coding/session/agent_session.py"),
@@ -159,7 +159,7 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
     if projection_owner in consumers:
         expected_consumers = (
             expected_consumers
-            - {Path("src/loushang/coding/package_product_preview.py")}
+            - {Path("src/loushang/coding/package/product_preview.py")}
         ) | {projection_owner}
     assert consumers - optional_consumers == expected_consumers
     assert "_catalog" not in (RESOURCE_ROOT / "__init__.py").read_text(encoding="utf-8")

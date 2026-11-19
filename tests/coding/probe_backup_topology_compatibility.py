@@ -25,8 +25,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding import package_product_backup_types as code
-from loushang.coding.package_legacy_windows_receipt import _receipt_io
+from loushang.coding.package import product_backup_types as code
+from loushang.coding.package.legacy_windows_receipt import _receipt_io
 from loushang.harness.journal import _rooted_io
 from loushang.harness.resources.packages.plugin_lifecycle import windows_quarantine
 

@@ -303,7 +303,7 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
         for path in production_paths
         if "loushang.harness.session.product_composition_assembly"
         in _imported_modules(path)
-    } - {Path("src/loushang/coding/package_product_worker_session_composition.py")} == {
+    } - {Path("src/loushang/coding/package/product_worker_session_composition.py")} == {
         CODING_BOOTSTRAP_PATH,
         CODING_BASE_PLUGIN_PATH,
         CODING_CAPABILITY_PLUGIN_COMPOSITION_PATH,

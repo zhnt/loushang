@@ -57,10 +57,10 @@ def observed(case):
     role, body, number = case.split("-")
     mask = int(number)
     full = importlib.import_module(
-        "loushang.coding.package_product_worker_windows_stage_review"
+        'loushang.coding.package.product_worker_windows_stage_review'
     )
     reserved = importlib.import_module(
-        "loushang.coding.package_product_worker_windows_reserved_review"
+        'loushang.coding.package.product_worker_windows_reserved_review'
     )
     effect = importlib.import_module(
         "loushang.harness.package_product._worker_windows_attempt"
@@ -73,7 +73,7 @@ def observed(case):
         "loushang.harness.worker.payload._windows_stage_retirement"
     )
     intents = importlib.import_module(
-        "loushang.coding.package_product_worker_windows_launch_intent"
+        'loushang.coding.package.product_worker_windows_launch_intent'
     )
     with patch.object(shared, "HERE", HERE / "adjacent-inputs"):
         root, stage, _entrypoint = shared.seeded(case)

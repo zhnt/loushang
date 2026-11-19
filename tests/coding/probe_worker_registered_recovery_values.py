@@ -11,15 +11,15 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding import package_product_worker_activation_state as activation
-from loushang.coding import package_product_worker_cleanup_evidence as cleanup
-from loushang.coding import package_product_worker_crash_c5_settlement as crash
-from loushang.coding import (
-    package_product_worker_registered_c5_settlement as settlement,
+from loushang.coding.package import product_worker_activation_state as activation
+from loushang.coding.package import product_worker_cleanup_evidence as cleanup
+from loushang.coding.package import product_worker_crash_c5_settlement as crash
+from loushang.coding.package import (
+    product_worker_registered_c5_settlement as settlement,
 )
-from loushang.coding import package_product_worker_registered_payload_repair as repair
-from loushang.coding import package_product_worker_registered_recovery as recovery
-from loushang.coding.package_product_worker_payload import CodingWorkerPayloadDebtPlanV1
+from loushang.coding.package import product_worker_registered_payload_repair as repair
+from loushang.coding.package import product_worker_registered_recovery as recovery
+from loushang.coding.package.product_worker_payload import CodingWorkerPayloadDebtPlanV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )

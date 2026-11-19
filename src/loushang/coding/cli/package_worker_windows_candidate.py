@@ -18,42 +18,42 @@ from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     admit_coding_external_worker_wheel,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_windows_activation_state_journal import (
+from loushang.coding.package.product_worker_windows_activation_state_journal import (
     CodingWindowsWorkerActivationStateJournal,
 )
-from loushang.coding.package_product_worker_windows_backend_release import (
+from loushang.coding.package.product_worker_windows_backend_release import (
     review_coding_windows_worker_backend_release,
 )
-from loushang.coding.package_product_worker_windows_crash_recovery import (
+from loushang.coding.package.product_worker_windows_crash_recovery import (
     recover_coding_windows_product_worker_crash_attempt,
 )
-from loushang.coding.package_product_worker_windows_installed_backend import (
+from loushang.coding.package.product_worker_windows_installed_backend import (
     install_coding_windows_worker_backend_release,
 )
-from loushang.coding.package_product_worker_windows_native_approval_owner import (
+from loushang.coding.package.product_worker_windows_native_approval_owner import (
     CodingWindowsWorkerNativeApprovalOwner,
 )
-from loushang.coding.package_product_worker_windows_opt_in_owner import (
+from loushang.coding.package.product_worker_windows_opt_in_owner import (
     CodingWindowsWorkerProductOptInOwner,
 )
-from loushang.coding.package_product_worker_windows_orphan_review import (
+from loushang.coding.package.product_worker_windows_orphan_review import (
     review_coding_windows_product_worker_orphan_runtime,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     inspect_coding_windows_product_worker_recovery_inventory,
 )
-from loushang.coding.package_product_worker_windows_stage_retirement import (
+from loushang.coding.package.product_worker_windows_stage_retirement import (
     _read_review as read_coding_windows_worker_stage_retirement_review,
 )
-from loushang.coding.package_product_worker_windows_stage_retirement import (
+from loushang.coding.package.product_worker_windows_stage_retirement import (
     retire_coding_windows_product_worker_complete_stage,
 )
-from loushang.coding.package_product_worker_windows_stage_review import (
+from loushang.coding.package.product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewError,
     review_coding_windows_product_worker_complete_stage,
 )

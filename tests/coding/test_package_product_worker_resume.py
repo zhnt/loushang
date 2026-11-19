@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.package_product_worker_resume import (
+from loushang.coding.package.product_worker_resume import (
     CodingWorkerResumeParentError,
     CodingWorkerResumeSettlementBinding,
     enroll_coding_worker_resume_parent,

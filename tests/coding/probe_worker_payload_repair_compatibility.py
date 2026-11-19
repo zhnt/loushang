@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.package_product_worker_payload as payload
-import loushang.coding.package_product_worker_registered_payload_repair as registered
+import loushang.coding.package.product_worker_payload as payload
+import loushang.coding.package.product_worker_registered_payload_repair as registered
 
 pytestmark = pytest.mark.skipif(
     sys.platform != "linux", reason="Linux Worker repair profiles"

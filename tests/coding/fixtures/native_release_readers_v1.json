@@ -1,8 +1,8 @@
 {
   "baselineCommit": "0bddeb516",
   "baselineSources": {
-    "src/loushang/coding/package_product_worker_installed_native.py": "aff4fbe827bd345a5f72e30d9524375d514da5149405bc8c964d887c655b2eb9",
-    "src/loushang/coding/package_product_worker_native_release.py": "6de1cf22207ccef7f3fe5f630c9360280d362957a3ccd1f2a3222b4aefa173bc"
+    "src/loushang/coding/package/product_worker_installed_native.py": "aff4fbe827bd345a5f72e30d9524375d514da5149405bc8c964d887c655b2eb9",
+    "src/loushang/coding/package/product_worker_native_release.py": "6de1cf22207ccef7f3fe5f630c9360280d362957a3ccd1f2a3222b4aefa173bc"
   },
   "inputs": {
     "installedVersion": "0.1.0",

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_supervisor_journal import (
+from loushang.coding.package.product_worker_supervisor_journal import (
     CodingProductWorkerSupervisorJournal,
 )
 from loushang.harness.worker import (

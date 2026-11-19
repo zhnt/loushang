@@ -12,7 +12,7 @@
 
 首个业务路径是：已有Worker声明受原批准约束→Supervisor记录一次attempt及状态变化→只读查询→关闭/重开后回放同一历史→原进程和资源结清后才允许下一attempt。重开查询不等于重启进程、发布切换或授予清理权。
 
-本专项起点时，[WorkerSupervisorJournal](../../../../../src/loushang/harness/worker/journal.py)已拥有claim/transition/epoch、重复attempt和未结清前驱拒绝；[Supervisor](../../../../../src/loushang/harness/worker/supervisor.py)已拥有运行状态机。当时Coding的[525行子类](../../../../../src/loushang/coding/package_product_worker_supervisor_journal.py)覆写持久化和V2语义投影，不能把它误称为第二个Supervisor引擎。当时原[分段历史](../../../../../src/loushang/harness/worker/_segmented_history.py)已经共享，Coding对应18行只是兼容转发。
+本专项起点时，[WorkerSupervisorJournal](../../../../../src/loushang/harness/worker/journal.py)已拥有claim/transition/epoch、重复attempt和未结清前驱拒绝；[Supervisor](../../../../../src/loushang/harness/worker/supervisor.py)已拥有运行状态机。当时Coding的[525行子类](../../../../../src/loushang/coding/package/product_worker_supervisor_journal.py)覆写持久化和V2语义投影，不能把它误称为第二个Supervisor引擎。当时原[分段历史](../../../../../src/loushang/harness/worker/_segmented_history.py)已经共享，Coding对应18行只是兼容转发。
 
 静态AST导入清点覆盖110文件：从该子类可达的C07文件为43个/18,156行；其中一个静态强连通簇32文件。包含local/lazy/TYPE_CHECKING导入，不代表运行时循环或全调用图，也不等于43文件都须搬迁。它揭示Supervisor写入围栏与五流checkpoint、V2 owner index、retention以及启动清理事实有共同依赖，不能仅搬一个525行类后留下Core→Coding反向调用。
 
@@ -382,7 +382,7 @@ Design status: accepted focused R2；三独立设计视角核具体实物无阻�
 
 先拒绝R1整段迁移：十二恢复程序转移使Code减200、Core增299、系统增99行；两个所谓语义回调还会反向执行Code的Supervisor读取/GC/currentness与记录指纹，不能将没有直接Code import说成没有Code IO。原三处删除故障注入也不再命中。R1保留树外供分析，未进产品，不以A11接受为它背书。
 
-R2直接复用原[PayloadStorage](../../../../../src/loushang/harness/worker/payload/_storage.py)，仅增open_root及内部普通scope；[Code payload](../../../../../src/loushang/coding/package_product_worker_payload.py)十三处预览、恢复review、完整/空/未标记修复、重开、intent查询及完整inventory共用该程序。Code原类型、quiescence/GC guard、claim/settled判据与三种partial程序原样保留；没有Supervisor回调、新_debt模块、第二文件系统、记录或恢复引擎。
+R2直接复用原[PayloadStorage](../../../../../src/loushang/harness/worker/payload/_storage.py)，仅增open_root及内部普通scope；[Code payload](../../../../../src/loushang/coding/package/product_worker_payload.py)十三处预览、恢复review、完整/空/未标记修复、重开、intent查询及完整inventory共用该程序。Code原类型、quiescence/GC guard、claim/settled判据与三种partial程序原样保留；没有Supervisor回调、新_debt模块、第二文件系统、记录或恢复引擎。
 
 原_offline先进入，scope随后在open实参位置取一次Path，在原可见根核验位置再次取Path；getter只为`lambda: product.state_root`，不提前缓存字段或执行Code物理IO。scope暂持原单个FD，不选择路径或签发权限。body/stage清理之后先close root，才由原_offline执行正常退出currentness；open失败不关闭未取得FD，可见检查失败仍关闭一次，body返回/失败/取消仍关闭一次，close失败保持原finally覆盖。普通__enter__/__exit__不抑制异常，也避免生成器将StopIteration转换成RuntimeError。每次调用新scope，不承诺该私有对象重入/并发使用。
 
@@ -543,7 +543,7 @@ R4.1选定下一项优先分析**已有Worker的“准入→待发布Session图�
 
 ### 10.1 实际缺口与已有能力
 
-Coding的[Worker Session装配](../../../../../src/loushang/coding/package_product_worker_session_composition.py)当前635行：准入输入准备173行、普通图合成214行、合成结果复核125行，另有公开错误/值类。后两函数没有物理IO、原生启动或新授予批准：它们将Product已给定的ordinary/worker事实交原`ProductCompositionCompiler`、`ProductCapabilityProviderResolver`和`validate_session_capability_composition_closure`，再确认原普通事实未被替换。其核心关系是Session图关系，不是Coding查询语义。
+Coding的[Worker Session装配](../../../../../src/loushang/coding/package/product_worker_session_composition.py)当前635行：准入输入准备173行、普通图合成214行、合成结果复核125行，另有公开错误/值类。后两函数没有物理IO、原生启动或新授予批准：它们将Product已给定的ordinary/worker事实交原`ProductCompositionCompiler`、`ProductCapabilityProviderResolver`和`validate_session_capability_composition_closure`，再确认原普通事实未被替换。其核心关系是Session图关系，不是Coding查询语义。
 
 现有[Session composition inputs](../../../../../src/loushang/harness/session/capability_composition_inputs.py)已拥有精确request→resolved对象、host/external闭包、fingerprint与prepared component合同；[Product composition assembly](../../../../../src/loushang/harness/session/product_composition_assembly.py)已负责已准入事实交共同compiler/resolver的装配。后者目前没有“保留原ordinary全部事实，加入一个已准入Worker并重新解析”的成品操作。不得为了迁移另外实现编译器、resolver、Graph runtime或并行的Session输入类型；只在原装配模块补足这项关系操作。
 
@@ -600,7 +600,7 @@ A17落实：两个Code公开函数已薄转调原Session私有配置；原Core18
 | 候选准备、图绑定、发布后提交、失败中止 | 原[PreparedSessionWorkerCapabilityComponent](../../../../../src/loushang/harness/session/capability_composition_inputs.py)与[AgentProductSession](../../../../../src/loushang/harness/session/agent_product.py) | Session继续决定调用时点；不新增prepared registry、Graph Host或第二事务管理器 |
 | C5准入、first effect、publish、retire、terminal、settlement/debt | 原[ProductWorkerActivationCoordinator](../../../../../src/loushang/harness/worker/product_activation.py) | Code提供原receipt/批准与身份；不能让日志reader发布C5或替代原生结清查证 |
 | 进程启动及关闭 | 原[Worker session](../../../../../src/loushang/harness/worker/session.py)、Supervisor与Hosting adapter | 原平台profile和Hosting拥有实际资源；不由新图适配器再持另一份进程控制权 |
-| Graph Provider、facet和释放回调 | 当前[provider_host](../../../../../src/loushang/coding/package_product_worker_provider_host.py)已组合原Capabilities binding与Worker facet proxy | 其续期/当前产品/候选核验仍含政策，不能整文件认定为通用重复体；后续只按具体机制与政策拆分 |
+| Graph Provider、facet和释放回调 | 当前[provider_host](../../../../../src/loushang/coding/package/product_worker_provider_host.py)已组合原Capabilities binding与Worker facet proxy | 其续期/当前产品/候选核验仍含政策，不能整文件认定为通用重复体；后续只按具体机制与政策拆分 |
 | 取消期间等待所属清理任务 | 原Harness `_await_cancellation_atomic`已转调Foundation的failure-first join | 两pending路径继续用同一能力；不用新shield循环或把caller取消等同清理完成 |
 
 原prepared合同已提供`binding`、`receipt_fingerprint`、`worker_admission_fingerprint`、同步`commit_after_graph_publication()`及异步`abort_uncommitted() -> bool`。不新建同义接口。`require_current_activation()`未列入该通用prepared Protocol；但原Session的`require_current_capability_component_activations()`一旦被调用，就要求每个已发布prepared提供同步callable，缺失或异步均拒绝。保持该消费点要求，既不提前新增全体prepared构造期验证，也不改成缺方法就跳过。
@@ -624,7 +624,7 @@ A17落实：两个Code公开函数已薄转调原Session私有配置；原Core18
 | stack关闭失败 | `finally`仍尝试原retire/terminal/V1 settlement；后者可能覆盖前错 | 成功关闭stack后才retire/terminal/V2 settlement；异常时按原条件记V2 debt | 不把任一平台行为伪称两平台共同保证；若要改须另作行为设计 |
 | native结清凭据 | 原tree witness与构造时取到的host/boot identity | 原tree witness、native containment witness和原读取时点 | history可读、facet retired、进程退出都不能互相代替凭据 |
 
-源码依据：[POSIX pending](../../../../../src/loushang/coding/package_product_worker_pending_host.py)、[Windows pending](../../../../../src/loushang/coding/package_product_worker_windows_pending_host.py)、上述provider host及原Session发布段。本表为静态事实核对，不是并发/取消或原生Windows运行证明。
+源码依据：[POSIX pending](../../../../../src/loushang/coding/package/product_worker_pending_host.py)、[Windows pending](../../../../../src/loushang/coding/package/product_worker_windows_pending_host.py)、上述provider host及原Session发布段。本表为静态事实核对，不是并发/取消或原生Windows运行证明。
 
 ### 11.3 接口选择与删旧合同还须落实什么
 

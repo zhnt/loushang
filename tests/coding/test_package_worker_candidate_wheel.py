@@ -30,16 +30,16 @@ from unittest.mock import patch
 
 import pytest
 
-import loushang.coding.package_product_backup_types as backup_types_module
-import loushang.coding.package_product_worker_activation_state_journal as activation_state_journal_module
-import loushang.coding.package_product_worker_crash_c5_settlement as crash_c5_module
-import loushang.coding.package_product_worker_history_checkpoint as checkpoint_module
-import loushang.coding.package_product_worker_history_retention as history_retention_module
-import loushang.coding.package_product_worker_history_stage_v2 as history_stage_v2_module
-import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
-import loushang.coding.package_product_worker_payload as worker_payload_module
-import loushang.coding.package_product_worker_receipt as receipt_journal_module
-import loushang.coding.package_product_worker_start_gate_journal as gate_journal_module
+import loushang.coding.package.product_backup_types as backup_types_module
+import loushang.coding.package.product_worker_activation_state_journal as activation_state_journal_module
+import loushang.coding.package.product_worker_crash_c5_settlement as crash_c5_module
+import loushang.coding.package.product_worker_history_checkpoint as checkpoint_module
+import loushang.coding.package.product_worker_history_retention as history_retention_module
+import loushang.coding.package.product_worker_history_stage_v2 as history_stage_v2_module
+import loushang.coding.package.product_worker_opt_in as opt_in_journal_module
+import loushang.coding.package.product_worker_payload as worker_payload_module
+import loushang.coding.package.product_worker_receipt as receipt_journal_module
+import loushang.coding.package.product_worker_start_gate_journal as gate_journal_module
 import loushang.coding.session.agent_session as coding_agent_session_module
 import loushang.harness.package_product._linux_worker_history as history_proof_module
 import loushang.harness.package_product._linux_worker_native_release as native_release_custody_module
@@ -71,89 +71,87 @@ from loushang.coding.bootstrap import (
 )
 from loushang.coding.cli.package_worker_native import _execute as execute_native_cli
 from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.package_external_worker_wheel import (
-    CodingExternalWorkerWheelError,
-)
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.external_worker_wheel import CodingExternalWorkerWheelError
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_product_preview import (
+from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     admit_coding_external_data_wheel,
     admit_coding_external_worker_wheel,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_activation_state import (
+from loushang.coding.package.product_worker_activation_state import (
     open_coding_product_worker_activation_state_store,
 )
-from loushang.coding.package_product_worker_capability import (
+from loushang.coding.package.product_worker_capability import (
     CodingProductWorkerCapabilityAuthority,
     CodingWorkerCapabilityBindingError,
 )
-from loushang.coding.package_product_worker_cleanup_evidence import (
+from loushang.coding.package.product_worker_cleanup_evidence import (
     CodingPosixWorkerCleanupEvidenceAuthority,
 )
-from loushang.coding.package_product_worker_crash_c5_settlement import (
+from loushang.coding.package.product_worker_crash_c5_settlement import (
     CodingWorkerCrashC5SettlementError,
     settle_coding_product_worker_crash_c5,
 )
-from loushang.coding.package_product_worker_discovery import (
+from loushang.coding.package.product_worker_discovery import (
     CodingWorkerTranscriptDiscoveryReader,
 )
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointError,
     publish_coding_product_worker_history_checkpoint,
     read_coding_product_worker_history_checkpoints_under_gc_guard,
     repair_coding_product_worker_history_checkpoint_append,
     rollback_coding_product_worker_history_checkpoint_tail,
 )
-from loushang.coding.package_product_worker_history_commit_v2 import (
+from loushang.coding.package.product_worker_history_commit_v2 import (
     commit_coding_product_worker_v2_owner,
 )
-from loushang.coding.package_product_worker_history_retention import (
+from loushang.coding.package.product_worker_history_retention import (
     review_coding_product_worker_history_retention,
 )
-from loushang.coding.package_product_worker_history_retire_v2 import (
+from loushang.coding.package.product_worker_history_retire_v2 import (
     retire_coding_product_worker_v2_history,
 )
-from loushang.coding.package_product_worker_history_rotate_v2 import (
+from loushang.coding.package.product_worker_history_rotate_v2 import (
     seal_coding_product_worker_v1_history_for_v2,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
 )
-from loushang.coding.package_product_worker_history_stage_v2 import (
+from loushang.coding.package.product_worker_history_stage_v2 import (
     stage_coding_product_worker_v2_preparation,
 )
-from loushang.coding.package_product_worker_installed_native import (
+from loushang.coding.package.product_worker_installed_native import (
     open_coding_product_installed_worker_release_reader,
 )
-from loushang.coding.package_product_worker_native_approval import (
+from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalError,
     CodingWorkerNativeApprovalJournal,
 )
-from loushang.coding.package_product_worker_native_install import (
+from loushang.coding.package.product_worker_native_install import (
     _verified_wheel_members,
     _write_stage,
     install_coding_product_worker_native_release,
     repair_coding_product_worker_native_release,
     review_coding_product_worker_native_release,
 )
-from loushang.coding.package_product_worker_native_release import (
+from loushang.coding.package.product_worker_native_release import (
     CodingLinuxWorkerReleaseCatalogReader,
     CodingWorkerNativeReleaseError,
 )
-from loushang.coding.package_product_worker_opt_in import CodingWorkerOptInJournal
-from loushang.coding.package_product_worker_opt_in_owner import (
+from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInJournal
+from loushang.coding.package.product_worker_opt_in_owner import (
     CodingWorkerProductOptInError,
     CodingWorkerProductOptInOwner,
 )
-from loushang.coding.package_product_worker_ordinary_bootstrap import (
+from loushang.coding.package.product_worker_ordinary_bootstrap import (
     prepare_coding_product_worker_ordinary_binding,
 )
-from loushang.coding.package_product_worker_payload import (
+from loushang.coding.package.product_worker_payload import (
     CodingWorkerPayloadDebtPlanV1,
     CodingWorkerPayloadMaterializationError,
     bind_coding_product_worker_launch_request,
@@ -172,11 +170,11 @@ from loushang.coding.package_product_worker_payload import (
     review_coding_product_worker_payload_recovery,
     review_coding_product_worker_unmarked_payload_debt,
 )
-from loushang.coding.package_product_worker_pending_host import (
+from loushang.coding.package.product_worker_pending_host import (
     CodingWorkerPendingHostError,
     prepare_coding_product_worker_pending_session_inputs,
 )
-from loushang.coding.package_product_worker_policy import (
+from loushang.coding.package.product_worker_policy import (
     CodingWorkerNativeClosureReadError,
     CodingWorkerNativeClosureV1,
     CodingWorkerOptInV1,
@@ -184,20 +182,20 @@ from loushang.coding.package_product_worker_policy import (
     coding_worker_session_scope_id,
     derive_coding_selected_worker_policy,
 )
-from loushang.coding.package_product_worker_posix_gc_history import (
+from loushang.coding.package.product_worker_posix_gc_history import (
     CodingPosixWorkerGcHistoryAuthority,
 )
-from loushang.coding.package_product_worker_provider import (
+from loushang.coding.package.product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding,
     CodingWorkerProviderCandidateError,
     coding_worker_query_capability_provider,
     prepare_coding_selected_worker_provider_candidate,
 )
-from loushang.coding.package_product_worker_provider_host import (
+from loushang.coding.package.product_worker_provider_host import (
     CodingWorkerProviderHostError,
     prepare_coding_worker_provider_binding,
 )
-from loushang.coding.package_product_worker_query_consumer import (
+from loushang.coding.package.product_worker_query_consumer import (
     CODING_WORKER_QUERY_CAPABILITY_ID,
     CODING_WORKER_QUERY_DEFINITION,
     CODING_WORKER_QUERY_FACET_ID,
@@ -207,46 +205,46 @@ from loushang.coding.package_product_worker_query_consumer import (
     bind_coding_worker_query_facet_owner,
     coding_worker_query_owner_authority,
 )
-from loushang.coding.package_product_worker_receipt import (
+from loushang.coding.package.product_worker_receipt import (
     CodingWorkerProductReceiptOwner,
     CodingWorkerReceiptError,
     open_coding_product_selected_worker_receipt_owner,
     open_coding_selected_worker_receipt_owner,
     read_coding_product_worker_receipt_record,
 )
-from loushang.coding.package_product_worker_registered_c5_settlement import (
+from loushang.coding.package.product_worker_registered_c5_settlement import (
     settle_coding_product_worker_registered_c5,
 )
-from loushang.coding.package_product_worker_registered_payload_repair import (
+from loushang.coding.package.product_worker_registered_payload_repair import (
     read_coding_product_worker_registered_payload_repair_intent,
     repair_coding_product_worker_registered_payload_debt,
 )
-from loushang.coding.package_product_worker_registered_recovery import (
+from loushang.coding.package.product_worker_registered_recovery import (
     repair_coding_product_worker_registered_orphan,
     review_coding_product_worker_registered_orphan,
 )
-from loushang.coding.package_product_worker_session_composition import (
+from loushang.coding.package.product_worker_session_composition import (
     CodingProductWorkerOrdinarySessionBinding,
     CodingWorkerSessionCompositionError,
     compose_coding_product_worker_with_ordinary_session,
     prepare_coding_product_worker_session_inputs,
     validate_coding_product_worker_ordinary_session_inputs,
 )
-from loushang.coding.package_product_worker_start_gate import (
+from loushang.coding.package.product_worker_start_gate import (
     CodingProductWorkerStartGate,
 )
-from loushang.coding.package_product_worker_start_gate_journal import (
+from loushang.coding.package.product_worker_start_gate_journal import (
     CodingWorkerStartGateJournal,
     CodingWorkerStartGateJournalError,
 )
-from loushang.coding.package_product_worker_start_gate_recovery import (
+from loushang.coding.package.product_worker_start_gate_recovery import (
     CodingWorkerGatedRecoveryError,
     repair_coding_product_worker_orphan_runtime,
     review_coding_product_worker_gated_recovery,
     review_coding_product_worker_orphan_runtime,
     settle_coding_product_worker_gated_attempt,
 )
-from loushang.coding.package_product_worker_turn_tool import (
+from loushang.coding.package.product_worker_turn_tool import (
     CODING_WORKER_QUERY_TOOL_NAME,
     CodingWorkerTurnToolBinding,
 )
@@ -560,7 +558,7 @@ def _run_independent_ordinary_worker_turn_crash(
 ) -> None:
     """Crash a real Coding turn after its Product Worker Tool has answered."""
 
-    from loushang.coding import package_product_runtime
+    from loushang.coding.package import product_runtime as package_product_runtime
 
     def report_stage(stage: str) -> None:
         print(f"independent-worker-crash:{stage}", flush=True)
@@ -665,7 +663,7 @@ def _run_independent_registered_worker_crash(
 ) -> None:
     """Exit after the Product has committed C5 registration, before effect."""
 
-    from loushang.coding.package_product_worker_activation_state import (
+    from loushang.coding.package.product_worker_activation_state import (
         CodingProductWorkerActivationStateStore,
     )
 

@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from loushang.coding.package_product_worker_activation_history import (
+from loushang.coding.package.product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
-from loushang.coding.package_product_worker_no_effect_closure import (
-    is_coding_worker_no_effect_closure,
-)
-from loushang.coding.package_product_worker_history_retention import (
+from loushang.coding.package.product_worker_history_retention import (
     _receipt_gate_reference_issue,
 )
-from loushang.coding.package_product_worker_receipt import CodingWorkerReceiptRecordV1
-from loushang.coding.package_product_worker_start_gate_journal import (
+from loushang.coding.package.product_worker_no_effect_closure import (
+    is_coding_worker_no_effect_closure,
+)
+from loushang.coding.package.product_worker_receipt import CodingWorkerReceiptRecordV1
+from loushang.coding.package.product_worker_start_gate_journal import (
     CodingWorkerStartGateRecordV1,
 )
 from tests.harness.worker.test_product_activation import _receipt

@@ -177,6 +177,6 @@ not infer deletion budgets from a large file or keep pursuing isolated helpers.
 
 Final production SHA256:
 
-- `src/loushang/coding/package_installation_private_data.py`: `aaa4b44f76a33733f2d23f746af9a975256390b0faf3f043f448dfc8f7470d1f`.
+- `src/loushang/coding/package/installation_private_data.py`: `aaa4b44f76a33733f2d23f746af9a975256390b0faf3f043f448dfc8f7470d1f`.
 - `src/loushang/harness/plugin_management/_installation_root_windows.py`: `ead75303e13aeca6b80b0724ffc0461ea700fde03f4e41adf819a5334891bd84`.
 - `src/loushang/harness/plugin_management/_private_data_restore_windows.py`: `0fe19c152ba16ac7f8a95061770e576395c575d3b569577e448d9600eda62570`.

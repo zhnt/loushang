@@ -51,7 +51,7 @@ from ._base_product_composition import (
     _resource_bodies,
 )
 from .composition_sets import CodingCompositionSetPlan
-from .package_legacy_data_trust import (
+from .package.legacy_data_trust import (
     EXTERNAL_DATA_TRUST_CLASSES,
     EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
     permits_external_data_owner,

@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_installed_native import (
+from loushang.coding.package.product_worker_installed_native import (
     CodingLinuxInstalledWorkerReleaseReader,
 )
-from loushang.coding.package_product_worker_native_release import (
+from loushang.coding.package.product_worker_native_release import (
     CodingLinuxWorkerReleaseCatalogReader,
     CodingWorkerNativeReleaseError,
 )

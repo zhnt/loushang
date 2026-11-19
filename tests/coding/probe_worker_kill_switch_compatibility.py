@@ -14,10 +14,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import package_product_worker_receipt as posix
-from loushang.coding import package_product_worker_windows_receipt as windows
-from loushang.coding.package_product_worker_opt_in import CodingWorkerOptInDecisionV1
-from loushang.coding.package_product_worker_policy import CodingWorkerOptInV1
+from loushang.coding.package import product_worker_receipt as posix
+from loushang.coding.package import product_worker_windows_receipt as windows
+from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInDecisionV1
+from loushang.coding.package.product_worker_policy import CodingWorkerOptInV1
 
 EXPECTED = Path(__file__).parent / "fixtures" / "worker_kill_switch_v1.json.gz"
 SCOPE = "workspace:" + "a" * 64

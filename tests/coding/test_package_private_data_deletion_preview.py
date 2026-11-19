@@ -9,17 +9,17 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_installation_private_data import (
+from loushang.coding.package.installation_private_data import (
     prepare_coding_product_arch_private_data_root,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataDeletionPreview,
     CodingArchPrivateDataTargetSnapshotV1,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
 )
 from loushang.coding.session_manager import SessionManager

@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_worker_receipt as module
-from loushang.coding.package_product_worker_opt_in import CodingWorkerOptInJournal
+import loushang.coding.package.product_worker_receipt as module
+from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInJournal
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductSessionOwner,

@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import replace
 from types import SimpleNamespace
 
-from loushang.coding.package_product_worker_windows_crash_cleanup_review import (
+from loushang.coding.package.product_worker_windows_crash_cleanup_review import (
     _crash_settled_history_matches,
     _valid_crash_cleanup_history,
     _valid_crash_native_settlement_history,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
 )
 

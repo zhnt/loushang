@@ -15,7 +15,7 @@ from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_management_cli import (
+from loushang.coding.package.product_management_cli import (
     build_coding_fenced_product_management_cli_ports,
 )
 from loushang.coding.plugin_management_cli import (

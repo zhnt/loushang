@@ -6,27 +6,27 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding import package_legacy_disabled_acceptance as acceptance_module
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_legacy_classification import CodingScopedLegacyDisableV1
-from loushang.coding.package_legacy_disabled_acceptance import (
+from loushang.coding.package import legacy_disabled_acceptance as acceptance_module
+from loushang.coding.package.legacy_classification import CodingScopedLegacyDisableV1
+from loushang.coding.package.legacy_disabled_acceptance import (
     CodingLegacyDisabledOnlyAcceptanceError,
     CodingLegacyDisabledOnlyAcceptanceV1,
     accept_coding_first_b_disabled_only,
     read_coding_first_b_disabled_only_acceptance,
 )
-from loushang.coding.package_legacy_disabled_review import (
+from loushang.coding.package.legacy_disabled_review import (
     CodingLegacyDisabledOnlyReviewError,
     CodingLegacyDisabledOnlyReviewV1,
     review_coding_first_b_disabled_only,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     _bootstrap_coding_builtin_plugin,
     open_coding_fenced_product_application_owner,
 )

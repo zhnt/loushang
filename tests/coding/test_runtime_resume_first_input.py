@@ -14,7 +14,7 @@ from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.types import UserMessage
 from loushang.coding import bootstrap
 from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.resume_activation_attempt import (

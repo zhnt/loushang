@@ -7,24 +7,24 @@ from hashlib import sha256
 
 import pytest
 
-from loushang.coding.package_product_worker_activation_history import (
+from loushang.coding.package.product_worker_activation_history import (
     project_coding_worker_retained_attempts,
 )
-from loushang.coding.package_product_worker_windows_activation_state_journal import (
+from loushang.coding.package.product_worker_windows_activation_state_journal import (
     _head_bytes,
 )
-from loushang.coding.package_product_worker_windows_c5_base import (
+from loushang.coding.package.product_worker_windows_c5_base import (
     CodingWindowsWorkerC5SemanticBaseV1,
 )
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceFileV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
 )
 from loushang.harness.worker.activation_state_journal import (

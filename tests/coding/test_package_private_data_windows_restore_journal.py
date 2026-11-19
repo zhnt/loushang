@@ -13,16 +13,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
-from loushang.coding.package_private_data_restore_journal import (
+from loushang.coding.package.private_data_restore_journal import (
     CodingArchPrivateDataRestoreEventV1,
 )
-from loushang.coding.package_private_data_restore_records import (
+from loushang.coding.package.private_data_restore_records import (
     CodingArchPrivateDataRestorePlanV1,
 )
-from loushang.coding.package_private_data_windows_restore_journal import (
+from loushang.coding.package.private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreTransaction,
     CodingWindowsArchRestorePublicationV1,
 )
@@ -60,7 +60,7 @@ def _receipt_ports(
             monkeypatch.setattr(module, "read_windows_private_receipt", read)
     if write is not None:
         if profile:
-            from loushang.coding.package_legacy_windows_receipt import (
+            from loushang.coding.package.legacy_windows_receipt import (
                 write_windows_private_receipt,
             )
 
@@ -194,7 +194,7 @@ def test_windows_restore_transaction_cannot_escape_offline_gate() -> None:
 def test_windows_restore_publication_binds_stage_identity_before_rename(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.package_private_data_windows_restore_journal as module
+    import loushang.coding.package.private_data_windows_restore_journal as module
 
     started, _ = _events()
     root = tmp_path / "restored-root"
@@ -271,7 +271,7 @@ def test_windows_restore_publication_binds_stage_identity_before_rename(
 def test_windows_restore_replays_original_publication_after_unrelated_desired_change(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.package_private_data_windows_restore_journal as module
+    import loushang.coding.package.private_data_windows_restore_journal as module
 
     started, completed = _events()
     source = CodingArchPrivateDataTargetSnapshotV1(
@@ -370,7 +370,7 @@ def test_windows_restore_replays_original_publication_after_unrelated_desired_ch
 def test_windows_restore_confirmation_is_immutable_and_strict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.package_private_data_windows_restore_journal as module
+    import loushang.coding.package.private_data_windows_restore_journal as module
 
     started, completed = _events()
     restored = CodingArchPrivateDataTargetSnapshotV1(

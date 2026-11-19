@@ -10,12 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_private_data_windows_backup as backup_module
-import loushang.coding.package_private_data_windows_backup_expiry_journal as journal
+import loushang.coding.package.private_data_windows_backup as backup_module
+import loushang.coding.package.private_data_windows_backup_expiry_journal as journal
 import loushang.foundation.windows_private_acl as native_acl
 import loushang.harness.package_product._backup_topology as topology
 import loushang.harness.resources.packages._private_tree_windows as native_tree
-from loushang.coding.package_private_data_windows_backup import (
+from loushang.coding.package.private_data_windows_backup import (
     CodingWindowsArchPrivateDataBackupOwner,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1

@@ -25,8 +25,8 @@ from .control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from .package_product_management_cli import coding_fenced_product_exists
-from .package_product_preview import (
+from .package.product_management_cli import coding_fenced_product_exists
+from .package.product_preview import (
     CodingCurrentDataResourcePreviewV1,
     CodingFencedProductReadOnlyPreviewOwner,
 )

@@ -9,18 +9,18 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_history_commit_v2 import (
+from loushang.coding.package.product_worker_history_commit_v2 import (
     commit_coding_worker_v2_owner_under_guard,
 )
-from loushang.coding.package_product_worker_history_retire_v2 import (
+from loushang.coding.package.product_worker_history_retire_v2 import (
     retire_coding_worker_v2_history_under_guard,
 )
-from loushang.coding.package_product_worker_history_segments import _head_name
-from loushang.coding.package_product_worker_history_stage_v2 import (
+from loushang.coding.package.product_worker_history_segments import _head_name
+from loushang.coding.package.product_worker_history_stage_v2 import (
     rollback_coding_worker_v2_preparation,
     stage_coding_worker_v2_preparation,
 )
-from loushang.coding.package_product_worker_history_v2_names import (
+from loushang.coding.package.product_worker_history_v2_names import (
     DELETION_LEDGER_NAME,
     PREPARED_INDEX_NAME,
     PRODUCT_OWNER_INDEX_NAME,

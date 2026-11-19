@@ -9,21 +9,21 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_native_approval import (
+from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalDecisionV1,
     CodingWorkerNativeReleaseApprovalV1,
 )
-from loushang.coding.package_product_worker_windows_checkpoint import (
+from loushang.coding.package.product_worker_windows_checkpoint import (
     CodingWindowsWorkerHistoryCheckpointV1,
 )
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySourceFileV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_package_references import (
+from loushang.coding.package.product_worker_windows_package_references import (
     CodingWindowsWorkerPackageReferenceReviewV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (

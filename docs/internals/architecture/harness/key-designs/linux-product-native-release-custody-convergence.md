@@ -182,6 +182,6 @@ operations and wider cross-platform approval are not expanded by this delivery.
 
 Final production SHA256:
 
-- `src/loushang/coding/package_product_worker_installed_native.py`: `35c65f17e487c11f6ac450054deaf85fb4a88a8904bb979e04a929dee52c77da`.
-- `src/loushang/coding/package_product_worker_native_install.py`: `6c1d9e1548fc5cc17f13df136de6353895abf70a846a3c8e98c430dab788b332`.
+- `src/loushang/coding/package/product_worker_installed_native.py`: `35c65f17e487c11f6ac450054deaf85fb4a88a8904bb979e04a929dee52c77da`.
+- `src/loushang/coding/package/product_worker_native_install.py`: `6c1d9e1548fc5cc17f13df136de6353895abf70a846a3c8e98c430dab788b332`.
 - `src/loushang/harness/package_product/_linux_worker_native_release.py`: `a511abd1f6d7100f5933af006c435802bc18a60a0d10cc01e7c7f76b98c710c2`.

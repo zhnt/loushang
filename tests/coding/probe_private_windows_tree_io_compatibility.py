@@ -14,10 +14,10 @@ from unittest.mock import patch
 
 import pytest
 
-import loushang.coding.package_private_data_windows_backup as backup
-import loushang.coding.package_private_data_windows_deletion_owner as deletion
-import loushang.coding.package_private_data_windows_preview as preview
-from loushang.coding.package_private_data_deletion_preview import (
+import loushang.coding.package.private_data_windows_backup as backup
+import loushang.coding.package.private_data_windows_deletion_owner as deletion
+import loushang.coding.package.private_data_windows_preview as preview
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
     _identity,

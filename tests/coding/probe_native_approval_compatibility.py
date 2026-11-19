@@ -17,8 +17,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding import package_product_worker_native_approval as code
-from loushang.coding.package_product_worker_windows_native_approval_journal import (
+from loushang.coding.package import product_worker_native_approval as code
+from loushang.coding.package.product_worker_windows_native_approval_journal import (
     CodingWindowsWorkerNativeApprovalJournal,
 )
 from loushang.harness.journal import _rooted_io

@@ -6,21 +6,21 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.package_product_worker_activation_state_journal as activation_module
-from loushang.coding.package_product_worker_activation_state_journal import (
+import loushang.coding.package.product_worker_activation_state_journal as activation_module
+from loushang.coding.package.product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )
-from loushang.coding.package_product_worker_history_deletion_v2 import (
+from loushang.coding.package.product_worker_history_deletion_v2 import (
     CodingWorkerV2DeletionLedger,
 )
-from loushang.coding.package_product_worker_history_read_v2 import (
+from loushang.coding.package.product_worker_history_read_v2 import (
     read_coding_worker_v2_retained_history,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     _head_name,
     _segment_name,
 )
-from loushang.coding.package_product_worker_history_v2_names import (
+from loushang.coding.package.product_worker_history_v2_names import (
     DELETION_LEDGER_NAME,
     PRODUCT_OWNER_INDEX_NAME,
 )

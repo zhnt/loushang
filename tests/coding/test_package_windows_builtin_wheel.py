@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_builtin_wheel import (
+from loushang.coding.package.builtin_wheel import (
     CODING_BASE_PRODUCT_WHEEL_FILENAME,
     inspect_windows_coding_base_product_wheel,
     inspect_windows_coding_capability_product_wheels,

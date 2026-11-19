@@ -113,7 +113,7 @@ flowchart TD
 | LSP、Workspace、sandbox、output captures | 具体 Provider/process/output owner；Session 持清理句柄 | 子组件先关、原依赖后放；失败仍保留重试凭据 | 保留；Product 只注入领域参数与实现 |
 | 兼容输入、migration 与旧格式投影 | 原 migration journal 和 Coding 兼容桥接 | 正式状态驱动兼容投影；按升级/降级契约退出 | 有退出债务，尚不能直接删除 |
 
-主要源码：[_plugin_lifecycle](../../../../../src/loushang/coding/_plugin_lifecycle.py)、[owner evidence](../../../../../src/loushang/coding/_plugin_owner_generations.py)、[instance runtime](../../../../../src/loushang/harness/plugin_management/instance_runtime.py)、[package lifecycle](../../../../../src/loushang/harness/plugin_management/package_lifecycle.py)、[Product runtime](../../../../../src/loushang/coding/package_product_runtime.py)、[资源装载](../../../../../src/loushang/harness/resources/_loader_pipeline.py)。Product layout 决定物理位置不等于 Product 重新实现各账本。
+主要源码：[_plugin_lifecycle](../../../../../src/loushang/coding/_plugin_lifecycle.py)、[owner evidence](../../../../../src/loushang/coding/_plugin_owner_generations.py)、[instance runtime](../../../../../src/loushang/harness/plugin_management/instance_runtime.py)、[package lifecycle](../../../../../src/loushang/harness/plugin_management/package_lifecycle.py)、[Product runtime](../../../../../src/loushang/coding/package/product_runtime.py)、[资源装载](../../../../../src/loushang/harness/resources/_loader_pipeline.py)。Product layout 决定物理位置不等于 Product 重新实现各账本。
 
 ## 3. 发现与证据等级
 

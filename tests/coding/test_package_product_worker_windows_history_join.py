@@ -6,17 +6,17 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_history_join import (
+from loushang.coding.package.product_worker_windows_history_join import (
     CodingWindowsWorkerHistorySemanticJoinV1,
 )
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
     CodingWindowsWorkerRecoveryAttemptV1,
 )

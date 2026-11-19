@@ -15,28 +15,28 @@ from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.cli.plugin_private_data import main as private_data_main
-from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
-from loushang.coding.package_installation_private_data import (
+from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package.installation_private_data import (
     coding_arch_installation_private_data_root,
     prepare_coding_product_arch_private_data_root,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_private_data_backup import (
+from loushang.coding.package.private_data_backup import (
     CodingArchPrivateDataBackupOwner,
     CodingArchPrivateDataBackupReadSource,
 )
-from loushang.coding.package_private_data_backup_expiry import (
+from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryPlanV1,
 )
-from loushang.coding.package_private_data_backup_sdk import (
+from loushang.coding.package.private_data_backup_sdk import (
     open_coding_arch_private_data_backup_client,
 )
-from loushang.coding.package_private_data_restore import (
+from loushang.coding.package.private_data_restore import (
     CodingArchPrivateDataRestorePlanV1,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
 )
@@ -683,7 +683,7 @@ def test_private_data_reads_refuse_partial_epoch_without_product_recovery(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     import loushang.coding.cli.plugin_private_data as private_cli_module
-    import loushang.coding.package_private_data_backup_sdk as backup_sdk_module
+    import loushang.coding.package.private_data_backup_sdk as backup_sdk_module
 
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
@@ -853,7 +853,7 @@ def test_private_data_preview_refuses_partial_state_without_repair(
 def test_backup_sdk_refuses_replaced_fenced_workspace_at_owner_boundaries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.package_private_data_backup_sdk as backup_sdk_module
+    import loushang.coding.package.private_data_backup_sdk as backup_sdk_module
 
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)

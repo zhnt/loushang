@@ -13,8 +13,8 @@ from loushang.coding.hosted_catalog import (
 from loushang.coding.managed_catalog import CodingManagedSessionCatalogV1
 from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
+from tests.harness.transcript.test_writer_io import wait_until
 
-from ..harness.transcript.test_writer_io import wait_until
 from .test_hosted_catalog import _intent
 from .test_managed_catalog import discovery, ordinary, tree
 

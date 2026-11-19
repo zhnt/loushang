@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_legacy_local_wheel import (
+from loushang.coding.package.legacy_local_wheel import (
     reacquire_coding_legacy_local_plugin_wheel,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer

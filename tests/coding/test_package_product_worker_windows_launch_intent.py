@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_launch_intent import (
+from loushang.coding.package.product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentError,
     CodingWindowsWorkerLaunchIntentV1,
     commit_coding_windows_product_worker_launch_intent,
@@ -73,12 +73,12 @@ def test_launch_intent_reaches_product_admission_after_loading_payload_owner() -
 
 
 def test_provisioning_recovery_uses_the_actual_launch_payload_owner() -> None:
-    from loushang.coding.package_product_worker_windows_payload import (
+    from loushang.coding.package.product_worker_windows_payload import (
         bind_coding_windows_product_worker_launch_request,
         materialize_coding_windows_product_worker_payload,
         plan_coding_windows_product_worker_pending_launch,
     )
-    from loushang.coding.package_product_worker_windows_provisioning import (
+    from loushang.coding.package.product_worker_windows_provisioning import (
         CodingWindowsProductWorkerProvisioningStateStore,
     )
 

@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_worker_windows_payload as code
+import loushang.coding.package.product_worker_windows_payload as code
 import loushang.harness.package_product._worker_windows_attempt as core
 import loushang.harness.worker.payload._windows_stage_io as stage_io
 from loushang.harness.worker.contracts import WorkerRuntimeBindingV1
@@ -301,7 +301,7 @@ def observe(spec, monkeypatch):
 def source_guard():
     root = Path(__file__).resolve().parents[2]
     for module, relative in (
-        (code, "src/loushang/coding/package_product_worker_windows_payload.py"),
+        (code, "src/loushang/coding/package/product_worker_windows_payload.py"),
         (core, "src/loushang/harness/package_product/_worker_windows_attempt.py"),
     ):
         assert Path(module.__file__).resolve() == root / relative

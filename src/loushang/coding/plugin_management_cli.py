@@ -18,7 +18,7 @@ from loushang.coding._plugin_lifecycle import (
     build_coding_plugin_management_application,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_management_cli import (
+from loushang.coding.package.product_management_cli import (
     CODING_CLI_MANAGEMENT_ACTOR_ID,
     CODING_CLI_MANAGEMENT_POLICY_REVISION,
     build_coding_fenced_product_management_cli_ports,
