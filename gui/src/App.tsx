@@ -956,9 +956,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   } : null;
 
   return (
-    <ContextMenuProvider><div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
+    <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
       onPointerDownCapture={(event) => { event.currentTarget.dataset.inputModality = "pointer"; }}
       onKeyDownCapture={(event) => { event.currentTarget.dataset.inputModality = "keyboard"; }}>
+      {/* Portaled menu clicks also count as pointer input in the shell. */}
+      <ContextMenuProvider>
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
         {...history}
         onSettings={openSettings}
@@ -1218,7 +1220,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       </main>
       <SettingsDialog dialogRef={settingsDialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
         markdown={markdown} onMarkdownChange={setMarkdown} />
-    </div></ContextMenuProvider>
+      </ContextMenuProvider>
+    </div>
   );
 }
 
