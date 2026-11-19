@@ -105,9 +105,7 @@ class CodingHostedHistoryBindingV1:
     """
 
     def __init__(
-        self,
-        identity: SessionIdentityV1,
-        history: CodingResumeHistoryPreview,
+        self, identity: SessionIdentityV1, history: CodingResumeHistoryPreview,
     ) -> None:
         if (
             type(identity) is not SessionIdentityV1
@@ -133,25 +131,18 @@ class CodingHostedHistoryBindingV1:
             remaining -= len(record.text)
         records.reverse()
         if omitted:
-            records.insert(
-                0,
-                TranscriptRecordV1(
-                    TranscriptRecordKindV1.STATUS,
-                    "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
-                ),
-            )
+            records.insert(0, TranscriptRecordV1(
+                TranscriptRecordKindV1.STATUS,
+                "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
+            ))
         title = load_agent_transcript_session_metadata(
             history.header_preview.header, history.records
         ).name
         self._projection = CodingHostedSnapshotProjectionV1(
             title=_session_title(title, (entry.payload for entry in history.records)),
-            revision=0,
-            running=False,
-            records=tuple(records),
+            revision=0, running=False, records=tuple(records),
             truncated=omitted,
-            user_choice=pending_choice_from_transcript(
-                history.selected_records, identity.session_id
-            ),
+            user_choice=pending_choice_from_transcript(history.selected_records, identity.session_id),
         )
 
     @property
@@ -161,9 +152,7 @@ class CodingHostedHistoryBindingV1:
     @cached_property
     def context(self) -> AgentTranscriptContext:
         history = self.resume_history
-        return build_agent_transcript_session_context(
-            history.records, history.selected_leaf_id
-        )
+        return build_agent_transcript_session_context(history.records, history.selected_leaf_id)
 
     @property
     def resume_history(self) -> CodingResumeHistoryPreview:
@@ -171,27 +160,20 @@ class CodingHostedHistoryBindingV1:
             raise RuntimeError("coding_hosted_session_closed")
         return self._history
 
-    def project_snapshot(
-        self, *, resume_on_submit: bool = False
-    ) -> CodingHostedSnapshotProjectionV1:
+    def project_snapshot(self, *, resume_on_submit: bool = False) -> CodingHostedSnapshotProjectionV1:
         if self._closed:
             raise RuntimeError("coding_hosted_session_closed")
         notice = (
             "Sending a message resumes the session runtime."
-            if resume_on_submit
-            else "Historical session is read-only."
+            if resume_on_submit else "Historical session is read-only."
         )
         return replace(
             self._projection,
-            records=(
-                *self._projection.records,
-                TranscriptRecordV1(TranscriptRecordKindV1.STATUS, notice),
-            ),
+            records=(*self._projection.records, TranscriptRecordV1(TranscriptRecordKindV1.STATUS, notice)),
         )
 
     def project_event(
-        self,
-        event: RuntimeEvent[object],
+        self, event: RuntimeEvent[object],
     ) -> CodingHostedEventProjectionV1 | None:
         return None
 
@@ -230,18 +212,10 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         self._title_task: asyncio.Task[None] | None = None
         self._execution_idle_for_goal: Callable[[], bool] | None = None
         self._goal = HostedSessionGoal(
-            session,
-            identity,
-            workspace
-            if workspace is not None
-            else Path(session.session_manager.get_cwd()).resolve(),
+            session, identity, workspace if workspace is not None else Path(session.session_manager.get_cwd()).resolve(),
             closing=lambda: self._close_task is not None,
-            execution_idle=lambda: (
-                self._execution_idle_for_goal is None or self._execution_idle_for_goal()
-            ),
-            title_pending=lambda: (
-                self._title_task is not None and not self._title_task.done()
-            ),
+            execution_idle=lambda: self._execution_idle_for_goal is None or self._execution_idle_for_goal(),
+            title_pending=lambda: self._title_task is not None and not self._title_task.done(),
         )
         self.create_interactive_goal = self._goal.create_interactive_goal
         self.interactive_goal_review = self._goal.interactive_goal_review
@@ -278,8 +252,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         self._execution_idle_for_goal = None
 
     async def lookup_resume_input(
-        self,
-        query: CodingResumeInputLookupQueryV1,
+        self, query: CodingResumeInputLookupQueryV1,
     ) -> CodingResumeInputLookupResultV1:
         """Product observation for an already read-authorized Hosted caller.
 
@@ -290,10 +263,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         if self._close_task is not None:
             raise CodingHostedCatalogError()
         manager = self._session.session_manager
-        if (
-            not isinstance(manager, SessionManager)
-            or manager.header.conversation_id != self.identity.session_id
-        ):
+        if not isinstance(manager, SessionManager) or manager.header.conversation_id != self.identity.session_id:
             raise CodingHostedCatalogError()
         return await manager.lookup_resume_input(query)
 
@@ -322,9 +292,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
                 ),
             )
         return CodingHostedSnapshotProjectionV1(
-            title=_session_title(
-                self._session.session_name, _title_messages(self._session)
-            ),
+            title=_session_title(self._session.session_name, _title_messages(self._session)),
             revision=self._revision,
             running=self._session.is_streaming,
             records=tuple(records),
@@ -433,16 +401,12 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         return self._goal.execution_available
 
     def create_execution_work(
-        self,
-        text: str,
-        cancel_requested: Callable[[], bool],
+        self, text: str, cancel_requested: Callable[[], bool],
     ) -> ExecutionWorkV1:
         from ._hosted_execution_work import CodingExecutionWorkV1
 
         return CodingExecutionWorkV1(
-            self._session,
-            text,
-            cancel_requested,
+            self._session, text, cancel_requested,
             start_title=self.start_title_if_unnamed,
             wait_for_title=self.wait_for_title,
         )
@@ -455,28 +419,20 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
 
     def start_title_if_unnamed(self) -> None:
         if (
-            self._close_task is not None
-            or self._session.session_name
+            self._close_task is not None or self._session.session_name
             or not _uses_automatic_title(self.identity)
             or (self._title_task is not None and not self._title_task.done())
         ):
             return
-        question = next(
-            (
-                text
-                for message in _title_messages(self._session)
-                if isinstance(message, UserMessage)
-                and (text := _message_text(message).strip())
-            ),
-            None,
-        )
+        question = next((
+            text for message in _title_messages(self._session)
+            if isinstance(message, UserMessage) and (text := _message_text(message).strip())
+        ), None)
         if question is None:
             return
         from ._hosted_execution_work import set_first_turn_title
 
-        self._title_task = asyncio.create_task(
-            set_first_turn_title(self._session, question)
-        )
+        self._title_task = asyncio.create_task(set_first_turn_title(self._session, question))
 
 
 class CodingRealHostedSessionFactoryV1:
@@ -546,8 +502,7 @@ class CodingRealHostedSessionFactoryV1:
         if self._closing:
             raise CodingHostedCatalogError()
         if type(opaque_session_binding) not in (
-            CodingHostedCandidateBindingV1,
-            CodingHostedHistoryCandidateBindingV1,
+            CodingHostedCandidateBindingV1, CodingHostedHistoryCandidateBindingV1,
         ):
             raise CodingHostedCatalogError()
         opaque_session_binding = cast(
@@ -601,9 +556,7 @@ class CodingRealHostedSessionFactoryV1:
             model = self._model
             if not created and model is not None:
                 model = _resolve_hosted_saved_model(
-                    manager.build_session_context().model,
-                    services.model_registry,
-                    model,
+                    manager.build_session_context().model, services.model_registry, model,
                 )
             session = create_agent_session(
                 session_manager=manager,
@@ -613,45 +566,26 @@ class CodingRealHostedSessionFactoryV1:
                 services=services,
                 tools=self._tools,
                 approval_resolver=approval,
-                tool_policy_evaluator=(
-                    PolicyEvaluatorChain(
-                        tuple(
-                            p
-                            for p in (self._session_tool_policy, policy.policy_engine)
-                            if p is not None
-                        ),
-                        strategy="most_restrictive",
-                    )
-                    if self._session_tool_policy is not None
-                    else policy.policy_engine
-                ),
+                tool_policy_evaluator=(PolicyEvaluatorChain(
+                    tuple(p for p in (self._session_tool_policy, policy.policy_engine) if p is not None),
+                    strategy="most_restrictive",
+                ) if self._session_tool_policy is not None else policy.policy_engine),
                 active_tool_names=self._session_active_tools,
-                allowed_tool_names=self._session_allowed_tools
-                if self._session_allowed_tools is not None
-                else ToolSelection.ALL,
+                allowed_tool_names=self._session_allowed_tools if self._session_allowed_tools is not None else ToolSelection.ALL,
                 system_prompt=self._session_system_prompt,
                 output_capture_factory=self._output_capture_factory,
                 package_product_runtime_factory=runtime_factory,
             )
             opaque_session_binding.retain_constructed_owner(session.dispose)
             selection = normalize_model_selection(session.agent.model)
-            if (
-                created
-                and selection is not None
-                and is_usable_model_selection(selection)
-            ):
+            if created and selection is not None and is_usable_model_selection(selection):
                 await manager.append_model_change(
-                    selection.provider,
-                    selection.model_id,
-                    endpoint_id=selection.endpoint_id,
+                    selection.provider, selection.model_id, endpoint_id=selection.endpoint_id,
                 )
                 if session.agent.thinking_level is not None:
                     await manager.append_thinking_level_change(session.agent.thinking_level)
             real_binding = CodingRealHostedSessionV1(
-                session,
-                identity,
-                approval,
-                workspace=opaque_session_binding.record.scope.cwd,
+                session, identity, approval, workspace=opaque_session_binding.record.scope.cwd,
             )
             if self._user_choice_enabled:
                 real_binding.enable_user_choice()
@@ -700,9 +634,7 @@ def _session_title(name: str | None, messages: Iterable[object]) -> str:
     # Read the first prompt from the full transcript, including turns omitted
     # by the display window or by context compaction.
     for message in messages:
-        if isinstance(message, UserMessage) and (
-            title := " ".join(_message_text(message).split())
-        ):
+        if isinstance(message, UserMessage) and (title := " ".join(_message_text(message).split())):
             if len(title) <= 48:
                 return title
             prefix = title[:47].rstrip()
@@ -759,15 +691,12 @@ def _require_coding_hosted_binding(binding: object) -> None:
 
 
 async def _lookup_coding_resume_input(
-    binding: CodingHostedSessionBindingV1,
-    query: ResumeInputLookupQueryV1,
+    binding: CodingHostedSessionBindingV1, query: ResumeInputLookupQueryV1,
 ) -> ResumeInputLookupResultV1:
     lookup = getattr(binding, "lookup_resume_input", None)
     if not inspect.iscoroutinefunction(lookup):
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-    result = await lookup(
-        CodingResumeInputLookupQueryV1(query.input_id, query.record_digest)
-    )
+    result = await lookup(CodingResumeInputLookupQueryV1(query.input_id, query.record_digest))
     if type(result) is not CodingResumeInputLookupResultV1:
         raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
     return ResumeInputLookupResultV1(result.input_id, result.record_id, result.status)

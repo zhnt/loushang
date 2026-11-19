@@ -74,8 +74,12 @@ session/tools/diagnostics smoke, with the authorized private test runtime.
 All 11 changed architecture contract files pass (193 cases). The relocated
 component allowance retains the original `package_*` filename allowance for
 existing CLI consumers; the migration does not exclude those entrypoints.
-The complete Goal budget/progress module also passes (21 cases). Full Coding
-regression acceptance remains pending; focused passes do not establish it.
+The complete Goal budget/progress module also passes (21 cases). The complete
+selected offline Coding route passes 4,321 tests, skips 24 and deselects 77.
+After that run, restoring `hosted_session.py`'s original formatting preserves its
+complete AST, and Coding's private import-finder hookup calls the same installer
+through its module. The SDK and existing size budgets then pass together
+(16 cases), and all 609 public entries and 1,118 old pickle routes are rechecked.
 Remote platform checks are still pending. These local results are not delivery
 acceptance.
 
@@ -94,8 +98,8 @@ are retained separately from candidate results; no Product timeout or safety
 check is weakened.
 
 Against synchronized main, Coding root Python files fall from 301 to 114. Coding
-grows from 100,500 to 100,883 physical Python lines; the system grows from
-648,826 to 649,209 (+383). Harness and Hosting
+grows from 100,500 to 100,811 physical Python lines; the system grows from
+648,826 to 649,137 (+311). Harness and Hosting
 line totals are unchanged. The compatibility files total 352 lines, the root
 loader installation adds lines, and import rebasing/formatting changes the
 remaining physical-line count. These are compatibility and organization costs,
