@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from loushang.coding.package.worker_history_access import _CodingWindowsHistoryAccess
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -18,7 +19,6 @@ from loushang.harness.worker.history._windows_product_journals import (
     _head_bytes as _head_bytes,
 )
 
-from .._worker_history_access import _CodingWindowsHistoryAccess
 from .product_worker_activation_history import CodingProductWorkerRetainedAttemptV1
 
 _NAME = "worker-activation-state.jsonl"

@@ -87,8 +87,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--operation requires --server; --continue requires both")
     if getattr(args, "server_action", None) == "provision-tunnel":
         from loushang.apphost.managed.defaults import resolve_managed_defaults
-
-        from ..app_tunnel import provision_app_tunnel
+        from loushang.coding.hosted.tunnel import provision_app_tunnel
 
         if not 1 <= args.port <= 65535:
             parser.error("--port must be between 1 and 65535")

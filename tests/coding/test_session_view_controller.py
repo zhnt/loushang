@@ -14,7 +14,7 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.runtime.types import RunState
 from loushang.harness.session import AgentSessionInspector

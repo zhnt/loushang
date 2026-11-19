@@ -102,10 +102,10 @@ def test_G14_BOUNDARIES_only_explicit_product_command_composes_native_stdio() ->
     imports = _imports(command)
     assert "loushang.apphost.foreground" in imports
     assert "loushang.appserver.stdio" in imports
-    assert "loushang.coding.hosted_bootstrap" in imports
-    bootstrap = _imports(Path("src/loushang/coding/hosted_bootstrap.py"))
+    assert 'loushang.coding.hosted.bootstrap' in imports
+    bootstrap = _imports(Path('src/loushang/coding/hosted/bootstrap.py'))
     assert "loushang.appservice.continuity_file" in bootstrap
-    assert "loushang.coding.hosted_session" in bootstrap
+    assert 'loushang.coding.hosted.session' in bootstrap
     assert "loushang.appserver.local" not in bootstrap
     assert "loushang.appserver.stdio" not in bootstrap
     for default in (

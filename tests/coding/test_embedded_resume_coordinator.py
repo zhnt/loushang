@@ -8,23 +8,23 @@ from datetime import UTC, datetime
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding import bootstrap
-from loushang.coding import embedded_resume as embedded_resume_module
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.embedded_resume import (
-    EmbeddedResumeApprovalInteraction,
-    EmbeddedResumeInputCoordinator,
-)
+from loushang.coding.composition import bootstrap
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.package.product_worker_resume import (
     prepare_coding_worker_resume_effect_owner,
 )
-from loushang.coding.resume_activation_attempt_v2 import CodingActivationAttemptV2
-from loushang.coding.resume_activation_plan import build_session_activation_plan
+from loushang.coding.resume import embedded as embedded_resume_module
+from loushang.coding.resume.activation_attempt_v2 import CodingActivationAttemptV2
+from loushang.coding.resume.activation_plan import build_session_activation_plan
+from loushang.coding.resume.embedded import (
+    EmbeddedResumeApprovalInteraction,
+    EmbeddedResumeInputCoordinator,
+)
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.approval import DenyApprovalResolver, InteractiveApprovalResolver
 from loushang.harness.config.agent import ControlConfig, SettingsManager
 from loushang.harness.tools.workspace.factory import workspace_tool_runtime_settings

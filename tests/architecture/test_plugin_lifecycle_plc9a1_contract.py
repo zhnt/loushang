@@ -16,10 +16,10 @@ CLI_BINDING = Path("src/loushang/harness/cli/plugin_management.py")
 CLI_LISTING = Path("src/loushang/harness/cli/plugin_listing.py")
 CLI_TOGGLES = Path("src/loushang/harness/cli/resource_toggles.py")
 CLI_PROFILE = Path("src/loushang/harness/cli/profile.py")
-CODING_BINDING = Path("src/loushang/coding/plugin_manager/cli.py")
+CODING_BINDING = Path("src/loushang/coding/plugin_manager/binding.py")
 CODING_COMPATIBILITY = Path("src/loushang/coding/plugin_manager/enablement_compatibility.py")
-CODING_BOOTSTRAP = Path("src/loushang/coding/bootstrap.py")
-CODING_CONTINUITY = Path("src/loushang/coding/continuity_bootstrap.py")
+CODING_BOOTSTRAP = Path('src/loushang/coding/composition/bootstrap.py')
+CODING_CONTINUITY = Path('src/loushang/coding/composition/continuity.py')
 SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
 CONFIG_ENGINE = Path("src/loushang/harness/config/engine.py")
 CONFIG_RUNTIME = Path("src/loushang/harness/config/runtime.py")
@@ -70,7 +70,7 @@ def test_plc9a1_contract_and_new_owner_sites_are_indexed() -> None:
     )
     assert "build_coding_plugin_management_cli_binding" in inventory
     assert "bootstrap.py::_create_agent_session" in inventory
-    assert "continuity_bootstrap.py::bind_coding_configured_continuity" in inventory
+    assert "composition/continuity.py::bind_coding_configured_continuity" in inventory
 
 
 def test_plc9a1_application_is_transport_neutral_and_projection_only() -> None:

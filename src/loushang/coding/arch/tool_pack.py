@@ -8,7 +8,7 @@ from loushang.coding.arch.tool import (
     INSPECT_IMPORT_GRAPH_TOOL_NAME,
     ImportGraphToolRuntime,
 )
-from loushang.coding.capabilities import CODING_ARCH_CAPABILITY
+from loushang.coding.composition.capabilities import CODING_ARCH_CAPABILITY
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.tools.contribution import ToolPackDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry

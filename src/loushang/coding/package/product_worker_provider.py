@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from loushang.coding._base_product_composition import CodingBaseProductCompilation
+from loushang.coding.composition.base_product import CodingBaseProductCompilation
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
     CapabilityDefinition,

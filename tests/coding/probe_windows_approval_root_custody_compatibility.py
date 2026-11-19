@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding._product_capability_plugin_composition as code
+import loushang.coding.composition.product_capability_plugins as code
 import loushang.harness.resources.packages._private_tree_windows as core
 
 EXPECTED = Path(__file__).parent / "fixtures" / "windows_approval_root_custody_v1.json"
@@ -227,7 +227,7 @@ def observe(spec, monkeypatch):
 def source_guard():
     root = Path(__file__).resolve().parents[2]
     for module, relative in (
-        (code, "src/loushang/coding/_product_capability_plugin_composition.py"),
+        (code, 'src/loushang/coding/composition/product_capability_plugins.py'),
         (core, "src/loushang/harness/resources/packages/_private_tree_windows.py"),
     ):
         assert Path(module.__file__).resolve() == root / relative

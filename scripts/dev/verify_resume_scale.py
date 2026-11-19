@@ -29,9 +29,9 @@ from loushang.agent import prepared_request_conformant
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.bootstrap import create_agent_session_runtime
 from loushang.coding.cli.__main__ import run_cli
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.composition.bootstrap import create_agent_session_runtime
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationJsonlHeaderCodec,

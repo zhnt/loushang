@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.extensions.agent import (
     ExtensionRunner,

@@ -9,16 +9,16 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.ai.types import AssistantMessage, ImagePart, TextPart, Usage, UserMessage
-from loushang.coding.composition_provenance import CodingCompositionProvenanceV1
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
     prepare_coding_activation_attempt_record,
     project_coding_activation_attempt_path,
     validate_coding_activation_attempt_record,
 )
-from loushang.coding.resume_binding import (
+from loushang.coding.resume.binding import (
     CODING_RUNTIME_BINDING_METADATA_KEY,
     CodingRuntimeBindingV1,
     coding_user_payload_digest,
@@ -27,12 +27,12 @@ from loushang.coding.resume_binding import (
     project_coding_runtime_binding_path,
     validate_coding_runtime_binding_record,
 )
-from loushang.coding.resume_history import read_coding_resume_snapshot
-from loushang.coding.resume_input_lookup import (
+from loushang.coding.resume.history import read_coding_resume_snapshot
+from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     coding_resume_input_record_digest,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.conversation import StoreCommitOutcomeUnknown
 from loushang.harness.conversation.repository import ConversationRepository
 from loushang.harness.transcript.jsonl_file import load_agent_transcript_file
@@ -435,7 +435,7 @@ def test_reopened_jsonl_retains_activation_quarantine_and_readonly_history(
 def test_unbound_attempt_stops_bootstrap_before_product_factory_selection(
     tmp_path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding import bootstrap
+    from loushang.coding.composition import bootstrap
 
     def forbidden_factory(*args, **kwargs):
         pytest.fail("unresolved Resume reached Product runtime factory selection")

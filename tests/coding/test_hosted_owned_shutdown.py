@@ -7,8 +7,8 @@ import pytest
 
 from loushang.appserver.protocol import MuxCreateV1, MuxSelectorV1, SessionOpenSpecV1
 from loushang.appservice import ApplicationContinuityError
-from loushang.coding.hosted_application import CodingForegroundProductFactoryV1
-from loushang.coding.hosted_bootstrap import create_coding_hosted_attempt
+from loushang.coding.hosted.application import CodingForegroundProductFactoryV1
+from loushang.coding.hosted.bootstrap import create_coding_hosted_attempt
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
 from ._hosted_product_child import scripted_stream

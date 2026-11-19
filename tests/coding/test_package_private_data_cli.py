@@ -43,7 +43,7 @@ from loushang.coding.plugin_manager.lifecycle import (
 from loushang.coding.plugin_manager.read_sdk import (
     bind_coding_plugin_management_rpc_query,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.host.rpc.commands.plugin_management_snapshot import (
     RpcPluginManagementSnapshotCommands,

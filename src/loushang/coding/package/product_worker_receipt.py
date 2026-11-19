@@ -10,6 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from loushang.coding.hosted._worker_canary import (
+    CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID,
+)
+from loushang.coding.package.worker_history_access import _CodingHistoryAccess
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
@@ -70,9 +75,6 @@ from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
-from .._product_worker_canary import CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
-from .._worker_history_access import _CodingHistoryAccess
-from ..session_manager import SessionManager
 from .product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .product_worker_history_segments import CodingWorkerSegmentedHistoryV1
 from .product_worker_installed_native import (

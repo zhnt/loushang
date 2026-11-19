@@ -10,8 +10,8 @@ from _hosted_product_child import _preview_tool, scripted_stream
 
 from loushang.ai.model import Capabilities, Model
 from loushang.coding.cli.mux import _execute, _parser
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.hosted_local import CodingLocalCommandV1, CodingLocalLaunchV1
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.local import CodingLocalCommandV1, CodingLocalLaunchV1
 
 if __name__ == "__main__":
     args = _parser().parse_args()

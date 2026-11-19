@@ -11,10 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding.package.product_management_cli import (
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
+from loushang.coding.package.management_binding import (
     build_coding_fenced_product_management_cli_ports,
 )
-from loushang.coding.plugin_manager.cli import (
+from loushang.coding.plugin_manager.binding import (
     build_coding_plugin_management_cli_read_binding,
 )
 from loushang.coding.plugin_manager.explanation import (
@@ -27,7 +28,6 @@ from loushang.coding.plugin_manager.lifecycle import (
 from loushang.coding.plugin_manager.preview import (
     bind_coding_current_preview_query,
 )
-from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.plugin_management.application import (
     PluginManagementProjectionV1,
     PluginManagementQueryV1,

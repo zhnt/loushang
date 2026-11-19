@@ -26,20 +26,20 @@ PRODUCT_COMPOSITION_ASSEMBLY_PATH = Path(
 )
 EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
-CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_adapter.py")
-CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+CODING_SHADOW_ADAPTER_PATH = Path('src/loushang/coding/resources/catalog.py')
+CODING_BOOTSTRAP_PATH = Path('src/loushang/coding/composition/bootstrap.py')
 CODING_BASE_PRODUCT_COMPOSITION_PATH = Path(
-    "src/loushang/coding/_base_product_composition.py"
+    'src/loushang/coding/composition/base_product.py'
 )
 CODING_EXTERNAL_DATA_PRODUCT_COMPOSITION_PATH = Path(
-    "src/loushang/coding/_external_data_product_composition.py"
+    'src/loushang/coding/composition/external_data.py'
 )
 CODING_PRODUCT_CAPABILITY_COMPOSITION_PATH = Path(
-    "src/loushang/coding/_product_capability_plugin_composition.py"
+    'src/loushang/coding/composition/product_capability_plugins.py'
 )
-CODING_BASE_PLUGIN_PATH = Path("src/loushang/coding/_base_plugin.py")
+CODING_BASE_PLUGIN_PATH = Path('src/loushang/coding/composition/base_plugin.py')
 CODING_CAPABILITY_PLUGIN_COMPOSITION_PATH = Path(
-    "src/loushang/coding/_capability_plugin_composition.py"
+    'src/loushang/coding/composition/capability_plugins.py'
 )
 CODING_LSP_PLUGIN_OPT_IN_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 

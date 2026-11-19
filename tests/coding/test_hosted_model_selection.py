@@ -32,13 +32,13 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.hosted_bootstrap import create_coding_hosted_attempt
-from loushang.coding.hosted_resume import CodingDeferredHostedSessionV1
-from loushang.coding.managed_bootstrap import (
+from loushang.coding.hosted.bootstrap import create_coding_hosted_attempt
+from loushang.coding.hosted.managed.bootstrap import (
     CodingManagedApplicationLaunchV1,
     create_coding_managed_attempt,
 )
-from loushang.coding.resume_history import read_coding_resume_snapshot
+from loushang.coding.hosted.resume import CodingDeferredHostedSessionV1
+from loushang.coding.resume.history import read_coding_resume_snapshot
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.transcript.kinds import (
     MODEL_SELECTION_KIND,

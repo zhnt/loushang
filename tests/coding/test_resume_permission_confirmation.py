@@ -5,8 +5,8 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.resume_activation_attempt import CodingActivationAttemptV1
-from loushang.coding.resume_permission_confirmation import (
+from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
+from loushang.coding.resume.permission_confirmation import (
     CodingResumePermissionConfirmation,
     coding_resume_permission_request,
 )
@@ -18,10 +18,10 @@ from loushang.harness.tools.workspace.factory import workspace_tool_runtime_sett
 
 @pytest.mark.parametrize("mode", ["current", "outside_view", "owner_closed", "root_closed", "owner_replaced", "subject_changed", "actor_changed", "binding_removed", "root_changed", "view_revoked", "unbound_attempt"])
 def test_embedded_resume_subject_uses_default_cli_root_and_original_approval(tmp_path, monkeypatch, mode):
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.application import default_runtime_builder
     from loushang.coding.cli.args import parse_args
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_services
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
@@ -48,10 +48,10 @@ def test_embedded_resume_subject_uses_default_cli_root_and_original_approval(tmp
             if mode == "unbound_attempt":
                 from datetime import UTC, datetime
 
-                from loushang.coding.composition_sets import (
+                from loushang.coding.composition.sets import (
                     resolve_coding_composition_set,
                 )
-                from loushang.coding.resume_activation_plan import (
+                from loushang.coding.resume.activation_plan import (
                     build_session_activation_plan,
                 )
 
@@ -162,7 +162,7 @@ def test_resume_confirmation_uses_actual_scoped_execution_context():
         ExecutionOutcomeV1,
         ExecutionStatusV1,
     )
-    from loushang.coding.hosted_execution import (
+    from loushang.coding.hosted.execution import (
         current_coding_hosted_resume_subject,
         current_coding_hosted_resume_submission_id,
     )

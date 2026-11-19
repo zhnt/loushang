@@ -1,5 +1,15 @@
 # Coding Plugin Manager Component Migration
 
+## Delivery Update
+
+[PR #914](https://github.com/zhnt/loushang/pull/914) merged at
+`923131671bf1cbf84309080355080efd9013acc2` after 40 successful jobs and six
+existing skips. Local main was synchronized, all three user changes preserved,
+and the clean accepted task worktree/branch removed normally. Pending-delivery
+statements below describe the original candidate snapshot. The next
+[root component convergence](root-component-convergence.md) tracks subsequent
+owner refinements and the still-active wider Goal.
+
 ## Status
 
 - Owner: Coding Product; implementation and internal review: Codex `/root`.

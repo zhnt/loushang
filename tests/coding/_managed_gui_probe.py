@@ -9,8 +9,8 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.appservice.execution_registry import ExecutionRegistryV1
-from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
-from loushang.coding.hosted_session import CodingRealHostedSessionV1
+from loushang.coding.hosted.execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted.session import CodingRealHostedSessionV1
 
 
 def install(root, audit):

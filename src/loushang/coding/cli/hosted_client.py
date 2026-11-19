@@ -20,10 +20,9 @@ if TYPE_CHECKING:
     from loushang.apphost.launcher import HostedForegroundClientV1
     from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
     from loushang.appserver.protocol import MuxSelectorV1, MuxSpaceV1
+    from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
     from loushang.harnesstui.mux.shell import HostedMuxShellV1
     from loushang.hosting.contracts import ProcessLaunchRequest
-
-    from ..hosted_bootstrap import CodingHostedLaunchV1
 
 
 def _launch_request(launch: CodingHostedLaunchV1) -> ProcessLaunchRequest:
@@ -234,8 +233,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         from loushang.appserver.protocol.connection_profile import (
             AppConnectionProfileV1,
         )
-
-        from ..hosted_bootstrap import CodingHostedLaunchV1
+        from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
 
         MuxSelectorV1(name=args.mux)
         launch = CodingHostedLaunchV1(

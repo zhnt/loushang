@@ -50,7 +50,7 @@ LEGACY_SKILL_BODY_PATH = Path(
 )
 METHOD_LOADER_PATH = Path("src/loushang/method/loader.py")
 CODING_CLI_PATH = Path("src/loushang/coding/cli/application.py")
-CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+CODING_BOOTSTRAP_PATH = Path('src/loushang/coding/composition/bootstrap.py')
 RESOURCE_REFRESH_PATH = Path("src/loushang/harness/session/resource_refresh.py")
 RESOURCE_OWNER_AUTHORITY_PATH = Path(
     "src/loushang/harness/resource_catalog/_owner_authority.py"
@@ -64,7 +64,7 @@ CATALOG_INPUT_PREPARATION_PATH = Path(
 CATALOG_BOOTSTRAP_PROJECTION_PATH = Path(
     "src/loushang/harness/resource_catalog/bootstrap_projection.py"
 )
-CODING_RESOURCE_RUNTIME_PATH = Path("src/loushang/coding/resource_runtime.py")
+CODING_RESOURCE_RUNTIME_PATH = Path('src/loushang/coding/resources/runtime.py')
 PUBLIC_SURFACES = (
     Path("src/loushang/harness/resources/__init__.py"),
     Path("src/loushang/harness/__init__.py"),

@@ -26,7 +26,7 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,

@@ -15,11 +15,8 @@ from unittest.mock import patch
 import pytest
 
 from loushang.ai.model import Capabilities, Model
-from loushang.coding._resource_catalog_shadow import (
-    CodingResourceCatalogAdmissionError,
-)
-from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.package_cutover import main as cutover_main
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -58,7 +55,10 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.resources.catalog_compatibility import (
+    CodingResourceCatalogAdmissionError,
+)
+from loushang.coding.session.manager import SessionManager
 from loushang.coding.ui.plugin_theme import select_coding_plugin_theme
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.config.agent import SettingsManager

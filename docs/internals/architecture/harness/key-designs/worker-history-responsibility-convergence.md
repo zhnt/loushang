@@ -493,7 +493,7 @@ A15落实：两内部模块已接通原消费者。18字段只在中性Core定�
 | [HistorySnapshotAccess](../../../../../src/loushang/harness/worker/history/_snapshot_io.py) | `state_root`、`pin_state_read()`、`assert_current()` | 原Product根目录与GC读寿命；Worker五流snapshot/prefix算法 |
 | [CheckpointCommandAccess](../../../../../src/loushang/harness/worker/history/_checkpoint_commands.py) | 扩展snapshot合同的scope/store；原review只读值及写命令的`captured_store` view另行传入，求值时点遵循A12合同 | 原Product保准入；该接口服务checkpoint read/publish/repair/rollback，stage/retire仍由原PreparationHistory/HistoryPublication及其准入调用者负责 |
 | [SegmentedActivationJournal](../../../../../src/loushang/harness/worker/history/_activation_store.py) | 原path、成对可选scope/store及同一retained reader | 原WorkerActivationStateJournal的CAS/绑定寿命；不能强套Supervisor的动态属性端口 |
-| [Coding绑定](../../../../../src/loushang/coding/_worker_history_access.py) | 将上述调用直接映射到原Product实例 | 无新缓存、持久索引、GC或状态权威 |
+| [Coding绑定](../../../../../src/loushang/coding/package/worker_history_access.py) | 将上述调用直接映射到原Product实例 | 无新缓存、持久索引、GC或状态权威 |
 
 这些是Worker内部协作合同，不能因已出现多个类就再建立公共HistoryService、统一access大对象或反射式插件registry。五流reader、记录绑定和原Resources RecordSchema继续复用现有实现；不得在Coding与Core各留一份执行算法。三种access合同各有实际使用者，scope/store的构造时绑定与调用时重读也不同，不能为消除名称重复而改变求值时点。
 

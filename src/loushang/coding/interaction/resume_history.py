@@ -12,13 +12,13 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Literal, TextIO, cast
 
-from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
-from loushang.coding.resume_history import (
+from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+from loushang.coding.resume.history import (
     CodingResumeHistoryPreview,
     CodingResumeRecentPage,
 )
-from loushang.coding.resume_input_lookup import CodingResumeInputLookupQueryV1
-from loushang.coding.resume_model_outcome import (
+from loushang.coding.resume.input_lookup import CodingResumeInputLookupQueryV1
+from loushang.coding.resume.model_outcome import (
     CodingResumeModelOutcomeObservationV1,
     observe_coding_resume_model_outcome,
 )

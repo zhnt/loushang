@@ -14,10 +14,14 @@ from importlib.machinery import ModuleSpec
 from types import ModuleType
 from typing import Any
 
+from ._compat.root_names import ALIASES as _SOURCE_ALIASES
+from ._compat.root_names import NAMES as _ROOT_NAMES
+from ._compat.root_names import OWNERS as _CURRENT_OWNERS
 from .package._legacy_names import NAMES as _PACKAGE_NAMES
 from .plugin_manager._legacy_names import NAMES as _MANAGER_NAMES
 
 _ROUTES = {
+    **_ROOT_NAMES,
     **{
         f"loushang.coding.package_{name}": f"loushang.coding.package.{name}"
         for name in _PACKAGE_NAMES
@@ -27,7 +31,9 @@ _ROUTES = {
         for old, new in _MANAGER_NAMES.items()
     },
 }
+_ROUTES.update(_CURRENT_OWNERS)
 _LEGACY = {canonical: legacy for legacy, canonical in _ROUTES.items()}
+_ROUTES.update(_SOURCE_ALIASES)
 
 
 def _restore_identity(value: Any, canonical: str, legacy: str, seen: set[int]) -> None:
@@ -55,8 +61,13 @@ def _restore_identity(value: Any, canonical: str, legacy: str, seen: set[int]) -
         for member in tuple(vars(value).values()):
             _restore_identity(member, canonical, legacy, seen)
         for field in getattr(value, "__dataclass_fields__", {}).values():
+            _restore_identity(field.default, canonical, legacy, seen)
             _restore_identity(field.default_factory, canonical, legacy, seen)
         return
+    for default in getattr(value, "__defaults__", None) or ():
+        _restore_identity(default, canonical, legacy, seen)
+    for default in (getattr(value, "__kwdefaults__", None) or {}).values():
+        _restore_identity(default, canonical, legacy, seen)
     # Read-only typing views derive their module from their original type.
     with suppress(AttributeError, TypeError):
         value.__module__ = legacy
@@ -73,7 +84,7 @@ class _ComponentLoader(Loader):
         return None if create is None else create(spec)
 
     def _source_name(self, fullname: str) -> str:
-        if fullname not in (self._canonical, self._legacy):
+        if fullname != self._canonical and _ROUTES.get(fullname) != self._canonical:
             raise ImportError(f"Loader cannot handle {fullname}")
         return self._canonical
 
@@ -125,7 +136,7 @@ class _ComponentImports(MetaPathFinder):
         # Respect the registered implementation owner, including frozen builds
         # and custom finders, rather than bypassing them with a filesystem lookup.
         for finder in sys.meta_path:
-            if finder is self:
+            if finder is self or getattr(finder, "_coding_import_bootstrap", False):
                 continue
             find = getattr(finder, "find_spec", None)
             if find is not None:
@@ -161,6 +172,10 @@ class _ComponentImports(MetaPathFinder):
         return None
 
 
-def install() -> None:
-    if not any(isinstance(finder, _ComponentImports) for finder in sys.meta_path):
-        sys.meta_path.insert(0, _ComponentImports())
+def install() -> _ComponentImports:
+    for finder in sys.meta_path:
+        if isinstance(finder, _ComponentImports):
+            return finder
+    finder = _ComponentImports()
+    sys.meta_path.insert(0, finder)
+    return finder

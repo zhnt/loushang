@@ -12,9 +12,9 @@ import pytest
 
 from loushang.agent import synthetic_model_transport
 from loushang.ai.model import Capabilities, Model
-from loushang.coding import bootstrap
+from loushang.coding.composition import bootstrap
 from loushang.coding.control import ControlConfig, SettingsManager
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.coding.ui.product_binding import (
     build_coding_ui_controller,
     build_screen_coding_action_host,

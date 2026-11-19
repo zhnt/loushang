@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import os
 
+from loushang.coding.package.worker_history_access import _CodingWindowsHistoryAccess
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.worker.history._windows_product_journals import (
     WindowsSupervisorJournal,
 )
-
-from .._worker_history_access import _CodingWindowsHistoryAccess
 
 _NAME = "worker-supervisor.jsonl"
 _LOCK = _NAME + ".lock"

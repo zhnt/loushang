@@ -506,7 +506,7 @@ def test_rpc_mode_extension_ui_context_resolves_confirm_input_and_editor_respons
 def test_rpc_mode_binds_extension_context_ui_methods_to_rpc_requests(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.host.rpc import RpcHost as RpcMode
 
@@ -560,7 +560,7 @@ def test_rpc_mode_extension_context_excludes_pi_style_camel_case_ui_methods(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.host.rpc import RpcHost as RpcMode
 
@@ -600,7 +600,7 @@ def test_rpc_mode_extension_context_excludes_pi_style_camel_case_ui_methods(
 def test_rpc_mode_extension_context_ui_namespace_is_snake_case_only(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.host.rpc import RpcHost as RpcMode
 
@@ -652,7 +652,7 @@ def test_rpc_mode_extension_context_excludes_pi_style_headless_ui_methods(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.host.rpc import RpcHost as RpcMode
 
@@ -916,7 +916,7 @@ def test_rpc_mode_write_json_line_flushes_output() -> None:
 def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.host.rpc import RpcHost as RpcMode
 
@@ -980,7 +980,7 @@ def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) ->
 def test_rpc_mode_emits_extension_error_for_hook_failures(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.host.rpc import RpcHost as RpcMode
 

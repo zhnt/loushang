@@ -14,10 +14,10 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.session_manager import SessionManager
-from loushang.coding.tool_pack import (
+from loushang.coding.resources.tool_pack import (
     register_coding_builtin_tools as register_builtin_tools,
 )
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.diagnostics import DiagnosticRecord, DiagnosticsService
 from loushang.harness.tools.workspace.registry import (
     WorkspaceToolRegistry as ToolRegistry,

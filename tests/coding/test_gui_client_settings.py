@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from loushang.apphost.client_preferences import ClientPreferences
-from loushang.coding.client_settings import connections, remember_workspace
+from loushang.coding.hosted.client_settings import connections, remember_workspace
 
 
 def test_preferences_merge_across_clients_and_restart(tmp_path):
@@ -40,7 +40,7 @@ def test_connections_preserve_server_entries(tmp_path, monkeypatch):
 
 
 def test_connection_listing_selection_and_secret_rejection(tmp_path, monkeypatch):
-    from loushang.coding.client_settings import settings_request
+    from loushang.coding.hosted.client_settings import settings_request
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path))
     saved = {
@@ -74,7 +74,7 @@ def test_connection_listing_selection_and_secret_rejection(tmp_path, monkeypatch
 
 
 def test_connection_listing_rejects_secret_endpoint(tmp_path, monkeypatch):
-    from loushang.coding import client_settings
+    from loushang.coding.hosted import client_settings
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path))
     endpoint = tmp_path / "state/web/endpoint.json"

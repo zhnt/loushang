@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.plugin_dependency_grants import (
+from loushang.coding.composition.dependency_grants import (
     CoDistributedPluginDependencyGrantResolver,
 )
 from loushang.harness.resources.packages.materializer import (

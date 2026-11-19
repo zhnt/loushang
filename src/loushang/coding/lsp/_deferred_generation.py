@@ -7,9 +7,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from typing import Never
 
-from loushang.coding._capability_plugin_composition import (
+from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginCompositionAssembly,
 )
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.lsp._plugin_tool_owner import (
     CodingLspToolOwner,
     CodingLspToolRegistrationPort,
@@ -25,7 +26,6 @@ from loushang.coding.lsp.tools import (
     create_document_outline_tool_definition,
     create_inspect_symbol_tool_definition,
 )
-from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.capabilities.component_host import (
     CapabilityComponentAdmissionStart,
 )

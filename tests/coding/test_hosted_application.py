@@ -45,19 +45,19 @@ from loushang.appserver.protocol import (
     TranscriptRecordV1,
 )
 from loushang.appservice import JsonFileApplicationContinuityStoreV1
-from loushang.coding.appservice_adapter import (
-    CodingHostedEventProjectionV1,
-    CodingHostedSnapshotProjectionV1,
-    coding_hosted_identity_from_envelope,
-)
-from loushang.coding.hosted_application import (
+from loushang.coding.hosted.application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     CodingForegroundHostedApplicationRequestV1,
     create_coding_foreground_hosted_application,
 )
-from loushang.coding.hosted_continuity import (
+from loushang.coding.hosted.continuity import (
     CodingHostedContinuityRequestV1,
     create_coding_hosted_continuity_attempt,
+)
+from loushang.coding.hosted.service_adapter import (
+    CodingHostedEventProjectionV1,
+    CodingHostedSnapshotProjectionV1,
+    coding_hosted_identity_from_envelope,
 )
 from loushang.harness.events import RuntimeEvent
 from loushang.harnesstui.mux import open_hosted_mux_profile

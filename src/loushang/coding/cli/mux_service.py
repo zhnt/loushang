@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..hosted_local import CodingLocalCommandV1
+    from loushang.coding.hosted.local import CodingLocalCommandV1
 
 
 DEFAULT_UNIT = "loushang-host.service"
@@ -43,7 +43,10 @@ def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
 
 def run_systemd_host() -> int:
     """Start the existing managed Host and hand its PID directly to systemd."""
-    from ..managed_service import ServiceControlError, control_managed_service
+    from loushang.coding.hosted.managed.service import (
+        ServiceControlError,
+        control_managed_service,
+    )
 
     notify_socket = os.environ.pop("NOTIFY_SOCKET", "")
     if sys.platform != "linux" or not notify_socket.startswith(("/", "@")):
@@ -99,7 +102,7 @@ def control(operation: str, unit: str) -> int:
         if unit != DEFAULT_UNIT:
             return 1
         if operation == "logs":
-            from ..macos_service import print_logs
+            from loushang.coding.hosted.macos_service import print_logs
             return print_logs()
         return control_local(operation, None, as_json=False)
     if _uses_managed_backend():
@@ -125,11 +128,14 @@ def control(operation: str, unit: str) -> int:
 
 
 def control_local(operation: str, expected: str | None, *, as_json: bool) -> int:
-    from ..managed_service import ServiceControlError, control_managed_service
+    from loushang.coding.hosted.managed.service import (
+        ServiceControlError,
+        control_managed_service,
+    )
 
     try:
         if sys.platform == "darwin":
-            from ..macos_service import control_launchd_service
+            from loushang.coding.hosted.macos_service import control_launchd_service
             reply = control_launchd_service(operation, expected)
         elif _uses_managed_backend():
             reply = asyncio.run(control_managed_service(operation, expected))
@@ -151,7 +157,7 @@ def control_local(operation: str, expected: str | None, *, as_json: bool) -> int
 
 
 def _systemd_control(operation: str, expected: str | None) -> dict[str, object]:
-    from ..managed_service import ServiceControlError
+    from loushang.coding.hosted.managed.service import ServiceControlError
 
     if expected is not None and _systemd_state().get("instanceId") != expected:
         raise ServiceControlError("instance_changed")
@@ -166,7 +172,7 @@ def _systemd_control(operation: str, expected: str | None) -> dict[str, object]:
 
 
 def _systemd_state() -> dict[str, object]:
-    from ..managed_service import ServiceControlError
+    from loushang.coding.hosted.managed.service import ServiceControlError
 
     command = [
         "systemctl", "--user", "--no-pager", "show",

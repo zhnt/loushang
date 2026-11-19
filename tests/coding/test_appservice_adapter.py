@@ -25,7 +25,7 @@ from loushang.appserver.protocol import (
     TurnTextV1,
 )
 from loushang.appservice import AppServiceV1, InProcessAppClientV1
-from loushang.coding.appservice_adapter import (
+from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSessionResolverV1,
     CodingHostedSessionV1,

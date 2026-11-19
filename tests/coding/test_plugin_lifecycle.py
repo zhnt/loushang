@@ -13,15 +13,15 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding._base_plugin as base_plugin_module
+import loushang.coding.composition.base_plugin as base_plugin_module
 import loushang.coding.plugin_manager.lifecycle as plugin_lifecycle_module
 from loushang.ai.model import Capabilities, Model
-from loushang.coding._base_plugin import (
+from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssemblyError,
     coding_base_plugin_root,
     prepare_managed_coding_base_plugin_assembly,
 )
-from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.package.epoch_layout import (
     resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
@@ -39,7 +39,7 @@ from loushang.coding.plugin_manager.lifecycle import (
 from loushang.coding.plugin_manager.owner_generations import (
     CodingOwnerGenerationEvidenceError,
 )
-from loushang.coding.resource_runtime import CodingPackageMaterializer
+from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.plugin_management import (
     PluginDesiredStateMutationV1,
@@ -394,9 +394,12 @@ def test_capability_plugin_preserves_legacy_disable_on_ordinary_startup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -448,17 +451,20 @@ def test_product_arch_management_change_pins_active_session_and_blocks_new_mount
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding._capability_plugin_composition import (
+    from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
+    from loushang.coding.composition.capability_plugins import (
         CodingCapabilityPluginCompositionError,
     )
-    from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
-    from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -576,13 +582,16 @@ def test_product_base_lsp_and_arch_share_one_session_runtime_lease(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
         PackageEpochRuntimeLeaseRegistryError,
     )
@@ -646,10 +655,13 @@ def test_product_on_demand_lsp_activates_after_dormant_startup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.lsp import INSPECT_SYMBOL_TOOL_NAME
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -1117,9 +1129,12 @@ def test_same_session_manager_rejects_concurrent_product_runtime_until_dispose(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -1534,13 +1549,16 @@ def test_product_process_death_requires_exact_orphan_repair_before_new_session(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
         PackageEpochRuntimeLeaseRegistryError,
     )
@@ -1614,13 +1632,16 @@ def test_product_hard_crash_after_lease_registration_repairs_exact_orphan(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
         PackageEpochRuntimeLeaseRegistryError,
     )
@@ -1741,13 +1762,13 @@ def test_product_session_rejects_caller_supplied_legacy_package_materializer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import (
+    from loushang.coding.composition.bootstrap import (
         CodingPackageProductLegacyPathError,
         create_agent_session,
         create_services,
     )
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -1786,9 +1807,12 @@ def test_product_package_selection_crosses_session_save_directories(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -1843,13 +1867,16 @@ def test_product_base_replay_refuses_changed_committed_root_without_live_lease(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.package_product.product_root_gc_runtime import (
         open_posix_local_wheel_product_root_gc,
     )
@@ -1946,13 +1973,16 @@ def test_product_base_replay_refuses_corrupt_authority_journal_without_lease(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.package_product.product_root_gc_runtime import (
         open_posix_local_wheel_product_root_gc,
     )
@@ -2029,13 +2059,16 @@ def test_nonpersistent_transcript_honors_durable_product_disable(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -2336,13 +2369,16 @@ def test_product_session_resume_reacquires_lease_for_same_selected_base(
     from importlib.metadata import version
 
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -2431,9 +2467,12 @@ def test_product_arch_resume_reuses_selected_revision_and_private_cache(
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -2552,13 +2591,16 @@ def test_product_base_change_keeps_active_selection_and_omits_new_base(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
@@ -2667,13 +2709,16 @@ def test_product_owner_cleanup_failure_keeps_runtime_lease_until_exact_retry(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
         PackageEpochRuntimeLeaseRegistryError,
     )
@@ -2752,13 +2797,16 @@ def test_nonpersistent_product_sessions_release_runtime_without_erasing_state(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
         PackageEpochRuntimeLeaseRegistryError,
     )
@@ -2821,13 +2869,16 @@ def test_product_session_runtime_release_failure_retains_lease_until_retry(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
         PackageEpochRuntimeLeaseRegistryError,
     )
@@ -2894,7 +2945,7 @@ def test_product_session_runtime_release_failure_retains_lease_until_retry(
 
 
 def test_explicit_ephemeral_root_is_not_deleted_by_gc() -> None:
-    import loushang.coding.bootstrap as bootstrap_module
+    import loushang.coding.composition.bootstrap as bootstrap_module
 
     owner = bootstrap_module._ExplicitTemporaryDirectory(
         prefix="loushang-coding-no-finalizer-test-"
@@ -2916,13 +2967,16 @@ def test_product_dual_capability_construction_failure_releases_unbound_runtime(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package.product_runtime import (
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
         PackageEpochRuntimeLeaseRegistryError,
     )
@@ -2990,7 +3044,7 @@ def test_product_dual_capability_construction_failure_releases_unbound_runtime(
 
 
 def test_failure_custodian_gates_every_cleanup_stage_on_runtime_close() -> None:
-    from loushang.coding._capability_plugin_composition import (
+    from loushang.coding.composition.capability_plugins import (
         CodingCapabilityPluginCleanupCustodian,
     )
 
@@ -3051,7 +3105,10 @@ def test_product_bootstrap_preserves_lsp_only_when_base_is_unselected(
 ) -> None:
     from importlib.metadata import version
 
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.lsp import (
         DOCUMENT_OUTLINE_TOOL_NAME,
@@ -3062,7 +3119,7 @@ def test_product_bootstrap_preserves_lsp_only_when_base_is_unselected(
         CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         open_coding_fenced_product_application_owner,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.sandbox import SandboxSettings
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))

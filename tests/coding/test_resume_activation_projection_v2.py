@@ -4,16 +4,16 @@ from datetime import UTC, datetime
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.resume_activation_attempt_v2 import (
+from loushang.coding.resume.activation_attempt_v2 import (
     prepare_coding_activation_attempt_v2_record,
 )
-from loushang.coding.resume_activation_projection_v2 import (
+from loushang.coding.resume.activation_projection_v2 import (
     project_coding_activation_attempt_path_v2,
 )
-from loushang.coding.resume_binding import (
+from loushang.coding.resume.binding import (
     project_coding_runtime_binding_path,
 )
-from loushang.coding.resume_binding_v2 import prepare_coding_resume_v2_user_record
+from loushang.coding.resume.binding_v2 import prepare_coding_resume_v2_user_record
 from loushang.harness.transcript.types import ExtensionData
 from tests.coding.test_resume_activation_attempt_v2 import _intent
 from tests.coding.test_resume_binding_v2 import _binding
@@ -131,7 +131,7 @@ def test_async_activation_projection_yields_and_matches_sync_validation(monkeypa
     import asyncio
     from types import SimpleNamespace
 
-    from loushang.coding import resume_activation_projection_v2 as module
+    from loushang.coding.resume import activation_projection_v2 as module
     from loushang.harness.conversation import ConversationRecord
 
     async def scenario():
@@ -206,7 +206,7 @@ def test_async_activation_projection_yields_and_matches_sync_validation(monkeypa
 def _guard_manager(records):
     from types import SimpleNamespace
 
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = object.__new__(SessionManager)
     manager.persist = True
@@ -244,7 +244,7 @@ def test_model_input_metadata_extension_reuses_completed_activation_guard(
 ):
     import asyncio
 
-    from loushang.coding import session_manager as module
+    from loushang.coding.session import manager as module
 
     records = tuple(
         _neutral_record(str(index), str(index - 1) if index else None)
@@ -287,8 +287,8 @@ def test_model_input_metadata_extension_reuses_completed_activation_guard(
     ],
 )
 def test_activation_guard_extension_keeps_full_validation_fences(monkeypatch, change):
-    from loushang.coding import session_manager as module
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.session import manager as module
 
     first, second = _neutral_record("first"), _neutral_record("second", "first")
     manager = _guard_manager((first, second))
@@ -338,7 +338,7 @@ def test_activation_guard_extension_keeps_full_validation_fences(monkeypatch, ch
 
 
 def test_bound_history_keeps_local_proof_check_after_metadata_extension():
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
 
     manager, records, attempt = _bound_guard_manager()
     manager._resume_committed_input = None
@@ -355,8 +355,8 @@ def test_bound_history_keeps_local_proof_check_after_metadata_extension():
 def test_append_guard_checks_committed_metadata_and_selected_prefix(monkeypatch, fault):
     import asyncio
 
-    from loushang.coding import session_manager as module
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.session import manager as module
 
     async def scenario():
         first = _neutral_record("first")
@@ -405,8 +405,8 @@ def test_async_activation_guard_publishes_only_the_current_completed_path(
     import asyncio
     from types import SimpleNamespace
 
-    from loushang.coding import session_manager as module
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.session import manager as module
 
     async def scenario():
         manager = object.__new__(module.SessionManager)
@@ -481,10 +481,10 @@ def _bound_guard_manager():
     from types import SimpleNamespace
 
     from loushang.ai.types import TextPart
-    from loushang.coding.resume_activation_attempt_v2 import (
+    from loushang.coding.resume.activation_attempt_v2 import (
         validate_coding_activation_attempt_v2_record,
     )
-    from loushang.coding.resume_input_lookup import coding_resume_input_record_digest
+    from loushang.coding.resume.input_lookup import coding_resume_input_record_digest
 
     records = _path(
         message=UserMessage(
@@ -510,8 +510,8 @@ def test_bound_guard_reuses_validation_and_preserves_current_input_identity(
     monkeypatch, fault
 ):
     from loushang.ai.types import TextPart
-    from loushang.coding import session_manager as module
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.session import manager as module
 
     manager, records, attempt = _bound_guard_manager()
     original = module.project_coding_activation_attempt_path_v2
@@ -563,7 +563,7 @@ def test_bound_guard_reuses_validation_and_preserves_current_input_identity(
 @pytest.mark.parametrize("fact", ["input", "intent"])
 def test_bound_guard_does_not_cache_changed_historical_sensitive_facts(fact):
     from loushang.ai.types import TextPart
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
 
     manager, records, _ = _bound_guard_manager()
     manager._resume_committed_input = None
@@ -584,8 +584,8 @@ def test_bound_guard_does_not_cache_changed_historical_sensitive_facts(fact):
 def test_async_bound_guard_does_not_publish_facts_changed_while_suspended(monkeypatch):
     import asyncio
 
-    from loushang.coding import session_manager as module
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.session import manager as module
 
     async def scenario():
         manager, records, _ = _bound_guard_manager()
@@ -613,8 +613,8 @@ def test_async_bound_guard_does_not_publish_facts_changed_while_suspended(monkey
 
 
 def test_current_input_proof_rejects_branch_changed_during_identity_hash(monkeypatch):
-    from loushang.coding import session_manager as module
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.session import manager as module
 
     manager, records, attempt = _bound_guard_manager()
     manager.require_no_unsettled_resume_activation()
@@ -639,7 +639,7 @@ def test_current_input_proof_rejects_branch_changed_during_identity_hash(monkeyp
 def test_guard_rechecks_mutable_sensitive_facts_at_the_cached_revision(prepare):
     import asyncio
 
-    from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
+    from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
 
     manager, records, _ = _bound_guard_manager()
     manager._resume_committed_input = None

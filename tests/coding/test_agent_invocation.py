@@ -9,7 +9,7 @@ import pytest
 
 from loushang.agent import AbortController
 from loushang.ai.types import ToolCall
-from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
+from loushang.coding.adapters.agent_invocation import CodingCliAgentInvocationAdapter
 from loushang.coding.cli.args import parse_args, removed_legacy_resource_option
 from loushang.harness.tools.agent_delegate import (
     AgentDelegateToolPack,

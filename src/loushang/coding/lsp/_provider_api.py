@@ -12,7 +12,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Never, Protocol, TypeGuard, cast
 
-from loushang.coding.capabilities import CODING_LSP_CAPABILITY
+from loushang.coding.composition.capabilities import CODING_LSP_CAPABILITY
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.lsp.definition_codec import (
     decode_lsp_server_definition,
     encode_lsp_server_definition,
@@ -31,7 +32,6 @@ from loushang.coding.lsp.runtime import (
     _bind_coding_lsp_runtime_from_launcher,
 )
 from loushang.coding.lsp.status import LspSessionStatus
-from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
     CapabilityDefinition,

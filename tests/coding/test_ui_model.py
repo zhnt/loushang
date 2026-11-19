@@ -112,7 +112,7 @@ def test_iter_scoped_model_selections_keeps_distinct_endpoints_and_dedupes() -> 
 
 
 def test_ensure_usable_session_model_keeps_existing_usable_model() -> None:
-    from loushang.coding.model_selection import ensure_usable_session_model
+    from loushang.coding.interaction.model_selection import ensure_usable_session_model
 
     current = ModelSelection(
         endpoint_id="test-endpoint", provider="kimi-code", model_id="kimi-for-coding"
@@ -126,7 +126,7 @@ def test_ensure_usable_session_model_keeps_existing_usable_model() -> None:
 
 
 def test_ensure_usable_session_model_prefers_kimi_coding_anthropic_detail() -> None:
-    from loushang.coding.model_selection import ensure_usable_session_model
+    from loushang.coding.interaction.model_selection import ensure_usable_session_model
 
     preferred = Model(
         id="kimi-for-coding", provider="kimi-code", endpoint="kimi-code-anthropic"
@@ -152,7 +152,7 @@ def test_ensure_usable_session_model_prefers_kimi_coding_anthropic_detail() -> N
 
 
 def test_ensure_usable_session_model_falls_back_to_available_selection() -> None:
-    from loushang.coding.model_selection import ensure_usable_session_model
+    from loushang.coding.interaction.model_selection import ensure_usable_session_model
 
     fallback = ModelSelection(
         endpoint_id="test-endpoint", provider="kimi-code", model_id="kimi-for-coding"

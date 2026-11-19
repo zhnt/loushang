@@ -7,10 +7,10 @@ from typing import Any, Protocol
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart, ToolCall
+from loushang.coding.package.worker_tool_identity import CODING_WORKER_QUERY_TOOL_NAME
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.execution import DirectExecution, DirectToolContext
 
-from .._worker_tool_identity import CODING_WORKER_QUERY_TOOL_NAME
 from .product_worker_query_consumer import validate_coding_worker_query_symbol
 
 

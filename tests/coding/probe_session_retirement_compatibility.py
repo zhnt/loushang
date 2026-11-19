@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.continuity as continuity
+import loushang.coding.session.continuity as continuity
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
 from loushang.harness.session.product_runtime import ProductSessionRuntime
 

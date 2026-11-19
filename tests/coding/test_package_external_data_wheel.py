@@ -28,20 +28,20 @@ from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.provider.protocol import ProviderRequest
-from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.application import run_cli
 from loushang.coding.cli.package_repair import main as package_repair_main
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
 from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.package.external_data_wheel import (
     CodingExternalDataWheelCatalog,
     CodingExternalDataWheelError,
 )
-from loushang.coding.package.pre_b_snapshot import (
-    cutover_and_bootstrap_coding_package_product,
-)
-from loushang.coding.package.product_management_cli import (
+from loushang.coding.package.management_binding import (
     build_coding_fenced_product_management_cli_ports,
     explain_coding_fenced_package_operation,
+)
+from loushang.coding.package.pre_b_snapshot import (
+    cutover_and_bootstrap_coding_package_product,
 )
 from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
@@ -52,7 +52,7 @@ from loushang.coding.package.product_runtime import (
     admit_coding_external_data_wheel,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.plugin_manager.cli import (
+from loushang.coding.plugin_manager.binding import (
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,
 )
@@ -83,7 +83,7 @@ from loushang.coding.plugin_manager.read_sdk import (
 )
 from loushang.coding.plugin_manager.rpc_scope import CodingPluginRpcSessionScope
 from loushang.coding.plugin_manager.support_status import main as plugin_status_cli_main
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.coding.ui import mode as coding_tui_mode
 from loushang.coding.ui.plugin_theme import select_coding_plugin_theme
 from loushang.harness.capabilities.consumer_requirements import ProductCompositionError
@@ -6355,7 +6355,7 @@ def test_management_command_sdk_refuses_workspace_replaced_during_owner_binding(
 def test_management_command_sdk_refuses_workspace_replaced_after_product_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.package.product_management_cli as management_cli_module
+    import loushang.coding.package.management_binding as management_cli_module
 
     workspace, layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_command_client(workspace)
@@ -6716,7 +6716,7 @@ def test_management_read_sdk_snapshot_refuses_workspace_replaced_before_owner_op
 def test_management_read_sdk_management_snapshot_pins_original_workspace_at_bind(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.plugin_manager.cli as cli_module
+    import loushang.coding.plugin_manager.binding as cli_module
 
     workspace, _layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_read_client(workspace)

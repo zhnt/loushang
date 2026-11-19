@@ -16,7 +16,7 @@ from loushang.appserver.protocol import (
     SessionListV1,
     SessionOpenSpecV1,
 )
-from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
+from loushang.coding.hosted.catalog import CodingHostedSessionCatalogV1
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
 from ._hosted_composition_seed import seed_hosted_history

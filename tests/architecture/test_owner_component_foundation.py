@@ -14,7 +14,7 @@ FOUNDATION_MODULES = {
     CAPABILITY_ROOT / "owner_component_host.py",
 }
 INTENTIONAL_FOUNDATION_CONSUMERS = {
-    Path("src/loushang/coding/continuity_bootstrap.py"),
+    Path('src/loushang/coding/composition/continuity.py'),
     Path("src/loushang/harness/continuity/composition.py"),
     Path("src/loushang/harness/continuity/plugin_declaration.py"),
     Path("src/loushang/harness/continuity/plugin_runtime.py"),

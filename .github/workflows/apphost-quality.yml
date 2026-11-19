@@ -34,17 +34,17 @@ jobs:
           src/loushang/apphost
           src/loushang/appserver
           src/loushang/appservice
-          src/loushang/coding/_apphost_canary_child.py
-          src/loushang/coding/_apphost_canary_control.py
-          src/loushang/coding/_product_worker_canary.py
-          src/loushang/coding/apphost_canary.py
-          src/loushang/coding/apphost_composition.py
-          src/loushang/coding/apphost_product.py
-          src/loushang/coding/appservice_adapter.py
-          src/loushang/coding/hosted_application.py
-          src/loushang/coding/hosted_continuity.py
-          src/loushang/coding/hosted_bootstrap.py
-          src/loushang/coding/hosted_local.py
+          src/loushang/coding/hosted/_canary_child.py
+          src/loushang/coding/hosted/_canary_control.py
+          src/loushang/coding/hosted/_worker_canary.py
+          src/loushang/coding/hosted/canary.py
+          src/loushang/coding/hosted/composition.py
+          src/loushang/coding/hosted/product.py
+          src/loushang/coding/hosted/service_adapter.py
+          src/loushang/coding/hosted/application.py
+          src/loushang/coding/hosted/continuity.py
+          src/loushang/coding/hosted/bootstrap.py
+          src/loushang/coding/hosted/local.py
           src/loushang/coding/cli/hosted.py
           src/loushang/coding/cli/mux.py
           src/loushang/coding/cli/__main__.py
@@ -112,17 +112,17 @@ jobs:
           src/loushang/apphost
           src/loushang/appserver
           src/loushang/appservice
-          src/loushang/coding/_apphost_canary_child.py
-          src/loushang/coding/_apphost_canary_control.py
-          src/loushang/coding/_product_worker_canary.py
-          src/loushang/coding/apphost_canary.py
-          src/loushang/coding/apphost_composition.py
-          src/loushang/coding/apphost_product.py
-          src/loushang/coding/appservice_adapter.py
-          src/loushang/coding/hosted_application.py
-          src/loushang/coding/hosted_continuity.py
-          src/loushang/coding/hosted_bootstrap.py
-          src/loushang/coding/hosted_local.py
+          src/loushang/coding/hosted/_canary_child.py
+          src/loushang/coding/hosted/_canary_control.py
+          src/loushang/coding/hosted/_worker_canary.py
+          src/loushang/coding/hosted/canary.py
+          src/loushang/coding/hosted/composition.py
+          src/loushang/coding/hosted/product.py
+          src/loushang/coding/hosted/service_adapter.py
+          src/loushang/coding/hosted/application.py
+          src/loushang/coding/hosted/continuity.py
+          src/loushang/coding/hosted/bootstrap.py
+          src/loushang/coding/hosted/local.py
           src/loushang/coding/cli/hosted.py
           src/loushang/coding/cli/mux.py
           src/loushang/harnesstui/mux

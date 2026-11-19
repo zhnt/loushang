@@ -24,9 +24,9 @@ WORKER_ROOT = Path("src/loushang/harness/worker")
 WORKER_FACADE = WORKER_ROOT / "__init__.py"
 IMPLEMENTATION = WORKER_ROOT / "product_activation.py"
 NATIVE_BRIDGE = WORKER_ROOT / "_native_profile_bridge.py"
-CODING_CANARY = Path("src/loushang/coding/_product_worker_canary.py")
-CODING_APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
-CODING_APPHOST_CANARY = Path("src/loushang/coding/apphost_canary.py")
+CODING_CANARY = Path('src/loushang/coding/hosted/_worker_canary.py')
+CODING_APPHOST_PRODUCT = Path('src/loushang/coding/hosted/product.py')
+CODING_APPHOST_CANARY = Path('src/loushang/coding/hosted/canary.py')
 CODING_PRODUCT_START_GATE = Path(
     "src/loushang/coding/package/product_worker_start_gate.py"
 )
@@ -641,7 +641,7 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         WORKER_ROOT / "payload/_selected_payload.py",
     }
     relocated_consumers = {
-        Path("src/loushang/coding/_worker_preparation_inputs.py"),
+        Path('src/loushang/coding/package/worker_preparation_inputs.py'),
         Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
         Path("src/loushang/harness/session/_worker_operator_query.py"),
         Path("src/loushang/harness/session/_worker_provider.py"),

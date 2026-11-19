@@ -17,8 +17,8 @@ from loushang.apphost.managed.contracts import (
 )
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.apphost.managed.paths import resolve_managed_paths
-from loushang.coding import managed_local
-from loushang.coding import managed_process as module
+from loushang.coding.hosted.managed import local as managed_local
+from loushang.coding.hosted.managed import process as module
 
 
 @pytest.mark.parametrize("frontend", [False, True])
@@ -26,7 +26,7 @@ def test_launch_material_does_not_import_backend(tmp_path, frontend):
     selected = invocation(tmp_path)
     script = """
 import sys
-from loushang.coding.managed_process import coding_managed_process_request
+from loushang.coding.hosted.managed.process import coding_managed_process_request
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 assert 'loushang.coding.managed_local' not in sys.modules
 request = coding_managed_process_request(
@@ -151,7 +151,7 @@ def test_request_is_pure_and_freezes_environment_without_mutating_input(tmp_path
     value = module.coding_managed_process_request(selected, 7, executable=sys.executable, environment=environment)
     assert environment == original
     assert value.argv == (
-        sys.executable, "-m", "loushang.coding.managed_process", selected.to_json(),
+        sys.executable, "-m", 'loushang.coding.hosted.managed.process', selected.to_json(),
         str(tmp_path / "platform/data/sessions"), "7",
     )
     assert dict(value.effective_environment) == {

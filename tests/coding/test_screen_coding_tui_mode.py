@@ -972,7 +972,7 @@ def test_run_coding_tui_reuses_process_composition_after_restored_cwd_changes(
 def test_run_coding_tui_does_not_treat_direct_base_binding_as_configured(
     monkeypatch,
 ) -> None:
-    from loushang.coding.continuity import (
+    from loushang.coding.session.continuity import (
         bind_coding_continuity,
         shutdown_coding_continuity,
     )
@@ -1018,7 +1018,7 @@ def test_run_coding_tui_does_not_treat_direct_base_binding_as_configured(
 def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
     tmp_path,
 ) -> None:
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.coding.resources.tool_pack import register_coding_builtin_tools
     from loushang.harness.approval import (
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,

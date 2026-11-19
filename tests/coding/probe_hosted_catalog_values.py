@@ -21,10 +21,10 @@ import pytest
 
 from loushang.apphost import SessionCreateIntentV1, SessionCreateRequestV1
 from loushang.appserver.protocol import SessionScopeV1
-from loushang.coding import hosted_catalog as hosted
-from loushang.coding import managed_catalog as managed
-from loushang.coding.hosted_session import CodingHostedHistoryBindingV1
-from loushang.coding.resume_history import (
+from loushang.coding.hosted import catalog as hosted
+from loushang.coding.hosted.managed import catalog as managed
+from loushang.coding.hosted.session import CodingHostedHistoryBindingV1
+from loushang.coding.resume.history import (
     CodingResumeHeaderPreview,
     CodingResumeHistoryPreview,
 )

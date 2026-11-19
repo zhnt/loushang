@@ -7,17 +7,17 @@ from datetime import UTC, datetime
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.resume_binding import (
+from loushang.coding.resume.binding import (
     CodingRuntimeBindingV1,
     coding_user_payload_digest,
     prepare_coding_resume_user_record,
     project_coding_runtime_binding_path,
 )
-from loushang.coding.resume_input_lookup import (
+from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     coding_resume_input_record_digest,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 
 
 def _record(manager, *, record_id="record-1", text="continue"):

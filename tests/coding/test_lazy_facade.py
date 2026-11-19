@@ -83,10 +83,10 @@ assert {name for name in sys.modules if name.startswith('loushang.')} == {'loush
 @pytest.mark.parametrize(
     ("public", "owner", "original"),
     [
-        ("SessionManager", "loushang.coding.session_manager", "SessionManager"),
+        ("SessionManager", 'loushang.coding.session.manager', "SessionManager"),
         (
             "DefaultResourceLoader",
-            "loushang.coding.resource_runtime",
+            'loushang.coding.resources.runtime',
             "CodingResourceLoader",
         ),
     ],
@@ -109,6 +109,15 @@ loads = []
 lookups = []
 failed = False
 allow_owner = False
+compatibility_modules = {{
+    'loushang.coding._component_imports',
+    'loushang.coding._compat',
+    'loushang.coding._compat.root_names',
+    'loushang.coding.package',
+    'loushang.coding.package._legacy_names',
+    'loushang.coding.plugin_manager',
+    'loushang.coding.plugin_manager._legacy_names',
+}}
 
 class OwnerLoader(importlib.abc.Loader):
     def create_module(self, spec):
@@ -137,6 +146,11 @@ class OnlySelectedOwner(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname == owner and allow_owner:
             return importlib.util.spec_from_loader(fullname, OwnerLoader())
+        # Component namespaces and compatibility data are not runtime owners.
+        if fullname in compatibility_modules:
+            return None
+        if allow_owner and fullname.startswith('loushang.coding.') and owner.startswith(fullname + '.'):
+            return importlib.util.spec_from_loader(fullname, loader=None, is_package=True)
         if fullname.startswith('loushang.') and fullname != 'loushang.coding':
             raise AssertionError(f'unexpected runtime import: {{fullname}}')
 
@@ -158,6 +172,13 @@ assert vars(coding)[public] is value
 assert getattr(coding, public) is value
 assert len(loads) == (2 if phase == 'import' else 1)
 assert len(lookups) == (1 if phase == 'import' else 2)
-assert {{name for name in sys.modules if name.startswith('loushang.')}} == {{'loushang.coding', owner}}
+legacy_owner = {{
+    'SessionManager': 'loushang.coding.session_manager',
+    'DefaultResourceLoader': 'loushang.coding.resource_runtime',
+}}[public]
+parents = {{'.'.join(owner.split('.')[:end]) for end in range(2, len(owner.split('.')))}}
+assert {{name for name in sys.modules if name.startswith('loushang.')}} == {{
+    *compatibility_modules, *parents, owner, legacy_owner,
+}}
 """,
     )

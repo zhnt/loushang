@@ -66,7 +66,7 @@
 | G16 已有本机认证、可分离连接、单 mux 控制权及重连屏障 | [G16](../appserver/detachable-local-workspace-g16.md)、[local.py](../../../../src/loushang/appserver/local.py)、[local_auth.py](../../../../src/loushang/appserver/local_auth.py) | Rust 接入须自己证明兼容，Python 实现通过不等于 GUI 通过 |
 | AppService 管理 mux、成员、attachment 和接收后的操作 | [AppService](../appservice/README.md) | 连接断开与执行停止不是同一生命周期 |
 | 已有客户端投影处理游标、草稿和重新 attach | [reducer.py](../../../../src/loushang/harnesstui/mux/reducer.py)、[controller.py](../../../../src/loushang/harnesstui/mux/controller.py) | 可复用合同与场景意图，GUI 不依赖 Python TUI 实现 |
-| Coding 适配将三种交互结果映射为 allow_once / deny / abort | [appservice_adapter.py](../../../../src/loushang/coding/appservice_adapter.py) | 任意选择题、自由文本回答不属于当前交互协议 |
+| Coding 适配将三种交互结果映射为 allow_once / deny / abort | [appservice_adapter.py](../../../../src/loushang/coding/hosted/service_adapter.py) | 任意选择题、自由文本回答不属于当前交互协议 |
 
 以上是源码与合同核对，不是本次运行产品测试的结果。已有测试只作为定位后续
 兼容证据的入口；本文不会把旧测试结果标为 GUI 验收结果。

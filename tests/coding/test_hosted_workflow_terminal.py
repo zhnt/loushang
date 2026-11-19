@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
+from loushang.coding.hosted.catalog import CodingHostedSessionCatalogV1
 from tests.tui.terminal_process_support import selected_backend_name
 
 from ._hosted_composition_seed import seed_hosted_history

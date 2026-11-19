@@ -7,14 +7,14 @@ import threading
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
-from loushang.coding.continuity import bind_coding_continuity
-from loushang.coding.product_plan import (
+from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
 )
+from loushang.coding.composition.provenance import CODING_COMPOSITION_HEADER_KEY
 from loushang.coding.runtime import agent_session_runtime as runtime_module
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
+from loushang.coding.session.continuity import bind_coding_continuity
 from loushang.harness.continuity import ContinuityQuery
 from loushang.harness.conversation import ConversationHeader, ConversationRecord
 from loushang.harness.transcript import (

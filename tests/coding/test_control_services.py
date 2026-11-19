@@ -133,9 +133,12 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     tmp_path,
 ) -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.session import ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha", reasoning=True))
@@ -247,7 +250,10 @@ def test_model_registry_records_problem_for_missing_model_selection() -> None:
 
 def test_runtime_uses_latest_settings_for_new_sessions(tmp_path) -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.bootstrap import create_agent_session_runtime, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session_runtime,
+        create_services,
+    )
     from loushang.coding.session import ModelSelection
 
     project_a = tmp_path / "project-a"
@@ -301,10 +307,13 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(
     import json
 
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import SettingsManager
     from loushang.coding.session import ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
@@ -365,9 +374,12 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(
     tmp_path,
 ) -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.session import ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))

@@ -34,8 +34,8 @@ from loushang.appserver.protocol import (
     TurnTextV1,
     WorkspaceRequestV1,
 )
-from loushang.coding.managed_bootstrap import CodingManagedApplicationLaunchV1
-from loushang.coding.managed_local import CodingManagedLocalLaunchV1
+from loushang.coding.hosted.managed.bootstrap import CodingManagedApplicationLaunchV1
+from loushang.coding.hosted.managed.local import CodingManagedLocalLaunchV1
 from loushang.hosting.service import LinuxServiceObserverV1
 from tests.apphost.test_managed_bootstrap import deployment as deployment
 from tests.hosting._pidfd_signal import send_signal as _send_signal

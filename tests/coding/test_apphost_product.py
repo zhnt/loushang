@@ -29,11 +29,11 @@ from loushang.apphost import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
-from loushang.coding._product_worker_canary import (
+from loushang.coding.hosted._worker_canary import (
     CodingProductWorkerCanary,
     CodingProductWorkerCanaryStatusV1,
 )
-from loushang.coding.apphost_product import (
+from loushang.coding.hosted.product import (
     CodingAppHostProductBindingV1,
     CodingAppHostProductError,
     CodingAppHostProductFactoryV1,

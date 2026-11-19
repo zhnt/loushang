@@ -12,7 +12,7 @@ from loushang.apphost.managed.contracts import (
 )
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.apphost.managed.paths import resolve_managed_admission_root
-from loushang.coding.managed_bootstrap import create_coding_managed_launch
+from loushang.coding.hosted.managed.bootstrap import create_coding_managed_launch
 from tests.apphost.test_managed_bootstrap import deployment as deployment
 
 

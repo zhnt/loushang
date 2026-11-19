@@ -18,7 +18,7 @@ from loushang.coding.cli.hosted_client import (
     _LaunchPreparation,
     main,
 )
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
 
 
 def _launch(root):

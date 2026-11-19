@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from loushang.ai import Model
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities, ModelSelection, OpenAICompletionsConfig
-from loushang.coding.continuity import (
+from loushang.coding.session.continuity import (
     bind_coding_continuity,
     shutdown_coding_continuity,
 )

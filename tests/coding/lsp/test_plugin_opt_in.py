@@ -19,7 +19,7 @@ from loushang.coding.lsp._provider_api import (
     CODING_LSP_TOOL_RUNTIME_FACET,
     CodingLspPluginConfigV1,
 )
-from loushang.coding.resource_runtime import CodingPackageMaterializer
+from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.harness.approval.plugin_activation import (
     ContributionActivationApprovalSubject,
     PluginActivationDecisionJournal,

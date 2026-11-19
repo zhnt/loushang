@@ -25,7 +25,7 @@ APPHOST_CORE = {
     APPHOST / "runtime.py",
 }
 OWNER_SELECTION = Path("src/loushang/harness/worker/owner_selection.py")
-TARGET_COMPOSITION = Path("src/loushang/coding/apphost_composition.py")
+TARGET_COMPOSITION = Path('src/loushang/coding/hosted/composition.py')
 G9_EVIDENCE = Path(
     "docs/internals/architecture/apphost/hosted-product-g9-evidence-manifest.json"
 )
@@ -39,7 +39,7 @@ PROMOTION_RECORD = Path(
     "docs/internals/architecture/apphost/hosted-product-g9-promotion-record.md"
 )
 INSTALLED_CODING_ROOTS = (
-    Path("src/loushang/coding/bootstrap.py"),
+    Path('src/loushang/coding/composition/bootstrap.py'),
     Path("src/loushang/coding/cli/__main__.py"),
     Path("src/loushang/coding/cli/application.py"),
     Path("src/loushang/coding/ui/cli.py"),
@@ -69,7 +69,11 @@ def _read(path: Path) -> str:
 def _imports(path: Path) -> set[str]:
     imported: set[str] = set()
     package = path.parent.relative_to("src").parts
-    for node in ast.walk(ast.parse(_read(path), filename=str(path))):
+    source = _read(path)
+    if path == Path("src/loushang/coding/__init__.py"):
+        # The same public type imports now live in the facade's stub.
+        source += "\n" + _read(path.with_suffix(".pyi"))
+    for node in ast.walk(ast.parse(source, filename=str(path))):
         if isinstance(node, ast.Import):
             imported.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
@@ -479,8 +483,8 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "loushang-package-cutover": "loushang.coding.cli.package_cutover:main",
         "loushang-package-gc": "loushang.coding.cli.package_gc:main",
         "loushang-package-repair": "loushang.coding.cli.package_repair:main",
-        "loushang-coding-plugin-smoke": "loushang.coding.plugin_author_smoke:main",
-        "loushang-coding-extension": "loushang.coding.extension_author:main",
+        "loushang-coding-plugin-smoke": "loushang.coding.authoring.plugin_smoke:main",
+        "loushang-coding-extension": "loushang.coding.authoring.extension:main",
         "loushang-coding-plugin-status": "loushang.coding.plugin_manager.support_status:main",
         "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
         "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
@@ -512,10 +516,10 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "project.scripts.loushang-tui": "coding.tui",
     }
 
-    assert "loushang.coding.bootstrap" in _imports(
+    assert 'loushang.coding.composition.bootstrap' in _imports(
         Path("src/loushang/coding/__init__.py")
     )
-    assert "loushang.coding.bootstrap" in _imports(
+    assert 'loushang.coding.composition.bootstrap' in _imports(
         Path("src/loushang/coding/cli/application.py")
     )
     assert "loushang.coding.cli.__main__" in _imports(
@@ -564,8 +568,8 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "dataclasses",
         "inspect",
         "loushang.apphost",
-        "loushang.coding.apphost_product",
-        "loushang.coding.product_plan",
+        'loushang.coding.hosted.product',
+        'loushang.coding.composition.plan',
         "loushang.harness.runtime",
         "re",
         "typing",
@@ -575,7 +579,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     for path in Path("src/loushang").rglob("*.py"):
         if path not in {
             TARGET_COMPOSITION,
-            Path("src/loushang/coding/apphost_canary.py"),
+            Path('src/loushang/coding/hosted/canary.py'),
+            # Pure historical route data is not a composition consumer.
+            Path("src/loushang/coding/_compat/root_names.py"),
         }:
             assert "apphost_composition" not in _read(path)
 
@@ -686,7 +692,7 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
         assert calls.isdisjoint({"getenv", "environ", "entry_points", "__import__"})
     inventory = _read(INVENTORY)
     assert "explicit installed composition owner" in inventory
-    assert "`src/loushang/coding/apphost_composition.py`" in inventory
+    assert '`src/loushang/coding/hosted/composition.py`' in inventory
     assert "omission remains Current" in inventory
     assert "G9.3 records the" in inventory
     assert "accepted `RETAIN` decision" in inventory

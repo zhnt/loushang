@@ -4,7 +4,7 @@ import asyncio
 
 from loushang.agent import Agent
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.transcript import ApplicationMessage
 
 

@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.composition_provenance import CodingCompositionProvenanceV1
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     prepare_coding_activation_attempt_record,
 )
-from loushang.coding.resume_activation_plan import (
+from loushang.coding.resume.activation_plan import (
     ActivationOwnerInputRefV1,
     ActivationOwnerSelectionRefV1,
     ResumePlanStaleError,
@@ -27,13 +27,13 @@ from loushang.coding.resume_activation_plan import (
     require_current_resume_plan_inputs,
     require_current_resume_plan_source,
 )
-from loushang.coding.resume_binding import project_coding_runtime_binding_path
-from loushang.coding.resume_history import (
+from loushang.coding.resume.binding import project_coding_runtime_binding_path
+from loushang.coding.resume.history import (
     CodingResumeHeaderPreview,
     CodingResumeHistoryPreview,
     read_coding_resume_snapshot,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.resources.loader import (
     ResourceLoader,
@@ -196,7 +196,7 @@ def test_activation_plan_rejects_noncanonical_or_duplicate_owner_inputs() -> Non
 def test_activation_plan_rejects_rewritten_real_transcript(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding import resume_history as resume_history_module
+    from loushang.coding.resume import history as resume_history_module
 
     async def create() -> Path:
         manager = await SessionManager.new_with_composition(

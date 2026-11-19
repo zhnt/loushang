@@ -14,12 +14,12 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.plugin_manager.owner_generations import (
     CodingOwnerGenerationEvidenceEventV1,
     CodingOwnerGenerationEvidenceLedger,
     CodingOwnerGenerationFamilyEvidence,
 )
-from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.journal import (
     JournalLoadPolicy,

@@ -70,9 +70,9 @@ def test_g10_has_explicit_command_control_and_dependency_boundaries() -> None:
         assert command in normalized
     for boundary in (
         "loushang.coding.cli.apphost",
-        "loushang.coding.apphost_canary",
-        "loushang.coding._apphost_canary_control",
-        "loushang.coding._apphost_canary_child",
+        'loushang.coding.hosted.canary',
+        'loushang.coding.hosted._canary_control',
+        'loushang.coding.hosted._canary_child',
         "AppHost core -/-> Coding / Harness / Hosting / AppServer / AppService",
         "Hosting -/-> Coding / AppHost / Harness / AppServer / AppService",
         "Harness journal -/-> Coding / AppHost / Hosting",

@@ -8,7 +8,7 @@ from pathlib import Path
 APPHOST = Path("src/loushang/apphost")
 APPSERVICE = Path("src/loushang/appservice")
 APPHOST_CONTINUITY = APPHOST / "continuity.py"
-CODING_CONTINUITY = Path("src/loushang/coding/hosted_continuity.py")
+CODING_CONTINUITY = Path('src/loushang/coding/hosted/continuity.py')
 INVENTORY = Path(
     "docs/internals/architecture/apphost/"
     "durable-hosted-application-continuity-g13-entrypoint-inventory.json"
@@ -64,7 +64,7 @@ def test_G13_DEPENDENCY_DIRECTION_keeps_core_and_mechanism_owners_independent() 
         "loushang.apphost.application",
         "loushang.apphost.continuity",
         "loushang.appservice",
-        "loushang.coding.hosted_application",
+        'loushang.coding.hosted.application',
     ):
         assert _has(coding, required)
     for forbidden in (
@@ -144,7 +144,7 @@ def test_G13_NO_AUTHORITY_EXPANSION_has_no_transport_process_or_path_discovery()
     assert scripts["loushang-tui"] == "loushang.coding.ui.cli:main"
     for path in (
         Path("src/loushang/coding/__init__.py"),
-        Path("src/loushang/coding/bootstrap.py"),
+        Path('src/loushang/coding/composition/bootstrap.py'),
         Path("src/loushang/coding/cli/__main__.py"),
         Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),

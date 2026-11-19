@@ -200,17 +200,17 @@ def test_G16_BOUNDARIES_local_apphost_edge_uses_public_application_capabilities(
 
 def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default_activation() -> None:
     from loushang.coding.cli.hosted import CodingHostedLaunchV1 as LegacyLaunch
-    from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
+    from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
 
     assert LegacyLaunch is CodingHostedLaunchV1
-    bootstrap = Path("src/loushang/coding/hosted_bootstrap.py").read_text()
+    bootstrap = Path('src/loushang/coding/hosted/bootstrap.py').read_text()
     for forbidden in ("LocalAppServerV1", "InheritedStdioTransportV1", "HostedLocalRuntimeV1", "sys.argv", "import subprocess"):
         assert forbidden not in bootstrap
     command = Path("src/loushang/coding/cli/mux.py").read_text()
     assert 'expected_product_id="coding"' in command
     assert '"stop_requested"' in command and '"--yes"' in command
     for source in ("src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py", "src/loushang/coding/ui/cli.py",
-                   "src/loushang/coding/bootstrap.py", "src/loushang/coding/__init__.py"):
+                   'src/loushang/coding/composition/bootstrap.py', "src/loushang/coding/__init__.py"):
         text = Path(source).read_text()
         assert "hosted_bootstrap" not in text and "hosted_local" not in text
         assert "coding.cli.mux" not in text
@@ -221,7 +221,7 @@ def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default
 def test_managed_staging_keeps_exact_optional_signatures_and_sync_fence():
     from loushang.apphost.local import HostedLocalRuntimeV1
     from loushang.appserver.local import LocalAppServerV1
-    from loushang.coding.hosted_local import CodingLocalCommandV1
+    from loushang.coding.hosted.local import CodingLocalCommandV1
 
     for owner in (HostedLocalRuntimeV1, LocalAppServerV1, CodingLocalCommandV1):
         parameters = inspect.signature(owner.prepare).parameters

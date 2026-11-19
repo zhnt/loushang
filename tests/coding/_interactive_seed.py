@@ -10,7 +10,7 @@ from pathlib import Path
 
 async def prepare(root: Path, workspace: Path) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     root.mkdir(mode=0o700, parents=True, exist_ok=False)
     workspace.mkdir(mode=0o700, parents=True, exist_ok=True)

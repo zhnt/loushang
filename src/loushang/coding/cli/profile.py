@@ -7,7 +7,7 @@ owned by the Coding application.
 
 from __future__ import annotations
 
-from loushang.coding.capabilities import parse_capability_mount
+from loushang.coding.composition.capabilities import parse_capability_mount
 from loushang.harness.cli import STANDARD_CLI_PROFILE, CliArgumentSpec, CliProfile
 
 _REMOVED_LEGACY_RESOURCE_ARGUMENT_IDS = frozenset(

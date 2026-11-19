@@ -7,7 +7,7 @@
       "importsComposition": false,
       "omissionOwner": null,
       "packagingBinding": "project.scripts.loushang-coding-extension",
-      "source": "src/loushang/coding/extension_author.py",
+      "source": "src/loushang/coding/authoring/extension.py",
       "supportStatus": "installed",
       "surface": "cli"
     },
@@ -57,7 +57,7 @@
       "importsComposition": false,
       "omissionOwner": null,
       "packagingBinding": "project.scripts.loushang-coding-plugin-smoke",
-      "source": "src/loushang/coding/plugin_author_smoke.py",
+      "source": "src/loushang/coding/authoring/plugin_smoke.py",
       "supportStatus": "installed",
       "surface": "cli"
     },
@@ -137,7 +137,7 @@
       "importsComposition": true,
       "omissionOwner": null,
       "packagingBinding": "project.scripts.loushang",
-      "source": "src/loushang/coding/apphost_canary.py",
+      "source": "src/loushang/coding/hosted/canary.py",
       "supportStatus": "installed-subcommand",
       "surface": "canary"
     },
@@ -147,7 +147,7 @@
       "importsComposition": true,
       "omissionOwner": null,
       "packagingBinding": null,
-      "source": "src/loushang/coding/apphost_composition.py",
+      "source": "src/loushang/coding/hosted/composition.py",
       "supportStatus": "explicit-library",
       "surface": "composition"
     },
@@ -157,7 +157,7 @@
       "importsComposition": false,
       "omissionOwner": "current",
       "packagingBinding": null,
-      "source": "src/loushang/coding/bootstrap.py",
+      "source": "src/loushang/coding/composition/bootstrap.py",
       "supportStatus": "supported-library",
       "surface": "bootstrap"
     },

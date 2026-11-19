@@ -15,7 +15,10 @@ from loushang.apphost.managed._files import ManagedStorageError
 from loushang.apphost.managed.connection import ManagedConnectionLeaseV1
 from loushang.apphost.managed.coordinator import ManagedServiceCoordinatorV1
 from loushang.apphost.managed.stopper import ManagedServiceStopOperationV1
-from loushang.coding.managed_process import ENDPOINT, coding_managed_process_request
+from loushang.coding.hosted.managed.process import (
+    ENDPOINT,
+    coding_managed_process_request,
+)
 from loushang.hosting.service import LinuxServiceObserverV1
 from tests.apphost.test_managed_starter import owners as owners
 from tests.coding.test_managed_process_entry import _stop_original

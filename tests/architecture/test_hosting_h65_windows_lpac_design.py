@@ -20,7 +20,7 @@ WINDOWS_RAW = HOSTING_ROOT / "_win32_process.py"
 WINDOWS_PROCESS = HOSTING_ROOT / "_windows_process.py"
 WINDOWS_NATIVE = Path("tests/hosting/test_windows_lpac_preparation_native.py")
 BRIDGE = Path("src/loushang/harness/worker/_native_profile_bridge.py")
-CODING_CANARY = Path("src/loushang/coding/_product_worker_canary.py")
+CODING_CANARY = Path('src/loushang/coding/hosted/_worker_canary.py')
 
 _PROFILE = "windows-lpac-contained-pe-v1"
 

@@ -299,7 +299,7 @@ def test_available_model_completion_provider_lists_current_model_first() -> None
 
 
 def test_select_available_model_sets_unique_match() -> None:
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
 
     session = _Session()
     text = asyncio.run(select_available_model(session, query="gpt"))
@@ -313,7 +313,7 @@ def test_select_available_model_sets_unique_match() -> None:
 
 
 def test_select_available_model_lists_models_when_query_is_empty() -> None:
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
 
     session = _Session()
     text = asyncio.run(select_available_model(session, query=""))
@@ -327,7 +327,7 @@ def test_select_available_model_lists_models_when_query_is_empty() -> None:
 
 
 def test_select_available_model_uses_injected_palette_chooser() -> None:
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
     from loushang.tui import CommandPalette
 
     session = _Session()
@@ -353,7 +353,7 @@ def test_select_available_model_uses_injected_palette_chooser() -> None:
 
 
 def test_plain_model_palette_selects_model_then_reasoning() -> None:
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
     from loushang.tui import CommandPalette
 
     class ReasoningSession(_Session):
@@ -385,7 +385,7 @@ def test_plain_model_palette_selects_model_then_reasoning() -> None:
 
 
 def test_plain_model_command_accepts_explicit_reasoning_level() -> None:
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
 
     class ReasoningSession(_Session):
         thinking_level = "off"
@@ -411,7 +411,7 @@ def test_plain_model_command_accepts_explicit_reasoning_level() -> None:
 
 
 def test_select_available_model_reports_cancelled_palette_choice() -> None:
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
 
     session = _Session()
 
@@ -424,7 +424,7 @@ def test_select_available_model_reports_cancelled_palette_choice() -> None:
 
 
 def test_select_available_model_passes_empty_palette_to_chooser() -> None:
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
     from loushang.tui import CommandPalette
 
     session = _EmptySession()
@@ -442,7 +442,7 @@ def test_select_available_model_passes_empty_palette_to_chooser() -> None:
 
 
 def test_select_available_model_reports_ambiguous_matches_with_hint() -> None:
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
 
     session = _AmbiguousSession()
     text = asyncio.run(select_available_model(session, query="moonshot"))
@@ -459,7 +459,7 @@ def test_select_available_model_reports_ambiguous_matches_with_hint() -> None:
 def test_select_available_model_uses_full_identity_for_duplicate_endpoint_choice() -> (
     None
 ):
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
 
     session = _DuplicateEndpointSession()
     text = asyncio.run(
@@ -482,7 +482,7 @@ def test_select_available_model_uses_full_identity_for_duplicate_endpoint_choice
 def test_select_available_model_does_not_guess_preferred_endpoint_for_shorthand() -> (
     None
 ):
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
 
     session = _DuplicateEndpointSession()
     text = asyncio.run(select_available_model(session, query="dashscope:qwen3.6-plus"))
@@ -499,7 +499,7 @@ def test_select_available_model_does_not_guess_preferred_endpoint_for_shorthand(
 def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_without_preferred() -> (
     None
 ):
-    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.coding.presentation.tui.model_selection import select_available_model
 
     session = _AmbiguousDuplicateEndpointSession()
     text = asyncio.run(select_available_model(session, query="dashscope:qwen3.6-plus"))

@@ -30,9 +30,9 @@ HARNESS_ROOT = SOURCE_ROOT / "harness"
 WORKER_ROOT = HARNESS_ROOT / "worker"
 SANDBOX_RUNTIME = HARNESS_ROOT / "sandbox/runtime.py"
 CODING_ROOT = SOURCE_ROOT / "coding"
-CODING_CANARY = CODING_ROOT / "_product_worker_canary.py"
-CODING_APPHOST_PRODUCT = CODING_ROOT / "apphost_product.py"
-CODING_APPHOST_CANARY = CODING_ROOT / "apphost_canary.py"
+CODING_CANARY = CODING_ROOT / 'hosted/_worker_canary.py'
+CODING_APPHOST_PRODUCT = CODING_ROOT / 'hosted/product.py'
+CODING_APPHOST_CANARY = CODING_ROOT / 'hosted/canary.py'
 HOSTING_ROOT = SOURCE_ROOT / "hosting"
 APPHOST_ROOT = SOURCE_ROOT / "apphost"
 AUTHOR_ROOT = SOURCE_ROOT / "plugin"
@@ -55,10 +55,10 @@ REPORT_VERIFIER = Path("scripts/dev/verify_pytest_xml.py")
 MAKEFILE = Path("Makefile")
 
 EXPECTED_CURRENT_SOURCE_PATHS = {
-    "src/loushang/coding/bootstrap.py",
-    "src/loushang/coding/_product_worker_canary.py",
+    'src/loushang/coding/composition/bootstrap.py',
+    'src/loushang/coding/hosted/_worker_canary.py',
     "src/loushang/coding/cli/application.py",
-    "src/loushang/coding/session_manager.py",
+    'src/loushang/coding/session/manager.py',
     "src/loushang/harness/capabilities/component_host.py",
     "src/loushang/harness/capabilities/component_runtime.py",
     "src/loushang/harness/capabilities/owner_component_host.py",
@@ -1033,7 +1033,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package/product_worker_windows_orphan_review.py",
         CODING_ROOT / "package/product_worker_windows_supervisor_base.py",
         CODING_ROOT / "package/product_worker_windows_supervisor_journal.py",
-        CODING_ROOT / "resume_continuation.py",
+        CODING_ROOT / 'resume/continuation.py',
         CODING_ROOT / "package/product_worker_history_checkpoint.py",
         CODING_ROOT / "package/product_worker_history_checkpoint_anchor.py",
         CODING_ROOT / "package/product_worker_history_cutover_v2.py",
@@ -1057,7 +1057,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package/product_worker_windows_history_cutover_record.py",
         CODING_ROOT / "package/product_worker_windows_persisted_bases.py",
         CODING_ROOT / "package/product_worker_windows_checkpoint.py",
-        Path("src/loushang/coding/_worker_preparation_inputs.py"),
+        Path('src/loushang/coding/package/worker_preparation_inputs.py'),
         Path("src/loushang/coding/package/product_worker_gc_references.py"),
         Path("src/loushang/coding/package/product_worker_native_approval.py"),
         Path("src/loushang/coding/package/product_worker_windows_payload_inventory.py"),
@@ -1074,7 +1074,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package/product_worker_windows_receipt.py",
     }
     assert hosting_consumers - optional_shared_receipt_owner == {
-        CODING_ROOT / "managed_service.py",
+        CODING_ROOT / 'hosted/managed/service.py',
         CODING_APPHOST_CANARY,
         CODING_ROOT / "package/product_worker_windows_backend_release.py",
         CODING_ROOT / "package/product_worker_windows_installed_backend.py",
@@ -1090,12 +1090,12 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         APPHOST_ROOT / "managed/defaults.py",
         APPHOST_ROOT / "managed/connection.py",
         APPHOST_ROOT / "managed/mux_management.py",
-        CODING_ROOT / "managed_process.py",
+        CODING_ROOT / 'hosted/managed/process.py',
     } - optional_shared_receipt_owner
     # Managed AppHost composition consumes public Hosting contracts only. Keep the reviewed
     # module and symbol edges exact rather than exempting the managed package.
     managed_edges = {
-        CODING_ROOT / "managed_service.py": {"errors": {"HostingError"}},
+        CODING_ROOT / 'hosted/managed/service.py': {"errors": {"HostingError"}},
         APPHOST_ROOT / "managed/starter.py": {
             "contracts": {"ProcessLaunchRequest"},
             "service_process": {"LinuxServiceProcessV1"},
@@ -1137,7 +1137,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             "service_handoff": {"require_service_channel"},
             "service_windows": {"WindowsServiceObserverV1"},
         },
-        CODING_ROOT / "managed_process.py": {
+        CODING_ROOT / 'hosted/managed/process.py': {
             "contracts": {
                 "ProcessLaunchRequest",
                 "ProcessStreamSpec",

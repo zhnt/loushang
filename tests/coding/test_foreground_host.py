@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.foreground_host import NamedMuxProvisioner
+from loushang.coding.hosted.foreground import NamedMuxProvisioner
 
 
 def test_foreground_provisioner_rejects_unissued_permits_and_fences_stop(tmp_path):
@@ -56,7 +56,7 @@ def test_foreground_workspace_and_named_mux_survive_restart(tmp_path):
     for _ in range(2):
         with (tmp_path / "host.log").open("w") as log:
             process = subprocess.Popen(
-                [sys.executable, "-m", "loushang.coding.foreground_host"],
+                [sys.executable, "-m", 'loushang.coding.hosted.foreground'],
                 cwd=Path(__file__).resolve().parents[2],
                 env={**os.environ, "LOUSHANG_HOME": str(home)}, stdout=log, stderr=log,
             )

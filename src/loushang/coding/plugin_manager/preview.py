@@ -10,7 +10,8 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
-from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -24,7 +25,6 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.config.agent._settings_codec import CONTROL_CONFIG_CODEC
 from loushang.harness.config.agent.types import ControlConfig
 from loushang.harness.plugin_management.current_preview import (

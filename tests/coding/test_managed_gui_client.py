@@ -26,7 +26,7 @@ from loushang.appserver.protocol import (
     MuxSelectorV1,
     SessionOpenSpecV1,
 )
-from loushang.coding.managed_process import (
+from loushang.coding.hosted.managed.process import (
     APPLICATION_ID,
     ENDPOINT,
     coding_managed_process_request,

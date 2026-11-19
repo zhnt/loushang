@@ -17,7 +17,7 @@ from pathlib import Path
 
 def request_factory(invocation, descriptor, *, executable, environment, session_root=None, admission_diagnostic=False):
     """Keep original launch facts; select only this fixed, frozen test entry."""
-    from loushang.coding.managed_process import coding_managed_process_request
+    from loushang.coding.hosted.managed.process import coding_managed_process_request
 
     original = coding_managed_process_request(
         invocation, descriptor, executable=executable,
@@ -31,7 +31,7 @@ def request_factory(invocation, descriptor, *, executable, environment, session_
 
 def main(arguments=None):
     from loushang.apphost.managed.invocation import ManagedChildInvocationV1
-    from loushang.coding import managed_process
+    from loushang.coding.hosted.managed import process as managed_process
 
     arguments = list(sys.argv[1:] if arguments is None else arguments)
     diagnostic = len(arguments) == 4 and arguments[-1] == "--admission-diagnostic"

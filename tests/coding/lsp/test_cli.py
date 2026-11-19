@@ -8,16 +8,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from loushang.ai.model import Capabilities, Model
-from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.__main__ import _run_coding_pre_runtime_operation, run_cli
 from loushang.coding.cli.args import parse_args
 from loushang.coding.cli.lsp import run_coding_lsp_command
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
 from loushang.coding.control import ControlConfig, SettingsManager
 from loushang.coding.lsp import (
     DOCUMENT_OUTLINE_TOOL_NAME,
     INSPECT_SYMBOL_TOOL_NAME,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.cli import AgentCliStatePreparationContext
 
 
@@ -218,7 +218,7 @@ def test_configured_lsp_is_available_to_ordinary_session_and_remains_lazy(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from loushang.coding.sandbox import SandboxExecutionRuntime
+    from loushang.coding.control.sandbox import SandboxExecutionRuntime
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     user_config_dir = tmp_path / "user-config"

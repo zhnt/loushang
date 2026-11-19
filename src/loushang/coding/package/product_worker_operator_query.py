@@ -15,6 +15,10 @@ from typing import ClassVar, NoReturn, cast
 
 from loushang.agent import Agent
 from loushang.ai.model import Capabilities, Model
+from loushang.coding.package.worker_preparation_inputs import (
+    CodingWorkerProductReceiptOwner,
+)
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.capabilities import (
     stage_resource_composition_candidate,
     standard_capability_composition_plan,
@@ -47,8 +51,6 @@ from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
-from .._worker_preparation_inputs import CodingWorkerProductReceiptOwner
-from ..session_manager import SessionManager
 from .product_worker_capability import CodingProductWorkerCapabilityAuthority
 from .product_worker_provider import (
     coding_worker_query_capability_provider,

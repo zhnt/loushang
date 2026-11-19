@@ -5,6 +5,9 @@ from __future__ import annotations
 import secrets
 from collections.abc import Callable
 
+from loushang.coding.composition.base_product import CodingBaseProductSessionAssembly
+from loushang.coding.composition.provenance import historical_startup_composition_record
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
@@ -22,9 +25,6 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
-from .._base_product_composition import CodingBaseProductSessionAssembly
-from ..composition_provenance import historical_startup_composition_record
-from ..session_manager import SessionManager
 from .product_worker_ordinary_error import CodingWorkerOrdinaryBootstrapError
 from .product_worker_payload import plan_coding_product_worker_pending_launch
 from .product_worker_pending_host import (

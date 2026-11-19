@@ -232,8 +232,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if not notify_socket.startswith(("/", "@")):
                     parser.error("--systemd requires the systemd notification socket")
             # Management/help paths do not import the real Product/model bootstrap.
-            from ..hosted_bootstrap import CodingHostedLaunchV1
-            from ..hosted_local import CodingLocalCommandV1, CodingLocalLaunchV1
+            from ..hosted.bootstrap import CodingHostedLaunchV1
+            from ..hosted.local import CodingLocalCommandV1, CodingLocalLaunchV1
 
             launch = CodingLocalLaunchV1(
                 CodingHostedLaunchV1(

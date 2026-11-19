@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from loushang.ai.model import Capabilities, Defaults, Model
-from loushang.coding.model_reasoning import (
+from loushang.coding.interaction.reasoning import (
     effective_reasoning_label,
     reasoning_description,
 )

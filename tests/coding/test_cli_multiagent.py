@@ -17,15 +17,15 @@ from loushang.ai.model import (
 )
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.types import AssistantMessage, TextPart, Usage
-from loushang.coding.bootstrap import (
-    create_agent_session_runtime,
-    create_services,
-)
 from loushang.coding.cli.__main__ import (
     build_builtin_tool_registry,
     run_cli,
 )
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
+from loushang.coding.composition.bootstrap import (
+    create_agent_session_runtime,
+    create_services,
+)
 from loushang.harness.cli.multiagent import (
     MultiAgentCliUsageError,
     MultiAgentRunCommand,

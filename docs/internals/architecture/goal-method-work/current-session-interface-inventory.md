@@ -24,11 +24,11 @@
 | TUI会话动作 | [control.py](../../../../src/loushang/harnesstui/conversation/control.py)的ConversationActionHost；[controller.py](../../../../src/loushang/harnesstui/conversation/controller.py)的ConversationUiController | 普通输入/中断展示可复用；该动作接口不能被视为已支持Goal创建/修订/恢复 |
 | lmux普通对话 | [conversation_binding.py](../../../../src/loushang/harnesstui/mux/conversation_binding.py)的HostedConversationActionBinding实现共享会话动作，捕获attachment/generation/member，借用AppClient；返回投递状态 | 沿用原绑定和过期结果保护；Ack不是Work完成或Goal成功 |
 | AppService Session | [ports.py](../../../../src/loushang/appservice/ports.py)的HostedSessionPortV1含snapshot/subscribe/start_turn/steer/follow_up/interrupt/interaction/close | 托管适配合同；不是嵌入式内核必须伪造的身份或控制对象 |
-| 原托管Coding Session | [hosted_session.py](../../../../src/loushang/coding/hosted_session.py)的CodingRealHostedSessionV1.control返回其原AgentSession；claim_execution限制单一执行owner；历史binding无执行控制 | 复用原Session及owner；只读历史Session不可因展示Goal而升级为可执行 |
+| 原托管Coding Session | [hosted_session.py](../../../../src/loushang/coding/hosted/session.py)的CodingRealHostedSessionV1.control返回其原AgentSession；claim_execution限制单一执行owner；历史binding无执行控制 | 复用原Session及owner；只读历史Session不可因展示Goal而升级为可执行 |
 | 通用Session控制 | [facade.py](../../../../src/loushang/harness/session/facade.py)的SessionControlPort含prompt/steer/follow_up/clear_queue/abort/wait_for_idle等；明确排除Product词汇 | 输入、队列、运行事件复用Harness；不再造Goal队列，不把预算/Method准入塞入通用输入接口 |
 | Session生命周期 | [product_runtime.py](../../../../src/loushang/harness/session/product_runtime.py)、[agent_session_runtime.py](../../../../src/loushang/coding/runtime/agent_session_runtime.py)复用原创建/切换/释放装配；Coding runtime已有before_release与子执行清理衔接 | Session创建/替换/释放权不转交给TUI Goal命令；何时停止或挂起关联Goal尚须专项定合同 |
 | Goal领域入口 | [goal.py](../../../../src/loushang/coding/adapters/goal.py)的CodingGoal提供create/advance/query及controller；_initialize_borrowed可借用原Session，不负责销毁外部Session | 借用装配是可复用内部接缝；不是面向任意交互Session的公共接入合同 |
-| 原托管Goal | [hosted_goal.py](../../../../src/loushang/coding/hosted_goal.py)组合CodingGoal、GoalInvocation与原execution guard；限定真实新binding和固定setup；start_turn拒绝普通对话 | 复用已证明的规划/Work/验收与收尾；不能直接把整个hosted facade套在日常嵌入式Session上 |
+| 原托管Goal | [hosted_goal.py](../../../../src/loushang/coding/hosted/goal.py)组合CodingGoal、GoalInvocation与原execution guard；限定真实新binding和固定setup；start_turn拒绝普通对话 | 复用已证明的规划/Work/验收与收尾；不能直接把整个hosted facade套在日常嵌入式Session上 |
 | 托管Goal访问 | [goal.py](../../../../src/loushang/appservice/goal.py)的ScopedGoalClientV1借原scope/registry；核对同一Product、instance、绑定及控制权；提供start/find/query/progress/wait/interrupt/retry_settlement | lmux应复用此访问层；interrupt不等于Goal暂停，当前未提供任意目标创建/修订/语义恢复的通用合同 |
 | 目标与执行内核 | [controller.py](../../../../src/loushang/harnesswork/goal/controller.py)、[contracts.py](../../../../src/loushang/harnesswork/goal/contracts.py)；Goal状态/修订/策略/验收证明及原Work关联 | 复用GoalController、记录、NextWorkPolicy和GoalAcceptancePolicy；不另建状态机、日志或operation→run映射 |
 
@@ -70,11 +70,11 @@ lmux：共享会话动作 → HostedConversationActionBinding → AppService
 
 | 当前代码 | 可复用/提炼的机制 | 留在Coding或适配层的内容 | 结论 |
 | --- | --- | --- | --- |
-| [GoalInvocation](../../../../src/loushang/coding/_hosted_goal_work.py) | deadline/checkpoint、在途任务取消与settlement、保留首个停止原因 | calculator名称、repository分支、profile/setup访问；ExecutionOutcomeV1映射属于托管边界 | 拆机制与领域驱动及托管结果映射，不整类搬到Harness |
+| [GoalInvocation](../../../../src/loushang/coding/hosted/_goal_work.py) | deadline/checkpoint、在途任务取消与settlement、保留首个停止原因 | calculator名称、repository分支、profile/setup访问；ExecutionOutcomeV1映射属于托管边界 | 拆机制与领域驱动及托管结果映射，不整类搬到Harness |
 | [PlanningCallAllowance](../../../../src/loushang/coding/adapters/_goal_planning_limits.py) | await前计数、当前operation归属、限额快照、原stream委托与prepared一致性 | planning/repair阶段集合、proposal.LIMITS、固定provider尝试与hosted字段 | 通用额度机制候选下沉Harness组合层；保留领域限额配置，不复制AI账本或传输层 |
 | [CodingGoal](../../../../src/loushang/coding/adapters/goal.py) | borrowed owner、Goal/Work/reader装配和清理的组合经验 | calculator校验、固定文件工具、替换hook限制、规划profile、Coding SDK构造 | 明确借用与拥有差异后提炼通用Session协同；不能将open或_initialize_borrowed直接当公共接口 |
-| [hosted_goal.py](../../../../src/loushang/coding/hosted_goal.py) | 原Goal/Work观察组合的输入事实与校验规则 | AppServer DTO、绑定ID、execution claim/guard适配、AppService错误映射 | 通用事实优先复用原HarnessWork查询；托管包装留原边界，不把AppService依赖倒灌Harness |
-| [_hosted_repository_work.py](../../../../src/loushang/coding/_hosted_repository_work.py) | checkpoint/阶段驱动调用的组合经验 | verify_current/review_material、仓库快照与冻结机械评审顺序 | 保留仓库业务驱动与策略，通过后续明确合同交给通用协同调用 |
+| [hosted_goal.py](../../../../src/loushang/coding/hosted/goal.py) | 原Goal/Work观察组合的输入事实与校验规则 | AppServer DTO、绑定ID、execution claim/guard适配、AppService错误映射 | 通用事实优先复用原HarnessWork查询；托管包装留原边界，不把AppService依赖倒灌Harness |
+| [_hosted_repository_work.py](../../../../src/loushang/coding/hosted/_repository_work.py) | checkpoint/阶段驱动调用的组合经验 | verify_current/review_material、仓库快照与冻结机械评审顺序 | 保留仓库业务驱动与策略，通过后续明确合同交给通用协同调用 |
 | [SessionExecutionPolicy](../../../../src/loushang/coding/adapters/_goal_execution_context.py) | 复用Harness已有子Session factory/ForkTier/容量/清理 | Coding历史映射、文件工具限制与领域选择理由 | 已有下沉部分继续复用，不能为Goal再实现子Session创建/驱动/清理 |
 
 这些是按源码职责识别的提炼候选，不表示已完成迁移、已经证明独立可用或必须新增上述数量的组件。
@@ -94,7 +94,7 @@ Coding profile ──提供动作、Method、验收与配置──────�
 
 ## 4. 已证实的接入缺口
 
-1. **已用Session的安全装配。** CodingGoal.open的模型规划路径要求fresh Session；_initialize_borrowed要求原构造注入相同allowance/tool policy。现有托管应用还在Session构造时安装规划system prompt、模型调用wrapper和工具策略，见[hosted_goal_application.py](../../../../src/loushang/coding/hosted_goal_application.py)。因此“从普通会话启用Goal”不只是增加菜单；须决定既有历史如何使用、模型调用如何纳入预算、工具策略何时生效及退出后如何处理。当前_validate_goal_session还要求原文件工具、拒绝若干替换hook，并在模型规划模式关闭自动retry/compaction；这些profile限制不能直接套用到普通对话，须分别决定保留、隔离或演进，不能静默改变会话行为。
+1. **已用Session的安全装配。** CodingGoal.open的模型规划路径要求fresh Session；_initialize_borrowed要求原构造注入相同allowance/tool policy。现有托管应用还在Session构造时安装规划system prompt、模型调用wrapper和工具策略，见[hosted_goal_application.py](../../../../src/loushang/coding/hosted/goal_application.py)。因此“从普通会话启用Goal”不只是增加菜单；须决定既有历史如何使用、模型调用如何纳入预算、工具策略何时生效及退出后如何处理。当前_validate_goal_session还要求原文件工具、拒绝若干替换hook，并在模型规划模式关闭自动retry/compaction；这些profile限制不能直接套用到普通对话，须分别决定保留、隔离或演进，不能静默改变会话行为。
 2. **日常输入与Goal的共存。** 现有hosted execution claim排除第二个输入owner，hosted Goal的start_turn拒绝普通输入。需要明确哪些用户输入是steer/follow，哪些是修改要求或暂停，不能直接同时启动两个driver。
 3. **控制语义的覆盖。** core已有revise/control等原语，ScopedGoalClient的interrupt是执行中断；pause/resume/edit/clear还未形成两种入口共同的业务合同。不得用名字相似的动作替代它们。
 4. **Session切换与关闭。** 原runtime拥有创建/切换/释放；后续应核对现有before_release和清理重试接缝，规定Goal停止推进、在途Work收敛、来源reader释放的顺序。普通关闭失败不能丢掉清理owner。
@@ -154,7 +154,7 @@ Coding profile ──提供动作、Method、验收与配置──────�
 | 发现 | 源码事实 | 影响与整改方向 |
 | --- | --- | --- |
 | CodingGoal承担过多组合责任 | [goal.py](../../../../src/loushang/coding/adapters/goal.py)同一owner覆盖自建SDK、借用Session、Goal/Work/Blob/reader装配、输入转发及清理 | 先区分owned/borrowed和领域profile，再提炼Harness组合；保留清理失败owner与旧API兼容 |
-| 托管执行控制混入领域和传输结果 | [_hosted_goal_work.py](../../../../src/loushang/coding/_hosted_goal_work.py)同时包含期限/取消/收敛、calculator名称/repository分支及AppService outcome | 通用控制候选归Harness；领域步骤由profile提供；结果映射留托管适配；避免整类下沉 |
+| 托管执行控制混入领域和传输结果 | [_hosted_goal_work.py](../../../../src/loushang/coding/hosted/_goal_work.py)同时包含期限/取消/收敛、calculator名称/repository分支及AppService outcome | 通用控制候选归Harness；领域步骤由profile提供；结果映射留托管适配；避免整类下沉 |
 | 规划“shared”尚非产品中立 | [_goal_planning_shared.py](../../../../src/loushang/coding/adapters/_goal_planning_shared.py)导入Coding事件profile、calculator Blob helper及_proposal的固定LIMITS/schema | 分离响应来源核对、批次准备与领域动作合同；先明确实际依赖，不能靠shared命名推广公共API |
 | 示例内容被其他profile复用为基础 | [_goal_proposal.py](../../../../src/loushang/coding/adapters/_goal_proposal.py)包含subtraction/clamp、R-SUB/R-CLAMP等固定动作和要求；repository复用其结构再替换动作 | 结构校验与动作/要求定义解耦；把任务内容从共享机制中移出，保持旧profile解释不变 |
 | 仓库策略聚合多个职责 | [_goal_repository.py](../../../../src/loushang/coding/adapters/_goal_repository.py)同时含动作、提示、快照、规划观察、准入、验收、Work适配与SDK入口 | 以稳定合同拆分，不按文件行数机械拆类；领域事实与通用来源/准入骨架分开 |

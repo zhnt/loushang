@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.extension_author import main
+from loushang.coding.authoring.extension import main
 
 
 def test_extension_author_init_and_real_offline_tool_smoke(

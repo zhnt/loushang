@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding._product_worker_canary as canary_module
-from loushang.coding._product_worker_canary import (
+import loushang.coding.hosted._worker_canary as canary_module
+from loushang.coding.hosted._worker_canary import (
     CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
     CodingProductWorkerCanaryError,
     bind_coding_product_worker_canary,

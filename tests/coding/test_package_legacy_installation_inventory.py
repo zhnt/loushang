@@ -17,8 +17,8 @@ from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.provider.protocol import APIAdapter, ProviderRequest
-from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.package_cutover import main as cutover_main
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
 from loushang.coding.package import legacy_local_acceptance as local_acceptance_module
 from loushang.coding.package.legacy_binding_catalog import (
     CodingLegacyBindingError,
@@ -93,7 +93,7 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,

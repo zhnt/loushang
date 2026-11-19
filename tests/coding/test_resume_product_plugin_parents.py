@@ -7,26 +7,26 @@ from datetime import UTC, datetime
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding._capability_plugin_composition import (
+from loushang.coding.composition.capability_plugins import (
     CodingResumePluginParents,
     prepare_coding_resume_plugin_effect_owners,
     require_coding_resume_plugin_effect_settlement,
 )
-from loushang.coding._product_capability_plugin_composition import (
+from loushang.coding.composition.product_capability_plugins import (
     _prepare_product_approval_state_root,
 )
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
-from loushang.coding.resume_activation_attempt_v2 import (
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+from loushang.coding.resume.activation_attempt_v2 import (
     CodingActivationAttemptV2,
     CodingResumeEffectOwnerV1,
     prepare_coding_activation_attempt_v2_record,
 )
-from loushang.coding.resume_activation_plan import build_session_activation_plan
-from loushang.coding.resume_binding import coding_user_payload_digest
-from loushang.coding.resume_binding_v2 import CodingRuntimeBindingV2
-from loushang.coding.resume_history import read_coding_resume_snapshot
-from loushang.coding.session_manager import (
+from loushang.coding.resume.activation_plan import build_session_activation_plan
+from loushang.coding.resume.binding import coding_user_payload_digest
+from loushang.coding.resume.binding_v2 import CodingRuntimeBindingV2
+from loushang.coding.resume.history import read_coding_resume_snapshot
+from loushang.coding.session.manager import (
     SessionManager,
     _bind_owned_session_manager,
     _create_owned_session_factory,

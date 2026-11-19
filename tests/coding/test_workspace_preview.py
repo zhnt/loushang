@@ -92,7 +92,7 @@ def test_catalog_requires_the_exact_registered_workspace_scope(tmp_path):
     from loushang.apphost.managed.workspaces import WorkspaceRegistry
     from loushang.appserver.protocol import WorkspaceRequestV1
     from loushang.appserver.protocol.workspace_preview import WorkspacePreviewRequestV1
-    from loushang.coding.workspace_catalog import CodingWorkspaceCatalog
+    from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
 
     registry = WorkspaceRegistry(tmp_path / "registry")
     catalog = CodingWorkspaceCatalog(registry, tmp_path / "sessions", tmp_path / "stores")

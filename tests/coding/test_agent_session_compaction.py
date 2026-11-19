@@ -109,7 +109,7 @@ def test_coding_provider_strategy_commits_window_and_refreshes_agent(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(
@@ -190,7 +190,7 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.transcript import CompactionResult
 
@@ -336,7 +336,7 @@ def test_agent_session_exposes_compaction_service_surface(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(
@@ -405,7 +405,7 @@ def test_agent_session_abort_compaction_cancels_public_manual_operation(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -480,7 +480,7 @@ def test_session_dispose_aborts_and_joins_manual_compaction(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     async def scenario() -> None:
         manager = await SessionManager.new(
@@ -549,7 +549,7 @@ def test_session_dispose_from_active_compaction_fails_fast(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     async def scenario() -> None:
@@ -615,7 +615,7 @@ def test_agent_session_compact_emits_error_event_on_failure(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.transcript import CompactionPreparation
 
@@ -720,7 +720,7 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
@@ -813,7 +813,7 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -930,7 +930,7 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(
@@ -1042,7 +1042,7 @@ def test_agent_session_auto_compaction_uses_default_streaming_summarizer(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import summarization as summary_module
 
     manager = asyncio.run(
@@ -1149,7 +1149,7 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(
@@ -1264,7 +1264,7 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -1342,7 +1342,7 @@ def test_agent_session_auto_compacts_error_message_using_last_successful_usage(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(
@@ -1431,7 +1431,7 @@ def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_thresh
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(
@@ -1535,7 +1535,7 @@ def test_agent_session_streaming_control_does_not_pre_prompt_compact(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -1621,7 +1621,7 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(
@@ -1722,7 +1722,7 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(
@@ -1849,7 +1849,7 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import CompactionResult
 
     manager = asyncio.run(

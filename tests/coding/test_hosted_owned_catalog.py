@@ -6,8 +6,8 @@ import sys
 
 import pytest
 
-from loushang.coding import hosted_catalog as module
-from loushang.coding.hosted_catalog import (
+from loushang.coding.hosted import catalog as module
+from loushang.coding.hosted.catalog import (
     CodingHostedCatalogError,
     CodingHostedSessionCatalogV1,
 )
@@ -156,7 +156,7 @@ import asyncio, sys
 from pathlib import Path
 from loushang.apphost import SessionCreateRequestV1
 from loushang.appserver.protocol import SessionScopeV1
-from loushang.coding.hosted_catalog import CodingHostedScopeV1, CodingHostedSessionCatalogV1
+from loushang.coding.hosted.catalog import CodingHostedScopeV1, CodingHostedSessionCatalogV1
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
 async def main():
     root = Path(sys.argv[1])

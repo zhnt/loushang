@@ -293,9 +293,9 @@ Embedded CLI/TUI 与 LMUX/AppService 使用同一恢复语义和 Product 执行�
 
 | 当前机制 | 证据 | 恢复影响 |
 | --- | --- | --- |
-| Header 和 startup receipt 使用当前 composition 定义反验历史指纹 | [composition_provenance.py](../../../src/loushang/coding/composition_provenance.py) | 同名 composition 更新后，历史证据也可能无法解码 |
+| Header 和 startup receipt 使用当前 composition 定义反验历史指纹 | [composition_provenance.py](../../../src/loushang/coding/composition/provenance.py) | 同名 composition 更新后，历史证据也可能无法解码 |
 | 启动凭证要求资源、插件、策略和 Worker 等字段相等 | [agent_session.py](../../../src/loushang/coding/session/agent_session.py) | AGENTS、Skill、插件变化可阻断普通 Resume |
-| Runtime 与 Capability Profile 要求与当前快照相等 | [session_manager.py](../../../src/loushang/coding/session_manager.py)、[runtime_profile.py](../../../src/loushang/harness/transcript/runtime_profile.py) | 只放宽资源哈希仍不能解决跨安装恢复 |
+| Runtime 与 Capability Profile 要求与当前快照相等 | [session_manager.py](../../../src/loushang/coding/session/manager.py)、[runtime_profile.py](../../../src/loushang/harness/transcript/runtime_profile.py) | 只放宽资源哈希仍不能解决跨安装恢复 |
 
 缺少 `codingCompositionSetV1` 的会话可能仍是可解析的 Conversation JSONL v1；
 缺少产品 provenance 不等于核心格式不可迁移。现有拒绝行为由
@@ -402,7 +402,7 @@ Embedded 在前台进程内创建 Coding continuity owner；Hosted 在 LMUX AppH
 可共享纯值定义和静态缓存，mutable runtime、Writer、审批与 Worker lease 按 Session
 隔离。既有边界见
 [AppService Boundary](../architecture/drafts/appservice-embedded-tui-hosted-boundary-plan.md)
-与 [Coding Hosted Adapter](../../../src/loushang/coding/appservice_adapter.py)。
+与 [Coding Hosted Adapter](../../../src/loushang/coding/hosted/service_adapter.py)。
 
 ```text
 Embedded CLI/TUI ───────────────────────┐

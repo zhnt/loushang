@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
-from loushang.coding._worker_history_access import _CodingHistoryAccess
+from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )

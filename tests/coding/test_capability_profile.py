@@ -11,19 +11,19 @@ import pytest
 import loushang.coding.session.agent_session as agent_session_module
 import loushang.harness.session.agent_product as agent_product_module
 from loushang.agent import Agent
-from loushang.coding.product_plan import (
+from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PLAN,
     CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
     CODING_PRODUCT_ID,
 )
-from loushang.coding.runtime_capability_admission import (
+from loushang.coding.composition.runtime_admission import (
     SIDE_QUESTION_RUNTIME_PERMISSION,
     CodingExtensionDeclarationPreflight,
     resolve_coding_capability_profile,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.capabilities import (
     CapabilityPack,
     stage_resource_composition_candidate,

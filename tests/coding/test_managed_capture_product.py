@@ -7,8 +7,8 @@ import pytest
 
 from loushang.apphost.managed import storage_budget
 from loushang.apphost.managed.output_capture import ManagedOutputCaptureFactory
-from loushang.coding import bootstrap
-from loushang.coding.bootstrap import create_agent_session
+from loushang.coding.composition import bootstrap
+from loushang.coding.composition.bootstrap import create_agent_session
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
 from loushang.harness.session import output_artifacts
 from loushang.harness.workspace.exec import ExecRequest

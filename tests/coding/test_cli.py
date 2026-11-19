@@ -19,8 +19,8 @@ from loushang.harness.runtime import SessionOperationResult
 
 
 def test_lazy_plain_prompt_runners_preserve_keyword_contract() -> None:
-    from loushang.coding import prompt_command
     from loushang.coding.cli import application
+    from loushang.coding.cli import prompt as prompt_command
 
     for name in ("run_prompt_command", "run_prompt_plan_command"):
         wrapper = inspect.signature(getattr(application, name))
@@ -1086,8 +1086,8 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1131,9 +1131,9 @@ def test_default_runtime_builder_projects_internal_delegate_resource_profile(
     from loushang.agent import ModelCallPreparation, synthetic_model_transport
     from loushang.ai.event_stream.stream import AssistantMessageEventStream
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
     from loushang.coding.cli.args import parse_args
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -1276,13 +1276,13 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
     monkeypatch,
 ) -> None:
     from loushang.ai.types import UserMessage
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.continuity import (
+    from loushang.coding.composition.bootstrap import create_services
+    from loushang.coding.session.continuity import (
         bind_coding_continuity,
         shutdown_coding_continuity,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.continuity import ContinuityQuery
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
     from loushang.harness.transcript import SessionQuery
@@ -1398,8 +1398,8 @@ def test_default_runtime_builder_projects_catalog_disabled_tools_into_final_mode
     from loushang.agent import ModelCallPreparation, synthetic_model_transport
     from loushang.ai.event_stream.stream import AssistantMessageEventStream
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.prompt import (
         CODING_KERNEL_SYSTEM_PROMPT,
@@ -1550,8 +1550,8 @@ def test_default_runtime_builder_projects_catalog_disabled_tools_into_final_mode
 def test_default_runtime_builder_registers_delegate_only_when_explicitly_selected(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -1583,8 +1583,8 @@ def test_default_runtime_builder_registers_delegate_only_when_explicitly_selecte
 def test_default_runtime_builder_does_not_restore_delegate_when_builtins_disabled(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -1611,8 +1611,8 @@ def test_default_runtime_builder_does_not_restore_delegate_when_builtins_disable
 
 
 def test_default_runtime_builder_applies_prompt_options(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1712,7 +1712,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
     tmp_path, monkeypatch
 ) -> None:
     import loushang.coding.cli.application as cli_main
-    from loushang.coding.bootstrap import create_services
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.harness.cli import cwd_bound_services_factory
 
     project_a = tmp_path / "project-a"
@@ -1792,12 +1792,14 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
-    from loushang.coding.bootstrap import (
+    from loushang.coding.adapters.agent_invocation import (
+        CodingCliAgentInvocationAdapter,
+    )
+    from loushang.coding.cli.__main__ import default_runtime_builder, run_cli
+    from loushang.coding.composition.bootstrap import (
         create_agent_session_services,
         create_services,
     )
-    from loushang.coding.cli.__main__ import default_runtime_builder, run_cli
     from loushang.coding.control import SettingsManager
     from loushang.harness.tools.agent_delegate import AgentInvocationRequest
 
@@ -1995,11 +1997,14 @@ def test_cli_base_tool_owner_uses_settings_without_direct_registry_publication(
 ) -> None:
     import asyncio
 
-    import loushang.coding._base_plugin_owners as base_owners
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    import loushang.coding.composition.base_owners as base_owners
     from loushang.coding.cli import application as cli_main
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     captured: dict[str, object] = {}
     create_definitions = base_owners.create_coding_builtin_tool_definitions
@@ -2054,10 +2059,13 @@ def test_cli_base_tool_owner_uses_settings_without_direct_registry_publication(
 def test_cli_policy_settings_bind_to_an_explicit_execution_scope(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.cli import application as cli_main
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session,
+        create_services,
+    )
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import InteractiveApprovalResolver
     from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.factory import (
@@ -4133,7 +4141,7 @@ def test_run_cli_completes_unique_provider_model_shorthand(tmp_path) -> None:
 
 def test_apply_model_override_persists_global_default_with_endpoint() -> None:
     from loushang.ai.model import ModelSelection, parse_model_selection_reference
-    from loushang.coding.model_selection import apply_model_selection
+    from loushang.coding.interaction.model_selection import apply_model_selection
     from loushang.harness.cli import configure_agent_cli_session
 
     session = FakeSession("session-1")
@@ -7072,7 +7080,7 @@ def test_run_cli_bare_resume_retries_partial_continuity_cleanup_on_bind_failure(
     monkeypatch,
 ) -> None:
     from loushang.coding.cli import application as cli_main
-    from loushang.coding.continuity_bootstrap import (
+    from loushang.coding.composition.continuity import (
         CodingContinuityBootstrapError,
     )
 
@@ -8402,7 +8410,7 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -8478,8 +8486,8 @@ def test_run_cli_lists_skills_from_real_catalog_session(
 ) -> None:
     from loushang.ai.model import Endpoint, Model, ModelSelection, Provider
     from loushang.ai.model.registry import ModelRegistry
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import ControlConfig, SettingsManager
 
     skill_dir = tmp_path / "skills" / "review"
@@ -9086,8 +9094,8 @@ def test_run_cli_lists_disabled_plugins_as_tsv(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
@@ -9217,8 +9225,8 @@ def test_run_cli_lists_package_roots_and_plugin_packages_as_json(tmp_path) -> No
 
 
 def test_run_cli_lists_package_scopes_from_settings_layers(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     global_package_root = tmp_path / "global" / "package"
@@ -9296,8 +9304,8 @@ def test_run_cli_lists_package_scopes_from_settings_layers(tmp_path) -> None:
 
 
 def test_run_cli_reports_settings_load_warnings_for_package_listing(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     project_settings_path = tmp_path / ".loushang" / "settings.json"
@@ -9333,8 +9341,8 @@ def test_run_cli_fails_closed_after_settings_load_warning_for_plugin_toggles(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
@@ -9373,8 +9381,8 @@ def test_run_cli_reports_migration_in_progress_code(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.plugin_manager.lifecycle import (
         build_coding_plugin_lifecycle,
@@ -9462,8 +9470,8 @@ def test_run_cli_reports_compatibility_publish_failure_after_commit(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.plugin_manager.lifecycle import (
         build_coding_plugin_lifecycle,
@@ -9549,8 +9557,8 @@ def test_run_cli_reports_compatibility_publish_failure_after_commit(
 
 
 def test_run_cli_remove_missing_plugin_source_returns_stable_error(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     services = create_services(
@@ -9587,8 +9595,8 @@ def test_run_cli_plugin_aliases_only_change_source_configuration(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.plugin_manager.lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
@@ -9636,8 +9644,8 @@ def test_run_cli_plugin_aliases_only_change_source_configuration(
 
 
 def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     project_settings_path = tmp_path / ".loushang" / "settings.json"
@@ -9677,8 +9685,8 @@ def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> N
 def test_run_cli_adds_https_remote_plugin_source_without_resolving_local_path(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     project_settings_path = tmp_path / ".loushang" / "settings.json"
@@ -9715,8 +9723,8 @@ def test_run_cli_adds_https_remote_plugin_source_without_resolving_local_path(
 
 
 def test_run_cli_rejects_insecure_remote_plugin_source(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     services = create_services(
@@ -10194,8 +10202,8 @@ def test_run_cli_lists_packages_from_session_projection(tmp_path) -> None:
 
 
 def test_run_cli_lists_remote_plugin_source_lifecycle_state(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
 
     project_settings_path = tmp_path / ".loushang" / "settings.json"
@@ -10262,8 +10270,8 @@ def test_run_cli_persists_skill_and_plugin_toggles(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.plugin_manager.lifecycle import (
         build_coding_plugin_lifecycle,
