@@ -230,7 +230,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     scope_id=layout.scope_id,
                     plugin_id=_PLUGIN_ID,
                 )
-                receipt = CodingArchPrivateDataBackupOwner(layout, product).retain(key)
+                receipt = CodingArchPrivateDataBackupOwner(
+                    layout, product
+                ).retain(key)
                 result = {"backupReceipt": receipt.to_dict()}
             elif args.action == "restore":
                 result = _run_restore(layout, product, args)
@@ -571,7 +573,7 @@ def _read_json(path: Path) -> object:
 
 
 _unique_object = _unique_json_object_hook(
-    lambda: "Coding private-data command has duplicate JSON keys",
+    lambda: 'Coding private-data command has duplicate JSON keys',
 )
 
 

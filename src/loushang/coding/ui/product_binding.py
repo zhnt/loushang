@@ -120,26 +120,21 @@ def build_coding_ui_controller(
 
         if isinstance(text, str) and is_goal_command(text):
             if getattr(intent, "images", None):
-                return HostActionResult(
-                    error_message="/goal does not accept image attachments."
-                )
+                return HostActionResult(error_message="/goal does not accept image attachments.")
             bound = current_session()
             result = await execute_goal_command(bound, text)
             if current_session() is not bound:
-                return HostActionResult(
-                    error_message="Goal result belongs to the previous Session."
-                )
+                return HostActionResult(error_message="Goal result belongs to the previous Session.")
             return result
         if isinstance(text, str) and (
             text == "/plugins" or text.startswith("/plugins ")
         ):
             if getattr(intent, "images", None):
-                return HostActionResult(
-                    error_message="/plugins does not accept attachments."
-                )
+                return HostActionResult(error_message="/plugins does not accept attachments.")
             provider = getattr(current_session(), "list_commands", None)
             if callable(provider) and any(
-                getattr(command, "name", None) == "plugins" for command in provider()
+                getattr(command, "name", None) == "plugins"
+                for command in provider()
             ):
                 return HostActionResult(
                     error_message="/plugins conflicts with a selected Session command."
@@ -149,7 +144,6 @@ def build_coding_ui_controller(
                 if len(words) == 4 and words[1] == "repair-package":
                     package_command = plugin_package_repair_command
                     if package_command is None and plugin_workspace is not None:
-
                         def package_command(text: str) -> HostActionResult:
                             bound_session, workspace = plugin_scope()
                             assert_plugin_scope(bound_session, workspace)
@@ -179,7 +173,6 @@ def build_coding_ui_controller(
                         return HostActionResult(error_message=_PLUGIN_USAGE)
                     explain = plugin_operation_explanation
                     if explain is None and plugin_workspace is not None:
-
                         def explain(operation_id: str) -> dict[str, object]:
                             bound_session, workspace = plugin_scope()
                             assert_plugin_scope(bound_session, workspace)
@@ -198,27 +191,21 @@ def build_coding_ui_controller(
                         )
                     try:
                         document = await asyncio.to_thread(explain, operation_id)
-                        return HostActionResult(
-                            status_message=(
-                                _format_coding_plugin_operation_explanation(
-                                    document, operation_id=operation_id
-                                )
+                        return HostActionResult(status_message=(
+                            _format_coding_plugin_operation_explanation(
+                                document, operation_id=operation_id
                             )
-                        )
+                        ))
                     except Exception:
                         return HostActionResult(
                             error_message="Plugin explanation is unavailable."
                         )
                 if len(words) != 3 or words[1] not in {
-                    "enable",
-                    "disable",
-                    "remove",
-                    "repair",
+                    "enable", "disable", "remove", "repair"
                 }:
                     return HostActionResult(error_message=_PLUGIN_USAGE)
                 command = plugin_command
                 if command is None and plugin_workspace is not None:
-
                     def command(text: str) -> HostActionResult:
                         bound_session, workspace = plugin_scope()
                         assert_plugin_scope(bound_session, workspace)
@@ -278,10 +265,11 @@ def build_coding_ui_controller(
                         assert_plugin_scope(bound_session, workspace)
                         result = open_coding_plugin_management_read_client(
                             workspace
-                        ).support_status(correlation_id="coding:tui:plugins:status")
+                        ).support_status(
+                            correlation_id="coding:tui:plugins:status"
+                        )
                         assert_plugin_scope(bound_session, workspace)
                         return result
-
             if read is None:
                 return HostActionResult(error_message="Plugin preview is unavailable.")
             try:
@@ -339,7 +327,9 @@ def build_coding_ui_controller(
     return build_standard_conversation_ui_controller(
         get_operations=get_operations,
         dispatch_session_command=dispatch_session_command,
-        execute_bash=bind_user_bash_executor(current_session, on_record=on_bash_record),
+        execute_bash=bind_user_bash_executor(
+            current_session, on_record=on_bash_record
+        ),
         abort_command=abort_command,
         verbose=verbose,
         problem_code_prefix="coding_ui",
@@ -434,9 +424,7 @@ def _format_coding_plugin_preview(preview: dict[str, object]) -> str:
         parts.append("Catalog: " + ", ".join(resources))
     if disposition == "blocked":
         owner, code = preview.get("blockingOwner"), preview.get("blockingCode")
-        if not all(
-            isinstance(value, str) and value.isprintable() for value in (owner, code)
-        ):
+        if not all(isinstance(value, str) and value.isprintable() for value in (owner, code)):
             raise ValueError("Plugin preview blocker is invalid")
         parts.append(f"blocked: {owner}/{code}")
     if diagnostics:
@@ -467,15 +455,12 @@ def _format_coding_plugin_operation_explanation(
     if (
         package_status not in {"observed", "unknown"}
         or management_status not in {"observed", "unknown"}
-        or handoff
-        not in {"not_queried", "absent", "incomplete", "settled", "identity_conflict"}
-        or join
-        not in {
-            "same_identity",
-            "package_only",
-            "management_only",
-            "unknown",
-            "identity_conflict",
+        or handoff not in {
+            "not_queried", "absent", "incomplete", "settled", "identity_conflict"
+        }
+        or join not in {
+            "same_identity", "package_only", "management_only", "unknown",
+            "identity_conflict"
         }
     ):
         raise ValueError("Plugin operation owner status is invalid")
@@ -538,10 +523,7 @@ def _safe_plugin_explanation_code(value: object) -> bool:
         isinstance(value, str)
         and 0 < len(value) <= 96
         and value.isascii()
-        and all(
-            character.islower() or character.isdigit() or character == "_"
-            for character in value
-        )
+        and all(character.islower() or character.isdigit() or character == "_" for character in value)
     )
 
 
@@ -606,7 +588,8 @@ def _format_coding_plugin_management_list(document: dict[str, object]) -> str:
         if backup is not None:
             if (
                 not isinstance(backup, dict)
-                or set(backup) != {"installationKey", "status", "expiryReceiptId"}
+                or set(backup)
+                != {"installationKey", "status", "expiryReceiptId"}
                 or backup["installationKey"] != key
             ):
                 raise ValueError("Plugin management backup retention is invalid")
@@ -629,10 +612,7 @@ def _format_coding_plugin_management_list(document: dict[str, object]) -> str:
         debt = item.get("cleanupDebtIds", [])
         if any(
             not isinstance(values, list)
-            or any(
-                not isinstance(value, str) or not value.isprintable()
-                for value in values
-            )
+            or any(not isinstance(value, str) or not value.isprintable() for value in values)
             for values in (retirement, debt)
         ):
             raise ValueError("Plugin management cleanup evidence is invalid")

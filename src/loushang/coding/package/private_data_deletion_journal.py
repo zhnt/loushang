@@ -52,6 +52,7 @@ def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:
     return ".deleting-" + digest
 
 
+
 def _decode(value: object) -> CodingArchPrivateDataDeletionEventV1:
     try:
         return CodingArchPrivateDataDeletionEventV1.from_dict(value)

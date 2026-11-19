@@ -38,7 +38,9 @@ class CodingPackageRepairRpcClientV1:
 def bind_coding_package_repair_rpc_client(
     cwd: str | Path,
 ) -> CodingPackageRepairRpcClientV1:
-    return CodingPackageRepairRpcClientV1(local=open_coding_package_repair_client(cwd))
+    return CodingPackageRepairRpcClientV1(
+        local=open_coding_package_repair_client(cwd)
+    )
 
 
 __all__ = [

@@ -294,18 +294,14 @@ class CodingFencedProductReadOnlyPreviewOwner:
             )
         loader = CodingResourceLoader(workspace_root=workspace)
         receipt = loader.prepare_catalog_input_receipt(workspace)
-        product_inputs = (
-            compiled.product_resource_inputs() if compiled is not None else ()
-        )
+        product_inputs = compiled.product_resource_inputs() if compiled is not None else ()
         adapter = build_coding_initial_resource_catalog_adapter(
             receipt,
             product_scope_id="plugin-preview-current",
             product_composition=(
                 compiled.product_composition if compiled is not None else None
             ),
-            product_snapshot_resources=(
-                product_inputs if compiled is not None else None
-            ),
+            product_snapshot_resources=(product_inputs if compiled is not None else None),
             package_admission_now=evaluated_at,
             disabled_skills=disabled_skills or (),
             source_policy=(

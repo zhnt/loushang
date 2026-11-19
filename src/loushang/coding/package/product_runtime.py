@@ -138,6 +138,7 @@ class CodingPackageProductStateOwners:
     private_data_deletion: CodingArchPrivateDataDeletionJournal
 
 
+
 def _require_current_coding_product_admission(check: Callable[[], None] | None) -> None:
     """Validate one native formal check without changing existing-store policy."""
 
@@ -207,8 +208,7 @@ def open_coding_package_product_state(
         operation_journal_path=state_root / "management-operations.jsonl",
     )
     management.recover(
-        before_replay=before_recovery,
-        require_current_admission=require_current_admission,
+        before_replay=before_recovery, require_current_admission=require_current_admission,
     )
     bindings = PluginPackageGcBindingJournal(state_root / "gc-bindings.jsonl")
     worker_opt_in = CodingWorkerOptInJournal(
@@ -340,9 +340,7 @@ class CodingFencedProductApplicationSelection:
         worker_candidates: bool = False,
     ) -> None:
         if type(windows_candidate) is not bool:
-            raise TypeError(
-                "Coding Windows Product candidate selection must be explicit"
-            )
+            raise TypeError("Coding Windows Product candidate selection must be explicit")
         if type(worker_candidates) is not bool:
             raise TypeError("Coding Worker candidate selection must be explicit")
         self._windows_candidate = windows_candidate
@@ -387,16 +385,11 @@ class CodingFencedProductApplicationSelection:
         # fence still requires the Product owner to validate the real root.
         workspace = Path(manager.get_cwd()).resolve(strict=False)
         with self._workspace_selection_scope():
-            owner = self._select_workspace_unlocked(
-                workspace, settings_manager=settings_manager
-            )
+            owner = self._select_workspace_unlocked(workspace, settings_manager=settings_manager)
             return owner.factory_for_session(manager) if owner is not None else None
 
     def prepare_resume_epoch(
-        self,
-        workspace: Path,
-        *,
-        require_current_admission: Callable[[], None],
+        self, workspace: Path, *, require_current_admission: Callable[[], None],
         settings_manager: SettingsManager | None = None,
     ) -> str:
         """Select original workspace storage without creating a Session lease.
@@ -411,9 +404,7 @@ class CodingFencedProductApplicationSelection:
             raise ValueError("Coding Resume requires a canonical absolute workspace")
         if workspace != workspace.resolve(strict=True):
             raise ValueError("Coding Resume requires a canonical absolute workspace")
-        if not callable(require_current_admission) or inspect.iscoroutinefunction(
-            require_current_admission
-        ):
+        if not callable(require_current_admission) or inspect.iscoroutinefunction(require_current_admission):
             raise TypeError("Coding Resume requires a synchronous current owner check")
 
         def current() -> None:
@@ -428,18 +419,13 @@ class CodingFencedProductApplicationSelection:
         with self._workspace_selection_scope():
             current()
             self._select_workspace_unlocked(
-                workspace,
-                settings_manager=settings_manager,
-                require_current_admission=current,
+                workspace, settings_manager=settings_manager, require_current_admission=current,
             )
             current()
             return self.resume_epoch_fingerprint(workspace)
 
     def _select_workspace_unlocked(
-        self,
-        workspace: Path,
-        *,
-        settings_manager: SettingsManager | None,
+        self, workspace: Path, *, settings_manager: SettingsManager | None,
         require_current_admission: Callable[[], None] | None = None,
     ) -> CodingFencedProductApplicationOwner | None:
         """Use the original selection/recovery path while its lock is held."""
@@ -460,9 +446,7 @@ class CodingFencedProductApplicationSelection:
                 # owner. Never reinterpret existing installations/settings as
                 # empty Product input or require users to replace a workspace.
                 if unadmitted_platform or coding_product_inputs_need_compatibility(
-                    lifecycle,
-                    workspace=workspace,
-                    settings_manager=settings_manager,
+                    lifecycle, workspace=workspace, settings_manager=settings_manager,
                 ):
                     _require_current_coding_product_admission(require_current_admission)
                     self._legacy_workspaces[workspace] = lifecycle
@@ -553,43 +537,30 @@ class CodingFencedProductApplicationSelection:
                 else:
                     raise RuntimeError("Coding Resume storage epoch changed")
                 identity = workspace.stat()
-                encoded = json.dumps(
-                    {
-                        "workspace": str(workspace),
-                        "workspaceIdentity": [identity.st_dev, identity.st_ino],
-                        "storage": "legacy",
-                        "stateRoot": str(lifecycle.root),
-                        "packageRoot": str(lifecycle.package_root),
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ).encode()
-                if len(encoded) > 8192:
-                    raise ValueError(
-                        "Coding Resume epoch dependency exceeds its byte budget"
-                    )
-                return sha256(
-                    b"loushang.coding.resume-epoch/v1\0" + encoded
-                ).hexdigest()
-            fence = owner.epoch_runtime.observe_current_epoch_fence()
-            encoded = json.dumps(
-                {
+                encoded = json.dumps({
                     "workspace": str(workspace),
-                    "fence": fence.to_dict(),
-                },
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
+                    "workspaceIdentity": [identity.st_dev, identity.st_ino],
+                    "storage": "legacy",
+                    "stateRoot": str(lifecycle.root),
+                    "packageRoot": str(lifecycle.package_root),
+                }, sort_keys=True, separators=(",", ":")).encode()
+                if len(encoded) > 8192:
+                    raise ValueError("Coding Resume epoch dependency exceeds its byte budget")
+                return sha256(b"loushang.coding.resume-epoch/v1\0" + encoded).hexdigest()
+            fence = owner.epoch_runtime.observe_current_epoch_fence()
+            encoded = json.dumps({
+                "workspace": str(workspace),
+                "fence": fence.to_dict(),
+            }, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()
             if len(encoded) > 8192:
-                raise ValueError(
-                    "Coding Resume epoch dependency exceeds its byte budget"
-                )
+                raise ValueError("Coding Resume epoch dependency exceeds its byte budget")
             if owner.epoch_runtime.observe_current_epoch_fence() != fence:
                 raise RuntimeError("Coding Resume epoch changed")
             return sha256(b"loushang.coding.resume-epoch/v1\0" + encoded).hexdigest()
 
-    def resume_worker_effect_owner(self, workspace: Path) -> CodingResumeEffectOwnerV1:
+    def resume_worker_effect_owner(
+        self, workspace: Path
+    ) -> CodingResumeEffectOwnerV1:
         """Freeze the selected Product's original Worker C5 obligation."""
 
         from .product_worker_resume import prepare_coding_worker_resume_effect_owner
@@ -860,9 +831,7 @@ def open_coding_fenced_product_application_owner(
     epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
     try:
         state = open_coding_package_product_state(
-            lifecycle,
-            epoch_runtime,
-            require_current_admission=require_current_admission,
+            lifecycle, epoch_runtime, require_current_admission=require_current_admission,
         )
         _require_current_coding_product_admission(require_current_admission)
         runtime_owner = open_coding_builtin_product_runtime_owner(
@@ -1110,9 +1079,7 @@ def require_fresh_coding_product_inputs_without_writes(
     """Require empty input for an explicit fresh-only Product cutover."""
 
     if coding_product_inputs_need_compatibility(
-        lifecycle,
-        workspace=workspace,
-        settings_manager=settings_manager,
+        lifecycle, workspace=workspace, settings_manager=settings_manager,
     ):
         raise RuntimeError(
             "Coding pre-B workspace is unsupported; use a fresh workspace"
@@ -1154,8 +1121,7 @@ def require_fresh_coding_product_settings_without_writes(
     """Require fresh settings for an explicit fresh-only Product cutover."""
 
     if _coding_product_settings_need_compatibility(
-        workspace=workspace,
-        settings_manager=settings_manager,
+        workspace=workspace, settings_manager=settings_manager,
     ):
         raise RuntimeError(
             "Coding pre-B workspace is unsupported; use a fresh workspace"
@@ -1163,9 +1129,7 @@ def require_fresh_coding_product_settings_without_writes(
 
 
 def _coding_product_settings_need_compatibility(
-    *,
-    workspace: Path,
-    settings_manager: SettingsManager | None,
+    *, workspace: Path, settings_manager: SettingsManager | None,
 ) -> bool:
     if not isinstance(workspace, Path) or not workspace.is_absolute():
         raise ValueError("Coding workspace must be absolute")
@@ -1177,15 +1141,11 @@ def _coding_product_settings_need_compatibility(
         if not isinstance(settings_manager, SettingsManager):
             raise TypeError("Coding Product settings manager is invalid")
         effective = settings_manager.get_settings()
-        if any(
-            (
-                effective.disabled_plugins,
-                effective.plugin_sources,
-                effective.resource_roots,
-                effective.package_roots,
-                effective.package_sources,
-            )
-        ):
+        if any((
+            effective.disabled_plugins, effective.plugin_sources,
+            effective.resource_roots, effective.package_roots,
+            effective.package_sources,
+        )):
             return True
         settings_paths.extend(
             path
@@ -1195,9 +1155,7 @@ def _coding_product_settings_need_compatibility(
             )
             if path is not None
         )
-    return coding_settings_have_pre_b_inputs_without_writes(
-        *dict.fromkeys(settings_paths)
-    )
+    return coding_settings_have_pre_b_inputs_without_writes(*dict.fromkeys(settings_paths))
 
 
 def _initialize_fresh_coding_product_for_session(
@@ -1405,11 +1363,9 @@ def _bootstrap_coding_builtin_plugin(
     enable: bool = True,
 ) -> bool:
     return bootstrap_product_plugin(
-        owner.runtime_owner.product_owner,
-        plugin_id,
+        owner.runtime_owner.product_owner, plugin_id,
         store_id=owner.epoch_runtime.registry.store_id,
-        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-        enable=enable,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY, enable=enable,
     )
 
 

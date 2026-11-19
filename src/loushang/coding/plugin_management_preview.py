@@ -178,13 +178,11 @@ def _capture_disabled_skills(workspace: Path) -> tuple[tuple[str, ...], str]:
 
     settings = _capture_preview_settings(workspace)
     digest = sha256(b"loushang.coding.preview.disabled-skills/v1\0")
-    digest.update(
-        json.dumps(
-            settings.disabled_skills,
-            ensure_ascii=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    )
+    digest.update(json.dumps(
+        settings.disabled_skills,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8"))
     return settings.disabled_skills, f"sha256:{digest.hexdigest()}"
 
 

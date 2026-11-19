@@ -242,6 +242,7 @@ class CodingExternalDependencyWheelCatalog(
                 "Dependency Wheel version is already bound"
             )
 
+
     def capture(
         self,
         source: Path,
@@ -260,6 +261,7 @@ class CodingExternalDependencyWheelCatalog(
                 "Dependency Wheel Source is invalid"
             )
         return self._capture_validated(source, epoch_runtime=epoch_runtime)
+
 
     def _record_codec(
         self,

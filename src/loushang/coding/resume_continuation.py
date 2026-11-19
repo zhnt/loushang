@@ -102,8 +102,7 @@ class CodingResumePreparedContinuation:
 
 def _prepare_v2_plugin_parents(
     attempt: CodingActivationAttemptV2,
-    *,
-    worker_candidate_plugin_id: str | None,
+    *, worker_candidate_plugin_id: str | None,
 ) -> tuple[CodingResumePluginParents | None, ResumeEffectParentContextV1 | None]:
     owners = {owner.owner_id: owner for owner in attempt.effect_owners}
     plugin_ids = {
@@ -114,14 +113,10 @@ def _prepare_v2_plugin_parents(
     if selected_plugin_ids and selected_plugin_ids != plugin_ids:
         raise CodingResumeRecoveryRequired("input.effect_owner_set_unsupported")
     worker_owner_id = "harness.worker-activation"
-    supported = plugin_ids | (
-        {worker_owner_id} if worker_candidate_plugin_id else set()
-    )
+    supported = plugin_ids | ({worker_owner_id} if worker_candidate_plugin_id else set())
     unsupported = set(owners) - supported
-    if (
-        unsupported
-        or attempt.effect_classes
-        or any(owner.effect_classes for owner in attempt.effect_owners)
+    if unsupported or attempt.effect_classes or any(
+        owner.effect_classes for owner in attempt.effect_owners
     ):
         raise CodingResumeRecoveryRequired("input.effect_owner_set_unsupported")
     worker_owner = owners.get(worker_owner_id)
@@ -134,9 +129,10 @@ def _prepare_v2_plugin_parents(
         worker_parent = attempt.parent_context(worker_owner)
     if not selected_plugin_ids:
         return None, worker_parent
-    if owners["harness.plugin-execution"].phases != ("declaration",) or owners[
-        "harness.plugin-activation"
-    ].phases != ("activation",):
+    if (
+        owners["harness.plugin-execution"].phases != ("declaration",)
+        or owners["harness.plugin-activation"].phases != ("activation",)
+    ):
         raise CodingResumeRecoveryRequired("input.effect_owner_set_unsupported")
     return (
         CodingResumePluginParents(
@@ -189,19 +185,13 @@ def _require_v2_native_writer_protocols(
 
 
 async def prepare_coding_resume_continuation(
-    *,
-    manager_type: type[SessionManager],
-    session_file: str | Path,
+    *, manager_type: type[SessionManager], session_file: str | Path,
     plan: SessionActivationPlanV1,
     current_owner_inputs: Sequence[ActivationOwnerInputRefV1],
-    attempt: CodingActivationAttemptV1,
-    input_record_id: str,
-    text: str,
-    created_at: datetime,
+    attempt: CodingActivationAttemptV1, input_record_id: str,
+    text: str, created_at: datetime,
     require_current_admission: Callable[[CodingActivationAttemptV1], None],
-    require_current_epoch_settlement: Callable[
-        [CodingActivationAttemptV1, Mapping[str, object]], None
-    ],
+    require_current_epoch_settlement: Callable[[CodingActivationAttemptV1, Mapping[str, object]], None],
     images: list[ImagePart] | None = None,
     services: BootstrapServices | None = None,
     model: Model | ModelSelection | None = None,
@@ -212,8 +202,7 @@ async def prepare_coding_resume_continuation(
     no_tools: NoToolsMode | bool | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
-    observe_input_identity: Callable[[CodingResumeInputLookupQueryV1], None]
-    | None = None,
+    observe_input_identity: Callable[[CodingResumeInputLookupQueryV1], None] | None = None,
     product_owner_selection: CodingFencedProductApplicationSelection | None = None,
     resume_writer_factory: AgentTranscriptSessionFactory[
         ResolvedRuntimeProfile,
@@ -230,9 +219,7 @@ async def prepare_coding_resume_continuation(
     Commit uncertainty requires original logical-input lookup, not another input.
     """
 
-    if not isinstance(manager_type, type) or not issubclass(
-        manager_type, SessionManager
-    ):
+    if not isinstance(manager_type, type) or not issubclass(manager_type, SessionManager):
         raise TypeError("Coding Resume requires its original SessionManager type")
     if isinstance(attempt, CodingActivationAttemptV1) and type(attempt) not in {
         CodingActivationAttemptV1,
@@ -240,8 +227,7 @@ async def prepare_coding_resume_continuation(
     }:
         raise CodingResumeRecoveryRequired("writer.resume_protocol_unsupported")
     if product_owner_selection is not None and not isinstance(
-        product_owner_selection,
-        CodingFencedProductApplicationSelection,
+        product_owner_selection, CodingFencedProductApplicationSelection,
     ):
         raise TypeError("Coding Resume Product application owner is invalid")
     if (
@@ -254,10 +240,7 @@ async def prepare_coding_resume_continuation(
                 or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
             )
         )
-        or (
-            (worker_candidates or worker_candidate_plugin_id is not None)
-            and product_owner_selection is None
-        )
+        or ((worker_candidates or worker_candidate_plugin_id is not None) and product_owner_selection is None)
     ):
         raise ValueError("Coding Resume Worker requires its application Product owner")
     resume_plugin_parents: CodingResumePluginParents | None = None
@@ -266,8 +249,7 @@ async def prepare_coding_resume_continuation(
         if worker_candidates and worker_candidate_plugin_id is None:
             raise CodingResumeRecoveryRequired("input.effect_owner_set_unsupported")
         resume_plugin_parents, resume_worker_parent = _prepare_v2_plugin_parents(
-            attempt,
-            worker_candidate_plugin_id=worker_candidate_plugin_id,
+            attempt, worker_candidate_plugin_id=worker_candidate_plugin_id,
         )
         _require_v2_native_writer_protocols(manager_type)
     elif worker_candidate_plugin_id is not None:
@@ -282,26 +264,17 @@ async def prepare_coding_resume_continuation(
         or attempt.plan_fingerprint != plan.plan_id
     ):
         raise ValueError("Coding Resume attempt differs from its activation Plan")
-    if (
-        type(input_record_id) is not str
-        or _IDENTIFIER.fullmatch(input_record_id) is None
-    ):
+    if type(input_record_id) is not str or _IDENTIFIER.fullmatch(input_record_id) is None:
         raise ValueError("Coding Resume input record identity is invalid")
     if input_record_id == attempt.attempt_id:
-        raise ValueError(
-            "Coding Resume intent and input require distinct record identities"
-        )
+        raise ValueError("Coding Resume intent and input require distinct record identities")
     if not isinstance(text, str) or (not text.strip() and not images):
         raise ValueError("Coding Resume requires nonempty user input")
     if not isinstance(created_at, datetime) or created_at.tzinfo is None:
         raise ValueError("Coding Resume timestamp must be timezone-aware")
-    if any(
-        not callable(check) or inspect.iscoroutinefunction(check)
-        for check in (
-            require_current_admission,
-            require_current_epoch_settlement,
-        )
-    ):
+    if any(not callable(check) or inspect.iscoroutinefunction(check) for check in (
+        require_current_admission, require_current_epoch_settlement,
+    )):
         raise TypeError("Coding Resume requires synchronous current owner checks")
 
     def checked(callback: Callable[[], None]) -> None:
@@ -322,9 +295,7 @@ async def prepare_coding_resume_continuation(
     current()  # Confirmation/current caller admission precedes Writer acquisition.
     try:
         manager = await manager_type._load_resume_writer(
-            session_file,
-            plan=plan,
-            current_owner_inputs=current_owner_inputs,
+            session_file, plan=plan, current_owner_inputs=current_owner_inputs,
             required_writer_capabilities=(
                 frozenset({"coding.resume-continuation/v2"})
                 if type(attempt) is CodingActivationAttemptV2
@@ -334,10 +305,7 @@ async def prepare_coding_resume_continuation(
         )
         with manager._lifecycle_session.sync_operation_scope():
             current()
-            if any(
-                record.record_id in {input_record_id, attempt.attempt_id}
-                for record in manager.get_entries()
-            ):
+            if any(record.record_id in {input_record_id, attempt.attempt_id} for record in manager.get_entries()):
                 raise CodingResumeRecoveryRequired("input.record_identity_conflict")
             for record in manager.get_active_entries():
                 existing = inspect_coding_runtime_binding(record.metadata).binding
@@ -347,8 +315,7 @@ async def prepare_coding_resume_continuation(
                 ):
                     existing = decode_coding_runtime_binding_v2(record.metadata)
                 if (
-                    existing is not None
-                    and existing.session_id == attempt.session_id
+                    existing is not None and existing.session_id == attempt.session_id
                     and existing.input_id == attempt.request_id
                 ):
                     raise CodingResumeRecoveryRequired("input.recovery_required")
@@ -356,9 +323,7 @@ async def prepare_coding_resume_continuation(
         await manager._commit_resume_activation_intent(
             prepare_coding_activation_attempt_v2_record(attempt, created_at=created_at)
             if type(attempt) is CodingActivationAttemptV2
-            else prepare_coding_activation_attempt_record(
-                attempt, created_at=created_at
-            ),
+            else prepare_coding_activation_attempt_record(attempt, created_at=created_at),
         )
         if resume_plugin_parents is not None:
             phase = "native_owner_enrollment"
@@ -376,23 +341,15 @@ async def prepare_coding_resume_continuation(
             current()
         phase = "runtime_preparation"
         session = await _create_resume_agent_session(
-            session_manager=manager,
-            attempt_id=attempt.attempt_id,
-            composition_set=resolve_coding_composition_set(
-                plan.composition_comparison.candidate_set_id
-            ),
+            session_manager=manager, attempt_id=attempt.attempt_id,
+            composition_set=resolve_coding_composition_set(plan.composition_comparison.candidate_set_id),
             require_current_admission=require_current_admission,
-            services=services,
-            model=model,
-            thinking_level=thinking_level,
-            stream_fn=stream_fn,
-            tools=tools,
+            services=services, model=model, thinking_level=thinking_level,
+            stream_fn=stream_fn, tools=tools,
             output_capture_factory=output_capture_factory,
             no_tools=no_tools,
-            approval_resolver=approval_resolver,
-            tool_policy_evaluator=tool_policy_evaluator,
-            product_owner_selection=product_owner_selection,
-            worker_candidates=worker_candidates,
+            approval_resolver=approval_resolver, tool_policy_evaluator=tool_policy_evaluator,
+            product_owner_selection=product_owner_selection, worker_candidates=worker_candidates,
             worker_candidate_plugin_id=worker_candidate_plugin_id,
             resume_plugin_parents=resume_plugin_parents,
             resume_worker_parent=resume_worker_parent,
@@ -403,8 +360,7 @@ async def prepare_coding_resume_continuation(
             ),
         )
         receipt = await session._prepare_resume_runtime_graph(
-            attempt_id=attempt.attempt_id,
-            require_current_admission=require_current_admission,
+            attempt_id=attempt.attempt_id, require_current_admission=require_current_admission,
         )
         if resume_plugin_parents is not None:
             phase = "native_owner_seal"
@@ -435,9 +391,7 @@ async def prepare_coding_resume_continuation(
         settled()  # Unsettled effects cannot proceed to first-input preparation.
         phase = "input_preparation"
         message = await session._prepare_resume_first_user_input(
-            text,
-            images=images,
-            attempt_id=attempt.attempt_id,
+            text, images=images, attempt_id=attempt.attempt_id,
             require_current_admission=require_current_admission,
         )
         settled()
@@ -447,10 +401,8 @@ async def prepare_coding_resume_continuation(
         ) -> CodingRuntimeBindingV1 | CodingRuntimeBindingV2:
             if type(attempt) is CodingActivationAttemptV2:
                 return CodingRuntimeBindingV2(
-                    attempt_id=attempt.attempt_id,
-                    input_id=attempt.request_id,
-                    record_id=input_record_id,
-                    session_id=attempt.session_id,
+                    attempt_id=attempt.attempt_id, input_id=attempt.request_id,
+                    record_id=input_record_id, session_id=attempt.session_id,
                     original_leaf_id=attempt.original_leaf_id,
                     ancestry_digest=attempt.ancestry_digest,
                     subject_digest=attempt.subject_digest,
@@ -462,13 +414,10 @@ async def prepare_coding_resume_continuation(
                     intent_digest=attempt.digest,
                 )
             return CodingRuntimeBindingV1(
-                attempt_id=attempt.attempt_id,
-                input_id=attempt.request_id,
-                record_id=input_record_id,
-                session_id=attempt.session_id,
+                attempt_id=attempt.attempt_id, input_id=attempt.request_id,
+                record_id=input_record_id, session_id=attempt.session_id,
                 original_leaf_id=attempt.original_leaf_id,
-                ancestry_digest=attempt.ancestry_digest,
-                subject_digest=attempt.subject_digest,
+                ancestry_digest=attempt.ancestry_digest, subject_digest=attempt.subject_digest,
                 origin_composition=plan.composition_comparison.origin,
                 planned_fingerprint=attempt.plan_fingerprint,
                 actual_fingerprint=attempt.epoch_fingerprint,
@@ -477,88 +426,61 @@ async def prepare_coding_resume_continuation(
             )
 
         manager._stage_resume_first_user_input(
-            message,
-            prepare_binding=binding,
-            created_at=created_at,
-            original_leaf_id=attempt.original_leaf_id,
-            ancestry_digest=attempt.ancestry_digest,
+            message, prepare_binding=binding, created_at=created_at,
+            original_leaf_id=attempt.original_leaf_id, ancestry_digest=attempt.ancestry_digest,
             attempt_id=attempt.attempt_id,
         )
         phase = "input_commit"
         record_id = await session._commit_resume_first_user_input(
-            message,
-            attempt_id=attempt.attempt_id,
-            require_current_admission=require_current_admission,
+            message, attempt_id=attempt.attempt_id, require_current_admission=require_current_admission,
         )
-        _, committed_input = manager._require_committed_resume_input(
-            attempt.attempt_id, record_id
-        )
+        _, committed_input = manager._require_committed_resume_input(attempt.attempt_id, record_id)
         query = CodingResumeInputLookupQueryV1(
-            attempt.request_id,
-            coding_resume_input_record_digest(committed_input),
+            attempt.request_id, coding_resume_input_record_digest(committed_input),
         )
         observed_input = True  # A failing receiver must not receive this twice.
         if observe_input_identity is not None:
             checked(lambda: observe_input_identity(query))
         phase = "runtime_publication"
         await session._publish_resume_runtime(
-            attempt_id=attempt.attempt_id,
-            input_record_id=record_id,
+            attempt_id=attempt.attempt_id, input_record_id=record_id,
             require_current_admission=require_current_admission,
             require_current_epoch_settlement=require_current_epoch_settlement,
         )
-        return CodingResumePreparedContinuation(
-            session, attempt.attempt_id, record_id, query
-        )
+        return CodingResumePreparedContinuation(session, attempt.attempt_id, record_id, query)
     except BaseException as error:
-        error.add_note(
-            f"Coding Resume continuation failed during {phase}; no model was dispatched by this entry."
-        )
+        error.add_note(f"Coding Resume continuation failed during {phase}; no model was dispatched by this entry.")
         if isinstance(error, CodingResumeContinuationCleanupFailure):
             # Bootstrap already retains the complete candidate. Disposing its
             # Manager separately could release its Writer before graph cleanup.
             raise
         if phase in {"input_commit", "runtime_publication"}:
-            error.add_note(
-                "Input may already be committed; use original input lookup before any explicit recovery."
-            )
-            if (
-                manager is not None
-                and not observed_input
-                and observe_input_identity is not None
-            ):
+            error.add_note("Input may already be committed; use original input lookup before any explicit recovery.")
+            if manager is not None and not observed_input and observe_input_identity is not None:
                 proof = manager._resume_committed_input
                 pending = manager._resume_first_input
-                prepared_record = (
-                    proof[1]
-                    if proof is not None
-                    else (pending.prepared_record if pending is not None else None)
+                prepared_record = proof[1] if proof is not None else (
+                    pending.prepared_record if pending is not None else None
                 )
                 if prepared_record is not None:
                     try:
                         recovery_query = CodingResumeInputLookupQueryV1(
-                            attempt.request_id,
-                            coding_resume_input_record_digest(prepared_record),
+                            attempt.request_id, coding_resume_input_record_digest(prepared_record),
                         )
                         checked(lambda: observe_input_identity(recovery_query))
                     except BaseException as observation_error:
-                        error.add_note(
-                            f"Resume input identity delivery also failed: {observation_error!r}"
-                        )
+                        error.add_note(f"Resume input identity delivery also failed: {observation_error!r}")
         try:
             if session is not None:
                 await session.dispose()
             elif manager is not None:
                 await manager.dispose_runtime_profile()
         except BaseException as cleanup_error:
-            error.add_note(
-                f"Original Coding Resume owner cleanup also failed: {cleanup_error!r}"
-            )
+            error.add_note(f"Original Coding Resume owner cleanup also failed: {cleanup_error!r}")
             original_owner = session if session is not None else manager
             assert original_owner is not None
             raise retain_resume_cleanup_failure(
-                original_owner=original_owner,
-                original_error=error,
+                original_owner=original_owner, original_error=error,
                 cleanup_error=cleanup_error,
             ) from error
         raise

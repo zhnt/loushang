@@ -151,16 +151,15 @@ _CODEC = FunctionalJournalRecordCodec(
 )
 
 
-class CodingExternalDataWheelCatalog(
-    _PluginWheelSourceCatalog[CodingExternalDataWheelBindingV1]
-):
+class CodingExternalDataWheelCatalog(_PluginWheelSourceCatalog[CodingExternalDataWheelBindingV1]):
     """Append-only Product Source authorization for a fenced B namespace."""
 
-    _label = "External data Wheel"
-    _path_label = "External data Wheel"
+    _label = 'External data Wheel'
+    _path_label = 'External data Wheel'
     _error_factory = CodingExternalDataWheelError
     _product_id = "coding"
-    _source_label = "External data Wheel"
+    _source_label = 'External data Wheel'
+
 
     def capture(
         self,
@@ -181,7 +180,9 @@ class CodingExternalDataWheelCatalog(
             or len(source.name) > _MAX_WHEEL_FILENAME
         ):
             raise CodingExternalDataWheelError("External data Wheel Source is invalid")
-        return self._capture_validated(source, epoch_runtime=epoch_runtime)
+        return self._capture_validated(
+            source, epoch_runtime=epoch_runtime
+        )
 
     def verify_record(self, record: CodingExternalDataWheelBindingV1) -> None:
         """Recheck a catalog record's controlled Source bytes without mutation."""
@@ -209,22 +210,16 @@ class CodingExternalDataWheelCatalog(
         return _MAX_WHEEL_BYTES
 
     def _new_record(
-        self,
-        source: Path,
-        digest: str,
-        revision: int,
-        *,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
+        self, source: Path, digest: str, revision: int,
+        *, admission: PackageProductLocalWorkerAdmissionV1 | None,
     ) -> CodingExternalDataWheelBindingV1:
         return CodingExternalDataWheelBindingV1.create(
-            record_revision=revision,
-            store_id=self.store_id,
-            namespace_id=self.namespace_id,
-            scope_id=self.scope_id,
-            original_source=str(source),
-            wheel_filename=source.name,
+            record_revision=revision, store_id=self.store_id,
+            namespace_id=self.namespace_id, scope_id=self.scope_id,
+            original_source=str(source), wheel_filename=source.name,
             artifact_digest=digest,
         )
+
 
 
 __all__ = [

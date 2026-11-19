@@ -6,7 +6,7 @@ The first internal componentization batch relocates all 187 root `package*.py`
 implementations from main `5b0c18d096c751a92aeb9200c411d879d23c0bef` into
 `loushang.coding.package`. Each basename loses its redundant `package_` prefix.
 Before delivery, the task merged the latest main
-`53ab1767d9cb922c85dbbccb56c091e3410de507` (50 incoming commits), preserving
+`23b60edb77c78999fa5e962b75b79edbd38f7288` (52 incoming commits), preserving
 the updated operator reasoning default and hosted-session model/reasoning changes.
 The implementations remain in Coding. This batch does not extract Harness
 capabilities or claim deletion of the relocated implementation.
@@ -64,7 +64,7 @@ entries; the original 1,118 protocol-4/5 class/function pickle references load t
 the same objects and reserialize identically. These checks do not establish
 native platform behavior or complete historical instance-data recovery.
 
-Against synchronized main, 200 changed source bodies have no unexplained AST
+Against synchronized main, 198 changed source bodies have no unexplained AST
 changes after normalization of
 declared import/path relocations and the two source-relative locations, and no
 lost original source comments. Existing CI selection tests pass (150 tests).
@@ -74,12 +74,25 @@ session/tools/diagnostics smoke, with the authorized private test runtime.
 All 11 changed architecture contract files pass (193 cases). The relocated
 component allowance retains the original `package_*` filename allowance for
 existing CLI consumers; the migration does not exclude those entrypoints.
+The resource-owner boundary continues to prohibit the six retired shared
+`package` modules (`manifest`, `materializer`, `projection`, `resource_roots`,
+`source`, `source_manager`), while permitting this product-specific component.
+Their retirement inventory is verified against the original resource-facade
+revision. The complete import-boundary file passes (165 cases). The selected
+HarnessTUI inventory is fully covered: all 1,078 selected cases pass, combining
+unchanged prior passes with the complete updated boundary file and remaining
+three test files; its original full collection is checked against those results.
 The complete Goal budget/progress module also passes (21 cases). The complete
 selected offline Coding route passes 4,321 tests, skips 24 and deselects 77.
 After that run, restoring `hosted_session.py`'s original formatting preserves its
 complete AST, and Coding's private import-finder hookup calls the same installer
 through its module. The SDK and existing size budgets then pass together
 (16 cases), and all 609 public entries and 1,118 old pickle routes are rechecked.
+Unrelated formatting introduced during relocation is then reverted in 24 files;
+each file retains its complete AST and source comments. Canonical imports and
+the declared source-relative rebases remain. Public identity and pickle checks
+pass again after this restoration; the existing UI budget is checked in its
+affected route without changing its threshold.
 Remote platform checks are still pending. These local results are not delivery
 acceptance.
 
@@ -98,12 +111,13 @@ are retained separately from candidate results; no Product timeout or safety
 check is weakened.
 
 Against synchronized main, Coding root Python files fall from 301 to 114. Coding
-grows from 100,500 to 100,811 physical Python lines; the system grows from
-648,826 to 649,137 (+311). Harness and Hosting
+changes from 100,500 to 100,374 physical Python lines; the system changes from
+648,826 to 648,700 (-126). Harness and Hosting
 line totals are unchanged. The compatibility files total 352 lines, the root
 loader installation adds lines, and import rebasing/formatting changes the
-remaining physical-line count. These are compatibility and organization costs,
-not system simplification. Tests and documentation are excluded from production
+remaining physical-line count. The net physical-line reduction is import/layout
+change, not deletion of business mechanisms or duplicate implementations.
+Compatibility adds an organization cost. Tests and documentation are excluded from production
 counts. These counts use `src/**/*.py`; they do not count native or frontend
 sources.
 

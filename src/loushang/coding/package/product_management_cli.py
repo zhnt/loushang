@@ -176,10 +176,9 @@ def read_coding_fenced_desired_transition(
 def read_coding_fenced_handoff_desired_commit(
     layout: CodingPluginLifecycleStateLayout,
     handoff: PackageRetentionHandoffReceiptV1,
-) -> (
-    tuple[int, dict[str, object], Literal["owner_receipt", "verified_transition"]]
-    | None
-):
+) -> tuple[
+    int, dict[str, object], Literal["owner_receipt", "verified_transition"]
+] | None:
     """Prove an exact Desired commit even before handoff settlement is journaled."""
 
     desired_request = handoff.request.desired_request
@@ -211,7 +210,8 @@ def read_coding_fenced_handoff_desired_commit(
         )
         or selected is None
         or selected.plugin_version != desired_request.root_ref.version
-        or selected.package_content_digest != desired_request.root_ref.artifact_digest
+        or selected.package_content_digest
+        != desired_request.root_ref.artifact_digest
     ):
         return None
     return (

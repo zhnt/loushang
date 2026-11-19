@@ -108,9 +108,9 @@ class CodingArchPrivateDataBackupClientV1:
         """Retain or replay the archive for the current exact source snapshot."""
 
         with self._product() as product:
-            return CodingArchPrivateDataBackupOwner(self.layout, product).retain(
-                self.installation_key
-            )
+            return CodingArchPrivateDataBackupOwner(
+                self.layout, product
+            ).retain(self.installation_key)
 
     def verify(self, backup_id: str) -> CodingArchPrivateDataBackupReceiptV1:
         """Reopen and verify one retained archive by its exact digest."""

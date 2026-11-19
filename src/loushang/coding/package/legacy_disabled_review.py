@@ -57,9 +57,7 @@ class CodingLegacyDisabledOnlyReviewV1:
         if self.review_version != 1:
             raise ValueError("Unsupported disabled-only review version")
         object.__setattr__(
-            self,
-            "review_id",
-            sha256(canonical_json_bytes(self._identity_dict())).hexdigest(),
+            self, "review_id", sha256(canonical_json_bytes(self._identity_dict())).hexdigest()
         )
 
     def _identity_dict(self) -> dict[str, object]:
@@ -83,14 +81,8 @@ class CodingLegacyDisabledOnlyReviewV1:
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyDisabledOnlyReviewV1:
         if type(value) is not dict or set(value) != {
-            "reviewId",
-            "storeId",
-            "namespaceId",
-            "scopeId",
-            "firstFenceId",
-            "snapshotReceiptId",
-            "sourceProjectionDigest",
-            "reviewVersion",
+            "reviewId", "storeId", "namespaceId", "scopeId", "firstFenceId",
+            "snapshotReceiptId", "sourceProjectionDigest", "reviewVersion",
             "disabledPlugins",
         }:
             raise ValueError("Coding disabled-only review record is invalid")
@@ -104,26 +96,15 @@ class CodingLegacyDisabledOnlyReviewV1:
             for item in disabled
         ):
             raise ValueError("Coding disabled-only review entries are invalid")
-        for name in (
-            "namespaceId",
-            "firstFenceId",
-            "snapshotReceiptId",
-            "sourceProjectionDigest",
-            "reviewId",
-        ):
-            if (
-                not isinstance(value[name], str)
-                or _SHA256.fullmatch(value[name]) is None
-            ):
+        for name in ("namespaceId", "firstFenceId", "snapshotReceiptId", "sourceProjectionDigest", "reviewId"):
+            if not isinstance(value[name], str) or _SHA256.fullmatch(value[name]) is None:
                 raise ValueError("Coding disabled-only review digest is invalid")
         for name in ("storeId", "scopeId"):
             if not isinstance(value[name], str) or not value[name]:
                 raise ValueError("Coding disabled-only review authority is invalid")
         if type(value["reviewVersion"]) is not int or value["reviewVersion"] != 1:
             raise ValueError("Coding disabled-only review version is invalid")
-        if len({(item["scope"], item["pluginId"]) for item in disabled}) != len(
-            disabled
-        ):
+        if len({(item["scope"], item["pluginId"]) for item in disabled}) != len(disabled):
             raise ValueError("Coding disabled-only review entries are duplicated")
         review = cls(
             store_id=value["storeId"],
@@ -161,7 +142,9 @@ def review_coding_first_b_disabled_only(
     fence = epoch_runtime.cutover_result.fence
     switch = epoch_runtime.cutover_result.switch_receipt
     if fence is None or switch is None:
-        raise CodingLegacyDisabledOnlyReviewError("Coding first-B fence is unavailable")
+        raise CodingLegacyDisabledOnlyReviewError(
+            "Coding first-B fence is unavailable"
+        )
     source = read_coding_legacy_source_evidence(
         lifecycle,
         epoch_runtime,

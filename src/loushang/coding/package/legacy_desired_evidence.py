@@ -93,7 +93,7 @@ def parse_coding_legacy_desired_evidence(
 
 
 _unique_object = _unique_json_object_hook(
-    lambda: "Coding legacy desired state has duplicate JSON keys",
+    lambda: 'Coding legacy desired state has duplicate JSON keys',
 )
 
 

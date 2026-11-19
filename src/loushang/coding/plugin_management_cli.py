@@ -112,9 +112,7 @@ class _CodingManagementReadOwner:
 
     def fenced_product_exists(self) -> bool:
         if self.workspace_identity is not None:
-            _assert_workspace_identity(
-                self.source.workspace_root, self.workspace_identity
-            )
+            _assert_workspace_identity(self.source.workspace_root, self.workspace_identity)
         return coding_fenced_product_exists(self.layout)
 
     def open_fenced_ports(self) -> PluginManagementApplicationPorts:
@@ -127,9 +125,7 @@ class _CodingManagementReadOwner:
 
     def legacy_state_exists(self) -> bool:
         if self.workspace_identity is not None:
-            _assert_workspace_identity(
-                self.source.workspace_root, self.workspace_identity
-            )
+            _assert_workspace_identity(self.source.workspace_root, self.workspace_identity)
         try:
             self.layout.root.lstat()
         except FileNotFoundError:
@@ -138,9 +134,7 @@ class _CodingManagementReadOwner:
 
     def open_legacy_read_ports(self) -> PluginManagementApplicationPorts:
         if self.workspace_identity is not None:
-            _assert_workspace_identity(
-                self.source.workspace_root, self.workspace_identity
-            )
+            _assert_workspace_identity(self.source.workspace_root, self.workspace_identity)
         return build_coding_plugin_management_application(
             self.layout, source=self.source, read_only=True
         )
@@ -246,10 +240,7 @@ def build_coding_plugin_management_cli_binding(
     return bind_plugin_management_cli_commands(
         _management_profile(layout),
         _CodingManagementCommandOwner(
-            layout,
-            source,
-            settings_manager,
-            _capture_workspace_identity(workspace_root),
+            layout, source, settings_manager, _capture_workspace_identity(workspace_root)
         ),
     )
 
@@ -276,7 +267,9 @@ def build_coding_plugin_management_cli_read_binding(
 
     return bind_plugin_management_cli_read(
         _management_profile(layout),
-        _CodingManagementReadOwner(layout, source, captured_identity),
+        _CodingManagementReadOwner(
+            layout, source, captured_identity
+        ),
     )
 
 

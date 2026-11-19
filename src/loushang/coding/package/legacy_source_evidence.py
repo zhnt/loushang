@@ -124,7 +124,7 @@ def parse_coding_legacy_source_evidence(
 
 
 _unique_object = _unique_json_object_hook(
-    lambda: "Coding Source projection has duplicate JSON keys",
+    lambda: 'Coding Source projection has duplicate JSON keys',
 )
 
 

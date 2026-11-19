@@ -553,25 +553,15 @@ class _CodingResumeBootstrapAdmission:
     current_admission: Callable[[CodingActivationAttemptV1], None]
 
     def require(
-        self,
-        manager: SessionManager,
-        composition: CodingCompositionSetPlan,
+        self, manager: SessionManager, composition: CodingCompositionSetPlan,
     ) -> CodingCompositionSetPlan:
         if manager is not self.manager or composition != self.composition:
-            raise ValueError(
-                "Coding Resume bootstrap admission belongs to another candidate"
-            )
+            raise ValueError("Coding Resume bootstrap admission belongs to another candidate")
         with manager._lifecycle_session.sync_operation_scope():
-            attempt = manager._require_resume_bootstrap_composition(
-                self.attempt_id, composition
-            )
-            if not callable(self.current_admission) or iscoroutinefunction(
-                self.current_admission
-            ):
+            attempt = manager._require_resume_bootstrap_composition(self.attempt_id, composition)
+            if not callable(self.current_admission) or iscoroutinefunction(self.current_admission):
                 raise TypeError("Coding Resume bootstrap admission must be synchronous")
-            result = cast(
-                Callable[[CodingActivationAttemptV1], object], self.current_admission
-            )(attempt)
+            result = cast(Callable[[CodingActivationAttemptV1], object], self.current_admission)(attempt)
             if result is not None:
                 if iscoroutine(result):
                     result.close()
@@ -628,9 +618,7 @@ def _create_agent_session(
     if _resume_bootstrap_admission is None:
         session_manager.require_no_unsettled_resume_activation()
     elif type(_resume_bootstrap_admission) is not _CodingResumeBootstrapAdmission:
-        raise TypeError(
-            "Coding Resume bootstrap requires its current admission context"
-        )
+        raise TypeError("Coding Resume bootstrap requires its current admission context")
     if _resume_plugin_parents is not None and (
         type(_resume_plugin_parents) is not CodingResumePluginParents
         or _resume_bootstrap_admission is None
@@ -691,9 +679,7 @@ def _create_agent_session(
     resolved_composition_set = (
         session_manager.bind_new_composition_plan(requested_composition_set)
         if _resume_bootstrap_admission is None
-        else _resume_bootstrap_admission.require(
-            session_manager, requested_composition_set
-        )
+        else _resume_bootstrap_admission.require(session_manager, requested_composition_set)
     )
     if (
         composition_set_explicit
@@ -907,10 +893,7 @@ def _create_agent_session(
             raise CodingResourceCatalogAdmissionError(
                 ("resume_plugin_participation_changed",)
             )
-    if (
-        _resume_plugin_parents is not None
-        and not eager_capability_plugins_enabled_for_session
-    ):
+    if _resume_plugin_parents is not None and not eager_capability_plugins_enabled_for_session:
         raise ValueError(
             "Coding Resume Plugin parents require selected capability Plugins"
         )
@@ -1074,10 +1057,10 @@ def _create_agent_session(
             if base_ephemeral_state is not None:
                 ephemeral_lifecycle = lifecycle
                 ephemeral_state = base_ephemeral_state
-                cleanup_claims_remaining = (
-                    int("coding.base" in requested_plugin_ids)
-                    + int(eager_capability_plugins_enabled_for_session)
-                    + int(defer_lsp_for_session)
+                cleanup_claims_remaining = int(
+                    "coding.base" in requested_plugin_ids
+                ) + int(eager_capability_plugins_enabled_for_session) + int(
+                    defer_lsp_for_session
                 )
                 cleanup_claims_done = False
 
@@ -1823,12 +1806,7 @@ def _create_agent_session(
                 )
             run_cleanup_steps(
                 error,
-                (
-                    (
-                        "Coding Product runtime bootstrap cleanup",
-                        product_runtime.dispose_runtime,
-                    ),
-                ),
+                (("Coding Product runtime bootstrap cleanup", product_runtime.dispose_runtime),),
             )
             raise
 
@@ -2093,9 +2071,7 @@ def _create_agent_session(
         execution_ceiling = (
             workspace_execution_profile
             if sandbox_settings.requirement == "required"
-            else coding_host_execution_profile(
-                workspace_root_path, writable=sandbox_workspace_writable
-            )
+            else coding_host_execution_profile(workspace_root_path, writable=sandbox_workspace_writable)
         )
         requested_profiles = (
             getattr(base_exec_service, "execution_profile", None),
@@ -2427,17 +2403,21 @@ def _create_agent_session(
                                 baseline_environment=resolved_lsp_environment,
                             )
                             if product_base_runtime is not None:
-                                selection = product_base_runtime.capture_plugin_desired_selection_for(
-                                    "coding.lsp.default"
+                                selection = (
+                                    product_base_runtime.capture_plugin_desired_selection_for(
+                                        "coding.lsp.default"
+                                    )
                                 )
                                 if selection.desired_state != "installed_enabled":
                                     raise CodingResourceCatalogAdmissionError(
                                         ("product_requested_capability_not_installed",)
                                     )
-                                selected_manifest = product_base_runtime.capture_selected_plugin_manifest_for(
-                                    "coding.lsp.default",
-                                    max_files=64,
-                                    max_total_bytes=1024 * 1024,
+                                selected_manifest = (
+                                    product_base_runtime.capture_selected_plugin_manifest_for(
+                                        "coding.lsp.default",
+                                        max_files=64,
+                                        max_total_bytes=1024 * 1024,
+                                    )
                                 )
 
                                 def check_product_lsp_selection() -> None:
@@ -2449,12 +2429,14 @@ def _create_agent_session(
                                     )
 
                                 current_selection_check = check_product_lsp_selection
-                                preparation = prepare_coding_product_capability_plugin_composition(
-                                    product_base_runtime,
-                                    session_id=session_id,
-                                    configurations={"coding.lsp.default": config},
-                                    state_root=state_root,
-                                    clock=coding_plugin_clock,
+                                preparation = (
+                                    prepare_coding_product_capability_plugin_composition(
+                                        product_base_runtime,
+                                        session_id=session_id,
+                                        configurations={"coding.lsp.default": config},
+                                        state_root=state_root,
+                                        clock=coding_plugin_clock,
+                                    )
                                 )
                                 if temporary_state is not None:
                                     preparation.state_cleanup = temporary_state.cleanup
@@ -2500,9 +2482,8 @@ def _create_agent_session(
                             raise
 
                     def create_deferred_lsp_generation() -> CodingDeferredLspGeneration:
-                        async def assemble_deferred_lsp() -> (
-                            CodingCapabilityPluginCompositionAssembly
-                        ):
+                        async def assemble_deferred_lsp(
+                        ) -> CodingCapabilityPluginCompositionAssembly:
                             task = asyncio.create_task(
                                 asyncio.to_thread(build_deferred_lsp_assembly)
                             )
@@ -2799,9 +2780,7 @@ def _select_direct_coding_product_factory(
 
 
 async def _create_resume_agent_session(
-    *,
-    session_manager: SessionManager,
-    attempt_id: str,
+    *, session_manager: SessionManager, attempt_id: str,
     composition_set: CodingCompositionSetPlan,
     require_current_admission: Callable[[CodingActivationAttemptV1], None],
     services: BootstrapServices | None = None,
@@ -2829,8 +2808,7 @@ async def _create_resume_agent_session(
     """
 
     if product_owner_selection is not None and not isinstance(
-        product_owner_selection,
-        CodingFencedProductApplicationSelection,
+        product_owner_selection, CodingFencedProductApplicationSelection,
     ):
         raise TypeError("Coding Resume Product application owner is invalid")
     if (
@@ -2843,55 +2821,34 @@ async def _create_resume_agent_session(
                 or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
             )
         )
-        or (
-            (worker_candidates or worker_candidate_plugin_id is not None)
-            and product_owner_selection is None
-        )
+        or ((worker_candidates or worker_candidate_plugin_id is not None) and product_owner_selection is None)
         or (resume_worker_parent is not None and worker_candidate_plugin_id is None)
     ):
         raise ValueError("Coding Resume Worker requires its application Product owner")
-    include_worker_candidates = (
-        worker_candidates or worker_candidate_plugin_id is not None
-    )
+    include_worker_candidates = worker_candidates or worker_candidate_plugin_id is not None
     composition = _canonical_coding_composition_set(composition_set)
     admission = _CodingResumeBootstrapAdmission(
-        session_manager,
-        attempt_id,
-        composition,
-        require_current_admission,
+        session_manager, attempt_id, composition, require_current_admission,
     )
     admission.require(session_manager, composition)
     selected_factory = (
         _borrow_application_coding_product_factory(
-            product_owner_selection,
-            session_manager,
-            services=services,
+            product_owner_selection, session_manager, services=services,
             worker_candidates=include_worker_candidates,
-        )
-        if product_owner_selection is not None
-        else _select_direct_coding_product_factory(
-            session_manager,
-            services=services,
-            windows_candidate=sys.platform == "win32",
+        ) if product_owner_selection is not None else _select_direct_coding_product_factory(
+            session_manager, services=services, windows_candidate=sys.platform == "win32",
         )
     )
     session: AgentSession | None = None
     try:
         admission.require(session_manager, composition)
         session = _create_agent_session(
-            session_manager=session_manager,
-            composition_set=composition,
-            composition_set_explicit=True,
-            services=services,
-            model=model,
-            stream_fn=stream_fn,
-            thinking_level=thinking_level,
-            tools=tools,
+            session_manager=session_manager, composition_set=composition,
+            composition_set_explicit=True, services=services, model=model,
+            stream_fn=stream_fn, thinking_level=thinking_level, tools=tools,
             output_capture_factory=output_capture_factory,
-            no_tools=no_tools,
-            agent_factory=agent_factory,
-            approval_resolver=approval_resolver,
-            tool_policy_evaluator=tool_policy_evaluator,
+            no_tools=no_tools, agent_factory=agent_factory,
+            approval_resolver=approval_resolver, tool_policy_evaluator=tool_policy_evaluator,
             package_product_runtime_factory=selected_factory,
             worker_candidate_plugin_id=worker_candidate_plugin_id,
             _resume_bootstrap_admission=admission,
@@ -2906,13 +2863,9 @@ async def _create_resume_agent_session(
             try:
                 await session.dispose()
             except BaseException as cleanup_error:
-                error.add_note(
-                    f"Coding Resume candidate cleanup also failed: {cleanup_error!r}"
-                )
+                error.add_note(f"Coding Resume candidate cleanup also failed: {cleanup_error!r}")
                 raise retain_resume_cleanup_failure(
-                    original_owner=session,
-                    original_error=error,
-                    cleanup_error=cleanup_error,
+                    original_owner=session, original_error=error, cleanup_error=cleanup_error,
                 ) from error
         else:
             _dispose_unbound_package_product_runtime(selected_factory, error)
@@ -3300,8 +3253,7 @@ def _borrow_application_coding_product_factory(
     worker_candidates: bool = False,
 ) -> PackageProductRuntimeFactoryPort | None:
     factory = selection.factory_for_session(
-        manager,
-        settings_manager=None if services is None else services.settings_manager,
+        manager, settings_manager=None if services is None else services.settings_manager,
     )
     selected_factory: PackageProductRuntimeFactoryPort | None = factory
     if worker_candidates:
@@ -3331,10 +3283,7 @@ def _build_with_package_product_selection(
 ) -> AgentSession:
     manager.require_no_unsettled_resume_activation()
     selected_factory = _borrow_application_coding_product_factory(
-        selection,
-        manager,
-        services=services,
-        worker_candidates=worker_candidates,
+        selection, manager, services=services, worker_candidates=worker_candidates,
     )
     try:
         return build(selected_factory)

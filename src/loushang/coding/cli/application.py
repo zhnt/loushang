@@ -614,8 +614,7 @@ async def run_cli(
         if candidate.args is not None and any(
             Path(source).suffix == ".whl"
             for source in (
-                *candidate.args.install_packages,
-                *candidate.args.update_packages,
+                *candidate.args.install_packages, *candidate.args.update_packages,
             )
         ):
             try:

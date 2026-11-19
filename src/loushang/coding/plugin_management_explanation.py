@@ -84,7 +84,9 @@ class CodingPluginOperationExplanationQuery:
                 and handoff.request.desired_request.request_fingerprint
                 == explanation.package.request_fingerprint
             ):
-                commit = read_coding_fenced_handoff_desired_commit(self.layout, handoff)
+                commit = read_coding_fenced_handoff_desired_commit(
+                    self.layout, handoff
+                )
                 if commit is not None:
                     explanation = replace(
                         explanation, desired_commit_evidence=commit[2]
