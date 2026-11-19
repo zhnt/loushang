@@ -122,8 +122,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
     setMenu(at(event.currentTarget, event.clientX, event.clientY, items));
   }}>
     {children}
-    {menu ? createPortal(<div ref={popup} className="app-context-menu" role="menu" aria-label={t("contextMenu")}
-      data-sidebar-menu={menu.anchor.closest(".workspace-scroll") ? "" : undefined}>
+    {menu ? createPortal(<div ref={popup} className="app-context-menu" role="menu" aria-label={t("contextMenu")}>
       {menu.items.map((item) => <button key={item.label} type="button" role="menuitem"
         disabled={item.disabled} className={item.danger ? "context-menu-danger" : undefined}
         onMouseDown={(event) => event.preventDefault()}
