@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useContextMenu } from "./ContextMenu";
 import { UiIcon } from "./UiIcon";
@@ -37,6 +38,30 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
   ];
   const sidebar = useRef<HTMLDivElement>(null);
   const pinFocus = useRef<{ id: string; pinned: boolean } | null>(null);
+  const [chatTooltip, setChatTooltip] = useState<{ text: string; workspace?: string; position: CSSProperties } | null>(null);
+
+  useEffect(() => {
+    if (!chatTooltip) return;
+    const hide = () => setChatTooltip(null);
+    const dismiss = (event: KeyboardEvent) => { if (event.key === "Escape") hide(); };
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    window.addEventListener("keydown", dismiss);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+      window.removeEventListener("keydown", dismiss);
+    };
+  }, [chatTooltip]);
+
+  function showChatTooltip(button: HTMLButtonElement, text: string, workspace?: string) {
+    const labels = Array.from(button.children);
+    if (!labels.some((label) => label.scrollWidth > label.clientWidth)) return;
+    const bounds = button.getBoundingClientRect();
+    const left = Math.max(8, Math.min(bounds.left, window.innerWidth - 288));
+    const position = bounds.top < 120 ? { left, top: bounds.bottom + 4 } : { left, bottom: window.innerHeight - bounds.top + 4 };
+    setChatTooltip({ text, workspace, position });
+  }
 
   useLayoutEffect(() => {
     const expected = pinFocus.current;
@@ -73,6 +98,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
     const project = projects.find((item) => projectKey(item) === workspace);
     const label = workspace === TEMPORARY_WORKSPACE ? t("sidebar.temporaryChats")
       : project?.name ?? workspaceName(project?.path ?? workspace);
+    const scopeLabel = showWorkspace ? label : undefined;
     const title = name === "New Session" ? t("sidebar.newSession") : name;
     function togglePin() {
       if (session.pinned && collapsed.has(workspace)) expand(workspace);
@@ -80,22 +106,32 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
     }
     return <div className={selected ? "session-row selected" : "session-row"} key={session.id}>
       <button type="button" className="project-chat"
-        title={showWorkspace ? `${title}\n${label}` : title}
         aria-current={selected ? "true" : undefined} disabled={!navigation.available}
-        onClick={() => navigation.select(workspace, session.id)}
-        onContextMenu={(event) => openMenu(event, [
-          { label: t(session.pinned ? "sidebar.unpin" : "sidebar.pin"), disabled: !editable, run: togglePin },
-          ...(navigation.deleteChat ? [{
-            label: t("sidebar.deleteChat"), disabled: !editable, danger: true,
-            run: () => {
-              setDeleteFailed(false);
-              setDeletion({ workspace, session, title, hostKey: navigation.hostKey });
-            },
-          }] : []),
-        ])}>
+        onPointerEnter={(event) => {
+          if (event.pointerType !== "touch") showChatTooltip(event.currentTarget, title, scopeLabel);
+        }}
+        onPointerLeave={() => setChatTooltip(null)}
+        onFocus={(event) => {
+          if (event.currentTarget.matches(":focus-visible")) showChatTooltip(event.currentTarget, title, scopeLabel);
+        }}
+        onBlur={() => setChatTooltip(null)}
+        onClick={() => { setChatTooltip(null); navigation.select(workspace, session.id); }}
+        onContextMenu={(event) => {
+          setChatTooltip(null);
+          openMenu(event, [
+            { label: t(session.pinned ? "sidebar.unpin" : "sidebar.pin"), disabled: !editable, run: togglePin },
+            ...(navigation.deleteChat ? [{
+              label: t("sidebar.deleteChat"), disabled: !editable, danger: true,
+              run: () => {
+                setDeleteFailed(false);
+                setDeletion({ workspace, session, title, hostKey: navigation.hostKey });
+              },
+            }] : []),
+          ]);
+        }}>
         <span className="project-chat-title">{title}</span>
-        {showWorkspace ? <small className="project-chat-scope" aria-hidden="true" title={project?.path ?? undefined}>
-          {label}
+        {scopeLabel ? <small className="project-chat-scope" aria-hidden="true">
+          {scopeLabel}
         </small> : null}
       </button>
       <button type="button" className="session-pin" data-pinned={session.pinned} data-pin-session={session.id}
@@ -117,6 +153,9 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
   }
 
   return <div ref={sidebar}>
+    {chatTooltip ? createPortal(<div className="sidebar-chat-tooltip" aria-hidden="true" style={chatTooltip.position}>
+      {chatTooltip.text}{chatTooltip.workspace ? <small>{chatTooltip.workspace}</small> : null}
+    </div>, document.body) : null}
     {pinned.length ? <section className="project-navigation" aria-label={t("sidebar.pinned")}>
       <h2 className="section-label">{t("sidebar.pinned")}</h2>
       {pinned.map(({ workspace, session }) => chat(workspace, session, true))}

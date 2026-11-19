@@ -50,6 +50,7 @@ from loushang.appserver.protocol import (
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
+from loushang.appserver.protocol.model import MAX_TITLE_CHARS
 from loushang.foundation._owned_tasks import (
     _observe_task_result as _observe_managed_close,
 )
@@ -271,6 +272,15 @@ class _SessionOwner:
     def remove_attachment(self, attachment: _Attachment) -> None:
         self._attachments.pop(attachment.attachment_id, None)
 
+    def display_title(self, fallback: str) -> str:
+        # The original Mux member label remains the fallback for continuity.
+        try:
+            project_title = getattr(self._port, "display_title", None)
+            title = project_title() if callable(project_title) else None
+        except Exception:
+            return fallback
+        return title if type(title) is str and len(title) <= MAX_TITLE_CHARS and title.strip() else fallback
+
     async def snapshot(self) -> SessionSnapshotV1:
         if not self._accepting:
             raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
@@ -475,7 +485,7 @@ class _MuxOwner:
                 MuxSpaceMemberV1(
                     member_id=member.member_id,
                     session=member.session.identity,
-                    title=member.title,
+                    title=member.session.display_title(member.title),
                     position=index,
                 )
                 for index, member in enumerate(self.members, 1)

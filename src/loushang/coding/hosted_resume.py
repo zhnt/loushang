@@ -377,6 +377,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         if self._active is not None:
             self._active.start_title_if_unnamed()
 
+    def project_title(self) -> str:
+        return (self._active or self._source.history_binding).project_title()
+
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
         if self._close_task is not None:
             raise CodingHostedCatalogError()

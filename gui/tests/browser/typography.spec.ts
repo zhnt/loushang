@@ -109,11 +109,25 @@ for (const sample of [
       await expect(pin).toBeFocused();
       await page.mouse.move(sample.width - 10, 10);
       await expect(pin).toHaveCSS("opacity", "1");
+      await selectedTitle.hover();
+      await expect(page.locator(".sidebar-chat-tooltip")).toHaveCount(0);
+      const themedSurface = page.locator(".conversation-pane");
+      const systemBackground = await themedSurface.evaluate((pane) => getComputedStyle(pane).backgroundColor);
+      await page.locator("html").evaluate((root, appearance) => root.setAttribute("data-appearance", appearance),
+        sample.colorScheme === "dark" ? "light" : "dark");
+      const appBackground = await themedSurface.evaluate((pane) => getComputedStyle(pane).backgroundColor);
+      expect(appBackground).not.toBe(systemBackground);
       for (const label of await labels.filter({ hasText: /这是用于验证|A long English/ }).all()) {
         await expect(label).toHaveCSS("text-overflow", "ellipsis");
         expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-        await expect(label.locator("..")).toHaveAttribute("title", (await label.textContent())!);
+        await expect(label.locator("..")).not.toHaveAttribute("title");
+        await label.hover();
+        const tooltip = page.locator(".sidebar-chat-tooltip");
+        await expect(tooltip).toBeVisible();
+        await expect(tooltip).toHaveText((await label.textContent())!);
+        await expect(tooltip).toHaveCSS("background-color", appBackground);
       }
+      await page.locator("html").evaluate((root) => root.removeAttribute("data-appearance"));
       const input = page.locator("#message-input");
       await input.fill("Mixed 中文 125");
       await expect(input).toHaveValue("Mixed 中文 125");
