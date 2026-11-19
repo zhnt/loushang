@@ -45,9 +45,8 @@ test("manages folders in one logical workspace without disabling its chat entry"
   const projectChat = page.getByRole("button", { name: "New chat in Integration" });
   await expect(projectChat).toBeEnabled();
   const projectRow = page.getByRole("button", { name: "Integration", exact: true });
-  await expect(projectRow).toHaveAccessibleDescription("frontend · Folder not found");
   await projectRow.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Manage workspace · linked folders unavailable" }).click();
+  await page.getByRole("menuitem", { name: "Manage workspace", exact: true }).click();
   editor = page.getByRole("dialog", { name: "Manage workspace" });
   await expect(editor.getByText("Folder not found")).toBeVisible();
   await editor.getByRole("button", { name: "Add folder", exact: true }).click();

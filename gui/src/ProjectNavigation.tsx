@@ -142,20 +142,17 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
         const workspace = projectKey(project);
         const label = project.name ?? workspaceName(project.path ?? workspace);
         const expanded = !collapsed.has(workspace);
-        const unavailable = project.paths?.filter((link) => link.status !== "available") ?? [];
-        const pathStatus = unavailable.map((link) => `${link.alias} · ${t(`workspaceEditor.${link.status}`)}`).join("\n");
         function create() {
           expand(workspace);
           navigation.create(workspace);
         }
         return <div key={workspace}>
           <div className="project-heading project-row">
-            <button type="button" className="project-label" aria-expanded={expanded} aria-description={pathStatus || undefined}
-              title={[project.path, pathStatus].filter(Boolean).join("\n") || undefined}
+            <button type="button" className="project-label" aria-expanded={expanded} title={project.path ?? undefined}
               onContextMenu={(event) => openMenu(event, [
                 { label: t("sidebar.newSession"), disabled: createDisabled, run: create },
                 ...(project.id && navigation.editWorkspace ? [{
-                  label: t(unavailable.length ? "workspaceEditor.manageUnavailable" : "workspaceEditor.manage"), disabled: !editable,
+                  label: t("workspaceEditor.manage"), disabled: !editable,
                   run: () => setEditing({ host: navigation.hostKey, workspace }),
                 }] : []),
                 ...(project.path ? [{

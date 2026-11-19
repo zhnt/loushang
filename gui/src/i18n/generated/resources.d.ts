@@ -744,7 +744,6 @@ export default interface Resources {
       "editPath": "Edit path",
       "makeDefault": "Set as default",
       "manage": "Manage workspace",
-      "manageUnavailable": "Manage workspace · linked folders unavailable",
       "missing": "Folder not found",
       "name": "Workspace name",
       "not_directory": "Path is not a folder",
