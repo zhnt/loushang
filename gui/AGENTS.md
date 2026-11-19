@@ -27,6 +27,10 @@ still follow their existing review and validation requirements.
 
 ## Ownership and validation
 
+Before changing GUI appearance or interaction, use the [GUI style guide](../docs/internals/architecture/gui-ui-guidelines.md)
+and the nearest existing component as references. Update the guide when a shared
+visual convention changes.
+
 Keep this directory Product-neutral. React/TypeScript owns presentation,
 UI-local state, and client-facing ports. Rust owns the Tauri bridge, native
 desktop integration, and later App Contract adapters. Neither side owns or
