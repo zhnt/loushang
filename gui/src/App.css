@@ -99,6 +99,11 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .fixture-banner { display: flex; align-items: center; gap: 7px; margin: 0 12px 8px; padding: 6px 8px; border-radius: 6px; color: var(--warning); background: var(--warning-soft); font-size: 12px; }
 .fixture-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); }
 .workspace-scroll { --sidebar-action-width: 24px; min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior-y: contain; padding: 2px 8px 16px; }
+/* WebKit can paint the sidebar's native overlay scrollbar above app menus and dialogs. */
+body:has([role="menu"], .account-popover, dialog[open]) .workspace-scroll {
+  scrollbar-color: transparent transparent;
+}
+.workspace-scroll > * { scrollbar-color: auto; }
 .workspace-group { margin-bottom: 4px; }
 .workspace-heading { width: 100%; min-height: var(--navigation-row-height); display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 17px; align-items: center; gap: 4px; padding: 6px 8px; border: 0; border-radius: 7px; color: var(--ink-secondary); background: transparent; text-align: left; font-size: var(--font-size-ui); font-weight: var(--font-weight-medium); }
 .workspace-heading > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -574,8 +579,6 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 
 
 .app-context-menu { position: fixed; z-index: 100; min-inline-size: 150px; max-inline-size: calc(100vw - 8px); padding: 4px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); color: var(--ink); box-shadow: 0 6px 20px #0002; font-size: var(--font-size-small); line-height: var(--line-height-ui); }
-/* WebKit can paint the native overlay scrollbar above a sidebar menu. */
-body:has(> .app-context-menu[data-sidebar-menu]) .workspace-scroll { scrollbar-color: transparent transparent; }
 .app-context-menu button { display: block; width: 100%; min-height: 32px; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: start; }
 .app-context-menu .context-menu-danger { color: var(--red); }
 .context-menu-error { position: fixed; inset: auto 16px 16px auto; z-index: 110; margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 13px; }
