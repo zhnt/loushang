@@ -386,6 +386,12 @@ from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a
 window that expects a running localhost development server.
 
+## Build a package on demand
+
+Use the [manual packaging workflow](../scripts/gui/gui-package.md) to select a
+source revision and build a Linux DEB, Windows NSIS installer, or macOS Intel
+installer. Download the resulting package and checksum from the Actions run.
+
 ## Ubuntu complete deb test package
 
 Build the current GUI, then package it with CPython, AppHost/AppService, the
