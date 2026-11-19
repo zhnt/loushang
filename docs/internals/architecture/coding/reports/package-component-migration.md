@@ -71,8 +71,20 @@ lost original source comments. Existing CI selection tests pass (150 tests).
 All 190 component Python files pass mypy; Coding passes Ruff. Before upstream
 synchronization, the complete 14-case SDK suite passed, including the real
 session/tools/diagnostics smoke, with the authorized private test runtime.
-Synchronized batch regression and remote platform checks are still pending; these local
-results are not delivery acceptance.
+All 11 changed architecture contract files pass (193 cases). The relocated
+component allowance retains the original `package_*` filename allowance for
+existing CLI consumers; the migration does not exclude those entrypoints.
+The complete Goal budget/progress module also passes (21 cases). Full Coding
+regression acceptance remains pending; focused passes do not establish it.
+Remote platform checks are still pending. These local results are not delivery
+acceptance.
+
+The selected AI route passes 941 tests, skips two existing host-runtime OAuth
+cases and deselects seven cases under the local selectors. Both this candidate
+and untouched synchronized main report core coverage 6,767/7,544 (89.70%, against
+the existing 90% minimum), with overall coverage 89.96%. Their 9,409 instrumented
+line and branch entries match exactly. The full AI gate is not claimed passed
+locally; selectors, thresholds and the existing CI gate remain unchanged.
 
 The ordinary machine test-runtime directory failed the unchanged SDK runtime
 baseline with `transcript_writer:unsafe`. The user authorized a private test
