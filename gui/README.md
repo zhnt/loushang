@@ -23,6 +23,8 @@ Tauri handles local requests in process. The browser sends the same requests
 to the standalone Rust Web server, which calls the shared AppServer client.
 Both connect to an independently started AppHost.
 
+For shared desktop and Web visual conventions, see the [GUI style guide](../docs/internals/architecture/gui-ui-guidelines.md).
+
 ## Connect to a local AppHost
 
 The installed desktop can start, stop, and restart its local AppHost from the
