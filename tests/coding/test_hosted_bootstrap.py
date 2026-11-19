@@ -5,13 +5,13 @@ import asyncio
 import pytest
 
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
-from loushang.coding import hosted_bootstrap
 from loushang.coding.cli.hosted import CodingHostedLaunchV1 as LegacyLaunch
-from loushang.coding.hosted_bootstrap import (
+from loushang.coding.hosted import bootstrap as hosted_bootstrap
+from loushang.coding.hosted.bootstrap import (
     CodingHostedLaunchV1,
     create_coding_hosted_attempt,
 )
-from loushang.coding.hosted_catalog import CodingHostedResumeCatalogV1
+from loushang.coding.hosted.catalog import CodingHostedResumeCatalogV1
 
 
 def _launch(root):

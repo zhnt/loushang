@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from loushang.coding.workspace_inspection import inspect_workspace
+from loushang.coding.workspace.inspection import inspect_workspace
 
 
 def test_reports_project_toolchain_without_git(tmp_path):
@@ -47,7 +47,7 @@ def test_linked_worktree_separates_staged_unstaged_and_untracked(tmp_path):
 
 def test_non_git_review_only_includes_successful_workspace_file_operations(tmp_path):
     from loushang.ai.types import ToolResultMessage
-    from loushang.coding.workspace_inspection import inspect_session_changes
+    from loushang.coding.workspace.inspection import inspect_session_changes
 
     def result(tool, path, details, *, failed=False):
         return ToolResultMessage("toolResult", "call", tool, [], failed, 1.0, {

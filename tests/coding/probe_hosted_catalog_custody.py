@@ -354,8 +354,8 @@ class Recorder:
 
 
 def instrumentation(recorder, stack):
-    hosted = importlib.import_module("loushang.coding.hosted_catalog")
-    managed = importlib.import_module("loushang.coding.managed_catalog")
+    hosted = importlib.import_module('loushang.coding.hosted.catalog')
+    managed = importlib.import_module('loushang.coding.hosted.managed.catalog')
     factory_module = importlib.import_module(
         "loushang.harness.transcript.session_factory"
     )
@@ -593,7 +593,7 @@ def instrumentation(recorder, stack):
 
 
 def own_scenario(case, root, monkeypatch, tests, recorder):
-    hosted = importlib.import_module("loushang.coding.hosted_catalog")
+    hosted = importlib.import_module('loushang.coding.hosted.catalog')
     file_module = importlib.import_module("loushang.harness.conversation.stores.file")
 
     async def scenario():

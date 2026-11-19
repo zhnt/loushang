@@ -5,12 +5,12 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     _capture_existing_plugin_enablement_state,
     project_coding_plugin_enablement_compatibility,
 )
-from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.config.agent._legacy_compatibility import (
     LegacyPluginCompatibilityRegistry as _ConfigLegacyPluginCompatibilityRegistry,
 )

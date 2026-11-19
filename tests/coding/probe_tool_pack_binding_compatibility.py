@@ -333,7 +333,7 @@ def observe_slot(domain):
     from loushang.harness.runtime.registration import RegistrationOwner
 
     module = importlib.import_module(
-        "loushang.coding._base_plugin_owners"
+        'loushang.coding.composition.base_owners'
         if domain == "base"
         else f"loushang.coding.{domain}._plugin_tool_owner"
     )

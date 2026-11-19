@@ -6,7 +6,7 @@ import sys
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.bootstrap import create_agent_session_runtime
+from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
 from .test_agent_session_runtime import _model
 

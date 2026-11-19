@@ -10,7 +10,7 @@ from tests.architecture._source_imports import resolved_imports
 
 APPSERVER = Path("src/loushang/appserver")
 APPSERVICE = Path("src/loushang/appservice")
-CODING_ADAPTER = Path("src/loushang/coding/appservice_adapter.py")
+CODING_ADAPTER = Path('src/loushang/coding/hosted/service_adapter.py')
 HARNESSTUI_MUX = Path("src/loushang/harnesstui/mux")
 INVENTORY = Path(
     "docs/internals/architecture/appserver/"
@@ -139,35 +139,37 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/apphost/continuity.py"),
         Path("src/loushang/apphost/foreground.py"),
         Path("src/loushang/apphost/integrations/session_control.py"),
-        Path("src/loushang/coding/hosted_application.py"),
-        Path("src/loushang/coding/hosted_continuity.py"),
-        Path("src/loushang/coding/hosted_bootstrap.py"),
-        Path("src/loushang/coding/hosted_catalog.py"),
-        Path("src/loushang/coding/hosted_execution.py"),
-        Path("src/loushang/coding/hosted_execution_goal.py"),
-        Path("src/loushang/coding/hosted_resume.py"),
-        Path("src/loushang/coding/hosted_session.py"),
-        Path("src/loushang/coding/_hosted_execution_work.py"),
+        Path('src/loushang/coding/hosted/application.py'),
+        Path('src/loushang/coding/hosted/continuity.py'),
+        Path('src/loushang/coding/hosted/bootstrap.py'),
+        Path('src/loushang/coding/hosted/catalog.py'),
+        Path('src/loushang/coding/hosted/execution.py'),
+        Path('src/loushang/coding/hosted/execution_goal.py'),
+        Path('src/loushang/coding/hosted/resume.py'),
+        Path('src/loushang/coding/hosted/session.py'),
+        Path('src/loushang/coding/hosted/_execution_work.py'),
+        # Exact current-subject guard extracted from that same execution owner.
+        Path("src/loushang/coding/resume/subject.py"),
         # COD-KD-HMW-001: original guard/registry, no second execution owner.
-        Path("src/loushang/coding/hosted_method.py"),
-        Path("src/loushang/coding/_hosted_method_work.py"),
+        Path('src/loushang/coding/hosted/method.py'),
+        Path('src/loushang/coding/hosted/_method_work.py'),
         # COD-KD-HG-001: original registry/guard drives one bounded Goal.
-        Path("src/loushang/coding/hosted_goal.py"),
-        Path("src/loushang/coding/_hosted_goal_work.py"),
+        Path('src/loushang/coding/hosted/goal.py'),
+        Path('src/loushang/coding/hosted/_goal_work.py'),
         # COD-KD-HG-002: fixed repository command selection in that same guard.
-        Path("src/loushang/coding/_hosted_repository_work.py"),
+        Path('src/loushang/coding/hosted/_repository_work.py'),
         Path("src/loushang/apphost/managed/bootstrap.py"),
         Path("src/loushang/apphost/managed/mux_creation.py"),
         Path("src/loushang/apphost/managed/mux_management.py"),
         Path("src/loushang/apphost/managed/mux_probe.py"),
-        Path("src/loushang/coding/managed_local.py"),
-        Path("src/loushang/coding/foreground_host.py"),
-        Path("src/loushang/coding/managed_bootstrap.py"),
-        Path("src/loushang/coding/managed_catalog.py"),
+        Path('src/loushang/coding/hosted/managed/local.py'),
+        Path('src/loushang/coding/hosted/foreground.py'),
+        Path('src/loushang/coding/hosted/managed/bootstrap.py'),
+        Path('src/loushang/coding/hosted/managed/catalog.py'),
     }
     assert {name for name in _imports(Path("src/loushang/apphost/managed/mux_probe.py"))
             if name.startswith("loushang.appservice")} == {"loushang.appservice.continuity"}
-    assert {name for name in _imports(Path("src/loushang/coding/hosted_catalog.py"))
+    assert {name for name in _imports(Path('src/loushang/coding/hosted/catalog.py'))
             if name.startswith("loushang.appservice")} == {
         "loushang.appservice.discovery_ports",
     }
@@ -178,11 +180,11 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/coding/__init__.py"),
     ):
         assert "hosted_execution" not in _read(path)
-    bootstrap = ast.parse(_read(Path("src/loushang/coding/hosted_bootstrap.py")))
+    bootstrap = ast.parse(_read(Path('src/loushang/coding/hosted/bootstrap.py')))
     bootstrap_execution_imports = {
         node
         for node in ast.walk(bootstrap)
-        if isinstance(node, ast.ImportFrom) and node.module == "hosted_execution"
+        if isinstance(node, ast.ImportFrom) and node.module == "loushang.coding.hosted.execution"
     }
     assert len(bootstrap_execution_imports) == 1
     # Stage 1A: managed and ordinary bootstrap select one configuration;
@@ -203,7 +205,7 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
     assert ast.unparse(request_return.value.func) == "CodingForegroundHostedApplicationRequestV1"
     assert [ast.unparse(item.value) for item in request_return.value.keywords
             if item.arg == "execution"] == ["execution"]
-    execution_source = ast.parse(_read(Path("src/loushang/coding/hosted_execution.py")))
+    execution_source = ast.parse(_read(Path('src/loushang/coding/hosted/execution.py')))
     apphost_imports = [node for node in ast.walk(execution_source)
                        if isinstance(node, ast.ImportFrom)
                        and node.module and node.module.startswith("loushang.apphost")]
@@ -211,10 +213,10 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
             for node in apphost_imports] == [("loushang.apphost", ["SessionBindingKeyV1"])]
     # The foreground owner may select the optional adapter, but only within
     # its explicit execution branch. Default construction must not import it.
-    composition = ast.parse(_read(Path("src/loushang/coding/hosted_application.py")))
+    composition = ast.parse(_read(Path('src/loushang/coding/hosted/application.py')))
     execution_imports = {
         node for node in ast.walk(composition)
-        if isinstance(node, ast.ImportFrom) and node.module == "hosted_execution"
+        if isinstance(node, ast.ImportFrom) and node.module == "loushang.coding.hosted.execution"
     }
     guarded_imports = {
         imported for node in ast.walk(composition)
@@ -222,7 +224,7 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
             "self._execution", "self.managed_selection and self.execution is not None",
         }
         for statement in node.body for imported in ast.walk(statement)
-        if isinstance(imported, ast.ImportFrom) and imported.module == "hosted_execution"
+        if isinstance(imported, ast.ImportFrom) and imported.module == "loushang.coding.hosted.execution"
     }
     assert {tuple(alias.name for alias in node.names) for node in execution_imports} == {
         ("_select_coding_execution_port",),
@@ -252,7 +254,7 @@ def test_G11_EMBEDDED_OMISSION_preserves_every_installed_current_route() -> None
     assert scripts["loushang-tui"] == "loushang.coding.ui.cli:main"
     for path in (
         Path("src/loushang/coding/__init__.py"),
-        Path("src/loushang/coding/bootstrap.py"),
+        Path('src/loushang/coding/composition/bootstrap.py'),
         Path("src/loushang/coding/cli/__main__.py"),
         Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),

@@ -29,8 +29,8 @@ loushang-hosted-tui = "loushang.coding.cli.hosted_client:main"
 loushang-mux = "loushang.coding.cli.mux:main"
 lmux = "loushang.coding.cli.lmux:main"
 loushang-plugin = "loushang.plugin.__main__:main"
-loushang-coding-plugin-smoke = "loushang.coding.plugin_author_smoke:main"
-loushang-coding-extension = "loushang.coding.extension_author:main"
+loushang-coding-plugin-smoke = "loushang.coding.authoring.plugin_smoke:main"
+loushang-coding-extension = "loushang.coding.authoring.extension:main"
 loushang-coding-plugin-status = "loushang.coding.plugin_manager.support_status:main"
 loushang-package-cutover = "loushang.coding.cli.package_cutover:main"
 loushang-package-gc = "loushang.coding.cli.package_gc:main"
@@ -105,6 +105,9 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "loushang" = ["py.typed"]
+"loushang.coding" = ["*.pyi"]
+"loushang.coding.package" = ["*.pyi"]
+"loushang.coding.plugin_manager" = ["*.pyi"]
 "loushang.ai.model" = ["models.json"]
 "loushang.hosting" = ["native/*.c"]
 "loushang.coding._plugins.coding_lsp_default" = [

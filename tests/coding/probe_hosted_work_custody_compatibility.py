@@ -17,8 +17,8 @@ import pytest
 
 from loushang.appserver.protocol import AckV1
 from loushang.appservice.execution_guard import ExecutionControlV1
-from loushang.coding import _hosted_execution_work as ordinary
-from loushang.coding import hosted_resume as resume
+from loushang.coding.hosted import _execution_work as ordinary
+from loushang.coding.hosted import resume
 from tests.coding.test_hosted_execution import _message
 
 HERE = Path(__file__).resolve().parent

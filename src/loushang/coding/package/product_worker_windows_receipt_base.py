@@ -9,6 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
+from loushang.coding.hosted._worker_canary import (
+    CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
+)
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
@@ -20,7 +23,6 @@ from loushang.harness.worker.history._windows_receipt_base import (
     _WindowsReceiptBaseMethods,
 )
 
-from .._product_worker_canary import CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID
 from .product_worker_opt_in import CodingWorkerOptInDecisionV1
 from .product_worker_policy import coding_worker_session_scope_id
 from .product_worker_receipt import CodingWorkerReceiptRecordV1

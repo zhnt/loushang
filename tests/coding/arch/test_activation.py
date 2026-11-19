@@ -9,13 +9,13 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
-from loushang.coding.bootstrap import create_services
 from loushang.coding.cli.__main__ import (
     _run_coding_pre_runtime_operation,
     build_builtin_tool_registry,
     default_runtime_builder,
 )
 from loushang.coding.cli.args import parse_args
+from loushang.coding.composition.bootstrap import create_services
 from loushang.harness.cli import AgentCliStatePreparationContext
 from loushang.harness.config.agent import (
     CapabilityMountMode,
@@ -184,7 +184,7 @@ def test_disabled_arch_paths_do_not_resolve_any_capability_plugin(
     arch_mode: CapabilityMountMode,
     no_tools: bool,
 ) -> None:
-    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.composition.bootstrap as coding_bootstrap
 
     def reject_plugin_resolution(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("disabled Capability Plugins must not resolve")

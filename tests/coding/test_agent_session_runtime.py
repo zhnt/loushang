@@ -113,7 +113,7 @@ def _assistant_message(text: str) -> AssistantMessage:
 async def test_session_publishes_receipt_backed_events_for_every_new_commit(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.harness.events import TranscriptRecordCommitted
 
     runtime = create_agent_session_runtime(
@@ -142,7 +142,7 @@ async def test_session_publishes_receipt_backed_events_for_every_new_commit(
 async def test_session_uses_one_runtime_stream_with_product_projection(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.harness.events import ConversationMetadataChanged
 
     runtime = create_agent_session_runtime(
@@ -172,7 +172,7 @@ async def test_session_uses_one_runtime_stream_with_product_projection(
 async def test_session_normalizes_gateway_audit_sequence_into_runtime_stream(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.harness.events import ToolPolicyAuditEvent
 
     runtime = create_agent_session_runtime(
@@ -228,7 +228,7 @@ async def test_session_normalizes_gateway_audit_sequence_into_runtime_stream(
 async def test_session_emits_auditable_permission_profile_changes(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import (
+    from loushang.coding.composition.bootstrap import (
         create_agent_session_runtime,
         create_services,
     )
@@ -268,7 +268,7 @@ async def test_session_emits_auditable_permission_profile_changes(
 async def test_runtime_listener_failure_does_not_duplicate_agent_message(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     runtime = create_agent_session_runtime(
         session_dir=tmp_path,
@@ -310,11 +310,11 @@ async def test_runtime_listener_failure_does_not_duplicate_agent_message(
 
 @_async_test
 async def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
-    from loushang.coding.bootstrap import (
+    from loushang.coding.composition.bootstrap import (
         create_agent_session,
         create_agent_session_runtime,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -360,9 +360,9 @@ async def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
 async def test_runtime_clone_session_forks_current_leaf(
     tmp_path, composition_set: str
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.composition_provenance import pinned_composition_plan
-    from loushang.coding.composition_sets import resolve_coding_composition_set
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.provenance import pinned_composition_plan
+    from loushang.coding.composition.sets import resolve_coding_composition_set
 
     project = tmp_path / "project"
     project.mkdir()
@@ -392,7 +392,7 @@ async def test_runtime_clone_session_forks_current_leaf(
 
 @_async_test
 async def test_runtime_lists_session_summaries(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
     project.mkdir()
@@ -421,7 +421,7 @@ async def test_runtime_lists_session_summaries(tmp_path) -> None:
 
 @_async_test
 async def test_runtime_finds_session_summaries(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
@@ -453,8 +453,8 @@ async def test_runtime_finds_session_summaries(tmp_path) -> None:
 async def test_runtime_renames_and_deletes_sessions_by_resolved_reference(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
@@ -488,7 +488,7 @@ async def test_runtime_renames_and_deletes_sessions_by_resolved_reference(
 async def test_runtime_delete_session_refuses_current_session(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     project = tmp_path / "project"
     project.mkdir()
     runtime = create_agent_session_runtime(
@@ -510,7 +510,7 @@ async def test_runtime_rename_session_records_failure_diagnostic(tmp_path) -> No
     import pytest
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
@@ -553,7 +553,7 @@ async def test_runtime_delete_session_records_failure_diagnostic(tmp_path) -> No
     import pytest
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
@@ -594,7 +594,7 @@ async def test_runtime_delete_session_records_failure_diagnostic(tmp_path) -> No
 async def test_runtime_lists_all_session_summaries_across_session_dirs(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -629,7 +629,7 @@ async def test_runtime_lists_all_session_summaries_across_session_dirs(
 async def test_runtime_finds_all_session_summaries_across_session_dirs(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
@@ -658,7 +658,7 @@ async def test_runtime_finds_all_session_summaries_across_session_dirs(
 
 @_async_test
 async def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
@@ -704,8 +704,8 @@ async def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None
 
 @_async_test
 async def test_runtime_auto_refreshes_session_index_after_replacement(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
@@ -735,8 +735,8 @@ async def test_runtime_auto_refreshes_session_index_after_replacement(tmp_path) 
 @_async_test
 async def test_runtime_dispose_publishes_latest_session_summary(tmp_path) -> None:
     from loushang.ai.types import UserMessage
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
@@ -765,7 +765,7 @@ async def test_runtime_dispose_publishes_latest_session_summary(tmp_path) -> Non
 async def test_runtime_incrementally_repairs_current_summary_before_continuity_query(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     runtime = create_agent_session_runtime(
         session_dir=tmp_path,
@@ -796,7 +796,7 @@ async def test_runtime_auto_refreshes_session_index_after_rename_and_delete(
     tmp_path,
 ) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -850,8 +850,8 @@ async def test_runtime_auto_refreshes_session_index_after_rename_and_delete(
 
 @_async_test
 async def test_runtime_auto_index_refresh_uses_debounce_interval(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
@@ -881,7 +881,7 @@ async def test_runtime_auto_index_refresh_uses_debounce_interval(tmp_path) -> No
 
 @_async_test
 async def test_runtime_list_sessions_ignores_default_jsonl_exports(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -902,7 +902,7 @@ async def test_runtime_list_sessions_ignores_default_jsonl_exports(tmp_path) -> 
 
 @_async_test
 async def test_runtime_list_sessions_skips_invalid_session_files(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
     project.mkdir()
@@ -922,7 +922,7 @@ async def test_runtime_list_sessions_skips_invalid_session_files(tmp_path) -> No
 
 @_async_test
 async def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
 
     project_root = tmp_path / "project"
@@ -985,7 +985,7 @@ async def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> Non
 async def test_runtime_fork_session_before_user_message_returns_selected_text(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1021,7 +1021,7 @@ async def test_runtime_fork_session_before_user_message_returns_selected_text(
 async def test_runtime_fork_before_requires_user_message(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1040,7 +1040,7 @@ async def test_runtime_fork_before_requires_user_message(tmp_path) -> None:
 
 @_async_test
 async def test_runtime_exposes_standard_lifecycle_operations(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1083,7 +1083,7 @@ async def test_runtime_exposes_standard_lifecycle_operations(tmp_path) -> None:
 async def test_runtime_new_session_operation_runs_setup_and_with_session(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1138,11 +1138,11 @@ async def test_runtime_new_session_operation_runs_setup_and_with_session(
 
 @_async_test
 async def test_runtime_restore_and_fork_operations_run_with_session(tmp_path) -> None:
-    from loushang.coding.bootstrap import (
+    from loushang.coding.composition.bootstrap import (
         create_agent_session,
         create_agent_session_runtime,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1209,7 +1209,7 @@ async def test_runtime_restore_emits_one_aggregate_performance_event(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.session import lifecycle_adapter as lifecycle_adapter_module
 
     project_root = tmp_path / "project"
@@ -1249,7 +1249,7 @@ async def test_runtime_restore_emits_one_aggregate_performance_event(
 async def test_runtime_restores_legacy_discovery_as_authority_copy(
     tmp_path,
 ) -> None:
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1295,7 +1295,7 @@ async def test_runtime_rejects_compatibility_source_replaced_after_discovery(
     import pytest
 
     from loushang.coding.runtime import agent_session_runtime as runtime_module
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1356,8 +1356,8 @@ async def test_runtime_blocks_opaque_resume_when_discovery_budget_is_truncated(
     import pytest
 
     import loushang.harness.transcript.directory as directory_module
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
 
     authority_dir = tmp_path / "authority"
     first_dir = tmp_path / "first"
@@ -1393,8 +1393,8 @@ async def test_runtime_blocks_opaque_resume_when_discovery_budget_is_truncated(
 async def test_runtime_refuses_duplicate_canonical_identity(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
 
     authority_dir = tmp_path / "authority"
     authority_dir.mkdir()
@@ -1427,8 +1427,8 @@ async def test_runtime_refuses_same_id_with_different_discovery_content(
 ) -> None:
     import pytest
 
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1475,7 +1475,7 @@ async def test_runtime_refuses_same_id_with_different_discovery_content(
 async def test_runtime_switches_from_provisional_session_without_persisting_it(
     tmp_path,
 ) -> None:
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1508,7 +1508,7 @@ async def test_runtime_switches_from_provisional_session_without_persisting_it(
 async def test_runtime_replacement_callbacks_require_async_callables(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1531,7 +1531,7 @@ async def test_runtime_replacement_callback_failures_keep_replacement_and_record
     import pytest
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
@@ -1598,7 +1598,7 @@ async def test_runtime_replacement_callback_failures_keep_replacement_and_record
 
 @_async_test
 async def test_runtime_import_from_jsonl_copies_and_switches_session(tmp_path) -> None:
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1635,7 +1635,7 @@ async def test_runtime_import_from_jsonl_copies_and_switches_session(tmp_path) -
 async def test_runtime_import_from_jsonl_does_not_overwrite_existing_same_name_session(
     tmp_path,
 ) -> None:
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     import_dir = tmp_path / "imports"
@@ -1684,7 +1684,7 @@ async def test_runtime_import_from_jsonl_retries_when_unique_destination_is_clai
     import errno
 
     from loushang.coding.runtime import agent_session_runtime as runtime_module
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     import_dir = tmp_path / "imports"
@@ -1746,7 +1746,7 @@ async def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for
 
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.runtime import agent_session_runtime as runtime_module
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     class DummySession:
@@ -1833,7 +1833,7 @@ async def test_runtime_import_from_jsonl_cleans_copied_file_when_stored_cwd_is_m
 ) -> None:
     import pytest
 
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.session import MissingSessionCwdError
 
     project_root = tmp_path / "project"
@@ -1864,7 +1864,7 @@ async def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) ->
     import pytest
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.harness.session import MissingSessionCwdError
 
@@ -1931,7 +1931,7 @@ async def test_runtime_restore_rejects_session_when_stored_cwd_is_missing(
     import pytest
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.session import MissingSessionCwdError
 
     missing_cwd = tmp_path / "missing-project"
@@ -1965,7 +1965,7 @@ async def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> N
     import pytest
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.harness.session import MissingSessionCwdError
 
@@ -2026,7 +2026,7 @@ async def test_runtime_restore_can_fallback_when_stored_cwd_is_missing(
     tmp_path,
 ) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     missing_cwd = tmp_path / "missing-project"
@@ -2075,7 +2075,7 @@ async def test_runtime_import_from_jsonl_cwd_override_bypasses_missing_stored_cw
     tmp_path,
 ) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
     missing_cwd = tmp_path / "missing-project"
@@ -2132,7 +2132,7 @@ async def test_runtime_import_from_jsonl_respects_before_switch_cancellation(
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2194,7 +2194,7 @@ async def test_runtime_import_from_jsonl_records_before_switch_failure_and_flush
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
@@ -2274,7 +2274,7 @@ async def test_runtime_lifecycle_operations_report_cancellation(tmp_path) -> Non
     from pathlib import Path
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2336,7 +2336,7 @@ async def test_extension_command_context_fork_uses_runtime_host(tmp_path) -> Non
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2405,7 +2405,7 @@ async def test_extension_command_context_fork_supports_before_position(
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2475,7 +2475,7 @@ async def test_extension_command_context_fork_defaults_to_before_position(
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2542,7 +2542,7 @@ async def test_extension_command_context_fork_before_runs_with_session_on_new_fo
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2614,7 +2614,7 @@ async def test_extension_command_context_new_session_uses_runtime_host(
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2699,7 +2699,7 @@ async def test_extension_command_new_session_with_session_gets_fresh_context_and
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2772,7 +2772,7 @@ async def test_replaced_session_context_send_message_becomes_stale_after_next_re
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2848,7 +2848,7 @@ async def test_agent_session_exposes_pi_style_replaced_session_context(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     project = tmp_path / "project"
@@ -2879,7 +2879,7 @@ async def test_extension_command_context_switch_session_uses_runtime_host(
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2962,7 +2962,7 @@ async def test_extension_command_replacement_callbacks_require_async_callables(
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
@@ -3020,7 +3020,10 @@ async def test_extension_command_replacement_callbacks_require_async_callables(
 
 @_async_test
 async def test_runtime_exposes_diagnostics_snapshot(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session_runtime,
+        create_services,
+    )
     from loushang.harness.diagnostics import DiagnosticsQuery
 
     services = create_services()
@@ -3066,7 +3069,10 @@ async def test_runtime_exposes_diagnostics_snapshot(tmp_path) -> None:
 
 @_async_test
 async def test_runtime_exposes_current_session_diagnostics(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime, create_services
+    from loushang.coding.composition.bootstrap import (
+        create_agent_session_runtime,
+        create_services,
+    )
     from loushang.harness.diagnostics import DiagnosticsQuery
 
     services = create_services()
@@ -3120,10 +3126,10 @@ async def test_agent_session_runtime_create_restore_and_fork_reconstruct_extensi
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.composition_sets import resolve_coding_composition_set
+    from loushang.coding.composition.sets import resolve_coding_composition_set
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     events: list[str] = []
@@ -3182,7 +3188,7 @@ async def test_runtime_replacement_emits_shutdown_before_next_session_start(
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     events: list[tuple[str, str | None, str | None]] = []
@@ -3250,7 +3256,7 @@ async def test_runtime_syncs_extension_lifecycle_failure_diagnostics(tmp_path) -
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
@@ -3328,7 +3334,7 @@ async def test_runtime_new_session_reuses_current_cwd_and_disposes_previous_sess
     tmp_path,
 ) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3364,7 +3370,7 @@ async def test_runtime_new_session_reuses_current_cwd_and_disposes_previous_sess
 async def test_builtin_new_command_replaces_current_session_without_materializing_empty_files(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     session_dir = tmp_path / "sessions"
     runtime = create_agent_session_runtime(
@@ -3394,7 +3400,7 @@ async def test_builtin_new_command_replaces_current_session_without_materializin
 async def test_runtime_session_replacement_keeps_shared_approval_presenter(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -3466,8 +3472,8 @@ async def test_runtime_session_replacement_keeps_shared_approval_presenter(
 async def test_runtime_direct_replacement_reactivates_shared_approval_presenter(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -3546,7 +3552,7 @@ async def test_runtime_injected_current_session_reopens_shared_approval_resolver
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -3610,7 +3616,7 @@ async def test_runtime_replacement_disposes_agent_session_local_resources(
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
@@ -3648,7 +3654,7 @@ async def test_runtime_replacement_records_shutdown_emit_failure_and_keeps_repla
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
@@ -3705,7 +3711,7 @@ async def test_runtime_new_session_factory_failure_keeps_current_session_alive(
     import pytest
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3742,7 +3748,7 @@ async def test_runtime_new_session_factory_failure_keeps_current_session_alive(
 @_async_test
 async def test_runtime_replacements_are_serialized(tmp_path) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3794,7 +3800,7 @@ async def test_runtime_dispose_records_session_index_flush_failure(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.harness.transcript import AgentTranscriptSessionCatalog
 
@@ -3848,7 +3854,7 @@ async def test_runtime_dispose_records_session_index_flush_failure(
 
 @_async_test
 async def test_runtime_exposes_current_session_and_cwd_properties(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
     project.mkdir()
@@ -3866,7 +3872,7 @@ async def test_runtime_exposes_current_session_and_cwd_properties(tmp_path) -> N
 @_async_test
 async def test_runtime_replacement_callbacks_run_before_with_session(tmp_path) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3916,7 +3922,7 @@ async def test_runtime_replacement_callbacks_run_before_with_session(tmp_path) -
 
 @_async_test
 async def test_runtime_restore_session_accepts_session_id(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
     project.mkdir()
@@ -3940,7 +3946,7 @@ async def test_runtime_restore_session_accepts_session_id(tmp_path) -> None:
 
 @_async_test
 async def test_runtime_restore_session_accepts_session_id_prefix(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
     project.mkdir()
@@ -3967,7 +3973,7 @@ async def test_runtime_restore_session_rejects_ambiguous_session_id_prefix(
 ) -> None:
     import pytest
 
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
     from loushang.harness.conversation import ConversationHeader
     from loushang.harness.transcript.jsonl_file import (
         write_agent_transcript_export as write_session_file,
@@ -3999,7 +4005,7 @@ async def test_runtime_restore_session_rejects_ambiguous_session_id_prefix(
 async def test_runtime_create_session_normalizes_cwd_and_rejects_missing_paths(
     tmp_path,
 ) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
     nested = project / "nested"
@@ -4027,7 +4033,7 @@ async def test_runtime_new_session_respects_extension_before_switch_cancellation
     from pathlib import Path
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -4083,7 +4089,7 @@ async def test_runtime_fork_session_respects_extension_before_fork_cancellation(
     from pathlib import Path
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -4141,7 +4147,7 @@ async def test_runtime_new_session_allows_extension_non_cancel_decision(
     from pathlib import Path
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -4198,7 +4204,7 @@ async def test_runtime_restore_session_allows_extension_non_cancel_decision(
     from pathlib import Path
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -4274,7 +4280,7 @@ async def test_runtime_fork_session_allows_extension_non_cancel_decision(
     from pathlib import Path
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,

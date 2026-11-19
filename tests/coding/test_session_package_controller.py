@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 
 from loushang.coding.control import ControlConfig, SettingsManager
-from loushang.coding.resource_runtime import (
+from loushang.coding.resources.runtime import (
     CodingPackageMaterializer as PackageMaterializer,
 )
-from loushang.coding.resource_runtime import (
+from loushang.coding.resources.runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
     PythonPackageInstallerBackend,

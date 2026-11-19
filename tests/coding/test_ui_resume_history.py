@@ -12,23 +12,23 @@ from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.types import UserMessage
-from loushang.coding import bootstrap
-from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.composition import bootstrap
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.interaction.resume_history import (
     build_coding_resume_history_screen,
 )
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
-from loushang.coding.resume_activation_attempt import CodingActivationAttemptV1
-from loushang.coding.resume_activation_plan import build_session_activation_plan
-from loushang.coding.resume_permission_confirmation import (
+from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
+from loushang.coding.resume.activation_plan import build_session_activation_plan
+from loushang.coding.resume.permission_confirmation import (
     CodingResumePermissionConfirmation,
     coding_resume_permission_request,
 )
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
 from loushang.coding.session.agent_session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.harness.approval import DenyApprovalResolver, InteractiveApprovalResolver
 from loushang.harnesstui.conversation.application_host import (

@@ -4229,29 +4229,28 @@ def _exercise_posix_local_wheel_product_composition(
     entrypoint: str,
 ) -> None:
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding._base_plugin import (
+    from loushang.coding.arch._provider_api import CodingArchPluginConfigV1
+    from loushang.coding.composition.base_plugin import (
         CodingBasePluginAssemblyError,
         coding_base_plugin_root,
         prepare_coding_base_product_plan,
     )
-    from loushang.coding._base_product_composition import (
+    from loushang.coding.composition.base_product import (
         compile_coding_base_product_selection,
     )
-    from loushang.coding._product_capability_plugin_composition import (
-        prepare_coding_builtin_product_composition,
-        prepare_coding_product_capability_plugin_composition,
-    )
-    from loushang.coding._resource_catalog_shadow import (
-        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
-        CodingResourceCatalogAdmissionError,
-    )
-    from loushang.coding.arch._provider_api import CodingArchPluginConfigV1
-    from loushang.coding.bootstrap import (
+    from loushang.coding.composition.bootstrap import (
         create_agent_session,
         create_agent_session_runtime,
         create_services,
     )
-    from loushang.coding.composition_sets import resolve_coding_composition_set
+    from loushang.coding.composition.dependency_grants import (
+        coding_plugin_distribution_evidence_resolver,
+    )
+    from loushang.coding.composition.product_capability_plugins import (
+        prepare_coding_builtin_product_composition,
+        prepare_coding_product_capability_plugin_composition,
+    )
+    from loushang.coding.composition.sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
     from loushang.coding.package.builtin_wheel import (
@@ -4276,13 +4275,14 @@ def _exercise_posix_local_wheel_product_composition(
         open_coding_fenced_product_application_owner,
         open_coding_package_product_state,
     )
-    from loushang.coding.plugin_dependency_grants import (
-        coding_plugin_distribution_evidence_resolver,
-    )
     from loushang.coding.plugin_manager.lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.resources.catalog_compatibility import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+        CodingResourceCatalogAdmissionError,
+    )
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval.plugin_execution import (
         PluginExecutionDecisionJournal,
     )
@@ -5997,11 +5997,11 @@ def _exercise_posix_local_wheel_product_composition(
                 try:
                     with (
                         patch(
-                            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                            'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
                             side_effect=AssertionError("legacy coding.base assembly"),
                         ),
                         patch(
-                            "loushang.coding.bootstrap._default_package_materializer",
+                            'loushang.coding.composition.bootstrap._default_package_materializer',
                             side_effect=AssertionError("legacy package materializer"),
                         ),
                     ):
@@ -6064,12 +6064,12 @@ def _exercise_posix_local_wheel_product_composition(
                         SessionCreateRequestV1,
                     )
                     from loushang.appserver.protocol import SessionScopeV1
-                    from loushang.coding.hosted_catalog import (
+                    from loushang.coding.hosted.catalog import (
                         CODING_HOSTED_COMPATIBILITY_ID,
                         CodingHostedScopeV1,
                         CodingHostedSessionCatalogV1,
                     )
-                    from loushang.coding.hosted_session import (
+                    from loushang.coding.hosted.session import (
                         CodingRealHostedSessionFactoryV1,
                     )
 
@@ -6125,13 +6125,13 @@ def _exercise_posix_local_wheel_product_composition(
                         try:
                             with (
                                 patch(
-                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
                                     side_effect=AssertionError(
                                         "legacy coding.base assembly"
                                     ),
                                 ),
                                 patch(
-                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    'loushang.coding.composition.bootstrap._default_package_materializer',
                                     side_effect=AssertionError(
                                         "legacy package materializer"
                                     ),
@@ -6524,7 +6524,7 @@ def _exercise_posix_local_wheel_product_composition(
                     "prompts/standard.md",
                     "skills/standard/SKILL.md",
                 }
-                from loushang.coding._resource_catalog_shadow import (
+                from loushang.coding.resources.catalog_compatibility import (
                     build_coding_initial_resource_catalog_adapter,
                 )
                 from loushang.harness.resources._catalog_input_receipt import (
@@ -7276,11 +7276,11 @@ def _exercise_posix_local_wheel_product_composition(
                             return_value="2.0.0",
                         ),
                         patch(
-                            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                            'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
                             side_effect=AssertionError("legacy base assembly"),
                         ),
                         patch(
-                            "loushang.coding.bootstrap._default_package_materializer",
+                            'loushang.coding.composition.bootstrap._default_package_materializer',
                             side_effect=AssertionError("legacy package materializer"),
                         ),
                     ):
@@ -7961,17 +7961,17 @@ def _exercise_posix_local_wheel_product_composition(
                         try:
                             with (
                                 patch(
-                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
                                     side_effect=AssertionError("legacy base route"),
                                 ),
                                 patch(
-                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    'loushang.coding.composition.bootstrap.prepare_coding_capability_plugin_composition',
                                     side_effect=AssertionError(
                                         "legacy Capability route"
                                     ),
                                 ),
                                 patch(
-                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    'loushang.coding.composition.bootstrap._default_package_materializer',
                                     side_effect=AssertionError("legacy materializer"),
                                 ),
                             ):
@@ -8034,13 +8034,13 @@ def _exercise_posix_local_wheel_product_composition(
                         try:
                             with (
                                 patch(
-                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    'loushang.coding.composition.bootstrap.prepare_coding_capability_plugin_composition',
                                     side_effect=AssertionError(
                                         "legacy Capability fallback"
                                     ),
                                 ),
                                 patch(
-                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    'loushang.coding.composition.bootstrap._default_package_materializer',
                                     side_effect=AssertionError(
                                         "legacy materializer fallback"
                                     ),
@@ -8093,17 +8093,17 @@ def _exercise_posix_local_wheel_product_composition(
                         try:
                             with (
                                 patch(
-                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
                                     side_effect=AssertionError("legacy base route"),
                                 ),
                                 patch(
-                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    'loushang.coding.composition.bootstrap.prepare_coding_capability_plugin_composition',
                                     side_effect=AssertionError(
                                         "legacy Capability route"
                                     ),
                                 ),
                                 patch(
-                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    'loushang.coding.composition.bootstrap._default_package_materializer',
                                     side_effect=AssertionError("legacy materializer"),
                                 ),
                             ):
@@ -8155,7 +8155,7 @@ def _exercise_posix_local_wheel_product_composition(
 
                         async def standalone_product_session() -> None:
                             with patch(
-                                "loushang.coding.bootstrap.resolve_platform_home",
+                                'loushang.coding.composition.bootstrap.resolve_platform_home',
                                 return_value=tmp_path / "standalone-platform",
                             ):
                                 standalone = create_agent_session_runtime(
@@ -8190,19 +8190,19 @@ def _exercise_posix_local_wheel_product_composition(
                                         return_value="2.0.0",
                                     ),
                                     patch(
-                                        "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                        'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
                                         side_effect=AssertionError(
                                             "legacy standalone base"
                                         ),
                                     ),
                                     patch(
-                                        "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                        'loushang.coding.composition.bootstrap.prepare_coding_capability_plugin_composition',
                                         side_effect=AssertionError(
                                             "legacy standalone Capability"
                                         ),
                                     ),
                                     patch(
-                                        "loushang.coding.bootstrap._default_package_materializer",
+                                        'loushang.coding.composition.bootstrap._default_package_materializer',
                                         side_effect=AssertionError(
                                             "legacy standalone materializer"
                                         ),
@@ -8246,15 +8246,15 @@ def _exercise_posix_local_wheel_product_composition(
                                 return_value="2.0.0",
                             ),
                             patch(
-                                "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
                                 side_effect=AssertionError("legacy direct base"),
                             ),
                             patch(
-                                "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                'loushang.coding.composition.bootstrap.prepare_coding_capability_plugin_composition',
                                 side_effect=AssertionError("legacy direct Capability"),
                             ),
                             patch(
-                                "loushang.coding.bootstrap._default_package_materializer",
+                                'loushang.coding.composition.bootstrap._default_package_materializer',
                                 side_effect=AssertionError(
                                     "legacy direct materializer"
                                 ),
@@ -8420,7 +8420,7 @@ def _exercise_posix_local_wheel_product_composition(
                                 return_value="2.0.0",
                             ),
                             patch(
-                                "loushang.coding.bootstrap._default_package_materializer",
+                                'loushang.coding.composition.bootstrap._default_package_materializer',
                                 side_effect=AssertionError(
                                     "legacy startup materializer"
                                 ),

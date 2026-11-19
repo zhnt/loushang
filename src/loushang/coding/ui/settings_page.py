@@ -6,7 +6,7 @@ from loushang.coding.interaction.settings_profile import (
     CODING_SETTING_BINDINGS,
     CODING_SETTING_COPY,
 )
-from loushang.coding.model_selection_tui import select_available_model
+from loushang.coding.presentation.tui.model_selection import select_available_model
 from loushang.harnesstui.settings.workflow import (
     BooleanSettingsWorkflowAdapter,
     SettingsPageView,

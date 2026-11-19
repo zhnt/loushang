@@ -18,7 +18,7 @@ from typing import cast
 import pytest
 
 import loushang.coding.cli.application as application_module
-import loushang.coding.plugin_manager.cli as cli_module
+import loushang.coding.plugin_manager.binding as cli_module
 import loushang.coding.plugin_manager.lifecycle as lifecycle_module
 from loushang.coding.cli.application import run_cli
 from loushang.coding.cli.args import (
@@ -27,7 +27,7 @@ from loushang.coding.cli.args import (
     plugin_repair_option_requested,
 )
 from loushang.coding.control import SettingsManager
-from loushang.coding.plugin_manager.cli import (
+from loushang.coding.plugin_manager.binding import (
     CodingPluginManagementCliError,
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,

@@ -81,10 +81,10 @@ def install():
     from loushang.appservice.client_scope import AppClientScopeV1
     from loushang.appservice.execution_service import ScopedExecutionClientV1
     from loushang.appservice.runtime import AppServiceV1
-    from loushang.coding._hosted_execution_work import CodingExecutionWorkV1
-    from loushang.coding.appservice_adapter import CodingHostedSessionV1
-    from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
-    from loushang.coding.hosted_resume import _HostedResumeExecutionWorkV1
+    from loushang.coding.hosted._execution_work import CodingExecutionWorkV1
+    from loushang.coding.hosted.execution import CodingHostedExecutionSessionV1
+    from loushang.coding.hosted.resume import _HostedResumeExecutionWorkV1
+    from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
 
     original_start = CodingHostedSessionV1.start_turn
     original_projection = CodingHostedSessionV1._observe_projection

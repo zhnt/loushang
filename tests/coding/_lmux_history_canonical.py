@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loushang.ai.types import AssistantMessage, TextPart, UserMessage
 from loushang.appserver.protocol import SessionIdentityV1
-from loushang.coding.hosted_catalog import CODING_HOSTED_COMPATIBILITY_ID
+from loushang.coding.hosted.catalog import CODING_HOSTED_COMPATIBILITY_ID
 from loushang.harness.transcript import (
     CONTEXT_BRANCH_SUMMARY_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,

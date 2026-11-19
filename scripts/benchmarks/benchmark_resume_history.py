@@ -19,11 +19,11 @@ from statistics import median
 from time import perf_counter
 
 from loushang.ai.types import UserMessage
-from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
-from loushang.coding.product_plan import (
+from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
 )
+from loushang.coding.composition.provenance import CODING_COMPOSITION_HEADER_KEY
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
 from loushang.harness.conversation import ConversationHeader, ConversationRecord
 from loushang.harness.transcript import (

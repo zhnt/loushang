@@ -16,7 +16,7 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.model import Capabilities, Model
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.appservice.execution_registry import ExecutionRegistryV1
-from loushang.coding.managed_local import CodingManagedLocalCommandV1
+from loushang.coding.hosted.managed.local import CodingManagedLocalCommandV1
 
 root = Path(ManagedChildInvocationV1.from_json(sys.argv[1]).service.host_root)
 
@@ -83,6 +83,6 @@ with (root / "host-diagnostic.log").open("w") as diagnostic:
     try:
         # All invocation admission, managed Mux, lifecycle, listeners and shutdown
         # run through the production module. No replacement bootstrap/runtime.
-        runpy.run_module("loushang.coding.managed_process", run_name="__main__")
+        runpy.run_module('loushang.coding.hosted.managed.process', run_name="__main__")
     finally:
         faulthandler.cancel_dump_traceback_later()

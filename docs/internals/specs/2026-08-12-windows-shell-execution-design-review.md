@@ -65,7 +65,7 @@ Windows 用户从工具调用任意 Bash 命令时立即得到：
 
 对应定义位于 [`config/agent/types.py`](../../../src/loushang/harness/config/agent/types.py)，下层 [`tools/workspace/factory.py`](../../../src/loushang/harness/tools/workspace/factory.py) 也能接收这些值。
 
-但是 Coding 工具注册路径 [`coding/tool_pack.py`](../../../src/loushang/coding/tool_pack.py) 没有把设置传入工具选项，用户 `!` 命令又完全绕过这套选项。当前测试主要证明配置能够保存和重新加载，没有证明它会改变最终 spawn argv。
+但是 Coding 工具注册路径 [`coding/tool_pack.py`](../../../src/loushang/coding/resources/tool_pack.py) 没有把设置传入工具选项，用户 `!` 命令又完全绕过这套选项。当前测试主要证明配置能够保存和重新加载，没有证明它会改变最终 spawn argv。
 
 此外，即使直接把 `powershell.exe` 填进现有 `shell_path`，固定的 `-lc` 调用协议仍然错误。因此本问题不能通过单独接线 `shell_path` 修复。
 

@@ -32,7 +32,7 @@ from loushang.coding.package.product_worker_windows_recovery_inventory import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_gc_executor import (

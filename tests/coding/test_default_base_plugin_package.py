@@ -7,16 +7,16 @@ from pathlib import Path
 import pytest
 
 from loushang.ai.types import ToolCall
-from loushang.coding._base_plugin import (
+from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssemblyError,
     build_coding_base_plugin_owners,
     coding_base_plugin_root,
     prepare_coding_base_plugin_assembly,
     prepare_coding_base_plugin_session,
 )
-from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
-from loushang.coding.resource_runtime import CodingPackageMaterializer
+from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,

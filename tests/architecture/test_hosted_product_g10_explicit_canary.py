@@ -11,8 +11,8 @@ DESIGN = Path("docs/internals/architecture/apphost/installed-explicit-canary-g10
 INVENTORY = Path(
     "docs/internals/architecture/apphost/hosted-product-g9-entrypoint-inventory.json"
 )
-CANARY = Path("src/loushang/coding/apphost_canary.py")
-CONTROL = Path("src/loushang/coding/_apphost_canary_control.py")
+CANARY = Path('src/loushang/coding/hosted/canary.py')
+CONTROL = Path('src/loushang/coding/hosted/_canary_control.py')
 CLI_ADAPTER = Path("src/loushang/coding/cli/apphost.py")
 CLI_ROOT = Path("src/loushang/coding/cli/application.py")
 MACHINE_RESOURCES = Path("src/loushang/harness/machine_resources/control_plane.py")
@@ -98,8 +98,8 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
     del _case
     assert {
         "loushang.apphost",
-        "loushang.coding._apphost_canary_control",
-        "loushang.coding.apphost_composition",
+        'loushang.coding.hosted._canary_control',
+        'loushang.coding.hosted.composition',
         "loushang.hosting",
     }.issubset(_imports(CANARY))
     assert {
@@ -107,7 +107,7 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
         "loushang.harness.journal",
     }.issubset(_imports(CONTROL))
     assert "loushang.coding.cli.apphost" in _imports(CLI_ROOT)
-    assert "loushang.coding.apphost_canary" not in _imports(CLI_ROOT)
+    assert 'loushang.coding.hosted.canary' not in _imports(CLI_ROOT)
 
     adapter_tree = ast.parse(_read(CLI_ADAPTER), filename=str(CLI_ADAPTER))
     top_level_imports = {
@@ -115,7 +115,7 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
         for node in adapter_tree.body
         if isinstance(node, ast.ImportFrom) and node.module is not None
     }
-    assert "loushang.coding.apphost_canary" not in top_level_imports
+    assert 'loushang.coding.hosted.canary' not in top_level_imports
     lazy_function = next(
         node
         for node in adapter_tree.body
@@ -124,11 +124,11 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
     )
     assert any(
         isinstance(node, ast.ImportFrom)
-        and node.module == "loushang.coding.apphost_canary"
+        and node.module == 'loushang.coding.hosted.canary'
         for node in ast.walk(lazy_function)
     )
     for root in (
-        Path("src/loushang/coding/bootstrap.py"),
+        Path('src/loushang/coding/composition/bootstrap.py'),
         Path("src/loushang/coding/__init__.py"),
         Path("src/loushang/coding/ui/cli.py"),
     ):

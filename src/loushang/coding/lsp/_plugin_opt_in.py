@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from loushang.coding._base_plugin import CodingBasePluginAssembly
-from loushang.coding._capability_plugin_composition import (
+from loushang.coding.composition.base_plugin import CodingBasePluginAssembly
+from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginApprovalOwner,
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionError,
@@ -22,7 +22,7 @@ from loushang.coding.lsp._provider_api import (
     CODING_LSP_CAPABILITY_DEFINITION,
     CodingLspPluginConfigV1,
 )
-from loushang.coding.resource_runtime import CodingPackageMaterializer
+from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.harness.approval.plugin_activation import (
     ContributionActivationApprovalSubject,
     PluginActivationDecisionJournal,

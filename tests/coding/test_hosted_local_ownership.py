@@ -7,7 +7,7 @@ import pytest
 
 import loushang.apphost.local as apphost_local
 from loushang.apphost.application import HostedApplicationError
-from loushang.coding.hosted_local import CodingLocalCommandV1
+from loushang.coding.hosted.local import CodingLocalCommandV1
 
 from .test_hosted_local import _local_launch
 
@@ -86,7 +86,7 @@ def _command(tmp_path, monkeypatch, *, timeout=1):
 
     attempt = Attempt()
     monkeypatch.setattr(
-        "loushang.coding.hosted_local.create_coding_hosted_attempt",
+        'loushang.coding.hosted.local.create_coding_hosted_attempt',
         lambda *a, **k: attempt,
     )
     monkeypatch.setattr("loushang.apphost.local.HostedLocalRuntimeV1", Local)

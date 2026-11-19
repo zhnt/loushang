@@ -12,15 +12,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.package.epoch_layout import coding_fenced_product_exists
-from loushang.coding.package.product_management_cli import (
+from loushang.coding.package.management_binding import (
     build_coding_fenced_product_management_cli_ports,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.plugin_management.application import (
     PluginManagementApplicationPorts,
     PluginManagementQueryV1,

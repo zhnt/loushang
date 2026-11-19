@@ -450,30 +450,30 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
     assert not Path("src/loushang/coding/capability_profile.py").exists()
     assert not Path("src/loushang/coding/capability_plan.py").exists()
     assert not Path("src/loushang/coding/runtime_profile.py").exists()
-    assert Path("src/loushang/coding/runtime_capability_admission.py").exists()
+    assert Path('src/loushang/coding/composition/runtime_admission.py').exists()
 
     expected_imports = {
-        Path("src/loushang/coding/product_plan.py"): {
+        Path('src/loushang/coding/composition/plan.py'): {
             "loushang.harness.transcript.AgentTranscriptProfileRuntime",
             "loushang.harness.transcript.AgentTranscriptRuntimeSpec",
             "loushang.harness.capabilities.standard_capability_composition_plan",
             "loushang.harness.runtime.RuntimeProfileResolver",
         },
-        Path("src/loushang/coding/bootstrap.py"): {
-            "loushang.coding.runtime_capability_admission.bind_coding_side_question",
-            "loushang.coding.runtime_capability_admission.resolve_coding_capability_profile",
-            "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
+        Path('src/loushang/coding/composition/bootstrap.py'): {
+            "loushang.coding.composition.runtime_admission.bind_coding_side_question",
+            "loushang.coding.composition.runtime_admission.resolve_coding_capability_profile",
+            "loushang.coding.composition.plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.stage_resource_composition_candidate",
         },
         Path("src/loushang/coding/session/agent_session.py"): {
-            "loushang.coding.runtime_capability_admission.resolve_coding_capability_profile",
-            "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
+            "loushang.coding.composition.runtime_admission.resolve_coding_capability_profile",
+            "loushang.coding.composition.plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.StagedResourceCompositionCandidate",
             "loushang.harness.capabilities.stage_resource_composition_candidate",
         },
-        Path("src/loushang/coding/session_manager.py"): {
-            "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
-            "loushang.coding.product_plan.CODING_TRANSCRIPT_RUNTIME",
+        Path('src/loushang/coding/session/manager.py'): {
+            "loushang.coding.composition.plan.CODING_CAPABILITY_PROFILE",
+            "loushang.coding.composition.plan.CODING_TRANSCRIPT_RUNTIME",
         },
     }
     missing: list[str] = []
@@ -487,11 +487,11 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
 
     admission_boundary = ImportBoundary(
         name="Coding Runtime Capability admission adapter",
-        root=Path("src/loushang/coding/runtime_capability_admission.py"),
+        root=Path('src/loushang/coding/composition/runtime_admission.py'),
         forbidden_prefixes=(
-            "loushang.coding.bootstrap",
+            'loushang.coding.composition.bootstrap',
             "loushang.coding.session",
-            "loushang.coding.session_manager",
+            'loushang.coding.session.manager',
         ),
     )
     assert _find_forbidden_imports(admission_boundary) == []
@@ -862,7 +862,7 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     runtime_profile_source = Path(
         "src/loushang/harness/transcript/runtime_profile.py"
     ).read_text(encoding="utf-8")
-    product_plan_source = Path("src/loushang/coding/product_plan.py").read_text(
+    product_plan_source = Path('src/loushang/coding/composition/plan.py').read_text(
         encoding="utf-8"
     )
     composition_source = Path("src/loushang/harness/session/composition.py").read_text(
@@ -1385,7 +1385,7 @@ def test_package_projection_is_harness_owned_and_product_free() -> None:
     catalog_source = Path(
         "src/loushang/harness/resources/packages/catalog.py"
     ).read_text(encoding="utf-8")
-    coding_resources = Path("src/loushang/coding/resource_runtime.py").read_text(
+    coding_resources = Path('src/loushang/coding/resources/runtime.py').read_text(
         encoding="utf-8"
     )
 
@@ -1408,7 +1408,7 @@ def test_reusable_product_bindings_use_existing_shared_owners() -> None:
     workspace_registry = Path(
         "src/loushang/harness/tools/workspace/registry.py"
     ).read_text(encoding="utf-8")
-    coding_tools = Path("src/loushang/coding/tool_pack.py").read_text(encoding="utf-8")
+    coding_tools = Path('src/loushang/coding/resources/tool_pack.py').read_text(encoding="utf-8")
     agent_application = Path(
         "src/loushang/harnesstui/conversation/agent_application.py"
     ).read_text(encoding="utf-8")
@@ -1487,13 +1487,13 @@ def test_plain_services_and_work_bindings_remove_coding_duplication() -> None:
     session_bootstrap = Path("src/loushang/harness/session/bootstrap.py").read_text(
         encoding="utf-8"
     )
-    coding_bootstrap = Path("src/loushang/coding/bootstrap.py").read_text(
+    coding_bootstrap = Path('src/loushang/coding/composition/bootstrap.py').read_text(
         encoding="utf-8"
     )
     work_session = Path("src/loushang/harnesswork/integrations/session.py").read_text(
         encoding="utf-8"
     )
-    coding_prompt = Path("src/loushang/coding/prompt_command.py").read_text(
+    coding_prompt = Path('src/loushang/coding/cli/prompt.py').read_text(
         encoding="utf-8"
     )
 
@@ -1730,7 +1730,7 @@ def test_product_transcript_session_is_neutral_and_adopted() -> None:
     session_source = Path(
         "src/loushang/harness/transcript/product_session.py"
     ).read_text(encoding="utf-8")
-    coding_adapter_source = Path("src/loushang/coding/session_manager.py").read_text(
+    coding_adapter_source = Path('src/loushang/coding/session/manager.py').read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -2963,7 +2963,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             "loushang.harness.journal.JsonlJournal",
             "loushang.harness.journal.journal_file_lock",
         },
-        Path("src/loushang/coding/session_manager.py"): {
+        Path('src/loushang/coding/session/manager.py'): {
             "loushang.harness.transcript.AgentTranscriptLifecycle",
             "loushang.harness.transcript.AgentTranscriptSessionFactory",
             "loushang.harness.transcript.ProductTranscriptSession",
@@ -3057,7 +3057,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     )
 
     session_manager_imports = set(
-        _absolute_imports(Path("src/loushang/coding/session_manager.py"))
+        _absolute_imports(Path('src/loushang/coding/session/manager.py'))
     )
     assert (
         "loushang.harness.transcript.ProductTranscriptSession"
@@ -3114,7 +3114,7 @@ def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
     )
 
     session_manager_imports = set(
-        _absolute_imports(Path("src/loushang/coding/session_manager.py"))
+        _absolute_imports(Path('src/loushang/coding/session/manager.py'))
     )
     assert (
         "loushang.harness.transcript.AgentTranscriptLifecycle"
@@ -3152,7 +3152,7 @@ def test_harness_agent_transcript_session_factory_is_documented_and_adopted() ->
     )
 
     session_manager_imports = set(
-        _absolute_imports(Path("src/loushang/coding/session_manager.py"))
+        _absolute_imports(Path('src/loushang/coding/session/manager.py'))
     )
     assert (
         "loushang.harness.transcript.AgentTranscriptSessionFactory"
@@ -3197,7 +3197,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     assert "SummaryResourceOperations" in inventory_text
 
     expected_imports = {
-        Path("src/loushang/coding/session_manager.py"): {
+        Path('src/loushang/coding/session/manager.py'): {
             "loushang.harness.transcript.ProductTranscriptSession",
         },
         Path("src/loushang/harness/config/agent/manager.py"): {
@@ -3300,7 +3300,7 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
             "loushang.harness.config.ConfigFieldSpec",
             "loushang.harness.config.SchemaConfigCodec",
         },
-        Path("src/loushang/coding/bootstrap.py"): {
+        Path('src/loushang/coding/composition/bootstrap.py'): {
             "loushang.harness.session.AgentProductConstructionBinding",
         },
     }
@@ -3747,7 +3747,7 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
 
     coding_store_imports = {
         imported
-        for path in (Path("src/loushang/coding/session_manager.py"),)
+        for path in (Path('src/loushang/coding/session/manager.py'),)
         for imported in _absolute_imports(path)
     }
     assert "loushang.harness.transcript.ProductTranscriptSession" in (
@@ -4639,7 +4639,7 @@ def test_code_enabled_products_reuse_harness_workspace_capabilities() -> None:
     for tool_name in ("read", "write", "edit"):
         assert not Path(f"src/loushang/coding/tools/{tool_name}.py").exists()
 
-    coding_capabilities = Path("src/loushang/coding/capabilities.py").read_text(
+    coding_capabilities = Path('src/loushang/coding/composition/capabilities.py').read_text(
         encoding="utf-8"
     )
     assert 'CODING_ARCH_CAPABILITY = "coding.arch"' in coding_capabilities
@@ -4804,7 +4804,7 @@ def test_tool_authoring_and_execution_scope_have_single_harness_owners() -> None
 
 def test_resource_package_runtime_has_harness_owners() -> None:
     import loushang.coding as coding
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer,
         CodingResourceLoader,
     )
@@ -5350,7 +5350,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             "loushang.harness.commands.CommandCatalog",
             "loushang.harness.commands.MixedCommandCatalog",
         },
-        Path("src/loushang/coding/bootstrap.py"): {
+        Path('src/loushang/coding/composition/bootstrap.py'): {
             "loushang.harness.session.AgentProductConstructionBinding",
         },
         Path("src/loushang/coding/prompt/assembler.py"): {
@@ -5530,8 +5530,8 @@ def test_coding_store_alias_facades_are_extinct() -> None:
 
     assert offenders == []
     assert not Path("src/loushang/coding/store").exists()
-    assert Path("src/loushang/coding/session_manager.py").exists()
-    canonical = importlib.import_module("loushang.coding.session_manager")
+    assert Path('src/loushang/coding/session/manager.py').exists()
+    canonical = importlib.import_module('loushang.coding.session.manager')
     public = importlib.import_module("loushang.coding")
     assert public.SessionManager is canonical.SessionManager
     for path in (
@@ -5928,7 +5928,7 @@ def test_coding_lsp_h3_consumes_only_public_process_hosting_ports() -> None:
 
 
 def test_coding_agent_product_construction_uses_shared_binding() -> None:
-    coding_path = Path("src/loushang/coding/bootstrap.py")
+    coding_path = Path('src/loushang/coding/composition/bootstrap.py')
     imports = set(_absolute_imports(coding_path))
 
     assert "loushang.harness.session.AgentProductConstructionBinding" in imports

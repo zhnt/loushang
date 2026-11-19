@@ -14,7 +14,7 @@ from loushang.ai.types import (
     UserMessage,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.transcript import build_agent_transcript_session_context
 
 

@@ -171,7 +171,7 @@ API、存储格式、阈值或同步机制升级为实施要求。
   [模型输入身份与用途](../../../../src/loushang/harness/transcript/model_input_types.py)、
   [压缩策略](../../../../src/loushang/harness/transcript/summarization.py)、
   [provider 压缩适配](../../../../src/loushang/coding/compaction/adapter.py)、
-  [子执行](../../../../src/loushang/coding/multiagent.py)。
+  [子执行](../../../../src/loushang/coding/session/multiagent.py)。
 - E8：[入口方法限制](../../../../src/loushang/harness/cli/launch.py)、
   [工具执行](../../../../src/loushang/harness/tools/execution.py)、
   [工作空间工具授权](../../../../src/loushang/harness/tools/workspace/authorization.py)。

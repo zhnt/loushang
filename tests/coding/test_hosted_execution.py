@@ -26,11 +26,11 @@ from loushang.appservice.execution_contract import (
     ExecutionStatusV1,
     InterruptModeV1,
 )
-from loushang.coding.appservice_adapter import CodingHostedSessionV1
-from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
-from loushang.coding.hosted_session import CodingRealHostedSessionV1
+from loushang.coding.hosted.execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
+from loushang.coding.hosted.session import CodingRealHostedSessionV1
 from loushang.coding.session.agent_session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.approval import DenyApprovalResolver, InteractiveApprovalResolver
 from loushang.harness.events.session import ToolPolicyAuditEvent
 from loushang.harness.extensions.agent import (
@@ -191,8 +191,8 @@ def test_real_execution_service_closes_apphost_lease_after_whole_execution_settl
     )
     from loushang.appservice.client_scope import ScopedAppServiceV1
     from loushang.appservice.runtime import AppServiceV1
-    from loushang.coding.hosted_application import _LeasedCodingHostedBinding
-    from loushang.coding.hosted_execution import create_coding_execution_service_binding
+    from loushang.coding.hosted.application import _LeasedCodingHostedBinding
+    from loushang.coding.hosted.execution import create_coding_execution_service_binding
 
     async def scenario():
         entered, cleanup_entered, cleanup_release = (asyncio.Event() for _ in range(3))

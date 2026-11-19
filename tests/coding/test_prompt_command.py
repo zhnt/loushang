@@ -21,7 +21,7 @@ def _runtime_event(payload: dict[str, object]) -> RuntimeEvent[object]:
 
 def test_prompt_command_renders_stable_transcript_and_worked() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.prompt_command import run_prompt_command
+    from loushang.coding.cli.prompt import run_prompt_command
 
     usage = Usage(
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
@@ -108,7 +108,7 @@ def test_prompt_command_renders_stable_transcript_and_worked() -> None:
 
 
 def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> None:
-    from loushang.coding.prompt_command import run_prompt_plan_command
+    from loushang.coding.cli.prompt import run_prompt_plan_command
     from loushang.work import InMemoryEventLogBackend
     from loushang.work.session import SessionWorkTurn
 
@@ -182,7 +182,7 @@ def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> Non
 def test_prompt_command_selects_usable_model_before_prompt() -> None:
     from loushang.ai import Model
     from loushang.ai.model import ModelSelection
-    from loushang.coding.prompt_command import run_prompt_command
+    from loushang.coding.cli.prompt import run_prompt_command
 
     kimi = Model(
         id="kimi-for-coding",
@@ -257,7 +257,7 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
 
 
 def test_prompt_command_work_event_log_records_prompt_turn() -> None:
-    from loushang.coding.prompt_command import run_prompt_command
+    from loushang.coding.cli.prompt import run_prompt_command
     from loushang.work import InMemoryEventLogBackend
 
     class FakeRuntime:
@@ -336,7 +336,7 @@ def test_prompt_command_work_event_log_records_prompt_turn() -> None:
 
 
 def test_prompt_command_does_not_render_worked_after_assistant_error() -> None:
-    from loushang.coding.prompt_command import run_prompt_command
+    from loushang.coding.cli.prompt import run_prompt_command
 
     class FakeRuntime:
         pass
@@ -392,7 +392,7 @@ def test_prompt_command_does_not_render_worked_after_assistant_error() -> None:
 
 
 def test_prompt_command_runs_follow_ups_with_images_only_on_first_turn() -> None:
-    from loushang.coding.prompt_command import run_prompt_command
+    from loushang.coding.cli.prompt import run_prompt_command
 
     image = object()
 

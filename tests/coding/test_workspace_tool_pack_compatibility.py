@@ -37,7 +37,7 @@ def test_workspace_tool_modules_are_owned_by_harness() -> None:
 
 def test_coding_factory_inherits_file_tool_text_and_keeps_activation() -> None:
     import loushang.harness.tools.workspace as workspace_tools
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         CODING_BUILTIN_TOOL_PACK,
         create_coding_tool_definition,
     )

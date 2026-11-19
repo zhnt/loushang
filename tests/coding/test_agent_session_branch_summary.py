@@ -61,7 +61,7 @@ def _assistant_text_message(
 def test_navigate_tree_is_noop_when_target_is_current_leaf(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession, TreeNavigationResult
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -94,7 +94,7 @@ def test_navigate_tree_is_noop_when_target_is_current_leaf(tmp_path) -> None:
 def test_navigate_tree_to_message_switches_leaf_and_rebuilds_context(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -145,7 +145,7 @@ def test_navigate_tree_emits_one_aggregate_performance_event(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     events: list[tuple[str, str, dict[str, object]]] = []
 
@@ -189,7 +189,7 @@ def test_navigate_tree_emits_one_aggregate_performance_event(
 def test_navigate_tree_restores_target_branch_model_and_thinking(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession, ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     default_model = _model("default-model")
     first_model = _model("first-model")
@@ -275,7 +275,7 @@ def test_navigate_tree_restores_target_branch_model_and_thinking(tmp_path) -> No
 def test_navigate_tree_to_user_message_returns_editor_text(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -324,7 +324,7 @@ def test_navigate_tree_to_user_message_returns_editor_text(tmp_path) -> None:
 def test_navigate_tree_raises_for_unknown_target(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -347,7 +347,7 @@ def test_navigate_tree_raises_for_unknown_target(tmp_path) -> None:
 def test_navigate_tree_respects_extension_before_tree_cancellation(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -424,7 +424,7 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import BranchSummaryOutput
 
     manager = asyncio.run(
@@ -522,7 +522,7 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -637,7 +637,7 @@ def test_abort_branch_summary_cancels_inflight_navigation(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.transcript import BranchSummaryOutput
 
     manager = asyncio.run(
@@ -721,7 +721,7 @@ def test_navigate_tree_records_branch_summary_failure_in_diagnostics(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(

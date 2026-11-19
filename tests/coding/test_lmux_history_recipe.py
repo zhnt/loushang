@@ -83,7 +83,7 @@ def test_synthetic_product_emits_exact_recipe_without_tools():
 @pytest.mark.parametrize("last", [0, 6, 7, 127])
 def test_real_product_projection_matches_recipe_window(last):
     from loushang.ai.types import UserMessage
-    from loushang.coding.hosted_session import CodingRealHostedSessionV1
+    from loushang.coding.hosted.session import CodingRealHostedSessionV1
 
     async def check():
         messages = []

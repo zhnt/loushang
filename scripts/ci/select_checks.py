@@ -7,6 +7,7 @@ unknown non-document paths deliberately select the full suite.
 from __future__ import annotations
 
 import argparse
+import ast
 import fnmatch
 import hashlib
 import json
@@ -205,6 +206,41 @@ def make_paths(root: Path = ROOT) -> dict[str, list[str]]:
     }
 
 
+def _coding_path_owners(root: Path) -> dict[str, str]:
+    """Keep existing check coverage attached to relocated source identities.
+
+    Read the Product's frozen names as data, without importing the Product.
+    Physical paths remain in the plan; only rule matching uses original names.
+    """
+    try:
+        source = root / "src/loushang/coding/_compat/root_names.py"
+        tree = ast.parse(source.read_text())
+        node = next(
+            n for n in tree.body if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "NAMES" for t in n.targets)
+        )
+        names = ast.literal_eval(node.value)
+        for extra in tree.body:
+            if isinstance(extra, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "ALIASES" for t in extra.targets
+            ):
+                names.update(ast.literal_eval(extra.value))
+        owners = {
+            "src/" + new.replace(".", "/") + ".py":
+            "src/" + old.replace(".", "/") + ".py"
+            for old, new in names.items()
+            if old.startswith("loushang.coding.") and new.startswith("loushang.coding.")
+        }
+        # These declarations were part of the same public Python source owners.
+        for original in {"src/loushang/coding/__init__.py", *owners.values()}:
+            stub = original.removesuffix(".py") + ".pyi"
+            if (root / stub).is_file():
+                owners[stub] = original
+        return owners
+    except (OSError, SyntaxError, ValueError, TypeError, AttributeError, StopIteration):
+        return {}
+
+
 def make_targeted_jobs(
     cases: set[tuple[str, str, str]], *, full: bool
 ) -> list[dict]:
@@ -284,6 +320,9 @@ def test_tree_module_owner(
 def select(
     paths: list[str], *, full: bool = False, pr_fast: bool = False, root: Path = ROOT
 ) -> dict:
+    physical_paths = paths
+    owners = _coding_path_owners(root)
+    paths = [owners.get(path, path) for path in paths]
     rules = json.loads((root / "scripts/ci/check-scopes.json").read_text())
     catalog = load_catalog(root)
     unit_inventory = json.loads((root / "scripts/ci/unit-tests.json").read_text())
@@ -303,7 +342,10 @@ def select(
     enable(["docs"], "repository documentation invariants")
     if full:
         enable(list(checks), "explicit full validation")
-    variables = make_paths(root)
+    variables = {
+        name: [owners.get(path, path) for path in entries]
+        for name, entries in make_paths(root).items()
+    }
     reviewed_test_paths: set[str] = set()
     targeted_test_paths: set[str] = set()
     targeted_cases: set[tuple[str, str, str]] = set()
@@ -688,7 +730,7 @@ def select(
     return {
         "version": 1,
         "test_policy_version": catalog["version"],
-        "paths": sorted(set(paths)),
+        "paths": sorted(set(physical_paths)),
         "checks": checks,
         "workflows": workflows,
         "unit_packages": sorted(unit_packages),

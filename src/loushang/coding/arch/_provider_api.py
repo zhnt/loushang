@@ -32,11 +32,11 @@ from loushang.coding.arch.tool import (
 from loushang.coding.arch.tool import (
     ImportGraphInspectionRuntime as CodingArchToolRuntimePort,
 )
-from loushang.coding.capabilities import CODING_ARCH_CAPABILITY
+from loushang.coding.composition.capabilities import CODING_ARCH_CAPABILITY
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.package.arch_private_cache import (
     write_coding_arch_private_windows_snapshot,
 )
-from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
     CapabilityDefinition,

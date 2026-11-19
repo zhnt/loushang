@@ -10,9 +10,9 @@
 
 ## 1. 问题与已存在能力
 
-[CodingContinuityProvider](../../../../../src/loushang/coding/continuity.py)目前同时承担分页查询、预览缓存、历史身份核对、读取编排、prepare/delete时的目标核对，以及Coding历史composition/Resume解释和显示。共享的是会话历史导航，不是编码工具、模型规划、文件系统或新的恢复状态机。
+[CodingContinuityProvider](../../../../../src/loushang/coding/session/continuity.py)目前同时承担分页查询、预览缓存、历史身份核对、读取编排、prepare/delete时的目标核对，以及Coding历史composition/Resume解释和显示。共享的是会话历史导航，不是编码工具、模型规划、文件系统或新的恢复状态机。
 
-已有能力必须直接使用：原[ContinuityHub与StableReference](../../../../../src/loushang/harness/continuity/hub.py)拥有provider选择及引用寿命；原[Transcript Catalog](../../../../../src/loushang/harness/transcript/session_catalog.py)拥有发现/索引/authoritative revision；原Session runtime拥有restore/delete/Prepared；原[Coding历史解释](../../../../../src/loushang/coding/resume_history.py)及[运行期历史owner](../../../../../src/loushang/coding/runtime/agent_session_runtime.py)解释产品历史并保取消后native读取结清。
+已有能力必须直接使用：原[ContinuityHub与StableReference](../../../../../src/loushang/harness/continuity/hub.py)拥有provider选择及引用寿命；原[Transcript Catalog](../../../../../src/loushang/harness/transcript/session_catalog.py)拥有发现/索引/authoritative revision；原Session runtime拥有restore/delete/Prepared；原[Coding历史解释](../../../../../src/loushang/coding/resume/history.py)及[运行期历史owner](../../../../../src/loushang/coding/runtime/agent_session_runtime.py)解释产品历史并保取消后native读取结清。
 
 `TranscriptSourceReader`另为已准入store中的固定Work记录提供较窄读取，要求store identity/committed分支等保证；它不等价于旧非owned/legacy的只读发现和preview。不能为复用这个类而新增Writer、提高旧预览准入，或把tail显示当完整selected ancestry。
 

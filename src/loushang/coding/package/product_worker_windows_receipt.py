@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendInstalledMethods,
 )
@@ -22,7 +23,6 @@ from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
 
-from ..session_manager import SessionManager
 from .product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .product_worker_policy import CodingWorkerPolicySelectionError
 from .product_worker_receipt import (

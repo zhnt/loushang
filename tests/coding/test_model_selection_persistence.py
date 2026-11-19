@@ -49,7 +49,7 @@ class _FailingSettingsManager(_SettingsManager):
 
 
 def test_apply_model_selection_persists_global_default_after_runtime_switch() -> None:
-    from loushang.coding.model_selection import apply_model_selection
+    from loushang.coding.interaction.model_selection import apply_model_selection
 
     session = _Session()
     detail = SimpleNamespace(
@@ -73,7 +73,7 @@ def test_apply_model_selection_persists_global_default_after_runtime_switch() ->
 
 def test_apply_model_selection_writes_global_settings_not_project(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
-    from loushang.coding.model_selection import apply_model_selection
+    from loushang.coding.interaction.model_selection import apply_model_selection
 
     session = _Session()
     global_settings_path = tmp_path / "global-settings.json"
@@ -102,7 +102,7 @@ def test_apply_model_selection_writes_global_settings_not_project(tmp_path) -> N
 
 
 def test_apply_model_selection_does_not_persist_when_runtime_switch_fails() -> None:
-    from loushang.coding.model_selection import apply_model_selection
+    from loushang.coding.interaction.model_selection import apply_model_selection
 
     session = _FailingSession()
 
@@ -122,7 +122,7 @@ def test_apply_model_selection_does_not_persist_when_runtime_switch_fails() -> N
 def test_apply_model_selection_reports_persistence_failure_after_runtime_switch() -> (
     None
 ):
-    from loushang.coding.model_selection import apply_model_selection
+    from loushang.coding.interaction.model_selection import apply_model_selection
 
     session = _Session()
     session.settings_manager = _FailingSettingsManager()

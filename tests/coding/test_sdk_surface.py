@@ -118,7 +118,7 @@ exec('from loushang.coding import *', scope)
 assert set(scope) - {{'__builtins__'}} == set(expected)
 assert all(scope[name] is getattr(coding, name) for name in expected)
 from loushang.coding import DefaultResourceLoader, SessionManager, TreeNavigationResult
-from loushang.coding.resource_runtime import CodingResourceLoader
+from loushang.coding.resources.runtime import CodingResourceLoader
 from loushang.harness.transcript import TranscriptNavigationResult
 assert DefaultResourceLoader is CodingResourceLoader
 assert TreeNavigationResult is TranscriptNavigationResult

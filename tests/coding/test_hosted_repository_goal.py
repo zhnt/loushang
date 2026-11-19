@@ -16,8 +16,8 @@ from loushang.appserver.protocol import (
     SessionSnapshotRequestV1,
 )
 from loushang.appservice.execution_contract import ExecutionStatusV1
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.hosted_goal_application import (
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.goal_application import (
     CodingHostedRepositoryGoalV1,
     create_coding_repository_goal_application,
 )
@@ -472,7 +472,7 @@ def test_review_return_after_absolute_deadline_does_not_admit_work(
     import time
     from types import SimpleNamespace
 
-    from loushang.coding import _hosted_goal_work
+    from loushang.coding.hosted import _goal_work as _hosted_goal_work
 
     clock = time.monotonic()
     monkeypatch.setattr(
@@ -599,7 +599,7 @@ def test_task_manifest_digest_before_following_members(tmp_path):
 def test_review_request_material_size_bound(tmp_path):
     from types import SimpleNamespace
 
-    from loushang.coding._hosted_repository_work import review_material
+    from loushang.coding.hosted._repository_work import review_material
 
     launch, config, _ = package(tmp_path)
     task = config.prepare(launch).task
@@ -636,7 +636,7 @@ def test_unknown_repository_step_is_not_echoed():
         WorkRunObservationV1,
         WorkStepObservationV1,
     )
-    from loushang.coding.hosted_goal import _repository_observation
+    from loushang.coding.hosted.goal import _repository_observation
 
     work = WorkRunObservationV1(
         "op",

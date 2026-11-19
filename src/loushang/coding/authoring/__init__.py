@@ -1,0 +1,1 @@
+"""Coding authoring component."""

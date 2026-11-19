@@ -15,7 +15,7 @@ from loushang.ai.types import (
     UserMessage,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.tools.execution import direct_execution
 from loushang.harness.tools.workspace import ToolDefinition
 from loushang.harness.tools.workspace.registry import (

@@ -16,8 +16,8 @@ pytestmark = [pytest.mark.requires_host_runtime,
 
 
 def test_failed_native_spawn_is_not_reported_as_ready(tmp_path, monkeypatch):
-    from loushang.coding.managed_process import coding_managed_process_request
-    from loushang.coding.managed_service import (
+    from loushang.coding.hosted.managed.process import coding_managed_process_request
+    from loushang.coding.hosted.managed.service import (
         ServiceControlError,
         control_managed_service,
     )

@@ -33,18 +33,18 @@ from loushang.appservice.execution_contract import (
 )
 from loushang.appservice.execution_registry import ExecutionServiceErrorV1
 from loushang.appservice.runtime import AppServiceV1
-from loushang.coding.hosted_application import (
+from loushang.coding.hosted.application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     CodingForegroundHostedApplicationRequestV1,
 )
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
-from loushang.coding.hosted_method import (
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted.method import (
     CodingHostedMethodSessionV1,
     CodingHostedMethodV1,
     create_coding_method_service_binding,
 )
-from loushang.coding.hosted_method_application import create_coding_method_application
+from loushang.coding.hosted.method_application import create_coding_method_application
 from loushang.method.types import MethodDescriptor
 
 from .test_hosted_execution import _binding, _message, _run, _stream

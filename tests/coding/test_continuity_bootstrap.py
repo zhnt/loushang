@@ -12,13 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.continuity_bootstrap as continuity_bootstrap_module
+import loushang.coding.composition.continuity as continuity_bootstrap_module
 import loushang.coding.plugin_manager.lifecycle as plugin_lifecycle_module
-from loushang.coding.continuity import (
-    bind_coding_continuity,
-    shutdown_coding_continuity,
-)
-from loushang.coding.continuity_bootstrap import (
+from loushang.coding.composition.continuity import (
     CodingContinuityBootstrapError,
     CodingContinuityStateLayout,
     bind_coding_configured_continuity,
@@ -34,6 +30,10 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.plugin_manager.lifecycle import (
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.session.continuity import (
+    bind_coding_continuity,
+    shutdown_coding_continuity,
 )
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.config.agent.types import ControlConfig
@@ -429,7 +429,7 @@ def test_empty_continuity_keeps_registration_for_bound_compatibility_writer(
 def test_private_state_root_rejects_symlink_without_chmodding_target(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding.continuity_bootstrap import _prepare_private_state_root
+    from loushang.coding.composition.continuity import _prepare_private_state_root
 
     target = tmp_path / "shared-target"
     target.mkdir(mode=0o755)
@@ -446,7 +446,7 @@ def test_private_state_root_rejects_symlink_without_chmodding_target(
 def test_private_state_layout_tightens_every_application_owned_ancestor(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding.continuity_bootstrap import _prepare_private_state_layout
+    from loushang.coding.composition.continuity import _prepare_private_state_layout
 
     layout = _test_layout(tmp_path / "state", tmp_path / "workspace")
     previous_umask = os.umask(0o002)
@@ -465,7 +465,7 @@ def test_private_state_layout_tightens_every_application_owned_ancestor(
 def test_private_state_layout_rejects_an_intermediate_symlink(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding.continuity_bootstrap import _prepare_private_state_layout
+    from loushang.coding.composition.continuity import _prepare_private_state_layout
 
     layout = _test_layout(tmp_path / "state", tmp_path / "workspace")
     target = tmp_path / "shared-target"
@@ -486,7 +486,7 @@ def test_private_state_layout_rejects_an_intermediate_symlink(
 def test_configured_sources_resolve_relative_to_their_settings_scope(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding.continuity_bootstrap import _configured_sources
+    from loushang.coding.composition.continuity import _configured_sources
 
     project_base = tmp_path / "project-config"
     global_base = tmp_path / "global-config"
@@ -526,7 +526,7 @@ def test_configured_sources_resolve_relative_to_their_settings_scope(
 def test_bootstrap_request_fingerprint_separates_source_and_disabled_boundaries(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding.continuity_bootstrap import _bootstrap_request_fingerprint
+    from loushang.coding.composition.continuity import _bootstrap_request_fingerprint
 
     first = _bootstrap_request_fingerprint(
         ("/workspace/a", "/workspace/b"),
@@ -1007,7 +1007,7 @@ def test_removed_continuity_tombstone_never_reinspects_configured_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding import continuity_bootstrap
+    from loushang.coding.composition import continuity as continuity_bootstrap
 
     async def scenario() -> None:
         marker = tmp_path / "removed-plugin.log"
@@ -1084,7 +1084,7 @@ def test_continuity_bootstrap_rejects_unsupported_secure_staging_before_import(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding import continuity_bootstrap
+    from loushang.coding.composition import continuity as continuity_bootstrap
 
     marker = tmp_path / "unsupported.log"
     monkeypatch.setenv("LOUSHANG_CONTINUITY_PLUGIN_MARKER", str(marker))

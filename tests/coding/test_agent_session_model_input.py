@@ -19,7 +19,7 @@ from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.types import TextPart, UserMessage
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.execution import direct_execution
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry

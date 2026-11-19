@@ -8,13 +8,13 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import UserMessage
-from loushang.coding.bootstrap import create_agent_session
-from loushang.coding.product_plan import (
+from loushang.coding.composition.bootstrap import create_agent_session
+from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
     CODING_RUNTIME_PROFILE_METADATA_KEY,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.conversation import FileConversationStore, MemoryConversationStore
 from loushang.harness.runtime import SIDE_QUESTION_PROVIDER_SLOT, RuntimeProfileSnapshot
 from loushang.harness.transcript import (

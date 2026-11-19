@@ -10,10 +10,10 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-import loushang.coding.bootstrap as product
+import loushang.coding.composition.bootstrap as product
 from loushang.coding.control import ControlConfig, SettingsManager
 from loushang.coding.session.agent_session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from tests.coding.test_bootstrap import _model
 
 pytestmark = pytest.mark.skipif(

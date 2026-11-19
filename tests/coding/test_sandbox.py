@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.sandbox import (
+from loushang.coding.control.sandbox import (
     CodingExecutionAuthority,
     CodingSandboxScopePolicy,
     bind_coding_sandbox_runtime,
@@ -250,7 +250,7 @@ def test_coding_session_owns_and_closes_its_sandbox_runtime(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     class Runtime:
         def __init__(self) -> None:
@@ -290,9 +290,9 @@ def test_enabled_coding_session_routes_registered_bash_through_bound_service(
     tmp_path: Path,
 ) -> None:
     from loushang.agent import Agent
+    from loushang.coding.resources.tool_pack import register_coding_builtin_tools
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
     from loushang.harness.workspace.exec import ExecResult
 

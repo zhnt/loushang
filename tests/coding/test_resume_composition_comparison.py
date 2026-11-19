@@ -4,12 +4,12 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.composition_provenance import CodingCompositionProvenanceV1
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.resume_composition_comparison import (
+from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.resume.composition_comparison import (
     compare_coding_resume_composition,
 )
-from loushang.coding.resume_history import (
+from loushang.coding.resume.history import (
     CodingResumeHeaderPreview,
     CodingResumeHistoryPreview,
 )

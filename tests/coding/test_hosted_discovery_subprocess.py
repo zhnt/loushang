@@ -23,7 +23,7 @@ from loushang.appserver.protocol.connection_profile import AppConnectionProfileV
 from loushang.appserver.remote_client import RemoteAppClientV1
 from loushang.appservice.execution_contract import ExecutionStatusV1
 from loushang.coding.cli.hosted import parse_launch
-from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
+from loushang.coding.hosted.catalog import CodingHostedSessionCatalogV1
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
 from ._hosted_composition_seed import seed_hosted_history

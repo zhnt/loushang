@@ -6,11 +6,11 @@ import threading
 
 import pytest
 
-from loushang.coding.hosted_catalog import (
+from loushang.coding.hosted.catalog import (
     CodingHostedCatalogError,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.managed_catalog import CodingManagedSessionCatalogV1
+from loushang.coding.hosted.managed.catalog import CodingManagedSessionCatalogV1
 from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
 from tests.harness.transcript.test_writer_io import wait_until

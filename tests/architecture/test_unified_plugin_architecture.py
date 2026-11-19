@@ -56,10 +56,10 @@ PLC7_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc7-contract.md"
 )
 CODING_CAPABILITY_COMPOSER_PATH = Path(
-    "src/loushang/coding/_capability_plugin_composition.py"
+    'src/loushang/coding/composition/capability_plugins.py'
 )
-CODING_CAPABILITY_SPECS_PATH = Path("src/loushang/coding/_capability_plugin_specs.py")
-CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+CODING_CAPABILITY_SPECS_PATH = Path('src/loushang/coding/composition/capability_specs.py')
+CODING_BOOTSTRAP_PATH = Path('src/loushang/coding/composition/bootstrap.py')
 CODING_LSP_COMPATIBILITY_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 PAP4_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-capability-admission-pap4-contract.md"
@@ -986,7 +986,7 @@ EXPECTED_EXTENSION_DECLARATION_METHODS = {
 }
 EXPECTED_LIVE_BINDING_SINK_INVENTORY = {
     (
-        Path("src/loushang/coding/bootstrap.py"),
+        Path('src/loushang/coding/composition/bootstrap.py'),
         "_create_agent_session",
         "register_tool",
     ),
@@ -4465,7 +4465,7 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
         command_catalog_names: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == (
-                "loushang.coding.tool_pack"
+                'loushang.coding.resources.tool_pack'
             ):
                 tool_names.update(
                     item.asname or item.name
@@ -4476,7 +4476,7 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
                 tool_modules.update(
                     item.asname or item.name
                     for item in node.names
-                    if item.name == "loushang.coding.tool_pack"
+                    if item.name == 'loushang.coding.resources.tool_pack'
                 )
             elif isinstance(node, ast.ImportFrom) and node.module in {
                 "loushang.harness.session",
@@ -4511,10 +4511,10 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
         encoding="utf-8"
     )
     coding_sdk = Path("src/loushang/coding/__init__.py").read_text(encoding="utf-8")
-    coding_bootstrap = Path("src/loushang/coding/bootstrap.py").read_text(
+    coding_bootstrap = Path('src/loushang/coding/composition/bootstrap.py').read_text(
         encoding="utf-8"
     )
-    tool_pack = Path("src/loushang/coding/tool_pack.py").read_text(encoding="utf-8")
+    tool_pack = Path('src/loushang/coding/resources/tool_pack.py').read_text(encoding="utf-8")
     agent_product = Path("src/loushang/harness/session/agent_product.py").read_text(
         encoding="utf-8"
     )
@@ -4533,10 +4533,10 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
     assert '"register_coding_builtin_tools",' not in tool_pack
     assert "peer_exact_tool_publisher" in coding_bootstrap
     assert set(command_stage_calls) == {
-        Path("src/loushang/coding/_base_plugin_owners.py")
+        Path('src/loushang/coding/composition/base_owners.py')
     }
     assert set(standard_command_catalog_calls) == {
-        Path("src/loushang/coding/_base_plugin_owners.py")
+        Path('src/loushang/coding/composition/base_owners.py')
     }
     assert "build_coding_base_plugin_owners(" in agent_session
     assert "SessionCommandGenerationRegistry()" in agent_session

@@ -134,8 +134,8 @@ def test_session_without_registry_rejects_raw_runtime_tools(
 def test_coding_default_profile_keeps_unpublished_base_tools_pending(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding import SessionManager
+    from loushang.coding.resources.tool_pack import CODING_DEFAULT_ACTIVE_TOOL_NAMES
     from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import CODING_DEFAULT_ACTIVE_TOOL_NAMES
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -162,10 +162,10 @@ def test_agent_session_tracks_active_tool_names_and_runtime_tools(tmp_path) -> N
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -238,10 +238,10 @@ def test_agent_session_builtin_tools_command_can_restore_active_tools(tmp_path) 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -322,10 +322,10 @@ def test_agent_session_exposes_standard_tool_surfaces(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -402,10 +402,10 @@ def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -471,10 +471,10 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
 
     from loushang.agent import Agent
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace import ToolDefinition
@@ -570,9 +570,9 @@ def test_agent_session_rejects_extension_graph_provider_change_before_reload(
     expected_capability: str,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.resource_runtime import CodingResourceLoader
+    from loushang.coding.resources.runtime import CodingResourceLoader
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.extensions.declarations import (
@@ -668,9 +668,9 @@ def test_agent_session_content_only_extension_reload_keeps_mount_generation(
     monkeypatch,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.resource_runtime import CodingResourceLoader
+    from loushang.coding.resources.runtime import CodingResourceLoader
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner
     from loushang.harness.resources.types import ExtensionDescriptor, ResourceBundle
 
@@ -1063,10 +1063,10 @@ def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
@@ -1244,10 +1244,10 @@ def test_agent_session_tracks_multiple_builtin_tool_names(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -1311,10 +1311,10 @@ def test_agent_session_tracks_mutation_builtin_tool_names(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -1378,8 +1378,8 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
     import asyncio
 
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.composition.bootstrap import create_agent_session
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.tools.core import tool
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -1669,10 +1669,10 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.conversation import CommandExecutionRecord
     from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
@@ -1841,10 +1841,10 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.session import AgentSession
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
     from loushang.harness.conversation import CommandExecutionRecord
     from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (

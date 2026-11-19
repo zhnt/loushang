@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loushang.coding.bootstrap import _create_agent_session_runtime
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.multiagent import CodingSubagentFactory
+from loushang.coding.composition.bootstrap import (
+    create_agent_session_runtime_with_product_policy as _create_agent_session_runtime,
+)
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.session.multiagent import CodingSubagentFactory
 from loushang.harness.multiagent import (
     AgentRef,
     AgentTypeRegistry,

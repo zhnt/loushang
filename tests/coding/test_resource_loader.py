@@ -72,7 +72,7 @@ def test_resource_snapshot_to_bundle_preserves_agents_and_active_prompt_order() 
 
 
 def test_default_resource_loader_discovers_agents_md_from_parent_dirs(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -101,7 +101,7 @@ def test_default_resource_loader_discovers_agents_md_from_parent_dirs(tmp_path) 
 def test_default_resource_loader_stacks_global_and_ancestor_context_files(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -153,7 +153,7 @@ def test_default_resource_loader_stacks_global_and_ancestor_context_files(
 
 
 def test_default_resource_loader_can_disable_context_files(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -174,7 +174,7 @@ def test_default_resource_loader_can_disable_context_files(tmp_path) -> None:
 def test_default_resource_loader_exposes_user_global_skill_candidates_and_project_precedence(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -213,7 +213,7 @@ def test_default_resource_loader_exposes_user_global_skill_candidates_and_projec
 def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_disabled(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -285,7 +285,7 @@ def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_dis
 def test_default_resource_loader_resolves_system_prompt_sources_as_text_or_files(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -308,7 +308,7 @@ def test_default_resource_loader_resolves_system_prompt_sources_as_text_or_files
 def test_default_resource_loader_discovers_extension_descriptors_and_reports_invalid_entries(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -358,7 +358,7 @@ def test_default_resource_loader_discovers_extension_descriptors_and_reports_inv
 def test_default_resource_loader_discovers_prompt_and_skill_descriptors_into_snapshot_and_bundle(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -413,7 +413,7 @@ def test_default_resource_loader_discovers_prompt_and_skill_descriptors_into_sna
 
 
 def test_default_resource_loader_parses_skill_frontmatter_metadata(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -445,7 +445,7 @@ def test_default_resource_loader_parses_skill_frontmatter_metadata(tmp_path) -> 
 def test_default_resource_loader_parses_prompt_argument_hint_frontmatter(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -472,7 +472,7 @@ def test_default_resource_loader_parses_prompt_argument_hint_frontmatter(
 
 
 def test_default_resource_loader_reports_invalid_prompt_frontmatter(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -500,7 +500,7 @@ def test_default_resource_loader_reports_invalid_prompt_frontmatter(tmp_path) ->
 def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loading_skill(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -531,7 +531,7 @@ def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loadi
 def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostics(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -566,7 +566,7 @@ def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostic
 def test_default_resource_loader_recursively_discovers_skills_and_skips_ignored_directories(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -620,7 +620,7 @@ def test_default_resource_loader_recursively_discovers_skills_and_skips_ignored_
 
 
 def test_default_resource_loader_applies_skill_ignore_files(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -662,7 +662,7 @@ def test_default_resource_loader_prefers_project_local_prompt_when_built_in_cand
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources._loader_discovery_builtin as discovery_module
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources.types import PromptFragmentDescriptor
@@ -725,7 +725,7 @@ def test_default_resource_loader_prefers_project_local_prompt_when_built_in_cand
 def test_default_resource_loader_discovers_external_package_resources_before_built_in(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -751,7 +751,7 @@ def test_default_resource_loader_discovers_external_package_resources_before_bui
 def test_default_resource_loader_reports_missing_invalid_and_empty_package_roots(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -788,7 +788,7 @@ def test_default_resource_loader_reports_missing_invalid_and_empty_package_roots
 def test_default_resource_loader_exposes_package_resource_summaries_and_filtered_diagnostics(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources.types import PackageResourceSummary
@@ -836,7 +836,7 @@ def test_default_resource_loader_exposes_package_resource_summaries_and_filtered
 def test_default_resource_loader_reload_resources_refreshes_cached_bundle(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -864,7 +864,7 @@ def test_default_resource_loader_reload_resources_refreshes_cached_bundle(
 def test_default_resource_loader_returns_empty_bundle_when_no_agents_md_exists(
     tmp_path,
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -886,7 +886,7 @@ def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources._loader_pipeline as pipeline_module
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources._loader_types import _SourceDiscovery
@@ -938,7 +938,7 @@ def test_skill_same_precedence_collision_disables_only_that_skill_identity(
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources._loader_pipeline as pipeline_module
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources._loader_types import _SourceDiscovery
@@ -990,7 +990,7 @@ def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources._loader_pipeline as pipeline_module
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources._loader_types import _SourceDiscovery
@@ -1038,7 +1038,7 @@ def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources._loader_pipeline as pipeline_module
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources._loader_types import _SourceDiscovery
@@ -1073,7 +1073,7 @@ def test_theme_discovery_reports_invalid_json_theme_diagnostic(
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources._loader_pipeline as pipeline_module
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources._loader_types import _SourceDiscovery
@@ -1108,7 +1108,7 @@ def test_theme_discovery_reports_non_object_theme_schema_diagnostic(
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources._loader_pipeline as pipeline_module
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources._loader_types import _SourceDiscovery
@@ -1143,7 +1143,7 @@ def test_extension_same_name_candidates_remain_active_after_precedence_sort(
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources._loader_pipeline as pipeline_module
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources._loader_types import _SourceDiscovery
@@ -1201,7 +1201,7 @@ def test_extension_same_name_candidates_remain_active_after_precedence_sort(
 
 
 def test_agents_md_stays_outside_named_prompt_collision_model(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
@@ -1256,7 +1256,7 @@ def test_same_tier_candidates_are_sorted_by_source_root_order_then_canonical_pat
 
 
 def test_resource_loader_applies_package_source_filters(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources.packages.source import PackageSourceConfig
@@ -1294,7 +1294,7 @@ def test_resource_loader_applies_package_source_filters(tmp_path) -> None:
 
 
 def test_resource_loader_applies_package_filter_override_patterns(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.harness.resources.packages.source import PackageSourceConfig

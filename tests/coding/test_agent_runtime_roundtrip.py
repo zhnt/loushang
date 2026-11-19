@@ -81,7 +81,7 @@ def _stream_with_final_message(
 
 def test_agent_messages_roundtrip_through_persisted_session_manager(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     async def stream_fn(model, context, options=None):
         return _stream_with_final_message(_assistant_text_message("hello"))

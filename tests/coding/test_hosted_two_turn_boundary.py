@@ -13,8 +13,8 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.types import TextPart
 from loushang.appserver.protocol import AppServiceError, SessionEventKindV1
-from loushang.coding.appservice_adapter import CodingHostedSessionV1
-from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted.execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
 
 from .test_hosted_execution import _binding, _message
 from .test_hosted_legacy_evidence import _private_environment as _isolated_environment
@@ -126,7 +126,7 @@ def test_completed_projection_does_not_release_service_admission(tmp_path, execu
     )
     from loushang.appservice.client_scope import ScopedAppServiceV1
     from loushang.appservice.runtime import AppServiceV1
-    from loushang.coding.hosted_execution import create_coding_execution_service_binding
+    from loushang.coding.hosted.execution import create_coding_execution_service_binding
     from loushang.harnesstui.mux.profile import open_hosted_mux_profile
 
     async def scenario():

@@ -11,25 +11,6 @@ from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai import Context, PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
 from loushang.ai.types import Tool, UserMessage
-from loushang.coding._base_plugin import (
-    CodingBasePluginAssembly,
-    CodingBasePluginAssemblyError,
-    CodingBasePluginSessionAssembly,
-    build_coding_base_plugin_owners,
-)
-from loushang.coding._base_plugin_owners import CodingBaseToolRegistrationSlot
-from loushang.coding._base_product_composition import (
-    CodingBaseProductSessionAssembly,
-)
-from loushang.coding._capability_plugin_composition import (
-    CodingCapabilityPluginCompositionAssembly,
-    CodingCapabilityPluginCompositionError,
-)
-from loushang.coding._external_data_product_composition import (
-    CodingExternalDataProductCompilation,
-)
-from loushang.coding._tool_authority import CODING_LSP_EXACT_OWNER_TOOL_NAMES
-from loushang.coding._worker_tool_identity import CODING_WORKER_QUERY_TOOL_NAME
 from loushang.coding.arch._plugin_tool_owner import (
     CodingArchToolOwner,
     CodingArchToolRegistrationSlot,
@@ -41,12 +22,37 @@ from loushang.coding.compaction.adapter import (
 from loushang.coding.compaction.adapter import (
     execute_coding_compaction as _execute_coding_compaction,
 )
-from loushang.coding.composition_provenance import (
+from loushang.coding.composition.base_owners import CodingBaseToolRegistrationSlot
+from loushang.coding.composition.base_plugin import (
+    CodingBasePluginAssembly,
+    CodingBasePluginAssemblyError,
+    CodingBasePluginSessionAssembly,
+    build_coding_base_plugin_owners,
+)
+from loushang.coding.composition.base_product import (
+    CodingBaseProductSessionAssembly,
+)
+from loushang.coding.composition.capability_plugins import (
+    CodingCapabilityPluginCompositionAssembly,
+    CodingCapabilityPluginCompositionError,
+)
+from loushang.coding.composition.external_data import (
+    CodingExternalDataProductCompilation,
+)
+from loushang.coding.composition.plan import (
+    CODING_CAPABILITY_PROFILE,
+    CODING_PRODUCT_ID,
+)
+from loushang.coding.composition.provenance import (
     CODING_COMPOSITION_STARTUP_TYPE,
     historical_composition_provenance,
     historical_startup_composition_record,
 )
-from loushang.coding.composition_sets import CodingCompositionSetPlan
+from loushang.coding.composition.runtime_admission import (
+    CodingExtensionDeclarationPreflight,
+    resolve_coding_capability_profile,
+)
+from loushang.coding.composition.sets import CodingCompositionSetPlan
 from loushang.coding.lsp._deferred_generation import (
     CodingDeferredLspGeneration,
     dormant_lsp_tool_infos,
@@ -68,27 +74,24 @@ from loushang.coding.lsp.commands import (
 from loushang.coding.lsp.runtime import CodingLspSessionAccess
 from loushang.coding.lsp.status import LspSessionStatus, disabled_lsp_session_status
 from loushang.coding.package.product_runtime import CodingProductWorkspaceWitnessV1
-from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
-from loushang.coding.resource_runtime import (
+from loushang.coding.package.worker_tool_identity import CODING_WORKER_QUERY_TOOL_NAME
+from loushang.coding.resources.runtime import (
     CodingPackageMaterializer as PackageMaterializer,
 )
-from loushang.coding.resource_runtime import summarize_coding_package_root
-from loushang.coding.resume_activation_attempt import (
-    CodingActivationAttemptV1,
-    CodingResumeRecoveryRequired,
-)
-from loushang.coding.resume_activation_attempt_v2 import CodingActivationAttemptV2
-from loushang.coding.resume_binding import coding_user_input_digest
-from loushang.coding.runtime_capability_admission import (
-    CodingExtensionDeclarationPreflight,
-    resolve_coding_capability_profile,
-)
-from loushang.coding.session_manager import SessionManager
-from loushang.coding.tool_pack import (
+from loushang.coding.resources.runtime import summarize_coding_package_root
+from loushang.coding.resources.tool_authority import CODING_LSP_EXACT_OWNER_TOOL_NAMES
+from loushang.coding.resources.tool_pack import (
     CODING_BUILTIN_TOOL_NAMES,
     coding_default_active_tool_names,
     coding_platform_tool_names,
 )
+from loushang.coding.resume.activation_attempt import (
+    CodingActivationAttemptV1,
+    CodingResumeRecoveryRequired,
+)
+from loushang.coding.resume.activation_attempt_v2 import CodingActivationAttemptV2
+from loushang.coding.resume.binding import coding_user_input_digest
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
     CapabilityBundleProviderBinding,

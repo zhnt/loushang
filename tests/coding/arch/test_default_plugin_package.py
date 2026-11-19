@@ -3,11 +3,11 @@ from __future__ import annotations
 import importlib.metadata
 from pathlib import Path
 
-from loushang.coding.plugin_dependency_grants import (
+from loushang.coding.composition.dependency_grants import (
     coding_arch_default_plugin_root,
     coding_plugin_distribution_evidence_resolver,
 )
-from loushang.coding.resource_runtime import CodingPackageMaterializer
+from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.harness.capabilities.component_host import _PROVIDER_HOST_API_PREFIXES
 from loushang.harness.resources.plugins.declarations import (
     PluginDeclarationDocumentCodec,

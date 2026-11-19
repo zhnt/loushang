@@ -570,7 +570,7 @@ def test_attach_does_not_follow_name_reused_during_connection(managed_cli, monke
     )
     from loushang.apphost.managed.mux_management import ManagedMuxManagerV1
     from loushang.apphost.managed.registry import ManagedMuxReservationV1
-    from loushang.coding.managed_process import APPLICATION_ID
+    from loushang.coding.hosted.managed.process import APPLICATION_ID
     from loushang.harnesstui.mux import terminal
 
     _, commands = managed_cli

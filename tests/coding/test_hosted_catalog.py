@@ -11,10 +11,11 @@ import pytest
 from loushang.ai.types import UserMessage
 from loushang.apphost import SessionCreateIntentV1, SessionCreateRequestV1
 from loushang.appserver.protocol import SessionScopeV1
-from loushang.coding.bootstrap import create_agent_session
-from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.hosted_catalog import (
+from loushang.coding.composition.bootstrap import create_agent_session
+from loushang.coding.composition.plan import CODING_CAPABILITY_PROFILE_METADATA_KEY
+from loushang.coding.composition.provenance import CODING_COMPOSITION_HEADER_KEY
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.hosted.catalog import (
     CODING_HOSTED_COMPATIBILITY_ID,
     CodingHostedCandidateBindingV1,
     CodingHostedCandidateValidatorV1,
@@ -24,8 +25,7 @@ from loushang.coding.hosted_catalog import (
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE_METADATA_KEY
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_file,
     write_agent_transcript_export,
@@ -41,7 +41,7 @@ from loushang.harness.transcript.jsonl_file import (
 def test_hosted_readonly_binding_preserves_selected_branch_and_delivery_fence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, delivery_fault: str,
 ) -> None:
-    from loushang.coding.appservice_adapter import CodingHostedSessionV1
+    from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
     from loushang.harness.conversation import ConversationRecord
     from loushang.harness.transcript import AGENT_MESSAGE_KIND
 
@@ -257,7 +257,7 @@ def test_canonical_hosted_history_previews_changed_environment_without_activatio
 ) -> None:
     # Installed-evidence fixtures also import this module. Keep this optional
     # Resume dependency local to the regression that actually exercises it.
-    from loushang.coding.resume_composition_comparison import (
+    from loushang.coding.resume.composition_comparison import (
         compare_coding_resume_composition,
     )
 
@@ -296,7 +296,7 @@ def test_canonical_hosted_history_previews_changed_environment_without_activatio
         )
         assert comparison.status == "changed"
         assert comparison.difference_codes == ("composition.set_changed",)
-        from loushang.coding.resume_input_lookup import CodingResumeInputLookupQueryV1
+        from loushang.coding.resume.input_lookup import CodingResumeInputLookupQueryV1
 
         model_observation = await fresh.preview_resume_model_outcome(
             rows[0].reference, CodingResumeInputLookupQueryV1("unknown-input", "a" * 64),
@@ -305,7 +305,7 @@ def test_canonical_hosted_history_previews_changed_environment_without_activatio
         assert model_observation.status == "unknown"
         assert model_observation.invocation_id is None
         from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
-        from loushang.coding.appservice_adapter import CodingHostedSessionV1
+        from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
 
         async def reject_writable_open(*args, **kwargs):
             raise AssertionError("historical display acquired writable candidate")
@@ -454,7 +454,7 @@ def test_G14_PRODUCT_candidate_revision_is_fenced_before_claim(tmp_path: Path) -
                 await catalog.preview_history_snapshot(
                     projections[0].reference, max_bytes=1024 * 1024,
                 )
-            from loushang.coding.resume_input_lookup import (
+            from loushang.coding.resume.input_lookup import (
                 CodingResumeInputLookupQueryV1,
             )
 

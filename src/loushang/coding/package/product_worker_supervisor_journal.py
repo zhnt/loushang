@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 
+from loushang.coding.package.worker_history_access import (
+    _CodingHistoryAccess as _CodingHistoryAccess,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.worker.history._rooted_supervisor import RootedSupervisorJournal
 from loushang.harness.worker.history._supervisor import _MAX_BYTES, _MAX_RECORDS
-
-from .._worker_history_access import _CodingHistoryAccess as _CodingHistoryAccess
 
 
 class CodingProductWorkerSupervisorJournal(RootedSupervisorJournal):

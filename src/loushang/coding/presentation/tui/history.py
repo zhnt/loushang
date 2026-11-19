@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.presentation import ToolDefinitionResolver
 from loushang.harnesstui.conversation.agent_binding import (
     load_agent_session_history_records,

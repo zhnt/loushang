@@ -32,8 +32,8 @@ from loushang.appserver.protocol import (
     TurnTextV1,
 )
 from loushang.appservice.execution_contract import ExecutionStatusV1
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.hosted_goal_application import (
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.goal_application import (
     CodingHostedGoalV1,
     create_coding_goal_application,
 )
@@ -483,7 +483,7 @@ def test_goal_rejects_second_profile_and_retains_retired_member_until_owner_clos
 
     from loushang.apphost.errors import AppHostError, AppHostFailureCategory
     from loushang.appserver.protocol import MuxMemberCloseV1
-    from loushang.coding.hosted_application import CODING_HOSTED_APPLICATION_PROFILE_ID
+    from loushang.coding.hosted.application import CODING_HOSTED_APPLICATION_PROFILE_ID
 
     async def scenario():
         launch, config = task(tmp_path)

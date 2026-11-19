@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loushang.coding.model_selection import (
+from loushang.coding.interaction.model_selection import (
     ensure_usable_session_model,
 )
 from loushang.harnesstui.conversation.agent_application import (

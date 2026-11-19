@@ -12,9 +12,9 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.bootstrap import create_agent_session_runtime
-from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
-from loushang.coding.continuity import (
+from loushang.coding.composition.bootstrap import create_agent_session_runtime
+from loushang.coding.composition.provenance import CODING_COMPOSITION_HEADER_KEY
+from loushang.coding.session.continuity import (
     ConflictedContinuityTargetError,
     StaleContinuityTargetError,
     bind_coding_continuity,
@@ -149,7 +149,7 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
 def test_renamed_session_title_survives_new_resume_queries_and_restart(
     tmp_path, stale_index
 ):
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harnesstui.continuity import ContinuitySurface
 
     async def scenario():
@@ -1205,7 +1205,7 @@ def test_coding_prepare_revalidates_bounded_catalog_file_identity(
 def test_coding_preview_rejects_a_snapshot_from_another_source_revision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding import continuity as continuity_module
+    from loushang.coding.session import continuity as continuity_module
 
     runtime = _Runtime(tmp_path)
     write_agent_transcript_export(
@@ -1243,7 +1243,7 @@ def test_coding_preview_rejects_a_snapshot_from_another_source_revision(
 def test_coding_preview_cancellation_keeps_native_read_owned_until_shutdown(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reader_name: str,
 ) -> None:
-    from loushang.coding import continuity as continuity_module
+    from loushang.coding.session import continuity as continuity_module
     from loushang.harness.continuity import StaleContinuityReferenceError
 
     runtime = _Runtime(tmp_path)

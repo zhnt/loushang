@@ -79,7 +79,7 @@ def test_registry_register_tool_accepts_explicitly_bound_decorated_tool() -> Non
 
 
 def test_tool_registry_exposes_builtin_tool_family() -> None:
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.coding.resources.tool_pack import register_coding_builtin_tools
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     registry = WorkspaceToolRegistry()
@@ -107,7 +107,7 @@ def test_tool_registry_exposes_builtin_tool_family() -> None:
 
 
 def test_tool_registry_selects_powershell_tool_for_windows_target() -> None:
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.coding.resources.tool_pack import register_coding_builtin_tools
     from loushang.harness.environment import HostEnvironment
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -131,7 +131,7 @@ def test_tool_registry_selects_powershell_tool_for_windows_target() -> None:
 
 
 def test_registry_resolves_harness_contributions_without_mutating_state() -> None:
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.coding.resources.tool_pack import register_coding_builtin_tools
     from loushang.harness.tools.contribution import ToolPackDefinition
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -166,7 +166,7 @@ def test_registry_resolves_harness_contributions_without_mutating_state() -> Non
 
 
 def test_workspace_factory_and_coding_pack_have_distinct_owners() -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         create_coding_tool_definitions,
         create_coding_tools,
     )
@@ -576,7 +576,7 @@ def test_tool_factory_uses_builtin_external_tool_downloader_when_enabled(
 ) -> None:
     import asyncio
 
-    import loushang.coding.tool_pack as coding_factory
+    import loushang.coding.resources.tool_pack as coding_factory
     import loushang.harness.tools.workspace.factory as workspace_factory
     from loushang.harness.tools.workspace import ToolsOptions
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -669,7 +669,7 @@ def test_tool_factory_does_not_download_external_tools_by_default(tmp_path) -> N
 
 
 def test_register_builtin_tools_reuses_factory_but_keeps_legacy_order() -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.tools.workspace.registry import (
@@ -691,7 +691,7 @@ def test_register_builtin_tools_reuses_factory_but_keeps_legacy_order() -> None:
 
 
 def test_register_builtin_tools_uses_harness_pack_resolver(monkeypatch) -> None:
-    import loushang.coding.tool_pack as builtins
+    import loushang.coding.resources.tool_pack as builtins
     import loushang.harness.tools.workspace.registry as registry_module
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -745,7 +745,7 @@ def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools
 ) -> None:
     import asyncio
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.tools.workspace.registry import (
@@ -795,7 +795,7 @@ def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools
 def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.policy import PolicyDecision
@@ -847,7 +847,7 @@ def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
 def test_bash_tool_invokes_canonical_policy_once(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.policy import PolicyDecision
@@ -885,7 +885,7 @@ def test_bash_tool_invokes_canonical_policy_once(tmp_path) -> None:
 def test_bash_tool_accepts_pi_style_shell_command_string(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.policy import PolicyDecision
@@ -1294,7 +1294,7 @@ def test_bash_tool_rejects_runtime_values_that_do_not_match_schema() -> None:
 def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.policy import PolicyDecision
@@ -1568,7 +1568,7 @@ def test_bash_tool_raises_for_invalid_command_and_env_shapes(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.tools.workspace.registry import (
@@ -1629,7 +1629,7 @@ def test_bash_tool_policy_decisions_do_not_record_runtime_diagnostics(tmp_path) 
 
     import pytest
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.diagnostics import DiagnosticsService
@@ -1690,7 +1690,7 @@ def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) ->
 
     import pytest
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.diagnostics import DiagnosticsService
@@ -1736,7 +1736,7 @@ def test_bash_tool_timeout_error_includes_buffered_output(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.coding.resources.tool_pack import register_coding_builtin_tools
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -1789,7 +1789,7 @@ def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_rerais
 ) -> None:
     import asyncio
 
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.coding.resources.tool_pack import register_coding_builtin_tools
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry

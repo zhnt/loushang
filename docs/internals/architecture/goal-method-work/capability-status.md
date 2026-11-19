@@ -68,7 +68,7 @@
 
 | ID / 类别 | 当前缺口或边界 | 既有依据 / 责任 | 推进条件及最小增量 |
 | --- | --- | --- | --- |
-| G01 已登记的候选接入 | AppHost/AppService 尚无已核实的 Goal/Method/HarnessWork 完整托管闭环 | [#824](https://github.com/zhnt/loushang/issues/824) 仍 open；[CodingExecutionWorkV1](../../../../src/loushang/coding/_hosted_execution_work.py) 当前驱动 execute_prompt，其名称不等于 HarnessWork Work；[CodingGoal.open](../../../../src/loushang/coding/adapters/goal.py) 仍拥有自己的 SDK/Session | 若选择此方向，先设计已有 Product/Session 上的 Method→Work 装配及身份/关闭责任，再接 Goal；复用 AppHost 所有权和 AppService 原端口，不按请求另建 Session。重要环境图/交互仍需用户评审 |
+| G01 已登记的候选接入 | AppHost/AppService 尚无已核实的 Goal/Method/HarnessWork 完整托管闭环 | [#824](https://github.com/zhnt/loushang/issues/824) 仍 open；[CodingExecutionWorkV1](../../../../src/loushang/coding/hosted/_execution_work.py) 当前驱动 execute_prompt，其名称不等于 HarnessWork Work；[CodingGoal.open](../../../../src/loushang/coding/adapters/goal.py) 仍拥有自己的 SDK/Session | 若选择此方向，先设计已有 Product/Session 上的 Method→Work 装配及身份/关闭责任，再接 Goal；复用 AppHost 所有权和 AppService 原端口，不按请求另建 Session。重要环境图/交互仍需用户评审 |
 | G02 已接受设计的部分差异 | Work 来源引用已接通，但仍保留原正文；完整审计、正文裁剪和入口迁移未完成 | [HW-KD-003 §11](../harnesswork/key-designs/fact-retention-replay.md#11-已接受-target-与-current-的差异)、[ARD-019](../decisions/accepted/ARD-019-work-facts-and-transcript-sharing.md)；HarnessWork/Harness/Product 共同负责 | 先选一个确实需要该行为的消费者，核对订阅/重连/旧 reader/保留期后补窄切片；不再建设来源读取器，不先上缓存或索引 |
 | G03 已实现能力的证据边界 | 在线 inherit 尚未验证；R3 在线 A→A→B 的原 Goal 未完成 | R3 原结果；后来零模型收尾属于新 Goal | 不阻止复用已通过离线合同的实现。实际产品需要在线继承或该组合验收时，再冻结专门试验；不是现在再重跑 GP-03 的理由 |
 | G04 候选业务扩展 | 任意自然语言 Goal、模型自动选择/组合任意 Method、通用业务验收尚未交付 | 当前公开示例是有限 calculator，仓库 profile 为私有固定任务合同；MethodPolicy 是 off/explicit | 由具体领域先提供要求/动作/Method 准入/验收合同。不要把现有有限 planner 改名为通用 planner，也不另造 Work 引擎 |

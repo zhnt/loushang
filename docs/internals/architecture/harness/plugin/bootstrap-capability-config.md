@@ -16,7 +16,7 @@
 
 | 现状 | 固定源码依据 | 对设计的约束 |
 | --- | --- | --- |
-| 同一父函数内两个同步配置块相同 | [bootstrap](../../../../../src/loushang/coding/bootstrap.py#L1553) 1553–1580 与 1744–1771；两个 LSP constructor AST 相同，两个 Arch constructor AST 相同 | 可以复用原表达式；不能推导两条完整 bootstrap 等价 |
+| 同一父函数内两个同步配置块相同 | [bootstrap](../../../../../src/loushang/coding/composition/bootstrap.py#L1553) 1553–1580 与 1744–1771；两个 LSP constructor AST 相同，两个 Arch constructor AST 相同 | 可以复用原表达式；不能推导两条完整 bootstrap 等价 |
 | 输入已由原分支选定 | 同文件 1500–1531、1687–1720 记录 desired selection、维护 enabled IDs；空集合不进入配置块 | helper 仅消费原选定 list，不重新捕获、排序、过滤或修改它 |
 | 配置前已建立本分支临时状态 | 1533–1551、1722–1742；`arch_private_ephemeral_state` 为原外层 cell，后续还交接 cleanup | 保留原赋值和 owner；不把这些状态转给新 helper |
 | 配置表达式有顺序与副作用 | LSP 先构造；Arch 先求 `workspace_root`，再求 temporary Path 或 prepare 私有根，然后构造配置 | 不把 Arch path 作为预先求好的 helper 参数 |

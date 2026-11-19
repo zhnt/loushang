@@ -25,9 +25,9 @@ from loushang.ai.model import Capabilities, Model
 from loushang.apphost.managed._files import ManagedStorageError
 from loushang.apphost.managed.bootstrap import ManagedChildBootstrapV1
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
-from loushang.coding.hosted_local import CodingLocalCommandV1
-from loushang.coding.managed_bootstrap import create_coding_managed_launch
-from loushang.coding.managed_local import (
+from loushang.coding.hosted.local import CodingLocalCommandV1
+from loushang.coding.hosted.managed.bootstrap import create_coding_managed_launch
+from loushang.coding.hosted.managed.local import (
     CodingManagedLocalCommandV1,
     create_coding_managed_local_launch,
 )

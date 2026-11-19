@@ -675,7 +675,7 @@ legacy, or Source projections without creating Product state. Its command
 strategy owns fenced/legacy port opening, any startup lease, and compatibility
 publication. The strategy returns Product-owned application ports; it never
 moves settings, Package admission, or Desired State writes into Harness.
-[`Coding's adapter`](../../../../../src/loushang/coding/plugin_manager/cli.py)
+[`Coding's adapter`](../../../../../src/loushang/coding/plugin_manager/binding.py)
 is one implementation of these protocols, not a required Product layout.
 
 The local A2 operation explanation reads the Package lifecycle journal without

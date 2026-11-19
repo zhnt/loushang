@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import macos_service
-from loushang.coding.managed_service import ServiceControlError
+from loushang.coding.hosted import macos_service
+from loushang.coding.hosted.managed.service import ServiceControlError
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Unix launchd adapter")
 
@@ -20,7 +20,7 @@ def test_launchd_agent_uses_bundled_python_and_does_not_persist_tokens(tmp_path,
     agent = macos_service._write_agent(tmp_path, "test.host")
     content = agent.read_bytes()
     value = plistlib.loads(content)
-    assert value["ProgramArguments"] == [str(python), "-I", "-m", "loushang.coding.foreground_host"]
+    assert value["ProgramArguments"] == [str(python), "-I", "-m", 'loushang.coding.hosted.foreground']
     assert b"secret-must-not-enter-plist" not in content
     assert value["KeepAlive"] == {"SuccessfulExit": False}
     assert value["LimitLoadToSessionType"] == "Background"

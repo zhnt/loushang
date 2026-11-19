@@ -13,8 +13,8 @@ from loushang.appserver.execution.model import ExecutionResponseV1
 from loushang.appserver.goal import GoalServiceError
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
-from loushang.coding._hosted_goal_config import CodingHostedGoalV1, HostedGoalSetup
-from loushang.coding._hosted_goal_work import GoalInvocation
+from loushang.coding.hosted._goal_config import CodingHostedGoalV1, HostedGoalSetup
+from loushang.coding.hosted._goal_work import GoalInvocation
 from loushang.harnesswork.goal import GoalError
 from loushang.harnesswork.goal.records import plain
 
@@ -157,7 +157,7 @@ def test_budget_material_and_cheap_progress_preserve_full_validation(tmp_path, m
 
 
 def test_model_deadline_cancels_original_work_and_retry_only_settles(tmp_path, monkeypatch):
-    from loushang.coding import _hosted_goal_work as module
+    from loushang.coding.hosted import _goal_work as module
 
     async def scenario():
         launch, config, task = package(tmp_path, closeout_reserve_seconds=30)
@@ -260,7 +260,7 @@ def test_progress_optional_capability_and_revocation_during_delivery(tmp_path, m
 
 
 def test_late_completed_repair_does_not_admit_verification(tmp_path, monkeypatch):
-    from loushang.coding import _hosted_goal_work as module
+    from loushang.coding.hosted import _goal_work as module
     from loushang.harnesswork.runtime import WorkRuntime
 
     async def scenario():
@@ -298,7 +298,7 @@ def test_late_completed_repair_does_not_admit_verification(tmp_path, monkeypatch
 
 @pytest.mark.parametrize("reserve", [0, 30])
 def test_original_invocation_checks_model_and_total_deadlines(tmp_path, monkeypatch, reserve):
-    from loushang.coding import _hosted_goal_work as module
+    from loushang.coding.hosted import _goal_work as module
 
     async def scenario():
         _, config, _ = package(tmp_path, closeout_reserve_seconds=reserve)
@@ -327,7 +327,7 @@ def test_original_invocation_checks_model_and_total_deadlines(tmp_path, monkeypa
 
 
 def test_closeout_changes_original_timer_without_extending_total_deadline(tmp_path, monkeypatch):
-    from loushang.coding import _hosted_goal_work as module
+    from loushang.coding.hosted import _goal_work as module
 
     async def scenario():
         _, config, _ = package(tmp_path, closeout_reserve_seconds=30)
@@ -360,7 +360,7 @@ def test_closeout_changes_original_timer_without_extending_total_deadline(tmp_pa
 
 @pytest.mark.parametrize("later", ["cancel", "error"])
 def test_late_interruption_preserves_locked_deadline_reason(tmp_path, monkeypatch, later):
-    from loushang.coding import _hosted_goal_work as module
+    from loushang.coding.hosted import _goal_work as module
 
     async def scenario():
         _, config, _ = package(tmp_path, closeout_reserve_seconds=30)

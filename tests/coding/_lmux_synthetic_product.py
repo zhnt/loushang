@@ -133,7 +133,8 @@ def run_product(argv: list[str], witness: Callable[[str, str], None], *, admissi
     Not a public launcher: the future fixed child must verify installed origins
     and supply its own bounded witness sink. Never call concurrently in-process.
     """
-    from loushang.coding import managed_local, managed_process
+    from loushang.coding.hosted.managed import local as managed_local
+    from loushang.coding.hosted.managed import process as managed_process
 
     original = managed_local.CodingManagedLocalCommandV1
     model, stream, tools = components(witness, completion_gate=completion_gate)

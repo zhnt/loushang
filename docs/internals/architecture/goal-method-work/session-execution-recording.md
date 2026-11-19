@@ -29,7 +29,7 @@
 | 模型规划 | [_goal_planning.py](../../../../src/loushang/coding/adapters/_goal_planning.py)、[_goal_planning_work.py](../../../../src/loushang/coding/adapters/_goal_planning_work.py)：标准 executor 外包 ScopedSessionWork / PlanningWork；规划报告另含响应及模型输入证明 | 给内部标准 executor 绑定来源；保留外层报告和权限恢复职责。普通消息引用不能代替模型输入证明 |
 | 确定性检查与验证 | InspectionWork、[CodingVerificationExecutor](../../../../src/loushang/coding/adapters/_verification_work.py)：静态检查或 execute_bash，已有 WorkEvidenceReported / Blob | 无模型 prompt 时不伪造 Transcript 消息交接；使用原证据合同 |
 | 新鲜 / 继承上下文 | [context.py](../../../../src/loushang/harness/multiagent/context.py)：ForkTier none/all/last、TranscriptWatermark、过滤和模型继承约束 | 直接作为后续子执行的上下文机制，不新建 Goal fork |
-| 子执行创建、权限及清理 | [coding/multiagent.py](../../../../src/loushang/coding/multiagent.py)：CodingSubagentFactory 创建独立 runtime/session、委派权限、workspace lease、驱动与关闭；目前 persist=False | 复用控制树与生命周期；不声称已经具有可重开的子 Transcript 或独立子 Work |
+| 子执行创建、权限及清理 | [coding/multiagent.py](../../../../src/loushang/coding/session/multiagent.py)：CodingSubagentFactory 创建独立 runtime/session、委派权限、workspace lease、驱动与关闭；目前 persist=False | 复用控制树与生命周期；不声称已经具有可重开的子 Transcript 或独立子 Work |
 
 **关键缺口不是执行机制不足，而是装配接缝不通。** `SessionWorkRuntime.accept_operation` 能冻结来源合同，但 CodingGoal 为支持验证、规划包装和原 Goal 意图顺序直接用 WorkRuntime。把它改成第二个 SessionWorkRuntime 或在 Goal 中复制交接算法，都会产生多余权威或重复逻辑。
 

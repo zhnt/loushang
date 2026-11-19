@@ -76,7 +76,7 @@ def _user_message(text: str) -> UserMessage:
 def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -106,7 +106,7 @@ def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
 def test_worker_session_binding_still_rejects_unselected_inputs(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
@@ -126,11 +126,11 @@ def test_worker_session_binding_still_rejects_unselected_inputs(tmp_path) -> Non
 
 def test_product_capability_route_rejects_unselected_runtime_package(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding._capability_plugin_composition import (
+    from loushang.coding.composition.capability_plugins import (
         CodingCapabilityPluginCompositionAssembly,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.package_product.product_runtime import (
         PackageProductRuntimeBindingV1,
     )
@@ -204,7 +204,7 @@ def test_agent_session_composes_existing_transform_with_extension_context_withou
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ContextResult,
         ExtensionRunner,
@@ -268,7 +268,7 @@ def test_agent_session_binds_extension_runtime_state_context_methods(tmp_path) -
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     runner = ExtensionRunner(
@@ -373,7 +373,7 @@ def _stream_with_assistant_message(
 def test_agent_session_prompt_persists_messages_and_forwards_events(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     event_types: list[str] = []
 
@@ -412,7 +412,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     event_types: list[str] = []
     stream_started = asyncio.Event()
@@ -484,7 +484,7 @@ def test_persisted_session_abort_tool_then_prompt_and_resume_keeps_revision_chai
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import ToolResultMessage
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.tools.core import ToolDefinition
     from loushang.harness.tools.execution import direct_execution
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -616,7 +616,7 @@ def test_agent_session_prompt_reports_preflight_before_stream_finishes(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     events: list[str] = []
     release = asyncio.Event()
@@ -660,7 +660,7 @@ def test_agent_session_prompt_expands_preflight_references_and_records_unresolve
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
@@ -734,7 +734,7 @@ def test_agent_session_slash_prefix_deploy_consumes_extension_command_without_pr
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -789,7 +789,7 @@ def test_agent_session_input_hook_transforms_before_prompt_preflight(tmp_path) -
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         InputEventResult,
@@ -857,7 +857,7 @@ def test_agent_session_input_hook_can_handle_prompt_without_model_call(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         InputEventResult,
@@ -905,7 +905,7 @@ def test_agent_session_extension_command_runs_before_input_hook(tmp_path) -> Non
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -956,7 +956,7 @@ def test_agent_session_input_hook_transform_to_extension_command_is_plain_prompt
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         InputEventResult,
@@ -1014,7 +1014,7 @@ def test_agent_session_forwards_agent_lifecycle_events_to_extensions(tmp_path) -
     from loushang.agent import Agent
     from loushang.ai.types import ToolResultMessage
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     seen: list[tuple[object, ...]] = []
@@ -1101,7 +1101,7 @@ def test_agent_session_forwards_message_and_tool_execution_events_to_extensions(
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     seen: list[tuple[object, ...]] = []
@@ -1177,7 +1177,7 @@ def test_agent_session_records_tool_execution_error_diagnostic_with_correlation(
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     async def scenario() -> DiagnosticsService:
@@ -1219,7 +1219,7 @@ def test_agent_session_applies_before_agent_start_result(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         BeforeAgentStartResult,
         ExtensionRunner,
@@ -1296,7 +1296,7 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
     from loushang.agent import Agent
     from loushang.agent.types import AgentToolResult
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         InputEventResult,
@@ -1431,7 +1431,7 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     seen: list[tuple[object, object, object]] = []
@@ -1485,11 +1485,11 @@ def test_agent_session_execute_bash_uses_extension_user_bash_operations(
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -1563,7 +1563,7 @@ def test_agent_session_steer_rejects_extension_command_without_executing(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -1612,7 +1612,7 @@ def test_agent_session_follow_up_rejects_extension_command_without_executing(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -1659,7 +1659,7 @@ def test_agent_session_get_commands_aggregates_extension_prompt_and_skill_source
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -1769,7 +1769,7 @@ def test_agent_session_list_commands_hides_disabled_skills_but_keeps_explicit_on
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.types import (
         ResourceBundle,
         SkillDescriptor,
@@ -1813,7 +1813,7 @@ def test_agent_session_execute_command_async_dispatches_extension_command(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -1867,7 +1867,7 @@ def test_agent_session_extension_command_context_exec_command_uses_exec_service(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -1958,7 +1958,7 @@ def test_agent_session_execute_command_async_expands_prompt_and_skill_commands(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
         ResourceBundle,
@@ -2021,7 +2021,7 @@ def test_agent_session_execute_command_async_prefers_extension_over_prompt(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2078,7 +2078,7 @@ def test_agent_session_returns_command_argument_completions(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2129,7 +2129,7 @@ def test_agent_session_extension_command_context_wait_for_idle_and_reload(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2182,7 +2182,7 @@ def test_agent_session_extension_command_context_navigate_tree(tmp_path) -> None
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2248,7 +2248,7 @@ def test_agent_session_execute_command_async_records_errors(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
@@ -2310,7 +2310,7 @@ def test_agent_session_execute_command_async_returns_none_for_unknown_command(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
@@ -2339,7 +2339,7 @@ def test_agent_session_execute_command_async_keeps_resource_diagnostic_for_unres
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.resources.types import ResourceBundle
 
@@ -2366,7 +2366,7 @@ def test_agent_session_get_commands_includes_all_extension_commands(tmp_path) ->
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2414,7 +2414,7 @@ def test_agent_session_get_commands_includes_all_extension_commands(tmp_path) ->
 def test_agent_session_lists_user_messages_for_forking(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.conversation import CommandExecutionRecord
 
     manager = asyncio.run(
@@ -2451,7 +2451,7 @@ def test_agent_session_lists_user_messages_for_forking(tmp_path) -> None:
 def test_agent_session_exposes_last_assistant_text(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(),
@@ -2469,7 +2469,7 @@ def test_agent_session_exposes_last_assistant_text(tmp_path) -> None:
 def test_agent_session_exposes_recent_assistant_texts_newest_first(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(),
@@ -2492,7 +2492,7 @@ def test_agent_session_exposes_recent_assistant_texts_newest_first(tmp_path) -> 
 def test_agent_session_exposes_standard_state_properties(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=True)
@@ -2522,7 +2522,7 @@ def test_agent_session_exposes_standard_state_properties(tmp_path) -> None:
 def test_agent_session_steer_then_continue_persists_follow_on_turn(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     prompts: list[str] = []
     queue_updates: list[tuple[list[str], list[str]]] = []
@@ -2566,7 +2566,7 @@ def test_agent_session_exposes_standard_queue_accessors_and_clear_queue(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(),
@@ -2606,7 +2606,7 @@ def test_agent_session_removes_visible_queue_when_queued_user_message_starts(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(),
@@ -2644,7 +2644,7 @@ def test_agent_session_removes_visible_queue_when_queued_user_message_starts(
 def test_agent_session_follow_up_and_state_snapshot(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession, RunState
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     agent = Agent(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
@@ -2672,7 +2672,7 @@ def test_agent_session_follow_up_and_state_snapshot(tmp_path) -> None:
 def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession, ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     agent = Agent(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
@@ -2718,7 +2718,7 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
 def test_agent_session_restores_selected_reasoning_level_after_resume(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     async def scenario() -> None:
         manager = await SessionManager.new(
@@ -2762,7 +2762,7 @@ def test_agent_session_rejects_text_only_model_for_image_history_before_commit(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     image_model = Model(
         id="image-model",
@@ -2828,7 +2828,7 @@ def test_agent_session_rejects_text_only_model_for_image_history_before_commit(
 def test_agent_session_serializes_model_selection_after_active_prompt(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     started = asyncio.Event()
     release = asyncio.Event()
@@ -2894,7 +2894,7 @@ def test_agent_session_serializes_model_selection_after_active_prompt(tmp_path) 
 def test_agent_session_persists_explicit_model_selection_endpoint(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession, ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
@@ -2940,7 +2940,7 @@ def test_agent_session_persists_explicit_model_selection_endpoint(tmp_path) -> N
 def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession, ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
@@ -2987,7 +2987,7 @@ def test_agent_session_emits_model_select_event_for_async_model_control(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession, ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
@@ -3044,7 +3044,7 @@ def test_agent_session_emits_model_select_event_for_async_model_control(
 def test_agent_session_exposes_standard_model_and_session_mutators(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession, ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
@@ -3097,7 +3097,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     from loushang.agent import Agent
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionAPI, ExtensionRunner
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
@@ -3219,7 +3219,7 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
     from loushang.agent import Agent
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import ExtensionAPI, ExtensionRunner
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
@@ -3316,11 +3316,11 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
 
 def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession, ModelSelection
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
@@ -3377,7 +3377,7 @@ def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) ->
 def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(
@@ -3422,7 +3422,7 @@ def test_agent_session_exposes_standard_runtime_facades(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     settings = SettingsManager(project_settings_path=tmp_path / "settings.json")
     session = AgentSession(
@@ -3470,7 +3470,7 @@ def test_agent_session_persists_queue_modes_to_settings(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     settings_path = tmp_path / "settings.json"
     settings = SettingsManager(global_settings_path=settings_path)
@@ -3493,7 +3493,7 @@ def test_agent_session_persists_queue_modes_to_settings(tmp_path) -> None:
 def test_agent_session_binds_extensions_before_session_start(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     seen: list[tuple[str, tuple[str, ...]]] = []
@@ -3532,7 +3532,7 @@ def test_agent_session_binds_extensions_before_session_start(tmp_path) -> None:
 def test_agent_session_extension_status_updates_footer_data_provider(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     def _session_start(event, ctx):
@@ -3576,7 +3576,7 @@ def test_agent_session_footer_data_provider_tracks_available_provider_count(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionAPI, ExtensionRunner
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
@@ -3626,7 +3626,7 @@ def test_agent_session_exposes_available_model_details_for_metadata_consumers(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     detailed = Model(
@@ -3668,7 +3668,7 @@ def test_agent_session_exposes_available_model_details_for_metadata_consumers(
 def test_agent_session_disposes_footer_data_provider(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(
@@ -3696,7 +3696,7 @@ def test_agent_session_disposes_footer_data_provider(tmp_path) -> None:
 def test_agent_session_disposal_paths_complete_pending_approvals(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -3749,7 +3749,7 @@ def test_agent_session_disposal_closes_approval_before_waiting_for_host(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -3805,7 +3805,7 @@ def test_agent_session_disposal_closes_approval_before_waiting_for_host(
 def test_agent_session_presenter_detach_denies_pending_approvals(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -3855,7 +3855,7 @@ def test_agent_session_presenter_rebind_reopens_active_approval_generation(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -3909,7 +3909,7 @@ def test_agent_session_presenter_rebind_reopens_active_approval_generation(
 async def _approval_interaction_session(tmp_path):
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import (
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
@@ -4072,7 +4072,7 @@ def test_agent_session_disposal_finalizes_when_host_dispose_fails(tmp_path) -> N
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -4124,7 +4124,7 @@ def test_agent_session_disposal_finalizes_when_host_dispose_fails(tmp_path) -> N
 def test_agent_session_extension_runtime_actions_update_session_store(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     seen: list[tuple[object, ...]] = []
@@ -4213,7 +4213,7 @@ def test_agent_session_extension_send_user_message_triggers_turn_without_command
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -4287,7 +4287,7 @@ def test_agent_session_extension_send_user_message_queues_while_streaming(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -4340,7 +4340,7 @@ def test_agent_session_send_message_next_turn_is_appended_after_user_message(
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -4402,7 +4402,7 @@ def test_agent_session_send_custom_message_public_api_persists_and_emits_events(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(
@@ -4447,7 +4447,7 @@ def test_agent_session_send_user_message_public_api_triggers_turn_without_comman
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -4509,11 +4509,11 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import (
         ExtensionResourceContribution,
         ExtensionRunner,
@@ -4624,7 +4624,7 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
 def test_agent_session_set_active_tools_emits_session_refresh(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.core import tool
     from loushang.harness.tools.workspace.registry import (
@@ -4680,7 +4680,7 @@ def test_agent_session_set_active_tools_emits_session_refresh(tmp_path) -> None:
 def test_agent_session_refresh_does_not_reemit_session_start(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.core import tool
     from loushang.harness.tools.workspace.registry import (
@@ -4749,7 +4749,7 @@ def test_agent_session_set_extension_ui_context_rebinds_context_without_lifecycl
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     start_events: list[bool] = []
@@ -4805,7 +4805,7 @@ def test_agent_session_dispose_invalidates_extension_contexts_after_shutdown_hoo
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     seen: list[str] = []
@@ -4855,7 +4855,7 @@ def test_agent_session_dispose_invalidates_extension_contexts_when_shutdown_emit
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     runner = ExtensionRunner(
@@ -4894,7 +4894,7 @@ def test_agent_session_set_model_emits_session_refresh(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     next_model = Model(
@@ -4949,7 +4949,7 @@ def test_agent_session_invalid_extension_refresh_model_change_keeps_top_level_mo
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
@@ -5022,7 +5022,7 @@ def test_extension_session_refresh_actions_do_not_recursively_emit_refresh(
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.core import tool
     from loushang.harness.tools.workspace.registry import (
@@ -5092,11 +5092,11 @@ def test_agent_session_extension_can_request_resource_refresh(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     requested: list[str] = []
@@ -5137,7 +5137,7 @@ def test_agent_session_extension_request_resource_refresh_is_nonfatal_without_lo
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     requested: list[str] = []
@@ -5184,11 +5184,11 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.core import tool
@@ -5252,11 +5252,11 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
 
 def test_agent_session_records_reload_failures_as_diagnostics(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.resources.types import ResourceBundle
@@ -5303,11 +5303,11 @@ def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) 
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import (
         ExtensionResourceContribution,
@@ -5394,7 +5394,7 @@ def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) 
 def test_agent_session_exposes_session_metadata_and_messages(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
@@ -5432,7 +5432,7 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.types import ToolCall, ToolResultMessage
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -5542,7 +5542,7 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
 def test_agent_session_exposes_session_state_runtime_queue(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(
@@ -5576,7 +5576,7 @@ def test_agent_session_exposes_session_state_runtime_queue(tmp_path) -> None:
 def test_agent_session_set_session_name_emits_session_info_changed(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     session = AgentSession(
         agent=Agent(
@@ -5602,7 +5602,7 @@ def test_agent_session_set_session_name_emits_session_info_changed(tmp_path) -> 
 def test_agent_session_exposes_session_scoped_diagnostics(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     diagnostics = DiagnosticsService()
@@ -5652,11 +5652,11 @@ def test_agent_session_exposes_session_scoped_diagnostics(tmp_path) -> None:
 def test_agent_session_get_packages_projects_materializer_state(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     source = "https://packages.example.invalid/review-pack.git"
     settings = SettingsManager(ControlConfig(plugin_sources=(source,)))
@@ -5682,11 +5682,11 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
@@ -5743,7 +5743,7 @@ def test_agent_session_records_package_catalog_diagnostics(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
 
     catalog_path = tmp_path / "catalog.json"
@@ -5775,11 +5775,11 @@ def test_agent_session_materialize_package_returns_policy_denied_record(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     source = "http://packages.example.invalid/review-pack.git"
     settings = SettingsManager(ControlConfig(plugin_sources=(source,)))
@@ -5807,11 +5807,11 @@ def test_agent_session_updates_and_removes_materialized_packages(tmp_path) -> No
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -5865,11 +5865,11 @@ def test_agent_session_installs_and_uninstalls_package_with_settings(tmp_path) -
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -5921,11 +5921,11 @@ def test_agent_session_installs_and_uninstalls_local_package_with_settings(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     local_package = tmp_path / "local-pack"
     local_package.mkdir()
@@ -5964,11 +5964,11 @@ def test_agent_session_install_package_does_not_persist_failed_materialization(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -6007,14 +6007,14 @@ def test_agent_session_install_package_refreshes_resources_for_current_session(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -6067,11 +6067,11 @@ def test_agent_session_emits_package_progress_events(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -6120,11 +6120,11 @@ def test_agent_session_updates_all_packages_and_checks_updates(tmp_path) -> None
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -6168,11 +6168,11 @@ def test_agent_session_updates_and_checks_configured_package_sources(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -6234,11 +6234,11 @@ def test_agent_session_update_packages_dedupes_configured_sources_by_identity(
 
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -6297,11 +6297,11 @@ def test_agent_session_package_projection_dedupes_pinned_versions_by_package_ide
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     global_settings = tmp_path / "global" / "settings.json"
     project_settings = tmp_path / "project" / ".loushang" / "settings.json"
@@ -6340,14 +6340,14 @@ def test_agent_session_configures_package_roots_from_all_settings_scopes(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     global_settings = tmp_path / "agent" / "settings.json"
     project_settings = tmp_path / "project" / ".loushang" / "settings.json"
@@ -6393,14 +6393,14 @@ def test_agent_session_configures_same_relative_package_roots_from_distinct_scop
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     global_settings = tmp_path / "agent" / "settings.json"
     project_settings = tmp_path / "project" / ".loushang" / "settings.json"
@@ -6448,11 +6448,11 @@ def test_agent_session_records_package_update_check_failures(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
@@ -6514,7 +6514,7 @@ def test_agent_session_records_package_version_conflict_diagnostics(tmp_path) ->
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
 
     first = tmp_path / "plugins" / "debug-pack-a"
@@ -6555,7 +6555,7 @@ def test_agent_session_exposes_jsonl_and_html_export_methods(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     project_dir = tmp_path / "project"
     project_dir.mkdir()
@@ -6594,7 +6594,7 @@ def test_agent_session_exposes_jsonl_and_html_export_methods(tmp_path) -> None:
 def test_agent_session_exposes_diagnostics_views(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
 
     diagnostics_service = DiagnosticsService()
@@ -6641,7 +6641,7 @@ def test_agent_session_exposes_diagnostics_views(tmp_path) -> None:
 def test_agent_session_serializes_async_queue_updates_for_steer(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     event_types: list[str] = []
 
@@ -6682,7 +6682,7 @@ def test_agent_session_serializes_async_queue_updates_for_steer(tmp_path) -> Non
 def test_agent_session_serializes_async_queue_updates_for_follow_up(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     event_types: list[str] = []
 

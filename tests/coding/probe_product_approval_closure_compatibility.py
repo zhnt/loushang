@@ -15,7 +15,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding import _capability_plugin_composition as code
+from loushang.coding.composition import capability_plugins as code
 from loushang.harness.approval.plugin_activation import PluginActivationDecisionJournal
 from loushang.harness.approval.plugin_execution import (
     PluginApprovalAuthorizationV1,

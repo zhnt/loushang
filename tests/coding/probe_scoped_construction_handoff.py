@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.bootstrap as product
+import loushang.coding.composition.bootstrap as product
 import loushang.harness.session.bootstrap_construction as core
 from loushang.coding.session.agent_session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from tests.coding import probe_session_construction_handoff as handoff
 from tests.coding.probe_session_construction_handoff import (
     _finish,

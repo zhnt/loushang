@@ -24,11 +24,11 @@ from loushang.appservice.discovery_ports import (
     HostedSessionDiscoveryScopeV1,
 )
 from loushang.appservice.session_discovery import SessionDiscoveryOwnerV1
-from loushang.coding.hosted_catalog import (
+from loushang.coding.hosted.catalog import (
     CodingHostedCatalogError,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.journal import journal_file_lock
 
 from .test_hosted_catalog import _intent, _scope
@@ -198,7 +198,7 @@ def test_G17_PRODUCT_budget_exhaustion_cannot_offer_unverified_rows(tmp_path, mo
         scope = _scope(tmp_path)
         owner = CodingHostedSessionCatalogV1((scope,))
         await _create(owner, scope, 2)
-        monkeypatch.setattr("loushang.coding.hosted_catalog._DISCOVERY_BYTES", 65536)
+        monkeypatch.setattr('loushang.coding.hosted.catalog._DISCOVERY_BYTES', 65536)
         snapshot = await owner.discover_sessions(_query(scope), stop=lambda: False)
         assert not snapshot.complete and not snapshot.omitted_count_exact
         assert len(snapshot.candidates) == 1

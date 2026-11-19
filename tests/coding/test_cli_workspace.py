@@ -10,7 +10,7 @@ from loushang.coding.cli.workspace import (
     extract_workspace_argv,
     run_coding_workspace_command,
 )
-from loushang.coding.worktree import create_coding_git_workspace_manager
+from loushang.coding.workspace.worktree import create_coding_git_workspace_manager
 from loushang.harness.workspace.exec import ExecRequest, ExecService
 
 

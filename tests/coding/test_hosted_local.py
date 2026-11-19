@@ -22,7 +22,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotRequestV1,
     TurnTextV1,
 )
-from loushang.coding.hosted_local import CodingLocalCommandV1, CodingLocalLaunchV1
+from loushang.coding.hosted.local import CodingLocalCommandV1, CodingLocalLaunchV1
 
 from ._hosted_product_child import scripted_stream
 from .test_hosted_bootstrap import _launch
@@ -84,7 +84,7 @@ def test_local_command_keeps_product_runtime_selection_lazy_and_trusted(tmp_path
 def test_local_command_product_selection_failure_never_uses_legacy_materializer(
     tmp_path, monkeypatch
 ):
-    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.composition.bootstrap as coding_bootstrap
 
     legacy_calls = []
     selected = []

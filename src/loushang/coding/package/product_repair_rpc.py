@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from ..product_plan import CODING_PRODUCT_ID
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
+
 from .product_repair import (
     CodingPackageRepairActionV1,
     CodingPackageRepairClientV1,

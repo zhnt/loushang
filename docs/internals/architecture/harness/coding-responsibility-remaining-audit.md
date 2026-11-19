@@ -276,9 +276,9 @@ API，不能把标签、语法或现状当成结论。
 以下12560行窗口、API缺口与候选排序记录A72当时实物；A73审批、A74 payload恢复、
 A75 prepared任务等后续已接受内容以执行记录为准，不重复开发或计收益。
 当前组量见上表；本节历史行数不能作当前值或可删预算。A72重点为
-[bootstrap](../../../../src/loushang/coding/bootstrap.py)的普通构造与内部factory、
+[bootstrap](../../../../src/loushang/coding/composition/bootstrap.py)的普通构造与内部factory、
 [AgentSession](../../../../src/loushang/coding/session/agent_session.py)构造/选择见证，
-以及[capability composition](../../../../src/loushang/coding/_capability_plugin_composition.py)
+以及[capability composition](../../../../src/loushang/coding/composition/capability_plugins.py)
 的definition批准、workspace绑定、activation证据和失败custodian。现成的
 AgentProductConstructionBinding、ProductPluginCompositionPreparation、Graph/
 Registration及Session lifecycle必须继续用，不能再包一个composer。
@@ -287,15 +287,15 @@ A72窗口实物（历史物理行）：
 
 | Code路径 | A72行 |
 |---|---:|
-| [bootstrap.py](../../../../src/loushang/coding/bootstrap.py) | 3531 |
+| [bootstrap.py](../../../../src/loushang/coding/composition/bootstrap.py) | 3531 |
 | [session/agent_session.py](../../../../src/loushang/coding/session/agent_session.py) | 2101 |
-| [_capability_plugin_composition.py](../../../../src/loushang/coding/_capability_plugin_composition.py) | 1887 |
-| [_product_capability_plugin_composition.py](../../../../src/loushang/coding/_product_capability_plugin_composition.py) | 781 |
-| [_base_product_composition.py](../../../../src/loushang/coding/_base_product_composition.py) | 747 |
-| [_base_plugin.py](../../../../src/loushang/coding/_base_plugin.py) | 1082 |
-| [_base_plugin_owners.py](../../../../src/loushang/coding/_base_plugin_owners.py) | 522 |
+| [_capability_plugin_composition.py](../../../../src/loushang/coding/composition/capability_plugins.py) | 1887 |
+| [_product_capability_plugin_composition.py](../../../../src/loushang/coding/composition/product_capability_plugins.py) | 781 |
+| [_base_product_composition.py](../../../../src/loushang/coding/composition/base_product.py) | 747 |
+| [_base_plugin.py](../../../../src/loushang/coding/composition/base_plugin.py) | 1082 |
+| [_base_plugin_owners.py](../../../../src/loushang/coding/composition/base_owners.py) | 522 |
 | [_plugin_lifecycle.py](../../../../src/loushang/coding/plugin_manager/lifecycle.py) | 1163 |
-| [_resource_catalog_adapter.py](../../../../src/loushang/coding/_resource_catalog_adapter.py) | 445 |
+| [_resource_catalog_adapter.py](../../../../src/loushang/coding/resources/catalog.py) | 445 |
 | [_plugin_owner_generations.py](../../../../src/loushang/coding/plugin_manager/owner_generations.py) | 301 |
 | **合计** | **12560** |
 

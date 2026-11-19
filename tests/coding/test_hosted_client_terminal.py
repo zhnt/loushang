@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from loushang.appserver.protocol import SessionScopeV1
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
 from loushang.tui.cell_width import strip_control_sequences
 from tests.tui.terminal_process_support import (
     selected_backend_name,

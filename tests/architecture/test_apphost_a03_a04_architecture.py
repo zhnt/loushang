@@ -117,42 +117,44 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
     }
     for consumer in appserver_consumers:
         assert (
-            consumer == Path("src/loushang/coding/appservice_adapter.py")
-            or consumer == Path("src/loushang/coding/managed_service.py")
-            or consumer == Path("src/loushang/coding/macos_service.py")
-            or consumer == Path("src/loushang/coding/foreground_host.py")
-            or consumer == Path("src/loushang/coding/app_tunnel.py")
-            or consumer == Path("src/loushang/coding/hosted_application.py")
-            or consumer == Path("src/loushang/coding/hosted_catalog.py")
-            or consumer == Path("src/loushang/coding/hosted_resume.py")
-            or consumer == Path("src/loushang/coding/managed_catalog.py")
-            or consumer == Path("src/loushang/coding/workspace_catalog.py")
-            or consumer == Path("src/loushang/coding/managed_bootstrap.py")
-            or consumer == Path("src/loushang/coding/managed_local.py")
-            or consumer == Path("src/loushang/coding/hosted_session.py")
-            or consumer == Path("src/loushang/coding/hosted_execution.py")
+            consumer == Path('src/loushang/coding/hosted/service_adapter.py')
+            or consumer == Path('src/loushang/coding/hosted/managed/service.py')
+            or consumer == Path('src/loushang/coding/hosted/macos_service.py')
+            or consumer == Path('src/loushang/coding/hosted/foreground.py')
+            or consumer == Path('src/loushang/coding/hosted/tunnel.py')
+            or consumer == Path('src/loushang/coding/hosted/application.py')
+            or consumer == Path('src/loushang/coding/hosted/catalog.py')
+            or consumer == Path('src/loushang/coding/hosted/resume.py')
+            or consumer == Path('src/loushang/coding/hosted/managed/catalog.py')
+            or consumer == Path('src/loushang/coding/hosted/workspace_catalog.py')
+            or consumer == Path('src/loushang/coding/hosted/managed/bootstrap.py')
+            or consumer == Path('src/loushang/coding/hosted/managed/local.py')
+            or consumer == Path('src/loushang/coding/hosted/session.py')
+            or consumer == Path('src/loushang/coding/hosted/execution.py')
             # Reviewed Method capability values and Product execution adapter.
-            or consumer == Path("src/loushang/coding/hosted_method.py")
-            or consumer == Path("src/loushang/coding/_hosted_method_config.py")
+            or consumer == Path('src/loushang/coding/hosted/method.py')
+            or consumer == Path('src/loushang/coding/hosted/_method_config.py')
             # COD-KD-HG-001: Goal values and shared safe Work projection.
-            or consumer == Path("src/loushang/coding/hosted_goal.py")
+            or consumer == Path('src/loushang/coding/hosted/goal.py')
             or consumer in {
-                Path("src/loushang/coding/hosted_execution_goal.py"),
-                Path("src/loushang/coding/hosted_goal_commands.py"),
-                Path("src/loushang/coding/hosted_goal_recovery.py"),
-                Path("src/loushang/coding/hosted_goal_review.py"),
-                Path("src/loushang/coding/hosted_session_goal.py"),
-                Path("src/loushang/coding/hosted_user_choice.py"),
+                Path('src/loushang/coding/hosted/execution_goal.py'),
+                Path('src/loushang/coding/hosted/goal_commands.py'),
+                Path('src/loushang/coding/hosted/goal_recovery.py'),
+                Path('src/loushang/coding/hosted/goal_review.py'),
+                Path('src/loushang/coding/hosted/session_goal.py'),
+                Path('src/loushang/coding/hosted/user_choice.py'),
             }
-            or consumer == Path("src/loushang/coding/_hosted_work_observation.py")
+            or consumer == Path('src/loushang/coding/hosted/_work_observation.py')
             # Retained native execution and original subject borrow, no binder.
-            or consumer == Path("src/loushang/coding/_hosted_execution_work.py")
+            or consumer == Path('src/loushang/coding/hosted/_execution_work.py')
+            # Same exact current-subject guard extracted from that owner.
+            or consumer == Path("src/loushang/coding/resume/subject.py")
             or consumer == Path("src/loushang/coding/cli/hosted.py")
             or consumer == Path("src/loushang/coding/cli/hosted_client.py")
             or consumer == Path("src/loushang/coding/cli/mux.py")
             or consumer == Path("src/loushang/coding/cli/lmux_command.py")
-            or consumer == Path("src/loushang/coding/hosted_bootstrap.py")
-            or consumer == Path("src/loushang/coding/hosted_local.py")
+            or consumer == Path('src/loushang/coding/hosted/bootstrap.py')
+            or consumer == Path('src/loushang/coding/hosted/local.py')
             or consumer == APPLICATION
             or consumer == CONTINUITY
             or consumer == FOREGROUND

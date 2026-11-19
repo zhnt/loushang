@@ -157,7 +157,7 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
     # The author smoke checks the new Session's selected Skill identity; the
     # actual body use is proven separately in persisted model input.
     (
-        Path("src/loushang/coding/plugin_author_smoke.py"),
+        Path('src/loushang/coding/authoring/plugin_smoke.py'),
         "_prove_new_session_use",
     ),
     # The read-only Product preview lists Catalog-selected Skill identities;

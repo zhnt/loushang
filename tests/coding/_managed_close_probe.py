@@ -13,7 +13,7 @@ import traceback
 
 from loushang.apphost.managed.mux_management import _ManagedMuxFence
 from loushang.appservice.runtime import AppServiceV1
-from loushang.coding.managed_process import main
+from loushang.coding.hosted.managed.process import main
 
 
 def _observe(label, operation):

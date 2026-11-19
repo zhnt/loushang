@@ -6,8 +6,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from loushang.coding.managed_process import coding_managed_process_request
-from loushang.coding.managed_service import control_managed_service
+from loushang.coding.hosted.managed.process import coding_managed_process_request
+from loushang.coding.hosted.managed.service import control_managed_service
 
 
 def factory(invocation, descriptor):

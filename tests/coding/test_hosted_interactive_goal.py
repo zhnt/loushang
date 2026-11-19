@@ -25,13 +25,13 @@ from loushang.appserver.protocol import (
 from loushang.appservice.execution_contract import ExecutionRequestV1, ExecutionStatusV1
 from loushang.coding.adapters.goal import GoalConstructionError
 from loushang.coding.adapters.interactive_goal import InteractiveGoal
-from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
-from loushang.coding.hosted_resume import CodingDeferredHostedSessionV1
-from loushang.coding.hosted_session import CodingHostedHistoryBindingV1
-from loushang.coding.managed_bootstrap import (
+from loushang.coding.hosted.execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted.managed.bootstrap import (
     CodingManagedApplicationLaunchV1,
     create_coding_managed_attempt,
 )
+from loushang.coding.hosted.resume import CodingDeferredHostedSessionV1
+from loushang.coding.hosted.session import CodingHostedHistoryBindingV1
 from loushang.harness.events.session import ToolPolicyAuditEvent
 from loushang.harnesswork.goal import GoalError
 from loushang.harnesswork.integrations.goal_run import run_goal
@@ -819,9 +819,9 @@ def test_hosted_review_checks_authority_and_required_evidence_then_joins_review_
 @pytest.mark.skipif(sys.platform != "linux", reason="Managed-owned transcript fixture")
 @pytest.mark.parametrize("accept", [False, True], ids=["review-required", "completed"])
 def test_hosted_goal_cold_projection_preserves_original_journals(tmp_path, monkeypatch, accept):
-    from loushang.coding import hosted_goal_recovery
     from loushang.coding.adapters._goal_store import goal_journal_path
-    from loushang.coding.hosted_goal_recovery import read_interactive_goal_recovery
+    from loushang.coding.hosted import goal_recovery as hosted_goal_recovery
+    from loushang.coding.hosted.goal_recovery import read_interactive_goal_recovery
 
     async def scenario():
         async with _managed(tmp_path) as (_, client, _, address, hosted, adapter, session_id):

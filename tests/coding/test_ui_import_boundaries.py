@@ -137,8 +137,8 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
         "loushang.harnesstui.conversation.host",
         "loushang.harnesstui.conversation.info",
     ),
-    "loushang.coding.ui.model": ("loushang.coding.model_selection",),
-    "loushang.coding.ui.model_list": ("loushang.coding.model_selection_tui",),
+    "loushang.coding.ui.model": ('loushang.coding.interaction.model_selection',),
+    "loushang.coding.ui.model_list": ('loushang.coding.presentation.tui.model_selection',),
     "loushang.coding.ui.plain_events": ("loushang.coding.presentation.tui.plain",),
     "loushang.coding.ui.plain_renderer": ("loushang.coding.presentation.tui.plain",),
     "loushang.coding.ui.prompt_dispatch": (
@@ -203,14 +203,14 @@ RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
 }
 
 NON_UI_CODING_OWNERS = (
-    "loushang.coding.model_selection",
+    'loushang.coding.interaction.model_selection',
     "loushang.coding.diagnostics.debug_status",
     "loushang.harness.events.recording_policy",
 )
 
 CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.interaction.settings_profile",
-    "loushang.coding.model_selection_tui",
+    'loushang.coding.presentation.tui.model_selection',
     "loushang.coding.presentation.tui.history",
     "loushang.coding.presentation.tui.plain",
     "loushang.harnesstui.conversation.agent_binding",
@@ -508,7 +508,7 @@ def test_plain_prompt_host_owns_only_neutral_turn_lifecycle() -> None:
     agent_binding = Path(
         "src/loushang/harnesstui/conversation/agent_binding.py"
     ).read_text(encoding="utf-8")
-    coding = Path("src/loushang/coding/prompt_command.py").read_text(encoding="utf-8")
+    coding = Path('src/loushang/coding/cli/prompt.py').read_text(encoding="utf-8")
 
     for token in (
         "loushang.coding",
@@ -826,7 +826,7 @@ def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
 
 def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     moved_definitions = {
-        Path("src/loushang/coding/model_selection_tui.py"): ("class ModelChoice",),
+        Path('src/loushang/coding/presentation/tui/model_selection.py'): ("class ModelChoice",),
         Path("src/loushang/coding/ui/screen_app.py"): (
             "def _trim_records_to_line_budget",
             "def _record_logical_line_count",
@@ -1095,7 +1095,7 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
             "src/loushang/coding/ui/screen_surfaces.py",
         )
     )
-    model_adapter = Path("src/loushang/coding/model_selection_tui.py").read_text(
+    model_adapter = Path('src/loushang/coding/presentation/tui/model_selection.py').read_text(
         encoding="utf-8"
     )
     agent_bindings = "\n".join(
@@ -1198,7 +1198,7 @@ def test_shared_model_choice_binding_owns_standard_session_acquisition() -> None
     session_binding = Path("src/loushang/harness/session/model_selection.py").read_text(
         encoding="utf-8"
     )
-    coding = Path("src/loushang/coding/model_selection_tui.py").read_text(
+    coding = Path('src/loushang/coding/presentation/tui/model_selection.py').read_text(
         encoding="utf-8"
     )
 

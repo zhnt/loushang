@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
-from loushang.coding.plugin_dependency_grants import (
+from loushang.coding.composition.dependency_grants import (
     coding_lsp_default_plugin_root,
     coding_plugin_distribution_evidence_resolver,
 )
-from loushang.coding.resource_runtime import CodingPackageMaterializer
+from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
+from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.harness.approval.plugin_execution import (
     PluginApprovalAuthorizationV1,
     PluginExecutionDecisionJournal,

@@ -96,7 +96,7 @@
       "importsAppService": true,
       "omissionOwner": null,
       "packagingBinding": null,
-      "source": "src/loushang/coding/appservice_adapter.py",
+      "source": "src/loushang/coding/hosted/service_adapter.py",
       "supportStatus": "product-integration",
       "surface": "product-adapter"
     },
@@ -107,7 +107,7 @@
       "importsAppService": true,
       "omissionOwner": null,
       "packagingBinding": null,
-      "source": "src/loushang/coding/hosted_application.py",
+      "source": "src/loushang/coding/hosted/application.py",
       "supportStatus": "product-integration",
       "surface": "composition"
     },
@@ -118,7 +118,7 @@
       "importsAppService": true,
       "omissionOwner": null,
       "packagingBinding": null,
-      "source": "src/loushang/coding/hosted_continuity.py",
+      "source": "src/loushang/coding/hosted/continuity.py",
       "supportStatus": "product-integration",
       "surface": "continuity-composition"
     },
@@ -140,7 +140,7 @@
       "importsAppService": false,
       "omissionOwner": null,
       "packagingBinding": "project.scripts.loushang",
-      "source": "src/loushang/coding/apphost_canary.py",
+      "source": "src/loushang/coding/hosted/canary.py",
       "supportStatus": "installed-subcommand",
       "surface": "canary"
     },

@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.continuity as coding_continuity_module
-from loushang.coding.continuity import (
+import loushang.coding.session.continuity as coding_continuity_module
+from loushang.coding.session.continuity import (
     CodingContinuityComposition,
     bind_coding_plugin_continuity,
     shutdown_coding_continuity,

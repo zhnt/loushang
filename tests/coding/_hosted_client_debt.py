@@ -8,7 +8,7 @@ from io import StringIO
 from pathlib import Path
 
 from loushang.coding.cli.hosted_client import CodingHostedTuiCommandV1, _execute
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
 from loushang.harnesstui.mux import terminal
 from loushang.hosting import runtime
 from loushang.tui.terminal import FakeTerminalPort, TerminalSize

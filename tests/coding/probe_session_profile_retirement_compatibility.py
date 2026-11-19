@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._base_plugin import CodingBasePluginAssembly
-from loushang.coding._capability_plugin_composition import (
+from loushang.coding.composition.base_plugin import CodingBasePluginAssembly
+from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginCompositionAssembly,
 )
 from loushang.coding.session.agent_session import AgentSession

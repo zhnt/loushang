@@ -14,16 +14,16 @@ from typing import Any
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.multiagent import (
-    CodingSubagentFactory,
-    coding_agent_types,
-)
-from loushang.coding.tool_pack import (
+from loushang.coding.resources.tool_pack import (
     coding_workspace_tool_profile,
     register_coding_builtin_tools,
 )
+from loushang.coding.session.multiagent import (
+    CodingSubagentFactory,
+    coding_agent_types,
+)
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.coding.worktree import CodingGitWorktreeLeasePort
+from loushang.coding.workspace.worktree import CodingGitWorktreeLeasePort
 from loushang.harness.approval import (
     HeadlessApprovalResolver,
     InteractiveApprovalResolver,

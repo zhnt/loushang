@@ -46,12 +46,16 @@ truth, or terminal primitives.
 The internal [package component migration](reports/package-component-migration.md)
 records the complete 187-file mapping, preserved import/pickle identities,
 compatibility costs and PR #913 delivery evidence. It reorganizes Coding
-internally; subsequent root components and Harness extraction remain separate work.
+internally; Harness extraction remains a separate decision after internal convergence.
 
 The [Plugin Manager component migration](reports/plugin-manager-component-migration.md)
 records the next fourteen-file batch, its state/lifecycle owner and current
-validation status. It remains in progress until the recorded acceptance work
-and normal delivery checks complete.
+validation status. It was delivered through PR #914. The subsequent
+[root component convergence](reports/root-component-convergence.md) moves the
+remaining 97 root implementations into focused Coding components, with two
+management bindings assigned to transport-neutral owners. The root retains four
+Python entries (399 lines) and seven type declarations (137 lines). The report
+records complete local checks, compatibility retention and native-platform limits.
 
 The current console entrypoints resolve to Coding CLI/UI implementations; see
 the generated

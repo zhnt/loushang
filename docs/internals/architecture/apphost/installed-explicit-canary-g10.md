@@ -111,13 +111,17 @@ Exit codes are stable at the CLI boundary:
 
 ## Component Model
 
+Current source owners below follow Coding internal componentization. The G10
+requirements, command grammar, default-dark policy and historical baseline facts
+above remain unchanged; historical imports retain compatibility routes.
+
 | Component | Owner | Responsibility | Forbidden responsibility |
 | --- | --- | --- | --- |
 | `coding.cli.apphost` | Coding CLI | recognize exact command grammar, lazy-dispatch the operation, render the bounded report | construct AppHost/Hosting owners, read control files directly, expose raw failures |
-| `coding.apphost_canary` | Coding Product | bind explicit request, Product control snapshot, ephemeral Session/profile/admission ports, G9 composition, exact attempt, cleanup, and report | normal Coding bootstrap/session, AppServer/AppService, named mux, implicit selection |
-| `coding._apphost_canary_control` | Coding Product | validate and append monotonic enable/rollback records under one Harness journal lock | generic settings, Session persistence, global Hosting policy |
-| `coding._apphost_canary_child` | Coding Product | execute the bounded nonce challenge over stdout and exit | import AppHost, access Session/config/resources, accept commands, become a daemon |
-| `apphost_composition` | Coding Product/AppHost edge | retain the sole G9 catalog/runtime/composition lifetime and phased settlement | parse CLI or discover Hosting/configuration |
+| `coding.hosted.canary` | Coding Product | bind explicit request, Product control snapshot, ephemeral Session/profile/admission ports, G9 composition, exact attempt, cleanup, and report | normal Coding bootstrap/session, AppServer/AppService, named mux, implicit selection |
+| `coding.hosted._canary_control` | Coding Product | validate and append monotonic enable/rollback records under one Harness journal lock | generic settings, Session persistence, global Hosting policy |
+| `coding.hosted._canary_child` | Coding Product | execute the bounded nonce challenge over stdout and exit | import AppHost, access Session/config/resources, accept commands, become a daemon |
+| `coding.hosted.composition` | Coding Product/AppHost edge | retain the sole G9 catalog/runtime/composition lifetime and phased settlement | parse CLI or discover Hosting/configuration |
 | AppHost public runtime | AppHost | exact catalog, Product/runtime, profile and Session-lease ownership | process launch, CLI, Product policy, persistence |
 | Hosting public process port | Hosting | shell-free native process launch, bounded stdio, wait/terminate/close, backend observations | interpret canary protocol or Product success |
 | Harness JSONL journal | Harness | cross-platform private lock, strict durable append/read mechanics | decide enabled state or selection generation |
@@ -138,15 +142,15 @@ loushang.coding.cli.__main__
   -> loushang.coding.cli.apphost                 # grammar only
 
 loushang.coding.cli.apphost
-  -(exact run/control action; lazy import)-> loushang.coding.apphost_canary
+  -(exact run/control action; lazy import)-> loushang.coding.hosted.canary
 
-loushang.coding.apphost_canary
-  -> loushang.coding.apphost_composition
+loushang.coding.hosted.canary
+  -> loushang.coding.hosted.composition
   -> loushang.apphost                            # public values only
   -> loushang.hosting                            # public process port only
-  -> loushang.coding._apphost_canary_control
+  -> loushang.coding.hosted._canary_control
 
-loushang.coding._apphost_canary_control
+loushang.coding.hosted._canary_control
   -> loushang.harness.journal
   -> loushang.foundation.platform_paths
 
@@ -209,7 +213,7 @@ that no prior owner is adoptable; it never discovers or adopts a process. Its
 `start` step asks the public Hosting process port to launch:
 
 ```text
-<current Python executable> -m loushang.coding._apphost_canary_child <nonce>
+<current Python executable> -m loushang.coding.hosted._canary_child <nonce>
 ```
 
 The launch is shell-free, uses the validated cwd, a complete explicit effective

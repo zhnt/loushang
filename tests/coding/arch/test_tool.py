@@ -16,7 +16,7 @@ from loushang.coding.arch import (
     register_coding_arch_tools,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.policy import PolicyEvaluator
@@ -87,7 +87,7 @@ def _session(
 
 
 def test_arch_tool_pack_is_separate_and_schema_is_bounded() -> None:
-    from loushang.coding.tool_pack import CODING_BUILTIN_TOOL_PACK
+    from loushang.coding.resources.tool_pack import CODING_BUILTIN_TOOL_PACK
 
     definition = create_inspect_import_graph_tool_definition()
 

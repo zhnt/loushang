@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding import continuity as continuity_module
-from loushang.coding.continuity import CodingContinuityActivationBridge
+from loushang.coding.session import continuity as continuity_module
+from loushang.coding.session.continuity import CodingContinuityActivationBridge
 from loushang.harness.continuity import (
     CONTINUITY_BUNDLE_MEDIA_TYPE,
     CONTINUITY_JSONL_MEDIA_TYPE,

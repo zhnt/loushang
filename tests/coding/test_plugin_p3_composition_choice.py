@@ -11,23 +11,19 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding._capability_plugin_composition import (
-    CodingCapabilityPluginCompositionError,
-)
-from loushang.coding._tool_authority import (
-    CODING_ARCH_EXACT_OWNER_TOOL_NAMES,
-    CODING_LSP_EXACT_OWNER_TOOL_NAMES,
-)
-from loushang.coding.bootstrap import (
-    create_agent_session,
-    create_agent_session_runtime,
-    create_services,
-)
 from loushang.coding.cli import application
 from loushang.coding.cli.args import parse_args
 from loushang.coding.cli.composition_choice import resolve_cli_composition_choice
 from loushang.coding.cli.package_cutover import main as cutover_cli_main
-from loushang.coding.composition_provenance import (
+from loushang.coding.composition.bootstrap import (
+    create_agent_session,
+    create_agent_session_runtime,
+    create_services,
+)
+from loushang.coding.composition.capability_plugins import (
+    CodingCapabilityPluginCompositionError,
+)
+from loushang.coding.composition.provenance import (
     CODING_COMPOSITION_HEADER_KEY,
     composition_header_metadata,
     historical_composition_provenance,
@@ -35,7 +31,7 @@ from loushang.coding.composition_provenance import (
     pinned_composition_plan,
     startup_composition_record,
 )
-from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
@@ -43,7 +39,11 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.resources.tool_authority import (
+    CODING_ARCH_EXACT_OWNER_TOOL_NAMES,
+    CODING_LSP_EXACT_OWNER_TOOL_NAMES,
+)
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import (
     ControlConfig,
     PermissionSettings,

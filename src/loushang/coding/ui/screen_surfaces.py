@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from loushang.coding.model_reasoning_tui import bind_reasoning_selection
-from loushang.coding.model_selection_tui import select_available_model
+from loushang.coding.presentation.tui.model_selection import select_available_model
+from loushang.coding.presentation.tui.reasoning import bind_reasoning_selection
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page

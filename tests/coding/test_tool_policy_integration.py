@@ -48,7 +48,7 @@ def _tool_context_provider_with_events(*, cwd: str, events: list[dict[str, objec
 
 
 def test_global_policy_engine_blocks_write_tool_before_mutation(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.policy_engine import PolicyEngine
@@ -87,7 +87,7 @@ def test_global_policy_engine_blocks_write_tool_before_mutation(tmp_path) -> Non
 
 
 def test_global_policy_engine_blocks_bash_by_tool_name(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.policy_engine import PolicyEngine
@@ -115,7 +115,7 @@ def test_global_policy_engine_blocks_bash_by_tool_name(tmp_path) -> None:
 def test_default_tool_registration_does_not_enable_policy_by_default(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.tools.workspace.registry import (
@@ -147,7 +147,7 @@ def test_default_tool_registration_does_not_enable_policy_by_default(tmp_path) -
 
 
 def test_default_approval_resolver_denies_ask_policy_before_write(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.policy_engine import PolicyEngine
@@ -193,7 +193,7 @@ def test_default_approval_resolver_denies_ask_policy_before_write(tmp_path) -> N
 
 
 def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.approval import ApprovalDecision
@@ -238,7 +238,7 @@ def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None
 def test_live_child_context_overrides_the_root_definition_approval_actor(
     tmp_path,
 ) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.approval import (
@@ -292,7 +292,7 @@ def test_live_child_context_overrides_the_root_definition_approval_actor(
 
 
 def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.approval import ApprovalDecision
@@ -354,7 +354,7 @@ def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
 
 
 def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.policy_engine import PolicyEngine
@@ -397,7 +397,7 @@ def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
 
 
 def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.approval import ApprovalDecision
@@ -448,7 +448,7 @@ def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None
 
 
 def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.approval import (
@@ -500,7 +500,7 @@ def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) 
 
 
 def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.approval import (
@@ -562,7 +562,7 @@ def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -
 
 
 def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.approval import HeadlessApprovalResolver

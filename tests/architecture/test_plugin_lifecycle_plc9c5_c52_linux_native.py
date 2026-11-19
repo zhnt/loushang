@@ -214,7 +214,7 @@ def test_c52_bridge_has_bounded_explicit_product_consumers_and_adapter_stays_bli
         if path != BRIDGE and factory in _read(path)
     }
     assert consumers == {
-        Path("src/loushang/coding/_product_worker_canary.py"),
+        Path('src/loushang/coding/hosted/_worker_canary.py'),
         Path("src/loushang/harness/package_product/_worker_product_authority.py"),
     }
     adapter = _read(HOSTING_ADAPTER)

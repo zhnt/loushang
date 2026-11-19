@@ -77,7 +77,7 @@ those two plus optional `coding.arch.default`. The sets are Product policy;
 actual admission and new-Session selection still depend on the exact owner,
 Desired State, and Product gate. A new general-purpose profile system is not
 implied by these sets. See the
-[composition-set code](../../../../../src/loushang/coding/composition_sets.py).
+[composition-set code](../../../../../src/loushang/coding/composition/sets.py).
 
 For an ordinary new Coding Session, `loushang --composition-set coding-minimal`
 (or `coding-standard`/`coding-architecture`) selects one of these canonical

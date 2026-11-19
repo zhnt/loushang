@@ -12,8 +12,11 @@ from loushang.ai.model import (
     parse_model_selection_reference,
 )
 from loushang.ai.model.registry import ModelRegistry
-from loushang.coding.bootstrap import BootstrapServices, create_agent_session_runtime
-from loushang.coding.multiagent import (
+from loushang.coding.composition.bootstrap import (
+    BootstrapServices,
+    create_agent_session_runtime,
+)
+from loushang.coding.session.multiagent import (
     coding_read_only_agent_types,
     coding_recipe_context_plan,
 )

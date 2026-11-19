@@ -8,9 +8,9 @@ import threading
 from pathlib import Path
 
 from loushang.ai.model import Capabilities, Model
-from loushang.coding.bootstrap import create_agent_session, create_services
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
 from loushang.coding.control import ControlConfig, SettingsManager
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 
 
 def _model() -> Model:

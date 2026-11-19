@@ -11,6 +11,10 @@ from typing import Literal
 
 import pytest
 
+from loushang.coding.control.sandbox import (
+    bind_coding_sandbox_runtime,
+    coding_workspace_execution_profile,
+)
 from loushang.coding.lsp import (
     CodeQueryResult,
     CodingLspRuntime,
@@ -18,10 +22,6 @@ from loushang.coding.lsp import (
     bind_coding_lsp_runtime,
     default_lsp_environment,
     discover_lsp_catalog,
-)
-from loushang.coding.sandbox import (
-    bind_coding_sandbox_runtime,
-    coding_workspace_execution_profile,
 )
 from loushang.harness.sandbox import SandboxSettings
 from loushang.harness.tools.process_hosting import ProcessExecutionScope

@@ -19,7 +19,10 @@ from loushang.ai.api import stream_simple
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.options import SimpleStreamOptions
 from loushang.ai.types import AssistantMessage, TextPart
-from loushang.coding.bootstrap import create_agent_session_runtime, create_services
+from loushang.coding.composition.bootstrap import (
+    create_agent_session_runtime,
+    create_services,
+)
 from loushang.coding.control import SettingsManager
 from loushang.coding.control.settings_store import (
     default_global_settings_path,

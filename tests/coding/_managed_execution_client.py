@@ -25,7 +25,7 @@ from loushang.appserver.protocol import (
     SessionOpenSpecV1,
     SessionSnapshotRequestV1,
 )
-from loushang.coding.managed_process import APPLICATION_ID, ENDPOINT
+from loushang.coding.hosted.managed.process import APPLICATION_ID, ENDPOINT
 
 root, role, mode = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 namespace = ManagedNamespaceV1(str(root / "platform"), os.geteuid(), "a" * 32)

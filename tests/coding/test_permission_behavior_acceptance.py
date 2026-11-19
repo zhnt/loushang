@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.sandbox import bind_coding_sandbox_runtime
+from loushang.coding.control.sandbox import bind_coding_sandbox_runtime
 from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.config.agent import (
     ControlConfig,

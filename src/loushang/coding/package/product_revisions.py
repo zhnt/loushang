@@ -8,6 +8,13 @@ from __future__ import annotations
 
 from typing import cast
 
+from loushang.coding.composition.capability_specs import (
+    CODING_CAPABILITY_PLUGIN_SPEC_BY_ID,
+    ordered_coding_capability_plugin_specs,
+)
+from loushang.coding.composition.dependency_grants import (
+    coding_plugin_distribution_evidence_resolver,
+)
 from loushang.harness.package_product._selected_plugin_revisions import (
     ProductSelectedRevisionHandle,
     ProductSelectedRevisionPolicy,
@@ -36,11 +43,6 @@ from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
 )
 
-from .._capability_plugin_specs import (
-    CODING_CAPABILITY_PLUGIN_SPEC_BY_ID,
-    ordered_coding_capability_plugin_specs,
-)
-from ..plugin_dependency_grants import coding_plugin_distribution_evidence_resolver
 from .legacy_data_trust import EXTERNAL_DATA_TRUST_CLASSES, permits_external_data_owner
 
 _MAX_FILES = 64
@@ -174,7 +176,8 @@ __all__ = [
 
 def _revision_policy() -> ProductSelectedRevisionPolicy:
     """Declare closed Product values and original owner constructors, with no IO."""
-    from .. import plugin_dependency_grants as grants
+    from loushang.coding.composition import dependency_grants as grants
+
     from . import builtin_wheel as wheel
 
     def wheel_spec(plugin_id: str) -> InstalledProductWheelSpec:
@@ -184,9 +187,6 @@ def _revision_policy() -> ProductSelectedRevisionPolicy:
             return wheel._CAPABILITY_SPECS[plugin_id]
         except (KeyError, TypeError) as exc:
             raise ValueError("Unknown Coding Capability Product Plugin") from exc
-
-    def location(plugin_id: str) -> tuple[str, tuple[str, ...]]:
-        return grants.__file__, grants._CODING_PRODUCT_SOURCE_LOCATIONS[plugin_id]
 
     return ProductSelectedRevisionPolicy(
         product_id="coding",
@@ -199,7 +199,7 @@ def _revision_policy() -> ProductSelectedRevisionPolicy:
         capability_spec=lambda plugin_id: CODING_CAPABILITY_PLUGIN_SPEC_BY_ID[
             plugin_id
         ],
-        capability_location=location,
+        capability_location=grants.coding_capability_plugin_source_location,
         source_files=lambda: wheel._product_source_files,
         wheel_recipe=lambda: wheel._PRODUCT_WHEEL_RECIPE,
         wheel_spec=wheel_spec,

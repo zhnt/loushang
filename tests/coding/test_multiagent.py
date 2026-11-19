@@ -17,11 +17,12 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding._tool_authority import (
+from loushang.coding.resources.tool_authority import (
     CODING_ARCH_EXACT_OWNER_TOOL_NAMES,
     CODING_LSP_EXACT_OWNER_TOOL_NAMES,
 )
-from loushang.coding.multiagent import (
+from loushang.coding.resources.tool_pack import coding_workspace_tool_profile
+from loushang.coding.session.multiagent import (
     CodingSubagentFactory,
     coding_agent_types,
     coding_multiagent_system_prompt,
@@ -29,7 +30,6 @@ from loushang.coding.multiagent import (
     coding_recipe_context_plan,
     install_coding_multiagent_session,
 )
-from loushang.coding.tool_pack import coding_workspace_tool_profile
 from loushang.harness.environment import HostEnvironment
 from loushang.harness.multiagent import (
     AgentCaller,
@@ -591,10 +591,10 @@ def test_factory_filters_all_exact_owner_tools_from_peer_registry(
 def test_factory_builds_arch_exact_tool_through_child_product_composition(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding import bootstrap as coding_bootstrap
     from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
-    from loushang.coding.bootstrap import create_services
-    from loushang.coding.composition_sets import resolve_coding_composition_set
+    from loushang.coding.composition import bootstrap as coding_bootstrap
+    from loushang.coding.composition.bootstrap import create_services
+    from loushang.coding.composition.sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
 
     workspace = tmp_path / "workspace"

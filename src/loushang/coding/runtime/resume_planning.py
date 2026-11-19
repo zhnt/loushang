@@ -6,8 +6,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from weakref import ref
 
-from loushang.coding.composition_sets import CodingCompositionSetPlan
-from loushang.coding.resume_activation_plan import (
+from loushang.coding.composition.sets import CodingCompositionSetPlan
+from loushang.coding.resume.activation_plan import (
     ActivationOwnerInputRefV1,
     ResumePlanStaleError,
     SessionActivationPlanV1,
@@ -16,7 +16,7 @@ from loushang.coding.resume_activation_plan import (
     require_current_resume_plan_inputs,
     require_current_resume_plan_source,
 )
-from loushang.coding.resume_history import CodingResumeHistoryPreview
+from loushang.coding.resume.history import CodingResumeHistoryPreview
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.session.agent_product_runtime import _SessionPlanningSlot
 

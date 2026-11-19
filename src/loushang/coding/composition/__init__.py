@@ -1,0 +1,1 @@
+"""Coding composition component."""

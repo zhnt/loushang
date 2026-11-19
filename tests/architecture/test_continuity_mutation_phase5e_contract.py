@@ -10,7 +10,7 @@ MUTATION = Path("src/loushang/harness/continuity/mutation.py")
 PLUGIN_PROVIDER = Path("src/loushang/harness/continuity/plugin_provider.py")
 PLUGIN_RUNTIME = Path("src/loushang/harness/continuity/plugin_runtime.py")
 PRODUCT_JOURNAL = Path("src/loushang/harness/plugin_management/continuity_mutation.py")
-CODING = Path("src/loushang/coding/continuity.py")
+CODING = Path('src/loushang/coding/session/continuity.py')
 
 
 def test_phase5e_contract_is_indexed_and_freezes_all_authority_layers() -> None:

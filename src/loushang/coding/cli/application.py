@@ -18,23 +18,9 @@ from loushang.ai.model import (
     parse_model_selection_reference,
 )
 from loushang.ai.model.registry import get_default_model_registry
-from loushang.coding._invocation_product_profile import (
-    CodingAgentInvocationProductProfile,
-    resolve_coding_agent_invocation_product_profile,
-)
-from loushang.coding._worker_tool_identity import (
-    CODING_WORKER_QUERY_TOOL_NAME,
-)
 from loushang.coding.adapters.harnesswork import (
     create_coding_work_runtime,
     run_coding_work_channel,
-)
-from loushang.coding.bootstrap import (
-    BootstrapServices,
-    _create_agent_invocation_session_runtime,
-    _create_agent_session_services,
-    create_agent_session_runtime,
-    create_services,
 )
 from loushang.coding.cli.apphost import (
     extract_apphost_argv,
@@ -59,13 +45,26 @@ from loushang.coding.cli.workspace import (
     extract_workspace_argv,
     run_coding_workspace_command,
 )
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.continuity import (
-    shutdown_coding_continuity,
+from loushang.coding.composition.bootstrap import (
+    BootstrapServices,
+    create_agent_session_runtime,
+    create_services,
 )
-from loushang.coding.continuity_bootstrap import (
+from loushang.coding.composition.bootstrap import (
+    create_agent_invocation_session_runtime as _create_agent_invocation_session_runtime,
+)
+from loushang.coding.composition.bootstrap import (
+    create_agent_session_services_with_catalog_policy as _create_agent_session_services,
+)
+from loushang.coding.composition.continuity import (
     bind_coding_configured_continuity,
 )
+from loushang.coding.composition.invocation_profile import (
+    CodingAgentInvocationProductProfile,
+    resolve_coding_agent_invocation_product_profile,
+)
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -80,22 +79,25 @@ from loushang.coding.domain import (
     CodingDomainPreparedTurn,
     CodingDomainRequest,
 )
-from loushang.coding.model_selection import (
+from loushang.coding.interaction.model_selection import (
     apply_model_selection,
     persistence_warning_message,
 )
 from loushang.coding.package.epoch_layout import coding_fenced_product_exists
+from loushang.coding.package.management_binding import (
+    repair_coding_fenced_cli_desired_operation,
+)
 from loushang.coding.package.product_cli import (
     route_coding_fenced_data_wheels,
     uninstall_coding_fenced_data_wheels,
 )
-from loushang.coding.package.product_management_cli import (
-    repair_coding_fenced_cli_desired_operation,
-)
 from loushang.coding.package.product_runtime import (
     require_fresh_coding_product_inputs_without_writes,
 )
-from loushang.coding.plugin_manager.cli import (
+from loushang.coding.package.worker_tool_identity import (
+    CODING_WORKER_QUERY_TOOL_NAME,
+)
+from loushang.coding.plugin_manager.binding import (
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,
 )
@@ -120,8 +122,10 @@ from loushang.coding.plugin_manager.read_sdk import (
     CodingPluginManagementReadSdkError,
     open_coding_plugin_management_read_client,
 )
-from loushang.coding.product_plan import CODING_PRODUCT_ID
-from loushang.coding.resource_runtime import collect_coding_package_entries
+from loushang.coding.resources.runtime import collect_coding_package_entries
+from loushang.coding.session.continuity import (
+    shutdown_coding_continuity,
+)
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.approval import (
@@ -269,7 +273,7 @@ async def run_prompt_command(
     dispose: bool = True,
 ) -> int:
     """Load plain prompt presentation only for a plain prompt invocation."""
-    from loushang.coding.prompt_command import run_prompt_command as run
+    from loushang.coding.cli.prompt import run_prompt_command as run
 
     return await run(
         runtime=runtime,
@@ -307,7 +311,7 @@ async def run_prompt_plan_command(
     verbose: bool = False,
     dispose: bool = True,
 ) -> int:
-    from loushang.coding.prompt_command import run_prompt_plan_command as run
+    from loushang.coding.cli.prompt import run_prompt_plan_command as run
 
     return await run(
         runtime=runtime,
@@ -401,7 +405,7 @@ def default_runtime_builder(
         and allowed_tool_names is not None
         and AGENT_DELEGATE_TOOL_NAME in allowed_tool_names
     ):
-        from loushang.coding.agent_invocation import (
+        from loushang.coding.adapters.agent_invocation import (
             register_coding_agent_delegate_tool,
         )
 

@@ -26,16 +26,16 @@ from loushang.apphost import (
     SessionCreateRequestV1,
 )
 from loushang.appserver.protocol import SessionScopeV1
-from loushang.coding.appservice_adapter import CodingHostedSessionV1
-from loushang.coding.bootstrap import create_services
-from loushang.coding.hosted_catalog import (
+from loushang.coding.composition.bootstrap import create_services
+from loushang.coding.hosted.catalog import (
     CODING_HOSTED_COMPATIBILITY_ID,
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
+from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
+from loushang.coding.hosted.session import CodingRealHostedSessionFactoryV1
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.tools.core import ToolDefinition

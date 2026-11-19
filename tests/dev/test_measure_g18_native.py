@@ -1734,8 +1734,8 @@ def recovery_seed(root, scope_name, *, lsp_mode="on_demand"):
         MuxSpaceContinuityV1,
         encode_application_continuity_record,
     )
-    from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.hosted.catalog import CodingHostedSessionCatalogV1
+    from loushang.coding.session.manager import SessionManager
     from tests.coding._hosted_composition_seed import seed_hosted_history
     from tests.coding.test_hosted_catalog import _intent
     from tests.coding.test_hosted_client import _launch

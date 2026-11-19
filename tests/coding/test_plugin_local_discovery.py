@@ -18,7 +18,7 @@ from loushang.coding.package.product_preview import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.resource_runtime import CodingResourceLoader
+from loushang.coding.resources.runtime import CodingResourceLoader
 from loushang.harness.config.agent import SettingsManager
 from loushang.plugin.__main__ import main as author_cli_main
 

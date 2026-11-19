@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from loushang.coding.diagnostics.debug_status import debug_status_text
-from loushang.coding.model_selection_tui import select_available_model
+from loushang.coding.presentation.tui.model_selection import select_available_model
 from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.product_binding import (
