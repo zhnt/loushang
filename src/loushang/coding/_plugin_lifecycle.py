@@ -208,6 +208,8 @@ class CodingPluginLifecycleStateLayout:
     instance_runtime: Path
     package_lifecycle: Path
 
+    historical_origin: Path | None = None
+
     @property
     def package_install_root(self) -> Path:
         return self.package_root / "installed"
@@ -691,8 +693,15 @@ def resolve_coding_plugin_lifecycle_state_layout(
     cwd: str | Path,
     *,
     platform_paths: PlatformPaths | None = None,
+    historical_origin: Path | None = None,
 ) -> CodingPluginLifecycleStateLayout:
-    workspace = Path(cwd).expanduser().resolve(strict=False)
+    # A legacy catalog already admitted this exact canonical spelling. A link
+    # that later replaces it must never direct old Plugin state to another root.
+    if historical_origin is not None and (
+        not historical_origin.is_absolute() or os.path.normpath(historical_origin) != str(historical_origin)
+    ):
+        raise ValueError("invalid historical Plugin workspace")
+    workspace = historical_origin if historical_origin is not None else Path(cwd).expanduser().resolve(strict=False)
     # Keep the deployed Continuity workspace identity and location.  PLC6D
     # widens that namespace into the one Coding Product lifecycle authority;
     # changing it would silently strand existing desired-state journals.
@@ -723,6 +732,7 @@ def resolve_coding_plugin_lifecycle_state_layout(
         retirement_sets=root / "retirement-sets.jsonl",
         instance_runtime=root / "instance-runtime.jsonl",
         package_lifecycle=root / "package-lifecycle.jsonl",
+        historical_origin=historical_origin,
     )
 
 

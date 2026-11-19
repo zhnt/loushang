@@ -88,7 +88,7 @@ class HostedWorkspacePort(Protocol):
 
 @runtime_checkable
 class HostedWorkspaceModelsPort(Protocol):
-    async def workspace_models(self, path: str | None, model_id: str | None = None) -> SessionModelsV1: ...
+    async def workspace_models(self, path: str | None, model_id: str | None = None, *, workspace_id: str | None = None) -> SessionModelsV1: ...
 
 
 @runtime_checkable

@@ -605,6 +605,8 @@ class AppServiceV1:
             owner = self._workspaces
             if not isinstance(owner, HostedWorkspaceModelsPort):
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            if request.workspace_id is not None:
+                return await owner.workspace_models(None, request.model_id, workspace_id=request.workspace_id)
             if request.model_id is None:
                 return await owner.workspace_models(request.path)
             return await owner.workspace_models(request.path, request.model_id)
@@ -617,6 +619,14 @@ class AppServiceV1:
         self._require_open()
         if type(request) is not WorkspaceRequestV1 or self._workspaces is None:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        if request.action == "delete-workspace":
+            selected = await self._workspaces.workspace(WorkspaceRequestV1("open-workspace", workspace_id=request.workspace_id))
+            fingerprints = {item.scope_fingerprint for item in selected.workspaces}
+            owners = (*self._sessions.values(), *self._cleanup_debt)
+            if fingerprints.intersection(self._workspace_pending) or any(
+                session.identity.scope_fingerprint in fingerprints for session in owners
+            ):
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         if request.action == "unregister":
             listed = await self._workspaces.workspace(WorkspaceRequestV1("list"))
             fingerprints = {w.scope_fingerprint for w in listed.workspaces if w.path == request.path}
@@ -626,15 +636,18 @@ class AppServiceV1:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         result = await self._workspaces.workspace(request)
         binding = self._managed_mux
-        if request.action in {"open", "allocate-temporary"} and binding is not None and binding.ensure_named is not None:
+        if request.action in {"open", "open-workspace", "allocate-temporary"} and binding is not None and binding.ensure_named is not None:
             if len(result.workspaces) != 1:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             try:
-                await binding.ensure_named(
-                    (project_mux_name(result.workspaces[0].path)
-                     if request.action == "open" else TEMPORARY_MUX),
-                    self.create_managed_mux,
-                )
+                row = result.workspaces[0]
+                mux_name = (project_mux_name(row.path) if request.action == "open" else TEMPORARY_MUX)
+                if row.workspace is not None or request.action == "open-workspace":
+                    projected = row.workspace.get("muxName") if row.workspace is not None else None
+                    if type(projected) is not str:
+                        raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                    mux_name = projected
+                await binding.ensure_named(mux_name, self.create_managed_mux)
             except AppServiceError:
                 raise
             except Exception:

@@ -130,7 +130,20 @@ async fn dispatch(routed: Routed) -> Result<Value> {
             } else {
                 backend.clone()
             };
-            let creating_workspace = body["operation"] == "workspace" && body["action"] == "create";
+            let editing_workspace = body["operation"] == "workspace"
+                && matches!(
+                    body["action"].as_str(),
+                    Some(
+                        "create"
+                            | "create-workspace"
+                            | "rename-workspace"
+                            | "delete-workspace"
+                            | "add-path"
+                            | "remove-path"
+                            | "update-path"
+                            | "set-default-path"
+                    )
+                );
             let inspecting_workspace =
                 body["operation"] == "workspace" && body["action"] == "inspect";
             let previewing_workspace =
@@ -162,7 +175,7 @@ async fn dispatch(routed: Routed) -> Result<Value> {
                             _ => "workspace_preview_unavailable",
                         }
                     } else {
-                        workspace_error(creating_workspace, &code)
+                        workspace_error(editing_workspace, &code)
                     }
                 })?;
             if environment {
@@ -179,15 +192,22 @@ async fn dispatch(routed: Routed) -> Result<Value> {
 fn open_project_path(backend: &Backend, body: &Value) -> Result<Value> {
     let workspace = body["workspace"].as_str().ok_or("invalid_request")?;
     let fingerprint = body["fingerprint"].as_str().ok_or("invalid_request")?;
-    let workspaces = backend
-        .call(json!({"operation":"workspace","action":"list"}))
-        .map_err(|_| "connection_failed")?;
+    let logical = workspace.len() == 32
+        && workspace
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+    let request = if workspace != "@temporary" {
+        json!({"operation":"workspace","action":"inspect","path": workspace,"fingerprint": fingerprint})
+    } else {
+        json!({"operation":"workspace","action":"list"})
+    };
+    let workspaces = backend.call(request).map_err(|_| "workspace_unavailable")?;
     let mut admitted = workspaces["workspaces"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|row| {
-            (workspace == "@temporary" || row["path"] == workspace)
+            (logical || workspace == "@temporary" || row["path"] == workspace)
                 && row["scope"] == "cwd"
                 && row["scopeFingerprint"] == fingerprint
         });

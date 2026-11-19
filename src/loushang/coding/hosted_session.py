@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import sys
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from secrets import token_hex
@@ -39,13 +39,24 @@ from loushang.harness.approval import (
     InteractiveApprovalResolver,
 )
 from loushang.harness.capabilities.tools import ToolSelection
+from loushang.harness.effects import FilesystemEffect, ProcessEffect
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.runtime_projection import project_session_runtime_event
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeFactoryPort,
 )
-from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
+from loushang.harness.policy import (
+    CommandPolicySubject,
+    PathPolicySubject,
+    PolicyDecision,
+    PolicyEvaluator,
+    PolicyEvaluatorChain,
+    PolicySubject,
+    ToolPolicySubject,
+    evaluate_policy,
+)
 from loushang.harness.session import SessionControlPort
 from loushang.harness.session.model_resolution import resolve_default_model
 from loushang.harness.tools.core import ToolDefinition
@@ -70,6 +81,7 @@ from .hosted_catalog import (
     CodingHostedCandidateBindingV1,
     CodingHostedCatalogError,
     CodingHostedHistoryCandidateBindingV1,
+    CodingHostedScopeV1,
 )
 from .hosted_session_goal import HostedSessionGoal
 from .hosted_user_choice import (
@@ -77,6 +89,7 @@ from .hosted_user_choice import (
     HostedUserChoice,
     pending_choice_from_transcript,
 )
+from .hosted_workspace import CodingHostedWorkspace
 from .package_product_runtime import (
     CodingFencedProductApplicationSelection,
 )
@@ -443,7 +456,8 @@ class CodingRealHostedSessionFactoryV1:
     def __init__(
         self,
         *,
-        services_factory: Callable[[Path], BootstrapServices],
+        services_factory: Callable[[Path | None], BootstrapServices],
+        workspace_environment: Callable[[CodingHostedScopeV1], CodingHostedWorkspace] | None = None,
         model: Model | ModelSelection | None = None,
         stream_fn: StreamFn | None = None,
         tools: list[ToolDefinition] | None = None,
@@ -457,6 +471,7 @@ class CodingRealHostedSessionFactoryV1:
         ) = None,
     ) -> None:
         self._services_factory = services_factory
+        self._workspace_environment = workspace_environment
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
@@ -516,20 +531,37 @@ class CodingRealHostedSessionFactoryV1:
             identity.product_id, identity.continuity_id, identity.session_id
         ):
             raise CodingHostedCatalogError()
+        if (
+            isinstance(opaque_session_binding, CodingHostedHistoryCandidateBindingV1)
+            and not opaque_session_binding.supports_writable_resume
+        ):
+            return opaque_session_binding.take_binding()
+        scope = opaque_session_binding.record.scope
+        hosted_workspace = (
+            await settled_io(self._workspace_environment, scope)
+            if self._workspace_environment is not None else None
+        )
+        workspace = hosted_workspace.cwd if hosted_workspace is not None else scope.cwd
+        workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
+        workspace_policy = (
+            _HostedWorkspacePolicy(self._session_tool_policy)
+            if hosted_workspace is not None else self._session_tool_policy
+        )
+        settings_cwd = hosted_workspace.project_cwd if hosted_workspace is not None else workspace
         if isinstance(opaque_session_binding, CodingHostedHistoryCandidateBindingV1):
-            if not opaque_session_binding.supports_writable_resume:
-                return opaque_session_binding.take_binding()
             from .hosted_resume import CodingDeferredHostedSessionV1
 
             source = opaque_session_binding.take_resume_source()
             try:
                 binding = CodingDeferredHostedSessionV1(
                     source,
-                    services=self._services_factory(source.record.scope.cwd),
+                    services=self._services_factory(settings_cwd),
                     model=self._model,
                     stream_fn=self._stream_fn,
                     tools=self._tools,
-                    user_choice_enabled=self._user_choice_enabled,
+                    hosted_workspace=hosted_workspace,
+                    workspace_policy=workspace_policy,
+                    user_choice_enabled=self._user_choice_enabled and workspace_tools,
                     output_capture_factory=self._output_capture_factory,
                     product_owner_selection=self._product_owner_selection,
                 )
@@ -541,7 +573,8 @@ class CodingRealHostedSessionFactoryV1:
         manager = opaque_session_binding.manager_for_construction()
         try:
             approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
-            services = self._services_factory(opaque_session_binding.record.scope.cwd)
+            manager._hosted_workspace = hosted_workspace
+            services = self._services_factory(settings_cwd)
             policy = workspace_tool_runtime_settings(services.settings_manager)
             runtime_factory = None
             if self._package_product_runtime_factory_for_session is not None:
@@ -567,11 +600,12 @@ class CodingRealHostedSessionFactoryV1:
                 stream_fn=self._stream_fn,
                 services=services,
                 tools=self._tools,
+                no_tools=None if workspace_tools else "all",
                 approval_resolver=approval,
                 tool_policy_evaluator=(PolicyEvaluatorChain(
-                    tuple(p for p in (self._session_tool_policy, policy.policy_engine) if p is not None),
+                    tuple(p for p in (workspace_policy, policy.policy_engine) if p is not None),
                     strategy="most_restrictive",
-                ) if self._session_tool_policy is not None else policy.policy_engine),
+                ) if workspace_policy is not None else policy.policy_engine),
                 active_tool_names=self._session_active_tools,
                 allowed_tool_names=self._session_allowed_tools if self._session_allowed_tools is not None else ToolSelection.ALL,
                 system_prompt=self._session_system_prompt,
@@ -587,9 +621,9 @@ class CodingRealHostedSessionFactoryV1:
                 if session.agent.thinking_level is not None:
                     await manager.append_thinking_level_change(session.agent.thinking_level)
             real_binding = CodingRealHostedSessionV1(
-                session, identity, approval, workspace=opaque_session_binding.record.scope.cwd,
+                session, identity, approval, workspace=workspace,
             )
-            if self._user_choice_enabled:
+            if self._user_choice_enabled and workspace_tools:
                 real_binding.enable_user_choice()
             opaque_session_binding.take_manager()
             return real_binding
@@ -598,6 +632,25 @@ class CodingRealHostedSessionFactoryV1:
             # AppHost owner to retry; no acquired owner disappears on failure.
             await opaque_session_binding.close()
             raise
+
+
+@dataclass(frozen=True)
+class _HostedWorkspacePolicy:
+    policy: PolicyEvaluator | None
+
+    async def evaluate(self, subject: PolicySubject, /) -> PolicyDecision | None:
+        previous = await evaluate_policy(self.policy, subject) if self.policy is not None else None
+        if previous is not None and previous.disposition != "allow":
+            return previous
+        if isinstance(subject, (PathPolicySubject, CommandPolicySubject)) or (
+            isinstance(subject, ToolPolicySubject) and (
+                subject.paths or subject.command is not None or
+                any(isinstance(effect, (FilesystemEffect, ProcessEffect)) for effect in subject.effects)
+            )
+        ):
+            return PolicyDecision.ask("Allow this operation on an attached Workspace directory?",
+                                      code="workspace.resource_approval")
+        return previous
 
 
 def _resolve_hosted_saved_model(

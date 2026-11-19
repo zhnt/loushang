@@ -14,8 +14,35 @@ export interface ProjectChat {
   readonly pinned: boolean;
 }
 
+export interface WorkspacePath {
+  readonly id: string;
+  readonly alias: string;
+  readonly path: string;
+  readonly status: "available" | "missing" | "unsafe" | "not_directory" | "permission_denied";
+}
+
+export interface ProjectEntry {
+  readonly id?: string;
+  readonly name?: string;
+  readonly path: string | null;
+  readonly paths?: readonly WorkspacePath[];
+  readonly defaultPathId?: string | null;
+  readonly sessions: readonly ProjectChat[];
+}
+
+export function projectKey(project: ProjectEntry): string {
+  return project.id ?? project.path ?? "";
+}
+
+export type WorkspaceEdit =
+  | { action: "create-workspace"; name: string }
+  | { action: "rename-workspace"; workspaceId: string; name: string }
+  | { action: "delete-workspace"; workspaceId: string }
+  | { action: "add-path" | "update-path"; workspaceId: string; pathId?: string; alias: string; path: string }
+  | { action: "remove-path" | "set-default-path"; workspaceId: string; pathId?: string };
+
 export interface ProjectDirectory {
-  readonly projects: readonly { path: string; sessions: readonly ProjectChat[] }[];
+  readonly projects: readonly ProjectEntry[];
   readonly temporarySessions: readonly ProjectChat[];
 }
 
@@ -30,6 +57,7 @@ export interface ProjectNavigationProps {
   readonly closeFolder: () => void;
   readonly hostKey: string;
   readonly register: (path: string) => Promise<boolean>;
+  readonly editWorkspace?: (edit: WorkspaceEdit) => Promise<void>;
   readonly create: (path: string | null) => void;
   readonly createDisabled?: boolean;
   readonly deleteChat?: (path: string, chat: ProjectChat) => Promise<boolean>;

@@ -757,6 +757,21 @@ class AttachmentEventsV1:
             raise ValueError("invalid event batch")
 
 
+_WORKSPACE_FIELDS = {
+    "workspaces": (set(), set()),
+    "create-workspace": ({"name"}, {"path", "alias"}),
+    "open-workspace": ({"workspace_id"}, set()),
+    "inspect-workspace": ({"workspace_id"}, set()),
+    "preview-workspace": ({"workspace_id"}, set()),
+    "rename-workspace": ({"workspace_id", "name"}, set()),
+    "delete-workspace": ({"workspace_id"}, set()),
+    "add-path": ({"workspace_id", "path", "alias"}, set()),
+    "update-path": ({"workspace_id", "path_id", "path", "alias"}, set()),
+    "remove-path": ({"workspace_id", "path_id"}, set()),
+    "set-default-path": ({"workspace_id"}, {"path_id"}),
+}
+
+
 @dataclass(frozen=True, slots=True)
 class WorkspaceRequestV1:
     action: str
@@ -764,7 +779,50 @@ class WorkspaceRequestV1:
     session_id: str | None = None
     preview: WorkspacePreviewRequestV1 | None = None
 
+    workspace_id: str | None = None
+    name: str | None = None
+    path_id: str | None = None
+    alias: str | None = None
+
+    scope_fingerprint: str | None = None
+
     def __post_init__(self) -> None:
+        if self.scope_fingerprint is not None and (
+            self.action != "inspect-workspace" or type(self.scope_fingerprint) is not str
+            or not _FINGERPRINT.fullmatch(self.scope_fingerprint)
+        ):
+            raise ValueError("invalid workspace inspection fingerprint")
+        logical = {"workspace_id": self.workspace_id, "name": self.name,
+                   "path_id": self.path_id, "alias": self.alias}
+        if self.action in _WORKSPACE_FIELDS:
+            fields = {key for key, value in logical.items() if value is not None}
+            if self.path is not None:
+                fields.add("path")
+            required, optional = _WORKSPACE_FIELDS[self.action]
+            if not required <= fields <= required | optional:
+                raise ValueError("invalid logical workspace request")
+            if self.action == "create-workspace" and (self.path is None) != (self.alias is None):
+                raise ValueError("linked workspace requires a path and alias")
+            if self.session_id is not None:
+                if self.action != "inspect-workspace":
+                    raise ValueError("unexpected workspace inspection session")
+                _require_opaque_id(self.session_id, field="session_id")
+            if self.action == "preview-workspace":
+                if type(self.preview) is not WorkspacePreviewRequestV1:
+                    raise ValueError("missing workspace preview request")
+            elif self.preview is not None:
+                raise ValueError("unexpected workspace preview request")
+            for key, value in logical.items():
+                if value is not None:
+                    if key.endswith("_id"):
+                        _require_opaque_id(value, field=key)
+                    else:
+                        _require_text(value, field=key, maximum=128, empty=False)
+            if self.path is not None:
+                WorkspaceRequestV1("open", self.path)
+            return
+        if any(value is not None for value in logical.values()):
+            raise ValueError("unexpected logical workspace fields")
         if self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary", "inspect", "preview"}:
             raise ValueError("invalid workspace action")
         if self.action == "preview":
@@ -788,8 +846,13 @@ class WorkspaceRequestV1:
 class WorkspaceModelsRequestV1:
     path: str | None = None
     model_id: str | None = None
+    workspace_id: str | None = None
 
     def __post_init__(self) -> None:
+        if self.workspace_id is not None:
+            _require_opaque_id(self.workspace_id, field="workspace_id")
+            if self.path is not None:
+                raise ValueError("mixed workspace selectors")
         if self.path is not None:
             WorkspaceRequestV1("open", self.path)
         if self.model_id is not None:
@@ -803,6 +866,8 @@ class WorkspaceInfoV1:
     scope_fingerprint: str
     inspection: dict[str, object] | None = None
     preview: WorkspacePreviewV1 | None = None
+
+    workspace: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         WorkspaceRequestV1("open", self.path)
@@ -819,13 +884,18 @@ class WorkspaceInfoV1:
         ):
             raise ValueError("invalid workspace preview")
 
+        if self.workspace is not None and (
+            type(self.workspace) is not dict or len(json.dumps(self.workspace, ensure_ascii=False).encode()) > 64_000
+        ):
+            raise ValueError("invalid logical workspace projection")
+
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceResultV1:
     workspaces: tuple[WorkspaceInfoV1, ...]
 
     def __post_init__(self) -> None:
-        if (type(self.workspaces) is not tuple or len(self.workspaces) > 128
+        if (type(self.workspaces) is not tuple or len(self.workspaces) > 129
                 or any(type(item) is not WorkspaceInfoV1 for item in self.workspaces)
                 or len({item.path for item in self.workspaces}) != len(self.workspaces)):
             raise ValueError("invalid workspace result")

@@ -99,19 +99,24 @@ class CodingHostedScopeV1:
     session_dir: Path = field(repr=False)
     cwd: Path = field(repr=False)
 
+    workspace_id: str | None = field(default=None, kw_only=True)
+    historical_origin: bool = field(default=False, kw_only=True)
+
     def __post_init__(self) -> None:
         if type(self.scope) is not SessionScopeV1:
             raise ValueError("invalid hosted scope")
         for value in (self.session_dir, self.cwd):
             if not isinstance(value, Path) or not value.is_absolute():
                 raise ValueError("hosted scope requires admitted absolute paths")
-            if value != value.resolve():
+            if (value != self.cwd or not self.historical_origin) and value != value.resolve():
                 raise ValueError("hosted scope paths must already be canonical")
-        if not self.cwd.is_dir():
+        if not self.historical_origin and not self.cwd.is_dir():
             raise ValueError("hosted workspace must exist")
 
     @property
     def fingerprint(self) -> str:
+        if self.workspace_id is not None:
+            return hashlib.sha256(f"coding.workspace.scope/v1\0{self.scope.value}\0{self.workspace_id}".encode()).hexdigest()
         return _scope_fingerprint(self.scope, self.session_dir, str(self.cwd))
 
     @property

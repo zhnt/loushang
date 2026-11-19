@@ -781,11 +781,6 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
         elif request.action == "create":
             path = await self._create_workspace(request.path)
             return ((path, self._add(path)),)
-        elif request.action == "allocate-temporary":
-            path = await asyncio.to_thread(self.registry.allocate_temporary)
-            self._add(path)
-        elif request.action == "open":
-            selected = await self.select(request.path)
         elif request.action == "unregister":
             path = Path(request.path)
             catalog = self._catalogs.get(path)
@@ -794,36 +789,13 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
             await asyncio.to_thread(self.registry.unregister, request.path)
             self._catalogs.pop(path, None)
         entries = self._catalogs.items()
-        if request.action == "open":
-            entries = ((selected.cwd, self._catalogs[selected.cwd]),)
-        elif request.action == "allocate-temporary":
-            entries = ((path, self._catalogs[path]),)
-        elif request.action == "projects":
+        if request.action == "projects":
             entries = (
                 (root, catalog)
                 for root, catalog in entries
                 if not self.registry.is_temporary(root)
             )
         return entries
-
-    async def load(self) -> None:
-        if not self._loaded:
-            for path in await asyncio.to_thread(self._load_paths):
-                self._add(path)
-            self._loaded = True
-
-    def _load_paths(self) -> tuple[Path, ...]:
-        self.registry.open()
-        available = []
-        for path in self.registry.list():
-            try:
-                if path.is_dir() and path == path.resolve():
-                    available.append(path)
-            except (OSError, RuntimeError):
-                continue
-        # Keep unavailable registrations and their transcript stores intact so
-        # restoring the original directory makes its Sessions available again.
-        return tuple(available)
 
     @property
     def scopes(self):

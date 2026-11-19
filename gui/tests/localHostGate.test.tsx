@@ -295,7 +295,7 @@ describe("local managed Host presentation", () => {
     fireEvent.click(projects.getByRole("button", { name: "Add project" }));
     await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", {
       request: { operation: "host/request", connectionId: "local",
-        request: { operation: "workspace", action: "register", path: "C:\\Work\\项目" } },
+        request: { operation: "workspace", action: "create-workspace", name: "项目", path: "C:\\Work\\项目", alias: "main" } },
     }));
     expect(countActions("create-chat")).toBe(2);
     expect(countActions("open")).toBe(0);

@@ -540,7 +540,9 @@ impl AppClient {
         request: WorkspaceRequest<'_>,
     ) -> Result<WorkspaceResult, ()> {
         self.request_once(target, timeout, false, |channel, hello| {
-            if let WorkspaceRequest::Preview { instance, .. } = &request {
+            if let WorkspaceRequest::Preview { instance, .. }
+            | WorkspaceRequest::LogicalPreview { instance, .. } = &request
+            {
                 if *instance != hello.service_instance_id {
                     return Ok(WorkspaceResult::Rejected("instance_changed".into()));
                 }
@@ -555,12 +557,16 @@ impl AppClient {
         target: AppTarget<'_>,
         timeout: Duration,
         path: Option<&str>,
+        workspace_id: Option<&str>,
         model_id: Option<&str>,
     ) -> Result<ModelControlResult, ()> {
         // A draft's model-specific preview needs the same reasoning
         // negotiation as an attached session. The plain catalog stays legacy-compatible.
         self.request_once(target, timeout, model_id.is_some(), |channel, _| {
             let mut payload = serde_json::json!({"path": path});
+            if let Some(id) = workspace_id {
+                payload["workspaceId"] = serde_json::json!(id);
+            }
             if let Some(id) = model_id {
                 payload["modelId"] = serde_json::json!(id);
             }

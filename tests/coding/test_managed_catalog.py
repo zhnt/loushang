@@ -16,6 +16,7 @@ from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
 from loushang.apphost.workspace_registry import (
     HostWorkspaceRegistryPort,
+    Workspace,
     WorkspaceRegistrationError,
 )
 from loushang.appserver.protocol import (
@@ -593,10 +594,12 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
     project.mkdir()
     temporary.mkdir()
     registry = Mock(spec=HostWorkspaceRegistryPort)
+    registry.workspaces.return_value = ()
     registry.list.return_value = (project,)
     registry.register.return_value = project
     registry.select.return_value = project
-    registry.allocate_temporary.return_value = temporary
+    registry.default_workspace.return_value = Workspace("default", "Chats", default=True)
+    registry.session_context.return_value = temporary
     new_project = tmp_path / "new"
     new_project.mkdir()
     registry.create.return_value = new_project
@@ -639,7 +642,7 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
     registry.list.assert_called_once_with()
     registry.register.assert_called_once_with(str(project))
     registry.select.assert_called_once_with(str(project))
-    registry.allocate_temporary.assert_called_once_with()
+    registry.default_workspace.assert_called_once_with()
     registry.create.assert_called_once_with(str(new_project))
 
 
@@ -653,6 +656,7 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
 ])
 def test_workspace_catalog_exposes_safe_create_errors(tmp_path, failure, code):
     registry = Mock(spec=HostWorkspaceRegistryPort)
+    registry.workspaces.return_value = ()
     registry.list.return_value = ()
     registry.create.side_effect = failure
 
@@ -738,7 +742,11 @@ def test_workspace_catalog_starts_with_an_unavailable_registered_project(tmp_pat
         reopened = owner()
         try:
             await reopened.load()
-            assert [item.cwd for item in reopened.scopes] == [healthy]
+            assert {item.cwd for item in reopened.scopes if item.workspace_id is None} == {healthy, project}
+            missing = next(item for item in reopened.scopes if item.cwd == project)
+            assert missing.fingerprint == scope.fingerprint
+            found = await reopened.workspace_identities(missing.fingerprint, missing.discovery_scope, limit=2)
+            assert [item.reference for item in found] == [item.reference for item in rows]
             selected = await reopened.select(str(healthy))
             candidate = await reopened.create_candidate(_intent(selected))
             await candidate.close()

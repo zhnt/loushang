@@ -1015,7 +1015,9 @@ def _create_agent_session(
         recorded_base_lockfile_diagnostics: list[dict[str, object]] = []
         try:
             lifecycle_layout = (
-                resolve_coding_plugin_lifecycle_state_layout(session_manager.get_cwd())
+                resolve_coding_plugin_lifecycle_state_layout(
+                    session_manager.package_product_workspace(), historical_origin=session_manager.legacy_plugin_workspace(),
+                )
                 if base_ephemeral_state is None
                 else resolve_ephemeral_coding_plugin_lifecycle_state_layout(
                     base_ephemeral_state.name,
@@ -2053,26 +2055,31 @@ def _create_agent_session(
 
         base_exec_service = services.exec_service or ExecService()
         workspace_root_path = Path(session_manager.get_cwd()).resolve()
-        workspace_execution_profile = (
-            coding_workspace_execution_profile(
-                workspace_root_path,
-                writable=sandbox_workspace_writable,
-            )
-            if workspace_root_path.is_dir()
-            else EffectiveExecutionProfile(
-                readable_roots=(workspace_root_path,),
-                writable_roots=(workspace_root_path,)
-                if sandbox_workspace_writable
-                else (),
-                network="allowed",
-            )
-        )
+        hosted_workspace = session_manager._hosted_workspace
         sandbox_settings = services.settings_manager.get_sandbox_settings()
-        execution_ceiling = (
-            workspace_execution_profile
-            if sandbox_settings.requirement == "required"
-            else coding_host_execution_profile(workspace_root_path, writable=sandbox_workspace_writable)
-        )
+        if hosted_workspace is not None:
+            workspace_execution_profile = EffectiveExecutionProfile(
+                readable_roots=hosted_workspace.roots,
+                writable_roots=hosted_workspace.roots if sandbox_workspace_writable else (),
+                denied_roots=hosted_workspace.private_roots,
+            )
+            execution_ceiling = workspace_execution_profile
+            if hosted_workspace.roots:
+                # A shell's cwd alone cannot enforce the attached directory boundary.
+                sandbox_settings = replace(sandbox_settings, enabled=True, requirement="required")
+        else:
+            workspace_execution_profile = (
+                coding_workspace_execution_profile(workspace_root_path, writable=sandbox_workspace_writable)
+                if workspace_root_path.is_dir()
+                else EffectiveExecutionProfile(
+                    readable_roots=(workspace_root_path,),
+                    writable_roots=(workspace_root_path,) if sandbox_workspace_writable else (),
+                )
+            )
+            execution_ceiling = (
+                workspace_execution_profile if sandbox_settings.requirement == "required"
+                else coding_host_execution_profile(workspace_root_path, writable=sandbox_workspace_writable)
+            )
         requested_profiles = (
             getattr(base_exec_service, "execution_profile", None),
             (
@@ -2098,6 +2105,7 @@ def _create_agent_session(
             workspace_profile=workspace_execution_profile,
             ceiling=execution_ceiling,
             permission_snapshot=services.settings_manager.get_permission_profile_snapshot,
+            current_workspace_roots=hosted_workspace.current_roots if hosted_workspace is not None else None,
         )
         sandbox_runtime = bind_coding_sandbox_runtime(
             workspace_root=session_manager.get_cwd(),
@@ -2554,6 +2562,7 @@ def _create_agent_session(
             package_materializer=resolved_package_materializer,
             package_product_runtime_factory=package_product_runtime_factory,
             session_id=session_id,
+            package_product_workspace=session_manager.package_product_workspace(),
             cwd=session_manager.get_cwd(),
             extension_flag_values=extension_flag_values,
             catalog_authoritative=True,

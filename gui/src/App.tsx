@@ -24,7 +24,7 @@ import type { FileReference } from "./markdown/fileReference";
 import { WorkspacePreviewDialog } from "./WorkspacePreviewDialog";
 import { readMarkdownPreferences } from "./markdown/preferences";
 import { ProjectNavigation } from "./ProjectNavigation";
-import { TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
+import { projectKey, TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
@@ -145,7 +145,7 @@ function directoryHasChat(
   directory: ProjectNavigationProps["directory"] | undefined, entry: { workspace: string; chat: ProjectChat },
 ) {
   const chats = entry.workspace === TEMPORARY_WORKSPACE ? directory?.temporarySessions
-    : directory?.projects.find((project) => project.path === entry.workspace)?.sessions;
+    : directory?.projects.find((project) => projectKey(project) === entry.workspace)?.sessions;
   return chats?.some((chat) => chat.id === entry.chat.id);
 }
 
@@ -771,6 +771,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const draftTitle = t("workspace:sidebar.newSession");
   const workspaceContext = draft && projectNavigation ? draft.target.workspace
     : selected && installedClient === client && selectionReady ? requestedSelection?.workspace : undefined;
+  const logicalWorkspace = projectNavigation?.directory.projects.find((project) => projectKey(project) === workspaceContext);
   const workspaceFingerprint = selected?.context.scopeFingerprint;
   const workspaceSessionId = selected?.context.sessionId;
   const temporaryWorkspace = workspaceContext === TEMPORARY_WORKSPACE;
@@ -796,15 +797,17 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }, [client, temporaryWorkspace, workspaceScope, workspaceScopeKey]);
   const workspacePath = temporaryWorkspace
     ? workspaceLocation?.key === workspaceScopeKey ? workspaceLocation?.path : undefined
-    : workspaceContext ?? undefined;
+    : logicalWorkspace ? logicalWorkspace.paths?.find((link) => link.id === logicalWorkspace.defaultPathId && link.status === "available")?.path
+      ?? (logicalWorkspace.paths ? undefined : logicalWorkspace.path ?? undefined) : workspaceContext ?? undefined;
   const inspectWorkspace = connected && !temporaryWorkspace && workspacePath && workspaceFingerprint && projectNavigation?.inspectWorkspace
     ? (review: boolean) => projectNavigation.inspectWorkspace!(
-      workspacePath, workspaceFingerprint, review ? workspaceSessionId : undefined,
+      logicalWorkspace?.id ?? workspacePath, workspaceFingerprint, review ? workspaceSessionId : undefined,
     ) : undefined;
   const openProjectPath = projectNavigation?.openProjectPath;
-  const openWorkspacePath = useMemo(() => workspaceScope && workspaceContext && workspaceFingerprint && openProjectPath
-    ? (file?: string) => openProjectPath(workspaceContext, workspaceFingerprint, file)
-    : undefined, [workspaceScope, workspaceContext, workspaceFingerprint, openProjectPath]);
+  const revealSelector = temporaryWorkspace ? workspaceContext : logicalWorkspace?.id ?? workspacePath;
+  const openWorkspacePath = useMemo(() => workspaceScope && revealSelector && workspaceFingerprint && openProjectPath
+    ? (file?: string) => openProjectPath(revealSelector, workspaceFingerprint, file)
+    : undefined, [workspaceScope, revealSelector, workspaceFingerprint, openProjectPath]);
   const [filePreview, setFilePreview] = useState<{
     scope: string; reference: FileReference; trigger: HTMLButtonElement;
   }>();
@@ -817,7 +820,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const replyCopies = copyableReplies(visibleMessages ?? [], selected?.status === "running"
     || Boolean(question && choiceAnswer?.status !== "accepted") || Boolean(selected?.pendingApprovals?.length));
   const projectContext = workspaceContext && workspaceContext !== TEMPORARY_WORKSPACE
-    ? workspaceName(workspaceContext) : undefined;
+    ? logicalWorkspace?.name ?? workspaceName(workspaceContext) : undefined;
   const conversationTitle = selected ? displaySessionTitle(selected, liveTitles[selected.id])
     : draftPending ? firstPromptTitle(draft.text)
       : projectContext ? `${projectContext} / ${draftTitle}` : draftTitle;
@@ -867,7 +870,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     ...projectNavigation,
     directory: unlisted.length ? {
       projects: projectNavigation.directory.projects.map((project) => ({
-        ...project, sessions: [...unlistedChats(project.path), ...project.sessions],
+        ...project, sessions: [...unlistedChats(projectKey(project)), ...project.sessions],
       })),
       temporarySessions: [...unlistedChats(TEMPORARY_WORKSPACE), ...projectNavigation.directory.temporarySessions],
     } : projectNavigation.directory,

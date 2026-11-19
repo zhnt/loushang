@@ -42,6 +42,7 @@ from loushang.harness.approval import (
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.journal._owned_io import settled_io
+from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
 from loushang.harness.session import SessionControlPort
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
@@ -67,6 +68,7 @@ from .hosted_session import (
     _observe_close,
     _resolve_hosted_saved_model,
 )
+from .hosted_workspace import CodingHostedWorkspace
 from .package_product_runtime import CodingFencedProductApplicationSelection
 from .resume_activation_plan import SessionActivationPlanV1
 from .resume_input_lookup import (
@@ -146,6 +148,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         tools: list[ToolDefinition] | None,
         output_capture_factory: ExecCaptureFactory | None,
         product_owner_selection: CodingFencedProductApplicationSelection,
+        hosted_workspace: CodingHostedWorkspace | None = None,
+        workspace_policy: PolicyEvaluator | None = None,
         user_choice_enabled: bool = False,
     ) -> None:
         self._source = source
@@ -154,6 +158,10 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
+        self._hosted_workspace = hosted_workspace
+        self._workspace = hosted_workspace.cwd if hosted_workspace is not None else source.record.scope.cwd
+        self._workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
+        self._workspace_policy = workspace_policy
         self._user_choice_enabled = user_choice_enabled
         self._output_capture_factory = output_capture_factory
         self._product_owner_selection = product_owner_selection
@@ -300,7 +308,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         plan = await plan_coding_resume_async(
             self._source.history,
             resolve_coding_composition_set("coding-standard"),
-            workspace_root=self._source.record.scope.cwd,
+            workspace_root=self._workspace,
             resource_loader=self._services.resource_loader,
             subject_digest=self._plan_subject_digest(),
             policy_digest=policy_engine.configuration_fingerprint(),
@@ -320,7 +328,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
 
     async def start_background_planning(self) -> None:
         self._source.require_current_source()
-        await settled_io(load_workspace_models, self._services, self._source.record.scope.cwd)
+        project_cwd = self._workspace if self._hosted_workspace is None else self._hosted_workspace.project_cwd
+        if project_cwd is not None:
+            await settled_io(load_workspace_models, self._services, project_cwd)
         self._source.require_current_source()
         policy = workspace_tool_runtime_settings(self._services.settings_manager)
         raw_policy_engine = policy.policy_engine
@@ -332,7 +342,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         await planning.start(
             self._source.history,
             resolve_coding_composition_set("coding-standard"),
-            workspace_root=self._source.record.scope.cwd,
+            workspace_root=self._workspace,
             resource_loader=self._services.resource_loader,
             subject_digest=self._plan_subject_digest(),
             policy_digest=policy_engine.configuration_fingerprint(),
@@ -525,15 +535,16 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
 
             require_subject()
             epoch_fingerprint = self._product_owner_selection.prepare_resume_epoch(
-                workspace,
+                self._hosted_workspace.anchor if self._hosted_workspace is not None else workspace,
                 require_current_admission=require_subject,
                 settings_manager=self._services.settings_manager,
+                historical_origin=self._hosted_workspace.legacy_plugin_origin if self._hosted_workspace is not None else None,
             )
             require_subject()
             plugins_enabled = _resume_capability_plugins_required(
                 plan_set_id=plan.composition_comparison.candidate_set_id,
                 settings_manager=self._services.settings_manager,
-                no_tools=None,
+                no_tools=None if self._workspace_tools else "all",
                 history=self._source.history,
             )
             state_id = hashlib.sha256(
@@ -622,7 +633,10 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 tools=self._tools,
                 output_capture_factory=self._output_capture_factory,
                 approval_resolver=self._approval,
-                tool_policy_evaluator=policy_engine,
+                no_tools=None if self._workspace_tools else "all",
+                tool_policy_evaluator=PolicyEvaluatorChain((self._workspace_policy, policy_engine))
+                if self._workspace_policy is not None else policy_engine,
+                _hosted_workspace=self._hosted_workspace,
                 observe_input_identity=self._observe_input_identity,
                 product_owner_selection=self._product_owner_selection,
                 resume_writer_factory=self._source.writer_factory,
@@ -634,7 +648,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 raise
             try:
                 real = CodingRealHostedSessionV1(
-                    continuation.session, self.identity, self._approval
+                    continuation.session, self.identity, self._approval, workspace=self._workspace
                 )
                 if self._user_choice_enabled:
                     real.enable_user_choice()

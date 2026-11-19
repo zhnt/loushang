@@ -9,7 +9,7 @@ import { useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
 import { createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
-import { TEMPORARY_WORKSPACE, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
+import { projectKey, TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
 import { TrayHostDialog } from "./TrayHostDialog";
 import "./LocalHostGate.css";
 
@@ -86,7 +86,9 @@ export default function LocalHostGate() {
     setWorkspaceError(false);
     const epoch = ++workspaceEpoch.current;
     try {
-      await webRequest({ operation: "workspace", action: "register", path }, connectionId.current);
+      await webRequest({
+        operation: "workspace", action: "create-workspace", name: workspaceName(path), path, alias: "main",
+      }, connectionId.current);
       if (epoch !== workspaceEpoch.current) return false;
       setFolderInput(false);
       await refreshDirectory();
@@ -99,6 +101,22 @@ export default function LocalHostGate() {
       setWorkspacePending(false);
     }
   }
+
+  const editWorkspace: NonNullable<ManagedProjectNavigation["editWorkspace"]> = async (edit) => {
+    if (workspaceMutation.current || pending.current || host.state !== "running" || host.errorCode) {
+      throw new Error("operation_unavailable");
+    }
+    workspaceMutation.current = true;
+    setWorkspacePending(true);
+    ++workspaceEpoch.current;
+    try {
+      await webRequest({ operation: "workspace", ...edit }, connectionId.current);
+      await refreshDirectory();
+    } finally {
+      workspaceMutation.current = false;
+      setWorkspacePending(false);
+    }
+  };
 
   const createChat: ManagedProjectNavigation["createChat"] = async (path, continuityId, title) => {
     const origin = connectionId.current;
@@ -153,7 +171,7 @@ export default function LocalHostGate() {
         chats.filter((item) => item.id !== chat.id || item.scope !== chat.scope);
       ++workspaceEpoch.current;
       setDirectory((current) => ({
-        projects: current.projects.map((project) => project.path === path
+        projects: current.projects.map((project) => projectKey(project) === path
           ? { ...project, sessions: withoutChat(project.sessions) } : project),
         temporarySessions: path === TEMPORARY_WORKSPACE ? withoutChat(current.temporarySessions) : current.temporarySessions,
       }));
@@ -233,7 +251,7 @@ export default function LocalHostGate() {
         if (serial !== generation.current) return;
         const path = restoreSelection?.workspace;
         const chats = path === TEMPORARY_WORKSPACE ? directory?.temporarySessions
-          : directory?.projects.find((project) => project.path === path)?.sessions;
+          : directory?.projects.find((project) => projectKey(project) === path)?.sessions;
         if (restoreSelection?.id && chats?.some((chat) => chat.id === restoreSelection.id)) {
           openConversation(restoreSelection.workspace, restoreSelection.id);
         } else setConnection("connected");
@@ -411,10 +429,11 @@ export default function LocalHostGate() {
       openFolder: () => { void openFolder(); },
       closeFolder: () => setFolderInput(false),
       register: registerWorkspace,
+      editWorkspace,
       hostKey: selectedId,
       inspectWorkspace: async (path, fingerprint, sessionId) => {
         const result = await webRequest<{ workspaces: { scopeFingerprint: string; inspection?: import("./WorkspaceInspection").Inspection }[] }>(
-          { operation: "workspace", action: "inspect", path, sessionId }, requestConnection,
+          { operation: "workspace", action: "inspect", path, fingerprint, sessionId }, requestConnection,
         );
         const workspace = result.workspaces[0];
         if (workspace?.scopeFingerprint !== fingerprint || !workspace.inspection) throw new Error("workspace_unavailable");
