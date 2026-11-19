@@ -5,6 +5,9 @@
 The first internal componentization batch relocates all 187 root `package*.py`
 implementations from main `5b0c18d096c751a92aeb9200c411d879d23c0bef` into
 `loushang.coding.package`. Each basename loses its redundant `package_` prefix.
+Before delivery, the task merged the latest main
+`53ab1767d9cb922c85dbbccb56c091e3410de507` (50 incoming commits), preserving
+the updated operator reasoning default and hosted-session model/reasoning changes.
 The implementations remain in Coding. This batch does not extract Harness
 capabilities or claim deletion of the relocated implementation.
 
@@ -12,8 +15,11 @@ The component contains product package selection/materialization, installation
 and epoch bindings, private-data lifecycle integration, and product Worker
 payload, approval, launch, receipt, history and retirement integration. Existing
 Harness and Hosting mechanisms remain their owners; their implementations are
-not copied into the component. CLI, UI and session composition remain consumers
-outside it. This directory is the first cohesive boundary, not a claim that all
+not copied into the component. External CLI/UI entrypoints and session composition
+remain consumers. The batch also carries the existing `product_cli.py`,
+`product_management_cli.py` and `product_repair_rpc.py` adapters with their complete
+inventory; this does not assign CLI/RPC semantics to the core package mechanisms.
+This directory is the first cohesive boundary, not a claim that all
 remaining root responsibilities or its internal sub-capabilities are finished.
 
 Real first-party imports, dynamic module references and source inventories use
@@ -29,7 +35,11 @@ hashes remain evidence of their named historical revision, not the new source.
 the bounded compatibility edge: this initializer, `_legacy_names.py` (the exact
 187-name inventory), and `_imports.py`. Coding installs the finder once during
 initialization. It handles only those old and canonical leaf names and delegates
-source loading to Python's ordinary loader and import locks.
+source loading to the registered implementation finder/loader and Python's
+ordinary import locks. It preserves custom and frozen finder ownership rather
+than bypassing it with a filesystem-only lookup. A private non-filesystem finder
+probe passes for canonical-first and legacy-first imports, including pickle.
+This probe does not establish acceptance of a native frozen binary.
 
 Old and new imports resolve to the same module and definitions; root legacy
 module attributes, historical class/function module identities and pickle lookup
@@ -54,12 +64,14 @@ entries; the original 1,118 protocol-4/5 class/function pickle references load t
 the same objects and reserialize identically. These checks do not establish
 native platform behavior or complete historical instance-data recovery.
 
-The source-body audit found no implementation AST changes after normalization of
+Against synchronized main, 200 changed source bodies have no unexplained AST
+changes after normalization of
 declared import/path relocations and the two source-relative locations, and no
 lost original source comments. Existing CI selection tests pass (150 tests).
-All 190 component Python files pass mypy; Coding passes Ruff. The real SDK
-session/tools/diagnostics smoke passes with the authorized private test runtime.
-Full batch regression and remote platform checks are still pending; these local
+All 190 component Python files pass mypy; Coding passes Ruff. Before upstream
+synchronization, the complete 14-case SDK suite passed, including the real
+session/tools/diagnostics smoke, with the authorized private test runtime.
+Synchronized batch regression and remote platform checks are still pending; these local
 results are not delivery acceptance.
 
 The ordinary machine test-runtime directory failed the unchanged SDK runtime
@@ -69,17 +81,18 @@ runtime for this task. The pre-move full SDK rerun there also recorded four
 are retained separately from candidate results; no Product timeout or safety
 check is weakened.
 
-At this snapshot Coding root Python files fall from 299 to 112. Coding and the
-system each grow by 366 physical production Python lines; Harness and Hosting
-line totals are unchanged. The compatibility files total 337 lines, the root
+Against synchronized main, Coding root Python files fall from 301 to 114. Coding
+grows from 100,500 to 100,883 physical Python lines; the system grows from
+648,826 to 649,209 (+383). Harness and Hosting
+line totals are unchanged. The compatibility files total 352 lines, the root
 loader installation adds lines, and import rebasing/formatting changes the
 remaining physical-line count. These are compatibility and organization costs,
 not system simplification. Tests and documentation are excluded from production
 counts. These counts use `src/**/*.py`; they do not count native or frontend
 sources.
 
-A normalized AST import-edge audit adds no edges between original Coding modules
-(1,656 before, 1,652 after). Four old root-package imports now resolve directly
+Against synchronized main, a normalized AST import-edge audit adds no edges
+between original Coding modules (1,659 before, 1,655 after). Four old root-package imports now resolve directly
 to component children. Thus the original-module static graph gains no cycles;
 the new import-only compatibility edge and dynamic imports require separate
 review and runtime coverage. This does not claim to remove pre-existing cycles.

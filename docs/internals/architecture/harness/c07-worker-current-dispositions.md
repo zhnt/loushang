@@ -15,6 +15,11 @@
 
 ## 逐文件清单
 
+Coding 内部组件化后，本表链接已定位到 `coding/package/` 的新实现位置；
+表内旧文件标识、行数和 SHA 仍属于上文声明的历史源码切点，不作为新版本指纹。
+完整的新旧路径映射、兼容说明及本轮验证范围见
+[Package 组件迁移记录](../coding/reports/package-component-migration.md)。
+
 文件名均属于 `loushang.coding`；共享组件列省略 `loushang.harness` 前缀。SHA 为该源码切点的前12位。Code 留下固定名称/类型/错误码并不能单独证明整个实现应保留；“保留”只限本行明确的政策、名义和兼容边界。
 
 | 文件 | 行 | SHA | 直接共享组件 | Coding 保留边界 | 下一处置／限制 |

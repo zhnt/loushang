@@ -10,7 +10,7 @@ import sys
 from contextlib import suppress
 from importlib import import_module
 from importlib.abc import Loader, MetaPathFinder
-from importlib.machinery import ModuleSpec, PathFinder
+from importlib.machinery import ModuleSpec
 from types import ModuleType
 from typing import Any
 
@@ -109,6 +109,21 @@ class _LegacyLoader(_ComponentLoader):
 
 
 class _PackageImports(MetaPathFinder):
+    def _implementation_spec(
+        self, fullname: str, path: Any, target: ModuleType | None = None
+    ) -> ModuleSpec | None:
+        # Respect the registered implementation owner, including frozen builds
+        # and custom finders, rather than bypassing them with a filesystem lookup.
+        for finder in sys.meta_path:
+            if finder is self:
+                continue
+            find = getattr(finder, "find_spec", None)
+            if find is not None:
+                spec = find(fullname, path, target)
+                if spec is not None:
+                    return spec
+        return None
+
     def find_spec(
         self,
         fullname: str,
@@ -118,7 +133,7 @@ class _PackageImports(MetaPathFinder):
         if fullname.startswith(_OLD) and fullname[len(_OLD) :] in NAMES:
             canonical = _NEW + fullname[len(_OLD) :]
             package = sys.modules[_NEW.removesuffix(".")]
-            original = PathFinder.find_spec(canonical, package.__path__)
+            original = self._implementation_spec(canonical, package.__path__)
             if original is None or original.loader is None:
                 return None
             legacy_spec = ModuleSpec(
@@ -129,7 +144,7 @@ class _PackageImports(MetaPathFinder):
             legacy_spec.has_location = original.has_location
             return legacy_spec
         if fullname.startswith(_NEW) and fullname[len(_NEW) :] in NAMES:
-            spec = PathFinder.find_spec(fullname, path, target)
+            spec = self._implementation_spec(fullname, path, target)
             if spec is not None and spec.loader is not None:
                 spec.loader = _ComponentLoader(
                     spec.loader, fullname, _OLD + fullname[len(_NEW) :]
