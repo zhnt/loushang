@@ -1491,6 +1491,9 @@ class WorkflowContractTests(unittest.TestCase):
             if path.name == "quality.yml":
                 self.assertIn("  pull_request:", text)
                 self.assertIn("  schedule:", text)
+            elif path.name == "gui-package.yml":
+                triggers = text.split("\non:\n", 1)[1].split("\n\n", 1)[0]
+                self.assertEqual(re.findall(r"(?m)^  ([\w-]+):", triggers), ["workflow_dispatch"])
             else:
                 self.assertNotRegex(text, r"(?m)^  (pull_request|push|schedule):")
                 self.assertIn("  workflow_call:", text)
@@ -1498,7 +1501,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_reusable_jobs_are_guarded_and_use_the_single_root_aggregate(self):
         rules = json.loads((ROOT / "scripts/ci/check-scopes.json").read_text())
         for path in (ROOT / ".github/workflows").glob("*.yml"):
-            if path.name == "quality.yml":
+            if path.name in {"quality.yml", "gui-package.yml"}:
                 continue
             text = path.read_text()
             jobs = {

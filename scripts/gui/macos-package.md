@@ -32,12 +32,10 @@ Close the GUI and stop the Host before replacing this test installation.
 
 ## GitHub Actions
 
-Actions packaging is paused. The recipe is retained as
-`.github/workflows/macos-package.yml.disabled`, which GitHub Actions does not
-load. The `macos_package` input and package job have also been removed from
-`Change-aware Quality`. Local build and installed verification scripts remain
-available. Restore the workflow's `.yml` filename only when remote packaging
-is explicitly resumed.
+Use [Package GUI](gui-package.md) with `platform=macos-x64-pkg` to build
+the Intel test installer on demand. The workflow publishes the package,
+checksum, and manifest as an Actions artifact. For installed verification,
+run `check_macos_package.py` on the target Mac after installing the package.
 
 The previously built installer and evidence remain downloadable from
 [run 44276006846](https://github.com/zhnt/loushang/actions/runs/44276006846)
@@ -48,7 +46,7 @@ gh run download 44276006846 -n loushang-macos12-intel
 ```
 
 No existing PR checks, trigger paths or required runner matrices are expanded.
-The runner uses macOS 15 Intel, while native build and package minimum versions
-target macOS 12. The evidence explicitly distinguishes those facts. An actual
+The runner uses macOS 15 Intel. The native build and package metadata target
+macOS 12. An actual
 macOS 12 Intel installation test is still needed. These artifacts are unsigned
 test installers, not Developer ID signed/notarized releases.
