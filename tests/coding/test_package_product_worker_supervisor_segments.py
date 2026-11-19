@@ -7,17 +7,17 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.package_product_worker_supervisor_journal as supervisor_module
+import loushang.coding.package.product_worker_supervisor_journal as supervisor_module
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_payload import (
+from loushang.coding.package.product_worker_payload import (
     open_coding_product_worker_supervisor_journal,
 )
 from loushang.harness.config.agent import SettingsManager

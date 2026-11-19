@@ -11,11 +11,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import (
-    package_product_worker_windows_recovery_inventory as recovery,
+from loushang.coding.package import (
+    product_worker_windows_recovery_inventory as recovery,
 )
-from loushang.coding import (
-    package_product_worker_windows_stage_retirement as retirement,
+from loushang.coding.package import (
+    product_worker_windows_stage_retirement as retirement,
 )
 from loushang.harness.package_product import _windows_worker_recovery as recovery_owner
 

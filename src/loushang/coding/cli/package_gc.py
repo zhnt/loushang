@@ -15,14 +15,14 @@ from pathlib import Path
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_posix_gc_history import (
+from loushang.coding.package.product_worker_posix_gc_history import (
     CodingPosixWorkerGcHistoryAuthority,
 )
-from loushang.coding.package_product_worker_windows_gc_history import (
+from loushang.coding.package.product_worker_windows_gc_history import (
     CodingWindowsWorkerGcHistoryAuthority,
 )
 from loushang.harness.package_product.product_gc_executor import (

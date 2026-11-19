@@ -16,24 +16,24 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_legacy_windows_receipt as receipt_module
-import loushang.coding.package_product_worker_windows_history_cutover_record as cutover_module
-import loushang.coding.package_product_worker_windows_persisted_bases as code
+import loushang.coding.package.legacy_windows_receipt as receipt_module
+import loushang.coding.package.product_worker_windows_history_cutover_record as cutover_module
+import loushang.coding.package.product_worker_windows_persisted_bases as code
 import loushang.harness.package_product._worker_windows_attempt as core
 import loushang.harness.resources.packages._private_receipts_windows as receipt_io_module
-from loushang.coding.package_product_backup_types import (
+from loushang.coding.package.product_backup_types import (
     CodingWorkerBackupReferenceObservationV1,
 )
-from loushang.coding.package_product_worker_windows_history_join import (
+from loushang.coding.package.product_worker_windows_history_join import (
     CodingWindowsWorkerHistorySemanticJoinV1,
 )
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     _coding_windows_worker_desired_history_digest,
 )
-from loushang.coding.package_product_worker_windows_package_references import (
+from loushang.coding.package.product_worker_windows_package_references import (
     CodingWindowsWorkerPackageReferenceReviewV1,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -464,7 +464,7 @@ def observe(spec, monkeypatch):
 def source_guard():
     root = Path(__file__).resolve().parents[2]
     for module, relative in (
-        (code, "src/loushang/coding/package_product_worker_windows_persisted_bases.py"),
+        (code, "src/loushang/coding/package/product_worker_windows_persisted_bases.py"),
         (core, "src/loushang/harness/package_product/_worker_windows_attempt.py"),
     ):
         assert Path(module.__file__).resolve() == root / relative

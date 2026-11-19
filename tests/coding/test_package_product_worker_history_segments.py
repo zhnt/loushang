@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
@@ -441,7 +441,7 @@ def test_shared_append_reopens_sealed_generations(tmp_path: Path) -> None:
     import json
     from dataclasses import replace
 
-    from loushang.coding.package_product_worker_history_segments import (
+    from loushang.coding.package.product_worker_history_segments import (
         append_coding_worker_active_record,
     )
     from loushang.harness.journal import (
@@ -497,7 +497,7 @@ def test_shared_append_keeps_unknown_write_head_debt(
 ) -> None:
     from dataclasses import replace
 
-    from loushang.coding.package_product_worker_history_segments import (
+    from loushang.coding.package.product_worker_history_segments import (
         append_coding_worker_active_record,
     )
     from loushang.harness.journal import (

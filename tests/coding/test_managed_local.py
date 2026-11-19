@@ -21,8 +21,8 @@ from loushang.coding.managed_local import (
     CodingManagedLocalLaunchV1,
     create_coding_managed_local_launch,
 )
+from tests.apphost.test_managed_bootstrap import deployment as deployment
 
-from ..apphost.test_managed_bootstrap import deployment as deployment
 from .test_hosted_local import _local_launch
 from .test_managed_catalog import tree
 from .test_managed_launch import invocation

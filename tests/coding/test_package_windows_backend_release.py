@@ -12,7 +12,7 @@ from importlib.metadata import version
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_backend_release import (
+from loushang.coding.package.product_worker_windows_backend_release import (
     inspect_coding_windows_worker_backend_candidate,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
@@ -26,7 +26,7 @@ _MODULES = (
     "loushang/hosting/runtime.py",
     "loushang/harness/worker/_native_profile_bridge.py",
     "loushang/harness/worker/product_activation.py",
-    "loushang/coding/package_product_worker_windows_provisioning.py",
+    "loushang/coding/package/product_worker_windows_provisioning.py",
     "loushang/harness/worker/_windows_provisioning_journal.py",
 )
 

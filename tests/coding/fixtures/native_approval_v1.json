@@ -2,7 +2,7 @@
   "baselineCommit": "89992a383",
   "baselineSources": {
     "_windows_record_journals.py": "5d4d2562b24351771a66c3925f589e2ba53a79228136cfad60cf912062f90e43",
-    "package_product_worker_native_approval.py": "75eea9d748c6656d96b6d17a7b05edefd98f46239f75013ccbaaa4bd44472b47"
+    "package/product_worker_native_approval.py": "75eea9d748c6656d96b6d17a7b05edefd98f46239f75013ccbaaa4bd44472b47"
   },
   "inputs": {
     "approvalDigests": [

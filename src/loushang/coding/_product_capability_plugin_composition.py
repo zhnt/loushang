@@ -81,11 +81,11 @@ from ._capability_plugin_specs import (
 from ._resource_catalog_adapter import (
     complete_coding_package_plugin_selection_seed,
 )
-from .package_legacy_data_trust import (
+from .package.legacy_data_trust import (
     EXTERNAL_DATA_TRUST_CLASSES,
     permits_external_data_owner,
 )
-from .package_product_revisions import (
+from .package.product_revisions import (
     open_coding_product_builtin_resolution,
     open_coding_product_capability_resolution,
 )

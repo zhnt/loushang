@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_launch_intent import (
+from loushang.coding.package.product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentError,
 )
 

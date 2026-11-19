@@ -18,9 +18,9 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding import package_builtin_wheel as wheels
-from loushang.coding import package_product_revisions as revisions
 from loushang.coding import plugin_dependency_grants as grants
+from loushang.coding.package import builtin_wheel as wheels
+from loushang.coding.package import product_revisions as revisions
 
 MODULES = (wheels, revisions, grants)
 CASES = (

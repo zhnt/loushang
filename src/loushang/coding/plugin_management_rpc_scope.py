@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .package_product_repair_rpc import (
+from .package.product_repair_rpc import (
     CodingPackageRepairRpcClientV1,
     bind_coding_package_repair_rpc_client,
 )
-from .package_product_runtime import CodingProductWorkspaceWitnessV1
+from .package.product_runtime import CodingProductWorkspaceWitnessV1
 from .plugin_management_command_rpc import (
     CodingPluginDesiredRpcClientV1,
     bind_coding_plugin_desired_rpc_client,

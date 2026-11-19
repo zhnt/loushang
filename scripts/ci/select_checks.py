@@ -121,10 +121,10 @@ WINDOWS_WORKER_NATIVE_PARTS = (
     "activation_state",
 )
 WINDOWS_WORKER_NATIVE_PREFIXES = (
-    "src/loushang/coding/package_product_worker_",
+    "src/loushang/coding/package/product_worker_",
     "tests/coding/test_package_product_worker_",
-    "src/loushang/coding/package_external_worker_wheel.py",
-    "src/loushang/coding/package_product_runtime.py",
+    "src/loushang/coding/package/external_worker_wheel.py",
+    "src/loushang/coding/package/product_runtime.py",
     "src/loushang/coding/cli/package_worker_native.py",
     "src/loushang/plugin/_coding_local_worker_wheel.py",
     "src/loushang/harness/worker/", "tests/harness/worker/",

@@ -28,8 +28,8 @@ from ._resource_catalog_adapter import (
     CodingResourceCatalogAdmissionError,
     build_coding_initial_resource_catalog_adapter,
 )
-from .package_product_management_cli import coding_fenced_product_exists
-from .package_product_preview import CodingFencedProductReadOnlyPreviewOwner
+from .package.product_management_cli import coding_fenced_product_exists
+from .package.product_preview import CodingFencedProductReadOnlyPreviewOwner
 from .plugin_management_preview import _capture_disabled_skills
 from .plugin_management_read_sdk import CodingPluginManagementReadClientV1
 from .resource_runtime import CodingResourceLoader
@@ -77,7 +77,9 @@ def discover_coding_local_plugins(
         return _blocked("local_discovery_scope_changed")
     if coding_fenced_product_exists(layout):
         try:
-            management = client.management_snapshot(correlation_id="cli:local-discovery")
+            management = client.management_snapshot(
+                correlation_id="cli:local-discovery"
+            )
             if management.get("projectionVersion") != 1:
                 return _blocked("local_discovery_owner_version_invalid")
             initial_management_revisions = management.get("ownerRevisions")
@@ -86,7 +88,9 @@ def discover_coding_local_plugins(
                 return _blocked("local_discovery_owner_invalid")
             status: dict[str, object] | None = None
             try:
-                status = client.support_status(correlation_id="cli:local-discovery-status")
+                status = client.support_status(
+                    correlation_id="cli:local-discovery-status"
+                )
             except (OSError, RuntimeError):
                 diagnostics.add("local_discovery_product_preview_unavailable")
             if status is not None:
@@ -96,11 +100,9 @@ def discover_coding_local_plugins(
                 if not isinstance(status_rows, list):
                     return _blocked("local_discovery_owner_invalid")
                 owner_evidence = status.get("ownerEvidence")
-                if (
-                    not isinstance(owner_evidence, dict)
-                    or owner_evidence.get("managementRevisions")
-                    != management.get("ownerRevisions")
-                ):
+                if not isinstance(owner_evidence, dict) or owner_evidence.get(
+                    "managementRevisions"
+                ) != management.get("ownerRevisions"):
                     diagnostics.add("local_discovery_product_stale")
                     status_rows = []
             else:
@@ -127,17 +129,22 @@ def discover_coding_local_plugins(
                 source_record = item.get("source")
                 if source_record is not None and not isinstance(source_record, dict):
                     return _blocked("local_discovery_owner_invalid")
-                if source_record is None or source_record.get("availability") != "available":
+                if (
+                    source_record is None
+                    or source_record.get("availability") != "available"
+                ):
                     diagnostics.add("local_discovery_source_unavailable")
                 package_ref = item.get("selectedPackageRevision")
                 try:
                     revision = (
                         PluginPackageRevisionRefV1.from_dict(package_ref)
-                        if package_ref is not None else None
+                        if package_ref is not None
+                        else None
                     )
                     package_fingerprint = (
                         plugin_package_revision_fingerprint(revision)
-                        if revision is not None else None
+                        if revision is not None
+                        else None
                     )
                 except (TypeError, ValueError):
                     return _blocked("local_discovery_owner_invalid")
@@ -153,40 +160,57 @@ def discover_coding_local_plugins(
                         "resourceKind": "plugin",
                         "resourceKinds": status_row.get("resourceKinds", []),
                         "resourceKindEvidence": (
-                            "current_preview" if status_row.get("resourceKinds") else "not_checked"
+                            "current_preview"
+                            if status_row.get("resourceKinds")
+                            else "not_checked"
                         ),
                         "version": (
-                            source_record.get("pluginVersion") if source_record else None
+                            source_record.get("pluginVersion")
+                            if source_record
+                            else None
                         ),
                         "sourceClass": (
-                            source_record.get("sourceKind") if source_record else "unknown"
+                            source_record.get("sourceKind")
+                            if source_record
+                            else "unknown"
                         ),
                         "sourceScope": "workspace",
                         "sourceIdentity": (
-                            source_record.get("sourceIdentity") if source_record else None
+                            source_record.get("sourceIdentity")
+                            if source_record
+                            else None
                         ),
                         "sourceLocation": (
-                            source_record.get("sourceLocation") if source_record else None
+                            source_record.get("sourceLocation")
+                            if source_record
+                            else None
                         ),
                         "sourceAvailability": (
-                            source_record.get("availability") if source_record else "unknown"
+                            source_record.get("availability")
+                            if source_record
+                            else "unknown"
                         ),
                         "packageRevisionFingerprint": package_fingerprint,
                         "desiredState": item.get("desiredState"),
                         "productCompatibility": (
                             "observed_in_current_projection"
-                            if status_row.get("productAdmission") == "observed_in_preview"
+                            if status_row.get("productAdmission")
+                            == "observed_in_preview"
                             else "not_checked"
                         ),
-                        "productAdmission": status_row.get("productAdmission", "not_checked"),
-                        "productSelection": status_row.get("productSelection", "unknown"),
+                        "productAdmission": status_row.get(
+                            "productAdmission", "not_checked"
+                        ),
+                        "productSelection": status_row.get(
+                            "productSelection", "unknown"
+                        ),
                         "productUse": "not_checked",
                         "diagnosticCodes": status_row.get("reasonCodes", []),
                     }
                 )
             try:
-                inert_kinds, inert_diagnostics, inert_evidence = _read_inert_installed_kinds(
-                    client, revisions_by_plugin
+                inert_kinds, inert_diagnostics, inert_evidence = (
+                    _read_inert_installed_kinds(client, revisions_by_plugin)
                 )
             except (OSError, RuntimeError, ValueError):
                 inert_kinds = {}
@@ -198,10 +222,13 @@ def discover_coding_local_plugins(
             diagnostics.update(inert_diagnostics.values())
             for row in rows:
                 plugin_id = row.get("pluginId")
-                kinds = inert_kinds.get(plugin_id) if isinstance(plugin_id, str) else None
+                kinds = (
+                    inert_kinds.get(plugin_id) if isinstance(plugin_id, str) else None
+                )
                 error_code = (
                     inert_diagnostics.get(plugin_id)
-                    if isinstance(plugin_id, str) else None
+                    if isinstance(plugin_id, str)
+                    else None
                 )
                 if error_code:
                     previous_codes = row.get("diagnosticCodes")
@@ -272,7 +299,9 @@ def discover_coding_local_plugins(
                     "sourceEnabled": candidate.invocation_policy.enabled,
                     "enabled": candidate.candidate_fingerprint in selected,
                     "nativeCatalogSelection": (
-                        "selected" if candidate.candidate_fingerprint in selected else "not_selected"
+                        "selected"
+                        if candidate.candidate_fingerprint in selected
+                        else "not_selected"
                     ),
                     "productCompatibility": "native_catalog_candidate",
                     "productSelection": "not_checked",
@@ -350,7 +379,10 @@ def discover_coding_local_plugins(
         )
     )
     source_truncated = bool(
-        {"local_discovery_source_truncated", "resource_source_discovery_budget_exceeded"}
+        {
+            "local_discovery_source_truncated",
+            "resource_source_discovery_budget_exceeded",
+        }
         & diagnostics
     )
     truncated = len(filtered) > limit or source_truncated
@@ -455,7 +487,8 @@ def _read_inert_installed_kinds(
     ) as owner:
         for plugin_id, revision in revisions.items():
             matches = tuple(
-                binding for binding in owner.policy.bindings
+                binding
+                for binding in owner.policy.bindings
                 if binding.plugin_id == plugin_id
                 and binding.source_identity == revision.package_source_identity
                 and binding.artifact_digest == revision.package_content_digest
@@ -551,6 +584,7 @@ def _fallback_native_row(
         "discoveryEvidence": "fallback_metadata",
         "diagnosticCodes": ["local_discovery_catalog_unavailable"],
     }
+
 
 __all__ = [
     "blocked_coding_local_discovery",

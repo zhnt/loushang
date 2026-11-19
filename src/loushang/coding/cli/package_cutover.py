@@ -20,68 +20,66 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.package_cutover_backup import (
-    inspect_coding_package_cutover_backup,
-)
-from loushang.coding.package_epoch_layout import (
+from loushang.coding.package.cutover_backup import inspect_coding_package_cutover_backup
+from loushang.coding.package.epoch_layout import (
     CodingPackageEpochLayoutV1,
     resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
 )
-from loushang.coding.package_legacy_builtin_acceptance import (
+from loushang.coding.package.legacy_builtin_acceptance import (
     read_coding_first_b_builtin_only_acceptance,
 )
-from loushang.coding.package_legacy_builtin_adoption import (
+from loushang.coding.package.legacy_builtin_adoption import (
     adopt_coding_first_b_builtin_only,
 )
-from loushang.coding.package_legacy_builtin_review import (
+from loushang.coding.package.legacy_builtin_review import (
     admit_coding_builtin_only_snapshot,
     review_coding_first_b_builtin_only,
 )
-from loushang.coding.package_legacy_disabled_acceptance import (
+from loushang.coding.package.legacy_disabled_acceptance import (
     read_coding_first_b_disabled_only_acceptance,
 )
-from loushang.coding.package_legacy_disabled_review import (
+from loushang.coding.package.legacy_disabled_review import (
     review_coding_first_b_disabled_only,
 )
-from loushang.coding.package_legacy_installation_inventory import (
+from loushang.coding.package.legacy_installation_inventory import (
     read_coding_legacy_installation_inventory,
 )
-from loushang.coding.package_legacy_local_acceptance import (
+from loushang.coding.package.legacy_local_acceptance import (
     reopen_coding_legacy_installed_local_acceptance,
 )
-from loushang.coding.package_legacy_local_adoption import (
+from loushang.coding.package.legacy_local_adoption import (
     adopt_coding_legacy_local_data_review,
 )
-from loushang.coding.package_legacy_local_adoption_read import (
+from loushang.coding.package.legacy_local_adoption_read import (
     coding_legacy_local_data_adoption_settled,
 )
-from loushang.coding.package_legacy_removed_acceptance import (
+from loushang.coding.package.legacy_removed_acceptance import (
     read_coding_first_b_removed_local_acceptance,
 )
-from loushang.coding.package_legacy_removed_adoption import (
+from loushang.coding.package.legacy_removed_adoption import (
     adopt_coding_first_b_removed_local,
 )
-from loushang.coding.package_legacy_removed_review import (
+from loushang.coding.package.legacy_removed_review import (
     admit_coding_removed_local_snapshot,
     review_coding_first_b_removed_local,
 )
-from loushang.coding.package_legacy_review import (
+from loushang.coding.package.legacy_review import (
     review_coding_legacy_installed_local_source,
 )
-from loushang.coding.package_legacy_skill_cutover_admission import (
+from loushang.coding.package.legacy_skill_cutover_admission import (
     admit_coding_single_legacy_skill_snapshot,
     require_coding_fenced_single_legacy_data,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     CodingCutoverSnapshotAdmission,
     cutover_and_bootstrap_coding_package_product,
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
     reopen_coding_package_cutover,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_POLICY_REVISION,
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     bootstrap_coding_accepted_disabled_only_product_plugins,

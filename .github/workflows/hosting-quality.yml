@@ -52,24 +52,24 @@ jobs:
           src/loushang/harness/worker/owner_selection.py
           src/loushang/harness/worker/session.py
           src/loushang/harness/worker/supervisor.py
-          src/loushang/coding/package_product_worker_native_release.py
-          src/loushang/coding/package_product_worker_native_approval.py
-          src/loushang/coding/package_product_worker_installed_native.py
-          src/loushang/coding/package_product_worker_native_install.py
+          src/loushang/coding/package/product_worker_native_release.py
+          src/loushang/coding/package/product_worker_native_approval.py
+          src/loushang/coding/package/product_worker_installed_native.py
+          src/loushang/coding/package/product_worker_native_install.py
           src/loushang/coding/cli/package_worker_native.py
-          src/loushang/coding/package_product_worker_payload.py
-          src/loushang/coding/package_product_worker_start_gate.py
-          src/loushang/coding/package_product_worker_start_gate_journal.py
-          src/loushang/coding/package_product_worker_start_gate_recovery.py
-          src/loushang/coding/package_product_worker_cleanup_evidence.py
-          src/loushang/coding/package_product_worker_crash_c5_settlement.py
+          src/loushang/coding/package/product_worker_payload.py
+          src/loushang/coding/package/product_worker_start_gate.py
+          src/loushang/coding/package/product_worker_start_gate_journal.py
+          src/loushang/coding/package/product_worker_start_gate_recovery.py
+          src/loushang/coding/package/product_worker_cleanup_evidence.py
+          src/loushang/coding/package/product_worker_crash_c5_settlement.py
           src/loushang/harness/resources/packages/product_epoch_guard.py
-          src/loushang/coding/package_product_worker_capability.py
-          src/loushang/coding/package_product_worker_provider.py
-          src/loushang/coding/package_product_worker_provider_host.py
-          src/loushang/coding/package_product_worker_session_composition.py
-          src/loushang/coding/package_product_worker_policy.py
-          src/loushang/coding/package_product_worker_receipt.py
+          src/loushang/coding/package/product_worker_capability.py
+          src/loushang/coding/package/product_worker_provider.py
+          src/loushang/coding/package/product_worker_provider_host.py
+          src/loushang/coding/package/product_worker_session_composition.py
+          src/loushang/coding/package/product_worker_policy.py
+          src/loushang/coding/package/product_worker_receipt.py
           src/loushang/plugin/__init__.py
           src/loushang/plugin/__main__.py
           src/loushang/plugin/_coding_local_worker_wheel.py
@@ -113,24 +113,24 @@ jobs:
           src/loushang/harness/worker/owner_selection.py
           src/loushang/harness/worker/session.py
           src/loushang/harness/worker/supervisor.py
-          src/loushang/coding/package_product_worker_payload.py
-          src/loushang/coding/package_product_worker_start_gate.py
-          src/loushang/coding/package_product_worker_start_gate_journal.py
-          src/loushang/coding/package_product_worker_start_gate_recovery.py
-          src/loushang/coding/package_product_worker_cleanup_evidence.py
-          src/loushang/coding/package_product_worker_crash_c5_settlement.py
+          src/loushang/coding/package/product_worker_payload.py
+          src/loushang/coding/package/product_worker_start_gate.py
+          src/loushang/coding/package/product_worker_start_gate_journal.py
+          src/loushang/coding/package/product_worker_start_gate_recovery.py
+          src/loushang/coding/package/product_worker_cleanup_evidence.py
+          src/loushang/coding/package/product_worker_crash_c5_settlement.py
           src/loushang/harness/resources/packages/product_epoch_guard.py
-          src/loushang/coding/package_product_worker_native_approval.py
-          src/loushang/coding/package_product_worker_native_release.py
-          src/loushang/coding/package_product_worker_installed_native.py
-          src/loushang/coding/package_product_worker_native_install.py
+          src/loushang/coding/package/product_worker_native_approval.py
+          src/loushang/coding/package/product_worker_native_release.py
+          src/loushang/coding/package/product_worker_installed_native.py
+          src/loushang/coding/package/product_worker_native_install.py
           src/loushang/coding/cli/package_worker_native.py
-          src/loushang/coding/package_product_worker_capability.py
-          src/loushang/coding/package_product_worker_provider.py
-          src/loushang/coding/package_product_worker_provider_host.py
-          src/loushang/coding/package_product_worker_session_composition.py
-          src/loushang/coding/package_product_worker_policy.py
-          src/loushang/coding/package_product_worker_receipt.py
+          src/loushang/coding/package/product_worker_capability.py
+          src/loushang/coding/package/product_worker_provider.py
+          src/loushang/coding/package/product_worker_provider_host.py
+          src/loushang/coding/package/product_worker_session_composition.py
+          src/loushang/coding/package/product_worker_policy.py
+          src/loushang/coding/package/product_worker_receipt.py
           src/loushang/plugin/__init__.py
           src/loushang/plugin/__main__.py
           src/loushang/plugin/_coding_local_worker_wheel.py

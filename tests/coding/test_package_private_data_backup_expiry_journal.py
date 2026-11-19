@@ -9,14 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_private_data_backup_expiry import (
+from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryPlanV1,
 )
-from loushang.coding.package_private_data_backup_expiry_journal import (
+from loushang.coding.package.private_data_backup_expiry_journal import (
     CodingArchPrivateDataBackupExpiryJournal,
     CodingArchPrivateDataBackupExpiryReceiptV1,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     _capture_target_snapshot,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1

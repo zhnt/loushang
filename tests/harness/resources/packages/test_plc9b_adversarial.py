@@ -4257,23 +4257,23 @@ def _exercise_posix_local_wheel_product_composition(
     from loushang.coding.composition_sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
-    from loushang.coding.package_builtin_wheel import (
+    from loushang.coding.package.builtin_wheel import (
         CODING_BASE_PRODUCT_WHEEL_FILENAME,
         build_coding_base_product_wheel,
         coding_base_product_local_wheel_policy,
         prepare_posix_coding_base_product_wheel,
         prepare_posix_coding_capability_product_wheels,
     )
-    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
-    from loushang.coding.package_pre_b_snapshot import (
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package.pre_b_snapshot import (
         cutover_coding_package_store_from_legacy,
         reopen_coding_package_cutover,
     )
-    from loushang.coding.package_product_revisions import (
+    from loushang.coding.package.product_revisions import (
         open_coding_product_builtin_resolution,
         open_coding_product_capability_resolution,
     )
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         open_coding_base_product_runtime_owner,
         open_coding_builtin_product_runtime_owner,
         open_coding_fenced_product_application_owner,
@@ -9300,8 +9300,8 @@ sys.path.insert(0, sys.argv[1])
 from test_plc9b_adversarial import _closure_environment, _configured_product_gc_owner
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.cli.package_gc import _CodingPackageGcRepairAuthority, _run
-from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
-from loushang.coding.package_product_runtime import open_coding_package_product_state
+from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package.product_runtime import open_coding_package_product_state
 from loushang.harness.package_product.product_root_gc_runtime import open_posix_local_wheel_product_root_gc
 from loushang.harness.resources.packages.product_epoch_guard import PackageProductPosixFencedRuntimeOwner
 from loushang.harness.resources.packages.product_local_wheel_policy import (

@@ -18,19 +18,19 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding import package_product_worker_installed_native as installed
-from loushang.coding import package_product_worker_native_install as install
-from loushang.coding import package_product_worker_native_release as raw
-from loushang.coding.package_product_worker_native_approval import (
+from loushang.coding.package import product_worker_installed_native as installed
+from loushang.coding.package import product_worker_native_install as install
+from loushang.coding.package import product_worker_native_release as raw
+from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalDecisionV1 as Decision,
 )
-from loushang.coding.package_product_worker_native_approval import (
+from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalError as ApprovalError,
 )
-from loushang.coding.package_product_worker_native_approval import (
+from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalJournal as Journal,
 )
-from loushang.coding.package_product_worker_native_approval import (
+from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeReleaseApprovalV1 as Approval,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (

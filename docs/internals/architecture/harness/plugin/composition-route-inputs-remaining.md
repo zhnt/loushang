@@ -18,7 +18,7 @@
 
 | 项 | 源码证据 | 结论与建议 |
 | --- | --- | --- |
-| R1 workspace 路线选择与 direct/app 包装 | [原 selector](../../../../../src/loushang/coding/package_product_runtime.py#L453) 453–593 在锁内选择、初始化/恢复及留存 owner；[direct 包装](../../../../../src/loushang/coding/bootstrap.py#L2832) 2832–2857 与 app 包装 3253–3297 均调用原 selector | **保留**。direct 转交 owner，app 借用 owner；显式 factory 在 2996–3005 绕过自动选择。未发现第二套存储选择器，不再建立 RouteResult。 |
+| R1 workspace 路线选择与 direct/app 包装 | [原 selector](../../../../../src/loushang/coding/package/product_runtime.py#L453) 453–593 在锁内选择、初始化/恢复及留存 owner；[direct 包装](../../../../../src/loushang/coding/bootstrap.py#L2832) 2832–2857 与 app 包装 3253–3297 均调用原 selector | **保留**。direct 转交 owner，app 借用 owner；显式 factory 在 2996–3005 绕过自动选择。未发现第二套存储选择器，不再建立 RouteResult。 |
 | R2 bootstrap 的 factory/None 条件 | [bootstrap](../../../../../src/loushang/coding/bootstrap.py#L735) 735–840 处理 minimal、Worker、互斥和旧设置；982–1018 决定 materializer/lifecycle；1315–1390 处理内部 assembly/Catalog | **保留原分支**。这些是不同装配条件与失败时点；None 也可配合内部初始 assembly/minimal，不足以表示统一 legacy 路线。 |
 | R3 两 composer 的共同准备链 | [兼容入口](../../../../../src/loushang/coding/_capability_plugin_composition.py#L1414) 1414–1469；[B combined](../../../../../src/loushang/coding/_product_capability_plugin_composition.py#L274) 274–335、B capability-only 415–468 均使用 `_finalize_selection`、原 completion、`_assembly_request` 和 Harness `prepare_product_plugin_composition` | **已有共享**。原 `_assembly_request` 1912–1964 含 Coding Definitions、Provider 选择和 roots；再包装进 Harness 不能增加通用职责。 |
 | R4 三种 seed builder | [兼容 builder](../../../../../src/loushang/coding/_capability_plugin_composition.py#L1762) 1762–1909 合并已有 seed，取管理 lease 身份或合成实例，并为新增项构造 `host-equivalent-local` trust；[B capability-only](../../../../../src/loushang/coding/_product_capability_plugin_composition.py#L503) 503–567 使用选中 Store 快照；B combined 570–724 还保留 base contribution/config 与外部数据 owner/trust | **保留三个策略适配**。它们产生同一 PlanSeed 类型，但身份、信任、合并选择不同；共同的数据类型和排序形式不能证明整个 builder 等价。 |
@@ -33,7 +33,7 @@
 两处 B 配置调用相同，仍不等于其整段准备过程是纯函数：
 
 1. 保留“已由原分支选定的能力 → 配置值”的职责；desired enabled/disabled、base/external-data 选择及 snapshot 捕获仍由原 owner 决定。
-2. 保留原 LSP → Arch 求值顺序，只有选中 Arch 时才准备它的私有根。`prepare_coding_product_arch_private_data_root` [109–173 行](../../../../../src/loushang/coding/package_installation_private_data.py#L109) 会检查安装/Session 身份、捕获当前选择并创建目录；Windows 还绑定目录身份、设置 ACL 后重新捕获，不是纯 Path 拼接。
+2. 保留原 LSP → Arch 求值顺序，只有选中 Arch 时才准备它的私有根。`prepare_coding_product_arch_private_data_root` [109–173 行](../../../../../src/loushang/coding/package/installation_private_data.py#L109) 会检查安装/Session 身份、捕获当前选择并创建目录；Windows 还绑定目录身份、设置 ACL 后重新捕获，不是纯 Path 拼接。
 3. 临时目录和 cleanup 凭据仍由原调用分支持有；不把目录准备提前到 LSP 配置校验之前，不改变失败前缀或关闭责任。
 4. 选一个原 bootstrap 内的私有函数或原 Coding 适配模块即可；不提升为公共 facade、配置注册表或 Harness policy engine。若必须增加一组新回调、方案开关或跨调用缓存才能复用，应重新评估收益。
 5. 后续验收先复用现有 bootstrap、hosted/Store 和 LSP/Arch 配置用例，再仅补必要的构造顺序、路径准备次数、字段与异常轨迹差分；不重跑已交付 Goal 试验，不扩大 PR gate。具体接口与验收包属于后续专项设计，本轮不预定。

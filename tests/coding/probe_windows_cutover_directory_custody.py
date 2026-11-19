@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_source_snapshot as product
+import loushang.coding.package.source_snapshot as product
 import loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover as core
 
 EVIDENCE = Path(__file__).parent
@@ -200,7 +200,7 @@ def _observe(config):
 def _guard():
     root = Path(__file__).resolve().parents[2]
     for module, name in (
-        (product, "src/loushang/coding/package_source_snapshot.py"),
+        (product, "src/loushang/coding/package/source_snapshot.py"),
         (
             core,
             "src/loushang/harness/resources/packages/plugin_lifecycle/windows_epoch_cutover.py",

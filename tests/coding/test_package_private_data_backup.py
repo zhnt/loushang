@@ -8,52 +8,52 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.package_private_data_backup as backup_module
-import loushang.coding.package_private_data_restore as restore_module
+import loushang.coding.package.private_data_backup as backup_module
+import loushang.coding.package.private_data_restore as restore_module
 import loushang.harness.plugin_management.private_data_backup as expiry_module
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_installation_private_data import (
+from loushang.coding.package.installation_private_data import (
     coding_arch_installation_private_data_root,
     prepare_coding_product_arch_private_data_root,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_private_data_backup import (
+from loushang.coding.package.private_data_backup import (
     CodingArchPrivateDataBackupOwner,
     CodingArchPrivateDataBackupReceiptV1,
 )
-from loushang.coding.package_private_data_backup_expiry import (
+from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryOwner,
     CodingArchPrivateDataBackupExpiryPlanV1,
 )
-from loushang.coding.package_private_data_backup_expiry_journal import (
+from loushang.coding.package.private_data_backup_expiry_journal import (
     CodingArchPrivateDataBackupExpiryJournal,
 )
-from loushang.coding.package_private_data_backup_records import backup_id
-from loushang.coding.package_private_data_deletion_owner import (
+from loushang.coding.package.private_data_backup_records import backup_id
+from loushang.coding.package.private_data_deletion_owner import (
     CodingArchPrivateDataDeletionOwner,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
     _capture_target_snapshot,
 )
-from loushang.coding.package_private_data_restore import (
+from loushang.coding.package.private_data_restore import (
     CodingArchPrivateDataRestoreOwner,
     CodingArchPrivateDataRestorePlanV1,
 )
-from loushang.coding.package_private_data_restore_confirmation import (
+from loushang.coding.package.private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal,
 )
-from loushang.coding.package_private_data_restore_journal import (
+from loushang.coding.package.private_data_restore_journal import (
     CodingArchPrivateDataRestoreJournal,
 )
-from loushang.coding.package_product_management_cli import (
+from loushang.coding.package.product_management_cli import (
     build_coding_fenced_product_management_cli_ports,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
     open_coding_package_product_state,
 )

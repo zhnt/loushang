@@ -13,14 +13,14 @@ from unittest.mock import patch
 
 import pytest
 
-import loushang.coding.package_private_data_windows_backup as coding
-from loushang.coding.package_private_data_backup_records import (
+import loushang.coding.package.private_data_windows_backup as coding
+from loushang.coding.package.private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
 )
-from loushang.coding.package_private_data_backup_records import (
+from loushang.coding.package.private_data_backup_records import (
     backup_id as backup_id_for,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
 from loushang.harness.plugin_management import _private_data_backup_windows as action

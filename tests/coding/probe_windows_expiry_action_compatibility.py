@@ -52,22 +52,22 @@ CASES = (
 
 
 def _observe(case, base, monkeypatch):
-    from loushang.coding.package_private_data_backup_expiry_records import (
+    from loushang.coding.package.private_data_backup_expiry_records import (
         CodingArchPrivateDataBackupExpiryConfirmationV1 as Confirmation,
     )
-    from loushang.coding.package_private_data_backup_expiry_records import (
+    from loushang.coding.package.private_data_backup_expiry_records import (
         CodingArchPrivateDataBackupExpiryPlanV1 as Plan,
     )
-    from loushang.coding.package_private_data_backup_expiry_records import (
+    from loushang.coding.package.private_data_backup_expiry_records import (
         CodingArchPrivateDataBackupExpiryReceiptV1 as Receipt,
     )
-    from loushang.coding.package_private_data_deletion_preview import (
+    from loushang.coding.package.private_data_deletion_preview import (
         CodingArchPrivateDataMemberV1 as Member,
     )
-    from loushang.coding.package_private_data_deletion_preview import (
+    from loushang.coding.package.private_data_deletion_preview import (
         CodingArchPrivateDataTargetSnapshotV1 as Snapshot,
     )
-    from loushang.coding.package_private_data_windows_archive_snapshot import (
+    from loushang.coding.package.private_data_windows_archive_snapshot import (
         CodingWindowsArchBackupArchiveSnapshotV1 as Archive,
     )
     from loushang.harness.plugin_management.records import PluginInstallationKeyV1
@@ -77,10 +77,10 @@ def _observe(case, base, monkeypatch):
     )
 
     owner = importlib.import_module(
-        "loushang.coding.package_private_data_windows_backup_expiry_owner"
+        'loushang.coding.package.private_data_windows_backup_expiry_owner'
     )
     journal = importlib.import_module(
-        "loushang.coding.package_private_data_windows_backup_expiry_journal"
+        'loushang.coding.package.private_data_windows_backup_expiry_journal'
     )
     native = importlib.import_module(
         "loushang.harness.resources.packages._private_tree_windows"

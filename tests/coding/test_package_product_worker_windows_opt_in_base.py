@@ -8,22 +8,20 @@ from typing import Literal
 
 import pytest
 
-from loushang.coding.package_product_worker_opt_in import (
-    CodingWorkerOptInDecisionV1,
-)
-from loushang.coding.package_product_worker_policy import CodingWorkerOptInV1
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInDecisionV1
+from loushang.coding.package.product_worker_policy import CodingWorkerOptInV1
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceFileV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
 )
-from loushang.coding.package_product_worker_windows_opt_in_base import (
+from loushang.coding.package.product_worker_windows_opt_in_base import (
     CodingWindowsWorkerOptInSemanticBaseV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerOfflineRecoverySnapshotV1,
 )
 

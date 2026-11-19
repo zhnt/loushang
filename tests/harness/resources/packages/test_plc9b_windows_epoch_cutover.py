@@ -21,8 +21,8 @@ from loushang.coding._plugin_lifecycle import (
     build_coding_plugin_management_application,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
-from loushang.coding.package_product_runtime import open_coding_package_product_state
+from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package.product_runtime import open_coding_package_product_state
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (

@@ -8,11 +8,11 @@ from hashlib import sha256
 
 import pytest
 
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
 )
-from loushang.coding.package_private_data_windows_archive_snapshot import (
+from loushang.coding.package.private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
 )
 

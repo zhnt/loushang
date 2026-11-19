@@ -12,24 +12,24 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_activation_state import (
+from loushang.coding.package.product_worker_activation_state import (
     open_coding_windows_product_worker_activation_state_store,
 )
-from loushang.coding.package_product_worker_windows_activation_state_journal import (
+from loushang.coding.package.product_worker_windows_activation_state_journal import (
     CodingWindowsWorkerActivationStateJournal,
 )
-from loushang.coding.package_product_worker_windows_gc_history import (
+from loushang.coding.package.product_worker_windows_gc_history import (
     CodingWindowsWorkerGcHistoryAuthority,
 )
-from loushang.coding.package_product_worker_windows_pending_host import (
+from loushang.coding.package.product_worker_windows_pending_host import (
     CodingWindowsWorkerPendingHostError,
     _require_windows_host_c5_recovered,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     inspect_coding_windows_product_worker_offline_recovery,
 )
 from loushang.coding.session_manager import SessionManager

@@ -12,9 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_worker_history_checkpoint as checkpoint
-import loushang.coding.package_product_worker_history_segments as segments
-import loushang.coding.package_product_worker_history_stream_snapshot as snapshots
+import loushang.coding.package.product_worker_history_checkpoint as checkpoint
+import loushang.coding.package.product_worker_history_segments as segments
+import loushang.coding.package.product_worker_history_stream_snapshot as snapshots
 import loushang.harness.package_product._linux_worker_history as history_owner
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.package_product.product_local_wheel_runtime import (

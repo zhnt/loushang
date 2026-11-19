@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 
 from loushang.ai.types import AssistantMessage, ToolCall, Usage
-from loushang.coding.package_product_worker_discovery import (
+from loushang.coding.package.product_worker_discovery import (
     CodingWorkerTranscriptDiscoveryReader,
 )
-from loushang.coding.package_product_worker_policy import (
+from loushang.coding.package.product_worker_policy import (
     CodingWorkerPolicySelectionError,
 )
 from loushang.coding.session_manager import SessionManager

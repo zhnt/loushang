@@ -7,16 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_private_data_backup_expiry_journal import (
+from loushang.coding.package.private_data_backup_expiry_journal import (
     CodingArchPrivateDataBackupExpiryJournal,
 )
-from loushang.coding.package_private_data_deletion_journal import (
+from loushang.coding.package.private_data_deletion_journal import (
     CodingArchPrivateDataDeletionJournal,
 )
-from loushang.coding.package_private_data_restore_confirmation import (
+from loushang.coding.package.private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal,
 )
-from loushang.coding.package_private_data_restore_journal import (
+from loushang.coding.package.private_data_restore_journal import (
     CodingArchPrivateDataRestoreJournal,
 )
 from loushang.harness.journal import journal_file_lock

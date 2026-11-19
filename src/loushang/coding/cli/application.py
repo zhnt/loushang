@@ -87,15 +87,15 @@ from loushang.coding.model_selection import (
     apply_model_selection,
     persistence_warning_message,
 )
-from loushang.coding.package_product_cli import (
+from loushang.coding.package.product_cli import (
     route_coding_fenced_data_wheels,
     uninstall_coding_fenced_data_wheels,
 )
-from loushang.coding.package_product_management_cli import (
+from loushang.coding.package.product_management_cli import (
     coding_fenced_product_exists,
     repair_coding_fenced_cli_desired_operation,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     require_fresh_coding_product_inputs_without_writes,
 )
 from loushang.coding.plugin_local_discovery import (
@@ -614,7 +614,8 @@ async def run_cli(
         if candidate.args is not None and any(
             Path(source).suffix == ".whl"
             for source in (
-                *candidate.args.install_packages, *candidate.args.update_packages,
+                *candidate.args.install_packages,
+                *candidate.args.update_packages,
             )
         ):
             try:

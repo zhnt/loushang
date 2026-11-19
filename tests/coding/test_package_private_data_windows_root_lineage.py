@@ -11,11 +11,11 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_installation_private_data as root_module
-from loushang.coding.package_private_data_deletion_journal import (
+import loushang.coding.package.installation_private_data as root_module
+from loushang.coding.package.private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
 from loushang.harness.plugin_management import _installation_root_windows as lineage

@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_partial_stage_review import (
+from loushang.coding.package.product_worker_windows_partial_stage_review import (
     CodingWindowsWorkerPartialStageReviewError,
     CodingWindowsWorkerPartialStageReviewV1,
 )

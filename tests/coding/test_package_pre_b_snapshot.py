@@ -23,14 +23,14 @@ from loushang.coding.bootstrap import (
     create_agent_session_runtime,
     create_services,
 )
-from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
     reopen_coding_package_cutover,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
     bootstrap_coding_builtin_product_plugins,
     open_coding_fenced_product_application_owner,
@@ -113,7 +113,7 @@ def test_unadmitted_posix_platform_preserves_old_settings(tmp_path: Path) -> Non
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX platform selection")
 def test_unadmitted_posix_platform_validates_existing_fence(tmp_path: Path) -> None:
-    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
     from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
         PackageEpochFenceError,
     )
@@ -499,7 +499,7 @@ def test_live_product_owner_refuses_replaced_state_root_with_identical_journals(
 def test_ordinary_product_repairs_only_builtin_session_orphan(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
 
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)

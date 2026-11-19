@@ -10,18 +10,18 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_legacy_binding_catalog import (
+from loushang.coding.package.legacy_binding_catalog import (
     CodingLegacyBindingError,
     CodingLegacyLocalBindingCatalog,
     CodingLegacyLocalBindingV1,
 )
-from loushang.coding.package_legacy_local_wheel import (
+from loushang.coding.package.legacy_local_wheel import (
     reacquire_coding_legacy_local_plugin_wheel,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
 )
 from loushang.harness.config.agent import SettingsManager

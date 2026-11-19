@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointV1,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerSegmentedHistoryV1,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
 )
-from loushang.coding.package_product_worker_receipt import (
+from loushang.coding.package.product_worker_receipt import (
     CodingWorkerProductReceiptOwner,
     CodingWorkerReceiptError,
 )

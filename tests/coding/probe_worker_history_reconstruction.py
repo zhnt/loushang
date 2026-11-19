@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerSealedSegmentV1,
     CodingWorkerSegmentManifestV1,
 )

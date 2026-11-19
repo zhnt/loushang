@@ -34,17 +34,17 @@ def _outcome(operation, root):
 
 
 def _observe(case, root, monkeypatch):
-    from loushang.coding.package_legacy_windows_receipt import (
+    from loushang.coding.package.legacy_windows_receipt import (
         CodingWindowsPrivateReceiptError,
         write_windows_private_receipt,
     )
-    from loushang.coding.package_private_data_backup_records import (
+    from loushang.coding.package.private_data_backup_records import (
         CodingArchPrivateDataBackupReceiptV1,
     )
-    from loushang.coding.package_private_data_deletion_preview import (
+    from loushang.coding.package.private_data_deletion_preview import (
         CodingArchPrivateDataTargetSnapshotV1,
     )
-    from loushang.coding.package_private_data_restore_records import (
+    from loushang.coding.package.private_data_restore_records import (
         CodingArchPrivateDataRestorePlanV1,
     )
     from loushang.harness.plugin_management.records import PluginInstallationKeyV1
@@ -52,7 +52,7 @@ def _observe(case, root, monkeypatch):
         canonical_json_bytes,
     )
 
-    module = importlib.import_module("loushang.coding.package_private_data_windows_restore_journal")
+    module = importlib.import_module('loushang.coding.package.private_data_windows_restore_journal')
     cls = module.CodingWindowsArchPrivateDataRestoreTransaction
     transaction = cls(SimpleNamespace(), SimpleNamespace(state_root=root), 7)
     native_io = getattr(cls, "_receipt_io", None)

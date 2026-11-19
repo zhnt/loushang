@@ -18,13 +18,13 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding import package_private_data_windows_deletion_journal as journal
-from loushang.coding import package_private_data_windows_deletion_owner as module
-from loushang.coding.package_legacy_windows_receipt import write_windows_private_receipt
-from loushang.coding.package_private_data_deletion_journal import (
+from loushang.coding.package import private_data_windows_deletion_journal as journal
+from loushang.coding.package import private_data_windows_deletion_owner as module
+from loushang.coding.package.legacy_windows_receipt import write_windows_private_receipt
+from loushang.coding.package.private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
 from loushang.harness.plugin_management.private_data_deletion import (

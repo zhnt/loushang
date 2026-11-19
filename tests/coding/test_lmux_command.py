@@ -723,8 +723,7 @@ def test_ls_damaged_namespace_is_not_an_empty_first_start(managed_cli, monkeypat
         resolve_managed_admission_root,
         resolve_managed_registry_root,
     )
-
-    from ..apphost.test_managed_namespace_admission import tree
+    from tests.apphost.test_managed_namespace_admission import tree
 
     module, commands = managed_cli
     monkeypatch.setattr(module, "_execute", lambda *a, **k: 1)

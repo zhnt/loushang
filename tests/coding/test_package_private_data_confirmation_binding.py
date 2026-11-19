@@ -10,13 +10,13 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_private_data_deletion_journal import (
+from loushang.coding.package.private_data_deletion_journal import (
     CodingArchPrivateDataDeletionJournal,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     open_coding_builtin_product_runtime_owner,
     open_coding_fenced_product_application_owner,
     open_coding_package_product_state,

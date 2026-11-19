@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_history_cutover_record import (
+from loushang.coding.package.product_worker_windows_history_cutover_record import (
     CodingWindowsWorkerHistoryCutoverRecordV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (

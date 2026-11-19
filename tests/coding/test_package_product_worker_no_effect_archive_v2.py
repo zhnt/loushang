@@ -7,21 +7,17 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.coding.package_product_worker_activation_history import (
+from loushang.coding.package.product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
-from loushang.coding.package_product_worker_no_effect_archive_v2 import (
+from loushang.coding.package.product_worker_no_effect_archive_v2 import (
     CodingWorkerNoEffectArchiveV2,
     CodingWorkerNoEffectProofV2,
 )
-from loushang.coding.package_product_worker_opt_in import (
-    CodingWorkerOptInDecisionV1,
-)
-from loushang.coding.package_product_worker_policy import CodingWorkerOptInV1
-from loushang.coding.package_product_worker_receipt import (
-    CodingWorkerReceiptRecordV1,
-)
-from loushang.coding.package_product_worker_start_gate_journal import (
+from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInDecisionV1
+from loushang.coding.package.product_worker_policy import CodingWorkerOptInV1
+from loushang.coding.package.product_worker_receipt import CodingWorkerReceiptRecordV1
+from loushang.coding.package.product_worker_start_gate_journal import (
     CodingWorkerStartGateRecordV1,
 )
 from tests.harness.worker.test_product_activation import _policy, _receipt

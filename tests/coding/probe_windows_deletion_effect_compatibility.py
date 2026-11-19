@@ -18,12 +18,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import package_private_data_windows_deletion_journal as journal
-from loushang.coding import package_private_data_windows_deletion_owner as owner
-from loushang.coding.package_private_data_deletion_journal import (
+from loushang.coding.package import private_data_windows_deletion_journal as journal
+from loushang.coding.package import private_data_windows_deletion_owner as owner
+from loushang.coding.package.private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
 )
-from loushang.coding.package_private_data_deletion_preview import (
+from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
     _identity,

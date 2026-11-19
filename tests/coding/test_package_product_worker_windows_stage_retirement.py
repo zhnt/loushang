@@ -8,20 +8,20 @@ from pathlib import Path
 import pytest
 
 import loushang.harness.package_product._windows_worker_retirement as retirement_owner
-from loushang.coding import (
-    package_product_worker_windows_stage_retirement as retirement,
+from loushang.coding.package import (
+    product_worker_windows_stage_retirement as retirement,
 )
-from loushang.coding.package_product_worker_windows_launch_intent import (
+from loushang.coding.package.product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentV1,
 )
-from loushang.coding.package_product_worker_windows_recovery_inventory import (
+from loushang.coding.package.product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
 )
-from loushang.coding.package_product_worker_windows_stage_retirement import (
+from loushang.coding.package.product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementError,
     CodingWindowsWorkerStageRetirementReceiptV1,
 )
-from loushang.coding.package_product_worker_windows_stage_review import (
+from loushang.coding.package.product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewV1,
 )
 

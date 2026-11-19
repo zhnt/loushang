@@ -32,7 +32,7 @@ from loushang.coding.continuity_bootstrap import (
     retry_coding_continuity_bootstrap,
 )
 from loushang.coding.control import SettingsManager
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.foundation.platform_paths import PlatformPaths
@@ -248,7 +248,7 @@ def test_continuity_registers_before_compatibility_and_default_materializer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
     from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
         PackageEpochFenceJournal,
         PackageEpochFenceRequestV1,
@@ -379,7 +379,7 @@ def test_continuity_registers_before_compatibility_and_default_materializer(
 def test_empty_continuity_keeps_registration_for_bound_compatibility_writer(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
     from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
         PackageEpochFenceJournal,
     )

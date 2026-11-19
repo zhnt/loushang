@@ -7,25 +7,25 @@ from hashlib import sha256
 
 import pytest
 
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointV1,
 )
-from loushang.coding.package_product_worker_history_checkpoint_anchor import (
+from loushang.coding.package.product_worker_history_checkpoint_anchor import (
     CodingWorkerCheckpointAnchorV1,
 )
-from loushang.coding.package_product_worker_history_cutover_v2 import (
+from loushang.coding.package.product_worker_history_cutover_v2 import (
     CodingWorkerProductCutoverIndexV2,
     CodingWorkerStreamCutoverV2,
 )
-from loushang.coding.package_product_worker_history_retirement_preview import (
+from loushang.coding.package.product_worker_history_retirement_preview import (
     preview_first_coding_worker_stream_retirement_v2,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerSealedSegmentV1,
     CodingWorkerSegmentedHistoryV1,
     CodingWorkerSegmentManifestV1,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
 )

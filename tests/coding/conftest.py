@@ -21,7 +21,7 @@ def isolated_coding_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
 def legacy_coding_route(monkeypatch: pytest.MonkeyPatch) -> None:
     """Exercise retained old-route contracts without claiming default B support."""
 
-    from loushang.coding.package_product_runtime import (
+    from loushang.coding.package.product_runtime import (
         CodingFencedProductApplicationSelection,
     )
 

@@ -538,7 +538,7 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
 ) -> None:
     import loushang.coding.bootstrap as bootstrap_module
     import loushang.coding.hosted_session as hosted_module
-    import loushang.coding.package_product_runtime as product_runtime_module
+    import loushang.coding.package.product_runtime as product_runtime_module
     from loushang.harness.capabilities.component_runtime import (
         CapabilityOwnerComponentBinder,
     )
@@ -710,7 +710,7 @@ def test_windows_hosted_ordinary_session_enters_fresh_b_product(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
-    import loushang.coding.package_product_runtime as product_runtime
+    import loushang.coding.package.product_runtime as product_runtime
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
@@ -811,11 +811,11 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
-    import loushang.coding.package_product_runtime as product_runtime
+    import loushang.coding.package.product_runtime as product_runtime
     from loushang.coding._plugin_lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
     from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
         PackageEpochFenceError,
     )
@@ -897,7 +897,7 @@ def test_hosted_default_preserves_effective_old_settings_without_product_cutover
     from loushang.coding._plugin_lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
 
     settings = tmp_path / "settings.json"
     old_bytes = b'{"disabled_plugins":["coding.base"]}'
@@ -1005,7 +1005,7 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
 ) -> None:
     import loushang.coding.bootstrap as bootstrap_module
     import loushang.coding.hosted_session as module
-    import loushang.coding.package_product_runtime as product_runtime_module
+    import loushang.coding.package.product_runtime as product_runtime_module
 
     began = time.perf_counter()
     cpu_began = time.process_time()

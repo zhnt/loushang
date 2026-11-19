@@ -13,7 +13,7 @@ import pytest
 from loushang.harness.worker import _segmented_history as storage
 
 legacy = importlib.import_module(
-    "loushang.coding.package_product_worker_history_segments"
+    'loushang.coding.package.product_worker_history_segments'
 )
 expected = json.loads(
     (Path(__file__).parent / "fixtures" / "worker_segment_public_v1.json").read_text()

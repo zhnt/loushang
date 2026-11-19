@@ -8,11 +8,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_private_data_restore_confirmation import (
+from loushang.coding.package.private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal,
     CodingArchPrivateDataRestoreConfirmationV1,
 )
-from loushang.coding.package_private_data_restore_journal import (
+from loushang.coding.package.private_data_restore_journal import (
     CodingArchPrivateDataRestoreEventV1,
     CodingArchPrivateDataRestoreJournal,
 )

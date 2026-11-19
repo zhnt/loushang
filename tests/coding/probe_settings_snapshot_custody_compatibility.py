@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_source_snapshot as code
+import loushang.coding.package.source_snapshot as code
 import loushang.harness.config.store as core
 import loushang.harness.resources.packages._file_consumption as consumption
 import loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover as win_epoch

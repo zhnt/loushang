@@ -195,7 +195,7 @@ def run_probe(kind: str, case: str, documents: dict) -> dict:
                 if kind == "expiry"
                 else "loushang.harness.plugin_management._private_data_restore_windows"
             )
-            from loushang.coding.package_legacy_windows_receipt import (
+            from loushang.coding.package.legacy_windows_receipt import (
                 write_windows_private_receipt,
             )
 
@@ -253,7 +253,7 @@ def run_probe(kind: str, case: str, documents: dict) -> dict:
                 )
             )
         if kind == "confirmation":
-            from loushang.coding.package_private_data_deletion_preview import (
+            from loushang.coding.package.private_data_deletion_preview import (
                 CodingArchPrivateDataTargetSnapshotV1,
             )
 
@@ -340,7 +340,7 @@ def decode_authority_probe(owner_type, raw: bytes) -> dict:
 
 
 def test_confirmation_authority_retains_decoder_and_error_cause_contract() -> None:
-    from loushang.coding.package_private_data_windows_confirmation import (
+    from loushang.coding.package.private_data_windows_confirmation import (
         CodingWindowsArchPrivateDataConfirmationOwner,
     )
 

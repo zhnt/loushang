@@ -24,7 +24,7 @@ from loushang.coding.lsp import (
     LspServerDefinition,
 )
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
 from loushang.coding.session_manager import SessionManager

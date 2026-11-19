@@ -13,27 +13,27 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.package_product_worker_history_rotate_v2 import (
+from loushang.coding.package.product_worker_history_rotate_v2 import (
     CodingWorkerV2SealError,
     seal_coding_product_worker_v1_history_for_v2,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     _head_bytes,
     commit_coding_worker_active_segment,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
 )
-from loushang.coding.package_product_worker_history_v2_names import (
+from loushang.coding.package.product_worker_history_v2_names import (
     PREPARATION_INTENT_NAME,
     PREPARED_INDEX_NAME,
 )

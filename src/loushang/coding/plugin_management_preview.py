@@ -25,8 +25,8 @@ from .control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from .package_product_management_cli import coding_fenced_product_exists
-from .package_product_preview import (
+from .package.product_management_cli import coding_fenced_product_exists
+from .package.product_preview import (
     CodingCurrentDataResourcePreviewV1,
     CodingFencedProductReadOnlyPreviewOwner,
 )
@@ -178,11 +178,13 @@ def _capture_disabled_skills(workspace: Path) -> tuple[tuple[str, ...], str]:
 
     settings = _capture_preview_settings(workspace)
     digest = sha256(b"loushang.coding.preview.disabled-skills/v1\0")
-    digest.update(json.dumps(
-        settings.disabled_skills,
-        ensure_ascii=True,
-        separators=(",", ":"),
-    ).encode("utf-8"))
+    digest.update(
+        json.dumps(
+            settings.disabled_skills,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
     return settings.disabled_skills, f"sha256:{digest.hexdigest()}"
 
 

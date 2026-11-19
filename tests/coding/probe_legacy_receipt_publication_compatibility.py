@@ -165,7 +165,7 @@ def test_original_receipt_encoding_and_failure_precedence(kind, scenario, tmp_pa
 
 
 def test_windows_builtin_keeps_original_jsonl_bytes(tmp_path, monkeypatch):
-    module = importlib.import_module("loushang.coding.package_legacy_builtin_acceptance")
+    module = importlib.import_module('loushang.coding.package.legacy_builtin_acceptance')
     record = SimpleNamespace(
         acceptance_id="a" * 64, acceptance_version=1,
         review=SimpleNamespace(to_dict=lambda: {"label": "旧版é", "nested": [1, True, None]}),

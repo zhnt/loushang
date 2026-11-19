@@ -267,10 +267,10 @@ class ScopeTests(unittest.TestCase):
 
     def test_coding_package_windows_paths_select_native_windows_gate(self):
         for path in (
-            "src/loushang/coding/package_pre_b_snapshot.py",
-            "src/loushang/coding/package_installation_private_data.py",
-            "src/loushang/coding/package_legacy_windows_receipt.py",
-            "src/loushang/coding/package_external_worker_wheel.py",
+            "src/loushang/coding/package/pre_b_snapshot.py",
+            "src/loushang/coding/package/installation_private_data.py",
+            "src/loushang/coding/package/legacy_windows_receipt.py",
+            "src/loushang/coding/package/external_worker_wheel.py",
             "src/loushang/coding/cli/package_cutover.py",
             "tests/coding/test_package_windows_pre_b_snapshot.py",
             "tests/coding/test_package_cutover_cli.py",
@@ -282,11 +282,11 @@ class ScopeTests(unittest.TestCase):
 
     def test_windows_product_private_owner_changes_select_native_gate(self):
         for path in (
-            "src/loushang/coding/package_private_data_windows_preview.py",
-            "src/loushang/coding/package_private_data_windows_backup.py",
-            "src/loushang/coding/package_private_data_windows_backup_expiry_owner.py",
-            "src/loushang/coding/package_private_data_windows_backup_expiry_recovery.py",
-            "src/loushang/coding/package_private_data_backup_records.py",
+            "src/loushang/coding/package/private_data_windows_preview.py",
+            "src/loushang/coding/package/private_data_windows_backup.py",
+            "src/loushang/coding/package/private_data_windows_backup_expiry_owner.py",
+            "src/loushang/coding/package/private_data_windows_backup_expiry_recovery.py",
+            "src/loushang/coding/package/private_data_backup_records.py",
             "src/loushang/foundation/windows_private_acl.py",
             "src/loushang/harness/package_product/product_local_wheel_runtime.py",
         ):
@@ -297,9 +297,9 @@ class ScopeTests(unittest.TestCase):
 
     def test_coding_worker_product_changes_select_native_platform_gates(self):
         for path in (
-            "src/loushang/coding/package_product_worker_payload.py",
-            "src/loushang/coding/package_product_worker_windows_provisioning.py",
-            "src/loushang/coding/package_product_worker_windows_provisioning_journal.py",
+            "src/loushang/coding/package/product_worker_payload.py",
+            "src/loushang/coding/package/product_worker_windows_provisioning.py",
+            "src/loushang/coding/package/product_worker_windows_provisioning_journal.py",
             "src/loushang/coding/cli/package_worker_native.py",
             "src/loushang/plugin/_coding_local_worker_wheel.py",
             "tests/coding/test_package_product_worker_discovery.py",
@@ -334,7 +334,7 @@ class ScopeTests(unittest.TestCase):
             ".github/workflows/worker-registered-reboot-drill.yml",
             "scripts/dev/worker_registered_reboot_drill.py",
             "scripts/dev/worker_registered_qemu_reboot_drill.sh",
-            "src/loushang/coding/package_product_worker_registered_recovery.py",
+            "src/loushang/coding/package/product_worker_registered_recovery.py",
             "tests/coding/test_package_worker_candidate_wheel.py",
         ):
             with self.subTest(path=path):
@@ -463,7 +463,7 @@ class ScopeTests(unittest.TestCase):
         self.assertTrue(plan["windows"]["shell_full"])
 
     def test_smoke_workflow_does_not_expand_a_mixed_windows_change(self):
-        source = "src/loushang/coding/package_product_worker_catalog.py"
+        source = "src/loushang/coding/package/product_worker_catalog.py"
         baseline = selector.select([source], pr_fast=True)
         mixed = selector.select([source, ".github/workflows/e2e-smoke-quality.yml"], pr_fast=True)
         self.assertEqual(mixed["windows"], baseline["windows"])
@@ -578,7 +578,7 @@ class ScopeTests(unittest.TestCase):
             ["src/loushang/coding/session/agent_session.py"], pr_fast=True
         )
         worker = selector.select(
-            ["src/loushang/coding/package_product_worker_windows_crash_cleanup.py"],
+            ["src/loushang/coding/package/product_worker_windows_crash_cleanup.py"],
             pr_fast=True,
         )
         owned_test = selector.select(
@@ -624,7 +624,7 @@ class ScopeTests(unittest.TestCase):
         self.assertFalse(ordinary["worker_full"] or ordinary["worker_pr"] or ordinary["shell_full"])
 
         worker = selector.select(
-            ["src/loushang/coding/package_product_worker_windows_crash_cleanup_review.py"],
+            ["src/loushang/coding/package/product_worker_windows_crash_cleanup_review.py"],
             pr_fast=True,
         )["windows"]
         self.assertTrue(worker["smoke"] and worker["worker_pr"])
@@ -662,14 +662,14 @@ class ScopeTests(unittest.TestCase):
 
     def test_pr_windows_worker_risk_selects_one_native_query(self):
         paths = (
-            "src/loushang/coding/package_product_worker_windows_launch_intent.py",
-            "src/loushang/coding/package_product_worker_native_release.py",
-            "src/loushang/coding/package_product_worker_policy.py",
+            "src/loushang/coding/package/product_worker_windows_launch_intent.py",
+            "src/loushang/coding/package/product_worker_native_release.py",
+            "src/loushang/coding/package/product_worker_policy.py",
             "src/loushang/plugin/_coding_local_worker_wheel.py",
-            "src/loushang/coding/package_product_worker_windows_gc_history.py",
-            "src/loushang/coding/package_product_worker_windows_opt_in_owner.py",
-            "src/loushang/coding/package_product_worker_windows_activation_state_journal.py",
-            "src/loushang/coding/package_product_worker_windows_crash_cleanup_review.py",
+            "src/loushang/coding/package/product_worker_windows_gc_history.py",
+            "src/loushang/coding/package/product_worker_windows_opt_in_owner.py",
+            "src/loushang/coding/package/product_worker_windows_activation_state_journal.py",
+            "src/loushang/coding/package/product_worker_windows_crash_cleanup_review.py",
         )
         for path in paths:
             with self.subTest(path=path):
@@ -678,15 +678,15 @@ class ScopeTests(unittest.TestCase):
                 self.assertFalse(windows["worker_full"])
         mixed = selector.select(
             [
-                "src/loushang/coding/package_product_worker_windows_crash_cleanup_review.py",
-                "src/loushang/coding/package_product_worker_windows_gc_history.py",
+                "src/loushang/coding/package/product_worker_windows_crash_cleanup_review.py",
+                "src/loushang/coding/package/product_worker_windows_gc_history.py",
             ],
             pr_fast=True,
         )["windows"]
         self.assertTrue(mixed["worker_pr"])
         self.assertFalse(mixed["worker_full"])
         combined_name = selector.select(
-            ["src/loushang/coding/package_product_worker_windows_crash_stage_retirement.py"],
+            ["src/loushang/coding/package/product_worker_windows_crash_stage_retirement.py"],
             pr_fast=True,
         )["windows"]
         self.assertTrue(combined_name["worker_pr"])
@@ -805,7 +805,7 @@ class ScopeTests(unittest.TestCase):
         for path in (
             "src/loushang/ai/types.py",
             "src/loushang/foundation/json.py",
-            "src/loushang/coding/package_product_worker_registered_recovery.py",
+            "src/loushang/coding/package/product_worker_registered_recovery.py",
             "src/loushang/coding/lsp/client.py",
             "src/loushang/tui/terminal_backends/windows.py",
             "src/loushang/coding/ui/plain_renderer.py",
@@ -1200,7 +1200,7 @@ class SuiteSelectionTests(unittest.TestCase):
 
     def test_coding_risk_and_ordinary_prs_use_the_same_offline_inventory(self):
         plan = selector.select([
-            "src/loushang/coding/package_product_worker_windows_crash_cleanup_review.py"
+            "src/loushang/coding/package/product_worker_windows_crash_cleanup_review.py"
         ], pr_fast=True)
         self.assertIn("coding", plan["unit_packages"])
         self.assertEqual(sum(job["package"] == "coding" for job in plan["unit_jobs"]), 4)
@@ -1237,7 +1237,7 @@ class SuiteSelectionTests(unittest.TestCase):
 
     def test_pr_host_runtime_uses_two_explicit_smokes_and_checks_xml(self):
         plan = selector.select(
-            ["src/loushang/coding/package_product_worker_windows_crash_cleanup_review.py"],
+            ["src/loushang/coding/package/product_worker_windows_crash_cleanup_review.py"],
             pr_fast=True,
         )
         self.assertTrue(plan["host_runtime_smoke"])
@@ -1267,7 +1267,7 @@ class SuiteSelectionTests(unittest.TestCase):
 
     def test_pr_linux_worker_uses_one_hosted_session_without_losing_full_suite(self):
         worker = selector.select(
-            ["src/loushang/coding/package_product_worker_windows_crash_cleanup_review.py"],
+            ["src/loushang/coding/package/product_worker_windows_crash_cleanup_review.py"],
             pr_fast=True,
         )
         self.assertTrue(worker["hosting_worker_pr_smoke"])

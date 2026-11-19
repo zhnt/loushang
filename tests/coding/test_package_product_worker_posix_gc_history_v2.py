@@ -11,23 +11,21 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.package_product_worker_history_commit_v2 import (
+from loushang.coding.package.product_worker_history_commit_v2 import (
     commit_coding_worker_v2_owner_under_guard,
 )
-from loushang.coding.package_product_worker_history_deletion_v2 import (
+from loushang.coding.package.product_worker_history_deletion_v2 import (
     CodingWorkerV2DeletionLedger,
 )
-from loushang.coding.package_product_worker_history_read_v2 import (
+from loushang.coding.package.product_worker_history_read_v2 import (
     CodingWorkerV2ReadError,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     _head_name,
     _segment_name,
 )
-from loushang.coding.package_product_worker_history_v2_names import (
-    DELETION_LEDGER_NAME,
-)
-from loushang.coding.package_product_worker_posix_gc_history import (
+from loushang.coding.package.product_worker_history_v2_names import DELETION_LEDGER_NAME
+from loushang.coding.package.product_worker_posix_gc_history import (
     CodingPosixWorkerGcHistoryAuthority,
     _require_committed_v2_history,
 )

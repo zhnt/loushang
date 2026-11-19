@@ -28,7 +28,7 @@ CODING_CANARY = Path("src/loushang/coding/_product_worker_canary.py")
 CODING_APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
 CODING_APPHOST_CANARY = Path("src/loushang/coding/apphost_canary.py")
 CODING_PRODUCT_START_GATE = Path(
-    "src/loushang/coding/package_product_worker_start_gate.py"
+    "src/loushang/coding/package/product_worker_start_gate.py"
 )
 CONTRACT_TEST = Path("tests/harness/worker/test_product_activation.py")
 VERIFIER = Path("scripts/dev/verify_plc9c5_manifest.py")
@@ -666,19 +666,19 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         CODING_APPHOST_CANARY,
         *history_consumers,
         *relocated_consumers,
-        Path("src/loushang/coding/package_product_worker_capability.py"),
-        Path("src/loushang/coding/package_product_worker_crash_c5_settlement.py"),
-        Path("src/loushang/coding/package_product_worker_operator_query.py"),
-        Path("src/loushang/coding/package_product_worker_pending_host.py"),
-        Path("src/loushang/coding/package_product_worker_windows_pending_host.py"),
-        Path("src/loushang/coding/package_product_worker_policy.py"),
-        Path("src/loushang/coding/package_product_worker_resume.py"),
-        Path("src/loushang/coding/package_product_worker_provider.py"),
-        Path("src/loushang/coding/package_product_worker_session_composition.py"),
-        Path("src/loushang/coding/package_product_worker_receipt.py"),
-        Path("src/loushang/coding/package_product_worker_windows_provisioning.py"),
-        Path("src/loushang/coding/package_product_worker_windows_launch_intent.py"),
-        Path("src/loushang/coding/package_product_worker_windows_payload.py"),
+        Path("src/loushang/coding/package/product_worker_capability.py"),
+        Path("src/loushang/coding/package/product_worker_crash_c5_settlement.py"),
+        Path("src/loushang/coding/package/product_worker_operator_query.py"),
+        Path("src/loushang/coding/package/product_worker_pending_host.py"),
+        Path("src/loushang/coding/package/product_worker_windows_pending_host.py"),
+        Path("src/loushang/coding/package/product_worker_policy.py"),
+        Path("src/loushang/coding/package/product_worker_resume.py"),
+        Path("src/loushang/coding/package/product_worker_provider.py"),
+        Path("src/loushang/coding/package/product_worker_session_composition.py"),
+        Path("src/loushang/coding/package/product_worker_receipt.py"),
+        Path("src/loushang/coding/package/product_worker_windows_provisioning.py"),
+        Path("src/loushang/coding/package/product_worker_windows_launch_intent.py"),
+        Path("src/loushang/coding/package/product_worker_windows_payload.py"),
         CODING_PRODUCT_START_GATE,
         Path("src/loushang/harness/package_product/_linux_worker_recovery.py"),
         Path("src/loushang/harness/package_product/_windows_worker_recovery.py"),

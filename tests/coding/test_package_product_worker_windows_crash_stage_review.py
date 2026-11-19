@@ -9,9 +9,9 @@ from typing import Any
 
 import pytest
 
-import loushang.coding.package_product_worker_windows_crash_stage_review as stage_review
+import loushang.coding.package.product_worker_windows_crash_stage_review as stage_review
 import loushang.harness.package_product._windows_worker_recovery as recovery_owner
-from loushang.coding.package_product_worker_windows_crash_stage_review import (
+from loushang.coding.package.product_worker_windows_crash_stage_review import (
     CodingWindowsWorkerCrashStageReviewV1,
 )
 

@@ -11,7 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.session import AgentSession
@@ -47,7 +47,9 @@ from ..resume_history import (
 )
 from .resume_planning import ResumePlanningSlot
 
-_ResumePreview = TypeVar("_ResumePreview", CodingResumeHistoryPreview, CodingResumeRecentPage)
+_ResumePreview = TypeVar(
+    "_ResumePreview", CodingResumeHistoryPreview, CodingResumeRecentPage
+)
 
 if TYPE_CHECKING:
     from loushang.agent import ThinkingLevel
@@ -116,7 +118,8 @@ class _ResumeHistoryViewScope:
 
 
 _RESUME_HISTORY_VIEW_SCOPE: ContextVar[_ResumeHistoryViewScope | None] = ContextVar(
-    "coding_resume_history_view_scope", default=None,
+    "coding_resume_history_view_scope",
+    default=None,
 )
 
 
@@ -161,12 +164,17 @@ class AgentSessionRuntime(
         enroll_legacy_shared_store: bool = False,
         product_owner_selection: CodingFencedProductApplicationSelection | None = None,
     ) -> None:
-        if type(owned_transcripts) is not bool or type(enroll_legacy_shared_store) is not bool:
+        if (
+            type(owned_transcripts) is not bool
+            or type(enroll_legacy_shared_store) is not bool
+        ):
             raise TypeError("invalid owned transcript activation")
         if type(materialize_new_transcript) is not bool:
             raise TypeError("Coding transcript materialization must be explicit")
         if materialize_new_transcript and not persist:
-            raise ValueError("Coding Worker transcript materialization requires persistence")
+            raise ValueError(
+                "Coding Worker transcript materialization requires persistence"
+            )
         if owned_transcripts and current_session is not None:
             raise ValueError("owned runtime must construct its own initial Session")
         if store_state_root is not None and not owned_transcripts:
@@ -181,18 +189,21 @@ class AgentSessionRuntime(
             _create_owned_session_factory(
                 store_state_root=store_state_root,
                 enroll_legacy_shared_store=enroll_legacy_shared_store,
-            ) if owned_transcripts else None
+            )
+            if owned_transcripts
+            else None
         )
-        self._product_owner_selection: CodingFencedProductApplicationSelection | None = (
-            product_owner_selection
-        )
+        self._product_owner_selection: (
+            CodingFencedProductApplicationSelection | None
+        ) = product_owner_selection
         self._embedded_resume_approval_owner: InteractiveApprovalResolver | None = None
         self._initialize_session_history_reads()
         self._resume_planning: ResumePlanningSlot = ResumePlanningSlot()
         self._configured_resume_planning: _ConfiguredResumePlanning | None = None
         transcript_type = (
             _bind_owned_session_manager(self._owned_transcript_factory)
-            if self._owned_transcript_factory is not None else SessionManager
+            if self._owned_transcript_factory is not None
+            else SessionManager
         )
         super().__init__(
             transcript_session_type=transcript_type,
@@ -217,15 +228,30 @@ class AgentSessionRuntime(
             session_index_flush_delay=session_index_flush_delay,
         )
 
-    def _bind_embedded_resume_approval_owner(self, owner: InteractiveApprovalResolver) -> None:
+    def _bind_embedded_resume_approval_owner(
+        self, owner: InteractiveApprovalResolver
+    ) -> None:
         """Bind the native CLI's original Root approval owner once at startup."""
 
         if type(owner) is not InteractiveApprovalResolver:
-            raise TypeError("Coding Embedded Resume requires its native Root Approval owner")
-        if self._resume_history_closed or self.current_session is not None or self.lifecycle._retained_preparation_tasks:
-            raise PermissionError("Coding Embedded Resume Root binding is no longer available")
-        if self._embedded_resume_approval_owner is not None and self._embedded_resume_approval_owner is not owner:
-            raise PermissionError("Coding Embedded Resume Approval owner cannot be replaced")
+            raise TypeError(
+                "Coding Embedded Resume requires its native Root Approval owner"
+            )
+        if (
+            self._resume_history_closed
+            or self.current_session is not None
+            or self.lifecycle._retained_preparation_tasks
+        ):
+            raise PermissionError(
+                "Coding Embedded Resume Root binding is no longer available"
+            )
+        if (
+            self._embedded_resume_approval_owner is not None
+            and self._embedded_resume_approval_owner is not owner
+        ):
+            raise PermissionError(
+                "Coding Embedded Resume Approval owner cannot be replaced"
+            )
         owner.require_current_root_subject()
         self._embedded_resume_approval_owner = owner
 
@@ -237,15 +263,21 @@ class AgentSessionRuntime(
         # Original object custody, not a serialized actor/configuration claim.
         # A confirmation retains the actual Root and owner, preventing identity
         # reuse for its lifetime. This digest grants no execution permission.
-        identity = f"root={id(self):x};approval={id(owner):x};actor=root".encode("ascii")
-        return sha256(b"loushang.coding.embedded-resume-subject/v1\0" + identity).hexdigest()
+        identity = f"root={id(self):x};approval={id(owner):x};actor=root".encode(
+            "ascii"
+        )
+        return sha256(
+            b"loushang.coding.embedded-resume-subject/v1\0" + identity
+        ).hexdigest()
 
     def embedded_resume_subject_digest(self) -> str:
         """Observe the native CLI Root subject from its current history input."""
 
         view = _RESUME_HISTORY_VIEW_SCOPE.get()
         if view is None or view.runtime is not self:
-            raise PermissionError("Coding Embedded Resume requires its original history input scope")
+            raise PermissionError(
+                "Coding Embedded Resume requires its original history input scope"
+            )
         if view.require_current_view is not None:
             result = cast(Callable[[], object], view.require_current_view)()
             if result is not None:
@@ -307,19 +339,28 @@ class AgentSessionRuntime(
         return owner
 
     def require_current_embedded_resume_subject(
-        self, attempt: CodingActivationAttemptV1, *, approval_owner: InteractiveApprovalResolver | None = None,
+        self,
+        attempt: CodingActivationAttemptV1,
+        *,
+        approval_owner: InteractiveApprovalResolver | None = None,
     ) -> None:
         """Recheck retained native Root custody after the history input scope."""
 
-        if approval_owner is not None and approval_owner is not self._embedded_resume_approval_owner:
+        if (
+            approval_owner is not None
+            and approval_owner is not self._embedded_resume_approval_owner
+        ):
             raise PermissionError("Coding Embedded Resume Approval owner changed")
         if attempt.subject_digest != self._current_embedded_resume_subject_digest():
             raise PermissionError("Coding Embedded Resume subject changed")
 
     @contextmanager
     def resume_history_view_scope(
-        self, session_ref: str | Path, history: CodingResumeHistoryPreview,
-        *, require_current_view: Callable[[], None] | None = None,
+        self,
+        session_ref: str | Path,
+        history: CodingResumeHistoryPreview,
+        *,
+        require_current_view: Callable[[], None] | None = None,
     ) -> Iterator[None]:
         """Restrict a UI preparer's native entry to its displayed intent.
 
@@ -330,23 +371,33 @@ class AgentSessionRuntime(
         if type(history) is not CodingResumeHistoryPreview:
             raise TypeError("Coding Resume view requires an original history preview")
         if require_current_view is not None and (
-            not callable(require_current_view) or inspect.iscoroutinefunction(require_current_view)
+            not callable(require_current_view)
+            or inspect.iscoroutinefunction(require_current_view)
         ):
             raise TypeError("Coding Resume view check must be synchronous")
         target = self.resolve_discovered_session_source(session_ref).path
-        token = _RESUME_HISTORY_VIEW_SCOPE.set(_ResumeHistoryViewScope(self, target, history, require_current_view))
+        token = _RESUME_HISTORY_VIEW_SCOPE.set(
+            _ResumeHistoryViewScope(self, target, history, require_current_view)
+        )
         try:
             yield
         finally:
             _RESUME_HISTORY_VIEW_SCOPE.reset(token)
 
     async def prepare_resume_continuation(
-        self, *, session_file: str | Path, plan: SessionActivationPlanV1,
+        self,
+        *,
+        session_file: str | Path,
+        plan: SessionActivationPlanV1,
         current_owner_inputs: Sequence[ActivationOwnerInputRefV1],
-        attempt: CodingActivationAttemptV1, input_record_id: str,
-        text: str, created_at: datetime,
+        attempt: CodingActivationAttemptV1,
+        input_record_id: str,
+        text: str,
+        created_at: datetime,
         require_current_admission: Callable[[CodingActivationAttemptV1], None],
-        require_current_epoch_settlement: Callable[[CodingActivationAttemptV1, Mapping[str, object]], None],
+        require_current_epoch_settlement: Callable[
+            [CodingActivationAttemptV1, Mapping[str, object]], None
+        ],
         images: list[ImagePart] | None = None,
         services: BootstrapServices | None = None,
         model: Model | ModelSelection | None = None,
@@ -354,7 +405,8 @@ class AgentSessionRuntime(
         no_tools: NoToolsMode | bool | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
-        observe_input_identity: Callable[[CodingResumeInputLookupQueryV1], None] | None = None,
+        observe_input_identity: Callable[[CodingResumeInputLookupQueryV1], None]
+        | None = None,
         worker_candidates: bool = False,
         worker_candidate_plugin_id: str | None = None,
     ) -> CodingRuntimePreparedResume:
@@ -395,9 +447,13 @@ class AgentSessionRuntime(
         factory = self._owned_transcript_factory
         selection = self._product_owner_selection
         if factory is None or selection is None:
-            raise RuntimeError("Coding Resume requires original application Transcript and Product owners")
+            raise RuntimeError(
+                "Coding Resume requires original application Transcript and Product owners"
+            )
         self.lifecycle.require_retained_preparation_idle(error_prefix="coding_resume")
-        if not callable(require_current_admission) or inspect.iscoroutinefunction(require_current_admission):
+        if not callable(require_current_admission) or inspect.iscoroutinefunction(
+            require_current_admission
+        ):
             raise TypeError("Coding Resume requires synchronous current owner checks")
         previous = self.current_session
         continuation: CodingResumePreparedContinuation | None = None
@@ -409,14 +465,20 @@ class AgentSessionRuntime(
             if operation is None or not operation.consumed:
                 current_view()
             expected = (
-                continuation.session if operation is not None and operation.consumed
-                and continuation is not None else previous
+                continuation.session
+                if operation is not None
+                and operation.consumed
+                and continuation is not None
+                else previous
             )
             if self.current_session is not expected:
                 raise RuntimeError("coding_resume_active_session_changed")
             if self._embedded_resume_approval_owner is not None:
                 self.require_current_embedded_resume_subject(observed)
-            result = cast("Callable[[CodingActivationAttemptV1], object]", require_current_admission)(observed)
+            result = cast(
+                "Callable[[CodingActivationAttemptV1], object]",
+                require_current_admission,
+            )(observed)
             if result is not None:
                 if inspect.iscoroutine(result):
                     result.close()
@@ -424,7 +486,10 @@ class AgentSessionRuntime(
             # Borrow the original selected native epoch, including before the
             # first Writer acquisition. This read cannot select/create an owner.
             # The caller's effect settlement remains an independent gate.
-            if selection.resume_epoch_fingerprint(Path(plan.workspace_root)) != observed.epoch_fingerprint:
+            if (
+                selection.resume_epoch_fingerprint(Path(plan.workspace_root))
+                != observed.epoch_fingerprint
+            ):
                 raise CodingResumeRecoveryRequired("input.epoch_changed")
 
         async def build(current: AgentSession | None) -> AgentSession:
@@ -432,16 +497,26 @@ class AgentSessionRuntime(
             if current is not previous:
                 raise RuntimeError("coding_resume_active_session_changed")
             continuation = await prepare_coding_resume_continuation(
-                manager_type=_bind_owned_session_manager(factory), session_file=session_file,
-                plan=plan, current_owner_inputs=current_owner_inputs, attempt=attempt,
-                input_record_id=input_record_id, text=text, created_at=created_at,
+                manager_type=_bind_owned_session_manager(factory),
+                session_file=session_file,
+                plan=plan,
+                current_owner_inputs=current_owner_inputs,
+                attempt=attempt,
+                input_record_id=input_record_id,
+                text=text,
+                created_at=created_at,
                 require_current_admission=admit,
                 require_current_epoch_settlement=require_current_epoch_settlement,
-                images=images, services=services, model=model, no_tools=no_tools,
+                images=images,
+                services=services,
+                model=model,
+                no_tools=no_tools,
                 thinking_level=thinking_level,
-                approval_resolver=approval_resolver, tool_policy_evaluator=tool_policy_evaluator,
+                approval_resolver=approval_resolver,
+                tool_policy_evaluator=tool_policy_evaluator,
                 observe_input_identity=observe_input_identity,
-                product_owner_selection=selection, worker_candidates=worker_candidates,
+                product_owner_selection=selection,
+                worker_candidates=worker_candidates,
                 worker_candidate_plugin_id=worker_candidate_plugin_id,
             )
             # Native model transport checks the original Root's actual slot.
@@ -452,31 +527,43 @@ class AgentSessionRuntime(
                     await continuation.session.dispose()
                 except BaseException as cleanup_error:
                     raise retain_resume_cleanup_failure(
-                        original_owner=continuation.session, original_error=error,
+                        original_owner=continuation.session,
+                        original_error=error,
                         cleanup_error=cleanup_error,
                     ) from error
                 raise
             return continuation.session
 
-        def bind_operation(prepared: PreparedSessionLifecycleOperation[AgentSession, str]) -> None:
+        def bind_operation(
+            prepared: PreparedSessionLifecycleOperation[AgentSession, str],
+        ) -> None:
             nonlocal operation
             operation = prepared
             assert continuation is not None
 
         return await self.lifecycle.prepare_retained_candidate(
             lambda: SessionLifecycleTransition(
-                reason="resume", target_session_ref=str(session_file),
-                metadata={"activate_extensions": False, "emit_before_transition": False, "schedule_index": False},
-            ), build,
+                reason="resume",
+                target_session_ref=str(session_file),
+                metadata={
+                    "activate_extensions": False,
+                    "emit_before_transition": False,
+                    "schedule_index": False,
+                },
+            ),
+            build,
             cleanup_error_type=CodingResumeContinuationCleanupFailure,
             bind_operation=bind_operation,
             result_factory=lambda prepared: CodingRuntimePreparedResume(
-                self, prepared, cast("CodingResumePreparedContinuation", continuation),
+                self,
+                prepared,
+                cast("CodingResumePreparedContinuation", continuation),
             ),
         )
 
     async def _consume_resume_preparation(
-        self, prepared: CodingRuntimePreparedResume,
+        self,
+        prepared: CodingRuntimePreparedResume,
     ) -> SessionOperationResult[AgentSession, str | None]:
         if self._resume_history_closed:
             raise RuntimeError("coding_resume_root_closed")
@@ -484,21 +571,27 @@ class AgentSessionRuntime(
         if prepared._root is not self:
             raise RuntimeError("coding_resume_preparation_not_owned")
         return await self.lifecycle.consume_retained_preparation(
-            operation, error_prefix="coding_resume",
+            operation,
+            error_prefix="coding_resume",
         )
 
-    async def _abort_resume_preparation(self, prepared: CodingRuntimePreparedResume) -> None:
+    async def _abort_resume_preparation(
+        self, prepared: CodingRuntimePreparedResume
+    ) -> None:
         if prepared._root is not self:
             raise RuntimeError("coding_resume_preparation_not_owned")
         await self.lifecycle.abort_retained_preparation(prepared._operation)
 
-    async def _run_resume_first_input(self, prepared: CodingRuntimePreparedResume) -> None:
+    async def _run_resume_first_input(
+        self, prepared: CodingRuntimePreparedResume
+    ) -> None:
         from ..resume_activation_attempt import CodingResumeRecoveryRequired
 
         if self._resume_history_closed:
             raise CodingResumeRecoveryRequired("model.root_closed")
         if (
-            prepared._root is not self or not prepared.consumed
+            prepared._root is not self
+            or not prepared.consumed
             or self.current_session is not prepared.continuation.session
         ):
             raise CodingResumeRecoveryRequired("model.root_not_delivered")
@@ -508,30 +601,47 @@ class AgentSessionRuntime(
         # Original Host claim, Model Input transport admission, fixed input
         # identity and once-only dispatch remain owned by the native Session.
         await continuation.session._run_published_resume_input(
-            attempt_id=continuation.attempt_id, input_record_id=continuation.input_record_id,
+            attempt_id=continuation.attempt_id,
+            input_record_id=continuation.input_record_id,
         )
 
     async def start_resume_planning(
-        self, history: CodingResumeHistoryPreview, current_composition: CodingCompositionSetPlan,
-        *, workspace_root: Path, resource_loader: ResourceLoader, subject_digest: str,
-        policy_digest: str, max_work_units: int, time_budget_seconds: float,
+        self,
+        history: CodingResumeHistoryPreview,
+        current_composition: CodingCompositionSetPlan,
+        *,
+        workspace_root: Path,
+        resource_loader: ResourceLoader,
+        subject_digest: str,
+        policy_digest: str,
+        max_work_units: int,
+        time_budget_seconds: float,
     ) -> None:
         """Plan during history display without selecting a writable Session."""
 
         if self._resume_history_closed or self.current_session is not None:
             raise RuntimeError("coding_resume_planning_unavailable")
         await self._resume_planning.start(
-            history, current_composition, workspace_root=workspace_root,
-            resource_loader=resource_loader, subject_digest=subject_digest,
-            policy_digest=policy_digest, max_work_units=max_work_units,
+            history,
+            current_composition,
+            workspace_root=workspace_root,
+            resource_loader=resource_loader,
+            subject_digest=subject_digest,
+            policy_digest=policy_digest,
+            max_work_units=max_work_units,
             time_budget_seconds=time_budget_seconds,
         )
 
     def configure_resume_planning(
-        self, *, current_composition: CodingCompositionSetPlan,
-        workspace_root: Path, resource_loader: ResourceLoader,
-        subject_digest: Callable[[], str], policy_digest: Callable[[], str],
-        max_work_units: int = 200, time_budget_seconds: float = 5.0,
+        self,
+        *,
+        current_composition: CodingCompositionSetPlan,
+        workspace_root: Path,
+        resource_loader: ResourceLoader,
+        subject_digest: Callable[[], str],
+        policy_digest: Callable[[], str],
+        max_work_units: int = 200,
+        time_budget_seconds: float = 5.0,
     ) -> None:
         """Bind data-only planning inputs retained by the existing Root owners."""
 
@@ -539,12 +649,16 @@ class AgentSessionRuntime(
         from loushang.harness.resources.loader import ResourceLoader
 
         if (
-            self._resume_history_closed or self.current_session is not None
+            self._resume_history_closed
+            or self.current_session is not None
             or not isinstance(current_composition, CodingCompositionSetPlan)
             or not isinstance(resource_loader, ResourceLoader)
-            or not isinstance(workspace_root, Path) or not workspace_root.is_absolute()
-            or not callable(subject_digest) or not callable(policy_digest)
-            or type(max_work_units) is not int or max_work_units < 1
+            or not isinstance(workspace_root, Path)
+            or not workspace_root.is_absolute()
+            or not callable(subject_digest)
+            or not callable(policy_digest)
+            or type(max_work_units) is not int
+            or max_work_units < 1
             or type(time_budget_seconds) not in {int, float}
             or not 0 < time_budget_seconds <= 60
         ):
@@ -562,7 +676,8 @@ class AgentSessionRuntime(
         )
 
     async def start_configured_resume_planning(
-        self, history: CodingResumeHistoryPreview,
+        self,
+        history: CodingResumeHistoryPreview,
     ) -> bool:
         """Start the configured pure Plan while a history preview is visible."""
 
@@ -582,7 +697,8 @@ class AgentSessionRuntime(
         return True
 
     async def prepare_configured_resume_plan(
-        self, history: CodingResumeHistoryPreview,
+        self,
+        history: CodingResumeHistoryPreview,
     ) -> SessionActivationPlanV1:
         """Promote current planning work and return one freshly checked Plan.
 
@@ -619,14 +735,18 @@ class AgentSessionRuntime(
         return fresh if cached is None else cached
 
     def current_resume_plan(
-        self, history: CodingResumeHistoryPreview, *,
+        self,
+        history: CodingResumeHistoryPreview,
+        *,
         current_owner_inputs: Sequence[ActivationOwnerInputRefV1],
     ) -> SessionActivationPlanV1 | None:
         """Observe a completed pure Plan with fresh original-owner inputs."""
 
         if self._resume_history_closed or self.current_session is not None:
             return None
-        return self._resume_planning.current(history, current_owner_inputs=current_owner_inputs)
+        return self._resume_planning.current(
+            history, current_owner_inputs=current_owner_inputs
+        )
 
     async def preview_resume_history(
         self,
@@ -649,14 +769,17 @@ class AgentSessionRuntime(
 
         def read(source: ResolvedDiscoveredSessionFile) -> CodingResumeHistoryPreview:
             return read_coding_resume_snapshot(
-                source.path, max_bytes=max_bytes, selected_leaf_id=selected_leaf_id,
+                source.path,
+                max_bytes=max_bytes,
+                selected_leaf_id=selected_leaf_id,
                 expected_source_fingerprint=source.authority_fingerprint,
             )
 
         return await self._preview_resume_data(session_id, read)
 
     async def preview_resume_startup(
-        self, session_id: str | Path,
+        self,
+        session_id: str | Path,
     ) -> CodingResumeHistoryPreview | CodingResumeRecentPage:
         """Load verified history, falling back to a bounded read-only page.
 
@@ -673,7 +796,10 @@ class AgentSessionRuntime(
         return await self.preview_resume_recent_page(session_id)
 
     async def preview_resume_recent_page(
-        self, session_id: str | Path, *, segment_bytes: int = 64 * 1024,
+        self,
+        session_id: str | Path,
+        *,
+        segment_bytes: int = 64 * 1024,
     ) -> CodingResumeRecentPage:
         """Observe bounded head/tail data through the original history owner.
 
@@ -685,7 +811,9 @@ class AgentSessionRuntime(
             raise ValueError("invalid Coding Resume history segment budget")
 
         def read(source: ResolvedDiscoveredSessionFile) -> CodingResumeRecentPage:
-            return read_coding_resume_recent_page(source.path, segment_bytes=segment_bytes)
+            return read_coding_resume_recent_page(
+                source.path, segment_bytes=segment_bytes
+            )
 
         return await self._preview_resume_data(session_id, read)
 

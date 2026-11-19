@@ -7,28 +7,28 @@ from hashlib import sha256
 
 import pytest
 
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointV1,
 )
-from loushang.coding.package_product_worker_history_checkpoint_anchor import (
+from loushang.coding.package.product_worker_history_checkpoint_anchor import (
     CodingWorkerCheckpointAnchorV1,
 )
-from loushang.coding.package_product_worker_history_prepared_v2 import (
+from loushang.coding.package.product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
 )
-from loushang.coding.package_product_worker_history_retirement_preview import (
+from loushang.coding.package.product_worker_history_retirement_preview import (
     CodingWorkerRetirementPreviewError,
 )
-from loushang.coding.package_product_worker_history_segments import (
+from loushang.coding.package.product_worker_history_segments import (
     CodingWorkerSealedSegmentV1,
     CodingWorkerSegmentedHistoryV1,
     CodingWorkerSegmentManifestV1,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
 )
-from loushang.coding.package_product_worker_receipt import (
+from loushang.coding.package.product_worker_receipt import (
     CodingWorkerReceiptRecordV1,
     _linux_receipt_line,
 )

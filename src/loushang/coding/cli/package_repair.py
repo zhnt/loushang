@@ -9,13 +9,13 @@ import sys
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
 
-from loushang.coding.package_product_repair import (
+from loushang.coding.package.product_repair import (
     CODING_PACKAGE_REPAIR_ACTIONS_V1,
     CODING_PACKAGE_REPAIR_INSPECTIONS_V1,
     _perform_coding_package_repair,
     open_coding_package_repair_client,
 )
-from loushang.coding.package_product_runtime import (
+from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
 )
 

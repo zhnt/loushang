@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.coding.package_product_worker_activation_history import (
+from loushang.coding.package.product_worker_activation_history import (
     decode_coding_worker_activation_history,
     project_coding_worker_retained_attempts,
 )

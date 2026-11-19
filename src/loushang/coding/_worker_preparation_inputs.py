@@ -26,50 +26,48 @@ from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
-from .package_product_worker_activation_state import (
+from .package.product_worker_activation_state import (
     open_coding_product_worker_activation_state_store,
     open_coding_windows_product_worker_activation_state_store,
 )
-from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
-from .package_product_worker_cleanup_evidence import (
+from .package.product_worker_capability import CodingProductWorkerCapabilityAuthority
+from .package.product_worker_cleanup_evidence import (
     CodingPosixWorkerCleanupEvidenceAuthority,
 )
-from .package_product_worker_payload import (
+from .package.product_worker_payload import (
     bind_coding_product_worker_launch_request,
     materialize_coding_product_worker_payload,
     open_coding_product_worker_supervisor_journal,
 )
-from .package_product_worker_provider import (
+from .package.product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding,
     prepare_coding_selected_worker_provider_candidate,
 )
-from .package_product_worker_provider_host import (
-    _read_coding_worker_provider_inputs,
-)
-from .package_product_worker_query_consumer import (
+from .package.product_worker_provider_host import _read_coding_worker_provider_inputs
+from .package.product_worker_query_consumer import (
     CODING_WORKER_QUERY_CAPABILITY_ID,
     CODING_WORKER_QUERY_FACET_ID,
     bind_coding_worker_query_facet_owner,
 )
-from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
-from .package_product_worker_start_gate import CodingProductWorkerStartGate
-from .package_product_worker_windows_cleanup_evidence import (
+from .package.product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package.product_worker_start_gate import CodingProductWorkerStartGate
+from .package.product_worker_windows_cleanup_evidence import (
     CodingWindowsWorkerCleanupEvidenceAuthority,
 )
-from .package_product_worker_windows_launch_intent import (
+from .package.product_worker_windows_launch_intent import (
     commit_coding_windows_product_worker_launch_intent,
 )
-from .package_product_worker_windows_payload import (
+from .package.product_worker_windows_payload import (
     bind_coding_windows_product_worker_launch_request,
     materialize_coding_windows_product_worker_payload,
 )
-from .package_product_worker_windows_provisioning import (
+from .package.product_worker_windows_provisioning import (
     open_coding_windows_product_worker_provisioning_state_store,
 )
-from .package_product_worker_windows_receipt import (
+from .package.product_worker_windows_receipt import (
     CodingWindowsWorkerProductReceiptOwner,
 )
-from .package_product_worker_windows_supervisor_journal import (
+from .package.product_worker_windows_supervisor_journal import (
     open_coding_windows_product_worker_supervisor_journal,
 )
 

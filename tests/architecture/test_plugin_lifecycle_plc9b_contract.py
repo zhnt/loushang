@@ -2250,7 +2250,7 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         elif path in apphost_file_primitives:
             _require_package_kernel_imports(path, apphost_file_primitives[path])
         elif path.is_relative_to(Path("src/loushang/coding")):
-            assert path.name.startswith("package_") or path.name in {
+            assert path.parent == Path("src/loushang/coding/package") or path.name in {
                 "_plugin_lifecycle.py",
                 "_external_data_product_composition.py",
                 # First-party Product composition owns Windows root preparation.

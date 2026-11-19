@@ -14,16 +14,16 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_activation_history import (
+from loushang.coding.package.product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointV1,
 )
-from loushang.coding.package_product_worker_history_stream_snapshot import (
+from loushang.coding.package.product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
 )
-from loushang.coding.package_product_worker_supervisor_base_v2 import (
+from loushang.coding.package.product_worker_supervisor_base_v2 import (
     CodingWorkerSupervisorKeyBaseV2,
     CodingWorkerSupervisorSemanticBaseV2,
 )
@@ -308,7 +308,7 @@ def test_original_record_admission_and_first_error(cls, incoming, expected):
 def test_receipt_base_preserves_call_time_codec_capacity(
     samples, observations, monkeypatch
 ):
-    from loushang.coding import package_product_worker_receipt as module
+    from loushang.coding.package import product_worker_receipt as module
 
     monkeypatch.setattr(module, "_MAX_RECEIPTS", 0)
     segments = observations["values"]["receipt_replay"]["recipe"]["segments"]
@@ -398,13 +398,13 @@ def test_original_base_wire_admission_and_error_order(cls, raw, expected):
 def _large_stream_value():
     from hashlib import sha256
 
-    from loushang.coding.package_product_worker_history_cutover_v2 import (
+    from loushang.coding.package.product_worker_history_cutover_v2 import (
         CodingWorkerStreamCutoverV2,
     )
-    from loushang.coding.package_product_worker_history_segments import (
+    from loushang.coding.package.product_worker_history_segments import (
         CodingWorkerSealedSegmentV1,
     )
-    from loushang.coding.package_product_worker_history_stream_snapshot import (
+    from loushang.coding.package.product_worker_history_stream_snapshot import (
         _stream_fingerprint,
     )
 
@@ -461,7 +461,7 @@ def test_original_stream_encoder_retains_asymmetric_capacity():
 
 
 def test_no_effect_product_restriction_stays_in_coding(samples):
-    from loushang.coding.package_product_worker_no_effect_closure import (
+    from loushang.coding.package.product_worker_no_effect_closure import (
         is_coding_worker_no_effect_closure,
     )
     from loushang.harness.worker.history._no_effect import is_no_effect_closure

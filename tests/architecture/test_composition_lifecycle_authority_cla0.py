@@ -117,7 +117,7 @@ EXPECTED_COMPOSITION_BIND_CALLERS = {
         "<lambda>",
     ),
     (
-        Path("src/loushang/coding/package_product_worker_operator_query.py"),
+        Path("src/loushang/coding/package/product_worker_operator_query.py"),
         "_CodingOperatorQueryPolicy.create_session",
     ),
     (

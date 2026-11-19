@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-import loushang.coding.package_legacy_windows_receipt as legacy
+import loushang.coding.package.legacy_windows_receipt as legacy
 from loushang.harness.resources.packages import _file_consumption
 
 CASES = (

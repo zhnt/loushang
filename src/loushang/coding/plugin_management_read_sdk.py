@@ -15,7 +15,7 @@ from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_management_cli import (
+from loushang.coding.package.product_management_cli import (
     build_coding_fenced_product_management_cli_ports,
 )
 from loushang.coding.plugin_management_cli import (
@@ -166,9 +166,12 @@ class CodingPluginManagementReadClientV1:
                 self.workspace, workspace_guard=self._assert_workspace_identity
             ).owner_revisions()
         )
+
         def desired_revision(document: dict[str, object]) -> int:
             revisions = document.get("ownerRevisions")
-            value = revisions.get("desiredState") if isinstance(revisions, dict) else None
+            value = (
+                revisions.get("desiredState") if isinstance(revisions, dict) else None
+            )
             if type(value) is not int:
                 raise ValueError("Plugin support Desired State revision is invalid")
             return value
@@ -247,7 +250,10 @@ def open_coding_plugin_management_read_client(
     if not stat.S_ISDIR(metadata.st_mode):
         raise ValueError("Plugin management workspace is unavailable")
     identity = (metadata.st_dev, metadata.st_ino)
-    if expected_workspace_identity is not None and identity != expected_workspace_identity:
+    if (
+        expected_workspace_identity is not None
+        and identity != expected_workspace_identity
+    ):
         raise CodingPluginManagementReadSdkError(
             "Coding management workspace changed",
             code="coding_management_workspace_changed",

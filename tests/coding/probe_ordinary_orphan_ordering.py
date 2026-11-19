@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package_product_runtime as coding
+import loushang.coding.package.product_runtime as coding
 import loushang.harness.package_product.product_local_wheel_runtime as core
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistryError,

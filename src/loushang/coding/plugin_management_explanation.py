@@ -11,7 +11,7 @@ from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_product_management_cli import (
+from loushang.coding.package.product_management_cli import (
     coding_fenced_product_exists,
     explain_coding_fenced_plugin_operation,
     read_coding_fenced_handoff_desired_commit,
@@ -84,9 +84,7 @@ class CodingPluginOperationExplanationQuery:
                 and handoff.request.desired_request.request_fingerprint
                 == explanation.package.request_fingerprint
             ):
-                commit = read_coding_fenced_handoff_desired_commit(
-                    self.layout, handoff
-                )
+                commit = read_coding_fenced_handoff_desired_commit(self.layout, handoff)
                 if commit is not None:
                     explanation = replace(
                         explanation, desired_commit_evidence=commit[2]

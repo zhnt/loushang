@@ -66,7 +66,7 @@ from .hosted_session import (
     _observe_close,
     _resolve_hosted_saved_model,
 )
-from .package_product_runtime import CodingFencedProductApplicationSelection
+from .package.product_runtime import CodingFencedProductApplicationSelection
 from .resume_activation_plan import SessionActivationPlanV1
 from .resume_input_lookup import (
     CodingResumeInputLookupQueryV1,
@@ -172,16 +172,26 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         try:
             history = source.history
             source.require_current_source()
-            if (not self.supports_interactive_goal_recovery or self._activation_lock.locked()
-                    or self.identity != record.identity
-                    or history.header_preview.header != record.header
-                    or record.header.conversation_id != self.identity.session_id
-                    or record.scope.fingerprint != self.identity.scope_fingerprint
-                    or record.path.parent != record.scope.session_dir):
+            if (
+                not self.supports_interactive_goal_recovery
+                or self._activation_lock.locked()
+                or self.identity != record.identity
+                or history.header_preview.header != record.header
+                or record.header.conversation_id != self.identity.session_id
+                or record.scope.fingerprint != self.identity.scope_fingerprint
+                or record.path.parent != record.scope.session_dir
+            ):
                 return unavailable_recovery("source_changed")
-            result = await settled_io(read_interactive_goal_recovery, record.scope.session_dir, self.identity.session_id)
-            if (not self.supports_interactive_goal_recovery or self._activation_lock.locked()
-                    or source.history is not history):
+            result = await settled_io(
+                read_interactive_goal_recovery,
+                record.scope.session_dir,
+                self.identity.session_id,
+            )
+            if (
+                not self.supports_interactive_goal_recovery
+                or self._activation_lock.locked()
+                or source.history is not history
+            ):
                 return unavailable_recovery("source_changed")
             source.require_current_source()
             return result
@@ -212,26 +222,37 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 if self._close_task is not None:
                     raise CodingHostedCatalogError()
                 scope.require_current_resume_subject(
-                    control, digest, expected_session_id=self.identity.session_id,
+                    control,
+                    digest,
+                    expected_session_id=self.identity.session_id,
                 )
                 self._source.require_current_source()
 
             require_current()
             model = self._services.model_registry.build_model(selection)
             context = self._source.history_binding.context
-            if context.provider_window is not None and not context.provider_window.matches(model):
-                raise ValueError("Selected model is incompatible with the active provider compaction checkpoint")
+            if (
+                context.provider_window is not None
+                and not context.provider_window.matches(model)
+            ):
+                raise ValueError(
+                    "Selected model is incompatible with the active provider compaction checkpoint"
+                )
             validate_image_input_compatibility(model, context.messages)
             plan = await self._current_plan()
             require_current()
             manager = await self._source.manager_type._load_resume_writer(
-                self._source.record.path, plan=plan, current_owner_inputs=plan.owner_inputs,
+                self._source.record.path,
+                plan=plan,
+                current_owner_inputs=plan.owner_inputs,
                 _factory=self._source.writer_factory,
             )
             try:
                 require_current()
                 await manager.append_model_change(
-                    selection.provider, selection.model_id, endpoint_id=selection.endpoint_id,
+                    selection.provider,
+                    selection.model_id,
+                    endpoint_id=selection.endpoint_id,
                 )
                 await self._source.refresh_after_model_change(manager)
             finally:
@@ -271,9 +292,12 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             priority="foreground",
         )
         if self._planning is not None:
-            plan = self._planning.current(
-                self._source.history, current_owner_inputs=plan.owner_inputs
-            ) or plan
+            plan = (
+                self._planning.current(
+                    self._source.history, current_owner_inputs=plan.owner_inputs
+                )
+                or plan
+            )
             await self._planning.close()
             self._planning = None
         if plan.status != "needs_final_validation" or plan.ancestry_digest is None:
@@ -282,7 +306,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
 
     async def start_background_planning(self) -> None:
         self._source.require_current_source()
-        await settled_io(load_workspace_models, self._services, self._source.record.scope.cwd)
+        await settled_io(
+            load_workspace_models, self._services, self._source.record.scope.cwd
+        )
         self._source.require_current_source()
         policy = workspace_tool_runtime_settings(self._services.settings_manager)
         raw_policy_engine = policy.policy_engine
@@ -303,7 +329,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         )
 
     def create_execution_work(
-        self, text: str, cancel_requested: Callable[[], bool],
+        self,
+        text: str,
+        cancel_requested: Callable[[], bool],
     ) -> ExecutionWorkV1:
         from ._hosted_execution_work import (
             current_coding_hosted_resume_subject,
@@ -317,7 +345,12 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         if submission_id is None:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return _HostedResumeExecutionWorkV1(
-            self, text, cancel_requested, scope, control, subject_digest,
+            self,
+            text,
+            cancel_requested,
+            scope,
+            control,
+            subject_digest,
             submission_id,
         )
 
@@ -340,7 +373,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         )
 
     def project_event(
-        self, event: RuntimeEvent[object],
+        self,
+        event: RuntimeEvent[object],
     ) -> CodingHostedEventProjectionV1 | None:
         payload = event if isinstance(event, Mapping) else None
         if (
@@ -368,7 +402,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         return None
 
     async def lookup_resume_input(
-        self, query: CodingResumeInputLookupQueryV1,
+        self,
+        query: CodingResumeInputLookupQueryV1,
     ) -> CodingResumeInputLookupResultV1:
         active = self._active
         if active is not None:
@@ -399,7 +434,10 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                     return CodingResumeInputLookupResultV1(
                         query.input_id, None, "unknown"
                     )
-                if coding_resume_input_record_digest(candidates[0]) != query.record_digest:
+                if (
+                    coding_resume_input_record_digest(candidates[0])
+                    != query.record_digest
+                ):
                     return CodingResumeInputLookupResultV1(
                         query.input_id, None, "conflict"
                     )
@@ -533,8 +571,11 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 plan_fingerprint=plan.plan_id,
                 epoch_fingerprint=epoch_fingerprint,
                 subject_digest=subject_digest,
-                effect_owners=tuple(sorted(plugin_owners, key=lambda owner: owner.identity)),
+                effect_owners=tuple(
+                    sorted(plugin_owners, key=lambda owner: owner.identity)
+                ),
             )
+
             def admit(observed: CodingActivationAttemptV1) -> None:
                 if type(observed) is not CodingActivationAttemptV2:
                     raise CodingResumeRecoveryRequired(
@@ -605,11 +646,16 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 # The input was durably committed while the real adapter did
                 # not yet exist. Publish its UI projection after the in-place
                 # handoff; this event performs no transcript write or replay.
-                await self._control.emit(cast(RuntimeEvent[object], {
-                    "type": "hosted_resume_committed_input",
-                    "hosted_resume_committed_input": True,
-                    "text": text,
-                }))
+                await self._control.emit(
+                    cast(
+                        RuntimeEvent[object],
+                        {
+                            "type": "hosted_resume_committed_input",
+                            "hosted_resume_committed_input": True,
+                            "text": text,
+                        },
+                    )
+                )
             except BaseException:
                 await continuation.session.dispose()
                 raise
@@ -702,7 +748,8 @@ class _HostedResumeExecutionWorkV1(_HostedAgentExecutionWork):
     async def settle(self) -> None:
         await self._settle_published_input(self._session)
         if (
-            not self._cancel_requested() and self._agent_outcome is not None
+            not self._cancel_requested()
+            and self._agent_outcome is not None
             and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
         ):
             self._binding.start_title_if_unnamed()

@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.package_product_worker_windows_desired_references import (
+from loushang.coding.package.product_worker_windows_desired_references import (
     CodingWindowsWorkerDesiredReferenceReviewV1,
 )
-from loushang.coding.package_product_worker_windows_history_preparation import (
+from loushang.coding.package.product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
 )
-from loushang.coding.package_product_worker_windows_history_sources import (
+from loushang.coding.package.product_worker_windows_history_sources import (
     _coding_windows_worker_desired_history_digest,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger

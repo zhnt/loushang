@@ -4,10 +4,10 @@ from contextlib import contextmanager
 
 import pytest
 
-from loushang.coding.package_product_worker_history_checkpoint import (
+from loushang.coding.package.product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointError,
 )
-from loushang.coding.package_product_worker_history_read_v2 import _HISTORY_READER
+from loushang.coding.package.product_worker_history_read_v2 import _HISTORY_READER
 from loushang.harness.worker.history._rooted_supervisor import RootedSupervisorJournal
 from loushang.harness.worker.journal import WorkerSupervisorJournalError
 

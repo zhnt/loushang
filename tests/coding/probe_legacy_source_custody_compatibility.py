@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.package_legacy_local_wheel as module
-from loushang.coding import package_builtin_wheel as wheel
+import loushang.coding.package.legacy_local_wheel as module
+from loushang.coding.package import builtin_wheel as wheel
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.revisions import PluginRevisionStore
 from tests.coding.test_package_legacy_local_wheel import _evidence, _source

@@ -77,8 +77,8 @@ RESOLUTION_CASES = (
 
 def load_product() -> NS:
     return NS(
-        revision=importlib.import_module("loushang.coding.package_product_revisions"),
-        wheel=importlib.import_module("loushang.coding.package_builtin_wheel"),
+        revision=importlib.import_module('loushang.coding.package.product_revisions'),
+        wheel=importlib.import_module('loushang.coding.package.builtin_wheel'),
     )
 
 
@@ -281,7 +281,7 @@ def observe_resolution(product: NS, case: str) -> dict[str, object]:
     def path_resolve(self, *args, **kwargs):
         nonlocal root_calls
         relevant = (
-            self.name in {"plugin_dependency_grants.py", "package_builtin_wheel.py"}
+            self.name in {"plugin_dependency_grants.py", "package/builtin_wheel.py"}
             or self.parent.name == "_plugins"
             or str(self).startswith("/__loushang_product_snapshot__")
         )

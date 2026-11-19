@@ -11,21 +11,21 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_legacy_local_wheel import (
+from loushang.coding.package.legacy_local_wheel import (
     reacquire_coding_legacy_local_plugin_wheel,
 )
-from loushang.coding.package_legacy_lock_evidence import (
+from loushang.coding.package.legacy_lock_evidence import (
     CodingLegacyLockError,
     parse_coding_legacy_local_binding_heads,
     read_coding_legacy_local_binding_heads,
 )
-from loushang.coding.package_legacy_operation_evidence import (
+from loushang.coding.package.legacy_operation_evidence import (
     CodingLegacyOperationEvidenceError,
 )
-from loushang.coding.package_legacy_reacquisition import (
+from loushang.coding.package.legacy_reacquisition import (
     reacquire_coding_legacy_installed_local_source,
 )
-from loushang.coding.package_pre_b_snapshot import (
+from loushang.coding.package.pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
 )
