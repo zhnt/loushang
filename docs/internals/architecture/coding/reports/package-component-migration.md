@@ -91,10 +91,21 @@ through its module. The SDK and existing size budgets then pass together
 Unrelated formatting introduced during relocation is then reverted in 24 files;
 each file retains its complete AST and source comments. Canonical imports and
 the declared source-relative rebases remain. Public identity and pickle checks
-pass again after this restoration; the existing UI budget is checked in its
-affected route without changing its threshold.
+pass again after this restoration. Coding UI passes 614 cases, including its
+existing size budget without a threshold change; TUI units pass 1,322 cases and
+the existing render-contract route passes 319 cases.
 Remote platform checks are still pending. These local results are not delivery
 acceptance.
+
+An isolated build produces the actual distribution wheel. It is installed with
+`uv pip install --target --no-deps --no-index` into a separate directory outside
+the repository. Its 190 component Python files include all 187 relocated
+implementations and no old root implementation members. Installed imports pass
+the same 609-entry reflection and 1,118 historical pickle-reference comparisons.
+Building the Base, Arch and LSP Product wheels from that installation produces
+bytes identical to the source-tree builders; the native launcher source hash
+also matches. These are package-content and inert construction checks, not
+native binary or installed console-launch acceptance.
 
 The selected AI route passes 941 tests, skips two existing host-runtime OAuth
 cases and deselects seven cases under the local selectors. Both this candidate
@@ -130,6 +141,24 @@ review and runtime coverage. This does not claim to remove pre-existing cycles.
 CI scope globs and workflow source arguments are relocated with their original
 coverage. The equivalence audit matches every changed glob's old file set to its
 new paths. No new test case, gate, trigger, platform or required check is added.
+
+## Internal review and remaining component work
+
+The Codex implementation agent (`/root`) reviewed production revision
+`a9e50cd38d11df5e5d1e5820eab857bb7b2bc508` and accepts the first milestone's
+path relocation and bounded compatibility design within the authorized task.
+The method reference is the consulted local committed architecture-method
+revision `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`. This is internal design
+acceptance; remaining local checks, platform evidence and normal PR acceptance
+still govern delivery. No user or independent-reviewer acceptance is claimed.
+
+This milestone preserves existing dependencies on root lifecycle state/private
+tree preparation, Worker history/provider policy, product composition, resource
+catalog adapters and capability specifications. It does not close those owner
+boundaries. Later `plugin_manager` and root-component batches must assign their
+actual state/transaction owners and replace remaining private cross-component
+access with minimal owner interfaces. The whole componentization Goal remains
+open; relocating this inventory does not establish its completion.
 
 ## Exact implementation mapping
 
