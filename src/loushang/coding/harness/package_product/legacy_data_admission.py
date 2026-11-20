@@ -11,6 +11,8 @@ from typing import Literal
 from loushang.coding.package import legacy_skill_cutover_admission as _binding
 
 from . import legacy_management_evidence as _management_evidence
+from .legacy_reacquisition import reacquire_bound_wheel
+from .legacy_source_matching import index_configured_sources
 
 
 def admit_local_snapshot(
@@ -147,28 +149,16 @@ def admit_local_snapshot(
         source_identities = tuple(
             item.binding.source_identity for item in inventory.active_local
         )
-        for installation in inventory.active_local:
+        for index, installation in enumerate(inventory.active_local):
             binding = installation.binding
             if not binding.source_identity.startswith("local:/"):
                 raise ValueError(_binding._LEGACY_PROGRAM_VALUES["value_026"])
-            _binding.match_coding_legacy_local_skill_configured_source(
-                source,
-                source_identity=binding.source_identity,
-                installed_source_identities=source_identities,
+            if index == 0:
+                # Every Source is checked together before reading any live bytes.
+                index_configured_sources(source, source_identities)
+            wheel = reacquire_bound_wheel(
+                lifecycle, installation, staging_prefix="loushang-legacy-pre-fence-"
             )
-            with _binding.TemporaryDirectory(
-                prefix="loushang-legacy-pre-fence-"
-            ) as staging:
-                wheel = _binding.reacquire_coding_legacy_local_plugin_wheel(
-                    _binding.Path(binding.source_identity.removeprefix("local:")),
-                    legacy_package_root=lifecycle.package_root,
-                    staging_parent=_binding.Path(staging),
-                    plugin_id=binding.plugin_id,
-                    expected_source_identity=binding.source_identity,
-                    expected_content_digest=binding.content_digest,
-                    expected_manifest_digest=binding.manifest_digest,
-                    expected_dependency_lock=binding.dependency_lock,
-                )
             inspected = _binding.inspect_coding_legacy_local_data_wheel(wheel)
             if (
                 binding.plugin_id == plugin_id
@@ -276,12 +266,7 @@ def require_fenced_local_snapshot(
     source_identities = tuple(
         item.binding.source_identity for item in inventory.active_local
     )
-    for installation in inventory.active_local:
-        _binding.match_coding_legacy_local_skill_configured_source(
-            source,
-            source_identity=installation.binding.source_identity,
-            installed_source_identities=source_identities,
-        )
+    index_configured_sources(source, source_identities)
     epoch_runtime.assert_current()
 
 

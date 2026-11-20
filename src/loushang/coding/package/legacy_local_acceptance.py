@@ -6,7 +6,6 @@ Source publication, mutate Desired State, or run a Package transaction.
 
 from __future__ import annotations
 
-import json as json
 import os as os
 from dataclasses import dataclass
 from hashlib import sha256 as sha256
@@ -36,14 +35,11 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
-from .legacy_classification import (
-    classify_coding_legacy_source_configuration as classify_coding_legacy_source_configuration,
-)
-from .legacy_configured_source import (
-    match_coding_legacy_local_skill_configured_source as match_coding_legacy_local_skill_configured_source,
-)
 from .legacy_installation_inventory import (
     read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
+)
+from .legacy_review import (
+    _BUILTINS as _BUILTINS,
 )
 from .legacy_review import (
     CodingLegacyLocalAdoptionReviewV1,
@@ -51,20 +47,12 @@ from .legacy_review import (
 from .legacy_review import (
     review_coding_legacy_installed_local_source as review_coding_legacy_installed_local_source,
 )
-from .legacy_snapshot_member import (
-    CodingFirstBLegacyStateObserver as CodingFirstBLegacyStateObserver,
-)
-from .legacy_snapshot_member import (
-    read_coding_first_b_snapshot_member as read_coding_first_b_snapshot_member,
-)
 
 _MAX_ACCEPTANCE_BYTES = 1024 * 1024
 _MAX_DESIRED_BYTES = 32 * 1024 * 1024
-_BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 
 
 _PRODUCT_ID = "coding"
-_SOURCE_CONFIGURATION_MEMBER = "coding-source-configuration.json"
 _ACCEPTANCE_LABEL = "Coding legacy local"
 _ACCEPTANCE_CODEC_ERROR_CODE = "coding_legacy_local_acceptance_invalid"
 

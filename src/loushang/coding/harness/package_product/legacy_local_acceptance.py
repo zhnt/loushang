@@ -10,6 +10,8 @@ from typing import Literal
 
 from loushang.coding.package import legacy_local_acceptance as _binding
 
+from .legacy_local_review import observe_frozen_local_source
+
 _RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
 
 
@@ -36,29 +38,15 @@ def require_frozen_review(
     )
     if fence is None or switch is None or selected is None:
         raise _acceptance_error("acceptance lost its first-B Installation")
-    legacy_state = _binding.CodingFirstBLegacyStateObserver(
-        lifecycle, epoch_runtime
-    ).observe(
-        store_id=fence.store_id,
-        legacy_root_identity=fence.request.legacy_root_identity,
-    )
     binding = selected.binding
-    source_raw = _binding.read_coding_first_b_snapshot_member(
+    legacy_state, source, configured = observe_frozen_local_source(
         lifecycle,
         epoch_runtime,
-        domain="source_configuration",
-        member_name=_binding._SOURCE_CONFIGURATION_MEMBER,
-        maximum_bytes=2 * 1024 * 1024,
-    )
-    if source_raw is None:
-        raise _acceptance_error("acceptance lost its Source configuration")
-    source_projection = _binding.json.loads(source_raw)
-    source = _binding.classify_coding_legacy_source_configuration(source_projection)
-    configured = _binding.match_coding_legacy_local_skill_configured_source(
-        source_projection,
-        source_identity=binding.source_identity,
-        installed_source_identities=tuple(
-            item.binding.source_identity for item in inventory.inventory.active_local
+        fence,
+        inventory,
+        binding.source_identity,
+        missing_source=lambda: _acceptance_error(
+            "acceptance lost its Source configuration"
         ),
     )
     expected_prefix = (

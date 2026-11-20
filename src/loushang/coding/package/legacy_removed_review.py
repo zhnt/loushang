@@ -33,9 +33,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 
 from .legacy_classification import CodingScopedLegacyDisableV1
-from .legacy_configured_source import (
-    match_coding_legacy_local_skill_configured_source as match_coding_legacy_local_skill_configured_source,
-)
 from .legacy_desired_evidence import (
     parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
 )

@@ -6,7 +6,27 @@ Product policy and nominal contracts are explicit intermediate dependencies.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
 from loushang.coding.package import legacy_review as _binding
+
+if TYPE_CHECKING:
+    from loushang.coding.package.legacy_classification import (
+        CodingLegacySourceConfigurationV1,
+    )
+    from loushang.coding.package.legacy_configured_source import (
+        CodingLegacyLocalConfiguredSourceV1,
+    )
+    from loushang.coding.package.legacy_installation_inventory import (
+        CodingLegacyInstallationInventoryEvidenceV1,
+    )
+    from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
+        PackageLegacyStateEvidenceV1,
+    )
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceReceiptV1,
+    )
 
 
 def review_local_source(
@@ -54,30 +74,14 @@ def review_local_source(
         raise _binding.CodingLegacyInventoryError(
             _binding._LEGACY_PROGRAM_VALUES["value_002"]
         )
-    legacy_state = _binding.CodingFirstBLegacyStateObserver(
-        lifecycle, epoch_runtime
-    ).observe(
-        store_id=fence.store_id,
-        legacy_root_identity=fence.request.legacy_root_identity,
-    )
-    source_raw = _binding.read_coding_first_b_snapshot_member(
+    legacy_state, source, configured_source = observe_frozen_local_source(
         lifecycle,
         epoch_runtime,
-        domain="source_configuration",
-        member_name=_binding._LEGACY_PROGRAM_VALUES["value_003"],
-        maximum_bytes=2 * 1024 * 1024,
-    )
-    if source_raw is None:
-        raise _binding.CodingLegacyInventoryError(
+        fence,
+        inventory,
+        binding.source_identity,
+        missing_source=lambda: _binding.CodingLegacyInventoryError(
             _binding._LEGACY_PROGRAM_VALUES["value_004"]
-        )
-    source_projection = _binding.json.loads(source_raw)
-    source = _binding.classify_coding_legacy_source_configuration(source_projection)
-    configured_source = _binding.match_coding_legacy_local_skill_configured_source(
-        source_projection,
-        source_identity=binding.source_identity,
-        installed_source_identities=tuple(
-            item.binding.source_identity for item in inventory.inventory.active_local
         ),
     )
     epoch_runtime.assert_current()
@@ -109,17 +113,53 @@ def review_local_source(
         removed_builtin_ids=tuple(
             item
             for item in inventory.inventory.removed_plugin_ids
-            if item
-            in {
-                _binding._LEGACY_PROGRAM_VALUES["value_005"],
-                _binding._LEGACY_PROGRAM_VALUES["value_006"],
-                _binding._LEGACY_PROGRAM_VALUES["value_007"],
-            }
+            if item in _binding._BUILTINS
         ),
         configured_plugin_source_scope=(
             None if configured_source is None else configured_source.scope
         ),
     )
+
+
+def observe_frozen_local_source(
+    lifecycle: _binding.CodingPluginLifecycleStateLayout,
+    epoch_runtime: _binding.PackageProductPosixFencedRuntimeOwner,
+    fence: PackageEpochFenceReceiptV1,
+    inventory: CodingLegacyInstallationInventoryEvidenceV1,
+    source_identity: str,
+    *,
+    missing_source: Callable[[], Exception],
+) -> tuple[
+    PackageLegacyStateEvidenceV1,
+    CodingLegacySourceConfigurationV1,
+    CodingLegacyLocalConfiguredSourceV1 | None,
+]:
+    """Read one authenticated Source projection without accessing live bytes."""
+    legacy_state = _binding.CodingFirstBLegacyStateObserver(
+        lifecycle, epoch_runtime
+    ).observe(
+        store_id=fence.store_id,
+        legacy_root_identity=fence.request.legacy_root_identity,
+    )
+    source_raw = _binding.read_coding_first_b_snapshot_member(
+        lifecycle,
+        epoch_runtime,
+        domain="source_configuration",
+        member_name=_binding._LEGACY_PROGRAM_VALUES["value_003"],
+        maximum_bytes=2 * 1024 * 1024,
+    )
+    if source_raw is None:
+        raise missing_source()
+    source_projection = _binding.json.loads(source_raw)
+    source = _binding.classify_coding_legacy_source_configuration(source_projection)
+    configured_source = _binding.match_coding_legacy_local_skill_configured_source(
+        source_projection,
+        source_identity=source_identity,
+        installed_source_identities=tuple(
+            item.binding.source_identity for item in inventory.inventory.active_local
+        ),
+    )
+    return legacy_state, source, configured_source
 
 
 def validate_review(self: _binding.CodingLegacyLocalAdoptionReviewV1) -> None:
@@ -176,11 +216,7 @@ def validate_review(self: _binding.CodingLegacyLocalAdoptionReviewV1) -> None:
     if any(
         not isinstance(item, _binding.CodingLegacyBuiltinIntentV1)
         or item.plugin_id
-        not in {
-            _binding._LEGACY_RECORD_VALUES["value_008"],
-            _binding._LEGACY_RECORD_VALUES["value_009"],
-            _binding._LEGACY_RECORD_VALUES["value_010"],
-        }
+        not in _binding._BUILTINS
         or item.desired_state not in ("installed_disabled", "installed_enabled")
         for item in self.builtin_intent
     ) or tuple(item.plugin_id for item in self.builtin_intent) != tuple(
@@ -191,11 +227,7 @@ def validate_review(self: _binding.CodingLegacyLocalAdoptionReviewV1) -> None:
         any(
             type(item) is not str
             or item
-            not in {
-                _binding._LEGACY_RECORD_VALUES["value_008"],
-                _binding._LEGACY_RECORD_VALUES["value_009"],
-                _binding._LEGACY_RECORD_VALUES["value_010"],
-            }
+            not in _binding._BUILTINS
             for item in self.removed_builtin_ids
         )
         or self.removed_builtin_ids != tuple(sorted(set(self.removed_builtin_ids)))

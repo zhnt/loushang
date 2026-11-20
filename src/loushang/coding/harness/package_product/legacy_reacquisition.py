@@ -43,20 +43,9 @@ def reacquire_installed_source(
         raise _binding.CodingLegacyInventoryError(
             _binding._LEGACY_ADOPTION_VALUES["value_003"]
         )
-    # Review can run under a read-only Product epoch. The verified revision is
-    # built in a disposable private directory; it never becomes Product Source
-    # authorization until a separate admission owner accepts it.
-    with _binding.TemporaryDirectory(prefix="loushang-legacy-review-") as staging:
-        wheel = _binding.reacquire_coding_legacy_local_plugin_wheel(
-            _binding.Path(binding.source_identity.removeprefix("local:")),
-            legacy_package_root=lifecycle.package_root,
-            staging_parent=_binding.Path(staging),
-            plugin_id=binding.plugin_id,
-            expected_source_identity=binding.source_identity,
-            expected_content_digest=binding.content_digest,
-            expected_manifest_digest=binding.manifest_digest,
-            expected_dependency_lock=binding.dependency_lock,
-        )
+    wheel = reacquire_bound_wheel(
+        lifecycle, installation, staging_prefix="loushang-legacy-review-"
+    )
     if (
         _binding.read_coding_legacy_installation_inventory(lifecycle, epoch_runtime)
         != inventory
@@ -66,3 +55,27 @@ def reacquire_installed_source(
         )
     epoch_runtime.assert_current()
     return _binding.CodingLegacyReacquiredInstallationV1(inventory, installation, wheel)
+
+
+def reacquire_bound_wheel(
+    lifecycle: _binding.CodingPluginLifecycleStateLayout,
+    installation: _binding.CodingLegacyLocalInstallationV1,
+    *,
+    staging_prefix: str,
+) -> _binding.CodingLegacyLocalWheelCandidateV1:
+    """Rebuild the live Source listed in an authenticated local binding."""
+    binding = installation.binding
+    # Review can run under a read-only Product epoch. The verified revision is
+    # built in a disposable private directory; it never becomes Product Source
+    # authorization until a separate admission owner accepts it.
+    with _binding.TemporaryDirectory(prefix=staging_prefix) as staging:
+        return _binding.reacquire_coding_legacy_local_plugin_wheel(
+            _binding.Path(binding.source_identity.removeprefix("local:")),
+            legacy_package_root=lifecycle.package_root,
+            staging_parent=_binding.Path(staging),
+            plugin_id=binding.plugin_id,
+            expected_source_identity=binding.source_identity,
+            expected_content_digest=binding.content_digest,
+            expected_manifest_digest=binding.manifest_digest,
+            expected_dependency_lock=binding.dependency_lock,
+        )

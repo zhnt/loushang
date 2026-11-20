@@ -5,8 +5,6 @@ from __future__ import annotations
 import json as json
 import zipfile as zipfile
 from dataclasses import dataclass
-from pathlib import Path as Path
-from tempfile import TemporaryDirectory as TemporaryDirectory
 from typing import Literal
 
 from loushang.coding.harness.package_product import legacy_data_admission as _programs
@@ -24,9 +22,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .legacy_configured_source import (
-    match_coding_legacy_local_skill_configured_source as match_coding_legacy_local_skill_configured_source,
-)
 from .legacy_desired_evidence import (
     parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
 )
@@ -47,9 +42,6 @@ from .legacy_instance_evidence import (
 )
 from .legacy_local_wheel import (
     CodingLegacyLocalWheelCandidateV1,
-)
-from .legacy_local_wheel import (
-    reacquire_coding_legacy_local_plugin_wheel as reacquire_coding_legacy_local_plugin_wheel,
 )
 from .legacy_lock_evidence import (
     parse_coding_legacy_local_binding_heads as parse_coding_legacy_local_binding_heads,
@@ -106,23 +98,13 @@ _LEGACY_PROGRAM_VALUES = {
     "value_013": "package-lock.json",
     "value_014": "desired-state.jsonl",
     "value_015": "Legacy Skill snapshot members are incomplete",
-    "value_016": "instance-runtime.jsonl",
-    "value_017": "retirement-intents.jsonl",
     "value_018": "Legacy data Installation set is unsupported",
     "value_019": "Coding legacy data snapshot cannot be admitted before first fence",
-    "value_020": "desired-state.jsonl.lock",
-    "value_021": "management-operations.jsonl.lock",
-    "value_022": "retirement-intents.jsonl.lock",
-    "value_023": "retirement-sets.jsonl.lock",
-    "value_024": "management-operations.jsonl",
     "value_025": "Legacy management operation journal is missing",
     "value_026": "Legacy Skill Source is not local",
     "value_027": "Legacy data Resource type changed",
     "value_028": "Legacy data names conflict across Installations",
-    "value_029": "instance-runtime.jsonl.lock",
-    "value_030": "instance-runtime.security-acceptances.jsonl.lock",
     "value_031": "Legacy management lock changed",
-    "value_032": "retirement-sets.jsonl",
     "value_033": "Legacy retirement journals are missing",
     "value_034": "Legacy Instance evidence is missing",
     "value_035": "coding_legacy_skill_snapshot_refused",

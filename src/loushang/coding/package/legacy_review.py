@@ -54,6 +54,7 @@ from .legacy_snapshot_member import (
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 _WHEEL_NAME = re.compile(r"loushang_legacy_[0-9a-f]{24}-1-py3-none-any\.whl\Z")
 
 
@@ -62,9 +63,6 @@ _LEGACY_PROGRAM_VALUES = {
     "value_002": "Coding legacy review inputs differ from the first-B Installation",
     "value_003": "coding-source-configuration.json",
     "value_004": "Coding legacy Source configuration is missing from first B",
-    "value_005": "coding.base",
-    "value_006": "coding.lsp.default",
-    "value_007": "coding.arch.default",
 }
 
 
@@ -76,9 +74,6 @@ _LEGACY_RECORD_VALUES = {
     "value_005": "Coding legacy review builtin intent is invalid",
     "value_006": "Coding legacy review removed builtin IDs are invalid",
     "value_007": "Coding legacy review configured Source scope is invalid",
-    "value_008": "coding.base",
-    "value_009": "coding.lsp.default",
-    "value_010": "coding.arch.default",
     "value_011": "Coding legacy review record is invalid",
     "value_012": "Coding legacy review identity changed",
 }
@@ -182,7 +177,7 @@ def shared_coding_legacy_builtin_removal_operation_id(
     if (
         not isinstance(first_fence_id, str)
         or _SHA256.fullmatch(first_fence_id) is None
-        or plugin_id not in {"coding.base", "coding.lsp.default", "coding.arch.default"}
+        or plugin_id not in _BUILTINS
     ):
         raise ValueError("Coding legacy builtin removal identity is invalid")
     return (

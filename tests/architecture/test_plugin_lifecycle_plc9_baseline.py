@@ -301,7 +301,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             Path(
                 "src/loushang/coding/harness/package_product/legacy_source_matching.py"
             ),
-            "match_configured_source",
+            "index_configured_sources",
         ): 2,
         (
             Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),

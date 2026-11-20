@@ -26,16 +26,30 @@ def match_configured_source(
         if installed_source_identities is None
         else installed_source_identities
     )
+    if type(source_identity) is not str:
+        raise ValueError(_binding._LEGACY_EVIDENCE_VALUES["value_001"])
+    configured = index_configured_sources(
+        projection, identities, required_identity=source_identity
+    )
+    return configured.get(source_identity.removeprefix("local:"))
+
+
+def index_configured_sources(
+    projection: object,
+    identities: tuple[str, ...],
+    *,
+    required_identity: str | None = None,
+) -> dict[str, _binding.CodingLegacyLocalConfiguredSourceV1]:
+    """Verify every configured source against one exact local installation set."""
     if (
-        type(source_identity) is not str
-        or type(identities) is not tuple
+        type(identities) is not tuple
         or not 0 < len(identities) <= _binding._LEGACY_EVIDENCE_MAX_SOURCES
         or any(
             type(identity) is not str or not identity.startswith("local:/")
             for identity in identities
         )
         or len(identities) != len(set(identities))
-        or source_identity not in identities
+        or (required_identity is not None and required_identity not in identities)
     ):
         raise ValueError(_binding._LEGACY_EVIDENCE_VALUES["value_001"])
     classification = _binding.classify_coding_legacy_source_configuration(projection)
@@ -73,4 +87,4 @@ def match_configured_source(
         or len(classification.configured_source_keys) != configured_scopes
     ):
         raise ValueError(_binding._LEGACY_EVIDENCE_VALUES["value_002"])
-    return configured.get(source_identity.removeprefix("local:"))
+    return configured

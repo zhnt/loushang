@@ -15,6 +15,8 @@ from loushang.coding.harness.package_product.legacy_management_evidence import (
 )
 from loushang.coding.package import legacy_removed_review as _binding
 
+from .legacy_source_matching import index_configured_sources
+
 if TYPE_CHECKING:
     from loushang.coding.package.legacy_desired_evidence import (
         CodingLegacyDesiredEvidenceV1,
@@ -265,13 +267,9 @@ def review_removed_snapshot(
         item.binding.source_identity for item in inventory.active_local
     )
     if active_identities:
-        source_projection = _binding.json.loads(source.projection_bytes)
-        for identity in active_identities:
-            _binding.match_coding_legacy_local_skill_configured_source(
-                source_projection,
-                source_identity=identity,
-                installed_source_identities=active_identities,
-            )
+        index_configured_sources(
+            _binding.json.loads(source.projection_bytes), active_identities
+        )
     elif source.classification.configured_source_keys:
         raise _binding.CodingLegacyRemovedReviewError(
             _binding._LEGACY_PROGRAM_VALUES["value_019"]

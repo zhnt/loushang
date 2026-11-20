@@ -1541,6 +1541,34 @@ failed at the same system-prompt assertion on the prior checkpoint.
 Six final adapter and refresh cases and both architecture checks passed.
 Native Windows and Worker execution were not exercised.
 
+## Shared Legacy Local Source Evidence
+
+First-fence data admission, frozen adoption admission and removed-installation
+review now index the exact configured local Sources once per snapshot. The
+same parser backs the original single-source API. Before live bytes are
+opened, the pre-fence route verifies the full installed set. Each Wheel
+is still captured and inspected in the original order. Pre-fence and
+review reuse the existing Resources capture with their original disposable
+directory prefixes and cleanup. Reopening acceptance shares the original
+review's authenticated Source observation, with its own missing-evidence
+error and no live Source access.
+
+The Product review, acceptance and builtin removal ID retain one unchanged
+allowlist. Removed Product aliases had no remaining callers. Ten stale
+journal names were removed from the earlier settled-history duplication.
+This batch removes 38 Product lines and adds 30 staging lines, for eight
+fewer production Python lines. The normalized graph drops three direct
+Product dependencies to 1,659 module pairs. Four new staged uses have no
+runtime return path. The existing disabled-plugin source constraint follows
+the implementation's moved scope and retains the same two tracked uses.
+
+The comparison matches 4,806 single-source, 445 whole-set, 56 frozen
+snapshot and eight Wheel cleanup traces. For 16 installed sources, a full
+set proof now calls the source classifier once, down from 16 calls. All 29
+focused Linux cases and three final cutover rechecks passed. The architecture
+run passed 12 cases, and the moved location constraint passed its final
+recheck. Native Windows routes were not exercised.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
