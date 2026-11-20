@@ -7,9 +7,9 @@
 - Implementation/review: Codex `/root`, within the authorized Goal.
 - Design scope: the user-authorized intermediate `coding.harness` boundary;
   this report does not accept a final public Harness API or claim final extraction.
-- Implementation status: complete coverage and primary extraction range frozen;
-  first private-data semantic batch accepted locally after operation, consumer
-  and compatibility review; other frozen migration batches remain incomplete.
+- Implementation status: primary extraction scope frozen and local checkpoints
+  verified through Resume failure cleanup. Cumulative operation review,
+  validation and delivery remain open.
 - Accepted starting source: `df0dca779aaf4211a673dc77ae87470b6c579087`.
 - Method: clean local `archmethod/master` at
   `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`, consulted locally, not vendored.
@@ -2221,6 +2221,29 @@ pass across exact source grants, default Plugin publication, Resume and
 bootstrap. All 1,776 controlled cases match original settings and receipt
 reads, CLI errors, exact source checks and grant outcomes. Native Windows
 verification remains open.
+
+## Resume Failure Cleanup And Writer Fencing
+
+Resume bootstrap, continuation and Runtime host binding share a staged cleanup
+path. The original Session releases its graph and Transcript together. A
+manager-only failure releases through the manager. Before any cleanup after
+input commit or publication, continuation still reports the original input
+identity when evidence is available. A cleanup failure already retained by
+bootstrap keeps the whole candidate in custody.
+
+If disposal fails, the staged helper fences the admitting Transcript factory
+and raises the existing Product error with the original owner and both
+failures. It preserves the call-site notes and original error as the cause.
+The existing Session lifecycle retains and retries the error through the same
+owner's disposal method. The failure type and historical import paths stay at
+the Product edge.
+
+Coding Product removes 11 Python lines and staging adds 54, for 43 net
+production lines. Three inlined disposal handlers become one staged path.
+All 77 selected Linux cases pass across preparation, publication and Runtime
+handoff. All 924 controlled cases match original ownership, cleanup order,
+fence behavior and error chains, including cancellation and failures during
+retry. Native Windows verification remains open.
 
 ## Cost And Final Acceptance
 

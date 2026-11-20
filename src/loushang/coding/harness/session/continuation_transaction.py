@@ -10,6 +10,8 @@ from typing import cast
 
 from loushang.coding.resume import continuation as _binding
 
+from .resume_cleanup import discard_candidate
+
 
 def prepare_effect_parents(
     attempt: _binding.CodingActivationAttemptV2,
@@ -500,20 +502,10 @@ async def prepare_continuation(
                         error.add_note(
                             f"Resume input identity delivery also failed: {observation_error!r}"
                         )
-        try:
-            if session is not None:
-                await session.dispose()
-            elif manager is not None:
-                await manager.dispose_runtime_profile()
-        except BaseException as cleanup_error:
-            error.add_note(
-                f"{_binding._RESUME_OPERATION_VALUES['value_008']}{cleanup_error!r}"
-            )
-            original_owner = session if session is not None else manager
-            assert original_owner is not None
-            raise _binding.retain_resume_cleanup_failure(
-                original_owner=original_owner,
-                original_error=error,
-                cleanup_error=cleanup_error,
-            ) from error
+        await discard_candidate(
+            session,
+            error,
+            manager=manager,
+            cleanup_note=_binding._RESUME_OPERATION_VALUES["value_008"],
+        )
         raise

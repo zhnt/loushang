@@ -101,6 +101,7 @@ from loushang.coding.harness.session.package_catalog import (
     prepare_catalog_refresh,
     prepare_fenced_catalog,
 )
+from loushang.coding.harness.session.resume_cleanup import discard_candidate
 from loushang.coding.harness.session.tool_selection import initial_tool_names
 from loushang.coding.harness.session.workspace_bootstrap import (
     bind_session_workspace,
@@ -169,7 +170,6 @@ from loushang.coding.resources.tool_authority import (
     CODING_LSP_EXACT_OWNER_TOOL_NAMES,
 )
 from loushang.coding.resources.tool_pack import coding_default_active_tool_names
-from loushang.coding.resume._cleanup import retain_resume_cleanup_failure
 from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
@@ -2035,13 +2035,9 @@ async def _create_resume_agent_session(
         return session
     except BaseException as error:
         if session is not None:
-            try:
-                await session.dispose()
-            except BaseException as cleanup_error:
-                error.add_note(f"Coding Resume candidate cleanup also failed: {cleanup_error!r}")
-                raise retain_resume_cleanup_failure(
-                    original_owner=session, original_error=error, cleanup_error=cleanup_error,
-                ) from error
+            await discard_candidate(
+                session, error, cleanup_note="Coding Resume candidate cleanup also failed: "
+            )
         else:
             _dispose_unbound_package_product_runtime(selected_factory, error)
         raise

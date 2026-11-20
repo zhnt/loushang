@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loushang.coding.harness.session import resume_cleanup
+
 if TYPE_CHECKING:
     from loushang.coding.session.agent_session import AgentSession
     from loushang.coding.session.manager import SessionManager
+
+_FENCE_FAILURE_NOTE = "Original Coding Resume factory fencing also failed: "
 
 
 class CodingResumeContinuationCleanupFailure(RuntimeError):
@@ -27,12 +31,7 @@ class CodingResumeContinuationCleanupFailure(RuntimeError):
         self.cleanup_error = cleanup_error
 
     async def retry_cleanup(self) -> None:
-        from loushang.coding.session.agent_session import AgentSession
-
-        if isinstance(self.original_owner, AgentSession):
-            await self.original_owner.dispose()
-        else:
-            await self.original_owner.dispose_runtime_profile()
+        await resume_cleanup.retry_owner(self.original_owner)
 
 
 def retain_resume_cleanup_failure(
@@ -41,13 +40,7 @@ def retain_resume_cleanup_failure(
 ) -> CodingResumeContinuationCleanupFailure:
     """Fence the admitting factory and retain that same owner for retry."""
 
-    from loushang.coding.session.agent_session import AgentSession
-
-    manager = original_owner._coding_session_manager if isinstance(original_owner, AgentSession) else original_owner
-    try:
-        type(manager)._factory_for_persistence(True).fence()
-    except BaseException as fence_error:
-        original_error.add_note(f"Original Coding Resume factory fencing also failed: {fence_error!r}")
+    resume_cleanup.fence_owner(original_owner, original_error)
     return CodingResumeContinuationCleanupFailure(
         original_owner=original_owner, original_error=original_error,
         cleanup_error=cleanup_error,

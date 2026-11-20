@@ -10,6 +10,8 @@ from typing import cast
 
 from loushang.coding.runtime import agent_session_runtime as _binding
 
+from .resume_cleanup import discard_candidate
+
 
 async def prepare_continuation(
     self: _binding.AgentSessionRuntime,
@@ -162,14 +164,7 @@ async def prepare_continuation(
         try:
             continuation.session.set_extension_runtime_host(self)
         except BaseException as error:
-            try:
-                await continuation.session.dispose()
-            except BaseException as cleanup_error:
-                raise _binding.retain_resume_cleanup_failure(
-                    original_owner=continuation.session,
-                    original_error=error,
-                    cleanup_error=cleanup_error,
-                ) from error
+            await discard_candidate(continuation.session, error)
             raise
         return continuation.session
 
