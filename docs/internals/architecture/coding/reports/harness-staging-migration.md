@@ -1291,6 +1291,44 @@ The comparison against the prior checkpoint matches 810 traces across all
 three writers, including historical IDs, strictness modes, partial failures
 and cleanup. Native Windows replay remains unverified.
 
+## Authorized Workspace And Prepared Plugin Binding
+
+The staged workspace startup owner now intersects the injected and delegated
+execution ceilings and binds the sandbox, process launcher and workspace
+provider to one authority. The existing sandbox and operation adapters still
+enforce the underlying native and workspace policies. Coding supplies its
+writable-workspace choice, provider identity and fingerprint namespace,
+diagnostics and the Session audit sink. The workspace provider's historical
+fingerprint encoding and startup guard before the audit sink has a Session
+remain the same.
+
+The same workspace binding now mounts the admitted combined builtin, separate
+capability, Base plugin and Base Product preparations through their existing
+owners. Combined builtin preparation retains precedence. Both the failure
+handoff and the distinction between the Product's LSP and Arch modes remain
+at the original boundaries. Coding retains the worker selection, tool
+conflict checks and deferred LSP configuration.
+
+This checkpoint removes 110 Product lines and adds 217 staging lines. The
+107-line production increase includes the typed boundary and original policy
+inputs. The mechanism bodies have one implementation each. The staged owner
+borrows the same Product sandbox and file-operation adapters and references
+existing plugin types for checking. The logical dependency graph keeps the
+same 1,661 module pairs. An exact comparison against the preceding local
+checkpoint matches 936 workspace authority and provider traces and 80 plugin
+binding traces, including injected failures and provider fingerprints. All 24
+composition authority and Catalog architecture checks pass, including the
+original one-workspace-provider assertion at the current owner.
+
+The full 126-case Linux run passes 117 cases, including sandbox and workspace
+operation checks, both Hosted Session cases and all three plugin lifecycle
+cases. The nine startup failures also fail at the same assertions on both
+unchanged `c7972f93d` and unchanged `df0dca779`. They cover legacy extension
+flags, tool interception and discovery, local skill and prompt discovery,
+and the ancestor `AGENTS.md` included in an exact prompt expectation. The
+comparison uses the same managed runtime and retains the failures in the
+reported result. Native Windows startup was not exercised.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

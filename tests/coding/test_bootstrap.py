@@ -960,10 +960,11 @@ def test_full_session_execution_changes_files_commands_and_processes_immediately
 def test_full_keeps_required_workspace_containment_at_bootstrap(tmp_path: Path, monkeypatch) -> None:
     import loushang.coding.composition.bootstrap as bootstrap
     from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.harness.session import workspace_bootstrap
     from loushang.coding.session.manager import SessionManager
     from loushang.harness.sandbox import SandboxSettings
 
-    original_bind = bootstrap.bind_coding_sandbox_runtime
+    original_bind = workspace_bootstrap.bind_coding_sandbox_runtime
     bindings = []
 
     def bind_with_test_backend(**kwargs):
@@ -972,7 +973,9 @@ def test_full_keeps_required_workspace_containment_at_bootstrap(tmp_path: Path, 
         bindings.append(kwargs)
         return original_bind(**{**kwargs, "settings": SandboxSettings()})
 
-    monkeypatch.setattr(bootstrap, "bind_coding_sandbox_runtime", bind_with_test_backend)
+    monkeypatch.setattr(
+        workspace_bootstrap, "bind_coding_sandbox_runtime", bind_with_test_backend
+    )
 
     async def scenario() -> None:
         workspace = tmp_path / "workspace"

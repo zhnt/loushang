@@ -74,12 +74,6 @@ from loushang.coding.composition.sets import (
     infer_coding_composition_set,
     resolve_coding_composition_set,
 )
-from loushang.coding.control.sandbox import (
-    CodingExecutionAuthority,
-    bind_coding_sandbox_runtime,
-    coding_host_execution_profile,
-    coding_workspace_execution_profile,
-)
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -97,6 +91,10 @@ from loushang.coding.harness.session.package_catalog import (
     prepare_fenced_catalog,
     prepare_initial_composition,
     prepare_refresh_composition,
+)
+from loushang.coding.harness.session.workspace_bootstrap import (
+    bind_session_workspace,
+    bind_workspace_plugins,
 )
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
@@ -166,15 +164,10 @@ from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
 from loushang.coding.session.manager import SessionManager
-from loushang.coding.workspace.operations import CodingWorkspaceOperations
 from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.approval import (
     InteractiveApprovalResolver,
     approval_actor_id,
-)
-from loushang.harness.authorization import (
-    EffectiveExecutionProfile,
-    constrain_execution_profile,
 )
 from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
@@ -188,9 +181,6 @@ from loushang.harness.capabilities.deferred_slot import (
     DeferredCapabilitySlot,
 )
 from loushang.harness.capabilities.tools import ToolSelection
-from loushang.harness.capabilities.workspace_provider import (
-    workspace_capability_provider_binding,
-)
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.types import StartupCheckResult
 from loushang.harness.environment import LocalHostEnvironmentProbe
@@ -266,12 +256,10 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginPlanSeed,
 )
 from loushang.harness.tools.core import ToolDefinition
-from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
-from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
 
 _SESSION_MANAGER_PLUGIN_OWNER_LOCK = threading.Lock()
 _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE = "_loushang_coding_plugin_owner_id"
@@ -1590,64 +1578,6 @@ def _create_agent_session(
                 catalog_generation=catalog_generation,
             )
 
-        base_exec_service = services.exec_service or ExecService()
-        workspace_root_path = Path(session_manager.get_cwd()).resolve()
-        workspace_execution_profile = (
-            coding_workspace_execution_profile(
-                workspace_root_path,
-                writable=sandbox_workspace_writable,
-            )
-            if workspace_root_path.is_dir()
-            else EffectiveExecutionProfile(
-                readable_roots=(workspace_root_path,),
-                writable_roots=(workspace_root_path,)
-                if sandbox_workspace_writable
-                else (),
-                network="allowed",
-            )
-        )
-        sandbox_settings = services.settings_manager.get_sandbox_settings()
-        execution_ceiling = (
-            workspace_execution_profile
-            if sandbox_settings.requirement == "required"
-            else coding_host_execution_profile(workspace_root_path, writable=sandbox_workspace_writable)
-        )
-        requested_profiles = (
-            getattr(base_exec_service, "execution_profile", None),
-            (
-                delegated_execution_profile.execution_profile_ceiling
-                if delegated_execution_profile is not None
-                else None
-            ),
-        )
-        for requested_profile in requested_profiles:
-            if requested_profile is None:
-                continue
-            if not isinstance(requested_profile, EffectiveExecutionProfile):
-                raise TypeError(
-                    "Coding workspace execution ceiling must be an "
-                    "EffectiveExecutionProfile"
-                )
-            execution_ceiling = constrain_execution_profile(
-                execution_ceiling,
-                requested_profile,
-            )
-        execution_authority = CodingExecutionAuthority(
-            workspace_root=workspace_root_path,
-            workspace_profile=workspace_execution_profile,
-            ceiling=execution_ceiling,
-            permission_snapshot=services.settings_manager.get_permission_profile_snapshot,
-        )
-        sandbox_runtime = bind_coding_sandbox_runtime(
-            workspace_root=session_manager.get_cwd(),
-            writable_workspace=sandbox_workspace_writable,
-            settings=sandbox_settings,
-            base_exec_service=base_exec_service,
-            diagnostics_service=services.diagnostics_service,
-            session_id=session_id,
-            execution_profile=execution_ceiling,
-            execution_profile_provider=execution_authority,
-        )
         process_session: AgentSession | None = None
 
         async def emit_process_audit_event(event: Mapping[str, object]) -> None:
@@ -1655,41 +1585,21 @@ def _create_agent_session(
                 raise RuntimeError("Coding workspace Session is not yet bound")
             await process_session.emit_product_tool_audit_event(event)
 
-        authorized_process_launcher = sandbox_runtime.bind_process_launcher(
-            ProcessExecutionScope(
-                policy_evaluator=tool_policy_evaluator,
-                approval_resolver=approval_resolver,
-                audit_sink=emit_process_audit_event,
-                execution_profile_ceiling=execution_ceiling,
-                execution_profile_provider=execution_authority,
-            )
-        )
-        workspace_root = str(workspace_root_path)
-        workspace_binding_fingerprint = hashlib.sha256(
-            "\0".join(
-                (
-                    "coding.workspace.standard.v1",
-                    *(str(path) for path in execution_ceiling.readable_roots),
-                    "--writable--",
-                    *(str(path) for path in execution_ceiling.writable_roots),
-                    "--denied--",
-                    *(str(path) for path in execution_ceiling.denied_roots),
-                    f"network:{execution_ceiling.network}",
-                )
-            ).encode("utf-8")
-        ).hexdigest()
-        workspace_binding = workspace_capability_provider_binding(
-            operations=CodingWorkspaceOperations(
-                root=workspace_root_path,
-                operations=LOCAL_TOOL_OPERATIONS,
-                execution_profile=execution_ceiling,
-                execution_profile_provider=execution_authority.for_workspace_operation,
-            ),
-            process_launcher=authorized_process_launcher,
-            scope_instance_id=f"workspace:{workspace_root}",
-            binding_input_fingerprint=workspace_binding_fingerprint,
+        sandbox_runtime, workspace_binding = bind_session_workspace(
+            services,
+            session_manager.get_cwd,
+            session_id=session_id,
+            writable_workspace=sandbox_workspace_writable,
+            delegated_execution_profile=delegated_execution_profile,
+            tool_policy_evaluator=tool_policy_evaluator,
+            approval_resolver=approval_resolver,
+            audit_sink=emit_process_audit_event,
             provider_id="coding.workspace.standard",
-            source_id="coding",
+            source_id=CODING_PRODUCT_ID,
+            fingerprint_namespace="coding.workspace.standard.v1",
+            ceiling_type_error=(
+                "Coding workspace execution ceiling must be an EffectiveExecutionProfile"
+            ),
         )
 
         capability_tool_modes = (
@@ -1705,39 +1615,19 @@ def _create_agent_session(
             if preparation_custody.preparation is not None
             else {}
         )
-        builtin_product_session = (
-            builtin_product_preparation.bind_workspace(
-                workspace_binding,
-                host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
-                tool_modes=capability_tool_modes,
-                clock=coding_plugin_clock,
-            )
-            if builtin_product_preparation is not None
-            else None
-        )
-        capability_plugin_assembly = (
-            builtin_product_session.capability_assembly
-            if builtin_product_session is not None
-            else preparation_custody.preparation.bind_workspace(
-                workspace_binding=workspace_binding,
-                host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
-                tool_modes=capability_tool_modes,
-                clock=coding_plugin_clock,
-            )
-            if preparation_custody.preparation is not None
-            else None
-        )
-        base_plugin_session_assembly = (
-            base_plugin_session_preparation.bind_workspace(workspace_binding)
-            if base_plugin_session_preparation is not None
-            else None
-        )
-        product_base_session_assembly = (
-            builtin_product_session.base_session
-            if builtin_product_session is not None
-            else product_base_compilation.bind_workspace(workspace_binding)
-            if product_base_compilation is not None
-            else None
+        (
+            capability_plugin_assembly,
+            base_plugin_session_assembly,
+            product_base_session_assembly,
+        ) = bind_workspace_plugins(
+            workspace_binding,
+            builtin_product_preparation=builtin_product_preparation,
+            capability_preparation=preparation_custody.preparation,
+            base_plugin_session_preparation=base_plugin_session_preparation,
+            product_base_compilation=product_base_compilation,
+            host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
+            tool_modes=capability_tool_modes,
+            clock=coding_plugin_clock,
         )
         worker_ordinary_binding = None
         if worker_candidate_plugin_id is not None:
