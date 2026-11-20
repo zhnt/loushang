@@ -38,7 +38,7 @@ from loushang.coding.plugin_manager.lifecycle import (
 from loushang.harness.config.agent._settings_codec import (
     CONTROL_CONFIG_CODEC as CONTROL_CONFIG_CODEC,
 )
-from loushang.harness.config.agent.types import ControlConfig
+from loushang.harness.config.agent.types import ControlConfig as ControlConfig
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
 )
@@ -46,24 +46,7 @@ from loushang.harness.plugin_management.current_preview import (
 _MAX_SETTINGS_BYTES = 1024 * 1024
 
 
-_RUNTIME_PROGRAM_VALUES = {
-    "value_001": "plugin_preview_product_not_fenced",
-    "value_002": "plugin_preview_settings_unavailable",
-    "value_003": "plugin_preview_settings_stale",
-    "value_004": "plugin_preview_owner_unavailable",
-    "value_005": "Plugin current preview requires a typed request",
-    "value_006": "plugin_preview_scope_mismatch",
-    "value_007": "plugin_preview_platform_unsupported",
-    "value_008": "plugin_preview_composition_invalid",
-    "value_009": "Plugin preview settings must be a JSON object",
-    "value_010": "Plugin preview settings have invalid fields",
-    "value_011": "Plugin preview settings file is unsafe",
-    "value_012": "Plugin preview settings file is too large",
-}
-
-_RUNTIME_PROGRAM_BYTES = {
-    "value_001": b"loushang.coding.preview.disabled-skills/v1\x00"
-}
+_DISABLED_SKILLS_REVISION_DOMAIN = b"loushang.coding.preview.disabled-skills/v1\x00"
 
 
 class CodingCurrentPreviewError(RuntimeError):
@@ -118,12 +101,6 @@ def _capture_disabled_skills(workspace: Path) -> tuple[tuple[str, ...], str]:
     """Apply the Product codec without a lock; hash only the relevant projection."""
 
     return _programs.capture_disabled_resource_settings(workspace)
-
-
-def _capture_preview_settings(workspace: Path) -> ControlConfig:
-    """Read only declared settings bytes for preview and CLI choice inference."""
-
-    return _programs.capture_preview_settings(workspace)
 
 
 def _read_settings_bytes(path: Path) -> bytes | None:

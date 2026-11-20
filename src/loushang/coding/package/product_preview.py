@@ -274,10 +274,6 @@ class CodingFencedProductReadOnlyPreviewOwner:
         self.close()
 
 
-def _require_existing_private_directory(path: Path) -> None:
-    return _programs.require_existing_private_directory(path)
-
-
 def _workspace_scope_id(workspace: Path) -> str:
     return (
         "workspace:"

@@ -16,7 +16,7 @@ def build_lifecycle(
     security_acceptances: _binding.PluginInstanceSecurityRetirementJournal | None,
 ) -> _binding.CodingPluginLifecycle:
     if not isinstance(layout, _binding.CodingPluginLifecycleStateLayout):
-        raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_001"])
+        raise TypeError(_binding._LAYOUT_REQUIRED)
     resolved_startup_id = startup_id or _binding._CODING_PLUGIN_RUNTIME_BOOT_ID
     owns_process_startup_lease = _binding._hold_process_startup_lease(
         layout,
@@ -98,7 +98,7 @@ def build_management_application(
     """Compose command/query ports without acquiring a Product runtime lease."""
 
     if not isinstance(layout, _binding.CodingPluginLifecycleStateLayout):
-        raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_001"])
+        raise TypeError(_binding._LAYOUT_REQUIRED)
     owns_process_startup_lease = (
         not read_only
         and (_binding.sys.platform.startswith("linux") or _binding.os.name == "nt")

@@ -131,6 +131,19 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
             "loushang.harness.resources._catalog_input_receipt.ResourceCatalogInputReceipt",
         },
     }
+    staged_session = Path("src/loushang/coding/harness/session")
+    input_receipt = "loushang.harness.resources._catalog_input_receipt"
+    for module in ("catalog_adapter.py", "catalog_preparation.py", "package_catalog.py"):
+        reviewed_catalog_imports[staged_session / module] = {
+            input_receipt,
+            f"{input_receipt}.ResourceCatalogInputReceipt",
+        }
+    records = "loushang.harness.resources._catalog_records"
+    reviewed_catalog_imports[staged_session / "runtime_selection.py"] = {
+        records,
+        f"{records}.ResourceCatalogSnapshot",
+        f"{records}.fingerprint_catalog_value",
+    }
     optional_consumers = {
         path
         for path in consumers

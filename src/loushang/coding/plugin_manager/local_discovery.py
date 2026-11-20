@@ -39,7 +39,7 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1 as PluginInstallationKeyV1,
 )
 from loushang.harness.plugin_management.records import (
-    PluginPackageRevisionRefV1,
+    PluginPackageRevisionRefV1 as PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
@@ -60,15 +60,11 @@ _MAX_ROWS = 500
 _FALLBACK_NAME = re.compile(r"[a-z][a-z0-9-]{0,127}\Z")
 
 
-_RUNTIME_PROGRAM_VALUES = {
-    "value_001": "coding",
-    "value_002": "Local discovery kind is invalid",
-    "value_003": "Local discovery source is invalid",
-    "value_004": "Local discovery limit is invalid",
-    "value_005": "Local discovery query is invalid",
-    "value_006": "legacy-local-reacquired",
-    "value_007": "legacy-local-reacquired-prompt",
-    "value_008": "legacy-local-reacquired-theme",
+_PRODUCT_ID = "coding"
+_LEGACY_RESOURCE_KINDS = {
+    "legacy-local-reacquired": "skill",
+    "legacy-local-reacquired-prompt": "prompt",
+    "legacy-local-reacquired-theme": "theme",
 }
 
 
@@ -138,19 +134,10 @@ def _matches_kind(row: dict[str, object], kind: LocalKind) -> bool:
     return isinstance(kinds, list) and kind in kinds
 
 
-def _read_inert_installed_kinds(
-    client: CodingPluginManagementReadClientV1,
-    revisions: dict[str, PluginPackageRevisionRefV1],
-) -> tuple[dict[str, tuple[str, ...]], dict[str, str], dict[str, str]]:
-    """Classify exact Product-bound data bytes regardless of Desired enablement."""
-
-    return _programs.read_inert_installed_kinds(client, revisions)
-
-
 def _blocked(code: str) -> dict[str, object]:
     return {
         "discoveryVersion": 1,
-        "productId": "coding",
+        "productId": _PRODUCT_ID,
         "scopeId": None,
         "disposition": "blocked",
         "sourceCompleteness": {"product": "blocked", "catalog": "blocked"},

@@ -20,13 +20,13 @@ def discover_local_plugins(
     """Read Product-declared sources and Catalog metadata without startup or repair."""
 
     if kind not in {"all", "plugin", "skill", "prompt", "theme"}:
-        raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_002"])
+        raise ValueError("Local discovery kind is invalid")
     if source not in {"all", "project_local", "user_global", "local", "builtin"}:
-        raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_003"])
+        raise ValueError("Local discovery source is invalid")
     if type(limit) is not int or not 1 <= limit <= _binding._MAX_ROWS:
-        raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_004"])
+        raise ValueError("Local discovery limit is invalid")
     if not isinstance(query, str) or len(query) > 128 or not query.isprintable():
-        raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_005"])
+        raise ValueError("Local discovery query is invalid")
     client.assert_workspace_current()
     workspace = client.workspace
     rows: list[dict[str, object]] = []
@@ -88,7 +88,7 @@ def discover_local_plugins(
                 except (TypeError, ValueError):
                     return _binding._blocked("local_discovery_scope_changed")
                 if (
-                    key.product_id != _binding._RUNTIME_PROGRAM_VALUES["value_001"]
+                    key.product_id != _binding._PRODUCT_ID
                     or key.installation_scope != "workspace"
                     or key.scope_id != client.scope_id
                 ):
@@ -177,7 +177,7 @@ def discover_local_plugins(
                 )
             try:
                 inert_kinds, inert_diagnostics, inert_evidence = (
-                    _binding._read_inert_installed_kinds(client, revisions_by_plugin)
+                    read_inert_installed_kinds(client, revisions_by_plugin)
                 )
             except (OSError, RuntimeError, ValueError):
                 inert_kinds = {}
@@ -239,7 +239,7 @@ def discover_local_plugins(
             source_policy=_binding.CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
         )
         catalog = adapter.prepare_bootstrap_projection_with_receipt(
-            product_id=_binding._RUNTIME_PROGRAM_VALUES["value_001"],
+            product_id=_binding._PRODUCT_ID,
             session_id="plugin-local-discovery",
             cwd=workspace,
         ).catalog
@@ -370,7 +370,7 @@ def discover_local_plugins(
     )
     return {
         "discoveryVersion": 1,
-        "productId": _binding._RUNTIME_PROGRAM_VALUES["value_001"],
+        "productId": _binding._PRODUCT_ID,
         "scopeId": client.scope_id,
         "disposition": disposition,
         "sourceCompleteness": completeness,
@@ -405,11 +405,6 @@ def read_inert_installed_kinds(
     kinds: dict[str, tuple[str, ...]] = {}
     diagnostics: dict[str, str] = {}
     evidence: dict[str, str] = {}
-    legacy = {
-        _binding._RUNTIME_PROGRAM_VALUES["value_006"]: "skill",
-        _binding._RUNTIME_PROGRAM_VALUES["value_007"]: "prompt",
-        _binding._RUNTIME_PROGRAM_VALUES["value_008"]: "theme",
-    }
     with _binding.CodingFencedProductReadOnlyPreviewOwner.open(
         client.layout, workspace_guard=client.assert_workspace_current
     ) as owner:
@@ -425,7 +420,9 @@ def read_inert_installed_kinds(
                 diagnostics[plugin_id] = "local_discovery_binding_unavailable"
                 continue
             binding = matches[0]
-            legacy_kind = legacy.get(binding.source_trust_class or "")
+            legacy_kind = _binding._LEGACY_RESOURCE_KINDS.get(
+                binding.source_trust_class or ""
+            )
             if legacy_kind is not None:
                 kinds[plugin_id] = (legacy_kind,)
                 evidence[plugin_id] = "product_binding"

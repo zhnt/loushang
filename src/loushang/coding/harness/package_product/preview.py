@@ -32,7 +32,7 @@ def open_preview(
             raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_003"])
         state_root = runtime.control_root / "product-state"
         source_root = runtime.control_root / "product-sources"
-        _binding._require_existing_private_directory(state_root)
+        require_existing_private_directory(state_root)
         base = _binding.inspect_posix_coding_base_product_wheel(source_root)
         capabilities = _binding.inspect_posix_coding_capability_product_wheels(
             source_root

@@ -1690,6 +1690,43 @@ actual Base, LSP and Arch owner paths and Harness revalidation after an
 asynchronous stage. The final LSP and Arch paths pass both rechecks.
 Native Windows execution remains unverified.
 
+## Preview And Membership Forwarding Cleanup
+
+Read-only Plugin preview and local discovery now call their staged settings
+and inert artifact readers directly. One staged workspace check and fence
+guard serve the three preview entries. The entries retain their original
+check order, error code and cause, settings revision hash, read-only
+Package owner and bounded regular-file checks. The historical preview
+import and the two externally exercised settings helpers remain available.
+
+The existing Harness Session membership policy invokes the staged holder
+codec via deferred callbacks. Direct module initialization exposed an
+import-order cycle, and the callbacks preserve the original late lookup.
+The staged decoder reuses its own owner-contribution validation. The
+historical holder prefix, canonical JSON, error identity and fail-closed
+treatment of unknown versions stay exact.
+
+The Product edge removes 80 physical Python lines, and staging removes
+eight more. The reduction comes from six retired private forwarders,
+repeated guards and indirect constant lookups. No production module is
+introduced. The dependency graph remains at 1,659 normalized pairs.
+Sixteen program bodies match after resolving the former wrappers and
+expanding shared guards. Seventy-two holder input cases match, including
+malformed and unknown-version evidence.
+
+An existing Catalog architecture assertion reproduces on the unchanged
+preceding commit. The inventory now records the exact existing private
+Catalog symbols already used by four staged Session modules. Imports of
+other private Catalog symbols at those four paths still fail the inventory.
+Test source gains 13 lines.
+
+The preview and discovery runtime run passes 56 cases and skips five
+platform cases. All 12 final Catalog architecture cases and all 69 lifecycle
+and lifecycle architecture cases pass. A concurrent focused run reports
+three subprocess handshake timeouts. All three cases pass in isolation
+against the final code with their original time limits. Native Windows
+execution remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

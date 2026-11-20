@@ -103,23 +103,14 @@ _CODING_PLUGIN_RUNTIME_BOOT_ID = secrets.token_hex(16)
 
 
 _RUNTIME_PROGRAM_VALUES = {
-    "value_001": "Coding Plugin lifecycle layout is required",
     "distribution_name": "loushang",
 }
 
 
-_MEMBERSHIP_PROGRAM_VALUES = {
-    "value_001": "Coding owner contributions must be a tuple",
-    "value_002": "Coding owner references must be unique",
-    "value_003": "Owner contribution ids must be non-empty strings",
-    "value_004": "invalid Session holder fields",
-    "value_005": "owners must be an array",
-    "value_006": "invalid owner entry",
-    "value_007": "Coding Session family owner evidence is invalid",
-    "value_008": "coding_plugin_session_owner_evidence_invalid",
-    "value_009": "Coding Plugin lifecycle layout is required",
-    "installation_scope": "workspace",
-}
+_PRODUCT_LABEL = "Coding"
+_LAYOUT_REQUIRED = "Coding Plugin lifecycle layout is required"
+_MEMBERSHIP_INSTALLATION_SCOPE = "workspace"
+_SESSION_OWNER_EVIDENCE_INVALID = "coding_plugin_session_owner_evidence_invalid"
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -346,37 +337,10 @@ def _lease_identity(
     ).hexdigest()
 
 
-def _normalize_owner_contributions(
-    values: tuple[tuple[str, tuple[str, ...]], ...],
-) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    return _membership_programs.normalize_owner_contributions(values)
-
-
 @dataclass(frozen=True, slots=True)
 class _CodingSessionHolderEvidence:
     startup_id: str
     owner_contributions: tuple[tuple[str, tuple[str, ...]], ...]
-
-
-def _session_holder_reference(
-    *,
-    session_id: str,
-    lease_attempt_id: str,
-    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
-    startup_id: str,
-) -> str:
-    return _membership_programs.encode_holder_reference(
-        session_id=session_id,
-        lease_attempt_id=lease_attempt_id,
-        owner_contributions=owner_contributions,
-        startup_id=startup_id,
-    )
-
-
-def _session_holder_evidence(
-    holder_reference: str,
-) -> _CodingSessionHolderEvidence | None:
-    return _membership_programs.decode_holder_evidence(holder_reference)
 
 
 def _startup_lease_path(
@@ -415,16 +379,12 @@ def _coding_membership_policy() -> _MembershipPolicy[CodingPluginLifecycleStateL
         ),
         activation_identity=_activation_identity,
         lease_identity=_lease_identity,
-        normalize_owners=_normalize_owner_contributions,
+        # The policy is initialized while either module may still be importing.
+        normalize_owners=lambda values: _membership_programs.normalize_owner_contributions(values),
         holder_reference=lambda session, attempt, owners, startup: (
-            _session_holder_reference(
-                session_id=session,
-                lease_attempt_id=attempt,
-                owner_contributions=owners,
-                startup_id=startup,
-            )
+            _membership_programs.encode_holder_reference(session, attempt, owners, startup)
         ),
-        holder_evidence=_session_holder_evidence,
+        holder_evidence=lambda reference: _membership_programs.decode_holder_evidence(reference),
         startup_path=lambda layout, startup: _startup_lease_path(
             layout, startup_id=startup
         ),

@@ -13,7 +13,9 @@ def normalize_owner_contributions(
     values: tuple[tuple[str, tuple[str, ...]], ...],
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
     if not isinstance(values, tuple):
-        raise TypeError(_binding._MEMBERSHIP_PROGRAM_VALUES["value_001"])
+        raise TypeError(
+            f"{_binding._PRODUCT_LABEL} owner contributions must be a tuple"
+        )
     normalized: list[tuple[str, tuple[str, ...]]] = []
     for owner_reference, contribution_ids in values:
         owner = _binding._nonempty(owner_reference, name="Owner reference")
@@ -25,17 +27,16 @@ def normalize_owner_contributions(
                 for item in contribution_ids
             )
         ):
-            raise ValueError(_binding._MEMBERSHIP_PROGRAM_VALUES["value_003"])
+            raise ValueError("Owner contribution ids must be non-empty strings")
         canonical_ids = tuple(sorted(set(contribution_ids)))
         normalized.append((owner, canonical_ids))
     canonical = tuple(sorted(normalized))
     if len({owner for owner, _items in canonical}) != len(canonical):
-        raise ValueError(_binding._MEMBERSHIP_PROGRAM_VALUES["value_002"])
+        raise ValueError(f"{_binding._PRODUCT_LABEL} owner references must be unique")
     return canonical
 
 
 def encode_holder_reference(
-    *,
     session_id: str,
     lease_attempt_id: str,
     owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
@@ -78,13 +79,13 @@ def decode_holder_evidence(
             "sessionId",
             "startupId",
         }:
-            raise ValueError(_binding._MEMBERSHIP_PROGRAM_VALUES["value_004"])
+            raise ValueError("invalid Session holder fields")
         _binding._nonempty(payload["leaseAttemptId"], name="Lease attempt id")
         _binding._nonempty(payload["sessionId"], name="Session id")
         startup_id = _binding._nonempty(payload["startupId"], name="Startup id")
         owners = payload["owners"]
         if not isinstance(owners, list):
-            raise ValueError(_binding._MEMBERSHIP_PROGRAM_VALUES["value_005"])
+            raise ValueError("owners must be an array")
         values = tuple(
             (
                 item["ownerReference"],
@@ -96,15 +97,15 @@ def decode_holder_evidence(
             and isinstance(item["contributionIds"], list)
         )
         if len(values) != len(owners):
-            raise ValueError(_binding._MEMBERSHIP_PROGRAM_VALUES["value_006"])
+            raise ValueError("invalid owner entry")
         return _binding._CodingSessionHolderEvidence(
             startup_id=startup_id,
-            owner_contributions=_binding._normalize_owner_contributions(values),
+            owner_contributions=normalize_owner_contributions(values),
         )
     except (TypeError, ValueError, _binding.json.JSONDecodeError) as exc:
         raise _binding.CodingPluginLifecycleError(
-            _binding._MEMBERSHIP_PROGRAM_VALUES["value_007"],
-            code=_binding._MEMBERSHIP_PROGRAM_VALUES["value_008"],
+            f"{_binding._PRODUCT_LABEL} Session family owner evidence is invalid",
+            code=_binding._SESSION_OWNER_EVIDENCE_INVALID,
         ) from exc
 
 
@@ -116,7 +117,7 @@ def project_enablement_compatibility(
     """Read Coding's derived downgrade view without exposing owner stores."""
 
     if not isinstance(layout, _binding.CodingPluginLifecycleStateLayout):
-        raise TypeError(_binding._MEMBERSHIP_PROGRAM_VALUES["value_009"])
+        raise TypeError(_binding._LAYOUT_REQUIRED)
     if _capture is None:
         with _binding._capture_existing_plugin_enablement_state(layout) as captured:
             if captured is None:
@@ -140,7 +141,7 @@ def project_enablement_compatibility(
         )
         if item.request.installation_key.product_id == _binding.CODING_PRODUCT_ID
         and item.request.installation_key.installation_scope
-        == _binding._MEMBERSHIP_PROGRAM_VALUES["installation_scope"]
+        == _binding._MEMBERSHIP_INSTALLATION_SCOPE
         and item.request.installation_key.scope_id == layout.scope_id
         and item.phase in {"compatibility_window", "finalized"}
     )
