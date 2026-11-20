@@ -1631,6 +1631,38 @@ Historical import aliases and nominal export identity also pass. The
 non-live Linux snapshot, offline CLI, plugin lifecycle and architecture
 run passes all 216 cases. Native Windows execution remains unverified.
 
+## Session Tool And Command Registration Generations
+
+The staged Session registration program prepares workspace Tool and
+standard Command packs, binds the Graph lifecycle, and retires the
+generation. Workspace facets still pass through the existing Harness
+process backend and revocable operation set. The Graph retains admission
+and publication authority. The existing Tool registration port, Command
+registry, and RegistrationScope still implement lease staging, publication,
+rollback and disposal. The Tool stage invalidates
+its captured operations before withdrawing registrations on failure.
+The retirement receipt still comes from the same live scope.
+
+Coding retains the exact selected catalog and identities, admitted workspace
+requirement, Product messages, and original nominal owner and generation
+types. Historical imports, fields, slots, and the original generation's
+commit fault seam remain in the Product module. The staged program
+temporarily borrows those Product bindings through a recorded import cycle.
+
+This batch removes 177 physical Python lines at the Product edge and adds
+225 in staging, for a net increase of 48. The increase keeps the original
+method entry points while introducing typed staging entry points. The
+existing source-location assertion points to the sole new Command staging
+and catalog site with no test line increase. Logical dependency
+normalization retains 1,659 pairs.
+
+All 16 focused Linux tests pass, including real Session publication, CLI
+settings, failures during Tool and Command staging, and a failure during
+the second owner commit. Controlled comparisons match 1,008 staging
+observations, and seven historical nominal contracts match. Windows
+environment selection and capture are exercised in Linux tests. Native
+Windows execution remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

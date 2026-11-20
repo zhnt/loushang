@@ -4530,10 +4530,10 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
     assert '"register_coding_builtin_tools",' not in tool_pack
     assert "peer_exact_tool_publisher" in coding_bootstrap
     assert set(command_stage_calls) == {
-        Path('src/loushang/coding/composition/base_owners.py')
+        Path("src/loushang/coding/harness/session/registration_generations.py")
     }
     assert set(standard_command_catalog_calls) == {
-        Path('src/loushang/coding/composition/base_owners.py')
+        Path("src/loushang/coding/harness/session/registration_generations.py")
     }
     owner_binding = Path(
         "src/loushang/coding/harness/session/owner_binding.py"
