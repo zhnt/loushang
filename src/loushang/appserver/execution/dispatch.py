@@ -48,7 +48,10 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             return await lookup(*args, call.resume_query)
         case ExecutionOperationV1.SUBMIT:
-            return await client.submit_execution(*args, cast(str, call.submission_id), cast(str, call.text))
+            submission = (*args, cast(str, call.submission_id), cast(str, call.text))
+            if call.resource_refs:
+                return await client.submit_execution(*submission, call.resource_refs)
+            return await client.submit_execution(*submission)
         case ExecutionOperationV1.GET:
             return await client.get_execution(*args, cast(str, call.execution_id))
         case ExecutionOperationV1.FIND:

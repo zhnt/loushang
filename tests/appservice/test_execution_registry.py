@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from loushang.appserver.execution.model import ResourceRefV1
 from loushang.appserver.protocol import AppErrorCodeV1, AppFailureV1, AppServiceError
 from loushang.appservice.execution_contract import ExecutionOutcomeV1
 from loushang.appservice.execution_contract import ExecutionStatusV1 as Status
@@ -56,6 +57,24 @@ async def test_duplicate_at_full_capacity_and_conflict_have_no_second_product_ef
     legacy = owner.submit(binding, "legacy", None)
     await owner.wait(binding, legacy)
     assert owner.reserved_ledger_bytes == RECORD_RESERVATION_BYTES
+    await owner.close_binding(binding)
+
+
+@scenario
+async def test_image_only_submission_digest_covers_resource_identity_and_content():
+    owner, product = registry(), FakeProduct(model=False)
+    product.require_resource_input = lambda _refs: None
+    binding = owner.bind(product)
+    refs = (ResourceRefV1("upload", "a" * 64),)
+    first = owner.submit(binding, "", "image", refs)
+    assert owner.submit(binding, "", "image", refs) == first
+    for other in (ResourceRefV1("different", "a" * 64), ResourceRefV1("upload", "b" * 64)):
+        with pytest.raises(ExecutionServiceErrorV1) as conflict:
+            owner.submit(binding, "", "image", (other,))
+        assert conflict.value.code is Code.SUBMISSION_CONFLICT
+    await product.entered.wait()
+    product.release.set()
+    await owner.wait(binding, first)
     await owner.close_binding(binding)
 
 

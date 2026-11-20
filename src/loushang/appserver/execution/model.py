@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
+from hashlib import sha256
 
 from ..protocol import (
     AckV1,
@@ -44,14 +47,43 @@ from .operation import ExecutionOperationV1, ExecutionStatusV1, InterruptModeV1
 
 
 @dataclass(frozen=True, slots=True)
+class ResourceRefV1:
+    id: str
+    sha256: str
+
+    def __post_init__(self) -> None:
+        _identifier(self.id)
+        if type(self.sha256) is not str or re.fullmatch(r"[a-f0-9]{64}", self.sha256) is None:
+            raise ValueError("invalid resource content digest")
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionInputV1:
+    text: str
+    resource_refs: tuple[ResourceRefV1, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (type(self.resource_refs) is not tuple or len(self.resource_refs) > 4
+                or any(type(ref) is not ResourceRefV1 for ref in self.resource_refs)
+                or len({ref.id for ref in self.resource_refs}) != len(self.resource_refs)):
+            raise ValueError("invalid execution resource references")
+        if self.text != "" or not self.resource_refs:
+            TurnTextV1("validation", 1, "validation", self.text)
+
+    def digest(self) -> str:
+        payload = [self.text, [[ref.id, ref.sha256] for ref in self.resource_refs]]
+        return sha256(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
 class ExecutionRequestV1:
     execution_id: str
     text: str
+    resource_refs: tuple[ResourceRefV1, ...] = ()
 
     def __post_init__(self) -> None:
         _identifier(self.execution_id)
-        # Preserve the existing text bounds without extending its wire shape.
-        TurnTextV1("validation", 1, "validation", self.text)
+        ExecutionInputV1(self.text, self.resource_refs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +335,7 @@ class ExecutionCallV1:
     goal_command: InteractiveGoalCommandV1 | None = None
     review_goal_id: str | None = None
     review_submission: InteractiveGoalReviewSubmissionV1 | None = None
+    resource_refs: tuple[ResourceRefV1, ...] = ()
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -335,7 +368,9 @@ class ExecutionCallV1:
         if self.execution_id is not None:
             _identifier(self.execution_id)
         if self.text is not None:
-            ExecutionRequestV1("validation", self.text)
+            ExecutionInputV1(self.text, self.resource_refs)
+        elif self.resource_refs:
+            raise ValueError("unexpected resource references")
         validate_goal_fields(self)
 
 @dataclass(frozen=True, slots=True)
@@ -388,7 +423,7 @@ __all__ = [
     "InteractiveGoalCommandViewV1", "InteractiveGoalObservedActionV1", "InteractiveGoalRecoveryV1",
     "InteractiveGoalReviewDecisionV1", "InteractiveGoalReviewSubmissionV1", "InteractiveGoalReviewV1",
     "InteractiveGoalViewV1", "is_review_path", "ExecutionStatusV1",
-    "InterruptModeV1", "ExecutionRequestV1", "ExecutionOutcomeV1",
+    "InterruptModeV1", "ExecutionRequestV1", "ExecutionOutcomeV1", "ExecutionInputV1", "ResourceRefV1",
     "ExecutionObservationV1", "ExecutionStateV1", "ExecutionSourceSnapshotV1",
     "ExecutionContentEventV1", "ExecutionUpdateV1", "ExecutionErrorCodeV1",
     "ExecutionServiceErrorV1", "ExecutionRecordV1", "ExecutionSessionViewV1",

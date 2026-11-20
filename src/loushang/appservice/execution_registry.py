@@ -13,11 +13,14 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from hashlib import sha256
 from secrets import token_hex
 
 from loushang.appserver.execution.model import (
     ExecutionErrorCodeV1 as ExecutionErrorCodeV1,
+)
+from loushang.appserver.execution.model import (
+    ExecutionInputV1,
+    ResourceRefV1,
 )
 from loushang.appserver.execution.model import (
     ExecutionRecordV1 as ExecutionRecordV1,
@@ -156,6 +159,7 @@ class ExecutionRegistryV1:
 
     def submit(
         self, binding: ExecutionBindingV1, text: str, submission_id: str | None,
+        resource_refs: tuple[ResourceRefV1, ...] = (),
     ) -> ExecutionRecordV1:
         """Caller validates current authority immediately before this no-await cut.
 
@@ -164,10 +168,10 @@ class ExecutionRegistryV1:
         """
         if self._closed or binding.closing:
             raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
-        ExecutionRequestV1("validation", text)
+        input = ExecutionInputV1(text, resource_refs)
         identity = binding.view.identity
         key = _canonical(identity)
-        digest = sha256(text.encode("utf-8")).hexdigest()
+        digest = input.digest()
         if submission_id is not None:
             _identifier(submission_id)
             prior = self._ledger.get((key, submission_id))
@@ -186,6 +190,11 @@ class ExecutionRegistryV1:
         require_ready = getattr(binding.port, "require_submission_ready", None)
         if require_ready is not None:
             require_ready()
+        if resource_refs:
+            require_resources = getattr(binding.port, "require_resource_input", None)
+            if require_resources is None:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            require_resources(resource_refs)
         self._sequence += 1
         execution_id = f"exec-{self._nonce}-{self._sequence}"
         record = ExecutionRecordV1(
@@ -197,7 +206,7 @@ class ExecutionRegistryV1:
 
         async def invoke() -> ExecutionOutcomeV1:
             await published
-            return await self._drive(invocation, text)
+            return await self._drive(invocation, input)
 
         operation = invoke()
         try:
@@ -300,12 +309,12 @@ class ExecutionRegistryV1:
     def fence(self) -> None:
         self._closed = True
 
-    async def _drive(self, invocation: _Invocation, text: str) -> ExecutionOutcomeV1:
+    async def _drive(self, invocation: _Invocation, input: ExecutionInputV1) -> ExecutionOutcomeV1:
         state, port = invocation.record.state, invocation.binding.port
         if state.interrupt_requested:
             return self._finish(invocation, ExecutionOutcomeV1(ExecutionStatusV1.INTERRUPTED))
         try:
-            port.start_execution(ExecutionRequestV1(state.execution_id, text))
+            port.start_execution(ExecutionRequestV1(state.execution_id, input.text, input.resource_refs))
         except Exception:
             return self._finish(invocation, ExecutionOutcomeV1(
                 ExecutionStatusV1.FAILED, "execution_start_failed",

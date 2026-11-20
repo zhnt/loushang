@@ -21,6 +21,7 @@ from .model import (
     ExecutionRecordV1,
     ExecutionSessionSnapshotV1,
     ExecutionUpdateV1,
+    ResourceRefV1,
 )
 
 _Send = Callable[[Callable[[str], ExecutionCallV1], type[object], bool, bool], Awaitable[object]]
@@ -60,6 +61,7 @@ class RemoteExecutionClientV1:
         self, operation: ExecutionOperationV1, control: SessionSnapshotRequestV1,
         expected_instance_id: str, *, submission_id: str | None = None,
         execution_id: str | None = None, text: str | None = None,
+        resource_refs: tuple[ResourceRefV1, ...] = (),
     ) -> object:
         result_type = {
             ExecutionOperationV1.SNAPSHOT: ExecutionSessionSnapshotV1,
@@ -68,10 +70,11 @@ class RemoteExecutionClientV1:
         }.get(operation, ExecutionRecordV1)
         # Validate before allocating a communication slot or request ID.
         ExecutionCallV1("validation", operation, control, expected_instance_id,
-                        submission_id, execution_id, text)
+                        submission_id, execution_id, text, resource_refs=resource_refs)
         result = await self._send(
             lambda request_id: ExecutionCallV1(request_id, operation, control,
-                                               expected_instance_id, submission_id, execution_id, text),
+                                               expected_instance_id, submission_id, execution_id, text,
+                                               resource_refs=resource_refs),
             result_type,
             operation in {ExecutionOperationV1.GET, ExecutionOperationV1.FIND, ExecutionOperationV1.INTERRUPT},
             operation is ExecutionOperationV1.FIND,
@@ -90,10 +93,11 @@ class RemoteExecutionClientV1:
 
     async def submit_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
-        submission_id: str, text: str,
+        submission_id: str, text: str, resource_refs: tuple[ResourceRefV1, ...] = (),
     ) -> ExecutionRecordV1:
         return cast(ExecutionRecordV1, await self._call(
-            ExecutionOperationV1.SUBMIT, control, expected_instance_id, submission_id=submission_id, text=text
+            ExecutionOperationV1.SUBMIT, control, expected_instance_id, submission_id=submission_id, text=text,
+            resource_refs=resource_refs
         ))
 
     async def get_execution(

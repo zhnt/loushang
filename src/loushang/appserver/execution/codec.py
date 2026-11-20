@@ -49,6 +49,7 @@ from .model import (
     ExecutionUpdateV1,
     InteractiveGoalCommandViewV1,
     InteractiveGoalViewV1,
+    ResourceRefV1,
     _identifier,
 )
 
@@ -59,6 +60,7 @@ EXECUTION_PROTOCOL_VERSION = "loushang.execution/v1"
 _FIELDS: dict[type, tuple[str, ...]] = {
     ResumeInputLookupQueryV1: ("input_id", "record_digest"),
     ResumeInputLookupResultV1: ("input_id", "record_id", "status"),
+    ResourceRefV1: ("id", "sha256"),
     AckV1: (), AppFailureV1: ("code",), ExecutionFailureV1: ("code",),
     SessionIdentityV1: ("product_id", "continuity_id", "session_id", "scope", "scope_fingerprint"),
     TranscriptRecordV1: ("kind", "text"),
@@ -210,6 +212,8 @@ def encode_call(call: ExecutionCallV1) -> bytes:
     encode_goal_fields(call, body, _encode)
     if call.text is not None:
         body["text"] = call.text
+    if call.resource_refs:
+        body["resourceRefs"] = _encode(call.resource_refs)
     if call.resume_query is not None:
         body["resumeQuery"] = _encode(call.resume_query)
     return _dumps({
@@ -238,6 +242,8 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP:
             fields.add("resumeQuery")
         raw = root["payload"]
+        if operation is ExecutionOperationV1.SUBMIT and type(raw) is dict and "resourceRefs" in raw:
+            fields.add("resourceRefs")
         include_batches = add_goal_fields(operation, raw, fields)
         body = _object(raw, fields)
         if include_batches and body["includeBatches"] is not True:
@@ -252,6 +258,8 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             cast(ResumeInputLookupQueryV1, _decode(ResumeInputLookupQueryV1, body["resumeQuery"]))
             if "resumeQuery" in fields else None,
             include_goal_batches=include_batches,
+            resource_refs=cast(tuple[ResourceRefV1, ...], _decode(tuple[ResourceRefV1, ...], body["resourceRefs"]))
+            if "resourceRefs" in fields else (),
             **decode_goal_fields(operation, body, _decode),
         )
     except (TypeError, ValueError, KeyError, RecursionError):
