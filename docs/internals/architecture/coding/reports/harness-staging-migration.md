@@ -1920,6 +1920,28 @@ fingerprints and public opener arguments. The non-live Linux route reports
 35 passing cases and one native Windows skip. Native Windows execution
 remains unverified.
 
+## Resume Plan Owner Input Reuse
+
+Plan construction and live owner-input comparison now share the same nominal
+type, order and uniqueness checks. Construction keeps its separate reference
+budget; live comparison still rejects changed observations after checking
+their shape. Background setup and async planning use the same Product
+declaration for subject and policy references.
+
+Both planning paths call the staged compiler directly. Unavailable history
+still skips Resource work, and compilation still compares the history after
+preview. The public builders, stale error and stored Plan identities keep
+their existing contracts. The current Writer remains responsible for actual
+admission, and each caller keeps its original order of source and input checks.
+
+The Product edge adds seven Python lines for its shared owner declaration.
+Staging removes seven lines, leaving the total unchanged. All 59 focused
+non-live Linux cases pass, including background cancellation, cache
+revalidation, Writer acquisition and Hosted Resume. Across 978 controlled
+comparisons, the Plan results, error precedence and synchronous Resource
+call order match the prior checkpoint. Normalized dependencies remain at
+1,659 pairs. Native Windows execution remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

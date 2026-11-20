@@ -6,9 +6,34 @@ explicit intermediate Code dependencies; no parallel state or effect owner.
 
 from __future__ import annotations
 
-from typing import Literal
+from collections.abc import Sequence
+from typing import Literal, TypeVar
 
 from loushang.coding.resume import activation_plan as _binding
+
+_RefT = TypeVar(
+    "_RefT", bound="_binding.ActivationOwnerInputRefV1 | _binding.ActivationOwnerSelectionRefV1"
+)
+
+
+def _checked_owner_refs(
+    refs: Sequence[_RefT],
+    ref_type: type[_RefT],
+    *,
+    type_error: str,
+    order_error: str,
+    budget_error: str | None = None,
+) -> tuple[_RefT, ...]:
+    items = tuple(refs)
+    if budget_error is not None and len(items) > _binding._ACTIVATION_PLAN_MAX_REFS:
+        raise ValueError(budget_error)
+    if any(not isinstance(item, ref_type) for item in items):
+        raise TypeError(type_error)
+    if items != tuple(sorted(items, key=lambda item: item.owner_id)) or len(
+        {item.owner_id for item in items}
+    ) != len(items):
+        raise ValueError(order_error)
+    return items
 
 
 def build_activation_plan(
@@ -16,33 +41,27 @@ def build_activation_plan(
     current_composition: _binding.CodingCompositionSetPlan,
     *,
     workspace_root: _binding.Path,
-    owner_inputs: _binding.Sequence[_binding.ActivationOwnerInputRefV1],
-    owner_selections: _binding.Sequence[_binding.ActivationOwnerSelectionRefV1],
+    owner_inputs: Sequence[_binding.ActivationOwnerInputRefV1] = (),
+    owner_selections: Sequence[_binding.ActivationOwnerSelectionRefV1] = (),
 ) -> _binding.SessionActivationPlanV1:
     """Aggregate historical facts and existing owner choices without effects."""
 
     _binding._require_plan_workspace_root(workspace_root)
-    inputs = tuple(owner_inputs)
-    if len(inputs) > _binding._ACTIVATION_PLAN_MAX_REFS:
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_001"])
-    if any(not isinstance(item, _binding.ActivationOwnerInputRefV1) for item in inputs):
-        raise TypeError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_002"])
-    if inputs != tuple(sorted(inputs, key=lambda item: item.owner_id)) or len(
-        {item.owner_id for item in inputs}
-    ) != len(inputs):
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_003"])
-    selections = tuple(owner_selections)
-    if len(selections) > _binding._ACTIVATION_PLAN_MAX_REFS:
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_004"])
-    if any(
-        not isinstance(item, _binding.ActivationOwnerSelectionRefV1)
-        for item in selections
-    ):
-        raise TypeError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_005"])
-    if selections != tuple(sorted(selections, key=lambda item: item.owner_id)) or len(
-        {item.owner_id for item in selections}
-    ) != len(selections):
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_006"])
+    errors = _binding._RESUME_PLAN_PROGRAM_VALUES
+    inputs = _checked_owner_refs(
+        owner_inputs,
+        _binding.ActivationOwnerInputRefV1,
+        type_error=errors["value_002"],
+        order_error=errors["value_003"],
+        budget_error=errors["value_001"],
+    )
+    selections = _checked_owner_refs(
+        owner_selections,
+        _binding.ActivationOwnerSelectionRefV1,
+        type_error=errors["value_005"],
+        order_error=errors["value_006"],
+        budget_error=errors["value_004"],
+    )
     comparison = _binding.compare_coding_resume_composition(
         history, current_composition
     )
@@ -172,29 +191,24 @@ def plan_resume(
     """
 
     _binding._require_plan_workspace_root(workspace_root)
+    inputs: tuple[_binding.ActivationOwnerInputRefV1, ...] = ()
     if (
         _binding.compare_coding_resume_composition(history, current_composition).status
-        == "unavailable"
+        != "unavailable"
     ):
-        return _binding.build_session_activation_plan(
-            history,
-            current_composition,
-            workspace_root=workspace_root,
+        receipt = resource_loader.preview_catalog_input_receipt(
+            workspace_root, work_probe=work_probe
         )
-    receipt = resource_loader.preview_catalog_input_receipt(
-        workspace_root,
-        work_probe=work_probe,
-    )
-    return _binding.build_session_activation_plan(
+        inputs = (
+            _binding.ActivationOwnerInputRefV1(
+                owner_id="resources.catalog", fingerprint=receipt.input_fingerprint
+            ),
+        )
+    return build_activation_plan(
         history,
         current_composition,
         workspace_root=workspace_root,
-        owner_inputs=(
-            _binding.ActivationOwnerInputRefV1(
-                owner_id="resources.catalog",
-                fingerprint=receipt.input_fingerprint,
-            ),
-        ),
+        owner_inputs=inputs,
     )
 
 
@@ -219,43 +233,27 @@ async def plan_resume_async(
     """
 
     _binding._require_plan_workspace_root(workspace_root)
-    domain_inputs = (
-        _binding.ActivationOwnerInputRefV1(
-            _binding._RESUME_PLAN_PROGRAM_VALUES["value_015"], policy_digest
-        ),
-        _binding.ActivationOwnerInputRefV1(
-            _binding._RESUME_PLAN_PROGRAM_VALUES["value_016"], subject_digest
-        ),
+    inputs = _binding._resume_domain_input_refs(
+        policy_digest=policy_digest, subject_digest=subject_digest
     )
     if (
         _binding.compare_coding_resume_composition(history, current_composition).status
-        == "unavailable"
+        != "unavailable"
     ):
-        return _binding.build_session_activation_plan(
-            history,
-            current_composition,
-            workspace_root=workspace_root,
-            owner_inputs=domain_inputs,
+        fingerprint = await resource_loader.preview_catalog_input_fingerprint(
+            workspace_root,
+            subject_digest=subject_digest,
+            policy_digest=policy_digest,
+            max_work_units=max_work_units,
+            time_budget_seconds=time_budget_seconds,
+            priority=priority,
         )
-    fingerprint = await resource_loader.preview_catalog_input_fingerprint(
-        workspace_root,
-        subject_digest=subject_digest,
-        policy_digest=policy_digest,
-        max_work_units=max_work_units,
-        time_budget_seconds=time_budget_seconds,
-        priority=priority,
-    )
-    return _binding.build_session_activation_plan(
+        inputs += (_binding.ActivationOwnerInputRefV1("resources.catalog", fingerprint),)
+    return build_activation_plan(
         history,
         current_composition,
         workspace_root=workspace_root,
-        owner_inputs=(
-            *domain_inputs,
-            _binding.ActivationOwnerInputRefV1(
-                "resources.catalog",
-                fingerprint,
-            ),
-        ),
+        owner_inputs=inputs,
     )
 
 
@@ -295,13 +293,12 @@ def require_current_plan_inputs(
 
     if not isinstance(plan, _binding.SessionActivationPlanV1):
         raise TypeError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_017"])
-    inputs = tuple(current_owner_inputs)
-    if any(not isinstance(item, _binding.ActivationOwnerInputRefV1) for item in inputs):
-        raise TypeError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_019"])
-    if inputs != tuple(sorted(inputs, key=lambda item: item.owner_id)) or len(
-        {item.owner_id for item in inputs}
-    ) != len(inputs):
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_020"])
+    inputs = _checked_owner_refs(
+        current_owner_inputs,
+        _binding.ActivationOwnerInputRefV1,
+        type_error=_binding._RESUME_PLAN_PROGRAM_VALUES["value_019"],
+        order_error=_binding._RESUME_PLAN_PROGRAM_VALUES["value_020"],
+    )
     if inputs != plan.owner_inputs:
         raise _binding.ResumePlanStaleError(
             _binding._RESUME_PLAN_PROGRAM_VALUES["value_021"]

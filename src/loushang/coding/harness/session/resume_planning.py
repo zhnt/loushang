@@ -6,6 +6,7 @@ explicit intermediate Code dependencies; no parallel state or effect owner.
 
 from __future__ import annotations
 
+from loushang.coding.resume.activation_plan import _resume_domain_input_refs
 from loushang.coding.runtime import resume_planning as _binding
 
 
@@ -32,13 +33,8 @@ async def start_planning(
         history,
         current_composition,
         workspace_root=workspace_root,
-        owner_inputs=(
-            _binding.ActivationOwnerInputRefV1(
-                _binding._CONTINUATION_PROGRAM_VALUES["value_005"], policy_digest
-            ),
-            _binding.ActivationOwnerInputRefV1(
-                _binding._CONTINUATION_PROGRAM_VALUES["value_006"], subject_digest
-            ),
+        owner_inputs=_resume_domain_input_refs(
+            policy_digest=policy_digest, subject_digest=subject_digest
         ),
     )
     if type(max_work_units) is not int or max_work_units < 1:

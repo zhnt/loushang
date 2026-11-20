@@ -43,6 +43,8 @@ _SOURCE_FINGERPRINT = re.compile(r"stat-v1:(?:[0-9]+:){4}[0-9]+\Z")
 
 _ACTIVATION_PLAN_MAX_REFS = 64
 _ACTIVATION_PLAN_MAX_BYTES = 32 * 1024
+_POLICY_INPUT_OWNER = "coding.policy"
+_SUBJECT_INPUT_OWNER = "coding.subject"
 
 
 _RESUME_PLAN_PROGRAM_VALUES = {
@@ -60,8 +62,6 @@ _RESUME_PLAN_PROGRAM_VALUES = {
     "value_012": "activation Plan exceeds its byte budget",
     "value_013": "activation Plan selected history facts differ",
     "value_014": "Coding activation Plan",
-    "value_015": "coding.policy",
-    "value_016": "coding.subject",
     "value_017": "invalid Coding activation Plan",
     "value_018": "Coding activation Plan source changed",
     "value_019": "Coding activation Plan owner inputs are invalid",
@@ -116,6 +116,15 @@ class ActivationOwnerInputRefV1:
             or _DIGEST.fullmatch(self.fingerprint) is None
         ):
             raise ValueError("activation input fingerprint is invalid")
+
+
+def _resume_domain_input_refs(
+    *, policy_digest: str, subject_digest: str
+) -> tuple[ActivationOwnerInputRefV1, ...]:
+    return (
+        ActivationOwnerInputRefV1(_POLICY_INPUT_OWNER, policy_digest),
+        ActivationOwnerInputRefV1(_SUBJECT_INPUT_OWNER, subject_digest),
+    )
 
 
 @dataclass(frozen=True, slots=True)

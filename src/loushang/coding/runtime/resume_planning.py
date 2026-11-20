@@ -36,8 +36,6 @@ _CONTINUATION_PROGRAM_VALUES = {
     "value_002": "invalid Resume planning work budget",
     "value_003": "invalid Resume planning time budget",
     "value_004": "Resume planning requires the original ResourceLoader",
-    "value_005": "coding.policy",
-    "value_006": "coding.subject",
 }
 
 
