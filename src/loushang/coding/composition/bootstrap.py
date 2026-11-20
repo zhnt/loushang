@@ -21,8 +21,6 @@ from loushang.coding.arch._provider_api import (
 )
 from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssembly,
-    prepare_coding_base_plugin_session,
-    prepare_coding_base_resource_plan_seed,
     prepare_managed_coding_base_plugin_assembly,
 )
 from loushang.coding.composition.base_plugin import (
@@ -97,6 +95,8 @@ from loushang.coding.harness.session.managed_plugin_preparation import (
 from loushang.coding.harness.session.package_catalog import (
     CatalogProductAuthority,
     prepare_fenced_catalog,
+    prepare_initial_composition,
+    prepare_refresh_composition,
 )
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
@@ -148,8 +148,6 @@ from loushang.coding.resources.catalog import (
     ResourceCatalogInputReceipt,
     build_coding_initial_resource_catalog_adapter,
     canonical_coding_resource_catalog_source_policy,
-    finalize_coding_package_plugin_plan_seed,
-    prepare_coding_package_plugin_plan_seed,
 )
 from loushang.coding.resources.runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -266,7 +264,6 @@ from loushang.harness.session.legacy_side_question import LegacySideQuestionBind
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
     ProductPluginPlanSeed,
-    assemble_product_composition,
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
@@ -1134,7 +1131,7 @@ def _create_agent_session(
 
     def prepare_capability_plugins(
         plan_seed: ProductPluginPlanSeed | None = None,
-    ) -> Any:
+    ) -> CodingCapabilityPluginCompositionPreparation | None:
 
         preparation_custody.begin_once(
             "Coding Capability Plugins were already prepared"
@@ -1204,6 +1201,11 @@ def _create_agent_session(
     catalog_product_composition_assembly = (
         initial_resource_catalog_product_composition_assembly
     )
+    include_configured_catalog_plugins = (
+        resolved_invocation_profile.include_configured_resource_plugins
+        if resolved_invocation_profile is not None
+        else resource_catalog_source_policy.include_package_resources
+    )
     selected_plugin_packages = (
         (
             SelectedPluginPackageInput(
@@ -1240,54 +1242,23 @@ def _create_agent_session(
             )
             else int(time.time())
         )
-        product_composition = None
-        plan_seed = prepare_coding_package_plugin_plan_seed(
-            receipt,
-            product_scope_id=session_id,
-            evaluated_at=evaluated_at,
-            plan_seed=(
-                coding_base_plugin_assembly.plan_seed
-                if coding_base_plugin_assembly is not None
-                else None
-            ),
-            include_configured_resource_plugins=(
-                resolved_invocation_profile.include_configured_resource_plugins
-                if resolved_invocation_profile is not None
-                else resource_catalog_source_policy.include_package_resources
-            ),
-        )
-        if coding_base_plugin_assembly is not None and plan_seed is None:
-            raise CodingResourceCatalogAdmissionError(
-                ("product_selected_package_missing",)
-            )
-        if catalog_product_composition_assembly is not None:
-            if eager_capability_plugins_enabled_for_session:
-                raise CodingResourceCatalogAdmissionError(("peer_product_compilation",))
-            product_composition = assemble_product_composition(
-                catalog_product_composition_assembly,
+        product_composition, base_plugin_session_preparation = (
+            prepare_initial_composition(
+                receipt,
+                session_id=session_id,
                 evaluated_at=evaluated_at,
+                base=coding_base_plugin_assembly,
+                supplied=catalog_product_composition_assembly,
+                include_configured=include_configured_catalog_plugins,
+                custody=preparation_custody,
+                prepare_capabilities=(
+                    prepare_capability_plugins
+                    if eager_capability_plugins_enabled_for_session
+                    else None
+                ),
+                admission_failure=CodingResourceCatalogAdmissionError,
             )
-        else:
-            if eager_capability_plugins_enabled_for_session:
-                preparation_custody.preparation = prepare_capability_plugins(plan_seed)
-                if preparation_custody.preparation is not None:
-                    product_composition = (
-                        preparation_custody.preparation.product_composition
-                    )
-            if coding_base_plugin_assembly is not None and (
-                not eager_capability_plugins_enabled_for_session
-                or preparation_custody.preparation is None
-            ):
-                assert plan_seed is not None
-                selection_seed = finalize_coding_package_plugin_plan_seed(plan_seed)
-                base_plugin_session_preparation = prepare_coding_base_plugin_session(
-                    coding_base_plugin_assembly,
-                    evaluated_at=evaluated_at,
-                    selection_seed=selection_seed,
-                )
-                product_composition = (
-                    base_plugin_session_preparation.product_composition
-                )
+        )
 
         compatibility_layout = resolve_coding_plugin_lifecycle_state_layout(
             resolved_cwd
@@ -1455,15 +1426,11 @@ def _create_agent_session(
         )
         compiled = prepared.authority.base
         external = prepared.authority.external
-        disabled_composition = None
-        if compiled is None:
-            disabled_composition = (
-                external.product_composition
-                if external is not None
-                else preparation_custody.preparation.product_composition
-                if preparation_custody.preparation is not None
-                else None
-            )
+        disabled_composition = (
+            prepared.authority.disabled_composition(preparation_custody.preparation)
+            if compiled is None
+            else None
+        )
         adapter, projection = _prepare_coding_catalog_projection(
             loader,
             cwd=resolved_cwd,
@@ -1572,55 +1539,18 @@ def _create_agent_session(
                     else int(time.time())
                 )
             )
-            product_composition = None
-            if product_base_compilation is not None:
-                product_composition = product_base_compilation.product_composition
-            elif product_base_disabled_selection is not None:
-                product_composition = (
-                    product_external_data_compilation.product_composition
-                    if product_external_data_compilation is not None
-                    else preparation_custody.preparation.product_composition
-                    if preparation_custody.preparation is not None
-                    else None
-                )
-            elif coding_base_plugin_assembly is not None:
-                base_resource_plan_seed = prepare_coding_base_resource_plan_seed(
-                    coding_base_plugin_assembly
-                )
-                resource_plan_seed = (
-                    prepare_coding_package_plugin_plan_seed(
-                        receipt,
-                        product_scope_id=session_id,
-                        evaluated_at=evaluated_at,
-                        plan_seed=base_resource_plan_seed,
-                        include_configured_resource_plugins=(
-                            resolved_invocation_profile.include_configured_resource_plugins
-                            if resolved_invocation_profile is not None
-                            else resource_catalog_source_policy.include_package_resources
-                        ),
-                    )
-                    if base_resource_plan_seed is not None
-                    else None
-                )
-                if resource_plan_seed is None:
-                    if resource_catalog_source_policy.include_package_resources:
-                        raise CodingResourceCatalogAdmissionError(
-                            ("product_selected_package_missing",)
-                        )
-                else:
-                    resource_selection_seed = finalize_coding_package_plugin_plan_seed(
-                        resource_plan_seed
-                    )
-                    product_composition = prepare_coding_base_plugin_session(
-                        coding_base_plugin_assembly,
-                        evaluated_at=evaluated_at,
-                        selection_seed=resource_selection_seed,
-                    ).product_composition
-            elif catalog_product_composition_assembly is not None:
-                product_composition = assemble_product_composition(
-                    catalog_product_composition_assembly,
-                    evaluated_at=evaluated_at,
-                )
+            product_composition = prepare_refresh_composition(
+                receipt,
+                session_id=session_id,
+                evaluated_at=evaluated_at,
+                authority=catalog_authority,
+                base=coding_base_plugin_assembly,
+                supplied=catalog_product_composition_assembly,
+                preparation=preparation_custody.preparation,
+                include_configured=include_configured_catalog_plugins,
+                require_resource_seed=resource_catalog_source_policy.include_package_resources,
+                admission_failure=CodingResourceCatalogAdmissionError,
+            )
             adapter, refreshed_bundle = _prepare_coding_catalog_projection(
                 services.resource_loader,
                 cwd=resolved_cwd,

@@ -1218,6 +1218,24 @@ startup and fault-injection traces and 164 managed configuration traces,
 including failure precedence and cleanup. Ruff, mypy and documentation
 checks pass.
 
+## Initial And Refreshed Catalog Composition
+
+The same Package Catalog owner now prepares the initial ordinary composition
+and its refresh. Both use the existing Base assembly and Harness custom
+composition owner. Initial startup still finishes an admitted plugin plan,
+while refresh uses the resource-only plan or the retained fenced composition.
+Each keeps its original missing-plan behavior and effect order. Coding still
+chooses the Product policy, reconciles historical source configuration, and
+projects the prepared Catalog onto the Session adapter.
+
+This batch removes 70 lines at the Coding edge and adds 119 in staging, for
+a production increase of 49 lines. The staged owner temporarily borrows the
+original Base plans and the explicit Product Catalog input. All 60 affected
+Catalog, Hosted Session, plugin lifecycle and architecture cases pass. The
+two existing Hosted timing probes now instrument the moved compiler at its
+actual call site. An exact comparison matches 2,848 initial and refresh
+composition traces, including failure precedence and root custody.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

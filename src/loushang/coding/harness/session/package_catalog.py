@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loushang.coding.composition.base_plugin import (
+    CodingBasePluginAssembly,
+    CodingBasePluginSessionPreparation,
+    prepare_coding_base_plugin_session,
+    prepare_coding_base_resource_plan_seed,
+)
 from loushang.coding.composition.base_product import (
     CodingBaseProductCompilation,
     extend_coding_base_product_data_resources,
@@ -25,6 +31,13 @@ from loushang.coding.composition.product_capability_plugins import (
     prepare_coding_product_capability_plugin_composition,
 )
 from loushang.coding.composition.sets import CodingCompositionSetPlan
+from loushang.coding.resources.catalog import (
+    finalize_coding_package_plugin_plan_seed,
+    prepare_coding_package_plugin_plan_seed,
+)
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionCompilation,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
@@ -41,6 +54,11 @@ from loushang.harness.resources._catalog_input_receipt import (
 )
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.session.bootstrap_construction import PreparationRootCustody
+from loushang.harness.session.product_composition_assembly import (
+    ProductCompositionAssemblyRequest,
+    ProductPluginPlanSeed,
+    assemble_product_composition,
+)
 
 from .catalog_preparation import (
     _AdmissionFailure,
@@ -64,6 +82,13 @@ class CatalogProductAuthority:
     external: CodingExternalDataProductCompilation | None
     base: CodingBaseProductCompilation | None
     product_label: str
+
+    def disabled_composition(
+        self, preparation: CodingCapabilityPluginCompositionPreparation | None
+    ) -> ProductCompositionCompilation | None:
+        if self.external is not None:
+            return self.external.product_composition
+        return preparation.product_composition if preparation is not None else None
 
     def _require_runtime(self, role: str) -> PackageProductRuntimeBindingV1:
         if self.runtime is None:
@@ -262,3 +287,97 @@ def prepare_fenced_catalog(
         evaluated_at,
         builtin,
     )
+
+
+def _bind_base_catalog_plan(
+    base: CodingBasePluginAssembly, seed: ProductPluginPlanSeed, evaluated_at: int
+) -> CodingBasePluginSessionPreparation:
+    return prepare_coding_base_plugin_session(
+        base,
+        evaluated_at=evaluated_at,
+        selection_seed=finalize_coding_package_plugin_plan_seed(seed),
+    )
+
+
+def prepare_initial_composition(
+    receipt: ResourceCatalogInputReceipt,
+    *,
+    session_id: str,
+    evaluated_at: int,
+    base: CodingBasePluginAssembly | None,
+    supplied: ProductCompositionAssemblyRequest | None,
+    include_configured: bool,
+    custody: PreparationRootCustody[CodingCapabilityPluginCompositionPreparation],
+    prepare_capabilities: Callable[
+        [ProductPluginPlanSeed | None],
+        CodingCapabilityPluginCompositionPreparation | None,
+    ]
+    | None,
+    admission_failure: _AdmissionFailure,
+) -> tuple[
+    ProductCompositionCompilation | None, CodingBasePluginSessionPreparation | None
+]:
+    seed = prepare_coding_package_plugin_plan_seed(
+        receipt,
+        product_scope_id=session_id,
+        evaluated_at=evaluated_at,
+        plan_seed=base.plan_seed if base is not None else None,
+        include_configured_resource_plugins=include_configured,
+    )
+    if base is not None and seed is None:
+        raise admission_failure(("product_selected_package_missing",))
+    if supplied is not None:
+        if prepare_capabilities is not None:
+            raise admission_failure(("peer_product_compilation",))
+        return assemble_product_composition(supplied, evaluated_at=evaluated_at), None
+    if prepare_capabilities is not None:
+        custody.preparation = prepare_capabilities(seed)
+        if custody.preparation is not None:
+            return custody.preparation.product_composition, None
+    if base is None:
+        return None, None
+    assert seed is not None
+    prepared = _bind_base_catalog_plan(base, seed, evaluated_at)
+    return prepared.product_composition, prepared
+
+
+def prepare_refresh_composition(
+    receipt: ResourceCatalogInputReceipt,
+    *,
+    session_id: str,
+    evaluated_at: int,
+    authority: CatalogProductAuthority,
+    base: CodingBasePluginAssembly | None,
+    supplied: ProductCompositionAssemblyRequest | None,
+    preparation: CodingCapabilityPluginCompositionPreparation | None,
+    include_configured: bool,
+    require_resource_seed: bool,
+    admission_failure: _AdmissionFailure,
+) -> ProductCompositionCompilation | None:
+    if authority.base is not None:
+        return authority.base.product_composition
+    if authority.disabled_base is not None:
+        return authority.disabled_composition(preparation)
+    if base is None:
+        return (
+            assemble_product_composition(supplied, evaluated_at=evaluated_at)
+            if supplied is not None
+            else None
+        )
+    resource_seed = prepare_coding_base_resource_plan_seed(base)
+    seed = (
+        prepare_coding_package_plugin_plan_seed(
+            receipt,
+            product_scope_id=session_id,
+            evaluated_at=evaluated_at,
+            plan_seed=resource_seed,
+            include_configured_resource_plugins=include_configured,
+        )
+        if resource_seed is not None
+        else None
+    )
+    if seed is not None:
+        return _bind_base_catalog_plan(base, seed, evaluated_at).product_composition
+    if require_resource_seed:
+        raise admission_failure(("product_selected_package_missing",))
+    return None
