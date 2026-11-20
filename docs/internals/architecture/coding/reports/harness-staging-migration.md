@@ -2245,6 +2245,29 @@ handoff. All 924 controlled cases match original ownership, cleanup order,
 fence behavior and error chains, including cancellation and failures during
 retry. Native Windows verification remains open.
 
+## Explicit Worker Query And Existing Receipt Custody
+
+The explicit POSIX Worker query keeps Product and symbol admission at its
+original Coding entry. Staging resolves the selected transcript, loads the
+existing Session, creates its Package Product runtime and opens the selected
+receipt through the native receipt owner. The existing Harness operation
+executes the query and settles Worker, Hosting, C5 and Runtime custody.
+Coding continues to supply the query Capability, Provider selection and
+query-only Session configuration.
+
+Receipt history, payload materialization and payload repair already execute
+through the existing Harness `ReceiptHistory`, native receipt authority
+and `PosixProductWorkerPayloadCustody`. Coding binds the original records,
+codec, selected policy and compatibility aliases. The payload probes use
+the original private debt-verification and remainder hooks.
+
+Coding Product removes 49 Python lines and staging adds 96, for 47 net
+production lines. The 1,344 controlled comparisons match original
+validation, acquisition order, receipt outcomes and exception causes.
+The selected Linux run has 19 passes, including the existing receipt and
+payload coverage and architecture guards. The host-runtime query route
+is skipped under the local selectors.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

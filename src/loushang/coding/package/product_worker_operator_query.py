@@ -6,7 +6,6 @@ creates a transcript, invokes a model, or changes ordinary Session routing.
 
 from __future__ import annotations
 
-import secrets
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -15,6 +14,7 @@ from typing import ClassVar, NoReturn, cast
 
 from loushang.agent import Agent
 from loushang.ai.model import Capabilities, Model
+from loushang.coding.harness.worker import operator_query
 from loushang.coding.package.worker_preparation_inputs import (
     CodingWorkerProductReceiptOwner,
 )
@@ -29,18 +29,12 @@ from loushang.harness.capabilities.provider_admission import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeBindingV1,
-    PackageProductRuntimeRequestV1,
-)
 from loushang.harness.runtime import RuntimeProfileResolver
 from loushang.harness.session import AgentProductSession
-from loushang.harness.session._worker_operator_query import _query_selected_worker_once
 from loushang.harness.session._worker_provider import _QueryAuthority
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
-from loushang.harness.transcript import AgentTranscriptDirectoryRuntime
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
     CapabilityWorkerAdmissionV1,
@@ -67,11 +61,16 @@ from .product_worker_query_consumer import (
     coding_worker_query_owner_authority,
     validate_coding_worker_query_symbol,
 )
-from .product_worker_receipt import open_coding_product_selected_worker_receipt_owner
 from .product_worker_session_composition import (
     _WORKER_SESSION_COMPOSITION,
     prepare_coding_product_worker_session_inputs,
 )
+
+_QUERY_PRODUCT_ID = "coding"
+_QUERY_ERROR_PREFIX = "coding_worker_query"
+_QUERY_RUNTIME_PREFIX = "worker-query-"
+_QUERY_CORRELATION_ID = "coding-product-worker-query"
+_QUERY_CLEANUP_NOTE = "Coding Worker query C5 cleanup also failed: "
 
 
 class CodingWorkerOperatorQueryError(RuntimeError):
@@ -181,7 +180,7 @@ class _CodingOperatorQueryPolicy:
         self, inputs: SessionCapabilityCompositionInputs
     ) -> AgentProductSession:
         profile_plan = RuntimeProfileResolver().resolve(
-            standard_capability_composition_plan(product_id="coding")
+            standard_capability_composition_plan(product_id=_QUERY_PRODUCT_ID)
         )
         return AgentProductSession(
             agent=Agent(
@@ -217,32 +216,6 @@ class _CodingOperatorQueryPolicy:
         return bind_coding_worker_query_consumer(session).query(symbol=symbol)
 
 
-def _open_coding_operator_query(
-    *,
-    product: PosixLocalWheelProductSessionOwner,
-    runtime: PackageProductRuntimeBindingV1,
-    plugin_id: str,
-    session_file: Path,
-    manager: SessionManager,
-) -> tuple[CodingWorkerProductReceiptOwner, _CodingOperatorQueryPolicy] | None:
-    receipt_owner = open_coding_product_selected_worker_receipt_owner(
-        product_owner=product,
-        runtime=runtime,
-        plugin_id=plugin_id,
-        transcript_directory=AgentTranscriptDirectoryRuntime(
-            session_dir=session_file.parent
-        ),
-        session_manager=manager,
-    )
-    receipt = receipt_owner.issue()
-    if receipt is None:
-        return None
-    return (
-        receipt_owner,
-        _CodingOperatorQueryPolicy(receipt_owner, receipt, plugin_id, manager),
-    )
-
-
 async def query_coding_product_worker(
     *,
     product: PosixLocalWheelProductSessionOwner,
@@ -261,34 +234,12 @@ async def query_coding_product_worker(
         raise CodingWorkerOperatorQueryError(
             "coding_worker_query_symbol_invalid"
         ) from exc
-    if session_file.is_symlink() or not session_file.is_file():
-        raise CodingWorkerOperatorQueryError("coding_worker_query_session_unavailable")
-    session_file = session_file.resolve(strict=True)
-    manager = await SessionManager.load(session_file)
-    session_id = manager.get_header().conversation_id
-    runtime = product.factory_for_session(
-        session_id=session_id,
-        cwd=workspace,
-        runtime_id=f"worker-query-{secrets.token_hex(16)}",
-    ).create(
-        PackageProductRuntimeRequestV1(
-            product_id="coding", session_id=session_id, cwd=str(workspace)
-        )
-    )
-    return await _query_selected_worker_once(
-        runtime=runtime,
-        open_query=lambda: _open_coding_operator_query(
-            product=product,
-            runtime=runtime,
-            plugin_id=plugin_id,
-            session_file=session_file,
-            manager=manager,
-        ),
+    return await operator_query.query_selected_worker(
+        product=product,
+        workspace=workspace,
+        plugin_id=plugin_id,
+        session_file=session_file,
         symbol=symbol,
-        failure=CodingWorkerOperatorQueryError,
-        error_prefix="coding_worker_query",
-        correlation_id="coding-product-worker-query",
-        cleanup_note="Coding Worker query C5 cleanup also failed: ",
     )
 
 
