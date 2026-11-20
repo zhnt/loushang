@@ -20,6 +20,7 @@ from loushang.coding.composition.dependency_grants import (
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.harness.session import plugin_preparation as _preparation_programs
+from loushang.coding.harness.session import plugin_resume as _resume_effects
 from loushang.coding.harness.session.registration_authority import (
     bind_selected_registration_authority,
 )
@@ -138,6 +139,9 @@ _DEFAULT_APPROVAL_TTL_MS = 300_000
 _DEFAULT_DEFINITION_ENTRYPOINT = "definition.py:declare"
 _PLUGIN_IDS = CODING_CAPABILITY_PLUGIN_IDS
 _FAILURE_CUSTODIAN_ATTRIBUTE = "_coding_capability_plugin_cleanup_custodian"
+_RESUME_PLUGIN_LABEL = "Coding Resume Plugin"
+_DEFINITION_DECISIONS_FILENAME = "definition-decisions.jsonl"
+_ACTIVATION_DECISIONS_FILENAME = "activation-decisions.jsonl"
 
 
 _PLUGIN_PREPARATION_PROGRAM_VALUES = {
@@ -149,13 +153,6 @@ _PLUGIN_PREPARATION_PROGRAM_VALUES = {
     "value_006": "Coding Capability Plugins require a common lifecycle",
     "value_007": "No requested Coding Capability Plugin is management-enabled.",
     "value_008": "coding_capability_plugins_management_disabled",
-    "value_009": "Coding Resume Plugin settlement requires an exact v2 intent",
-    "value_010": "Coding Resume Plugin settlement requires a current receipt",
-    "value_011": "input.effect_owner_set_unsupported",
-    "value_012": "input.effect_settlement_unknown",
-    "value_013": "invalid current revision receipt",
-    "value_014": "invalid current revision identity",
-    "value_015": "current revision receipt changed",
 }
 
 
@@ -232,27 +229,9 @@ class CodingResumePluginParents(_PluginResumeParentMethods):
     def _journals(
         self, *, session_id: str, state_root: Path, clock: Callable[[], int]
     ) -> tuple[PluginExecutionDecisionJournal, PluginActivationDecisionJournal]:
-        if self.definition.session_id != session_id:
-            raise ValueError("Coding Resume Plugin parents belong to another Session")
-        scope_id = f"session:{session_id}"
-        definition = PluginExecutionDecisionJournal(
-            state_root / "definition-decisions.jsonl",
-            scope_kind="workspace",
-            scope_id=scope_id,
-            clock=clock,
-            required_writer_capabilities=frozenset(
-                {"harness.plugin-execution.resume-context/v1"}
-            ),
+        return _resume_effects.journals_for_parents(
+            self, session_id=session_id, state_root=state_root, clock=clock
         )
-        activation = PluginActivationDecisionJournal(
-            state_root / "activation-decisions.jsonl",
-            scope_id=scope_id,
-            clock=clock,
-            required_writer_capabilities=frozenset(
-                {"harness.plugin-activation.resume-context/v1"}
-            ),
-        )
-        return definition, activation
 
     def _sealed_parent_error(
         self, *, definition: bool
@@ -273,38 +252,8 @@ def prepare_coding_resume_plugin_effect_owners(
 ) -> tuple[CodingResumeEffectOwnerV1, ...]:
     """Freeze the two original Plugin journal lookup obligations without I/O."""
 
-    if not isinstance(session_id, str) or not session_id.strip():
-        raise ValueError("Coding Resume Plugin owner Session id is invalid")
-    if not isinstance(state_root, Path) or not state_root.is_absolute():
-        raise ValueError("Coding Resume Plugin owner state root is invalid")
-    scope_id = f"session:{session_id}"
-    definition = PluginExecutionDecisionJournal(
-        state_root / "definition-decisions.jsonl",
-        scope_kind="workspace",
-        scope_id=scope_id,
-    )
-    activation = PluginActivationDecisionJournal(
-        state_root / "activation-decisions.jsonl",
-        scope_id=scope_id,
-    )
-    return tuple(
-        sorted(
-            (
-                CodingResumeEffectOwnerV1(
-                    "harness.plugin-execution",
-                    definition.resume_parent_scope_digest(product_id=CODING_PRODUCT_ID),
-                    definition.resume_parent_contract_digest,
-                    ("declaration",),
-                ),
-                CodingResumeEffectOwnerV1(
-                    "harness.plugin-activation",
-                    activation.resume_parent_scope_digest(product_id=CODING_PRODUCT_ID),
-                    activation.resume_parent_contract_digest,
-                    ("activation",),
-                ),
-            ),
-            key=lambda owner: owner.identity,
-        )
+    return _resume_effects.prepare_effect_owners(
+        session_id=session_id, state_root=state_root, product_id=CODING_PRODUCT_ID
     )
 
 
@@ -325,12 +274,13 @@ def require_coding_resume_plugin_effect_settlement(
     names the current Product-selected first-party package revisions.
     """
 
-    return _preparation_programs.require_resume_effect_settlement(
+    return _resume_effects.require_resume_effect_settlement(
         attempt,
         receipt,
         state_root=state_root,
         clock=clock,
         allowed_external_owner_ids=allowed_external_owner_ids,
+        capability_plugin_ids=CODING_CAPABILITY_PLUGIN_IDS,
     )
 
 
@@ -939,7 +889,7 @@ def _approve_activation_and_bind_inputs(
     component_host = CapabilityComponentHost.from_product_selection(
         selection,
         provider_authorities=provider_authorities,
-        journal_path=state_root / "activation-decisions.jsonl",
+        journal_path=state_root / _ACTIVATION_DECISIONS_FILENAME,
         scope_id=scope_id,
         host_boot_id=host_boot_id,
         clock=clock,
@@ -1003,7 +953,7 @@ def _finalize_selection(
         seed.packages,
         bindings=seed.bindings,
         plan=seed.plan,
-        journal_path=state_root / "definition-decisions.jsonl",
+        journal_path=state_root / _DEFINITION_DECISIONS_FILENAME,
         scope_kind="workspace",
         scope_id=scope_id,
         clock=clock,

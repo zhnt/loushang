@@ -2120,6 +2120,32 @@ continuation and history. The 4,176 controlled comparisons match the previous
 checkpoint's request evidence, authority observations and failure order.
 Native Windows verification remains open.
 
+## Resume Plugin Effect Settlement
+
+Embedded and Hosted Resume freeze the same pair of Plugin effect owners
+through staging. The parent pair and owner preparation share construction
+of the original Definition and Activation journals. Preparing owner facts
+leaves the native clock and Writer requirements at their defaults and
+performs no journal I/O. Existing Harness parent enrollment, open checks
+and sealing still use the scoped journal paths, explicit clock and original
+Writer protocol requirements.
+
+First-input settlement shares the exact effect-owner and effect-class guard
+for both routes. The active route observes Definition before Activation and
+matches the original sealed records to selected Plugin revisions. The
+no-Plugin route verifies the expected set and absence of selected Capability
+Plugins without opening either journal. Coding supplies the Capability Plugin ids,
+Product identity and journal names, and keeps the parent type, diagnostics
+and legacy Embedded aliases. The staged journal route retains its explicit
+Product binding, including the original constructors used for fault injection.
+
+Coding Product removes 56 Python lines and staging gains 117 for 61 net
+production lines. The addition covers the shared constructor options,
+nominal entry points and an explicitly bound Product policy. All 75 selected
+Linux cases pass, including first input and native Worker settlement.
+Across 12,369 controlled comparisons the original results, failure causes
+and call order match. Native Windows verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
