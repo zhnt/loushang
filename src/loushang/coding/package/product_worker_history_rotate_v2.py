@@ -17,8 +17,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 
 from .product_worker_history_retention import _history_proof_bindings
 
-_MAX_SEGMENT_BYTES = 32 * 1024 * 1024
-
 
 class CodingWorkerV2SealError(RuntimeError):
     def __init__(self, code: str) -> None:
@@ -41,7 +39,6 @@ def seal_coding_product_worker_v1_history_for_v2(
         _history_proof_bindings(),
         product,
         error_type=CodingWorkerV2SealError,
-        segment_limit=lambda: _MAX_SEGMENT_BYTES,
     )
 
 

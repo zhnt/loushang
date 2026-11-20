@@ -2419,6 +2419,29 @@ The selected Linux regression has 282 passes. All 6,048 controlled
 comparisons match the prior result, error and lock or publication trace
 across the four routes. Native Windows execution was not run.
 
+## POSIX Worker V2 History Cutover
+
+The existing Harness Package Product owner shares the runtime and GC
+write scope across preflight, staging, rollback, owner commit, retirement,
+and V1 sealing. Staging, rollback, commit, and retirement validate and
+recheck the pinned state root in one scope. Retirement and sealing still
+reject active leases before acquiring the GC write gate. History review
+and the GC settlement reader retain their existing read-only routes.
+
+The existing Worker History owners provide the preparation, publication,
+and snapshot limits. Preflight and commit apply a single cutoff rule at
+their original admission points. Coding keeps the Product checks, public
+entry points and record identities for the five historical streams.
+
+Coding Product removes 87 Python lines and formal Harness removes 21.
+The system removes 108 production lines and two normalized Coding module
+dependencies. The 65 selected Linux cases include real fenced Product
+sealing. The manual seal probe now injects faults at the active Harness
+owner. All 273 cases match the original historical bytes, errors and
+custody traces. Another 129 publication and proof cases pass. A direct
+comparison of 20 legacy modules matches all 77 exports, including record
+slots and pickled class identities.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
