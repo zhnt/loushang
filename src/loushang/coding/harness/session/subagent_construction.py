@@ -10,10 +10,13 @@ from typing import TYPE_CHECKING
 from loushang.ai.model import Model, ModelSelection, parse_model_selection_reference
 from loushang.harness.approval import ActorBoundApprovalResolver
 from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.harness.environment import HostEnvironment
 from loushang.harness.multiagent import DelegatedExecutionProfile, WorkspaceLease
 from loushang.harness.session.multiagent import SessionSubagentRequest
 from loushang.harness.session.subagent import ChildSessionRuntime
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+from .tool_selection import peer_tool_names, platform_tool_names
 
 if TYPE_CHECKING:
     from loushang.harness.session import BootstrapServices
@@ -29,8 +32,7 @@ class SubagentConstruction:
     runtime_builder: Callable[..., ChildSessionRuntime]
     default_model: Callable[[], Model | ModelSelection | None]
     services: BootstrapServices | None
-    platform_tools: Callable[[tuple[str, ...]], tuple[str, ...]]
-    peer_tools: Callable[[tuple[str, ...]], tuple[str, ...]]
+    host_environment: HostEnvironment
     exact_owner_tools: tuple[str, ...]
     selected_exact_tools: InitVar[tuple[str, ...]]
     writable_roles: frozenset[str]
@@ -68,7 +70,7 @@ class SubagentConstruction:
                     + ", ".join(unexpected)
                 )
             requested = plan.allowed_tools
-        allowed_tools = self.platform_tools(requested)
+        allowed_tools = platform_tool_names(requested, self.host_environment)
         unselected = tuple(
             name
             for name in allowed_tools
@@ -101,7 +103,7 @@ class SubagentConstruction:
             workspace_ref=lease.workspace_ref if lease is not None else None,
         )
         prompt = plan.system_prompt if plan is not None else self.role_prompt(spec.name)
-        peer_names = self.peer_tools(allowed_tools)
+        peer_names = peer_tool_names(allowed_tools, self.exact_owner_tools)
         enabled = {
             definition.name for definition in self.registry.list_enabled_definitions()
         }

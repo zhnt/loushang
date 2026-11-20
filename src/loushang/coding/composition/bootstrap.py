@@ -101,6 +101,7 @@ from loushang.coding.harness.session.package_catalog import (
     prepare_catalog_refresh,
     prepare_fenced_catalog,
 )
+from loushang.coding.harness.session.tool_selection import initial_tool_names
 from loushang.coding.harness.session.workspace_bootstrap import (
     bind_session_workspace,
     bind_workspace_plugins,
@@ -1562,24 +1563,11 @@ def _create_agent_session(
                     assert coding_base_plugin_assembly is not None
                     base_tool_names = set(coding_base_plugin_assembly.tool_names)
                     base_host_environment = coding_base_plugin_assembly.host_environment
-                resolved_initial_active_tool_names = [
-                    *(
-                        name
-                        for name in coding_default_active_tool_names(
-                            base_host_environment
-                        )
-                        if name in base_tool_names
-                    ),
-                    *(
-                        definition.name
-                        for definition in (
-                            worker_tool_registry.list_enabled_definitions()
-                            if worker_tool_registry is not None
-                            else ()
-                        )
-                        if definition.name not in base_tool_names
-                    ),
-                ]
+                resolved_initial_active_tool_names = initial_tool_names(
+                    coding_default_active_tool_names(base_host_environment),
+                    base_tool_names,
+                    worker_tool_registry,
+                )
             session = AgentSession(
                 agent=agent,
                 session_manager=session_manager,

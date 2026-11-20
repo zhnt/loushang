@@ -2171,6 +2171,32 @@ test root. Across 7,268 controlled cases the original digests, comparisons,
 Plans and error outcomes match. Five legacy values also retain their nominal
 pickle identity. Native Windows verification remains open.
 
+## Workspace Tool Selection And Delegation
+
+Workspace profiles, startup defaults, parent Tool intent and delegated child
+selection now share the staged platform mapping. Windows maps the neutral
+bash intent to shell. Ordered intent lists keep each resulting name once,
+and the native Workspace Tool profile still validates both explicit name
+lists. Coding supplies the profile, default names, prompt text and exact
+owner declarations.
+
+Bootstrap preserves declared default order within the selected base, followed
+by enabled peers in registry order. The parent uses the same intersection and
+resolves the fallback once from its frozen host facts. Delegated child construction checks published
+exact-owner identities before selecting peer definitions. It reads host facts
+and exact owners directly, removing the two selection callbacks. The existing
+Harness registry retains Tool construction, contribution resolution and
+registration.
+
+Coding Product removes 34 Python lines and staging adds 79, for 45 net
+production lines. The staged owner imports Harness types directly and can
+serve both Workspace Tool profiles and Session activation without a Product
+import. All 14,800 controlled cases match ordered selections, constructor
+outcomes and error behavior. The selected Linux run has 82 passes and one
+dynamic extension assertion that reproduces on the prior checkpoint.
+Windows target selection is exercised from Linux. Native Windows
+verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

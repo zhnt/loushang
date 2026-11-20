@@ -60,6 +60,7 @@ from loushang.coding.harness.session.owner_binding import (
     prepare_owner_bindings,
     rollback_unpublished_construction,
 )
+from loushang.coding.harness.session.tool_selection import default_tool_names
 from loushang.coding.lsp._deferred_generation import (
     CodingDeferredLspGeneration,
     dormant_lsp_tool_infos,
@@ -737,15 +738,13 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             if product_base is not None
             else set(coding_base_plugin_assembly.tool_names)
             if coding_base_plugin_assembly is not None
-            else set(coding_default_active_tool_names(host_environment))
+            else None
         )
         coding_default_profile = DefaultToolProfileSnapshot(
             profile_id="coding.tools.default",
             profile_revision=0,
-            static_default_names=tuple(
-                name
-                for name in coding_default_active_tool_names(host_environment)
-                if name in selected_base_tool_names
+            static_default_names=default_tool_names(
+                coding_default_active_tool_names(host_environment), selected_base_tool_names
             ),
             automatic_selection_policy_fingerprint="coding.tools.legacy-auto.v1",
             automatic_selection_enabled=(

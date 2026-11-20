@@ -10,10 +10,7 @@ from loushang.ai.types import Message
 from loushang.coding.control.sandbox import coding_workspace_execution_profile
 from loushang.coding.harness.session.subagent_construction import SubagentConstruction
 from loushang.coding.prompt.defaults import CODING_KERNEL_SYSTEM_PROMPT
-from loushang.coding.resources.tool_authority import (
-    CODING_EXACT_OWNER_TOOL_NAMES,
-    coding_peer_tool_names,
-)
+from loushang.coding.resources.tool_authority import CODING_EXACT_OWNER_TOOL_NAMES
 from loushang.coding.resources.tool_pack import coding_platform_tool_names
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
@@ -315,8 +312,7 @@ class CodingSubagentFactory(SessionSubagentFactory):
             runtime_builder=runtime_builder,
             default_model=model_provider,
             services=services,
-            platform_tools=lambda names: coding_platform_tool_names(names, environment),
-            peer_tools=coding_peer_tool_names,
+            host_environment=environment,
             exact_owner_tools=CODING_EXACT_OWNER_TOOL_NAMES,
             selected_exact_tools=selected_exact_tool_names,
             writable_roles=frozenset(
