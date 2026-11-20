@@ -6,24 +6,19 @@ authority, prove effect settlement, or admit a Model or Tool invocation.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, cast
 
-from loushang.ai.types import ImagePart, UserMessage
+from loushang.ai.types import UserMessage
 from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
+from loushang.coding.harness.session import resume_records as _records
 from loushang.coding.harness.session.selected_ancestry import SelectedAncestry
-from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
-from loushang.harness.transcript.codecs import (
-    STANDARD_PAYLOAD_VERSION,
-    create_agent_transcript_payload_registry,
-)
+from loushang.foundation.json import JSONValue, require_json_mapping
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord
-from loushang.harness.transcript.writer import AgentTranscriptRecordFactory
 
 CODING_RUNTIME_BINDING_METADATA_KEY = "coding.runtimeBindingV1"
 CODING_RUNTIME_BINDING_VERSION = 1
@@ -166,11 +161,11 @@ def project_coding_runtime_binding_path(
             selected_binding = None
             selected_record_id = record.record_id
             continue
-        observed_binding = observation.binding
-        if observed_binding is None:
+        binding = observation.binding
+        if binding is None:
             raise ValueError("RuntimeBinding known schema has no binding")
-        binding = validate_coding_runtime_binding_record(
-            record, expected_session_id=observed_binding.session_id,
+        _require_decoded_v1_binding(
+            record, binding, payload=record.payload, expected_session_id=binding.session_id,
         )
         if binding.session_id == current_session_id and status != "unknown_version":
             status = "bound"
@@ -243,45 +238,25 @@ def inspect_coding_runtime_binding(
 def freeze_coding_user_input(message: UserMessage) -> UserMessage:
     """Detach mutable caller content using the original Transcript codec."""
 
-    if not isinstance(message, UserMessage):
-        raise TypeError("Resume input requires a UserMessage")
-    registry = create_agent_transcript_payload_registry()
-    payload = registry.encode(AGENT_MESSAGE_KIND, STANDARD_PAYLOAD_VERSION, message)
-    frozen = registry.decode(
-        AGENT_MESSAGE_KIND, STANDARD_PAYLOAD_VERSION, payload,
-    )
-    if not isinstance(frozen, UserMessage):
-        raise TypeError("Resume input codec did not preserve UserMessage")
-    return frozen
+    return _records.freeze_user_message(message)
 
 
 def coding_user_input_digest(message: UserMessage) -> str:
     """Freeze admitted input bytes before image externalization, without writes."""
-
-    if not isinstance(message, UserMessage):
-        raise TypeError("Resume input requires a UserMessage")
-    payload = create_agent_transcript_payload_registry().encode(
-        AGENT_MESSAGE_KIND, STANDARD_PAYLOAD_VERSION, message,
+    return _records.user_message_digest(
+        message,
+        digest_domain=b"loushang.coding.resume-input/v1\0",
+        require_externalized_images=False,
     )
-    return hashlib.sha256(
-        b"loushang.coding.resume-input/v1\0" + _canonical_bytes(payload)
-    ).hexdigest()
 
 
 def coding_user_payload_digest(message: UserMessage) -> str:
     """Digest the exact persisted UserMessage payload, including image refs."""
-
-    if not isinstance(message, UserMessage):
-        raise TypeError("RuntimeBinding payload requires a UserMessage")
-    content = message.content
-    if isinstance(content, list) and any(isinstance(part, ImagePart) for part in content):
-        raise ValueError("RuntimeBinding image payload must be externalized first")
-    payload = create_agent_transcript_payload_registry().encode(
-        AGENT_MESSAGE_KIND, STANDARD_PAYLOAD_VERSION, message,
+    return _records.user_message_digest(
+        message,
+        digest_domain=b"loushang.coding.resume-user-message/v1\0",
+        require_externalized_images=True,
     )
-    return hashlib.sha256(
-        b"loushang.coding.resume-user-message/v1\0" + _canonical_bytes(payload)
-    ).hexdigest()
 
 
 def prepare_coding_resume_user_record(
@@ -305,13 +280,12 @@ def prepare_coding_resume_user_record(
     binding_metadata = binding.to_message_metadata()
     if evidence.keys() & binding_metadata.keys():
         raise ValueError("Resume metadata key conflict")
-    record = AgentTranscriptRecordFactory(
-        clock=lambda: created_at,
-        id_factory=lambda: binding.record_id,
-    ).create(
+    record = _records.make_resume_record(
         AGENT_MESSAGE_KIND,
         message,
+        record_id=binding.record_id,
         parent_id=commit_parent_id,
+        created_at=created_at,
         metadata={**evidence, **binding_metadata},
     )
     validate_coding_runtime_binding_record(
@@ -331,17 +305,27 @@ def validate_coding_runtime_binding_record(
     binding = observation.binding
     if observation.status != "known" or binding is None:
         raise ValueError("RuntimeBinding metadata is absent or unsupported")
-    if binding.record_id != record.record_id or binding.session_id != expected_session_id:
-        raise ValueError("RuntimeBinding record or Session identity differs")
-    if binding.payload_digest != coding_user_payload_digest(record.payload):
-        raise ValueError("RuntimeBinding payload digest differs from the message")
+    _require_decoded_v1_binding(
+        record, binding, payload=record.payload, expected_session_id=expected_session_id,
+    )
     return binding
 
 
+def _require_decoded_v1_binding(
+    record: AgentTranscriptRecord,
+    binding: CodingRuntimeBindingV1,
+    *,
+    payload: UserMessage,
+    expected_session_id: str,
+) -> None:
+    if binding.record_id != record.record_id or binding.session_id != expected_session_id:
+        raise ValueError("RuntimeBinding record or Session identity differs")
+    if binding.payload_digest != coding_user_payload_digest(payload):
+        raise ValueError("RuntimeBinding payload digest differs from the message")
+
+
 def _canonical_bytes(value: object) -> bytes:
-    return dump_json_value(
-        value, name="RuntimeBinding metadata", ensure_ascii=True, sort_keys=True,
-    ).encode("utf-8")
+    return _records.canonical_binding_bytes(value)
 
 
 def _require_identifier(value: object, *, name: str) -> None:

@@ -46,6 +46,9 @@ from loushang.coding.resume.binding import (
     CodingRuntimeBindingV1,
 )
 from loushang.coding.resume.binding import (
+    _require_decoded_v1_binding as _require_decoded_v1_binding,
+)
+from loushang.coding.resume.binding import (
     inspect_coding_runtime_binding as inspect_coding_runtime_binding,
 )
 from loushang.coding.resume.binding import (
@@ -56,6 +59,12 @@ from loushang.coding.resume.binding_v2 import (
 )
 from loushang.coding.resume.binding_v2 import (
     CodingRuntimeBindingV2,
+)
+from loushang.coding.resume.binding_v2 import (
+    _require_decoded_v2_binding as _require_decoded_v2_binding,
+)
+from loushang.coding.resume.binding_v2 import (
+    _require_v2_user_payload as _require_v2_user_payload,
 )
 from loushang.coding.resume.binding_v2 import (
     decode_coding_runtime_binding_v2 as decode_coding_runtime_binding_v2,

@@ -1776,6 +1776,35 @@ refresh and 48 factory observations, including errors, restart evidence
 and effect order. The five public exports and historical import location
 remain compatible. Native Windows execution remains unverified.
 
+## Resume Record Construction And History Proof
+
+The staged Session record owner now constructs both generations of
+activation intent and user input records through the existing Transcript
+factory. Both generations share the intent field comparison. The original
+Coding entrypoints retain the record kinds, metadata keys, encoding
+domains, exact nominal types and version admission rules. Input and
+persisted payload digests share one implementation with their original
+domains and image handling. Transcript remains the owner of durable commit.
+
+The legacy Binding projection and the unified history reader both validate
+the decoded Binding from the same immutable record. Before using it to
+close an intent or publish historical evidence, the original validation
+checks still cover record identity, parent, exact intent and stored user
+payload as applicable to each version. Unsupported schemas remain inert.
+Each known Binding is decoded once per projection. The staged record
+owner has two type-only Coding dependencies for historical DTOs. The
+unified history reader still borrows the original wire authorities.
+
+The Product edge removes 7 Python lines and staging adds 98, for a net
+increase of 91. The shared factory, typed interfaces and retained public
+validation entrypoints account for the added source. All 154 focused
+non-live Linux cases pass. A comparison against the preceding local
+commit matches 58 projection results and errors. The legacy reader and
+both unified reader versions each go from two decodes to one for a known
+Binding. Normalized dependencies remain at 1,659 pairs, with the two
+physical type-only imports recorded separately. Native Windows execution
+remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

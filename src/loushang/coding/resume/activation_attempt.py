@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Literal, cast
 
 from loushang.ai.types import UserMessage
+from loushang.coding.harness.session import resume_records as _records
 from loushang.coding.harness.session.selected_ancestry import SelectedAncestry
 from loushang.coding.resume.binding import (
     _ANCESTRY_DOMAIN,
@@ -22,7 +23,6 @@ from loushang.coding.resume.binding import (
 from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND, EXTENSION_DATA_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord, ExtensionData
-from loushang.harness.transcript.writer import AgentTranscriptRecordFactory
 
 CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE = "coding.activation-attempt/v1"
 CODING_ACTIVATION_ATTEMPT_MAX_BYTES = 4096
@@ -180,13 +180,7 @@ def project_coding_activation_attempt_path(
                 if binding.session_id == current_session_id and pending is not None:
                     if (
                         record.parent_id != pending_record_id
-                        or binding.attempt_id != pending.attempt_id
-                        or binding.input_id != pending.request_id
-                        or binding.original_leaf_id != pending.original_leaf_id
-                        or binding.ancestry_digest != pending.ancestry_digest
-                        or binding.planned_fingerprint != pending.plan_fingerprint
-                        or binding.actual_fingerprint != pending.epoch_fingerprint
-                        or binding.subject_digest != pending.subject_digest
+                        or not _records.matches_intent(binding, pending, check_session=False)
                     ):
                         raise ValueError("activation Binding does not match intent")
                     pending = None
@@ -208,13 +202,12 @@ def prepare_coding_activation_attempt_record(
 
     if not isinstance(attempt, CodingActivationAttemptV1):
         raise TypeError("activation attempt record requires a Coding attempt")
-    record = AgentTranscriptRecordFactory(
-        clock=lambda: created_at,
-        id_factory=lambda: attempt.attempt_id,
-    ).create(
+    record = _records.make_resume_record(
         EXTENSION_DATA_KIND,
         ExtensionData(CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE, attempt.to_data()),
+        record_id=attempt.attempt_id,
         parent_id=attempt.original_leaf_id,
+        created_at=created_at,
     )
     validate_coding_activation_attempt_record(record)
     return record

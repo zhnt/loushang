@@ -10,6 +10,7 @@ from collections.abc import Generator, Iterable
 
 from loushang.coding.resume import activation_projection_v2 as _binding
 
+from .resume_records import matches_intent
 from .selected_ancestry import SelectedAncestry
 
 
@@ -90,8 +91,11 @@ def project_activation_history_steps(
                     matched = pending.get(binding_v2.session_id)
                     if type(matched) is not _binding.CodingActivationAttemptV2:
                         raise ValueError(_binding._RESUME_OPERATION_VALUES["value_008"])
-                    _binding.validate_coding_resume_v2_user_record(
-                        record, intent=matched
+                    _binding._require_decoded_v2_binding(
+                        record,
+                        binding_v2,
+                        payload=_binding._require_v2_user_payload(record),
+                        intent=matched,
                     )
                     observed_binding = binding_v2
                     del pending[binding_v2.session_id]
@@ -99,10 +103,12 @@ def project_activation_history_steps(
                 observation = _binding.inspect_coding_runtime_binding(record.metadata)
                 if observation.status == "unknown_version":
                     unknown = True
-                elif observation.binding is not None:
-                    binding = _binding.validate_coding_runtime_binding_record(
+                elif (binding := observation.binding) is not None:
+                    _binding._require_decoded_v1_binding(
                         record,
-                        expected_session_id=observation.binding.session_id,
+                        binding,
+                        payload=payload,
+                        expected_session_id=binding.session_id,
                     )
                     matched = pending.get(binding.session_id)
                     if matched is not None:
@@ -110,15 +116,8 @@ def project_activation_history_steps(
                             raise ValueError(
                                 _binding._RESUME_OPERATION_VALUES["value_009"]
                             )
-                        if (
-                            record.parent_id != matched.attempt_id
-                            or binding.attempt_id != matched.attempt_id
-                            or binding.input_id != matched.request_id
-                            or binding.original_leaf_id != matched.original_leaf_id
-                            or binding.ancestry_digest != matched.ancestry_digest
-                            or binding.planned_fingerprint != matched.plan_fingerprint
-                            or binding.actual_fingerprint != matched.epoch_fingerprint
-                            or binding.subject_digest != matched.subject_digest
+                        if record.parent_id != matched.attempt_id or not matches_intent(
+                            binding, matched, check_session=False
                         ):
                             raise ValueError(
                                 _binding._RESUME_OPERATION_VALUES["value_010"]
