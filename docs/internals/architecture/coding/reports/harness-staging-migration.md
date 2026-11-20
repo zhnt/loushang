@@ -2514,6 +2514,28 @@ controlled backend consumer observations also match exactly. The wider
 197-case consumer run has 130 passes and the same 67 older frozen-fixture
 assertion failures as its parent. No native Windows execution was run.
 
+## Pending Worker Session Preparation
+
+The Linux and Windows pending hosts use one staged Session preparation
+program over the existing Harness provider and native owners. The entry
+points keep their platform-specific admission and diagnostics. Linux
+accepts the original pending value family and optional base policy at
+native preparation. Windows keeps exact receipt and pending types, its
+base-policy owner check, and C5 recovery refusal. The recovery check runs
+after graph-generation and base-policy validation and before native work.
+
+The shared program removes 41 staging lines and 22 Coding Product lines.
+The system removes 63 production lines. Normalized Coding dependencies
+stay at 1,651. The staged module has six direct Product bindings
+previously reached through the platform adapters. It refers to the
+nominal pending hosts for typing only and has no eager import cycle.
+
+The Worker, Session, and Resume regression routes have 85 unique passes,
+including a real Linux Product transaction. The existing source check now
+lists the shared program and the actual C5 consumers. Forty-two controlled
+before-and-after cases match admission, error and preparation order on
+both platforms. Native Windows execution was not run.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

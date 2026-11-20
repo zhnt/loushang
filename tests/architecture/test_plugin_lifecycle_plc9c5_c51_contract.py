@@ -644,8 +644,7 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         Path('src/loushang/coding/package/worker_preparation_inputs.py'),
         # The pending hosts retain the nominal receipt types at their public
         # paths. Their existing preparation operations run in staging.
-        Path("src/loushang/coding/harness/worker/posix_pending_session.py"),
-        Path("src/loushang/coding/harness/worker/windows_pending_session.py"),
+        Path("src/loushang/coding/harness/worker/pending_session.py"),
         Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
         Path("src/loushang/harness/session/_worker_operator_query.py"),
         Path("src/loushang/harness/session/_worker_provider.py"),
@@ -671,7 +670,6 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         *history_consumers,
         *relocated_consumers,
         Path("src/loushang/coding/package/product_worker_capability.py"),
-        Path("src/loushang/coding/package/product_worker_crash_c5_settlement.py"),
         Path("src/loushang/coding/package/product_worker_operator_query.py"),
         Path("src/loushang/coding/package/product_worker_pending_host.py"),
         Path("src/loushang/coding/package/product_worker_windows_pending_host.py"),

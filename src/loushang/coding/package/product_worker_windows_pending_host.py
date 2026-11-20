@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import partial as partial
 
-from loushang.coding.harness.worker import windows_pending_session as _session_programs
-from loushang.coding.package.worker_preparation_inputs import (
-    _CodingWorkerProviderPolicy as _CodingWorkerProviderPolicy,
+from loushang.coding.harness.worker.pending_session import (
+    PendingWorkerSessionPolicy,
+    prepare_pending_provider,
+    prepare_pending_session_inputs,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderOwnerAuthority,
@@ -20,14 +20,11 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.session._worker_provider import (
-    _prepare_pending_worker_session_inputs as _prepare_pending_worker_session_inputs,
-)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
 from loushang.harness.worker._ordinary_prepare import (
-    _prepare_windows_native_worker as _prepare_windows_native_worker,
+    _prepare_windows_native_worker,
 )
 from loushang.harness.worker.capability_query import (
     CapabilityWorkerAdmissionV1,
@@ -42,29 +39,8 @@ from loushang.harness.worker.product_activation import (
 
 from .product_worker_provider import CodingWorkerBaseCompositionPolicyBinding
 from .product_worker_provider_host import CodingPreparedWorkerProvider
-from .product_worker_query_consumer import (
-    CODING_WORKER_QUERY_CAPABILITY_ID as CODING_WORKER_QUERY_CAPABILITY_ID,
-)
-from .product_worker_query_consumer import (
-    CODING_WORKER_QUERY_DEFINITION as CODING_WORKER_QUERY_DEFINITION,
-)
-from .product_worker_query_consumer import (
-    CODING_WORKER_QUERY_OWNER_POLICY_REVISION as CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
-)
-from .product_worker_query_consumer import (
-    coding_worker_query_owner_authority as coding_worker_query_owner_authority,
-)
 from .product_worker_resume import (
     CodingWorkerResumeSettlementBinding,
-)
-from .product_worker_resume import (
-    _parent_failure as _parent_failure,
-)
-from .product_worker_resume import (
-    _resume_parent_matches_settlement as _resume_parent_matches_settlement,
-)
-from .product_worker_session_composition import (
-    prepare_coding_product_worker_session_inputs as prepare_coding_product_worker_session_inputs,
 )
 from .product_worker_windows_activation_state_journal import (
     CodingWindowsWorkerActivationStateJournal,
@@ -72,20 +48,21 @@ from .product_worker_windows_activation_state_journal import (
 from .product_worker_windows_payload import CodingWindowsProductWorkerPendingLaunchV1
 from .product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
 
-_WORKER_SESSION_PROGRAM_VALUES = {
-    "value_001": "Windows Worker graph generation is invalid",
-    "value_002": "coding_worker",
-    "value_003": "coding-windows-worker-release-",
-    "value_004": "coding-product-windows-worker-ordinary-session",
-    "value_005": "coding_worker_pending_",
-    "value_006": "coding_worker_pending_selection_invalid",
-}
-
 
 class CodingWindowsWorkerPendingHostError(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+_PENDING_POLICY = PendingWorkerSessionPolicy(
+    invalid_generation="Windows Worker graph generation is invalid",
+    error_type=CodingWindowsWorkerPendingHostError,
+    error_prefix="coding_worker",
+    task_name_prefix="coding-windows-worker-release-",
+    correlation_id="coding-product-windows-worker-ordinary-session",
+    cleanup_note="Windows Worker pending graph cleanup also failed: ",
+)
 
 
 def _require_windows_host_c5_recovered(
@@ -118,7 +95,15 @@ class CodingWindowsProductWorkerPendingHost:
     async def prepare(self, graph_generation: int) -> CodingPreparedWorkerProvider:
         """Own the native attempt from payload creation through graph disposal."""
 
-        return await _session_programs.prepare_native_provider(self, graph_generation)
+        return await prepare_pending_provider(
+            self,
+            graph_generation,
+            policy=_PENDING_POLICY,
+            native_prepare=_prepare_windows_native_worker,
+            require_recovered=lambda: _require_windows_host_c5_recovered(
+                self.receipt_owner.product_owner
+            ),
+        )
 
 
 def prepare_coding_windows_product_worker_pending_session_inputs(
@@ -136,7 +121,12 @@ def prepare_coding_windows_product_worker_pending_session_inputs(
 ) -> SessionCapabilityCompositionInputs:
     """Compile one Windows Worker whose effects begin during graph prepare."""
 
-    return _session_programs.prepare_pending_session_inputs(
+    if (
+        type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
+        or type(pending_launch) is not CodingWindowsProductWorkerPendingLaunchV1
+    ):
+        raise _PENDING_POLICY.failure("selection_invalid")
+    return prepare_pending_session_inputs(
         resolved_providers=resolved_providers,
         provider_owner=provider_owner,
         receipt_owner=receipt_owner,
@@ -147,6 +137,9 @@ def prepare_coding_windows_product_worker_pending_session_inputs(
         base_policy_binding=base_policy_binding,
         resume_parent_context=resume_parent_context,
         resume_settlement=resume_settlement,
+        host_type=CodingWindowsProductWorkerPendingHost,
+        policy=_PENDING_POLICY,
+        require_bound_receipt_owner=True,
     )
 
 
