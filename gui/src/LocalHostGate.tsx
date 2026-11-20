@@ -417,7 +417,7 @@ export default function LocalHostGate() {
   </>;
   const requestConnection = connectionId.current;
   return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
-    startLocalHost={canStart ? <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
+    startLocalHost={canStart ? <button type="button" className="primary-button" disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={client ? setConnection : undefined}
     managedHostConnection={busy ? { status: pendingAction.current === "stop" ? "disconnected" : "connecting" }
       : supported === null && !host.errorCode ? { status: "connecting" }

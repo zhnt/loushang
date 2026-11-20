@@ -760,6 +760,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const showWelcome = draft?.status === "ready" || (selected?.status === "idle"
     && !visibleMessages?.length && !preview && !selected.execution && !selected.run && !selected.changeSet
     && !selected.pendingApprovals?.length && !question && !goalStart.start && !goalStart.attempt);
+  const hostStart = startLocalHost && !liveConnecting ? (
+    <div className="empty-state host-start">
+      <p>{t("workspace:localHost.states.notRunning")}</p>
+      {startLocalHost}
+    </div>
+  ) : null;
   const firstMessageText = draftPending ? draft.text
     : preview && selected && !selected.messages.some((message) => message.role === "user") ? preview.text : null;
   const firstMessageStatus = draftPending ? { key: `notice.${draft.status}` } as const
@@ -1012,7 +1018,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
         /> : null}
 
         <section style={{ "--scrollbar-width": `${transcriptScrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
-          {startLocalHost ? <div className="diagnostic">{startLocalHost}</div> : null}
           {attachedClient && !liveConnecting && (syncing || state.diagnostic || state.remote.connection === "disconnected") ? (
             <div className="diagnostic" role="status">
               <span>{syncing ? t("session:sync.fixture") : state.remote.connection === "disconnected"
@@ -1032,7 +1037,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: following ? null : scrollTop });
                 } : undefined}>
                 <div className="transcript-content">
-                  {showWelcome ? <h2 className="chat-welcome">{t("session:welcome")}</h2> : null}
+                  {showWelcome ? hostStart ?? <h2 className="chat-welcome">{t("session:welcome")}</h2> : null}
                   {firstMessageText !== null ? <article className="message user" aria-label={t("session:transcript.message", { role: valueLabel("user") })}>
                     <p>{firstMessageText}</p>
                   </article> : null}
@@ -1137,6 +1142,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               </details> : null}
 
               <div className="composer-stack">
+                {!showWelcome && hostStart}
                 {draftGoalScope ? <p id={goalPanelId} className="composer-goal-hint"
                   hidden={!draftGoalOpen} role="status">{t("panels:interactiveGoal.not_ready")}</p> : null}
                 {selected && failure ? <div className={failure.pending ? "operation-notice uncertain" : "operation-notice"} role={failure.pending ? "status" : "alert"}>
@@ -1168,7 +1174,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               </div>
             </>
           ) : !liveConnecting ? (
-            <div className="empty-state">
+            hostStart ?? <div className="empty-state">
               <p>{t(attachedClient || projectNavigation?.available ? "session:emptySession" : "session:sync.offlineHost")}</p>
               {attachedClient ? <p role="status"><NoticeText notice={notice} /></p> : null}
             </div>

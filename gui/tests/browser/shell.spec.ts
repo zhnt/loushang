@@ -230,6 +230,42 @@ test("offline startup keeps the new conversation centered and editable on resize
   }
 });
 
+test("a stopped AppHost offers a centered start action without covering the draft", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 480 });
+  await page.addInitScript(() => Object.assign(window, { __LOUSHANG_MANAGED_TEST__: true }));
+  let finishStart!: () => void;
+  const startPending = new Promise<void>((resolve) => { finishStart = resolve; });
+  await page.route("**/api/loushang", async (route) => {
+    const input = route.request().postDataJSON();
+    let result: object = {};
+    if (input.operation === "environment") result = { supported: true, workspace: "" };
+    else if (input.operation === "manage") {
+      if (input.action === "start") {
+        await startPending;
+        result = { state: "running", manageable: true, serviceInstanceId: "test-host" };
+      } else result = { state: "not_running", manageable: true };
+    } else if (input.action === "navigation") result = { projects: [], temporarySessions: [] };
+    return route.fulfill({ json: { result } });
+  });
+
+  await page.goto("/");
+  const transcript = page.getByLabel("Session transcript");
+  const start = transcript.getByRole("button", { name: "Start and connect" });
+  const editor = page.getByRole("textbox", { name: "Message for New Session" });
+  await expect(start).toBeVisible();
+  await expect(transcript.getByText("Host not running")).toBeVisible();
+  await expect(page.locator(".conversation-pane .diagnostic")).toHaveCount(0);
+  const [area, button] = await Promise.all([transcript.boundingBox(), start.boundingBox()]);
+  expect(button!.x + button!.width / 2).toBeCloseTo(area!.x + area!.width / 2, 0);
+  await editor.fill("Keep my draft");
+  await start.click();
+  await expect(page.getByText("Connecting", { exact: true })).toBeVisible();
+  await expect(start).toBeHidden();
+  finishStart();
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(editor).toHaveValue("Keep my draft");
+});
+
 test("General and Host share a fixed dialog with scrollable content in a short window", async ({ page }, info) => {
   await page.setViewportSize({ width: 680, height: 360 });
   await simulateDesktop(page, true);
