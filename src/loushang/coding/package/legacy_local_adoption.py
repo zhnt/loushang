@@ -6,52 +6,101 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.harness.package_product import legacy_adoption as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.config.agent import SettingsManager
+from loushang.harness.config.agent import SettingsManager as SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
-    bootstrap_reviewed_product_plugins,
+    bootstrap_reviewed_product_plugins as bootstrap_reviewed_product_plugins,
+)
+from loushang.harness.package_product._plugin_bootstrap import (
     preserve_removed_product_plugin,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
+    PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
 
 from ..control.settings_store import (
-    default_global_settings_path,
-    default_project_settings_path,
+    default_global_settings_path as default_global_settings_path,
 )
-from .epoch_layout import resolve_coding_package_epoch_layout
+from ..control.settings_store import (
+    default_project_settings_path as default_project_settings_path,
+)
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+)
 from .legacy_data_trust import (
-    LEGACY_LOCAL_DATA_TRUST_CLASSES,
-    trust_class_for_legacy_data_resource,
+    LEGACY_LOCAL_DATA_TRUST_CLASSES as LEGACY_LOCAL_DATA_TRUST_CLASSES,
 )
-from .legacy_installation_inventory import read_coding_legacy_installation_inventory
+from .legacy_data_trust import (
+    trust_class_for_legacy_data_resource as trust_class_for_legacy_data_resource,
+)
+from .legacy_installation_inventory import (
+    read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
+)
 from .legacy_local_acceptance import (
     CodingLegacyLocalAcceptanceV1,
-    accept_coding_legacy_installed_local_review,
-    reopen_coding_legacy_installed_local_acceptance,
 )
-from .legacy_local_binding_owner import bind_coding_accepted_legacy_local_source
+from .legacy_local_acceptance import (
+    accept_coding_legacy_installed_local_review as accept_coding_legacy_installed_local_review,
+)
+from .legacy_local_acceptance import (
+    reopen_coding_legacy_installed_local_acceptance as reopen_coding_legacy_installed_local_acceptance,
+)
+from .legacy_local_binding_owner import (
+    bind_coding_accepted_legacy_local_source as bind_coding_accepted_legacy_local_source,
+)
 from .legacy_local_installation import (
     CodingLegacyLocalEnablementReceiptV1,
     CodingLegacyLocalInstallReceiptV1,
-    enable_coding_accepted_legacy_local_data_plugin,
-    install_coding_accepted_legacy_local_plugin,
 )
-from .legacy_removed_acceptance import read_coding_first_b_removed_local_acceptance
-from .legacy_removed_adoption import adopt_coding_first_b_removed_local
+from .legacy_local_installation import (
+    enable_coding_accepted_legacy_local_data_plugin as enable_coding_accepted_legacy_local_data_plugin,
+)
+from .legacy_local_installation import (
+    install_coding_accepted_legacy_local_plugin as install_coding_accepted_legacy_local_plugin,
+)
+from .legacy_removed_acceptance import (
+    read_coding_first_b_removed_local_acceptance as read_coding_first_b_removed_local_acceptance,
+)
+from .legacy_removed_adoption import (
+    adopt_coding_first_b_removed_local as adopt_coding_first_b_removed_local,
+)
 from .legacy_skill_cutover_admission import (
-    require_coding_fenced_single_legacy_data,
-    require_coding_fenced_single_legacy_skill_snapshot,
+    require_coding_fenced_single_legacy_data as require_coding_fenced_single_legacy_data,
 )
-from .legacy_source_consumption import consume_coding_accepted_legacy_local_source
+from .legacy_skill_cutover_admission import (
+    require_coding_fenced_single_legacy_skill_snapshot as require_coding_fenced_single_legacy_skill_snapshot,
+)
+from .legacy_source_consumption import (
+    consume_coding_accepted_legacy_local_source as consume_coding_accepted_legacy_local_source,
+)
 from .product_runtime import (
-    _CODING_BUILTIN_BOOTSTRAP_POLICY,
-    CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-    CodingFencedProductApplicationOwner,
-    open_coding_fenced_product_application_owner,
+    _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
+from .product_runtime import (
+    CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+)
+from .product_runtime import (
+    CodingFencedProductApplicationOwner,
+)
+from .product_runtime import (
+    open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
+)
+
+_LEGACY_ADOPTION_VALUES = {
+    "value_001": "skill",
+    "value_002": "prompt",
+    "value_003": "theme",
+    "value_004": "Unsupported legacy Resource type",
+    "value_005": "Coding legacy data adoption requires a matching Resource receipt",
+    "value_006": "Coding legacy local Product Source binding changed",
+    "value_007": "coding.base",
+    "value_008": "coding.lsp.default",
+    "value_009": "coding.arch.default",
+    "value_010": "Coding legacy local review ID changed",
+    "value_011": "Coding old local removals need explicit adoption before active locals",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,160 +151,14 @@ def adopt_coding_legacy_local_data_review(
 ) -> CodingLegacyLocalDataAdoptionV1:
     """Finish one type-selected, reviewed local data Resource adoption."""
 
-    if resource_kind not in {"skill", "prompt", "theme"}:
-        raise ValueError("Unsupported legacy Resource type")
-
-    _settle_reviewed_removed_local_before_active_adoption(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-    )
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
-    )
-    admission_checked = False
-    try:
-        acceptance = reopen_coding_legacy_installed_local_acceptance(
-            lifecycle,
-            epoch_runtime,
-            plugin_id=plugin_id,
-            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-        )
-        if acceptance is None:
-            require_coding_fenced_single_legacy_data(
-                lifecycle,
-                epoch_runtime,
-                plugin_id=plugin_id,
-                resource_kind=resource_kind,
-            )
-            admission_checked = True
-            acceptance = accept_coding_legacy_installed_local_review(
-                lifecycle,
-                epoch_runtime,
-                plugin_id=plugin_id,
-                policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-                accepted_review_id=accepted_review_id,
-                resource_kind=resource_kind,
-            )
-        elif acceptance.review.review_id != accepted_review_id:
-            raise ValueError("Coding legacy local review ID changed")
-        else:
-            require_coding_fenced_single_legacy_skill_snapshot(
-                lifecycle, epoch_runtime, plugin_id=plugin_id
-            )
-        if acceptance.resource_kind != resource_kind:
-            raise ValueError(
-                "Coding legacy data adoption requires a matching Resource receipt"
-            )
-        consume_coding_accepted_legacy_local_source(
-            lifecycle,
-            epoch_runtime,
-            acceptance,
-            SettingsManager(
-                global_settings_path=default_global_settings_path(),
-                project_settings_path=default_project_settings_path(workspace),
-            ),
-        )
-    finally:
-        epoch_runtime.close()
-
-    product_owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-    )
-    try:
-        bound = tuple(
-            item
-            for item in product_owner.runtime_owner.product_owner.policy.bindings
-            if item.plugin_id == plugin_id
-            and item.source_trust_class in LEGACY_LOCAL_DATA_TRUST_CLASSES
-        )
-        expected_trust = trust_class_for_legacy_data_resource(resource_kind)
-        if bound and (
-            len(bound) != 1
-            or bound[0].source_trust_class != expected_trust
-            or bound[0].artifact_digest != acceptance.review.wheel_artifact_digest
-            or Path(bound[0].source_identity).name != acceptance.review.wheel_filename
-        ):
-            raise RuntimeError("Coding legacy local Product Source binding changed")
-    finally:
-        product_owner.close()
-    if not bound:
-        epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs()
-        )
-        try:
-            if not admission_checked:
-                require_coding_fenced_single_legacy_data(
-                    lifecycle,
-                    epoch_runtime,
-                    plugin_id=plugin_id,
-                    resource_kind=resource_kind,
-                )
-            bind_coding_accepted_legacy_local_source(
-                lifecycle,
-                epoch_runtime,
-                plugin_id=plugin_id,
-                policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-            )
-        finally:
-            epoch_runtime.close()
-
-    installation = install_coding_accepted_legacy_local_plugin(
+    return _programs.adopt_local_review(
         lifecycle,
         workspace=workspace,
         plugin_id=plugin_id,
+        accepted_review_id=accepted_review_id,
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
-    )
-    enablement = (
-        enable_coding_accepted_legacy_local_data_plugin(
-            lifecycle,
-            workspace=workspace,
-            plugin_id=plugin_id,
-            runtime_version=runtime_version,
-            runtime_protocol_epoch=runtime_protocol_epoch,
-            resource_kind=resource_kind,
-        )
-        if acceptance.review.desired_state == "installed_enabled"
-        else None
-    )
-    product_owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-    )
-    try:
-        disabled_builtins = {
-            item.plugin_id for item in acceptance.review.disabled_plugins
-        }
-        disabled_builtins.update(
-            item.plugin_id
-            for item in acceptance.review.builtin_intent
-            if item.desired_state == "installed_disabled"
-        )
-        product = product_owner.runtime_owner.product_owner
-        for builtin_id in acceptance.review.removed_builtin_ids:
-            _preserve_removed_builtin(product_owner, acceptance, builtin_id)
-        bootstrap_reviewed_product_plugins(
-            product,
-            ("coding.base", "coding.lsp.default", "coding.arch.default"),
-            disabled_ids=disabled_builtins,
-            removed_ids=acceptance.review.removed_builtin_ids,
-            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-            strict_history=False,
-        )
-    finally:
-        product_owner.close()
-    return CodingLegacyLocalSkillAdoptionV1(
-        acceptance=acceptance,
-        installation=installation,
-        enablement=enablement,
+        resource_kind=resource_kind,
     )
 
 
@@ -266,34 +169,9 @@ def _settle_reviewed_removed_local_before_active_adoption(
     runtime_version: str,
     runtime_protocol_epoch: int,
 ) -> None:
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    owner = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs(), read_only=True
-    )
-    settings = SettingsManager(
-        global_settings_path=default_global_settings_path(),
-        project_settings_path=default_project_settings_path(workspace),
-    )
-    try:
-        inventory = read_coding_legacy_installation_inventory(
-            lifecycle, owner
-        ).inventory
-        if not inventory.unselected_source_identities:
-            return
-        accepted = read_coding_first_b_removed_local_acceptance(
-            lifecycle, owner, settings_manager=settings
-        )
-        if accepted is None:
-            raise ValueError(
-                "Coding old local removals need explicit adoption before active locals"
-            )
-    finally:
-        owner.close()
-    adopt_coding_first_b_removed_local(
+    return _programs.settle_removed_before_adoption(
         lifecycle,
-        settings,
         workspace=workspace,
-        accepted_review_id=accepted.review.review_id,
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
     )

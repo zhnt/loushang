@@ -6,44 +6,106 @@ Source publication, mutate Desired State, or run a Package transaction.
 
 from __future__ import annotations
 
-import json
+import json as json
 import os as os
 from dataclasses import dataclass
-from hashlib import sha256
-from typing import Literal
+from hashlib import sha256 as sha256
+from typing import Final, Literal
 
+from loushang.coding.harness.package_product import legacy_local_acceptance as _programs
+from loushang.coding.harness.package_product import (
+    legacy_local_acceptance as _record_programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
+)
+from loushang.harness.journal import (
+    JournalCodecError as JournalCodecError,
 )
 from loushang.harness.package_product._legacy_local_migration import (
     _LocalAcceptanceProtocol,
 )
-from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.plugin_management.records import (
+    PluginInstallationKeyV1 as PluginInstallationKeyV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
-from .legacy_classification import classify_coding_legacy_source_configuration
-from .legacy_configured_source import match_coding_legacy_local_skill_configured_source
-from .legacy_installation_inventory import read_coding_legacy_installation_inventory
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+)
+from .legacy_classification import (
+    classify_coding_legacy_source_configuration as classify_coding_legacy_source_configuration,
+)
+from .legacy_configured_source import (
+    match_coding_legacy_local_skill_configured_source as match_coding_legacy_local_skill_configured_source,
+)
+from .legacy_installation_inventory import (
+    read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
+)
 from .legacy_review import (
     CodingLegacyLocalAdoptionReviewV1,
-    review_coding_legacy_installed_local_source,
+)
+from .legacy_review import (
+    review_coding_legacy_installed_local_source as review_coding_legacy_installed_local_source,
 )
 from .legacy_snapshot_member import (
-    CodingFirstBLegacyStateObserver,
-    read_coding_first_b_snapshot_member,
+    CodingFirstBLegacyStateObserver as CodingFirstBLegacyStateObserver,
+)
+from .legacy_snapshot_member import (
+    read_coding_first_b_snapshot_member as read_coding_first_b_snapshot_member,
 )
 
 _MAX_ACCEPTANCE_BYTES = 1024 * 1024
 _MAX_DESIRED_BYTES = 32 * 1024 * 1024
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
+
+
+_LEGACY_PROGRAM_VALUES = {
+    "value_001": "Coding legacy local acceptance lost its first-B Installation",
+    "value_002": "coding-source-configuration.json",
+    "value_003": "Coding legacy local acceptance lost its Source configuration",
+    "value_004": "Coding legacy local acceptance changed first-B evidence",
+    "value_005": "coding.base",
+    "value_006": "coding.lsp.default",
+    "value_007": "coding.arch.default",
+}
+
+
+_LEGACY_ADOPTION_VALUES = {
+    "value_001": "Coding legacy local review ID changed",
+    "value_002": "Coding legacy local Product epoch changed",
+    "value_003": "Coding legacy local review changed before acceptance",
+    "value_004": "coding",
+    "value_005": "Coding legacy local Plugin identity is required",
+    "value_006": "Coding legacy local acceptance conflicts with current review",
+}
+
+
+_LEGACY_RECORD_VALUES = {
+    "value_001": "Coding legacy local acceptance record is invalid",
+    "value_002": "Coding legacy local acceptance identity changed",
+    "value_003": "Coding legacy local review is required",
+    "value_004": "Invalid Coding legacy local acceptance",
+    "value_005": "coding_legacy_local_acceptance_invalid",
+    "value_006": "Unsupported Coding legacy local acceptance version",
+    "value_007": "Unsupported Coding legacy local acceptance type",
+}
+
+_LEGACY_RECORD_PROMPT: Final[Literal["prompt"]] = "prompt"
+_LEGACY_RECORD_SKILL: Final[Literal["skill"]] = "skill"
+_LEGACY_RECORD_THEME: Final[Literal["theme"]] = "theme"
+
+
+_LEGACY_CHAIN_VALUES = {
+    "value_001": "Coding legacy local Resource type differs from accepted route",
+    "value_002": "Coding legacy local Resource type is unsupported",
+}
 
 
 class CodingLegacyLocalAcceptanceError(RuntimeError):
@@ -58,22 +120,7 @@ class CodingLegacyLocalAcceptanceV1:
     resource_kind: Literal["skill", "prompt", "theme"] = "skill"
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.review, CodingLegacyLocalAdoptionReviewV1)
-            or type(self.acceptance_version) is not int
-            or (self.acceptance_version, self.resource_kind)
-            not in {(1, "skill"), (2, "prompt"), (3, "theme")}
-        ):
-            raise ValueError("Coding legacy local acceptance record is invalid")
-        identity = {
-            "acceptanceVersion": self.acceptance_version,
-            "reviewId": self.review.review_id,
-            "pluginId": self.review.plugin_id,
-        }
-        if self.acceptance_version >= 2:
-            identity["resourceKind"] = self.resource_kind
-        if self.acceptance_id != sha256(canonical_json_bytes(identity)).hexdigest():
-            raise ValueError("Coding legacy local acceptance identity changed")
+        return _record_programs.validate_acceptance(self)
 
     @classmethod
     def create(
@@ -82,25 +129,8 @@ class CodingLegacyLocalAcceptanceV1:
         *,
         resource_kind: Literal["skill", "prompt", "theme"] = "skill",
     ) -> CodingLegacyLocalAcceptanceV1:
-        if not isinstance(review, CodingLegacyLocalAdoptionReviewV1):
-            raise TypeError("Coding legacy local review is required")
-        if any(item.plugin_id not in _BUILTINS for item in review.disabled_plugins):
-            raise ValueError("Legacy local adoption supports built-in disables only")
-        if resource_kind not in {"skill", "prompt", "theme"}:
-            raise ValueError("Unsupported legacy local Resource type")
-        acceptance_version = {"skill": 1, "prompt": 2, "theme": 3}[resource_kind]
-        identity = {
-            "acceptanceVersion": acceptance_version,
-            "reviewId": review.review_id,
-            "pluginId": review.plugin_id,
-        }
-        if acceptance_version >= 2:
-            identity["resourceKind"] = resource_kind
-        return cls(
-            review,
-            sha256(canonical_json_bytes(identity)).hexdigest(),
-            acceptance_version=acceptance_version,
-            resource_kind=resource_kind,
+        return _record_programs.create_acceptance(
+            cls, review, resource_kind=resource_kind
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -115,43 +145,7 @@ class CodingLegacyLocalAcceptanceV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyLocalAcceptanceV1:
-        if type(value) is not dict or set(value) not in (
-            {"acceptanceId", "acceptanceVersion", "review"},
-            {"acceptanceId", "acceptanceVersion", "review", "resourceKind"},
-        ):
-            raise JournalCodecError(
-                "Invalid Coding legacy local acceptance",
-                code="coding_legacy_local_acceptance_invalid",
-            )
-        try:
-            if type(value["acceptanceVersion"]) is not int:
-                raise ValueError("Unsupported Coding legacy local acceptance version")
-            resource_kind: Literal["skill", "prompt", "theme"]
-            if value["acceptanceVersion"] == 1 and "resourceKind" not in value:
-                resource_kind = "skill"
-            elif (
-                value["acceptanceVersion"] == 2
-                and value.get("resourceKind") == "prompt"
-            ):
-                resource_kind = "prompt"
-            elif (
-                value["acceptanceVersion"] == 3 and value.get("resourceKind") == "theme"
-            ):
-                resource_kind = "theme"
-            else:
-                raise ValueError("Unsupported Coding legacy local acceptance type")
-            record = cls.create(
-                CodingLegacyLocalAdoptionReviewV1.from_dict(value["review"]),
-                resource_kind=resource_kind,
-            )
-            if record.acceptance_id != value["acceptanceId"]:
-                raise ValueError("Coding legacy local acceptance identity changed")
-            return record
-        except (TypeError, ValueError) as exc:
-            raise JournalCodecError(
-                "Invalid Coding legacy local acceptance",
-                code="coding_legacy_local_acceptance_invalid",
-            ) from exc
+        return _record_programs.decode_acceptance(cls, value)
 
 
 _CODEC = FunctionalJournalRecordCodec(
@@ -171,48 +165,13 @@ def accept_coding_legacy_installed_local_review(
 ) -> CodingLegacyLocalAcceptanceV1:
     """Accept one exact current review while that Installation is untouched in B."""
 
-    review = review_coding_legacy_installed_local_source(
-        lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
-    )
-    if accepted_review_id != review.review_id:
-        raise CodingLegacyLocalAcceptanceError("Coding legacy local review ID changed")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local Product epoch changed"
-        )
-    proposed = CodingLegacyLocalAcceptanceV1.create(review, resource_kind=resource_kind)
-
-    def require_current_review() -> None:
-        _require_live_resource_kind(
-            lifecycle, epoch_runtime, plugin_id=plugin_id, resource_kind=resource_kind
-        )
-        if (
-            review_coding_legacy_installed_local_source(
-                lifecycle,
-                epoch_runtime,
-                plugin_id=plugin_id,
-                policy_revision=policy_revision,
-            )
-            != review
-        ):
-            raise CodingLegacyLocalAcceptanceError(
-                "Coding legacy local review changed before acceptance"
-            )
-
-    return _acceptance_protocol(epoch_runtime).accept(
-        proposed,
-        plugin_id=review.plugin_id,
-        installation_key=lambda: PluginInstallationKeyV1(
-            product_id="coding",
-            installation_scope="workspace",
-            scope_id=review.scope_id,
-            plugin_id=review.plugin_id,
-        ),
-        require_current_review=require_current_review,
+    return _programs.accept_local_review(
+        lifecycle,
+        epoch_runtime,
+        plugin_id=plugin_id,
+        policy_revision=policy_revision,
+        accepted_review_id=accepted_review_id,
+        resource_kind=resource_kind,
     )
 
 
@@ -225,28 +184,9 @@ def reopen_coding_legacy_installed_local_acceptance(
 ) -> CodingLegacyLocalAcceptanceV1 | None:
     """Reopen a receipt against frozen first-B evidence without live Source."""
 
-    if not isinstance(plugin_id, str) or not plugin_id:
-        raise ValueError("Coding legacy local Plugin identity is required")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local Product epoch changed"
-        )
-    record = _acceptance_protocol(epoch_runtime).reopen(plugin_id)
-    if record is None:
-        return None
-    _require_frozen_review(
-        lifecycle,
-        epoch_runtime,
-        record.review,
-        plugin_id=plugin_id,
-        policy_revision=policy_revision,
+    return _programs.reopen_local_acceptance(
+        lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
     )
-    epoch_runtime.assert_current()
-    return record
 
 
 def read_coding_legacy_installed_local_acceptance(
@@ -258,25 +198,9 @@ def read_coding_legacy_installed_local_acceptance(
 ) -> CodingLegacyLocalAcceptanceV1 | None:
     """Additionally require that the original live Source still matches."""
 
-    record = reopen_coding_legacy_installed_local_acceptance(
-        lifecycle,
-        epoch_runtime,
-        plugin_id=plugin_id,
-        policy_revision=policy_revision,
-    )
-    if record is None:
-        return None
-    review = review_coding_legacy_installed_local_source(
+    return _programs.read_local_acceptance(
         lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
     )
-    if record != CodingLegacyLocalAcceptanceV1.create(
-        review, resource_kind=record.resource_kind
-    ):
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local acceptance conflicts with current review"
-        )
-    epoch_runtime.assert_current()
-    return record
 
 
 def _require_live_resource_kind(
@@ -288,22 +212,9 @@ def _require_live_resource_kind(
 ) -> None:
     # The inspector is imported here to keep Product cutover composition out of
     # the acceptance record codec's module initialization path.
-    from .legacy_reacquisition import reacquire_coding_legacy_installed_local_source
-    from .legacy_skill_cutover_admission import inspect_coding_legacy_local_data_wheel
-
-    reacquired = reacquire_coding_legacy_installed_local_source(
-        lifecycle, epoch_runtime, plugin_id=plugin_id
+    return _programs.require_live_resource_kind(
+        lifecycle, epoch_runtime, plugin_id=plugin_id, resource_kind=resource_kind
     )
-    try:
-        inspected = inspect_coding_legacy_local_data_wheel(reacquired.wheel)
-    except (OSError, ValueError) as exc:
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local Resource type is unsupported"
-        ) from exc
-    if inspected.resource_kind != resource_kind:
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local Resource type differs from accepted route"
-        )
 
 
 def _require_frozen_review(
@@ -314,87 +225,13 @@ def _require_frozen_review(
     plugin_id: str,
     policy_revision: str,
 ) -> None:
-    fence = epoch_runtime.cutover_result.fence
-    switch = epoch_runtime.cutover_result.switch_receipt
-    inventory = read_coding_legacy_installation_inventory(lifecycle, epoch_runtime)
-    selected = next(
-        (
-            item
-            for item in inventory.inventory.active_local
-            if item.binding.plugin_id == plugin_id
-        ),
-        None,
-    )
-    if fence is None or switch is None or selected is None:
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local acceptance lost its first-B Installation"
-        )
-    legacy_state = CodingFirstBLegacyStateObserver(lifecycle, epoch_runtime).observe(
-        store_id=fence.store_id,
-        legacy_root_identity=fence.request.legacy_root_identity,
-    )
-    binding = selected.binding
-    source_raw = read_coding_first_b_snapshot_member(
+    return _programs.require_frozen_review(
         lifecycle,
         epoch_runtime,
-        domain="source_configuration",
-        member_name="coding-source-configuration.json",
-        maximum_bytes=2 * 1024 * 1024,
+        review,
+        plugin_id=plugin_id,
+        policy_revision=policy_revision,
     )
-    if source_raw is None:
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local acceptance lost its Source configuration"
-        )
-    source_projection = json.loads(source_raw)
-    source = classify_coding_legacy_source_configuration(source_projection)
-    configured = match_coding_legacy_local_skill_configured_source(
-        source_projection,
-        source_identity=binding.source_identity,
-        installed_source_identities=tuple(
-            item.binding.source_identity for item in inventory.inventory.active_local
-        ),
-    )
-    expected_prefix = (
-        "loushang_legacy_"
-        + sha256(f"{plugin_id}\0{binding.content_digest}".encode()).hexdigest()[:24]
-    )
-    if (
-        review.store_id != fence.store_id
-        or review.namespace_id != switch.namespace_id
-        or review.scope_id != lifecycle.scope_id
-        or review.first_fence_id != inventory.first_fence_id
-        or review.snapshot_receipt_id != inventory.snapshot_receipt_id
-        or review.legacy_root_identity != legacy_state.legacy_root_identity
-        or review.legacy_state_evidence_id != legacy_state.evidence_id
-        or review.legacy_state_digest != legacy_state.state_digest
-        or review.legacy_entry_count != legacy_state.entry_count
-        or review.legacy_byte_count != legacy_state.byte_count
-        or review.plugin_id != plugin_id
-        or review.desired_state != selected.desired_state
-        or review.legacy_source_identity != binding.source_identity
-        or review.legacy_binding_digest != binding.binding_digest
-        or review.legacy_lockfile_digest != binding.lockfile_digest
-        or review.legacy_desired_journal_digest
-        != inventory.inventory.desired_journal_digest
-        or review.source_content_digest != binding.content_digest
-        or review.manifest_digest != binding.manifest_digest
-        or review.dependency_lock_digest != binding.dependency_lock.digest
-        or review.wheel_filename != f"{expected_prefix}-1-py3-none-any.whl"
-        or review.policy_revision != policy_revision
-        or review.disabled_plugins != source.disabled_plugins
-        or review.builtin_intent != inventory.inventory.builtin_intent
-        or review.removed_builtin_ids
-        != tuple(
-            item
-            for item in inventory.inventory.removed_plugin_ids
-            if item in {"coding.base", "coding.lsp.default", "coding.arch.default"}
-        )
-        or review.configured_plugin_source_scope
-        != (None if configured is None else configured.scope)
-    ):
-        raise CodingLegacyLocalAcceptanceError(
-            "Coding legacy local acceptance changed first-B evidence"
-        )
 
 
 def _acceptance_protocol(

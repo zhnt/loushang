@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import json
+import json as json
 from pathlib import Path
 
+from loushang.coding.harness.package_product import (
+    legacy_source_consumption as _programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
@@ -18,16 +21,30 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .legacy_configured_source import match_coding_legacy_local_skill_configured_source
-from .legacy_installation_inventory import read_coding_legacy_installation_inventory
+from .legacy_configured_source import (
+    match_coding_legacy_local_skill_configured_source as match_coding_legacy_local_skill_configured_source,
+)
+from .legacy_installation_inventory import (
+    read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
+)
 from .legacy_local_acceptance import (
     CodingLegacyLocalAcceptanceV1,
     reopen_coding_legacy_installed_local_acceptance,
 )
-from .legacy_source_evidence import read_coding_legacy_source_evidence
+from .legacy_source_evidence import (
+    read_coding_legacy_source_evidence as read_coding_legacy_source_evidence,
+)
 from .source_snapshot import _verify_loaded_settings
 
 _MAX_RECEIPT_BYTES = 4096
+
+
+_LEGACY_PROGRAM_VALUES = {
+    "value_001": "Accepted Plugin differs from first-fence Installation",
+    "value_002": "Accepted configured Source differs from first fence",
+    "value_003": "Installed Source set differs from configured Sources",
+    "value_004": "Configured Source settings snapshot has no raw digest",
+}
 
 
 class CodingLegacySourceConsumptionError(RuntimeError):
@@ -68,64 +85,7 @@ def _frozen_sources(
     acceptance: CodingLegacyLocalAcceptanceV1,
     settings: SettingsManager,
 ) -> _FrozenSources:
-    evidence = read_coding_legacy_source_evidence(
-        lifecycle,
-        epoch_runtime,
-        global_settings_path=_SourceConsumptionProtocol._settings_paths(
-            settings, CodingLegacySourceConsumptionError
-        )[0],
-        project_settings_path=_SourceConsumptionProtocol._settings_paths(
-            settings, CodingLegacySourceConsumptionError
-        )[1],
-    )
-    projection = json.loads(evidence.projection_bytes)
-    inventory = read_coding_legacy_installation_inventory(lifecycle, epoch_runtime)
-    source_identities = tuple(
-        item.binding.source_identity for item in inventory.inventory.active_local
-    )
-    by_plugin = {
-        item.binding.plugin_id: match_coding_legacy_local_skill_configured_source(
-            projection,
-            source_identity=item.binding.source_identity,
-            installed_source_identities=source_identities,
-        )
-        for item in inventory.inventory.active_local
-    }
-    if acceptance.review.plugin_id not in by_plugin:
-        raise CodingLegacySourceConsumptionError(
-            "Accepted Plugin differs from first-fence Installation"
-        )
-    configured = by_plugin[acceptance.review.plugin_id]
-    if (
-        None if configured is None else configured.scope
-    ) != acceptance.review.configured_plugin_source_scope:
-        raise CodingLegacySourceConsumptionError(
-            "Accepted configured Source differs from first fence"
-        )
-    ordered_paths: dict[str, tuple[str, ...]] = {}
-    raw_digests: dict[str, str] = {}
-    for scope in ("global", "project"):
-        layer = projection["scopes"][scope]
-        paths = tuple(layer["sourcePatch"].get("plugin_sources", ()))
-        ordered_paths[scope] = paths
-        if paths:
-            raw_digest = layer["rawSha256"]
-            if not isinstance(raw_digest, str):
-                raise CodingLegacySourceConsumptionError(
-                    "Configured Source settings snapshot has no raw digest"
-                )
-            raw_digests[scope] = raw_digest
-    matched = {item.path for item in by_plugin.values() if item is not None}
-    if matched != set(ordered_paths["global"] + ordered_paths["project"]):
-        raise CodingLegacySourceConsumptionError(
-            "Installed Source set differs from configured Sources"
-        )
-    return _FrozenSources(
-        projection_digest=evidence.projection_digest,
-        by_plugin=by_plugin,
-        ordered_paths=ordered_paths,
-        raw_digests=raw_digests,
-    )
+    return _programs.frozen_sources(lifecycle, epoch_runtime, acceptance, settings)
 
 
 def _receipt_bytes(identity: dict[str, object], phase: str) -> bytes:

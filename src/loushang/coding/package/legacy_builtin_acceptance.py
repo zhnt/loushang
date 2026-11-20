@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.harness.package_product import (
+    legacy_builtin_acceptance as _programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
@@ -21,13 +24,24 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+)
 from .legacy_builtin_review import (
     CodingLegacyBuiltinOnlyReviewV1,
-    review_coding_first_b_builtin_only,
+)
+from .legacy_builtin_review import (
+    review_coding_first_b_builtin_only as review_coding_first_b_builtin_only,
 )
 from .legacy_disabled_acceptance import CodingLegacyDisabledOnlyAcceptanceError
 from .legacy_windows_receipt import _receipt_io, write_windows_private_receipt
+
+_LEGACY_ADOPTION_VALUES = {
+    "value_001": "Builtin-only review ID changed",
+    "value_002": "Product Store changed",
+    "value_003": "legacy-builtin-acceptance.jsonl",
+    "value_004": "Builtin-only acceptance conflicts with first-B review",
+}
 
 
 class CodingLegacyBuiltinOnlyAcceptanceError(RuntimeError):
@@ -101,19 +115,11 @@ def accept_coding_first_b_builtin_only(
 ) -> CodingLegacyBuiltinOnlyAcceptanceV1:
     """Accept exactly one review before mutating the Product Desired ledger."""
 
-    review = review_coding_first_b_builtin_only(
-        lifecycle, epoch_runtime, settings_manager=settings_manager
-    )
-    if accepted_review_id != review.review_id:
-        raise CodingLegacyBuiltinOnlyAcceptanceError("Builtin-only review ID changed")
-    proposed = CodingLegacyBuiltinOnlyAcceptanceV1.create(review)
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if epoch_runtime.registry.store_id != epoch.store_id:
-        raise CodingLegacyBuiltinOnlyAcceptanceError("Product Store changed")
-    return _acceptance_journal.accept(
+    return _programs.accept_builtin_review(
+        lifecycle,
         epoch_runtime,
-        proposed,
-        conflict_message="Builtin-only acceptance conflicts with prior review",
+        settings_manager=settings_manager,
+        accepted_review_id=accepted_review_id,
     )
 
 
@@ -127,31 +133,9 @@ def read_coding_first_b_builtin_only_acceptance(
 ) -> CodingLegacyBuiltinOnlyAcceptanceV1 | None:
     """Reopen the accepted review without creating Product state."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if epoch_runtime.registry.store_id != epoch.store_id:
-        raise CodingLegacyBuiltinOnlyAcceptanceError("Product Store changed")
-    epoch_runtime.assert_current()
-    path = (
-        epoch_runtime.control_root / "product-state" / "legacy-builtin-acceptance.jsonl"
-    )
-    records = _acceptance_journal.records(
-        path,
-        windows=isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner),
-    )
-    if not records:
-        epoch_runtime.assert_current()
-        return None
-    review = review_coding_first_b_builtin_only(
+    return _programs.read_builtin_acceptance(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
-    if len(records) != 1 or records[0] != CodingLegacyBuiltinOnlyAcceptanceV1.create(
-        review
-    ):
-        raise CodingLegacyBuiltinOnlyAcceptanceError(
-            "Builtin-only acceptance conflicts with first-B review"
-        )
-    epoch_runtime.assert_current()
-    return records[0]
 
 
 def _write_windows_builtin_acceptance(

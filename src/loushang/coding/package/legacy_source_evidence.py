@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import sha256 as sha256
 from pathlib import Path
 
+from loushang.coding.harness.package_product import legacy_source_evidence as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.json import _unique_json_object_hook
 
 from .legacy_classification import (
     CodingLegacySourceConfigurationV1,
-    classify_coding_legacy_source_configuration,
+)
+from .legacy_classification import (
+    classify_coding_legacy_source_configuration as classify_coding_legacy_source_configuration,
 )
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
@@ -20,6 +23,17 @@ from .legacy_snapshot_member import (
 )
 
 _MAX_PROJECTION_BYTES = 8 * 1024 * 1024
+
+
+_LEGACY_EVIDENCE_VALUES = {
+    "value_001": "Coding legacy Source settings projection exceeds budget",
+    "value_002": "Coding legacy Source settings scopes overlap",
+    "value_003": "Coding legacy Source settings path is invalid",
+    "value_004": "Coding Source projection is not an object",
+    "value_005": "Coding Source settings path changed",
+    "value_006": "Coding Source projection bytes changed",
+    "value_007": "Coding legacy Source settings projection is invalid",
+}
 
 
 class CodingLegacySourceEvidenceError(ValueError):
@@ -76,55 +90,15 @@ def parse_coding_legacy_source_evidence(
 ) -> CodingLegacySourceEvidenceV1:
     """Validate the exact settings paths and source patches frozen at cutover."""
 
-    if not isinstance(raw, bytes) or not raw or len(raw) > _MAX_PROJECTION_BYTES:
-        raise CodingLegacySourceEvidenceError(
-            "Coding legacy Source settings projection exceeds budget"
-        )
-    for path in (global_settings_path, project_settings_path):
-        if not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts:
-            raise CodingLegacySourceEvidenceError(
-                "Coding legacy Source settings path is invalid"
-            )
-    if global_settings_path == project_settings_path:
-        raise CodingLegacySourceEvidenceError(
-            "Coding legacy Source settings scopes overlap"
-        )
-    try:
-        projection = json.loads(
-            raw.decode("utf-8"),
-            object_pairs_hook=_unique_object,
-            parse_constant=_reject_non_json_constant,
-        )
-        classification = classify_coding_legacy_source_configuration(projection)
-        if type(projection) is not dict:
-            raise ValueError("Coding Source projection is not an object")
-        scopes = projection["scopes"]
-        if scopes["global"]["settingsPath"] != str(global_settings_path) or scopes[
-            "project"
-        ]["settingsPath"] != str(project_settings_path):
-            raise ValueError("Coding Source settings path changed")
-        canonical = json.dumps(
-            projection,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8")
-        if raw != canonical:
-            raise ValueError("Coding Source projection bytes changed")
-    except (UnicodeError, ValueError, KeyError, TypeError) as exc:
-        raise CodingLegacySourceEvidenceError(
-            "Coding legacy Source settings projection is invalid"
-        ) from exc
-    return CodingLegacySourceEvidenceV1(
-        projection_bytes=raw,
-        classification=classification,
-        projection_digest=sha256(raw).hexdigest(),
+    return _programs.parse_source_evidence(
+        raw,
+        global_settings_path=global_settings_path,
+        project_settings_path=project_settings_path,
     )
 
 
 _unique_object = _unique_json_object_hook(
-    lambda: 'Coding Source projection has duplicate JSON keys',
+    lambda: "Coding Source projection has duplicate JSON keys",
 )
 
 

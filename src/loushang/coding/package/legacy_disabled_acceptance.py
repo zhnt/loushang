@@ -6,6 +6,9 @@ import os as os
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.harness.package_product import (
+    legacy_disabled_acceptance as _programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
@@ -19,13 +22,25 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+)
 from .legacy_disabled_review import (
     CodingLegacyDisabledOnlyReviewV1,
-    review_coding_first_b_disabled_only,
+)
+from .legacy_disabled_review import (
+    review_coding_first_b_disabled_only as review_coding_first_b_disabled_only,
 )
 
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
+
+
+_LEGACY_ADOPTION_VALUES = {
+    "value_001": "Disabled-only review ID changed",
+    "value_002": "Product Store changed",
+    "value_003": "legacy-disabled-acceptance.jsonl",
+    "value_004": "Disabled-only Product acceptance conflicts with first-B review",
+}
 
 
 class CodingLegacyDisabledOnlyAcceptanceError(RuntimeError):
@@ -98,19 +113,11 @@ def accept_coding_first_b_disabled_only(
 ) -> CodingLegacyDisabledOnlyAcceptanceV1:
     """Persist exactly one operator-selected review before any Desired mutation."""
 
-    review = review_coding_first_b_disabled_only(
-        lifecycle, epoch_runtime, settings_manager=settings_manager
-    )
-    if accepted_review_id != review.review_id:
-        raise CodingLegacyDisabledOnlyAcceptanceError("Disabled-only review ID changed")
-    proposed = CodingLegacyDisabledOnlyAcceptanceV1.create(review)
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if epoch_runtime.registry.store_id != epoch.store_id:
-        raise CodingLegacyDisabledOnlyAcceptanceError("Product Store changed")
-    return _acceptance_journal.accept(
+    return _programs.accept_disabled_review(
+        lifecycle,
         epoch_runtime,
-        proposed,
-        conflict_message="Disabled-only Product acceptance conflicts with prior review",
+        settings_manager=settings_manager,
+        accepted_review_id=accepted_review_id,
     )
 
 
@@ -122,28 +129,9 @@ def read_coding_first_b_disabled_only_acceptance(
 ) -> CodingLegacyDisabledOnlyAcceptanceV1 | None:
     """Read a committed acceptance without creating or repairing Product state."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if epoch_runtime.registry.store_id != epoch.store_id:
-        raise CodingLegacyDisabledOnlyAcceptanceError("Product Store changed")
-    path = (
-        epoch_runtime.control_root
-        / "product-state"
-        / "legacy-disabled-acceptance.jsonl"
-    )
-    records = _acceptance_journal.records(path)
-    if records is None:
-        return None
-    review = review_coding_first_b_disabled_only(
+    return _programs.read_disabled_acceptance(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
-    if len(records) != 1 or records[0] != CodingLegacyDisabledOnlyAcceptanceV1.create(
-        review
-    ):
-        raise CodingLegacyDisabledOnlyAcceptanceError(
-            "Disabled-only Product acceptance conflicts with first-B review"
-        )
-    epoch_runtime.assert_current()
-    return records[0]
 
 
 def _read_private_acceptance(path: Path) -> str | None:

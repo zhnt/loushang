@@ -89,7 +89,7 @@ compatibility must not produce a forest of per-file root forwarders.
 
 ### Current Coordinating Programs
 
-The current candidate stages **66 complete implementations** in 24 program
+The accepted first private-data batch stages **66 complete implementations** in 24 program
 modules. The 31-file review distinguishes 24 original nominal/policy modules
 with moved programs from seven Product edges that already use existing shared
 engines. Staged custody keeps the original objects, gates, descriptors and
@@ -103,7 +103,7 @@ Each staged module temporarily imports its original binding, resulting in
 1,650 module pairs remain equal, with no added/removed dependency pair. This
 normalization documents intermediate coupling; it does not eliminate it.
 
-The current cost is 2,428 staging lines, 99,638 other Coding lines and 102,066
+The accepted first-batch snapshot cost is 2,428 staging lines, 99,638 other Coding lines and 102,066
 Coding lines total: Product edges decrease by 1,077 lines, but all production
 code increases by **1,351 lines**. Actual Harness, Hosting and other production
 code, tests and development scripts are unchanged. Type declarations remain
@@ -253,6 +253,192 @@ Coding/Harness responsibility boundary. It accepts the private-data operation
 mapping, real consumer dispatch, preserved original state/resource authority
 and explicit temporary Product dependencies. It does not accept a final
 public Harness API, final dependency elimination or whole-Goal completion.
+
+## Legacy Evidence And Adoption Batch: Local Source Milestone
+
+The next responsibility inventory is **31 files / 7,068 lines**: 30
+`legacy*.py` files (6,688 lines) plus `pre_b_snapshot.py` (380). This is the
+original responsibility family, not a claim that prefix membership closes the
+chain. Actual source-projection, Product-runtime and lifecycle consumers remain
+part of dependency/retention review.
+
+The current candidate moves **63 complete implementations**, originally 3,904
+physical lines across 27 Product modules. Complete snapshot/inventory
+reconciliation, data/builtin/removed/disabled review, accepted-source binding,
+acceptance reopening, installation/enablement, adoption and borrowed snapshot
+scope programs now dispatch through `coding.harness.package_product`.
+Original entry signatures/defaults and nominal records remain at their edges;
+the internal staged APIs receive already selected defaults explicitly.
+
+| Original `coding.package` module | Staged `coding.harness.package_product` module | Complete moved operations |
+| --- | --- | --- |
+| `legacy_binding_catalog` | `legacy_binding_records` | `validate_binding`, `create_binding`, `decode_binding`, `require_accepted_binding` |
+| `legacy_builtin_acceptance` | `legacy_builtin_acceptance` | `accept_builtin_review`, `read_builtin_acceptance` |
+| `legacy_builtin_adoption` | `legacy_builtin_adoption` | `adopt_builtin_snapshot` |
+| `legacy_builtin_review` | `legacy_builtin_review` | `admit_builtin_snapshot`, `review_builtin_snapshot`, `validate_review`, `decode_review` |
+| `legacy_classification` | `legacy_classification` | `classify_workspace_evidence`, `classify_source_projection`, `valid_package_source` |
+| `legacy_configured_source` | `legacy_source_matching` | `match_configured_source` |
+| `legacy_desired_evidence` | `legacy_desired_evidence` | `parse_desired_evidence` |
+| `legacy_disabled_acceptance` | `legacy_disabled_acceptance` | `accept_disabled_review`, `read_disabled_acceptance` |
+| `legacy_disabled_review` | `legacy_disabled_review` | `review_disabled_snapshot`, `decode_review` |
+| `legacy_installation_inventory` | `legacy_inventory` | `read_inventory`, `classify_installations`, `classify_removed_installations` |
+| `legacy_local_acceptance` | `legacy_local_acceptance` | `require_frozen_review`, `accept_local_review`, `reopen_local_acceptance`, `read_local_acceptance`, `validate_acceptance`, `create_acceptance`, `decode_acceptance`, `require_live_resource_kind` |
+| `legacy_local_adoption` | `legacy_adoption` | `adopt_local_review`, `settle_removed_before_adoption` |
+| `legacy_local_adoption_read` | `legacy_adoption_observation` | `adoption_settled` |
+| `legacy_local_binding_owner` | `legacy_binding` | `bind_accepted_source` |
+| `legacy_local_installation` | `legacy_installation` | `enable_accepted_data_plugin`, `install_accepted_plugin`, `accepted_source` |
+| `legacy_local_wheel` | `legacy_local_wheel` | `reacquire_local_wheel` |
+| `legacy_lock_evidence` | `legacy_binding_evidence` | `parse_binding_heads` |
+| `legacy_operation_evidence` | `legacy_operation_evidence` | `classify_management_members` |
+| `legacy_reacquisition` | `legacy_reacquisition` | `reacquire_installed_source` |
+| `legacy_removed_acceptance` | `legacy_removed_acceptance` | `accept_removed_review`, `read_removed_acceptance` |
+| `legacy_removed_adoption` | `legacy_removed_adoption` | `adopt_removed_snapshot` |
+| `legacy_removed_review` | `legacy_removed_review` | `snapshot_has_operations`, `admit_removed_snapshot`, `review_removed_snapshot`, `validate_entry`, `entry_from_evidence`, `decode_entry`, `validate_review`, `decode_review` |
+| `legacy_review` | `legacy_local_review` | `review_local_source`, `validate_review`, `decode_review` |
+| `legacy_skill_cutover_admission` | `legacy_data_admission` | `admit_local_snapshot`, `require_fenced_local_snapshot`, `require_data_kind` |
+| `legacy_source_consumption` | `legacy_source_consumption` | `frozen_sources` |
+| `legacy_source_evidence` | `legacy_source_evidence` | `parse_source_evidence` |
+| `pre_b_snapshot` | `legacy_snapshot_scope` | `pre_snapshot_scope`, `cutover_store` |
+
+### Reviewed Legacy Retention And Consumer Closure
+
+Every source in the 31-file responsibility family has a concrete disposition.
+The reasons below identify Product policy, necessary nominal/wire contracts or
+an already shared owner; a historical name alone is not a retention reason.
+
+| Original module | Retained edge and existing shared owner |
+| --- | --- |
+| `legacy_binding_catalog` | Nominal binding fields and exact wire schema, typed resource/version policy, Code error identity and original catalog configuration. The remaining initializer binds the original path/source/store/scope/policy/acceptance-reader state and durability/load policy to the existing Harness _LegacyLocalSourceCatalog; append/read/publish/extend methods are direct inherited adapters. Validation, decoding, construction and accepted-review correlation are staged. |
+| `legacy_builtin_acceptance` | Nominal acceptance receipt, exact acceptance ID domain/path/version/codec and private-receipt projections; complete accept/read programs are staged. Durable receipt publication remains the existing Harness owner. |
+| `legacy_builtin_adoption` | Nominal adoption result plus Code builtin/admission declarations and original operation identity; complete adoption program is staged and reuses the existing bootstrap owner. |
+| `legacy_builtin_review` | Nominal review fields, required wire layout/identity, supported old builtin/removal/domain/member declarations and exact error type. Full admission, validation, decoding and snapshot review are staged. |
+| `legacy_classification` | Nominal inventory facts, actual Product source/projection/filter-key and scope declarations. Both complete classifiers and package-source validation are staged; no second classifier body remains. |
+| `legacy_configured_source` | Nominal configured-source scope/path, actual old builtin admission and the explicit max-source quota. Matching is staged; Code keeps its public default/identity. |
+| `legacy_data_trust` | Actual Product decision mapping skill/prompt/theme to permitted trust classes and resource owners, including local-data-only policy. This is an intentional Product trust boundary, not an unshared loader or migration engine. |
+| `legacy_desired_evidence` | Nominal desired snapshot/digest/transitions, budget and exact duplicate-key diagnostics. The short reader names the historical desired member and uses the existing authenticated snapshot binding; complete decoding and foreign-scope proof are staged. |
+| `legacy_disabled_acceptance` | Nominal acceptance, exact filename/ID/version/codec and original receipt IO adapters. Accept/read coordination is staged and uses the existing Harness acceptance/receipt mechanism. |
+| `legacy_disabled_review` | Nominal disabled-only record, version, required nonempty disable declaration and exact wire identity/schema. Small post-init binds these nominal requirements to existing canonical hashing; full projection review and decoding are staged. |
+| `legacy_installation_inventory` | Nominal local/removed/builtin/inventory evidence records, original state aliases and actual old builtin set. Read/reconcile/active/removed classification are staged; the shared management proof has one owner. |
+| `legacy_instance_evidence` | Unchanged 33-line Product envelope: original nominal inputs/byte budget/path projection and error identity call existing Harness inspect_gracefully_retired_instance_capture. The complete retirement/runtime proof was already shared before this Goal. |
+| `legacy_local_acceptance` | Nominal acceptance/wire/resource-version policy, typed resource declarations and existing protocol/codec configuration. Accept/reopen/read/frozen-review/live-kind proofs and nontrivial record admission/decoding are staged. |
+| `legacy_local_adoption` | Nominal result and compatible Skill entry selecting actual resource_kind=skill; Product builtin key/hash/error projections into already shared preserve_removed_product_plugin. Full adoption and prerequisite settlement are staged. |
+| `legacy_local_adoption_read` | Nominal settled result/version and original policy/identity declarations; complete settlement proof is staged. |
+| `legacy_local_binding_owner` | Product binding operation identity/path/policy declarations and compatibility entry; complete accepted-source binding program is staged. |
+| `legacy_local_installation` | Compatible install/Skill selection entries, Product operation-ID domains/session prefix/error projection and the direct _LegacyLocalInstallation constructor binding. The existing Harness owner executes installation/enablement; whole coordination and exact accepted-source proof are staged. |
+| `legacy_local_wheel` | Nominal candidate and original legacy wheel/private-budget/error declarations; reacquisition program is staged over the existing resource wheel/materialization owners. |
+| `legacy_lock_evidence` | Nominal binding evidence, exact supported lock/wire/hash/budget and duplicate-key declarations. Short reader binds the historical authenticated snapshot member; full head parsing is staged. |
+| `legacy_operation_evidence` | Nominal operation/retirement capture, supported historical service/member shapes and budgets/error identity. Classification is staged. Existing 33-line type/envelope projection calls Harness inspect_settled_management_capture, whose complete parsing/replay is baseline shared capability. |
+| `legacy_reacquisition` | Nominal reacquired result and original Product input/policy binding; complete inventory/source/wheel association program is staged. |
+| `legacy_removed_acceptance` | Nominal acceptance/wire/ID/path declarations and direct existing receipt publication adapter; complete accept/read coordination is staged. |
+| `legacy_removed_adoption` | Nominal removed-adoption result and actual Product builtin/removal policy/identity declarations; complete adoption program is staged. |
+| `legacy_removed_review` | Nominal entry/review fields, original wire identity/schema and supported old builtin/domain/member policy. _identity is an explicit wire-field declaration using existing schema traversal; all nontrivial admission, record validation/decoding and read/review proofs are staged. |
+| `legacy_review` | Nominal review fields/wire schema, exact legacy wheel/ID/policy patterns and builtin-removal ID domain/allowlist. _identity_dict declares optional wire fields over existing RecordSchema; full validation/decoding/source review are staged. |
+| `legacy_skill_cutover_admission` | Actual supported data kinds, max-local quota, old removable builtin set and nominal wheel-inspection projection into the already shared inert-wheel inspector. The Skill entry selects Product kind; full snapshot/admission and operator-kind consistency programs are staged. |
+| `legacy_snapshot_member` | Unchanged Product binding to Harness _LegacyFirstSnapshot: exact lifecycle/epoch roots, store/error identity and permitted domains, plus nominal observer/type aliases. Full snapshot authentication/reads already belonged to Harness before this Goal. |
+| `legacy_source_consumption` | Original receipt/path/identity and actual Product acceptance/source policy declarations configuring Harness _SourceConsumptionProtocol. Consume/consumed entries directly reuse that existing complete owner; frozen source association proof is staged. |
+| `legacy_source_evidence` | Nominal projection bytes/classification/digest, budget, actual settings scope/path and error/JSON hooks. Detached source_patch is the original wire-field projection; reader binds a historical member through the existing snapshot authority. Complete canonical projection validation is staged. |
+| `legacy_windows_receipt` | Unchanged Code error identity and byte/attribute/stage policy configuring the existing WindowsPrivateReceiptIO. All receipt/ledger reads, atomic publication/retry and native safety mechanisms were already shared. |
+| `pre_b_snapshot` | Nominal preparation/cutover bundles, actual private root/path list, fresh-only settings/input policy, explicit Windows-candidate admission and Code builtin bootstrap choice. Root preparation/projection/reopen entries directly bind existing native Harness owners. Whole pinned snapshot lifetime and cutover execution are staged. |
+
+Actual external Code consumers (including deferred imports) are:
+
+`authoring.extension`, `authoring.plugin_smoke`, `cli.package_cutover`, `composition.base_product`, `composition.external_data`, `composition.product_capability_plugins`, `package.cutover_backup`, `package.external_worker_wheel`, `package.installation_private_data`, `package.private_data_windows_backup_expiry_journal`, `package.private_data_windows_confirmation`, `package.private_data_windows_deletion_journal`, `package.private_data_windows_restore_journal`, `package.product_backup_types`, `package.product_preview`, `package.product_revisions`, `package.product_runtime`, `package.product_worker_windows_checkpoint`, `package.product_worker_windows_crash_stage_retirement`, `package.product_worker_windows_history_bases`, `package.product_worker_windows_history_preparation`, `package.product_worker_windows_installed_backend`, `package.product_worker_windows_launch_intent`, `package.product_worker_windows_partial_stage_retirement`, `package.product_worker_windows_persisted_bases`, `package.product_worker_windows_stage_retirement`, `package.product_worker_windows_unlaunched_stage_retirement`.
+
+Their historical imports and nominal bindings remain in place. The old public
+operations now enter the single staged implementation; unchanged receipt/trust
+bindings continue directly into their existing Harness owners. The complete
+31-file review does not accept the unrelated Product runtime, epoch layout,
+worker or lifecycle responsibilities that remain in later frozen batches.
+
+### Concrete Reuse And Dependency Debt
+
+Two complete management-history proofs now use one implementation,
+`legacy_management_evidence.verify_settled_history`: service-lock bytes,
+operation history, retirement journals and graceful retired-runtime evidence
+are checked in their original order. Inventory and cutover admission retain
+their distinct existing read authorities and error identities. The one read
+port preserves original per-read binding lookup and checks; no new snapshot,
+journal, lock or mutable authority is introduced. The original caller module
+is an explicit temporary receiver for its parser/record fault lookup seams.
+This dynamic dependency is recorded alongside static imports, rather than
+claimed absent.
+
+The two replaced proof bodies total 171 lines. The shared file including its
+documentation/imports is 88 lines, the two actual call sites are 34 lines and
+new imports/separation cost four lines: this reuse unit removes **45 lines**.
+That local deletion is separate from broader migration growth. Full parent
+bodies expand through the actual shared call arguments to the original proof
+AST, including IO budgets, types, order and errors. Existing Harness
+`_LegacyFirstSnapshot`, source-consumption protocol, source catalog,
+retirement/parsing, journal and resource owners remain in use; none is
+reimplemented or counted as new migration benefit.
+
+Across both current batches, all original logical dependencies normalize to
+the same 1,650 module pairs. Fifty-two staged program/proof modules have
+explicit original Code back references, including the shared proof's cycle
+through inventory. Final Harness does not import the staging namespace.
+These are permitted intermediate debts, not final shared API acceptance.
+
+### Current Cost, Evidence And Remaining Work
+
+| Scope | Python physical lines |
+| --- | ---: |
+| All Coding, including staging | 104125 |
+| `coding.harness` | 6997 |
+| Other Coding | 97128 |
+| Production change since Goal baseline | +3410 |
+| Production change since accepted private-data batch | +2059 |
+| Actual Harness / Hosting / other production change | 0 |
+| Test / Product development script change | 0 |
+
+The 143 declaration lines and unchanged root boundary are separate. Staging
+remains Coding; neither moved source bodies nor the 45-line local reuse unit
+establish system net deletion. Nominal/API wrappers, explicit Product policy
+and historical error/wire declarations, typed interfaces and qualification
+cost more lines than this batch currently removes. Continue assessing concrete
+reuse rather than counting Code departure as total simplification.
+
+Before this batch, 68 original inventory/lock/desired/source-custody tests pass
+in 77.39 seconds. The first 15-program candidate passes 131 related cases in
+141.41 seconds. After the shared-history change, its 56 affected cases pass in
+121.75 seconds. The 34-program adoption/Cutover/CLI/platform-selector candidate completed with
+304 passed, 49 skipped and one installed Embedded terminal startup failure.
+That exact failure also reproduces on committed pre-Legacy `5aa7d44f2` in a
+separate clean baseline worktree: `transcript_writer:unsafe` then the unchanged
+35-second terminal predicate timeout. Both embedded subcases intentionally
+strip source paths and launch the same shared installed entry, whose editable
+package points to the control lane, not this candidate. This is not evidence
+of the staged source being accepted by an installed-wheel route. No Product
+safety or timeout was changed. A private test-directory exception is pending
+user reply; final installed-candidate/platform validation remains due.
+
+The later eight-program parsing candidate passes 86 related cases in
+111.10 seconds. The record/proof candidate passes 106 related cases in
+52.75 seconds; after final cutover/source-kind closure, 47 affected cases pass
+in 51.28 seconds. These are layered affected-path results, not a sum of unique
+cases or a claim that the earlier broad run covered later changes. Current mypy passes 60 sources and
+Ruff passes. All 351 captured original Legacy Code symbol contracts remain
+equal, and all 63 moved bodies compare equal to their originals after binding,
+policy, relative-import and shared-proof expansion. Original golden records
+and tests are unchanged.
+
+The 31-file semantic disposition and 27 actual external Code consumers are
+recorded. Four modules retain actual Product trust or preexisting shared
+bindings; 27 contain the original nominal/policy entries for staged programs.
+Full source-scope closure now includes record admission/decoding, source/lock/
+desired parsing, exact accepted-source and operator-kind proofs, snapshot
+lifetime and cutover execution. Original paths now dispatch to single staged
+implementations; compatibility constructors and wire declarations remain at
+Code edges. Existing effect and persistence engines remain the Harness owners.
+
+Codex `/root` accepts this local intermediate source capability milestone
+within the authorized responsibility boundary: complete operation dispatch,
+31-file/27-consumer closure, record/type compatibility, original state authority
+and explicit intermediate dependency debt. This does not accept an installed
+candidate or native Windows execution. The installed-terminal
+failure and native Windows routes are explicit remaining verification limits;
+whole-Goal acceptance, final dependency elimination and remote delivery have
+not occurred.
 
 ## Cost And Final Acceptance
 
