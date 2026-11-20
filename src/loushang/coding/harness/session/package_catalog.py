@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssembly,
@@ -54,6 +54,7 @@ from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.bootstrap_construction import PreparationRootCustody
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
@@ -70,6 +71,9 @@ from .catalog_preparation import (
 )
 
 if TYPE_CHECKING:
+    from loushang.coding.composition.capability_plugins import (
+        CodingCapabilityPluginCompositionAssembly,
+    )
     from loushang.coding.composition.capability_specs import (
         CodingCapabilityPluginConfig,
     )
@@ -85,6 +89,11 @@ if TYPE_CHECKING:
     )
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.session.bootstrap_services import BootstrapServices
+
+_SessionT = TypeVar("_SessionT")
+_CatalogProjector = Callable[
+    ..., tuple["InitialResourceCatalogProductAdapter", "ResourceBundle"]
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +195,153 @@ class FencedCatalogPreparation:
     receipt: ResourceCatalogInputReceipt
     evaluated_at: int | None
     builtin: CodingBuiltinProductCompositionPreparation | None
+
+
+@dataclass(slots=True)
+class InitialCatalogHandoff:
+    """Keep startup Catalog projection and its Session intake in one place."""
+
+    authority: CatalogProductAuthority
+    services: BootstrapServices
+    session_id: str
+    custody: PreparationRootCustody[CodingCapabilityPluginCompositionPreparation]
+    source_policy: CodingResourceCatalogSourcePolicy
+    legacy_preparation: CodingBasePluginSessionPreparation | None = field(
+        default=None, init=False
+    )
+    builtin_preparation: CodingBuiltinProductCompositionPreparation | None = field(
+        default=None, init=False
+    )
+    _adapters: list[InitialResourceCatalogProductAdapter] = field(
+        default_factory=list, init=False
+    )
+
+    def require_unprepared(self, error: str) -> None:
+        if self._adapters:
+            raise RuntimeError(error)
+
+    def take_adapter(self) -> InitialResourceCatalogProductAdapter:
+        if len(self._adapters) != 1:
+            raise RuntimeError("Initial Resource Catalog projection adapter is unavailable")
+        return self._adapters.pop()
+
+    def prepare_legacy_projection(
+        self,
+        loader: ResourceLoader,
+        *,
+        cwd: Path,
+        base: CodingBasePluginAssembly | None,
+        supplied: ProductCompositionAssemblyRequest | None,
+        include_configured: bool,
+        prepare_capabilities: Callable[
+            [ProductPluginPlanSeed | None],
+            CodingCapabilityPluginCompositionPreparation | None,
+        ]
+        | None,
+        reconcile_compatibility: Callable[[], None],
+        clock: Callable[[], int] | None,
+        project_catalog: _CatalogProjector,
+        admission_failure: _AdmissionFailure,
+    ) -> ResourceBundle:
+        receipt = require_catalog_receipt(loader, cwd, admission_failure)
+        evaluated_at = clock() if clock is not None else int(time.time())
+        composition, self.legacy_preparation = prepare_initial_composition(
+            receipt,
+            session_id=self.session_id,
+            evaluated_at=evaluated_at,
+            base=base,
+            supplied=supplied,
+            include_configured=include_configured,
+            custody=self.custody,
+            prepare_capabilities=prepare_capabilities,
+            admission_failure=admission_failure,
+        )
+        reconcile_compatibility()
+        adapter, projection = project_catalog(
+            loader,
+            cwd=cwd,
+            session_id=self.session_id,
+            disabled_skills=self.services.settings_manager.get_settings().disabled_skills,
+            product_composition=composition,
+            admission_now=(
+                evaluated_at
+                if composition is None
+                else composition.authority_context.evaluated_at
+            ),
+            clock=clock,
+            receipt=receipt,
+            source_policy=self.source_policy,
+        )
+        self._adapters.append(adapter)
+        return projection
+
+    def project_fenced(
+        self,
+        prepared: FencedCatalogPreparation,
+        loader: ResourceLoader,
+        *,
+        cwd: Path,
+        capability_only_policy: CodingResourceCatalogSourcePolicy,
+        disabled_source_policy: CodingResourceCatalogSourcePolicy,
+        clock: Callable[[], int],
+        project_catalog: _CatalogProjector,
+    ) -> ResourceBundle:
+        authority = prepared.authority
+        compiled = authority.base
+        disabled_composition = (
+            authority.disabled_composition(self.custody.preparation)
+            if compiled is None
+            else None
+        )
+        adapter, projection = project_catalog(
+            loader,
+            cwd=cwd,
+            session_id=self.session_id,
+            disabled_skills=self.services.settings_manager.get_settings().disabled_skills,
+            product_composition=(
+                compiled.product_composition if compiled is not None else disabled_composition
+            ),
+            product_snapshot_resources=authority.snapshot_resources(
+                allow_empty_snapshot=disabled_composition is not None
+            ),
+            admission_now=prepared.evaluated_at if compiled is not None else clock(),
+            clock=clock,
+            receipt=prepared.receipt,
+            source_policy=(
+                self.source_policy
+                if compiled is not None
+                else capability_only_policy
+                if disabled_composition is not None
+                else disabled_source_policy
+            ),
+        )
+        self.authority = authority
+        self.builtin_preparation = prepared.builtin
+        self._adapters.append(adapter)
+        return projection
+
+
+def construct_catalog_session(
+    adapter: InitialResourceCatalogProductAdapter,
+    *,
+    product_id: str,
+    session_id: str,
+    bundle: ResourceBundle,
+    construct: Callable[[InitialSessionResourceCatalogBootstrap], _SessionT],
+    unpublished_assembly: CodingCapabilityPluginCompositionAssembly | None,
+    cleanup_label: str,
+) -> _SessionT:
+    try:
+        return adapter.construct_session(
+            product_id=product_id,
+            session_id=session_id,
+            base_resource_bundle=bundle,
+            construct=construct,
+        )
+    except BaseException as error:
+        if unpublished_assembly is not None:
+            run_cleanup_steps(error, ((cleanup_label, unpublished_assembly.abort_unpublished),))
+        raise
 
 
 def prepare_fenced_catalog(
@@ -420,9 +576,7 @@ def prepare_catalog_refresh(
     source_policy: CodingResourceCatalogSourcePolicy,
     disabled_source_policy: CodingResourceCatalogSourcePolicy,
     clock: Callable[[], int],
-    project_catalog: Callable[
-        ..., tuple[InitialResourceCatalogProductAdapter, ResourceBundle]
-    ],
+    project_catalog: _CatalogProjector,
     admission_failure: _AdmissionFailure,
 ) -> InitialSessionResourceCatalogBootstrap:
     """Refresh the Catalog over the original selected composition and receipt."""

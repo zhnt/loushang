@@ -1836,6 +1836,36 @@ skips, covering repaired or rejected owner acquisition, private-data
 replay, management commands, and architecture constraints. Native Windows
 execution remains unverified.
 
+## Initial Catalog Preparation And Session Handoff
+
+The existing staged Package Catalog module now owns the initial projection
+handoff for both startup paths. Legacy startup resolves the receipt and
+prepares its composition before the Product compatibility operation and
+projection. Fenced startup projects the already admitted Base, capability
+or disabled selection, then hands off the authority, builtin preparation
+and adapter together. Both paths keep the original duplicate-preparation
+and single-adapter intake checks. A failed fenced projection leaves the
+previous authority and adapter in place. Legacy sets its preparation
+before compatibility reconciliation, at the same point as before.
+
+The selected adapter still mints and transfers its Resource bootstrap
+through the existing Harness Session constructor. Failure releases the
+unpublished Capability assembly with the original error and cleanup notes.
+The caller's diagnostics and fenced runtime release retain their original
+order. Coding supplies compatibility reconciliation, selected plugin and
+source policies, diagnostic labels and the original projection hook. The
+historical bootstrap import still resolves to the same preparation type.
+
+The Product edge removes 89 Python lines and staging adds 154, for a net
+increase of 65. The staged state and typed boundary account for the cost.
+The normalized graph stays at 1,659 module pairs. The existing Product
+references remain explicit, including the assembly type used for failure
+cleanup. Against the prior checkpoint, 137 comparisons match preparation
+order, admission diagnostics, projection state, adapter intake, error
+identity and cleanup outcomes. All 52 focused non-live Linux cases pass,
+including Hosted and Resume construction and the existing architecture
+constraints. Native Windows startup remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
