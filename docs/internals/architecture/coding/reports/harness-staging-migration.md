@@ -338,7 +338,7 @@ an already shared owner; a historical name alone is not a retention reason.
 | `legacy_source_consumption` | Original receipt/path/identity and actual Product acceptance/source policy declarations configuring Harness _SourceConsumptionProtocol. Consume/consumed entries directly reuse that existing complete owner; frozen source association proof is staged. |
 | `legacy_source_evidence` | Nominal projection bytes/classification/digest, budget, actual settings scope/path and error/JSON hooks. Detached source_patch is the original wire-field projection; reader binds a historical member through the existing snapshot authority. Complete canonical projection validation is staged. |
 | `legacy_windows_receipt` | Unchanged Code error identity and byte/attribute/stage policy configuring the existing WindowsPrivateReceiptIO. All receipt/ledger reads, atomic publication/retry and native safety mechanisms were already shared. |
-| `pre_b_snapshot` | Nominal preparation/cutover bundles, actual private root/path list, fresh-only settings/input policy, explicit Windows-candidate admission and Code builtin bootstrap choice. Root preparation/projection/reopen entries directly bind existing native Harness owners. Whole pinned snapshot lifetime and cutover execution are staged. |
+| `pre_b_snapshot` | Nominal preparation/cutover bundles, deployed root geometry, fresh-only admission policy, explicit Windows-candidate admission and Code builtin bootstrap choice. Staging owns preparation, the pinned snapshot lifetime, cutover and native reopen. The existing Harness owners perform the directory and snapshot effects. |
 
 Actual external Code consumers (including deferred imports) are:
 
@@ -1599,6 +1599,37 @@ historical trace-digest failures as the previous checkpoint. All 86
 normalized observations match. The Linux runtime run passes all 18 cases,
 including actual Session cache creation, read-only preview, cleanup and
 deletion replay. Native Windows remains unverified.
+
+## First Package Cutover Preparation And Reopen
+
+The staged Package Product snapshot scope now owns private-root preparation,
+fresh-input checks around root creation, projection lifetime through the
+first fence, and native reopen dispatch. One preparation program orders
+state roots before data roots, with the Windows projection parent prepared
+in its existing position. Native private-directory and fence owners still
+perform validation, writes, snapshot publication and reopen. Backup status
+continues to pass through the read-only reopen flag. Coding retains the
+deployed root geometry, the Windows fresh-only admission decision, and
+the original public types and function bindings.
+
+Session startup and the offline cutover now share the staged historical
+state probe for fresh inputs. It reads lifecycle before Package state and
+skips a root only for an allowed missing-path result. The offline CLI uses
+one Product namespace derivation and one existing-fence identity check.
+The disabled-only review shares the first-fence entry with other reviews
+and runs its original preflight before a new fence. Existing fences reopen
+without that preflight or a new snapshot admission.
+
+The Product edge removes 98 lines and existing staging modules add 105
+for a net increase of seven physical Python lines. No new module or
+normalized dependency pair is introduced. Both existing staged modules
+still borrow their Product binding for historical paths, settings checks,
+types and test seams. Controlled comparison against the previous checkpoint
+matches 24 root ordering and failure, 576 preparation and custody, 24
+native dispatch, 300 read-only state and 120 CLI review observations.
+Historical import aliases and nominal export identity also pass. The
+non-live Linux snapshot, offline CLI, plugin lifecycle and architecture
+run passes all 216 cases. Native Windows execution remains unverified.
 
 ## Cost And Final Acceptance
 

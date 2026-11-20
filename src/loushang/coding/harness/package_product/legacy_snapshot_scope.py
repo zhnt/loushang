@@ -11,6 +11,92 @@ from contextlib import contextmanager
 from loushang.coding.package import pre_b_snapshot as _binding
 
 
+def prepare_cutover_roots(
+    lifecycle: _binding.CodingPluginLifecycleStateLayout, *, label: str
+) -> _binding.CodingPackageEpochLayoutV1:
+    """Prepare state roots before data roots using the native private owner."""
+
+    if _binding.os.name not in {"posix", "nt"}:
+        raise RuntimeError("Native Package cutover preparation is required")
+    epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
+    windows = _binding.os.name == "nt"
+    roots: tuple[tuple[_binding.Path, _binding.Path], ...] = (
+        (lifecycle.root, lifecycle.private_state_base),
+        (epoch.control_root, lifecycle.private_state_base),
+        (epoch.snapshot_root, lifecycle.private_state_base),
+    )
+    if windows:
+        roots += (
+            (
+                _binding._windows_projection_root(lifecycle),
+                lifecycle.private_state_base,
+            ),
+        )
+    roots += (
+        (lifecycle.package_root, lifecycle.private_data_base),
+        (epoch.epochs_root, lifecycle.private_data_base),
+    )
+    for root, private_base in roots:
+        _binding.prepare_legacy_product_cutover_root(
+            root, private_base=private_base, windows=windows, label=label
+        )
+    return epoch
+
+
+def prepare_and_cutover(
+    lifecycle: _binding.CodingPluginLifecycleStateLayout,
+    settings_manager: _binding.SettingsManager,
+    *,
+    namespace_id: str,
+    minimum_runtime_version: str,
+    minimum_runtime_protocol_epoch: int,
+    snapshot_admission: _binding.CodingCutoverSnapshotAdmission | None,
+    require_fresh: bool,
+) -> _binding.CodingPackagePreBCutover:
+    """Check freshness around root creation and hold projection through cutover."""
+
+    if require_fresh:
+        if (
+            settings_manager.global_settings_path is None
+            or settings_manager.project_settings_path is None
+        ):
+            raise RuntimeError(_binding._FRESH_SETTINGS_PATHS_REQUIRED)
+        _binding.require_coding_fresh_settings_without_writes(
+            settings_manager.global_settings_path,
+            settings_manager.project_settings_path,
+        )
+        _binding.require_fresh_coding_product_inputs(
+            lifecycle, settings_manager, roots_may_be_absent=True
+        )
+    _binding.prepare_coding_package_cutover_roots(lifecycle)
+    if require_fresh:
+        _binding.require_fresh_coding_product_inputs(lifecycle, settings_manager)
+    with _binding._hold_projection_parent(lifecycle) as projection_parent:
+        return _binding.cutover_coding_package_store_from_legacy(
+            lifecycle,
+            settings_manager,
+            projection_parent=projection_parent,
+            namespace_id=namespace_id,
+            minimum_runtime_version=minimum_runtime_version,
+            minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+            snapshot_admission=snapshot_admission,
+        )
+
+
+def reopen_cutover(
+    lifecycle: _binding.CodingPluginLifecycleStateLayout, *, read_only: bool
+) -> _binding.PackagePosixEpochCutoverResultV1:
+    """Reopen durable fence evidence without recapturing the old sources."""
+
+    epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
+    reopen = (
+        _binding.reopen_windows_product_cutover
+        if _binding.os.name == "nt"
+        else _binding.reopen_posix_product_cutover
+    )
+    return reopen(**epoch.fenced_runtime_open_kwargs(), read_only=read_only)
+
+
 @contextmanager
 def pre_snapshot_scope(
     lifecycle: _binding.CodingPluginLifecycleStateLayout,

@@ -96,8 +96,8 @@ from .builtin_wheel import (
     prepare_windows_coding_capability_product_wheels as prepare_windows_coding_capability_product_wheels,
 )
 from .epoch_layout import (
-    resolve_coding_lifecycle_pre_b_members,
-    resolve_coding_package_pre_b_store_members,
+    resolve_coding_lifecycle_pre_b_members,  # noqa: F401 - also called by the staged program
+    resolve_coding_package_pre_b_store_members,  # noqa: F401 - also called by the staged program
 )
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
@@ -762,20 +762,12 @@ def require_fresh_coding_product_inputs(
         )
     if type(roots_may_be_absent) is not bool:
         raise TypeError("Coding fresh Product root policy is invalid")
-    for root, resolver in (
-        (lifecycle.root, resolve_coding_lifecycle_pre_b_members),
-        (lifecycle.package_root, resolve_coding_package_pre_b_store_members),
+    if _lifecycle_programs.legacy_state_requires_migration(
+        lifecycle, skip_missing=roots_may_be_absent
     ):
-        if roots_may_be_absent:
-            try:
-                root.lstat()
-            except FileNotFoundError:
-                continue
-        members = resolver(lifecycle)
-        if any(members.domain_members().values()):
-            raise RuntimeError(
-                "Coding pre-B workspace is unsupported; use a fresh workspace"
-            )
+        raise RuntimeError(
+            "Coding pre-B workspace is unsupported; use a fresh workspace"
+        )
 
 
 def require_fresh_coding_product_inputs_without_writes(
@@ -812,17 +804,9 @@ def coding_product_inputs_need_compatibility(
         workspace=workspace, settings_manager=settings_manager
     ):
         return True
-    for root, resolver in (
-        (lifecycle.root, resolve_coding_lifecycle_pre_b_members),
-        (lifecycle.package_root, resolve_coding_package_pre_b_store_members),
-    ):
-        try:
-            root.lstat()
-        except FileNotFoundError:
-            continue
-        if any(resolver(lifecycle).domain_members().values()):
-            return True
-    return False
+    return _lifecycle_programs.legacy_state_requires_migration(
+        lifecycle, skip_missing=True
+    )
 
 
 def require_fresh_coding_product_settings_without_writes(

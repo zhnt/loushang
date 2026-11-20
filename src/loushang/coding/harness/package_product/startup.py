@@ -9,6 +9,25 @@ from __future__ import annotations
 from loushang.coding.package import product_runtime as _binding
 
 
+def legacy_state_requires_migration(
+    lifecycle: _binding.CodingPluginLifecycleStateLayout, *, skip_missing: bool
+) -> bool:
+    """Inspect the historical roots in lifecycle-before-package order."""
+
+    for root, resolve_members in (
+        (lifecycle.root, _binding.resolve_coding_lifecycle_pre_b_members),
+        (lifecycle.package_root, _binding.resolve_coding_package_pre_b_store_members),
+    ):
+        if skip_missing:
+            try:
+                root.lstat()
+            except FileNotFoundError:
+                continue
+        if any(resolve_members(lifecycle).domain_members().values()):
+            return True
+    return False
+
+
 def bootstrap_builtin_plugins(
     lifecycle: _binding.CodingPluginLifecycleStateLayout,
     settings_manager: _binding.SettingsManager,

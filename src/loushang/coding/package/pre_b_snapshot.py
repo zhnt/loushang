@@ -12,7 +12,7 @@ from pathlib import Path
 from loushang.coding.harness.package_product import legacy_snapshot_scope as _programs
 from loushang.coding.package.epoch_layout import (
     CodingPackageEpochLayoutV1,
-    resolve_coding_package_epoch_layout,
+    resolve_coding_package_epoch_layout,  # noqa: F401 - also called by the staged program
 )
 from loushang.coding.package.epoch_layout import (
     resolve_coding_lifecycle_pre_b_members as resolve_coding_lifecycle_pre_b_members,
@@ -29,11 +29,11 @@ from loushang.coding.package.legacy_classification import (
 from loushang.coding.package.product_runtime import (
     _require_current_coding_product_admission,
     bootstrap_coding_builtin_product_plugins,
-    require_fresh_coding_product_inputs,
+    require_fresh_coding_product_inputs,  # noqa: F401 - also called by the staged program
 )
 from loushang.coding.package.source_snapshot import (
     _PROJECTION_NAME,
-    require_coding_fresh_settings_without_writes,
+    require_coding_fresh_settings_without_writes,  # noqa: F401 - also called by the staged program
 )
 from loushang.coding.package.source_snapshot import (
     hold_coding_pre_b_source_configuration as hold_coding_pre_b_source_configuration,
@@ -48,8 +48,8 @@ from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackageProductPosixCutoverAttemptV1,
     PackageProductPreBSnapshotOwner,
     hold_legacy_product_projection_root,
-    prepare_legacy_product_cutover_root,
-    reopen_posix_product_cutover,
+    prepare_legacy_product_cutover_root,  # noqa: F401 - also called by the staged program
+    reopen_posix_product_cutover,  # noqa: F401 - also called by the staged program
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackageProductPreBSnapshotSharedMemberV1 as PackageProductPreBSnapshotSharedMemberV1,
@@ -60,8 +60,10 @@ from loushang.harness.resources.packages.product_pre_b_snapshot import (
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
     PackageProductWindowsCutoverAttemptV1,
     PackageProductWindowsPreBSnapshotOwner,
-    reopen_windows_product_cutover,
+    reopen_windows_product_cutover,  # noqa: F401 - also called by the staged program
 )
+
+_FRESH_SETTINGS_PATHS_REQUIRED = "Coding fresh Product settings paths are required"
 
 _LEGACY_ADOPTION_VALUES = {
     "value_001": "Coding Plugin lifecycle layout is required",
@@ -98,33 +100,7 @@ def prepare_coding_package_cutover_roots(
 ) -> CodingPackageEpochLayoutV1:
     """Prepare only missing private roots for an offline first B cutover."""
 
-    if os.name not in {"posix", "nt"}:
-        raise RuntimeError("Native Package cutover preparation is required")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if os.name == "nt":
-        for root, private_base in (
-            (lifecycle.root, lifecycle.private_state_base),
-            (epoch.control_root, lifecycle.private_state_base),
-            (epoch.snapshot_root, lifecycle.private_state_base),
-            (_windows_projection_root(lifecycle), lifecycle.private_state_base),
-            (lifecycle.package_root, lifecycle.private_data_base),
-            (epoch.epochs_root, lifecycle.private_data_base),
-        ):
-            prepare_legacy_product_cutover_root(
-                root, private_base=private_base, windows=True, label="Coding Package"
-            )
-        return epoch
-    for root, private_base in (
-        (lifecycle.root, lifecycle.private_state_base),
-        (epoch.control_root, lifecycle.private_state_base),
-        (epoch.snapshot_root, lifecycle.private_state_base),
-        (lifecycle.package_root, lifecycle.private_data_base),
-        (epoch.epochs_root, lifecycle.private_data_base),
-    ):
-        prepare_legacy_product_cutover_root(
-            root, private_base=private_base, windows=False, label="Coding Package"
-        )
-    return epoch
+    return _programs.prepare_cutover_roots(lifecycle, label="Coding Package")
 
 
 def prepare_and_cutover_coding_package_store_from_legacy(
@@ -142,32 +118,15 @@ def prepare_and_cutover_coding_package_store_from_legacy(
     if type(fresh_only) is not bool:
         raise TypeError("Coding fresh Product cutover policy is invalid")
     require_fresh = fresh_only or (os.name == "nt" and snapshot_admission is None)
-    if require_fresh:
-        if (
-            settings_manager.global_settings_path is None
-            or settings_manager.project_settings_path is None
-        ):
-            raise RuntimeError("Coding fresh Product settings paths are required")
-        require_coding_fresh_settings_without_writes(
-            settings_manager.global_settings_path,
-            settings_manager.project_settings_path,
-        )
-        require_fresh_coding_product_inputs(
-            lifecycle, settings_manager, roots_may_be_absent=True
-        )
-    prepare_coding_package_cutover_roots(lifecycle)
-    if require_fresh:
-        require_fresh_coding_product_inputs(lifecycle, settings_manager)
-    with _hold_projection_parent(lifecycle) as projection_parent:
-        return cutover_coding_package_store_from_legacy(
-            lifecycle,
-            settings_manager,
-            projection_parent=projection_parent,
-            namespace_id=namespace_id,
-            minimum_runtime_version=minimum_runtime_version,
-            minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
-            snapshot_admission=snapshot_admission,
-        )
+    return _programs.prepare_and_cutover(
+        lifecycle,
+        settings_manager,
+        namespace_id=namespace_id,
+        minimum_runtime_version=minimum_runtime_version,
+        minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+        snapshot_admission=snapshot_admission,
+        require_fresh=require_fresh,
+    )
 
 
 def _windows_projection_root(
@@ -249,22 +208,7 @@ def reopen_coding_package_cutover(
 ) -> PackagePosixEpochCutoverResultV1:
     """Reopen the current B root without reading legacy Coding Source state."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if os.name == "nt":
-        return reopen_windows_product_cutover(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
-            read_only=read_only,
-        )
-    return reopen_posix_product_cutover(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
-        read_only=read_only,
-    )
+    return _programs.reopen_cutover(lifecycle, read_only=read_only)
 
 
 def cutover_coding_package_store_from_legacy(
