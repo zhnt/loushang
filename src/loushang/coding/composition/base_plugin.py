@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,6 +13,9 @@ from loushang.coding.composition.base_owners import (
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.sets import CodingCompositionSetPlan
+from loushang.coding.harness.session.catalog_preparation import (
+    select_resource_plan,
+)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
@@ -428,23 +431,11 @@ def prepare_coding_base_resource_plan_seed(
     if not isinstance(assembly, CodingBasePluginAssembly):
         raise TypeError("Coding base Resource plan requires base assembly")
     seed = assembly.plan_seed
-    resource_ids = {
-        item.contribution_id
-        for item in assembly.package.contribution_index.items
-        if item.kind == "resource_item"
-    }
-    selected_resources = tuple(
-        item
-        for item in seed.plan.selected_contributions
-        if item.plugin_id == _PLUGIN_ID and item.contribution_id in resource_ids
-    )
-    if not selected_resources:
+    plan = select_resource_plan(seed.plan, assembly.package, plugin_id=_PLUGIN_ID)
+    if plan is None:
         return None
     return ProductPluginPlanSeed(
-        plan=replace(
-            seed.plan,
-            selected_contributions=selected_resources,
-        ),
+        plan=plan,
         packages=seed.packages,
         bindings=seed.bindings,
         owner_bindings=tuple(

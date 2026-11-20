@@ -863,6 +863,107 @@ contains 106,916 Python lines, including 12,981 in staging and 93,935 at the
 product edge. The production increase from the startup baseline is 6,201 lines.
 The command slice is ready as a local checkpoint.
 
+## Selected Plugin Preparation
+
+The managed and fenced selected-plugin preparation routes now stage the
+original selection, approval, compilation, workspace binding inputs and
+failure custody sequences. Resume effect settlement checks move with that
+preparation chain. Existing Harness composition, selected runtime scope and
+cleanup owners continue to hold the effects. Coding retains actual builtin
+plugin configuration, approval decisions, source constraints and nominal
+prepared results. Two identical preparation-failure paths share one call that
+closes the original custodian and attaches it to the original error if close
+fails.
+
+The four operations cover 493 original lines. Ruff and mypy passed on the
+affected files, all 72 original symbols compare equal, and the original
+operation bodies match after resolving the edge bindings and the shared
+cleanup call. The existing approval, preview, embedded Resume and
+architecture regression passed all 135 cases in 76.56 seconds. The candidate adds 548 staged lines and removes
+312 lines at the Coding edge. Current Coding contains 107,152 Python lines,
+13,529 in staging and 93,623 at the Product edge. The system production total
+grows by 6,437 lines against the initial baseline. The latest slice accounts
+for 236 of those lines and adds two temporary owner backreferences. The
+existing logical dependency pairs are identical to the CLI checkpoint.
+This prepared-plugin work remains in the active composition batch.
+
+## Base And External Resource Composition
+
+The Base and external-only selections stage their resource catalog
+composition, selected Store body capture and resource input assembly under
+`coding.harness.session`. Both paths use one external trust, declaration and
+owner check. The Base path retains its missing-trust check. The external-only
+path retains its trust snapshot type and installation identity checks in the
+original order. Product trust values, ownership policy and nominal request
+and result types stay in the Coding composition modules.
+
+The six operations cover 475 original lines. The original bodies compare
+equal after resolving bindings and expanding the common check, and all 22
+original symbol contracts compare equal. Ruff and focused mypy pass, and 21
+existing preview, architecture and external package cases pass in 296.32
+seconds. This slice adds 526 lines in staging
+and removes 318 at the product edge. The combined working tree has 107,360
+Coding Python lines, including 14,055 in staging and 93,305 at the product
+edge. The increase in production lines since the initial baseline is 6,645.
+
+## Session Catalog Preparation And Refresh Inputs
+
+Five startup and refresh sites share one receipt read and admission check.
+Both fenced Base routes share the requested-plugin observation and selected
+root preparation. The observed history still records disabled and previously
+removed plugins. A requested plugin with no installation history still fails
+at its original point. The Base, capability and resource refresh checks share
+one manifest recheck while retaining each original restart reason and their
+relative order.
+
+The staged catalog preparation module uses the existing Harness loader and
+Package Product runtime. Coding supplies the nominal admission error and keeps
+its requested plugin IDs, root paths, cleanup policy and publication
+composition. The pinned package's resource-only plan filter now uses the
+same staged module. The Coding entry supplies the Product plugin identifier
+and retains the nominal seed construction and original owner bindings.
+Initial composition uses one Base fallback when there is no prepared
+capability composition. This preserves the original peer composition
+refusal, plugin preparation order and preparation custody.
+
+The two product-edge modules drop 101 Python lines, and staging adds 94.
+This startup and refresh slice removes seven production lines. The complete
+composition candidate has 107,353 Coding Python lines: 14,149 in staging
+and 93,204 at the product edge. The candidate adds 437 production lines
+since the package command checkpoint and 6,638 relative to the Goal baseline.
+
+The 81-case run on the earlier source snapshot reported 70 passes. Nine
+failures matched the unchanged baseline by test and message. Six were
+resource fixtures with undeclared standard project resources or inherited
+ancestor context. They now use the supported workspace layout, explicit
+standard loader mode and a fixture-specific context filename where necessary.
+Three persisted Composition Set cases report the same
+`transcript_writer:unsafe` on the baseline and remain an environmental limit.
+The two candidate-only failures pointed to the original receipt read path.
+Their existing assertions now follow the receipt call into its staged owner.
+
+The corrected resource and architecture run passed 51 cases. Its remaining
+assertion enforced the original private composition import boundary. Keeping
+seed construction at the Coding edge preserved that boundary without an
+allowlist change. That assertion and three affected refresh cases then passed
+on the final source. The six repaired resource fixture scenarios also pass
+on the unchanged baseline source. Ruff, focused mypy, the existing dependency
+documentation check and lightweight documentation checks passed.
+
+## Reviewed Worker History And Retirement Owners
+
+Linux checkpoint publication, repair and tail rollback already use Harness
+checkpoint commands and the Linux history program. Anchor IO and the
+retirement preview likewise use the shared rooted journal and preview
+owners. Coding retains the nominal history records, exact Product and
+attempt checks, historical errors and proof declarations.
+
+Windows crash lease repair and both partial and settled crash stage
+retirement already execute through Harness recovery and retirement owners.
+The three Coding modules supply nominal review/receipt records, native
+observation bindings and established Product admission. These six reviewed
+modules contribute no new staged implementation count.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

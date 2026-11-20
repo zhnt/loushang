@@ -91,6 +91,11 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
+from loushang.coding.harness.session.catalog_preparation import (
+    observe_requested_plugins,
+    require_catalog_receipt,
+    require_current_manifests,
+)
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_CAPABILITY_DEFINITION,
@@ -347,16 +352,9 @@ def _prepare_coding_catalog_projection(
     """Prepare one Catalog adapter and its disposable bootstrap projection."""
 
     evaluated_at = int(time.time()) if admission_now is None else admission_now
-    resolved_receipt = receipt
-    if resolved_receipt is None:
-        try:
-            resolved_receipt = resource_loader.prepare_catalog_input_receipt(cwd)
-        except (AttributeError, RuntimeError) as exc:
-            raise CodingResourceCatalogAdmissionError(
-                ("catalog_receipt_unavailable",)
-            ) from exc
-    if not isinstance(resolved_receipt, ResourceCatalogInputReceipt):
-        raise CodingResourceCatalogAdmissionError(("catalog_receipt_unavailable",))
+    resolved_receipt = require_catalog_receipt(
+        resource_loader, cwd, CodingResourceCatalogAdmissionError, receipt
+    )
     adapter = build_coding_initial_resource_catalog_adapter(
         resolved_receipt,
         product_scope_id=session_id,
@@ -1325,14 +1323,9 @@ def _create_agent_session(
             tool_registry=session_tool_registry,
             tools=construction_tools,
         )
-        try:
-            receipt = loader.prepare_catalog_input_receipt(resolved_cwd)
-        except (AttributeError, RuntimeError) as exc:
-            raise CodingResourceCatalogAdmissionError(
-                ("catalog_receipt_unavailable",)
-            ) from exc
-        if not isinstance(receipt, ResourceCatalogInputReceipt):
-            raise CodingResourceCatalogAdmissionError(("catalog_receipt_unavailable",))
+        receipt = require_catalog_receipt(
+            loader, resolved_cwd, CodingResourceCatalogAdmissionError
+        )
         evaluated_at = (
             coding_plugin_clock()
             if (
@@ -1368,13 +1361,17 @@ def _create_agent_session(
                 catalog_product_composition_assembly,
                 evaluated_at=evaluated_at,
             )
-        elif eager_capability_plugins_enabled_for_session:
-            preparation_custody.preparation = prepare_capability_plugins(plan_seed)
-            if preparation_custody.preparation is not None:
-                product_composition = (
-                    preparation_custody.preparation.product_composition
-                )
-            elif coding_base_plugin_assembly is not None:
+        else:
+            if eager_capability_plugins_enabled_for_session:
+                preparation_custody.preparation = prepare_capability_plugins(plan_seed)
+                if preparation_custody.preparation is not None:
+                    product_composition = (
+                        preparation_custody.preparation.product_composition
+                    )
+            if coding_base_plugin_assembly is not None and (
+                not eager_capability_plugins_enabled_for_session
+                or preparation_custody.preparation is None
+            ):
                 assert plan_seed is not None
                 selection_seed = finalize_coding_package_plugin_plan_seed(plan_seed)
                 base_plugin_session_preparation = prepare_coding_base_plugin_session(
@@ -1385,15 +1382,6 @@ def _create_agent_session(
                 product_composition = (
                     base_plugin_session_preparation.product_composition
                 )
-        elif coding_base_plugin_assembly is not None:
-            assert plan_seed is not None
-            selection_seed = finalize_coding_package_plugin_plan_seed(plan_seed)
-            base_plugin_session_preparation = prepare_coding_base_plugin_session(
-                coding_base_plugin_assembly,
-                evaluated_at=evaluated_at,
-                selection_seed=selection_seed,
-            )
-            product_composition = base_plugin_session_preparation.product_composition
 
         compatibility_layout = resolve_coding_plugin_lifecycle_state_layout(
             resolved_cwd
@@ -1502,6 +1490,32 @@ def _create_agent_session(
                 )
             return configurations
 
+        def prepare_capability_roots(enabled_ids: list[str]) -> Path:
+            return preparation_custody.prepare_roots(
+                make_state=lambda: (
+                    _ExplicitTemporaryDirectory(
+                        prefix="loushang-coding-product-capability-plugins-"
+                    )
+                    if not session_manager.persist
+                    else None
+                ),
+                make_private=lambda: (
+                    _ExplicitTemporaryDirectory(
+                        prefix="loushang-coding-product-arch-private-"
+                    )
+                    if "coding.arch.default" in enabled_ids
+                    and (not session_manager.persist)
+                    else None
+                ),
+                persistent_root=lambda: _coding_capability_plugin_state_root(
+                    session_manager, session_id=session_id
+                ),
+            )
+
+        requested_capabilities = (
+            ("coding.lsp.default", eager_lsp_enabled_for_session),
+            ("coding.arch.default", arch_enabled_for_session),
+        )
         base_selection = product_runtime.capture_plugin_desired_selection_for(
             "coding.base"
         )
@@ -1527,50 +1541,15 @@ def _create_agent_session(
                         evaluated_at=coding_plugin_clock(),
                     )
                 )
-            enabled_capability_ids: list[str] = []
-            observed_capabilities: list[PackageProductPluginDesiredSelectionV1] = []
-            requested_capabilities = (
-                ("coding.lsp.default", eager_lsp_enabled_for_session),
-                ("coding.arch.default", arch_enabled_for_session),
+            enabled_capability_ids, product_capability_desired_selections = (
+                observe_requested_plugins(
+                    product_runtime,
+                    requested_capabilities,
+                    CodingResourceCatalogAdmissionError,
+                )
             )
-            for plugin_id, requested in requested_capabilities:
-                if not requested:
-                    continue
-                selection = product_runtime.capture_plugin_desired_selection_for(
-                    plugin_id
-                )
-                observed_capabilities.append(selection)
-                if selection.desired_state == "absent":
-                    if not selection.recorded:
-                        raise CodingResourceCatalogAdmissionError(
-                            ("product_requested_capability_not_installed",)
-                        )
-                    continue
-                if selection.desired_state == "installed_disabled":
-                    continue
-                enabled_capability_ids.append(plugin_id)
-            product_capability_desired_selections = tuple(observed_capabilities)
             if enabled_capability_ids:
-                state_root = preparation_custody.prepare_roots(
-                    make_state=lambda: (
-                        _ExplicitTemporaryDirectory(
-                            prefix="loushang-coding-product-capability-plugins-"
-                        )
-                        if not session_manager.persist
-                        else None
-                    ),
-                    make_private=lambda: (
-                        _ExplicitTemporaryDirectory(
-                            prefix="loushang-coding-product-arch-private-"
-                        )
-                        if "coding.arch.default" in enabled_capability_ids
-                        and (not session_manager.persist)
-                        else None
-                    ),
-                    persistent_root=lambda: _coding_capability_plugin_state_root(
-                        session_manager, session_id=session_id
-                    ),
-                )
+                state_root = prepare_capability_roots(enabled_capability_ids)
                 no_base_configurations = build_product_capability_configurations(
                     enabled_capability_ids
                 )
@@ -1593,16 +1572,9 @@ def _create_agent_session(
                 raise CodingResourceCatalogAdmissionError(
                     ("resume_plugin_participation_changed",)
                 )
-            try:
-                receipt = loader.prepare_catalog_input_receipt(resolved_cwd)
-            except (AttributeError, RuntimeError) as exc:
-                raise CodingResourceCatalogAdmissionError(
-                    ("catalog_receipt_unavailable",)
-                ) from exc
-            if not isinstance(receipt, ResourceCatalogInputReceipt):
-                raise CodingResourceCatalogAdmissionError(
-                    ("catalog_receipt_unavailable",)
-                )
+            receipt = require_catalog_receipt(
+                loader, resolved_cwd, CodingResourceCatalogAdmissionError
+            )
             composition = (
                 product_external_data_compilation.product_composition
                 if product_external_data_compilation is not None
@@ -1674,54 +1646,18 @@ def _create_agent_session(
                 or resolved_invocation_profile.include_base_command_contribution
             ),
         )
-        try:
-            receipt = loader.prepare_catalog_input_receipt(resolved_cwd)
-        except (AttributeError, RuntimeError) as exc:
-            raise CodingResourceCatalogAdmissionError(
-                ("catalog_receipt_unavailable",)
-            ) from exc
-        if not isinstance(receipt, ResourceCatalogInputReceipt):
-            raise CodingResourceCatalogAdmissionError(("catalog_receipt_unavailable",))
-        enabled_capability_ids = []
-        observed_capabilities = []
-        for plugin_id, requested in (
-            ("coding.lsp.default", eager_lsp_enabled_for_session),
-            ("coding.arch.default", arch_enabled_for_session),
-        ):
-            if not requested:
-                continue
-            selection = product_runtime.capture_plugin_desired_selection_for(plugin_id)
-            observed_capabilities.append(selection)
-            if selection.desired_state == "absent":
-                if not selection.recorded:
-                    raise CodingResourceCatalogAdmissionError(
-                        ("product_requested_capability_not_installed",)
-                    )
-                continue
-            if selection.desired_state == "installed_enabled":
-                enabled_capability_ids.append(plugin_id)
-        product_capability_desired_selections = tuple(observed_capabilities)
-        if enabled_capability_ids:
-            state_root = preparation_custody.prepare_roots(
-                make_state=lambda: (
-                    _ExplicitTemporaryDirectory(
-                        prefix="loushang-coding-product-capability-plugins-"
-                    )
-                    if not session_manager.persist
-                    else None
-                ),
-                make_private=lambda: (
-                    _ExplicitTemporaryDirectory(
-                        prefix="loushang-coding-product-arch-private-"
-                    )
-                    if "coding.arch.default" in enabled_capability_ids
-                    and (not session_manager.persist)
-                    else None
-                ),
-                persistent_root=lambda: _coding_capability_plugin_state_root(
-                    session_manager, session_id=session_id
-                ),
+        receipt = require_catalog_receipt(
+            loader, resolved_cwd, CodingResourceCatalogAdmissionError
+        )
+        enabled_capability_ids, product_capability_desired_selections = (
+            observe_requested_plugins(
+                product_runtime,
+                requested_capabilities,
+                CodingResourceCatalogAdmissionError,
             )
+        )
+        if enabled_capability_ids:
+            state_root = prepare_capability_roots(enabled_capability_ids)
             configurations = build_product_capability_configurations(
                 enabled_capability_ids
             )
@@ -1907,56 +1843,28 @@ def _create_agent_session(
             if product_base_compilation is not None:
                 if product_base_runtime is None:
                     raise RuntimeError("Coding Product base runtime is unavailable")
-                try:
-                    product_base_runtime.assert_selected_plugin_manifest_current(
-                        product_base_compilation.selected_manifest
-                    )
-                except (
-                    PackageProductRuntimeActivationError,
-                    PackageProductRuntimeReadError,
-                ) as exc:
-                    raise CodingResourceCatalogAdmissionError(
-                        ("product_selected_base_refresh_requires_restart",)
-                    ) from exc
-                for selected in product_base_compilation.selected_capability_manifests:
-                    try:
-                        product_base_runtime.assert_selected_plugin_manifest_current(
-                            selected
-                        )
-                    except (
-                        PackageProductRuntimeActivationError,
-                        PackageProductRuntimeReadError,
-                    ) as exc:
-                        raise CodingResourceCatalogAdmissionError(
-                            ("product_selected_capability_refresh_requires_restart",)
-                        ) from exc
-                for (
-                    selected
-                ) in product_base_compilation.selected_external_data_manifests:
-                    try:
-                        product_base_runtime.assert_selected_plugin_manifest_current(
-                            selected
-                        )
-                    except (
-                        PackageProductRuntimeActivationError,
-                        PackageProductRuntimeReadError,
-                    ) as exc:
-                        raise CodingResourceCatalogAdmissionError(
-                            ("product_selected_resource_refresh_requires_restart",)
-                        ) from exc
+                require_current_manifests(
+                    product_base_runtime,
+                    (product_base_compilation.selected_manifest,),
+                    "product_selected_base_refresh_requires_restart",
+                    CodingResourceCatalogAdmissionError,
+                )
+                require_current_manifests(
+                    product_base_runtime,
+                    product_base_compilation.selected_capability_manifests,
+                    "product_selected_capability_refresh_requires_restart",
+                    CodingResourceCatalogAdmissionError,
+                )
+                require_current_manifests(
+                    product_base_runtime,
+                    product_base_compilation.selected_external_data_manifests,
+                    "product_selected_resource_refresh_requires_restart",
+                    CodingResourceCatalogAdmissionError,
+                )
             resolved_cwd = Path(session_manager.get_cwd())
-            try:
-                receipt = services.resource_loader.prepare_catalog_input_receipt(
-                    resolved_cwd
-                )
-            except (AttributeError, RuntimeError) as exc:
-                raise CodingResourceCatalogAdmissionError(
-                    ("catalog_receipt_unavailable",)
-                ) from exc
-            if not isinstance(receipt, ResourceCatalogInputReceipt):
-                raise CodingResourceCatalogAdmissionError(
-                    ("catalog_receipt_unavailable",)
-                )
+            receipt = require_catalog_receipt(
+                services.resource_loader, resolved_cwd, CodingResourceCatalogAdmissionError
+            )
             evaluated_at = (
                 product_base_compilation.product_composition.authority_context.evaluated_at
                 if product_base_compilation is not None
