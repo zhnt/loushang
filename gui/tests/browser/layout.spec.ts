@@ -13,6 +13,36 @@ const scenarios = [
   { name: "density-150", width: 1440, height: 720, rail: 280, scale: 1.5 },
 ];
 
+test("dragging the sidebar divider resizes without selecting text", async ({ page }) => {
+  await page.setViewportSize({ width: 1240, height: 720 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "GUI development" })).toBeVisible();
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+
+  const divider = page.getByRole("separator", { name: "Sidebar width" });
+  await expect(divider).toHaveAttribute("aria-valuenow", "280");
+  // Some engines do not select text from the divider even if pointerdown is uncanceled.
+  await divider.evaluate((element) => {
+    document.addEventListener("pointerdown", (event) => {
+      element.setAttribute("data-default-prevented", String(event.defaultPrevented));
+    }, { once: true });
+  });
+  const box = (await divider.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + 90;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 64, y + 96, { steps: 8 });
+  await expect(divider).toHaveAttribute("aria-valuenow", "216");
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
+  await expect(divider).toHaveAttribute("data-default-prevented", "true", { timeout: 500 });
+  await page.mouse.up();
+  await page.keyboard.press("ArrowRight");
+  await expect(divider).toHaveAttribute("aria-valuenow", "226");
+  await divider.dblclick();
+  await expect(divider).toHaveAttribute("aria-valuenow", "280");
+});
+
 async function verifyLayout(page: Page, info: TestInfo, mode: string) {
   await page.locator("main").evaluate((element) => { element.scrollTop = 0; });
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));

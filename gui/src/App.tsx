@@ -1002,7 +1002,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
           onDoubleClick={() => setSidebarWidth(280)}
           onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setSidebarWidth((width) => Math.max(200, Math.min(420, width + (event.key === "ArrowLeft" ? -10 : 10)))); } }}
-          onPointerDown={(event) => { if (event.button !== 0) return; sidebarDrag.current = { x: event.clientX, width: sidebarWidth }; event.currentTarget.setPointerCapture(event.pointerId); }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.currentTarget.focus({ preventScroll: true });
+            sidebarDrag.current = { x: event.clientX, width: sidebarWidth };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
           onPointerMove={(event) => { const drag = sidebarDrag.current; if (drag) setSidebarWidth(Math.max(200, Math.min(420, drag.width + event.clientX - drag.x))); }}
           onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }} onLostPointerCapture={() => { sidebarDrag.current = null; }} />
         </div>
