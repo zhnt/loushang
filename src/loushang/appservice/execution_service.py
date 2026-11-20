@@ -11,6 +11,11 @@ from loushang.appserver.execution.model import (
     ExecutionInterruptResultV1,
     ExecutionSessionSnapshotV1,
     ExecutionSessionViewV1,
+    ResourceRefV1,
+)
+from loushang.appserver.execution.resources import (
+    SessionResourceQueryV1,
+    SessionResourceResultV1,
 )
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -117,15 +122,25 @@ class ScopedExecutionClientV1(_ScopedInteractiveGoal):
         self._check(control, session)
         return session, binding
 
+    async def session_resource(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        query: SessionResourceQueryV1,
+    ) -> SessionResourceResultV1:
+        _, binding = await self._resolve(control, expected_instance_id)
+        exchange = getattr(binding.port, "session_resource", None)
+        if exchange is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return exchange(query)
+
     async def submit_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
-        submission_id: str, text: str,
+        submission_id: str, text: str, resource_refs: tuple[ResourceRefV1, ...] = (),
     ) -> ExecutionRecordV1:
         _, binding = await self._resolve(control, expected_instance_id)
         # Duplicate lookup precedes every capacity check. No communication slot
         # is reserved and no await separates this authority cut from admission.
         with self._scope.resume_subject_scope(control, submission_id=submission_id):
-            return self._registry.submit(binding, text, submission_id)
+            return self._registry.submit(binding, text, submission_id, resource_refs)
 
     async def get_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,

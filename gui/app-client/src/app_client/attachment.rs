@@ -914,16 +914,42 @@ impl ControlAuthority {
         channel: &mut Channel<R, W>,
         session_id: &str,
         submission_id: &str,
-        text: &str,
+        input: (&str, Vec<Value>),
         request_id: &str,
     ) -> Result<ControlResult, ()> {
-        if text.trim().is_empty() || text.chars().count() > 262_144 {
+        let (text, refs) = input;
+        if (text.trim().is_empty() && refs.is_empty())
+            || refs.len() > 4
+            || text.chars().count() > 262_144
+        {
             return Err(());
         }
         let mut payload = self.submission_payload(session_id, submission_id)?;
         payload["text"] = Value::String(text.to_owned());
+        if !refs.is_empty() {
+            payload["resourceRefs"] = Value::Array(refs);
+        }
         let result = execution_request(channel, "execution/submit", request_id, payload)?;
         self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn resource<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        query: Value,
+        request_id: &str,
+    ) -> Result<Value, ()> {
+        let mut payload = self.payload(session_id)?;
+        payload["resourceQuery"] = query;
+        let result = execution_request(channel, "session/resource", request_id, payload)?;
+        if let Some(error) = rejected_result(&result)? {
+            return Ok(json!({"error": error}));
+        }
+        if result["resultType"] != "session_resource" || !result["result"].is_object() {
+            return Err(());
+        }
+        Ok(result["result"].clone())
     }
 
     pub(crate) fn start_goal<R: Read, W: Write>(

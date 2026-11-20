@@ -58,6 +58,8 @@ export interface ConversationMessage {
   readonly content: string;
   readonly phase: MessagePhase;
   readonly systemNotice?: "resumesRuntime";
+  readonly resourceIds?: readonly string[];
+  readonly submissionId?: string;
 }
 
 export interface ExecutionProjection {
@@ -261,6 +263,7 @@ export type ClientEvent =
     });
 
 export interface SubmitTextInput {
+  readonly resourceRefs?: readonly import("../../contracts/generated/bridge").ResourceRefV1[];
   readonly sessionId: string;
   readonly submissionId: string;
   readonly text: string;
@@ -329,6 +332,8 @@ export interface HarnessClientUiPort {
   requestResync?(): Promise<void>;
   previewWorkspace?: ReadWorkspacePreview;
   locateWorkspace?: (scope: import("./workspacePreview").WorkspacePreviewScope) => Promise<string>;
+  sessionResource?(sessionId: string, query: import("../../contracts/generated/bridge").SessionResourceQueryV1):
+    Promise<import("../../contracts/generated/bridge").SessionResourceResultV1>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   findSubmission?(sessionId: string, submissionId: string, serviceInstanceId: string): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;

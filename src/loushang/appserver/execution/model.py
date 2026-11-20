@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
+from hashlib import sha256
 
 from ..protocol import (
     AckV1,
@@ -41,17 +44,50 @@ from .goal_model import (
     validate_goal_fields,
 )
 from .operation import ExecutionOperationV1, ExecutionStatusV1, InterruptModeV1
+from .resources import SessionResourceQueryV1, SessionResourceResultV1
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceRefV1:
+    id: str
+    sha256: str
+
+    def __post_init__(self) -> None:
+        _identifier(self.id)
+        if type(self.sha256) is not str or re.fullmatch(r"[a-f0-9]{64}", self.sha256) is None:
+            raise ValueError("invalid resource content digest")
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionInputV1:
+    text: str
+    resource_refs: tuple[ResourceRefV1, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (type(self.resource_refs) is not tuple or len(self.resource_refs) > 4
+                or any(type(ref) is not ResourceRefV1 for ref in self.resource_refs)
+                or len({ref.id for ref in self.resource_refs}) != len(self.resource_refs)):
+            raise ValueError("invalid execution resource references")
+        if self.text != "" or not self.resource_refs:
+            TurnTextV1("validation", 1, "validation", self.text)
+
+    def digest(self) -> str:
+        payload = [self.text, [[ref.id, ref.sha256] for ref in self.resource_refs]]
+        return sha256(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
 class ExecutionRequestV1:
     execution_id: str
     text: str
+    resource_refs: tuple[ResourceRefV1, ...] = ()
+    submission_id: str | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.execution_id)
-        # Preserve the existing text bounds without extending its wire shape.
-        TurnTextV1("validation", 1, "validation", self.text)
+        if self.submission_id is not None:
+            _identifier(self.submission_id)
+        ExecutionInputV1(self.text, self.resource_refs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +339,8 @@ class ExecutionCallV1:
     goal_command: InteractiveGoalCommandV1 | None = None
     review_goal_id: str | None = None
     review_submission: InteractiveGoalReviewSubmissionV1 | None = None
+    resource_query: SessionResourceQueryV1 | None = None
+    resource_refs: tuple[ResourceRefV1, ...] = ()
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -335,7 +373,11 @@ class ExecutionCallV1:
         if self.execution_id is not None:
             _identifier(self.execution_id)
         if self.text is not None:
-            ExecutionRequestV1("validation", self.text)
+            ExecutionInputV1(self.text, self.resource_refs)
+        elif self.resource_refs:
+            raise ValueError("unexpected resource references")
+        if (type(self.resource_query) is SessionResourceQueryV1) != (self.operation is ExecutionOperationV1.RESOURCE):
+            raise ValueError("unexpected resource query")
         validate_goal_fields(self)
 
 @dataclass(frozen=True, slots=True)
@@ -361,7 +403,7 @@ class ExecutionFailureV1:
 ExecutionResultV1 = (
     ExecutionRecordV1 | ExecutionSessionSnapshotV1 | ExecutionEventsV1
     | ExecutionInterruptResultV1 | ExecutionFailureV1 | AppFailureV1 | None
-    | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1 | InteractiveGoalReviewV1 | InteractiveGoalRecoveryV1
+    | SessionResourceResultV1 | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1 | InteractiveGoalReviewV1 | InteractiveGoalRecoveryV1
 )
 
 
@@ -375,7 +417,7 @@ class ExecutionResponseV1:
         if self.result is not None and type(self.result) not in (
             ExecutionRecordV1, ExecutionSessionSnapshotV1, ExecutionEventsV1,
             ExecutionFailureV1, AppFailureV1,
-            ExecutionInterruptResultV1,
+            ExecutionInterruptResultV1, SessionResourceResultV1,
             ResumeInputLookupResultV1, ExecutionGoalProgressV1, InteractiveGoalViewV1, InteractiveGoalReviewV1, InteractiveGoalRecoveryV1,
         ):
             raise TypeError("invalid execution response")
@@ -388,7 +430,7 @@ __all__ = [
     "InteractiveGoalCommandViewV1", "InteractiveGoalObservedActionV1", "InteractiveGoalRecoveryV1",
     "InteractiveGoalReviewDecisionV1", "InteractiveGoalReviewSubmissionV1", "InteractiveGoalReviewV1",
     "InteractiveGoalViewV1", "is_review_path", "ExecutionStatusV1",
-    "InterruptModeV1", "ExecutionRequestV1", "ExecutionOutcomeV1",
+    "InterruptModeV1", "ExecutionRequestV1", "ExecutionOutcomeV1", "ExecutionInputV1", "ResourceRefV1",
     "ExecutionObservationV1", "ExecutionStateV1", "ExecutionSourceSnapshotV1",
     "ExecutionContentEventV1", "ExecutionUpdateV1", "ExecutionErrorCodeV1",
     "ExecutionServiceErrorV1", "ExecutionRecordV1", "ExecutionSessionViewV1",

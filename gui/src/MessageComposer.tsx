@@ -1,7 +1,13 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { AttachmentImage } from "./SessionImages";
+import { UiIcon } from "./UiIcon";
+import { imageTypes, maxAttachments, supportedImage } from "./client/sessionResources";
+
 interface ComposerProps {
+  readonly images?: readonly File[];
+  readonly onImagesChange?: (images: readonly File[]) => void;
   readonly title: string;
   readonly text: string;
   readonly onChange: (text: string) => void;
@@ -22,10 +28,20 @@ function resizeEditor(input: HTMLTextAreaElement) {
 }
 
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
-  buttonDisabled, fixture, leadingAction, model, notice, submitLabel }: ComposerProps) {
+  buttonDisabled, fixture, leadingAction, model, notice, submitLabel, images = [], onImagesChange }: ComposerProps) {
   const { t } = useTranslation("session");
   const editor = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
+  const chooser = useRef<HTMLInputElement>(null);
+  const [attachmentError, setAttachmentError] = useState(false);
+  const canAttach = Boolean(onImagesChange && !disabled);
+  function addImages(files: readonly File[]) {
+    if (!canAttach || !files.length) return;
+    const valid = files.filter(supportedImage);
+    const next = [...images, ...valid];
+    setAttachmentError(valid.length !== files.length || next.length > maxAttachments);
+    onImagesChange?.(next.slice(0, maxAttachments));
+  }
   useLayoutEffect(() => {
     const input = editor.current;
     if (input) resizeEditor(input);
@@ -55,11 +71,36 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
     };
   }, []);
   return (
-    <form className="composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+    <form className="composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}
+      onDragOver={(event) => {
+        if (canAttach && event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (!canAttach || !event.dataTransfer.files.length) return;
+        event.preventDefault();
+        addImages([...event.dataTransfer.files]);
+      }}>
+      {images.length ? <div className="attachment-list">
+        {images.map((file, index) => <div key={JSON.stringify([file.name, file.lastModified, index])}>
+          <AttachmentImage blob={file} label={file.name || t("attachments.image")} />
+          <button type="button" className="icon-button" disabled={!canAttach}
+            aria-label={t("attachments.remove", { name: file.name || t("attachments.image") })}
+            onClick={() => { setAttachmentError(false); onImagesChange?.(images.filter((_, i) => i !== index)); }}>
+            <UiIcon name="close" />
+          </button>
+        </div>)}
+      </div> : null}
+      {attachmentError && onImagesChange ? <p role="alert">{t("attachments.invalid")}</p> : null}
       <label className="visually-hidden" htmlFor="message-input">{t("composer.messageFor", { title })}</label>
       <textarea ref={editor} id="message-input" disabled={disabled} aria-describedby="message-keyboard-hint" rows={2}
         value={text} placeholder={t(fixture ? "composer.fixturePlaceholder" : "composer.livePlaceholder")}
         onChange={(event) => onChange(event.currentTarget.value)}
+        onPaste={(event) => {
+          const files = [...event.clipboardData.files];
+          if (!canAttach || !files.length) return;
+          event.preventDefault();
+          addImages(files);
+        }}
         onCompositionStart={() => { composing.current = true; }}
         onCompositionEnd={() => { composing.current = false; }}
         onBlur={() => { composing.current = false; }}
@@ -78,7 +119,14 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
       <span id="message-keyboard-hint" className="visually-hidden">{t("composer.keyboardHint")}</span>
       <div className="composer-actions">
         <div className="composer-permissions">
-          <button type="button" className="icon-button" aria-label={t("composer.attachUnavailable")} title={t("composer.attachHint")} disabled>＋</button>
+          {onImagesChange ? <input hidden ref={chooser} type="file" accept={imageTypes.join(",")} multiple
+            onChange={(event) => {
+              addImages([...(event.currentTarget.files ?? [])]);
+              event.currentTarget.value = "";
+            }} /> : null}
+          <button type="button" className="icon-button" aria-label={t(canAttach ? "attachments.add" : "composer.attachUnavailable")}
+            title={t(canAttach ? "attachments.add" : "composer.attachHint")} disabled={!canAttach}
+            onClick={() => chooser.current?.click()}>＋</button>
           {leadingAction}
           {fixture ? <span className="permission-label">◉ {t("composer.fixtureAccess")}</span> : null}
         </div>

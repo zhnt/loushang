@@ -62,6 +62,8 @@ pub(crate) struct LiveSubmitInput {
     session_id: String,
     submission_id: String,
     text: String,
+    #[serde(default)]
+    resource_refs: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -329,6 +331,7 @@ pub(crate) async fn live_submit_text(
                 session_id: input.session_id,
                 submission_id: input.submission_id,
                 text: input.text,
+                resource_refs: input.resource_refs,
                 reply,
             })
             .map_err(|_| "live control connection changed".to_owned())?;
@@ -352,6 +355,53 @@ pub(crate) async fn live_submit_text(
     })
     .await
     .map_err(|_| "live submit worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_session_resource(
+    state: tauri::State<'_, LiveLaunchState>,
+    session_id: String,
+    query: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let control = current_control(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::Resource {
+                session_id,
+                query,
+                reply,
+            })
+            .map_err(|_| ())?;
+        receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| ())?
+    })
+    .await
+    .map_err(|_| "resource worker failed".to_owned())?
+    .map_err(|_| "resource request failed".to_owned())
+}
+
+#[tauri::command]
+pub(crate) async fn live_find_submission(
+    state: tauri::State<'_, LiveLaunchState>,
+    session_id: String,
+    submission_id: String,
+    service_instance_id: String,
+) -> Result<LiveControlReceipt, String> {
+    let control = current_control(&state)?;
+    if control.service_instance_id != service_instance_id {
+        return control_receipt(Ok(ControlResult::Missing), true);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        control_receipt(
+            find_live_submission(&control, &session_id, &submission_id),
+            true,
+        )
+    })
+    .await
+    .map_err(|_| "submission lookup worker failed".to_owned())?
 }
 
 #[tauri::command]

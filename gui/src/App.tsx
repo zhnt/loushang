@@ -9,6 +9,8 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
+import { SessionImages, StoredImage } from "./SessionImages";
+import { uploadImages } from "./client/sessionResources";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { GoalProgress } from "./GoalProgress";
 import { InteractiveGoalRecovery } from "./InteractiveGoalRecovery";
@@ -56,6 +58,12 @@ import type {
 import { emptyGuiState, guiReducer, hasCapability, type DockTab, type GuiState } from "./client/state";
 
 type NoticeKey = `notice.${keyof typeof import("./i18n/locales/en-US/session.json")["notice"]}`;
+
+function imageFailureNotice(reason: string | undefined): Notice | undefined {
+  if (reason === "image_input_unsupported") return { key: "notice.imageInputUnsupported" };
+  if (reason === "resource_unavailable") return { key: "notice.resourceUnavailable" };
+  return undefined;
+}
 
 function copyableReplies(messages: readonly ConversationMessage[], waiting: boolean) {
   const copies = new Map<string, string>();
@@ -199,8 +207,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }, []);
   const [state, dispatch] = useReducer(guiReducer, undefined, emptyGuiState);
   const [notice, setNotice] = useState<Notice>({ key: "notice.loading" });
+  const [imageDrafts, setImageDrafts] = useState<Record<string, readonly File[]>>({});
   const [operationFailures, setOperationFailures] = useState<Record<string, {
-    notice: Notice; pending?: { id: string; text: string; instanceId?: string };
+    notice: Notice; pending?: { id: string; text: string; instanceId?: string; hadImages?: boolean };
   }>>({});
   const [syncing, setSyncing] = useState(true);
   const [installedClient, setInstalledClient] = useState<HarnessClientUiPort | null>(null);
@@ -464,8 +473,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     });
   }, [state.remote.sessions, firstMessages]);
   const operationScope = selected ? JSON.stringify([selectionKey, selected.id]) : null;
+  const selectedImages = operationScope ? imageDrafts[operationScope] ?? [] : [];
+  function changeSelectedImages(images: readonly File[]) {
+    if (operationScope) setImageDrafts((prior) => {
+      const { [operationScope]: _, ...other } = prior;
+      return images.length ? { ...other, [operationScope]: images } : other;
+    });
+  }
   const failure = operationScope ? operationFailures[operationScope] : undefined;
-  function reportFailure(notice: Notice, pending?: { id: string; text: string; instanceId?: string }) {
+  function reportFailure(notice: Notice, pending?: { id: string; text: string; instanceId?: string; hadImages?: boolean }) {
     if (operationScope) setOperationFailures((current) => current[operationScope]?.pending && !pending
       ? current : { ...current, [operationScope]: { notice, pending } });
   }
@@ -474,10 +490,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }
   async function checkConversation() {
     const pending = failure?.pending;
-    if (selected && pending?.instanceId && client.findSubmission) {
-      const result = await client.findSubmission(selected.id, pending.id, pending.instanceId).catch(() => null);
-      if (result?.accepted && result.submissionId === pending.id) {
+    if (selected && pending) {
+      const committed = selected.messages.some((message) => message.submissionId === pending.id);
+      const result = !committed && pending.instanceId && await client.findSubmission?.(
+        selected.id, pending.id, pending.instanceId,
+      ).catch(() => null);
+      if (committed || (result && result.accepted && result.submissionId === pending.id)) {
         dispatch({ type: "draft.submitted", sessionId: selected.id, expected: pending.text });
+        if (pending.hadImages) changeSelectedImages([]);
         clearFailure();
       }
     }
@@ -636,7 +656,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     if (!selected || syncPendingRef.current || controlPendingRef.current || !submitAllowed || selected.status === "running") return;
     if (answer && (question?.questionId !== answer.questionId
       || ((choiceAnswer?.status === "unknown" || choiceAnswer?.status === "accepted") && !rejectedBeforeInput))) return;
-    if (!text.trim()) {
+    const images = answer ? [] : selectedImages;
+    if (!text.trim() && !images.length) {
       setNotice({ key: "notice.emptyPrompt" });
       return;
     }
@@ -644,20 +665,29 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       ? `gui-fixture-submission-${submissionCounter.current++}`
       : `gui-${crypto.randomUUID()}`;
     const instanceId = state.remote.source.kind === "live" ? state.remote.source.serviceInstanceId : undefined;
-    const pending = { id: submissionId, text, instanceId };
+    const pending = { id: submissionId, text, instanceId, hadImages: images.length > 0 };
     controlPendingRef.current = true;
     setControlPending("submit");
     try {
-      const receipt = await client.submitText({ sessionId: selected.id, submissionId, text });
+      let resourceRefs;
+      try {
+        resourceRefs = images.length ? await uploadImages(client, selected.id, images) : [];
+      } catch {
+        reportFailure({ key: "notice.resourceUnavailable" });
+        return;
+      }
+      const receipt = await client.submitText({ sessionId: selected.id, submissionId, text,
+        ...(resourceRefs.length ? { resourceRefs } : {}) });
       if (receipt.submissionId !== submissionId) throw new Error("Mismatched submission receipt");
       if (!receipt.accepted) {
         const unknown = receipt.reason === "submission_outcome_unknown";
         if (answer) updateAnswer({ ...answer, status: unknown ? "unknown" : "rejected", executionId: undefined });
         reportFailure(unknown ? { key: "notice.unknownSubmission" }
-          : { key: "notice.rejected", params: { reason: receipt.reason ?? "" } }, unknown ? pending : undefined);
+          : imageFailureNotice(receipt.reason) ?? { key: "notice.rejected", params: { reason: receipt.reason ?? "" } }, unknown ? pending : undefined);
         return;
       }
       clearFailure();
+      if (images.length) changeSelectedImages([]);
       if (answer) updateAnswer({ ...answer, status: "accepted", executionId: receipt.executionId });
       else if (!receipt.executionId) dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
       if (!fixture) setPublications((current) => ({
@@ -947,17 +977,22 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const composer = draft ? {
     text: draftPending ? "" : draft.text,
     onChange: draftCreation.change,
+    images: draft.images,
+    onImagesChange: (projectNavigation || client.sessionResource) && !draftPending && draft.status !== "firstSubmissionUnknown"
+      ? draftCreation.changeImages : undefined,
     onSubmit: submitDraft,
     submitLabel: draft.status === "createUnknown" ? t("session:composer.checkCreation") : undefined,
     disabled: draftPending || draft.status === "firstSubmissionUnknown",
     buttonDisabled: !canSendDraft,
   } : selected ? {
     text: state.local.drafts[selected.id] ?? "",
+    images: selectedImages,
+    onImagesChange: client.sessionResource && !controlPending && !failure?.pending ? changeSelectedImages : undefined,
     onChange: (value: string) => dispatch({ type: "draft.changed", sessionId: selected.id, value }),
     onSubmit: () => void submit(state.local.drafts[selected.id] ?? ""),
     disabled: installedClient !== client || !selectionReady,
     onInterrupt: selected.status === "running" ? () => void interrupt() : undefined,
-    buttonDisabled: selected.status === "running" ? !interruptAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim(),
+    buttonDisabled: selected.status === "running" ? !interruptAllowed : !submitAllowed || (!(state.local.drafts[selected.id] ?? "").trim() && !selectedImages.length),
     notice: <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>,
   } : null;
 
@@ -997,6 +1032,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           hiddenSessions={hiddenSessions}
           projectNavigation={navigation}
           projectTitles={{ ...knownTitles, ...liveTitles }}
+          sessionResources={selected && connected && selectionReady && client.sessionResource
+            ? <SessionImages key={operationScope} client={client} sessionId={selected.id}
+                version={selected.messages.filter((message) => message.resourceIds?.length).slice(-1)[0]?.id ?? ""} />
+            : null}
         />
         <div className="sidebar-resizer" role="separator" aria-label={t("panels:layout.sidebarWidth")} aria-orientation="vertical" tabIndex={0}
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
@@ -1059,10 +1098,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                           <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
                           <span>{valueLabel(message.phase)}</span>
                         </div>
+                        {message.resourceIds?.length ? <div className="attachment-list">
+                          {message.resourceIds.map((id, index) =>
+                            <StoredImage key={`${id}-${index}`} client={client} sessionId={selected.id} id={id} />)}
+                        </div> : null}
                         {message.role === "assistant" && message.content
                           ? <MessageMarkdown text={message.content} openFile={openWorkspacePath ? undefined : openFilePreview}
                             revealFile={openWorkspacePath} />
-                          : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
+                          : message.content || !message.resourceIds?.length
+                            ? <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p> : null}
                         {replyCopies.has(message.id)
                           ? <div className="reply-actions"><CopyButton text={replyCopies.get(message.id)!}
                               icon feedbackMs={1600} label={t("session:transcript.copyReply")} /></div>
@@ -1111,7 +1155,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   {draft && draft.status !== "ready" && !draftPending ? <div
                     className={draft.unconfirmed ? "operation-notice uncertain" : "operation-notice"}
                     role={draft.unconfirmed || draft.status === "createUnknown" ? "status" : "alert"}>
-                    <NoticeText notice={{ key: `notice.${draft.status}` }} />
+                    <NoticeText notice={imageFailureNotice(draft.failureReason) ?? { key: `notice.${draft.status}` }} />
                     {draft.unconfirmed ? <button type="button" className="secondary-button"
                       onClick={() => void draftCreation.check()}>{t("session:composer.checkConversation")}</button> : null}
                   </div> : null}
@@ -1251,9 +1295,10 @@ interface SidebarProps {
   readonly activeSessionId: string | null;
   readonly projectNavigation?: ProjectNavigationProps;
   readonly projectTitles: Readonly<Record<string, string>>;
+  readonly sessionResources?: React.ReactNode;
 }
 
-function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, hiddenSessions, onToggleSidebar, onSettings, activeSessionId, projectNavigation, projectTitles }: SidebarProps) {
+function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, hiddenSessions, onToggleSidebar, onSettings, activeSessionId, projectNavigation, projectTitles, sessionResources }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   const preferencesKey = sidebarPreferencesKey(state.remote.source);
@@ -1286,6 +1331,7 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
         : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state} activeSessionId={activeSessionId} hiddenSessions={hiddenSessions}
             projectTitles={projectTitles} onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />}
 
+      {sessionResources}
       </div>
       <AccountMenu account={account} onSettings={onSettings} />
     </aside>

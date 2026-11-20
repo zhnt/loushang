@@ -41,7 +41,9 @@
     "modelChanged": "会话模型已切换为 {{model}}。",
     "interruptReason": "中断请求未被接受。",
     "thinkingChanged": "已更新推理强度。",
-    "thinkingRejected": "无法更改推理强度。"
+    "thinkingRejected": "无法更改推理强度。",
+    "imageInputUnsupported": "当前模型不支持图片输入。",
+    "resourceUnavailable": "图片不可用或上传失败，草稿已保留。"
   },
   "choice": {
     "title": "选择业务方向",
@@ -129,5 +131,16 @@
   },
   "welcome": "今天想做什么？",
   "emptySession": "没有可用的会话。",
-  "opening": "正在打开 {{appName}}…"
+  "opening": "正在打开 {{appName}}…",
+  "attachments": {
+    "add": "添加图片",
+    "preview": "预览 {{name}}",
+    "close": "关闭预览",
+    "remove": "移除 {{name}}",
+    "image": "图片",
+    "invalid": "最多添加四张 PNG、JPEG、WebP 或 GIF 图片，每张不超过 4 MB。",
+    "sessionResources": "会话资源",
+    "unavailable": "图片不可用。",
+    "empty": "本会话暂无图片。"
+  }
 }

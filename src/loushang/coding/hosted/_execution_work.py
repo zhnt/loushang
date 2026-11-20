@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import replace
 from unicodedata import category
@@ -11,7 +11,7 @@ from unicodedata import category
 from loushang.agent import Agent
 from loushang.ai.model import OpenAIResponsesConfig
 from loushang.ai.options import RetryOptions
-from loushang.ai.types import AssistantMessage
+from loushang.ai.types import AssistantMessage, ImagePart, UserMessage
 from loushang.apphost.integrations.session_control import _HostedAgentExecutionWork
 from loushang.appserver.protocol import SessionSnapshotRequestV1
 from loushang.appservice.client_scope import ScopedAppServicePortV1
@@ -19,6 +19,7 @@ from loushang.appservice.execution_contract import ExecutionOutcomeV1, Execution
 from loushang.appservice.execution_guard import ExecutionControlV1
 from loushang.coding.resume import subject as _resume_subject
 from loushang.coding.session.agent_session import AgentSession
+from loushang.foundation.json import JSONValue
 from loushang.harness.transcript import assistant_message_text
 
 # Concrete original owner types for the optional Coding confirmation borrow.
@@ -54,11 +55,15 @@ class CodingExecutionWorkV1(_HostedAgentExecutionWork):
     def __init__(
         self, session: AgentSession, text: str, cancel_requested: Callable[[], bool],
         *,
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
         start_title: Callable[[], None] | None = None,
         wait_for_title: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.session = session
         self.text = text
+        self._images = images
+        self._input_metadata = input_metadata
         self._cancel_requested = cancel_requested
         self._interrupted = False
         self._start_title = start_title
@@ -72,7 +77,27 @@ class CodingExecutionWorkV1(_HostedAgentExecutionWork):
             if self._wait_for_title is not None:
                 await self._wait_for_title()
             self._checkpoint()
-            return await self._execute_hosted_prompt(control)
+            if self._input_metadata is None:
+                return await self._execute_hosted_prompt(control, self._images)
+            router = self.session._composition.session_runtime.agent_event_router
+            previous = router.prepare_message_metadata
+            metadata = self._input_metadata
+
+            first_message: UserMessage | None = None
+
+            def mark(message: object) -> Mapping[str, JSONValue] | None:
+                nonlocal first_message
+                prior = previous(message) if previous is not None else None
+                if not isinstance(message, UserMessage) or (first_message is not None and first_message is not message):
+                    return prior
+                first_message = message
+                return {**(prior or {}), **metadata}
+
+            router.prepare_message_metadata = mark
+            try:
+                return await self._execute_hosted_prompt(control, self._images)
+            finally:
+                router.prepare_message_metadata = previous
         except asyncio.CancelledError:
             self._interrupted = True
             self._abort_hosted_prompt()

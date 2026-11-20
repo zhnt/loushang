@@ -820,3 +820,8 @@ summary.inspection-file-row:focus-visible,
 .execution-section > button + .goal-start { margin-top: 8px; }
 .goal-review-entry { margin-block-start: 8px; }
 .tool-approval:focus-visible, .user-choice:focus-visible { outline: 2px solid var(--control-focus); outline-offset: 2px; }
+
+.attachment-list { display: flex; flex-wrap: wrap; align-items: start; gap: 8px; }
+.attachment-thumb { display: inline-flex; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.attachment-thumb img { object-fit: contain; }
+.attachment-preview { display: block; max-width: 100%; max-height: 65vh; margin: 0 auto; }

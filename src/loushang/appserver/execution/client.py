@@ -18,6 +18,7 @@ from .model import (
     ExecutionRecordV1,
     ExecutionSessionSnapshotV1,
     ExecutionUpdateV1,
+    ResourceRefV1,
 )
 
 
@@ -37,7 +38,7 @@ class ExecutionObservationPortV1(Protocol):
 class ExecutionClientV1(ExecutionObservationPortV1, Protocol):
     async def submit_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
-        submission_id: str, text: str,
+        submission_id: str, text: str, resource_refs: tuple[ResourceRefV1, ...] = (),
     ) -> ExecutionRecordV1: ...
 
     async def get_execution(

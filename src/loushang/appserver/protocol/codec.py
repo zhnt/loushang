@@ -872,7 +872,11 @@ def _encode_snapshot(value: SessionSnapshotV1) -> _Object:
         "cursor": value.cursor,
         "identity": _encode_identity(value.identity),
         "records": [
-            {"kind": item.kind.value, "text": item.text} for item in value.records
+            {"kind": item.kind.value, "text": item.text,
+             **({"recordId": item.record_id} if item.record_id is not None else {}),
+             **({"submissionId": item.submission_id} if item.submission_id is not None else {}),
+             **({"resourceIds": list(item.resource_ids)} if item.resource_ids else {})}
+            for item in value.records
         ],
         "revision": value.revision,
         "running": value.running,
@@ -936,12 +940,21 @@ def _decode_snapshot(raw: object) -> SessionSnapshotV1:
         raise InvalidAppMessageError()
     decoded_records: list[TranscriptRecordV1] = []
     for raw_record in records:
-        record = _object(raw_record, {"kind", "text"})
+        fields = {"kind", "text"}
+        if type(raw_record) is dict:
+            fields.update({"recordId", "resourceIds", "submissionId"} & raw_record.keys())
+        record = _object(raw_record, fields)
+        resources = record.get("resourceIds", [])
+        if type(resources) is not list:
+            raise InvalidAppMessageError()
         decoded_records.append(
             _construct(
                 TranscriptRecordV1,
                 kind=_enum(TranscriptRecordKindV1, record["kind"]),
                 text=_string(record["text"]),
+                record_id=_string(record["recordId"]) if "recordId" in record else None,
+                resource_ids=tuple(_string(item) for item in resources),
+                submission_id=_string(record["submissionId"]) if "submissionId" in record else None,
             )
         )
     return _construct(

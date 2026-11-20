@@ -290,6 +290,9 @@ class SessionOpenSpecV1:
 class TranscriptRecordV1:
     kind: TranscriptRecordKindV1
     text: str
+    record_id: str | None = None
+    resource_ids: tuple[str, ...] = ()
+    submission_id: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.kind) is not TranscriptRecordKindV1:
@@ -297,6 +300,18 @@ class TranscriptRecordV1:
         _require_text(
             self.text, field="transcript text", maximum=MAX_TEXT_CHARS, empty=True
         )
+        if self.record_id is not None:
+            _require_text(self.record_id, field="record ID", maximum=512, empty=False)
+            if any(ord(ch) < 32 or 127 <= ord(ch) <= 159 for ch in self.record_id):
+                raise ValueError("invalid record ID")
+        if self.submission_id is not None:
+            _require_opaque_id(self.submission_id, field="submission ID")
+            if self.record_id is None or self.kind is not TranscriptRecordKindV1.USER:
+                raise ValueError("invalid transcript submission")
+        if (type(self.resource_ids) is not tuple or len(self.resource_ids) > 16
+                or (self.resource_ids and (self.record_id is None or self.kind is not TranscriptRecordKindV1.USER))
+                or any(type(id) is not str or _FINGERPRINT.fullmatch(id) is None for id in self.resource_ids)):
+            raise ValueError("invalid transcript resources")
 
 
 USER_CHOICE_MAX_OPTIONS = 5

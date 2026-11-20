@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
+from loushang.ai.types import ImagePart
 from loushang.harness.capabilities.prompt_preflight import PromptPreflightResult
 from loushang.harness.commands import CommandDispatchOutcome
 from loushang.harness.session.prompt_controller import PromptController
@@ -26,6 +27,7 @@ async def execute_prompt(
     text: str,
     *,
     source: str,
+    images: list[ImagePart] | None = None,
     check_cancelled: Callable[[], None] | None = None,
 ) -> PromptExecutionResult:
     accepted = False
@@ -78,6 +80,9 @@ async def execute_prompt(
     invocation = replace(
         controller,
         execute_command_async=command,
+        extract_extension_command_invocation=(
+            (lambda _text: None) if images else controller.extract_extension_command_invocation
+        ),
         run_prompt=run,
         preflight_user_input_async=preflight,
         compact_before_prompt_async=(
@@ -85,5 +90,5 @@ async def execute_prompt(
         ),
     )
     checkpoint()
-    await invocation.prompt(text, source=source, preflight_result=on_preflight)
+    await invocation.prompt(text, images=images, source=source, preflight_result=on_preflight)
     return PromptExecutionResult(accepted, model_started, failure_code)
