@@ -1358,6 +1358,37 @@ resume, eager startup, shared LSP and Arch composition and interactive input
 during preparation. The existing neutral-composer architecture check passes.
 Native Windows activation was not exercised.
 
+## Prepared Session Selection Admission
+
+The staged Session selection owner now admits the prepared graph and its
+package evidence before Session construction. It uses the original Harness
+Worker composition validator, confirms the shared Base and capability graph
+objects, and verifies the original workspace, Session scope and Product
+runtime binding. Coding retains nominal assembly checks, historical LSP
+aliasing, the Worker Tool request and its workspace witness.
+
+Full Base composition still compares package name order. Capability-only
+Product composition still compares counts and includes an explicitly empty
+selection. Both routes use one package digest reconciliation. Construction
+and later composition observation now share the same Base, Capability and
+external-data manifest projection. The staged function borrows the original
+Product types and the existing conditional Worker validator import.
+
+This batch removes 92 Product lines and adds 112 staging lines, for a net
+increase of 20 production lines. The normalized internal graph retains the
+same 1,661 pairs. A baseline comparison matches all 35,840 prepared selection
+traces across 12 distinct outcomes, including Worker graph failures and the
+original rejection precedence. All 59 focused Linux regression cases pass,
+covering ordinary construction, Worker composition contracts, mixed Base and
+Capability publication, resume and external-data admission.
+
+The additional live-epoch POSIX Session test fails at the same workspace
+skill refresh assertion on this batch, `e6ed71b6e` and `df0dca779`.
+All three runs discover only the selected standard skill and fail to find
+the fixture's workspace review skill. The comparison leaves that test and
+its later assertions intact. Native Worker and Windows execution were not
+exercised in this batch.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

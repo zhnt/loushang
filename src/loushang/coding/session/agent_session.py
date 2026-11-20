@@ -601,112 +601,20 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             )
         ):
             raise ValueError("Coding base Product cannot mix Plugin session routes")
-        if coding_product_worker_ordinary_binding is not None:
-            from loushang.coding.package.product_worker_session_composition import (
-                CodingProductWorkerOrdinarySessionBinding,
-                validate_coding_product_worker_ordinary_session_inputs,
-            )
-
-            if (
-                not isinstance(
-                    coding_product_worker_ordinary_binding,
-                    CodingProductWorkerOrdinarySessionBinding,
-                )
-                or coding_base_product_session_assembly is None
-                or coding_product_worker_ordinary_binding.ordinary
-                is not coding_base_product_session_assembly.session_inputs
-                or workspace_capability_binding
-                is not coding_base_product_session_assembly.workspace_binding
-                or coding_product_worker_ordinary_binding.workspace_binding
-                is not workspace_capability_binding
-            ):
-                raise ValueError("Coding Product Worker ordinary Session changed")
-            validate_coding_product_worker_ordinary_session_inputs(
-                ordinary=coding_product_worker_ordinary_binding.ordinary,
-                combined=coding_product_worker_ordinary_binding.combined,
-                workspace_binding=workspace_capability_binding,
-            )
-        if coding_worker_turn_tool is not None and (
-            coding_product_worker_ordinary_binding is None
-            or coding_product_worker_ordinary_binding.activation_receipt is None
-        ):
-            raise ValueError(
-                "Coding Worker turn Tool requires a selected Worker receipt"
-            )
-        if (
-            coding_base_product_session_assembly is not None
-            and capability_plugin_assembly is not None
-            and (
-                capability_plugin_assembly.session_inputs
-                is not coding_base_product_session_assembly.session_inputs
-                or capability_plugin_assembly.selection.plan
-                != coding_base_product_session_assembly.compilation.plan
-                or capability_plugin_assembly.plugin_assembly.product_composition
-                is not coding_base_product_session_assembly.compilation.product_composition
-            )
-        ):
-            raise ValueError("Coding Product Session composition changed")
-        if (
-            coding_base_product_session_assembly is not None
-            and capability_plugin_assembly is not None
-        ):
-            compilation = coding_base_product_session_assembly.compilation
-            selected = (
-                compilation.selected_manifest,
-                *compilation.selected_capability_manifests,
-                *compilation.selected_external_data_manifests,
-            )
-            packages = capability_plugin_assembly.runtime.packages
-            if tuple(package.manifest.name for package in packages) != tuple(
-                sorted(item.manifest.name for item in selected)
-            ) or {
-                package.manifest.name: package.content_digest for package in packages
-            } != {
-                item.manifest.name: item.snapshot.root_ref.artifact_digest
-                for item in selected
-            }:
-                raise ValueError("Coding Product Session packages changed")
-        elif capability_plugin_assembly is not None and (
-            coding_base_product_runtime_binding is not None
-            or coding_selected_capability_manifests
-        ):
-            # Compare the Product-selected Capability set when this route has
-            # Product evidence, including an empty set. Legacy management
-            # leases have a separate owner and no Product selection to compare.
-            # Resource-only Wheels are checked by their Catalog owner.
-            selected = coding_selected_capability_manifests
-            packages = capability_plugin_assembly.runtime.packages
-            if len(packages) != len(selected) or {
-                package.manifest.name: package.content_digest for package in packages
-            } != {
-                item.manifest.name: item.snapshot.root_ref.artifact_digest
-                for item in selected
-            }:
-                raise ValueError("Coding Product Session packages changed")
-        if coding_base_product_session_assembly is not None:
-            if package_materializer is not None:
-                raise ValueError("Coding base Product cannot use a peer materializer")
-            if initial_resource_catalog_bootstrap is None:
-                raise ValueError("Coding base Product requires Catalog bootstrap")
-            if (
-                workspace_capability_binding
-                is not coding_base_product_session_assembly.workspace_binding
-            ):
-                raise ValueError("Coding base Product workspace binding changed")
-            if coding_base_product_runtime_binding is None:
-                raise ValueError("Coding base Product requires runtime binding")
-            if (
-                coding_base_product_session_assembly.compilation.plan.context.scope_id
-                != f"session:{session_manager.get_header().conversation_id}"
-            ):
-                raise ValueError("Coding base Product Session identity changed")
-        if coding_base_product_runtime_binding is not None and (
-            not isinstance(
-                coding_base_product_runtime_binding, PackageProductRuntimeBindingV1
-            )
-            or coding_base_product_runtime_binding.product_id != CODING_PRODUCT_ID
-        ):
-            raise ValueError("Coding Product runtime binding is invalid")
+        runtime_selection.require_prepared_selection(
+            base=coding_base_product_session_assembly,
+            capabilities=capability_plugin_assembly,
+            runtime=coding_base_product_runtime_binding,
+            selected_capabilities=coding_selected_capability_manifests,
+            worker=coding_product_worker_ordinary_binding,
+            needs_worker_receipt=coding_worker_turn_tool is not None,
+            workspace_binding=workspace_capability_binding,
+            has_peer_materializer=package_materializer is not None,
+            has_catalog_bootstrap=initial_resource_catalog_bootstrap is not None,
+            session_manager=session_manager,
+            product_id=CODING_PRODUCT_ID,
+            product_label="Coding",
+        )
         if coding_product_workspace_witness is not None and (
             not isinstance(
                 coding_product_workspace_witness, CodingProductWorkspaceWitnessV1

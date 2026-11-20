@@ -11,6 +11,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeActivationError,
+    PackageProductRuntimeBindingV1,
 )
 from loushang.harness.plugin_management.current_preview import (
     plugin_package_revision_fingerprint,
@@ -24,7 +25,21 @@ from loushang.harness.resources._catalog_records import (
 )
 
 if TYPE_CHECKING:
+    from loushang.coding.composition.base_product import (
+        CodingBaseProductCompilation,
+        CodingBaseProductSessionAssembly,
+    )
+    from loushang.coding.composition.capability_plugins import (
+        CodingCapabilityPluginCompositionAssembly,
+    )
+    from loushang.coding.package.product_worker_session_composition import (
+        CodingProductWorkerOrdinarySessionBinding,
+    )
     from loushang.coding.session.agent_session import AgentSession
+    from loushang.coding.session.manager import SessionManager
+    from loushang.harness.capabilities.provider_binding import (
+        CapabilityBundleProviderBinding,
+    )
 
 SelectionPhase = Literal[
     "worker", "desired", "base", "capability", "selected", "deferred"
@@ -34,6 +49,107 @@ SelectionFailure = Callable[
     [SelectionPhase, SelectionError, PackageProductSelectedPluginManifestV1 | None],
     BaseException,
 ]
+
+
+def _selected_base_manifests(
+    compilation: CodingBaseProductCompilation,
+) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
+    return (
+        compilation.selected_manifest,
+        *compilation.selected_capability_manifests,
+        *compilation.selected_external_data_manifests,
+    )
+
+
+def require_prepared_selection(
+    *,
+    base: CodingBaseProductSessionAssembly | None,
+    capabilities: CodingCapabilityPluginCompositionAssembly | None,
+    runtime: PackageProductRuntimeBindingV1 | None,
+    selected_capabilities: tuple[PackageProductSelectedPluginManifestV1, ...],
+    worker: CodingProductWorkerOrdinarySessionBinding | None,
+    needs_worker_receipt: bool,
+    workspace_binding: CapabilityBundleProviderBinding | None,
+    has_peer_materializer: bool,
+    has_catalog_bootstrap: bool,
+    session_manager: SessionManager,
+    product_id: str,
+    product_label: str,
+) -> None:
+    """Admit the original prepared graph and package evidence as one Session."""
+    if worker is not None:
+        from loushang.coding.package.product_worker_session_composition import (
+            CodingProductWorkerOrdinarySessionBinding,
+            validate_coding_product_worker_ordinary_session_inputs,
+        )
+
+        if (
+            not isinstance(worker, CodingProductWorkerOrdinarySessionBinding)
+            or base is None
+            or worker.ordinary is not base.session_inputs
+            or workspace_binding is not base.workspace_binding
+            or worker.workspace_binding is not workspace_binding
+        ):
+            raise ValueError(f"{product_label} Product Worker ordinary Session changed")
+        validate_coding_product_worker_ordinary_session_inputs(
+            ordinary=worker.ordinary,
+            combined=worker.combined,
+            workspace_binding=workspace_binding,
+        )
+    if needs_worker_receipt and (worker is None or worker.activation_receipt is None):
+        raise ValueError(
+            f"{product_label} Worker turn Tool requires a selected Worker receipt"
+        )
+    if base is not None and capabilities is not None and (
+        capabilities.session_inputs is not base.session_inputs
+        or capabilities.selection.plan != base.compilation.plan
+        or capabilities.plugin_assembly.product_composition
+        is not base.compilation.product_composition
+    ):
+        raise ValueError(f"{product_label} Product Session composition changed")
+    if capabilities is not None and (
+        base is not None or runtime is not None or selected_capabilities
+    ):
+        # The managed path has no Product package evidence. The capability-only
+        # Product path compares a set, including an empty selection.
+        selected = (
+            _selected_base_manifests(base.compilation)
+            if base is not None
+            else selected_capabilities
+        )
+        packages = capabilities.runtime.packages
+        inventory_changed = (
+            tuple(package.manifest.name for package in packages)
+            != tuple(sorted(item.manifest.name for item in selected))
+            if base is not None
+            else len(packages) != len(selected)
+        )
+        if inventory_changed or {
+            package.manifest.name: package.content_digest for package in packages
+        } != {
+            item.manifest.name: item.snapshot.root_ref.artifact_digest
+            for item in selected
+        }:
+            raise ValueError(f"{product_label} Product Session packages changed")
+    if base is not None:
+        if has_peer_materializer:
+            raise ValueError(f"{product_label} base Product cannot use a peer materializer")
+        if not has_catalog_bootstrap:
+            raise ValueError(f"{product_label} base Product requires Catalog bootstrap")
+        if workspace_binding is not base.workspace_binding:
+            raise ValueError(f"{product_label} base Product workspace binding changed")
+        if runtime is None:
+            raise ValueError(f"{product_label} base Product requires runtime binding")
+        if (
+            base.compilation.plan.context.scope_id
+            != f"session:{session_manager.get_header().conversation_id}"
+        ):
+            raise ValueError(f"{product_label} base Product Session identity changed")
+    if runtime is not None and (
+        not isinstance(runtime, PackageProductRuntimeBindingV1)
+        or runtime.product_id != product_id
+    ):
+        raise ValueError(f"{product_label} Product runtime binding is invalid")
 
 
 def require_current_selection(session: AgentSession, failure: SelectionFailure) -> None:
@@ -104,11 +220,7 @@ def observe_composition_selection(
     external_compilation = session._coding_external_data_product_compilation
     capability_assembly = session._coding_capability_plugin_assembly
     selected = (
-        (
-            compilation.selected_manifest,
-            *compilation.selected_capability_manifests,
-            *compilation.selected_external_data_manifests,
-        )
+        _selected_base_manifests(compilation)
         if compilation is not None
         else (
             *session._coding_selected_capability_manifests,
