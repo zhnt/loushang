@@ -77,6 +77,7 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/harness/package_product/legacy_removed_review.py"),
     Path("src/loushang/coding/harness/package_product/legacy_source_matching.py"),
     Path("src/loushang/coding/harness/package_product/startup.py"),
+    Path("src/loushang/coding/harness/session/configured_continuity.py"),
     Path("src/loushang/coding/package/legacy_builtin_review.py"),
     Path("src/loushang/coding/package/legacy_classification.py"),
     Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
@@ -168,7 +169,11 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "bind_coding_configured_continuity",
-        ): 6,
+        ): 4,
+        (
+            Path("src/loushang/coding/harness/session/configured_continuity.py"),
+            "bind_configured_continuity",
+        ): 5,
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "_configured_sources",

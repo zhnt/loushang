@@ -964,6 +964,12 @@ The three Coding modules supply nominal review/receipt records, native
 observation bindings and established Product admission. These six reviewed
 modules contribute no new staged implementation count.
 
+The POSIX and Windows payload modules bind the existing Harness payload
+custody owners for materialization, planning and launch binding. The POSIX
+registered and gated recovery entries use the existing review and repair
+programs. Their distinct admission rules and nominal recovery contracts stay
+at the Coding edge.
+
 ## Managed Plugin Startup And Cleanup
 
 The managed startup program now runs in
@@ -1017,6 +1023,28 @@ the batch removes 102 production lines since the previous local checkpoint.
 Coding contains 107,251 Python lines, including 14,162 in staging and
 93,089 at the product edge. The Goal baseline comparison still shows 6,536
 additional production lines.
+
+## Configured Continuity Startup
+
+The staged Continuity program opens the startup lease, reconciles existing
+compatibility state, verifies the request fingerprint, replays or publishes
+revisions, recovers the existing lifecycle and transfers publication custody.
+The three base-only completion routes share one finish operation. The Coding
+entry retains configured source admission and the Product route refusal.
+Product paths, original error identity, approval policy and status reporting
+remain at the Coding edge. The staged program borrows those bindings from
+the original module during the intermediate phase.
+
+The original composition module drops 252 Python lines and staging adds 270,
+for a net increase of 18 production lines. Static inspection preserves the
+original effect order and the normalized graph adds no module pairs.
+
+Ruff and focused mypy passed. The first runtime and architecture run passed
+49 cases. The two assertions affected by moving the startup program and one
+older compatibility locator passed their targeted owner recheck. The real
+Provider restart also fails on the unchanged baseline. Its wrapped exception
+reports a writable ancestor in the configured test temporary path. The
+Provider restart remains an open validation route.
 
 ## Cost And Final Acceptance
 

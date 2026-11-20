@@ -12,7 +12,7 @@ import hashlib
 import os
 import re
 import secrets
-import sys
+import sys as sys
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -23,11 +23,12 @@ from typing import Literal, Protocol
 from loushang.coding.composition.dependency_grants import (
     coding_plugin_distribution_evidence_resolver,
 )
+from loushang.coding.harness.session import configured_continuity
 from loushang.coding.plugin_manager.enablement_compatibility import (
-    bind_coding_plugin_enablement_compatibility,
+    bind_coding_plugin_enablement_compatibility as bind_coding_plugin_enablement_compatibility,
 )
 from loushang.coding.plugin_manager.lifecycle import (
-    CODING_PLUGIN_RUNTIME_BOOT_ID as _CODING_PLUGIN_RUNTIME_BOOT_ID,
+    CODING_PLUGIN_RUNTIME_BOOT_ID as _CODING_PLUGIN_RUNTIME_BOOT_ID,  # noqa: F401
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
@@ -36,20 +37,26 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.plugin_manager.lifecycle import (
-    hold_coding_plugin_startup_lease as _hold_process_startup_lease,
+    hold_coding_plugin_startup_lease as _hold_process_startup_lease,  # noqa: F401
 )
 from loushang.coding.plugin_manager.lifecycle import (
-    release_coding_plugin_startup_lease as _release_process_startup_lease,
+    release_coding_plugin_startup_lease as _release_process_startup_lease,  # noqa: F401
 )
 from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.coding.session.continuity import (
     CODING_EXPERIENCE_ID,
     CodingContinuityComposition,
     CodingContinuityRuntimePort,
-    bind_coding_continuity,
-    bind_coding_plugin_continuity,
     get_coding_continuity_composition,
-    supports_coding_continuity_secure_staging,
+)
+from loushang.coding.session.continuity import (
+    bind_coding_continuity as bind_coding_continuity,
+)
+from loushang.coding.session.continuity import (
+    bind_coding_plugin_continuity as bind_coding_plugin_continuity,
+)
+from loushang.coding.session.continuity import (
+    supports_coding_continuity_secure_staging as supports_coding_continuity_secure_staging,
 )
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.approval.plugin_activation import (
@@ -75,7 +82,9 @@ from loushang.harness.continuity.plugin_declaration import (
 )
 from loushang.harness.continuity.plugin_runtime import (
     ResolvedContinuityPluginSelection,
-    resolve_continuity_plugin_selection,
+)
+from loushang.harness.continuity.plugin_runtime import (
+    resolve_continuity_plugin_selection as resolve_continuity_plugin_selection,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
@@ -134,6 +143,10 @@ _SOURCE_TRUST_POLICY_REVISION = "coding-continuity-source-trust-1"
 _AUTHORITY_CEILING = ("continuity.delete", "network.read")
 _APPROVAL_TTL_MS = 300_000
 _BOOTSTRAP_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_status"
+_CONTINUITY_COMPOSITION_ATTRIBUTE = "_loushang_coding_continuity"
+_CONTINUITY_ALREADY_BOUND = "coding_continuity_composition_already_bound"
+_CONTINUITY_STAGING_UNSUPPORTED = "coding_continuity_secure_staging_unsupported"
+_REVISION_CLEANUP_NOTE = "Coding Continuity revision cleanup failed: "
 _LAST_READY_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_last_ready_status"
 _STABLE_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,95}$")
 
@@ -313,324 +326,27 @@ async def bind_coding_configured_continuity(
     except BaseException as error:
         if not isinstance(error, Exception):
             raise
-        stable_code = _stable_error_code(error)
-        retryable = (
-            error.retryable
-            if isinstance(error, CodingContinuityBootstrapError)
-            else True
-        )
-        _record_failed_status(
-            runtime,
-            diagnostics_service,
-            code=stable_code,
-            configured_source_count=0,
-            retryable=retryable,
+        stable_code = _record_bootstrap_failure(
+            runtime, diagnostics_service, error, configured_source_count=0
         )
         if isinstance(error, CodingContinuityBootstrapError):
             raise
         raise CodingContinuityBootstrapError(code=stable_code) from None
 
-    configured_count = len(sources)
-    common_layout: CodingPluginLifecycleStateLayout | None = None
-    existing: CodingContinuityComposition | None = None
-    compatibility = None
-    owns_early_startup_lease = False
-
-    def release_early_startup_lease() -> None:
-        nonlocal owns_early_startup_lease
-        if owns_early_startup_lease and common_layout is not None:
-            _release_process_startup_lease(
-                common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
-            )
-            owns_early_startup_lease = False
-
-    try:
-        layout = state_layout or resolve_coding_continuity_state_layout(cwd)
-        common_layout = _common_lifecycle_layout(layout)
-        prior = getattr(runtime, "_loushang_coding_continuity", None)
-        existing = prior if isinstance(prior, CodingContinuityComposition) else None
-        if (
-            not product_route
-            and (sys.platform.startswith("linux") or os.name == "nt")
-            and (
-                sources
-                or settings_manager is not None
-                or (existing is not None and existing.plugin_publication is not None)
-            )
-        ):
-            owns_early_startup_lease = _hold_process_startup_lease(
-                common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
-            )
-        compatibility = (
-            None
-            if product_route
-            else bind_coding_plugin_enablement_compatibility(
-                common_layout,
-                settings_manager,
-            )
-        )
-        if compatibility is not None:
-            compatibility.reconcile()
-            sources, disabled_plugins = _configured_sources(
-                settings_manager,
-                cwd=cwd,
-            )
-            configured_count = len(sources)
-        request_fingerprint = _bootstrap_request_fingerprint(
-            sources,
-            disabled_plugins=disabled_plugins,
-            cwd=cwd,
-            all_sessions=all_sessions,
-        )
-
-        if existing is not None:
-            if existing.configured_request_fingerprint == request_fingerprint:
-                _restore_ready_status(runtime, diagnostics_service)
-                if existing.plugin_publication is None and compatibility is None:
-                    release_early_startup_lease()
-                return existing
-            if (
-                not sources
-                and existing.plugin_publication is None
-                and existing.configured_request_fingerprint is None
-                and existing.binding_cwd
-                == str(Path(cwd).expanduser().resolve(strict=False))
-                and existing.all_sessions == all_sessions
-            ):
-                existing.configured_request_fingerprint = request_fingerprint
-                _record_ready_status(
-                    runtime,
-                    diagnostics_service,
-                    configured_source_count=0,
-                    plugin_count=0,
-                    provider_count=0,
-                    recovered_deletion_count=0,
-                )
-                if compatibility is None:
-                    release_early_startup_lease()
-                return existing
-            raise CodingContinuityBootstrapError(
-                code="coding_continuity_composition_already_bound",
-                retryable=False,
-            )
-
-        if not sources:
-            result = bind_coding_continuity(
-                runtime,
-                cwd=cwd,
-                all_sessions=all_sessions,
-            )
-            result.configured_request_fingerprint = request_fingerprint
-            _record_ready_status(
-                runtime,
-                diagnostics_service,
-                configured_source_count=0,
-                plugin_count=0,
-                provider_count=0,
-                recovered_deletion_count=0,
-            )
-            if compatibility is None:
-                release_early_startup_lease()
-            return result
-    except BaseException as error:
-        if compatibility is None and (
-            existing is None or existing.plugin_publication is None
-        ):
-            release_early_startup_lease()
-        if not isinstance(error, Exception):
-            raise
-        if (
-            isinstance(error, CodingContinuityBootstrapError)
-            and error.code == "coding_continuity_composition_already_bound"
-        ):
-            # The already-published composition remains healthy.  Reject the
-            # conflicting rebind without overwriting its ready status.
-            raise
-        stable_code = _stable_error_code(error)
-        retryable = (
-            error.retryable
-            if isinstance(error, CodingContinuityBootstrapError)
-            else True
-        )
-        _record_failed_status(
-            runtime,
-            diagnostics_service,
-            code=stable_code,
-            configured_source_count=configured_count,
-            retryable=retryable,
-        )
-        if isinstance(error, CodingContinuityBootstrapError):
-            raise
-        raise CodingContinuityBootstrapError(code=stable_code) from None
-
-    runtime_resolution: PluginRuntimeResolution | None = None
-    lifecycle_started = False
-    try:
-        resolved_runtime_id = runtime_id or _new_runtime_id()
-        if materializer is not None and not materializer.uses_storage_authority(
-            install_root=layout.package_root / "installed",
-            lockfile_path=layout.package_root / "package-lock.json",
-            plugin_revision_root=layout.package_root / "plugin-revisions",
-        ):
-            raise CodingContinuityBootstrapError(
-                code="coding_continuity_package_authority_mismatch",
-                retryable=False,
-            )
-        resolved_materializer = materializer or _coding_continuity_materializer(layout)
-        _prepare_private_state_layout(layout)
-        _prepare_private_runtime_roots(layout)
-        lifecycle = _build_lifecycle(layout)
-        lifecycle_started = True
-        lifecycle.common.reconcile_retirements()
-        replayed_runtime, inspections = _continuity_runtime_inputs(
-            sources,
-            materializer=resolved_materializer,
-            lifecycle=lifecycle,
-            layout=layout,
-        )
-        if compatibility is not None:
-            compatibility.reconcile()
-        if not replayed_runtime.packages and not inspections:
-            lifecycle.common.complete_startup_recovery()
-            result = bind_coding_continuity(
-                runtime,
-                cwd=cwd,
-                all_sessions=all_sessions,
-            )
-            result.configured_request_fingerprint = request_fingerprint
-            _record_ready_status(
-                runtime,
-                diagnostics_service,
-                configured_source_count=configured_count,
-                plugin_count=0,
-                provider_count=0,
-                recovered_deletion_count=0,
-            )
-            if compatibility is None:
-                release_early_startup_lease()
-            return result
-
-        if not supports_coding_continuity_secure_staging():
-            replayed_runtime.close()
-            raise CodingContinuityBootstrapError(
-                code="coding_continuity_secure_staging_unsupported",
-                retryable=False,
-            )
-
-        resolution_authority = PluginResolutionAuthority()
-        runtime_resolution = _publish_continuity_runtime(
-            replayed_runtime,
-            inspections=inspections,
-            authority=resolution_authority,
-            materializer=resolved_materializer,
-        )
-        instance_refs = _reconcile_enabled_instances(
-            runtime_resolution,
-            lifecycle,
-            layout=layout,
-            legacy_disabled_plugin_ids=disabled_plugins,
-        )
-        if compatibility is not None:
-            compatibility.reconcile()
-        runtime_resolution = _retain_enabled_runtime(
-            runtime_resolution,
-            enabled_plugin_ids=frozenset(item.plugin_id for item in instance_refs),
-        )
-        lifecycle.common.complete_startup_recovery()
-        if not runtime_resolution.packages:
-            result = bind_coding_continuity(
-                runtime,
-                cwd=cwd,
-                all_sessions=all_sessions,
-            )
-            result.configured_request_fingerprint = request_fingerprint
-            _record_ready_status(
-                runtime,
-                diagnostics_service,
-                configured_source_count=configured_count,
-                plugin_count=0,
-                provider_count=0,
-                recovered_deletion_count=0,
-            )
-            if compatibility is None:
-                release_early_startup_lease()
-            return result
-        selection = _finalize_selection(
-            runtime_resolution,
-            instance_refs=instance_refs,
-            layout=layout,
-            clock=clock,
-        )
-        owner_authority = _owner_authority(selection)
-        now = _read_clock(clock)
-        resolved = resolve_continuity_plugin_selection(
-            selection,
-            owner_authority=owner_authority,
-            issued_at=now,
-            expires_at=now + _APPROVAL_TTL_MS,
-            now=now,
-        )
-        component_host, decisions = _component_host_and_decisions(
-            resolved,
-            owner_authority=owner_authority,
-            layout=layout,
-            clock=clock,
-        )
-        pending_before = len(lifecycle.deletion_authority.journal.pending())
-        result = await bind_coding_plugin_continuity(
-            runtime,
-            resolved_plugins=resolved,
-            component_host=component_host,
-            activation_decision_ids=decisions,
-            instance_family_authority=lifecycle.family_authority,
-            runtime_id=resolved_runtime_id,
-            deletion_authority=lifecycle.deletion_authority,
-            owned_cleanup=runtime_resolution.close,
-            cwd=cwd,
-            all_sessions=all_sessions,
-            temporary_root=layout.temporary_root,
-            fallback_cwd=cwd,
-        )
-        result.configured_request_fingerprint = request_fingerprint
-        runtime_resolution = None  # ownership transferred to the composition
-        _record_ready_status(
-            runtime,
-            diagnostics_service,
-            configured_source_count=configured_count,
-            plugin_count=len(selection.plan.selected_plugin_ids),
-            provider_count=len(resolved.candidates),
-            recovered_deletion_count=pending_before,
-        )
-        return result
-    except BaseException as error:
-        if not lifecycle_started and compatibility is None:
-            release_early_startup_lease()
-        if runtime_resolution is not None:
-            try:
-                runtime_resolution.close()
-            except BaseException as cleanup_error:
-                error.add_note(
-                    "Coding Continuity revision cleanup failed: "
-                    f"{type(cleanup_error).__name__}"
-                )
-        if not isinstance(error, Exception):
-            raise
-        stable_code = _stable_error_code(error)
-        retryable = (
-            error.retryable
-            if isinstance(error, CodingContinuityBootstrapError)
-            else True
-        )
-        _record_failed_status(
-            runtime,
-            diagnostics_service,
-            code=stable_code,
-            configured_source_count=configured_count,
-            retryable=retryable,
-        )
-        if isinstance(error, CodingContinuityBootstrapError):
-            raise
-        raise CodingContinuityBootstrapError(code=stable_code) from None
+    return await configured_continuity.bind_configured_continuity(
+        runtime,
+        settings_manager=settings_manager,
+        cwd=cwd,
+        all_sessions=all_sessions,
+        diagnostics_service=diagnostics_service,
+        materializer=materializer,
+        state_layout=state_layout,
+        clock=clock,
+        runtime_id=runtime_id,
+        product_route=product_route,
+        sources=sources,
+        disabled_plugins=disabled_plugins,
+    )
 
 
 async def retry_coding_continuity_bootstrap(
@@ -971,6 +687,20 @@ def _publish_continuity_runtime(
         replayed.close()
         published.close()
         raise
+
+
+def _require_continuity_package_authority(
+    layout: CodingContinuityStateLayout, materializer: PackageMaterializer
+) -> None:
+    if not materializer.uses_storage_authority(
+        install_root=layout.package_root / "installed",
+        lockfile_path=layout.package_root / "package-lock.json",
+        plugin_revision_root=layout.package_root / "plugin-revisions",
+    ):
+        raise CodingContinuityBootstrapError(
+            code="coding_continuity_package_authority_mismatch",
+            retryable=False,
+        )
 
 
 def _coding_continuity_materializer(
@@ -1560,6 +1290,24 @@ def _record_failed_status(
                 source="bootstrap",
                 details=status.to_dict(),
             )
+
+
+def _record_bootstrap_failure(
+    runtime: CodingContinuityRuntimePort,
+    diagnostics_service: DiagnosticsService | None,
+    error: Exception,
+    *,
+    configured_source_count: int,
+) -> str:
+    code = _stable_error_code(error)
+    _record_failed_status(
+        runtime,
+        diagnostics_service,
+        code=code,
+        configured_source_count=configured_source_count,
+        retryable=error.retryable if isinstance(error, CodingContinuityBootstrapError) else True,
+    )
+    return code
 
 
 def _stable_error_code(error: BaseException) -> str:
