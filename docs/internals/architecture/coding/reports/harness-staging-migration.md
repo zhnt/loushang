@@ -1046,6 +1046,32 @@ Provider restart also fails on the unchanged baseline. Its wrapped exception
 reports a writable ancestor in the configured test temporary path. The
 Provider restart remains an open validation route.
 
+## Current Session Selection And Composition Evidence
+
+The ordinary Session and Resume paths retain the same Coding entry methods
+for rechecking live owners and building a composition receipt. The staged
+selection program rechecks the workspace witness, Worker, Desired records,
+Base and capability manifests, external selections and the active deferred
+capability in their original order. One exception boundary sends the
+existing failure details to the Coding diagnostic and error policy.
+
+The staged observation program builds the detached revisions, owner
+generations, catalog fingerprint and Worker facts. Coding retains the
+receipt version, selected composition set, fingerprint domain and
+historical publication boundary. The recomposed receipt projection matches
+the original AST including field ordering. All 26 synchronous comparisons
+match the original check sequence, first failure, diagnostics and cause.
+The staged module uses a type-only Coding import and reads the existing
+Session fields during the intermediate phase.
+
+The Coding Session module drops 241 Python lines and staging adds 274.
+This slice adds 33 production lines. All 37 focused tests passed, including
+the persisted receipt and single-writer cases, deferred capability
+revocation, disabled-Base resources and the Resume publication barriers.
+Both persisted receipt cases also pass on the unchanged baseline. Ruff,
+focused mypy and dependency and documentation checks passed. The
+normalized graph adds no module pairs.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
