@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
+from loushang.coding.resources import catalog as _binding
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
@@ -18,23 +19,36 @@ from loushang.harness.resource_catalog._loader_inputs import (
 from loushang.harness.resource_catalog.product_inputs import (
     InitialResourceCatalogProductAdapter,
 )
+from loushang.harness.resources._catalog_input_receipt import (
+    ResourceCatalogInputReceipt,
+)
 from loushang.harness.resources.plugins.selection import PluginSelection
+from loushang.harness.session.product_composition_assembly import (
+    ProductCompositionAssemblyRequest,
+    assemble_product_composition,
+)
 
 if TYPE_CHECKING:
-    from loushang.coding.resources.catalog import CodingResourceCatalogSourcePolicy
     from loushang.harness.resource_catalog.product_snapshot_source import (
         ProductSelectedResourceInput,
     )
-    from loushang.harness.resources._catalog_input_receipt import (
-        ResourceCatalogInputReceipt,
-    )
+
+
+def take_initial_receipt(
+    resource_loader: _binding._ResourceCatalogReceiptSource,
+) -> ResourceCatalogInputReceipt:
+    """Take the one-shot receipt through the original loader transfer."""
+    try:
+        return resource_loader._take_initial_resource_catalog_input_receipt()
+    except (AttributeError, RuntimeError) as exc:
+        raise _binding.CodingResourceCatalogAdmissionError(
+            ("catalog_receipt_unavailable",)
+        ) from exc
 
 
 def build_catalog_adapter(
     receipt: ResourceCatalogInputReceipt,
     *,
-    product_id: str,
-    product_label: str,
     product_scope_id: str | None,
     disabled_skills: Sequence[str],
     product_composition: ProductCompositionCompilation | None,
@@ -42,15 +56,17 @@ def build_catalog_adapter(
     product_selection: PluginSelection | None,
     package_admission_now: int | None,
     clock: Callable[[], int] | None,
-    source_policy: CodingResourceCatalogSourcePolicy,
-    compile_composition: Callable[
-        [ResourceCatalogInputReceipt, str | None, int, PluginSelection | None],
-        ProductCompositionCompilation | None,
-    ],
-    reject: Callable[[Sequence[str]], Exception],
+    source_policy: _binding.CodingResourceCatalogSourcePolicy,
 ) -> InitialResourceCatalogProductAdapter:
     """Bind one exact receipt to the existing Catalog input owner."""
 
+    product_id = _binding._CATALOG_PRODUCT_ID
+    product_label = _binding._CATALOG_PRODUCT_LABEL
+    if not isinstance(receipt, ResourceCatalogInputReceipt):
+        raise TypeError(f"{product_label} Resource Catalog requires an input receipt")
+    source_policy = _binding.canonical_coding_resource_catalog_source_policy(
+        source_policy
+    )
     if product_scope_id is not None and (
         not isinstance(product_scope_id, str) or not product_scope_id.strip()
     ):
@@ -92,7 +108,7 @@ def build_catalog_adapter(
             f"{product_label} Resource Catalog source policy excludes Product package selection"
         )
     if product_composition is None and source_policy.include_package_resources:
-        product_composition = compile_composition(
+        product_composition = _compile_package_composition(
             receipt, product_scope_id, resolved_admission_now, product_selection
         )
     admissions = (
@@ -131,7 +147,33 @@ def build_catalog_adapter(
             include_package_resources=source_policy.include_package_resources,
             include_embedded_resources=source_policy.include_embedded_resources,
             disabled_skills=disabled_skills,
-            reject=reject,
+            reject=_binding.CodingResourceCatalogAdmissionError,
         ),
         clock=resolved_clock,
+    )
+
+
+def _compile_package_composition(
+    receipt: ResourceCatalogInputReceipt,
+    product_scope_id: str | None,
+    evaluated_at: int,
+    product_selection: PluginSelection | None,
+) -> ProductCompositionCompilation | None:
+    plan_seed = _binding.prepare_coding_package_plugin_plan_seed(
+        receipt,
+        product_scope_id=product_scope_id,
+        evaluated_at=evaluated_at,
+        product_selection=product_selection,
+    )
+    if plan_seed is None:
+        return None
+    seed = _binding.finalize_coding_package_plugin_plan_seed(plan_seed)
+    return assemble_product_composition(
+        ProductCompositionAssemblyRequest(
+            selection=seed.selection,
+            owner_bindings=seed.owner_bindings,
+            mandatory_roots=_binding._PACKAGE_CATALOG_REQUIRED_ROOTS,
+            definitions=_binding._PACKAGE_CATALOG_DEFINITIONS,
+        ),
+        evaluated_at=evaluated_at,
     )

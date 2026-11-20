@@ -2074,6 +2074,29 @@ match the prior checkpoint's membership, errors and read-only behavior.
 All 56 selected Linux tests pass, including offline review, fresh startup
 and POSIX cutover. The two Windows-only cases are skipped on this host.
 
+## Catalog Receipt And Package Composition Binding
+
+The staged Catalog adapter now takes the one-shot loader receipt, checks the
+canonical Product source policy, and assembles the package composition through
+the existing Harness plan, selection and owner-binding steps. Startup, refresh
+and preview callers share the same adapter. Coding supplies the original trust
+and owner policy, required Capability definitions and rejection identities.
+
+The legacy receipt transfer retains its original error translation and
+precedes fallback wall-time observation. Adapter construction still rejects
+an invalid receipt before inspecting Product policy. The default package
+compiler runs once when package resources are enabled and no composition was
+supplied. The existing bootstrap and refresh authority checks and publication
+order still govern the returned adapter.
+
+The Product edge removes 44 Python lines and staging adds 42, for two net
+production lines removed. Across 13,320 controlled cases, receipt transfer,
+clock observation, Product admission, error order and native assembly inputs
+match the previous checkpoint. All 67 selected Linux cases pass. Four
+existing architecture assertions reproduced stale importer paths on the
+prior checkpoint and now track the exact staged owners. Native Windows
+verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
