@@ -14,6 +14,9 @@ from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar, Literal
 
+from loushang.coding.harness.plugin_management import (
+    private_data_deletion_preview as _programs,
+)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
@@ -48,6 +51,11 @@ _MAX_ENTRIES = 4096
 _MAX_FILE_BYTES = 16 * 1024 * 1024
 _MAX_TOTAL_BYTES = 64 * 1024 * 1024
 _identity = metadata_identity
+
+
+_PRIVATE_DATA_FLOW_VALUES = {
+    "message_01": "Coding Arch private-data Product runtime is active"
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,16 +122,8 @@ class CodingArchPrivateDataDeletionPreview:
 
     @contextmanager
     def _offline(self) -> Iterator[None]:
-        registry = self.product.epoch_runtime.registry
-        with registry.exclusive_runtime_quiescence(
-            store_id=registry.store_id
-        ) as quiescence:
-            if quiescence.active_runtime_lease_ids:
-                raise ValueError("Coding Arch private-data Product runtime is active")
-            self.product.assert_root_gc_authority_current()
-            with self.product.gc_gate.guard():
-                yield
-            self.product.assert_root_gc_authority_current()
+        with _programs.offline(self) as borrowed:
+            yield borrowed
 
 
 def _capture_target_snapshot(

@@ -11,6 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.harness.plugin_management import (
+    private_data_expiry_events as _record_programs,
+)
 from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
 from loushang.harness.plugin_management._private_data_expiry import (
     PrivateDataExpiryJournal,
@@ -32,6 +35,13 @@ _MAX_RECORDS = 4096
 _MAX_BYTES = 64 * 1024 * 1024
 
 
+_PRIVATE_DATA_RECORD_VALUES = {
+    "value_01": "Coding Arch backup expiry event is invalid",
+    "value_02": "Coding Arch backup expiry archive changed",
+    "value_03": "Coding Arch backup expiry receipt changed",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class CodingArchPrivateDataBackupExpiryEventV1:
     revision: int
@@ -43,37 +53,7 @@ class CodingArchPrivateDataBackupExpiryEventV1:
     record_version: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            type(self.revision) is not int
-            or self.revision < 1
-            or self.phase not in {"confirmed", "started", "renamed", "completed"}
-            or not isinstance(self.plan, CodingArchPrivateDataBackupExpiryPlanV1)
-            or not isinstance(
-                self.confirmation, CodingArchPrivateDataBackupExpiryConfirmationV1
-            )
-            or self.confirmation.plan_fingerprint != self.plan.fingerprint
-            or self.record_version != 1
-        ):
-            raise ValueError("Coding Arch backup expiry event is invalid")
-        if self.phase == "confirmed":
-            if self.archive is not None or self.receipt is not None:
-                raise ValueError("Unstarted backup expiry has effects")
-            return
-        if (
-            not isinstance(self.archive, CodingArchPrivateDataTargetSnapshotV1)
-            or self.archive.root_identity != self.plan.archive_root_identity
-            or self.archive.target_id != self.plan.archive_target_id
-        ):
-            raise ValueError("Coding Arch backup expiry archive changed")
-        if self.phase == "completed":
-            if not isinstance(
-                self.receipt, CodingArchPrivateDataBackupExpiryReceiptV1
-            ) or self.receipt != CodingArchPrivateDataBackupExpiryReceiptV1.create(
-                self.plan, self.confirmation
-            ):
-                raise ValueError("Coding Arch backup expiry receipt changed")
-        elif self.receipt is not None:
-            raise ValueError("Unfinished backup expiry cannot claim a receipt")
+        return _record_programs.validate_event(self)
 
     def to_dict(self) -> dict[str, object]:
         return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.encode(self, sort_keys=True)
