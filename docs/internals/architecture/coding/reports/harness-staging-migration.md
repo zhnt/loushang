@@ -1866,6 +1866,31 @@ identity and cleanup outcomes. All 52 focused non-live Linux cases pass,
 including Hosted and Resume construction and the existing architecture
 constraints. Native Windows startup remains unverified.
 
+## Delegated Child Session Construction
+
+The staged Session builder validates the requested Tool subset, projects the
+platform Tool names, and checks the selected exact owners before constructing
+the child. It keeps the plan, role and parent model precedence, and uses the
+existing registry projection and delegated execution profile. The same
+actor-bound approval and leased workspace reach the original runtime builder.
+The original Harness factory still owns the child, its history, its lease and
+its failure and disposal paths.
+
+Coding supplies roles, prompts, workspace policy, platform names and exact
+Tool identities. The public factory and legacy import retain their identity
+and signature. Recipe context now calls the original Product prompt function
+directly. The staged builder has no Coding imports and receives Product
+policy through the bounded assembly inputs.
+
+The Product edge removes 121 Python lines and staging adds 126, for a net
+increase of five. Normalized dependency pairs remain at 1,659. All 67 focused
+non-live Linux cases pass, and the recipe recheck passes. A comparison matches
+251 construction and refusal traces. The extra Repository Goal integration
+case reaches the same `transcript_writer:unsafe` rejection on the previous
+checkpoint and current sources, before the root Session can create a child.
+Windows Tool projection is covered by host fixtures. Native Windows
+execution remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
