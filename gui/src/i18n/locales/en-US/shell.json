@@ -34,7 +34,6 @@
   "view": "View",
   "help": "Help",
   "devtools": "Developer Tools",
-  "dragWindow": "Drag window; double-click to maximize or restore",
   "minimize": "Minimize window",
   "restore": "Restore window",
   "maximize": "Maximize window",

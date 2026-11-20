@@ -465,7 +465,6 @@ export default interface Resources {
     "dismiss": "Close",
     "dismissMenu": "Close menu or dialog",
     "documentation": "Documentation",
-    "dragWindow": "Drag window; double-click to maximize or restore",
     "edit": "Edit",
     "escapeShortcut": "Esc",
     "feedback": "Feedback",

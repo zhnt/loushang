@@ -61,7 +61,7 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
       <FrameMenu {...actions} onBack={onBack} onForward={onForward}
         onClose={() => void control("close")} onQuit={() => void invokeFrameAction("quit_app")}
         onOpenDevtools={() => void invokeFrameAction("open_devtools")} />
-      <div className="window-drag-region" data-tauri-drag-region title={t("dragWindow")} />
+      <div className="window-drag-region" data-tauri-drag-region />
       <div className="window-controls">
         <button aria-label={t("minimize")} disabled={!native} onClick={() => void control("minimize")}><WindowIcon action="minimize" /></button>
         <button aria-label={maximized ? t("restore") : t("maximize")} disabled={!native} onClick={() => void control("toggleMaximize")}><WindowIcon action={maximized ? "restore" : "maximize"} /></button>

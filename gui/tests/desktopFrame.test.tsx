@@ -74,6 +74,13 @@ it("navigates real Session selections with drafts intact and connects menu actio
 });
 
 describe("native frame commands", () => {
+  it("keeps the title bar draggable without a system hover tooltip", () => {
+    render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
+    const dragRegion = screen.getByRole("banner").querySelector("[data-tauri-drag-region]");
+    expect(dragRegion).toBeVisible();
+    expect(dragRegion).not.toHaveAttribute("title");
+  });
+
   it("routes window buttons to the native window, not fixture execution", async () => {
     const user = userEvent.setup();
     render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
