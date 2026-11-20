@@ -1420,6 +1420,35 @@ module-pair count remains 1,661, and the runtime import scan found no path
 from the new binding module back to itself. Native Windows and Worker
 execution remain unverified in this batch.
 
+## Shared First-Input Intent And Effect Settlement
+
+Embedded and Hosted Resume now use the same intent construction and effect
+settlement before the existing continuation and Writer boundary. The shared
+path keeps the exact v2 intent fields and rejects unsupported attempt types
+before checking current subject admission or receipt evidence. When Plugin
+effects are present, it prepares the approved directory at settlement and
+uses the existing execution and activation Journals. The no-Plugin branch
+validates the receipt without preparing a directory. Embedded's allowance
+for its Worker owner and its Plugin settlement injection point remain
+intact.
+
+The callers retain source and subject custody, Product epoch and Plugin
+selection, ID policy, and the existing continuation handoff. Hosted retains
+the stable submission-derived input ID. Embedded retains the order of its
+generated IDs and native approval checks. Bootstrap and both Resume entries
+share the historical Session Plugin state path calculation at the Product
+edge. The new staged path adds one typing-only plan dependency and no
+runtime import cycle within Coding.
+
+The Product edge removes 58 Python lines and staging adds 107, for a net
+increase of 49 lines. One new typed binding preserves the original effect
+checks and their call shape across both routes. Compared with the previous
+checkpoint, 144 intent and settlement traces match, as do eight historical
+path calculations. The Linux regression run passed 115 cases and the
+Hosted architecture run passed 32. All 39 selected Embedded and Hosted
+cases passed on the final settlement path. Native Windows and Worker
+execution remain unverified in this batch.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

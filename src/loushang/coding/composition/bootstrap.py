@@ -58,6 +58,7 @@ from loushang.coding.composition.plan import (
 )
 from loushang.coding.composition.product_capability_plugins import (
     CodingBuiltinProductCompositionPreparation,
+    coding_session_plugin_state_relative_path,
 )
 from loushang.coding.composition.product_capability_plugins import (
     prepare_coding_product_capability_plugin_composition as prepare_coding_product_capability_plugin_composition,
@@ -2530,15 +2531,9 @@ def _coding_capability_plugin_state_root(
     *,
     session_id: str,
 ) -> Path:
-    state_id = hashlib.sha256(
-        b"loushang.coding-capability-plugin-state/v1\0" + session_id.encode("utf-8")
-    ).hexdigest()
-    return (
-        session_manager.get_session_dir()
-        / "plugin-state"
-        / "coding-capability-plugins"
-        / state_id
-    )
+    relative_path = coding_session_plugin_state_relative_path(session_id)
+    return session_manager.get_session_dir() / relative_path
+
 
 
 def _source_identity_startup_check(cwd: str) -> StartupCheckResult:

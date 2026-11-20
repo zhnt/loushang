@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,13 +18,17 @@ from loushang.coding.composition.capability_plugins import (
     require_coding_resume_plugin_effect_settlement,
 )
 from loushang.coding.composition.product_capability_plugins import (
-    prepare_coding_product_approval_state_root,
+    coding_session_plugin_state_relative_path,
+)
+from loushang.coding.harness.session.first_input_activation import (
+    bind_first_input_settlement,
+    build_first_input_attempt,
+    require_first_input_attempt,
 )
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
 )
-from loushang.coding.resume.activation_attempt_v2 import CodingActivationAttemptV2
 from loushang.coding.resume.history import (
     CodingResumeHistoryPreview,
     CodingResumeRecentPage,
@@ -53,7 +56,7 @@ from loushang.harnesstui.conversation.agent_binding import (
 from loushang.harnesstui.conversation.control import ConversationTextAction
 
 from .plugin_effects import (
-    require_no_capability_plugin_effects as _require_no_capability_plugin_effects,
+    require_no_capability_plugin_effects as _require_no_capability_plugin_effects,  # noqa: F401
 )
 from .plugin_effects import (
     resume_capability_plugins_required as _resume_capability_plugins_required,
@@ -156,20 +159,8 @@ class EmbeddedResumeApprovalInteraction:
 def _resume_plugin_state_root(
     runtime: AgentSessionRuntime, *, session_id: str
 ) -> Path:
-    state_id = hashlib.sha256(
-        b"loushang.coding-capability-plugin-state/v1\0"
-        + session_id.encode("utf-8")
-    ).hexdigest()
-    return (
-        Path(runtime.session_dir)
-        / "plugin-state"
-        / "coding-capability-plugins"
-        / state_id
-    )
-
-
-
-
+    relative_path = coding_session_plugin_state_relative_path(session_id)
+    return Path(runtime.session_dir) / relative_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,60 +233,35 @@ class EmbeddedResumeInputCoordinator:
                 key=lambda owner: owner.identity,
             )
         )
-        attempt = CodingActivationAttemptV2(
+        attempt = build_first_input_attempt(
+            plan,
             attempt_id=f"resume-attempt:{self.id_factory()}",
             request_id=f"resume-input:{self.id_factory()}",
-            session_id=plan.session_id,
-            original_leaf_id=plan.selected_leaf_id,
-            ancestry_digest=plan.ancestry_digest,
-            plan_fingerprint=plan.plan_id,
             epoch_fingerprint=epoch_fingerprint,
             subject_digest=subject_digest,
             effect_owners=owners,
         )
+
         def admit(observed: CodingActivationAttemptV1) -> None:
-            if type(observed) is not CodingActivationAttemptV2:
-                raise CodingResumeRecoveryRequired(
-                    "input.effect_owner_set_unsupported"
-                )
             self.runtime.require_current_embedded_resume_subject(
-                observed,
+                require_first_input_attempt(observed),
                 approval_owner=approval_owner,
             )
 
-        def settle(
-            observed: CodingActivationAttemptV1,
-            receipt: Mapping[str, object],
-        ) -> None:
-            if type(observed) is not CodingActivationAttemptV2:
-                raise CodingResumeRecoveryRequired(
-                    "input.effect_owner_set_unsupported"
-                )
-            if plugin_owners:
-                require_coding_resume_plugin_effect_settlement(
-                    observed,
-                    receipt,
-                    state_root=prepare_coding_product_approval_state_root(
-                        plugin_state_root
-                    ),
-                    clock=self.clock_ms,
-                    allowed_external_owner_ids=(
-                        frozenset({"harness.worker-activation"})
-                        if worker_owner is not None
-                        else frozenset()
-                    ),
-                )
-            else:
-                _require_no_capability_plugin_effects(
-                    observed,
-                    receipt,
-                    expected_set_id=plan.composition_comparison.candidate_set_id,
-                    allowed_owner_ids=(
-                        frozenset({"harness.worker-activation"})
-                        if worker_owner is not None
-                        else frozenset()
-                    ),
-                )
+        settle = bind_first_input_settlement(
+            plan,
+            plugin_owners=plugin_owners,
+            plugin_state_root=plugin_state_root,
+            clock=self.clock_ms,
+            allowed_external_owner_ids=(
+                frozenset({"harness.worker-activation"})
+                if worker_owner is not None
+                else frozenset()
+            ),
+            verify_plugin_effects=lambda *args, **kwargs: (
+                require_coding_resume_plugin_effect_settlement(*args, **kwargs)
+            ),
+        )
 
         created_at = self.now()
         if not isinstance(created_at, datetime) or created_at.tzinfo is None:

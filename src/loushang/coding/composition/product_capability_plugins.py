@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from collections.abc import Callable, Mapping
@@ -135,6 +136,14 @@ _PLUGIN_PREPARATION_PROGRAM_VALUES = {
     "value_010": "Coding Product Capability policy revision is invalid",
     "value_011": "Coding Product Capability trust policy changed",
 }
+
+
+def coding_session_plugin_state_relative_path(session_id: str) -> Path:
+    """Return the historical Product Plugin location without creating it."""
+    state_id = hashlib.sha256(
+        b"loushang.coding-capability-plugin-state/v1\0" + session_id.encode("utf-8")
+    ).hexdigest()
+    return Path("plugin-state", "coding-capability-plugins", state_id)
 
 
 def prepare_coding_product_approval_state_root(state_root: Path) -> Path:
