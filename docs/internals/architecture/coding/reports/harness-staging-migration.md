@@ -730,6 +730,107 @@ This checkpoint records the verified lifecycle and observation paths as a
 local batch. Existing platform and installed-entry validation limits continue
 to apply to the cumulative Goal.
 
+## Worker Startup And Retained Resume
+
+The Worker slice moves ordinary session selection and both platform paths for
+pending graph preparation. The moved operations cover 378 original lines.
+They reuse the existing startup selection, receipt, provider and native effect
+owners. Coding still supplies the actual Worker capability and owner policy,
+selected package quotas, timing policy and nominal receipts. POSIX retains its
+optional base guard. Windows retains its exact receipt-owner and pending-launch
+type checks, base-owner identity check and recovery check before graph
+preparation. The three original public modules remain the compatibility
+entry points.
+
+The Resume slice moves six operations covering 256 original lines. It stages
+background planning and freshness checks together with retained preparation,
+consumption, abort and first input. The existing Harness planning slot,
+retained lifecycle operation and Session transport own their original state.
+The Coding runtime retains its actual Product selector, embedded approval
+binding, nominal results and historical error identities. Each moved
+operation resolves the same original checks and owner calls in order.
+
+Ruff and mypy pass for both slices. All 44 Worker and 27 Resume original
+symbol contracts compare equal, and all 11 implementation bodies match
+after resolving the staged owner bindings. The affected non-live test run
+passes 62 cases in 35.63 seconds, including the Resume planning trace,
+embedded coordinator and Worker input routes. Host-runtime-only Worker
+execution and native Windows still require their existing platform routes.
+The staged startup operations use existing Harness owners, so the moved
+body count carries no credit for preexisting shared implementation.
+
+The existing architecture run passed 202 test cases across five files. The
+sole failing case used the old Worker consumer inventory. Its expected paths
+now include the relocated pending preparations alongside the compatibility type
+declarations. That exact existing case passed on recheck. The update preserves
+the exact consumer equality check and keeps the existing test selection.
+
+The retained-preparation snapshot contains 106,188 Coding Python lines, including 11,598 in 81 staged
+files and 94,590 outside staging. This is 5,473 more production lines than
+the original baseline. The two slices add 488 lines beyond the preceding
+candidate, including repeated typed signatures and explicit policy/error
+bindings. Actual Harness, Hosting and other production code have no line
+change. The logical Coding import graph retains all 1,650 original module
+pairs. The 76 physical original-binding backreferences remain tracked for
+later extraction. The broader Worker and Session scope remains open.
+
+### Resume Writer And Selected History
+
+The staged continuation now coordinates protocol negotiation, effect-owner
+admission, Writer acquisition, durable intent, graph preparation, first input,
+publication and failure cleanup in one operation. The original SessionManager,
+Session, approval journals and Worker state journal remain the owners of their
+effects. The original Product constructors, accepted protocols, scope values
+and durable domains stay in Coding. Failure after an uncertain input commit
+still exposes the original input lookup and retains the original cleanup
+owner when disposal fails.
+
+The selected-path projector also moves its complete streaming implementation.
+The public synchronous and cooperative asynchronous entry points and their
+shared iterator preserve coroutine and generator semantics. Unknown versions
+still block, exact persisted intent is required for v2, and v1 cannot close a
+v2 intent. The projected facts grant no present admission.
+
+This slice covers 515 original lines in four operations. Ruff and mypy pass
+for both donor and staged files. The 43 captured original symbol contracts
+compare equal and all four implementation bodies match after resolving the
+original bindings. The continuation, projection, recovery and embedded consumer run passed all
+147 cases in 339.96 seconds. The transaction snapshot
+contains 106,544 Coding Python lines, including 12,275 in staging and 94,269
+outside it. The system production total grows by 5,829 lines from the Goal
+baseline. The new slice adds 356 lines, mainly typed compatibility entries
+and Product policy and error declarations. The existing 399-line root and
+143 type declaration lines are measured separately.
+
+### Read-Only History And Activation Plan
+
+The bounded snapshot and recent-page readers now live with the planning
+mechanism. The existing Transcript reader, repository and Resource preview
+owner still hold the original IO and capacity. The snapshot checks the same
+source fingerprint before and after a bounded read. The recent page does not
+prove selected ancestry. A completed plan retains explicit source, composition
+and owner observations. The same checks reject stale results and unavailable
+history before requesting Resource work. Product limits and identity domains
+remain with the original Product modules.
+
+This slice moves seven original entry points comprising 380 lines. Ruff and
+mypy pass, all 30 original symbol contracts compare equal, and the seven
+operation bodies match after resolving the original bindings. The targeted
+planning, history and original observation-order regressions pass all 97 cases
+in 19.42 seconds. The Worker startup, retained preparation, continuation,
+history and plan batch covers 22 entry points and 1,529 original lines.
+The Worker host-runtime and native Windows routes remain distinct from local
+focused verification.
+
+The batch adds 1,057 production lines overall, reduces the Coding edge by
+839 lines and adds 1,896 lines to staging. Current Coding contains 106,757
+Python lines, with 12,702 in 85 staged files and 94,055 outside staging.
+Production grows by 6,042 lines against the startup baseline. The actual
+Harness and Hosting owners have no production line change. The 80 staging
+backreferences remain in the exit inventory. Normalized logical dependencies
+remain at 1,650 module pairs. The only test source change for this batch is
+the four-line update to the existing Worker path inventory.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
