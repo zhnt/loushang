@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
+import secrets
+from collections.abc import Callable
 from pathlib import Path
 
 from loushang.coding.composition import continuity as _binding
-from loushang.harness.continuity.plugin_declaration import (
-    CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
+from loushang.harness.approval.plugin_activation import PluginActivationDecisionJournal
+from loushang.harness.approval.plugin_execution import PluginExecutionDecisionJournal
+from loushang.harness.capabilities.component_admission import (
+    CapabilityComponentOwnerAuthority,
 )
+from loushang.harness.capabilities.owner_component_host import (
+    CapabilityOwnerComponentHost,
+)
+from loushang.harness.continuity.plugin_declaration import (
+    CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
+    CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
+    validate_continuity_provider_component_payload,
+)
+from loushang.harness.continuity.plugin_runtime import ResolvedContinuityPluginSelection
+from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
+from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_management import (
     PluginInstallationKeyV1,
     PluginInstallationStateV1,
@@ -20,16 +35,25 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.plugins import (
     InstalledPlugin,
+    PluginContributionRef,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
+    PluginExecutionApprovalSubject,
     PluginInspection,
     PluginInstanceRevisionRef,
+    PluginPreflightContextV1,
+    PluginPreflightDeniedOutcome,
     PluginResolutionAuthority,
     PluginRuntimeResolution,
+    PluginSelection,
+    PluginSelectionPlanV2,
     PluginSource,
     PluginSourceBinding,
     PublishedPluginPackage,
     ResolvedPluginPackage,
     is_remote_plugin_source,
 )
+from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 
 
 async def bind_configured_continuity(
@@ -41,7 +65,7 @@ async def bind_configured_continuity(
     diagnostics_service: _binding.DiagnosticsService | None,
     materializer: _binding.PackageMaterializer | None,
     state_layout: _binding.CodingContinuityStateLayout | None,
-    clock: _binding.Callable[[], int],
+    clock: Callable[[], int],
     runtime_id: str | None,
     product_route: bool,
     sources: tuple[str, ...],
@@ -227,7 +251,7 @@ async def bind_configured_continuity(
         lifecycle.common.complete_startup_recovery()
         if not runtime_resolution.packages:
             return finish_base_binding()
-        selection = _binding._finalize_selection(
+        selection = _finalize_selection(
             runtime_resolution,
             instance_refs=instance_refs,
             layout=layout,
@@ -242,7 +266,7 @@ async def bind_configured_continuity(
             expires_at=now + _binding._APPROVAL_TTL_MS,
             now=now,
         )
-        component_host, decisions = _binding._component_host_and_decisions(
+        component_host, decisions = _component_host_and_decisions(
             resolved,
             owner_authority=owner_authority,
             layout=layout,
@@ -612,3 +636,190 @@ def _retain_enabled_runtime(
             item for item in runtime.bindings if item.plugin_id in enabled_plugin_ids
         ),
     )
+
+
+def _finalize_selection(
+    runtime: PluginRuntimeResolution,
+    *,
+    instance_refs: tuple[PluginInstanceRevisionRef, ...],
+    layout: _binding.CodingContinuityStateLayout,
+    clock: Callable[[], int],
+) -> PluginSelection:
+    bindings = {item.plugin_id: item for item in runtime.bindings}
+    packages = tuple(sorted(runtime.packages, key=lambda item: item.manifest.name))
+    contributions = tuple(
+        sorted(
+            (
+                (package, item)
+                for package in packages
+                for item in package.contribution_index.items
+                if item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
+            ),
+            key=lambda pair: (pair[0].manifest.name, pair[1].contribution_id),
+        )
+    )
+    plan = PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id=_binding.CODING_EXPERIENCE_ID,
+            scope_id=layout.scope_id,
+            policy_revision=_binding._PRODUCT_POLICY_REVISION,
+            instance_revision_refs=instance_refs,
+        ),
+        selected_plugin_ids=tuple(package.manifest.name for package in packages),
+        selected_contributions=tuple(
+            PluginContributionRef(package.manifest.name, item.contribution_id)
+            for package, item in contributions
+        ),
+        source_trust_snapshots=tuple(
+            _binding._configured_source_trust(package, bindings[package.manifest.name])
+            for package in packages
+        ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=tuple(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=package.manifest.name,
+                    contribution_id=item.contribution_id,
+                    configuration=item.configuration,
+                )
+                for package, item in contributions
+            )
+        ),
+        allowed_authority_ceiling=_binding._AUTHORITY_CEILING,
+    )
+    journal = PluginExecutionDecisionJournal(
+        layout.definition_decisions,
+        scope_kind=_binding._CONTINUITY_INSTALLATION_SCOPE,
+        scope_id=layout.scope_id,
+        clock=clock,
+    )
+    host = PluginDeclarationHost(
+        execution_evaluator=PluginDefinitionEvaluator(
+            decision_journal=journal,
+            import_realm=PluginImportRealm(),
+            clock=clock,
+            distribution_evidence_resolver=(
+                _binding.coding_plugin_distribution_evidence_resolver()
+            ),
+        )
+    )
+
+    def approve(subject: PluginExecutionApprovalSubject) -> None:
+        _binding._validate_definition_subject(subject, plan)
+        now = _binding._read_clock(clock)
+        journal.issue_execution_decision(
+            subject,
+            disposition="approved",
+            authorization=_binding._approval_authorization(),
+            revocation_epoch=_binding._CONTINUITY_REVOCATION_EPOCH,
+            issued_at_unix_ms=now,
+            expires_at_unix_ms=now + _binding._APPROVAL_TTL_MS,
+            expected_journal_revision=journal.snapshot().journal_revision,
+        )
+
+    outcome = host.resolve_with_definition_approval(
+        packages,
+        bindings=tuple(bindings[item.manifest.name] for item in packages),
+        plan=plan,
+        journal=journal,
+        approve=approve,
+    )
+    if not isinstance(outcome, PluginSelection):
+        reason = (
+            "definition_denied"
+            if isinstance(outcome, PluginPreflightDeniedOutcome)
+            else f"definition_{outcome.disposition}"
+        )
+        raise _binding._continuity_lifecycle_error(reason, retryable=False)
+    return outcome
+
+
+def _component_host_and_decisions(
+    resolved: ResolvedContinuityPluginSelection,
+    *,
+    owner_authority: CapabilityComponentOwnerAuthority,
+    layout: _binding.CodingContinuityStateLayout,
+    clock: Callable[[], int],
+) -> tuple[CapabilityOwnerComponentHost, dict[str, str]]:
+    selection = resolved.plugin_selection
+    trust_by_key = {
+        (item.plugin_id, item.package_source_identity): item
+        for item in selection.plan.source_trust_snapshots
+    }
+
+    def read_owner(capability_id: str, component_kind: str):
+        definition = CONTINUITY_PROVIDER_COMPONENT_DEFINITION
+        if (
+            capability_id != definition.capability_id
+            or component_kind != definition.component_kind
+        ):
+            raise ValueError("Continuity owner reader received another Definition")
+        return owner_authority.snapshot()
+
+    def read_trust(plugin_id: str, source_identity: str):
+        return trust_by_key[(plugin_id, source_identity)]
+
+    def read_policy(product_id: str, scope_id: str) -> str:
+        if product_id != _binding.CODING_EXPERIENCE_ID or scope_id != layout.scope_id:
+            raise ValueError("Continuity policy reader received another Product scope")
+        return _binding._PRODUCT_POLICY_REVISION
+
+    journal = PluginActivationDecisionJournal(
+        layout.activation_decisions,
+        scope_id=layout.scope_id,
+        clock=clock,
+    )
+    host = CapabilityOwnerComponentHost(
+        decision_journal=journal,
+        import_realm=PluginImportRealm(),
+        host_boot_id=secrets.token_hex(16),
+        clock=clock,
+        owner_snapshot_reader=read_owner,
+        trust_snapshot_reader=read_trust,
+        product_policy_revision_reader=read_policy,
+        payload_validator_reader=(
+            lambda definition: (
+                validate_continuity_provider_component_payload
+                if definition == CONTINUITY_PROVIDER_COMPONENT_DEFINITION
+                else _binding._reject_payload_validator(definition)
+            )
+        ),
+    )
+    decision_ids: dict[str, str] = {}
+    trust_by_plugin = {
+        item.plugin_id: item for item in selection.plan.source_trust_snapshots
+    }
+    for component in resolved.resolved_set.components:
+        plugin_id = component.admission.candidate.binding_spec.plugin_id
+        if plugin_id is None:
+            raise TypeError("Continuity component has no Plugin identity")
+        trust = trust_by_plugin[plugin_id]
+        subject = host.activation_subject(
+            component,
+            owner_snapshot=resolved.owner_snapshot,
+            trust_snapshot=trust,
+        )
+        _binding._validate_activation_subject(subject, layout=layout)
+        now = _binding._read_clock(clock)
+        snapshot = journal.snapshot()
+        decision = next(
+            (
+                item
+                for item in snapshot.decisions
+                if item.subject_digest == subject.digest
+                and item.disposition == "approved"
+                and item.consumption_state == "AVAILABLE"
+                and now < item.expires_at_unix_ms
+            ),
+            None,
+        )
+        if decision is None:
+            decision = journal.issue_activation_decision(
+                subject,
+                disposition="approved",
+                authorization=_binding._approval_authorization(),
+                issued_at_unix_ms=now,
+                expires_at_unix_ms=now + _binding._APPROVAL_TTL_MS,
+                expected_journal_revision=snapshot.journal_revision,
+            )
+        decision_ids[component.component_id] = decision.decision_id
+    return host, decision_ids

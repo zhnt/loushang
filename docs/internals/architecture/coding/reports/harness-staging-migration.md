@@ -1991,6 +1991,31 @@ previous checkpoint's source association, activation, publication and handle
 release traces.
 Architecture checks pass. Native Windows validation remains open.
 
+## Continuity Selection And Approval Assembly
+
+The configured Continuity startup now assembles the exact selected Plugin
+closure, resolves definitions through the Harness host, and prepares the owner
+component host and its activation decision IDs in staging. Coding supplies
+the original configured-source trust facts, approval subject validation,
+durable identities, authority ceiling and approval expiry.
+
+The managed Capability path and Continuity share one definition preflight,
+approval iteration and re-resolution operation. The managed caller still
+checks each issuer receipt and reports its existing diagnostics. Continuity
+still issues through its original journals, preserves the durable decision
+snapshot and compare-and-swap order, and returns the same redacted Product
+errors. An existing activation decision remains eligible for reuse only when
+it matches the Subject, is approved and available, and has not expired.
+
+This batch removes 214 Product Python lines, adds 211 staging lines, and
+adds 18 formal Harness lines, for 15 net production lines. The selected
+Linux checks record 186 passes and three platform skips. Two Provider
+prepares fail at the same site on the prior checkpoint under the configured
+test directory. The previously reproduced Coding Continuity prepare is
+excluded from this run. The 288 controlled comparisons preserve plan
+inputs, approval order, error identity and diagnostics, and decision reuse.
+Native Windows verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

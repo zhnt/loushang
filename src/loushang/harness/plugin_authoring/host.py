@@ -99,6 +99,27 @@ class PluginDeclarationHost:
             return self._coordinator.finalize(outcome.accepted)
         return outcome
 
+    def resolve_with_definition_approval(
+        self,
+        packages: tuple[PublishedPluginPackage, ...],
+        *,
+        bindings: tuple[PluginSourceBinding, ...],
+        plan: PluginSelectionPlanV2,
+        journal: PluginExecutionDecisionJournal,
+        approve: Callable[[PluginExecutionApprovalSubject], None],
+    ) -> PluginDeclarationHostResult:
+        """Resolve once, then let the explicit issuer settle pending subjects."""
+        outcome = self.resolve(
+            packages, bindings=bindings, plan=plan, decision_lookup=journal
+        )
+        if not isinstance(outcome, PluginPreflightPendingApprovalOutcome):
+            return outcome
+        for subject in outcome.subjects:
+            approve(subject)
+        return self.resolve(
+            packages, bindings=bindings, plan=plan, decision_lookup=journal
+        )
+
     @classmethod
     def resolve_for_product(
         cls,
@@ -149,26 +170,23 @@ class PluginDeclarationHost:
                 resume_parent_context=resume_parent_context(),
             )
         )
-        outcome = host.resolve(
-            packages, bindings=bindings, plan=plan, decision_lookup=journal
-        )
-        if isinstance(outcome, PluginPreflightPendingApprovalOutcome):
-            for subject in outcome.subjects:
-                decision = approval_owner().approve_definition(
-                    journal=journal, subject=subject
-                )
-                if not isinstance(decision, PluginApprovalDecisionRecordV1):
-                    raise TypeError(
-                        f"{approval_label} Definition Approval owner returned invalid evidence"
-                    )
-                if decision.subject_digest != subject.digest:
-                    raise error_factory(
-                        f"{approval_label} Definition approval does not match its Subject.",
-                        f"{error_code_prefix}_definition_approval_mismatch",
-                    )
-            outcome = host.resolve(
-                packages, bindings=bindings, plan=plan, decision_lookup=journal
+        def approve(subject: PluginExecutionApprovalSubject) -> None:
+            decision = approval_owner().approve_definition(
+                journal=journal, subject=subject
             )
+            if not isinstance(decision, PluginApprovalDecisionRecordV1):
+                raise TypeError(
+                    f"{approval_label} Definition Approval owner returned invalid evidence"
+                )
+            if decision.subject_digest != subject.digest:
+                raise error_factory(
+                    f"{approval_label} Definition approval does not match its Subject.",
+                    f"{error_code_prefix}_definition_approval_mismatch",
+                )
+
+        outcome = host.resolve_with_definition_approval(
+            packages, bindings=bindings, plan=plan, journal=journal, approve=approve
+        )
         if not isinstance(outcome, PluginSelection):
             disposition = outcome.disposition
             error = error_factory(

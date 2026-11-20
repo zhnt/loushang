@@ -21,7 +21,7 @@ from time import time_ns
 from typing import Literal, Protocol
 
 from loushang.coding.composition.dependency_grants import (
-    coding_plugin_distribution_evidence_resolver,
+    coding_plugin_distribution_evidence_resolver as coding_plugin_distribution_evidence_resolver,
 )
 from loushang.coding.harness.session import configured_continuity
 from loushang.coding.plugin_manager.enablement_compatibility import (
@@ -61,34 +61,21 @@ from loushang.coding.session.continuity import (
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.approval.plugin_activation import (
     OwnerComponentActivationApprovalSubject,
-    PluginActivationDecisionJournal,
 )
-from loushang.harness.approval.plugin_execution import (
-    PluginApprovalAuthorizationV1,
-    PluginExecutionDecisionJournal,
-)
+from loushang.harness.approval.plugin_execution import PluginApprovalAuthorizationV1
 from loushang.harness.capabilities.component_admission import (
     CapabilityComponentOwnerAuthority,
     CapabilityComponentOwnerPolicy,
-)
-from loushang.harness.capabilities.owner_component_host import (
-    CapabilityOwnerComponentHost,
 )
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
     CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
     continuity_provider_component_id,
-    validate_continuity_provider_component_payload,
-)
-from loushang.harness.continuity.plugin_runtime import (
-    ResolvedContinuityPluginSelection,
 )
 from loushang.harness.continuity.plugin_runtime import (
     resolve_continuity_plugin_selection as resolve_continuity_plugin_selection,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
-from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionAuthority,
     PluginContinuityDeletionJournal,
@@ -109,15 +96,7 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
 )
 from loushang.harness.resources.plugins import (
-    PluginContributionRef,
-    PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
     PluginExecutionApprovalSubject,
-    PluginInstanceRevisionRef,
-    PluginPreflightContextV1,
-    PluginPreflightDeniedOutcome,
-    PluginPreflightPendingApprovalOutcome,
-    PluginRuntimeResolution,
     PluginSelection,
     PluginSelectionPlanV2,
     PluginSourceBinding,
@@ -125,12 +104,12 @@ from loushang.harness.resources.plugins import (
     PublishedPluginPackage,
     is_remote_plugin_source,
 )
-from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 
 _PRODUCT_POLICY_REVISION = "coding-continuity-production-1"
 _OWNER_POLICY_REVISION = "coding-continuity-owner-1"
 _SOURCE_TRUST_POLICY_REVISION = "coding-continuity-source-trust-1"
 _AUTHORITY_CEILING = ("continuity.delete", "network.read")
+_CONTINUITY_REVOCATION_EPOCH = 0
 _APPROVAL_TTL_MS = 300_000
 _BOOTSTRAP_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_status"
 _CONTINUITY_COMPOSITION_ATTRIBUTE = "_loushang_coding_continuity"
@@ -551,111 +530,6 @@ def _common_lifecycle_layout(
     )
 
 
-def _finalize_selection(
-    runtime: PluginRuntimeResolution,
-    *,
-    instance_refs: tuple[PluginInstanceRevisionRef, ...],
-    layout: CodingContinuityStateLayout,
-    clock: Callable[[], int],
-) -> PluginSelection:
-    bindings = {item.plugin_id: item for item in runtime.bindings}
-    packages = tuple(sorted(runtime.packages, key=lambda item: item.manifest.name))
-    contributions = tuple(
-        sorted(
-            (
-                (package, item)
-                for package in packages
-                for item in package.contribution_index.items
-                if item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
-            ),
-            key=lambda pair: (pair[0].manifest.name, pair[1].contribution_id),
-        )
-    )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id=CODING_EXPERIENCE_ID,
-            scope_id=layout.scope_id,
-            policy_revision=_PRODUCT_POLICY_REVISION,
-            instance_revision_refs=instance_refs,
-        ),
-        selected_plugin_ids=tuple(package.manifest.name for package in packages),
-        selected_contributions=tuple(
-            PluginContributionRef(package.manifest.name, item.contribution_id)
-            for package, item in contributions
-        ),
-        source_trust_snapshots=tuple(
-            PluginSourceTrustSnapshotV1(
-                plugin_id=package.manifest.name,
-                package_source_identity=bindings[package.manifest.name].source_identity,
-                source_trust_class=_source_trust_class(package, bindings),
-                source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
-                trusted=True,
-            )
-            for package in packages
-        ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                PluginEffectiveConfigurationEntry(
-                    plugin_id=package.manifest.name,
-                    contribution_id=item.contribution_id,
-                    configuration=item.configuration,
-                )
-                for package, item in contributions
-            )
-        ),
-        allowed_authority_ceiling=_AUTHORITY_CEILING,
-    )
-    journal = PluginExecutionDecisionJournal(
-        layout.definition_decisions,
-        scope_kind="workspace",
-        scope_id=layout.scope_id,
-        clock=clock,
-    )
-    host = PluginDeclarationHost(
-        execution_evaluator=PluginDefinitionEvaluator(
-            decision_journal=journal,
-            import_realm=PluginImportRealm(),
-            clock=clock,
-            distribution_evidence_resolver=(
-                coding_plugin_distribution_evidence_resolver()
-            ),
-        )
-    )
-    outcome = host.resolve(
-        packages,
-        bindings=tuple(bindings[item.manifest.name] for item in packages),
-        plan=plan,
-        decision_lookup=journal,
-    )
-    if isinstance(outcome, PluginPreflightPendingApprovalOutcome):
-        for subject in outcome.subjects:
-            _validate_definition_subject(subject, plan)
-            now = _read_clock(clock)
-            journal.issue_execution_decision(
-                subject,
-                disposition="approved",
-                authorization=_approval_authorization(),
-                revocation_epoch=0,
-                issued_at_unix_ms=now,
-                expires_at_unix_ms=now + _APPROVAL_TTL_MS,
-                expected_journal_revision=journal.snapshot().journal_revision,
-            )
-        outcome = host.resolve(
-            packages,
-            bindings=tuple(bindings[item.manifest.name] for item in packages),
-            plan=plan,
-            decision_lookup=journal,
-        )
-    if not isinstance(outcome, PluginSelection):
-        code = (
-            "coding_continuity_definition_denied"
-            if isinstance(outcome, PluginPreflightDeniedOutcome)
-            else f"coding_continuity_definition_{outcome.disposition}"
-        )
-        raise CodingContinuityBootstrapError(code=code, retryable=False)
-    return outcome
-
-
 def _owner_authority(
     selection: PluginSelection,
 ) -> CapabilityComponentOwnerAuthority:
@@ -681,104 +555,12 @@ def _owner_authority(
             owner_id=CONTINUITY_PROVIDER_COMPONENT_DEFINITION.owner_id,
             component_kind=CONTINUITY_PROVIDER_COMPONENT_DEFINITION.component_kind,
             policy_revision=_OWNER_POLICY_REVISION,
-            revocation_epoch=0,
+            revocation_epoch=_CONTINUITY_REVOCATION_EPOCH,
             allowed_component_ids=component_ids,
             allowed_source_trust_classes=trust_classes,
             authority_ceiling=_AUTHORITY_CEILING,
         ),
     )
-
-
-def _component_host_and_decisions(
-    resolved: ResolvedContinuityPluginSelection,
-    *,
-    owner_authority: CapabilityComponentOwnerAuthority,
-    layout: CodingContinuityStateLayout,
-    clock: Callable[[], int],
-) -> tuple[CapabilityOwnerComponentHost, dict[str, str]]:
-    selection = resolved.plugin_selection
-    trust_by_key = {
-        (item.plugin_id, item.package_source_identity): item
-        for item in selection.plan.source_trust_snapshots
-    }
-
-    def read_owner(capability_id: str, component_kind: str):
-        definition = CONTINUITY_PROVIDER_COMPONENT_DEFINITION
-        if (
-            capability_id != definition.capability_id
-            or component_kind != definition.component_kind
-        ):
-            raise ValueError("Continuity owner reader received another Definition")
-        return owner_authority.snapshot()
-
-    def read_trust(plugin_id: str, source_identity: str):
-        return trust_by_key[(plugin_id, source_identity)]
-
-    def read_policy(product_id: str, scope_id: str) -> str:
-        if product_id != CODING_EXPERIENCE_ID or scope_id != layout.scope_id:
-            raise ValueError("Continuity policy reader received another Product scope")
-        return _PRODUCT_POLICY_REVISION
-
-    journal = PluginActivationDecisionJournal(
-        layout.activation_decisions,
-        scope_id=layout.scope_id,
-        clock=clock,
-    )
-    host = CapabilityOwnerComponentHost(
-        decision_journal=journal,
-        import_realm=PluginImportRealm(),
-        host_boot_id=secrets.token_hex(16),
-        clock=clock,
-        owner_snapshot_reader=read_owner,
-        trust_snapshot_reader=read_trust,
-        product_policy_revision_reader=read_policy,
-        payload_validator_reader=(
-            lambda definition: (
-                validate_continuity_provider_component_payload
-                if definition == CONTINUITY_PROVIDER_COMPONENT_DEFINITION
-                else _reject_payload_validator(definition)
-            )
-        ),
-    )
-    decision_ids: dict[str, str] = {}
-    trust_by_plugin = {
-        item.plugin_id: item for item in selection.plan.source_trust_snapshots
-    }
-    for component in resolved.resolved_set.components:
-        plugin_id = component.admission.candidate.binding_spec.plugin_id
-        if plugin_id is None:
-            raise TypeError("Continuity component has no Plugin identity")
-        trust = trust_by_plugin[plugin_id]
-        subject = host.activation_subject(
-            component,
-            owner_snapshot=resolved.owner_snapshot,
-            trust_snapshot=trust,
-        )
-        _validate_activation_subject(subject, layout=layout)
-        now = _read_clock(clock)
-        snapshot = journal.snapshot()
-        decision = next(
-            (
-                item
-                for item in snapshot.decisions
-                if item.subject_digest == subject.digest
-                and item.disposition == "approved"
-                and item.consumption_state == "AVAILABLE"
-                and now < item.expires_at_unix_ms
-            ),
-            None,
-        )
-        if decision is None:
-            decision = journal.issue_activation_decision(
-                subject,
-                disposition="approved",
-                authorization=_approval_authorization(),
-                issued_at_unix_ms=now,
-                expires_at_unix_ms=now + _APPROVAL_TTL_MS,
-                expected_journal_revision=snapshot.journal_revision,
-            )
-        decision_ids[component.component_id] = decision.decision_id
-    return host, decision_ids
 
 
 def _validate_definition_subject(
@@ -828,15 +610,19 @@ def _validate_activation_subject(
         )
 
 
-def _source_trust_class(
-    package: PublishedPluginPackage,
-    bindings: Mapping[str, PluginSourceBinding],
-) -> str:
-    binding = bindings[package.manifest.name]
-    return (
-        "materialized-remote"
-        if binding.source_identity.startswith("remote:")
-        else "configured-local"
+def _configured_source_trust(
+    package: PublishedPluginPackage, binding: PluginSourceBinding
+) -> PluginSourceTrustSnapshotV1:
+    return PluginSourceTrustSnapshotV1(
+        plugin_id=package.manifest.name,
+        package_source_identity=binding.source_identity,
+        source_trust_class=(
+            "materialized-remote"
+            if binding.source_identity.startswith("remote:")
+            else "configured-local"
+        ),
+        source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
+        trusted=True,
     )
 
 
