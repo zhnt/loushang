@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from typing import cast
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._worker_windows_attempt import (
     WindowsProductWorkerPayload,
     WindowsProductWorkerProvisioningAccess,
@@ -93,10 +94,8 @@ def inspect_coding_windows_product_worker_provisioning_attempts(
 ) -> tuple[WindowsWorkerProvisioningAttemptV1, ...]:
     """Reopen all LPAC attempt histories for Product-owned recovery review."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+    if not is_windows_product(
+        product, "coding", os.name, WindowsLocalWheelProductSessionOwner
     ):
         raise OSError("Windows Worker Product recovery inventory is unavailable")
     return read_windows_product_worker_attempts(

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_history import (
     publish_windows_product_worker_checkpoint,
     read_current_windows_product_worker_checkpoint_under_guard,
@@ -162,11 +163,7 @@ def read_coding_windows_worker_history_checkpoint(
 ) -> CodingWindowsWorkerHistoryCheckpointV1:
     """Reprove published checkpoint bytes against the current guarded Product."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker checkpoint requires its Product")
     return read_windows_product_worker_checkpoint(
         product,
@@ -186,11 +183,7 @@ def publish_coding_windows_worker_history_checkpoint(
     when its full record still equals the freshly joined Product state.
     """
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker checkpoint requires its Product")
     return publish_windows_product_worker_checkpoint(
         product,

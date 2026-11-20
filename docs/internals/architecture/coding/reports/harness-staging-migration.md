@@ -1117,6 +1117,30 @@ the Windows launch intent regression. All 135 projection outcomes and
 errors compare equal with the preceding implementation. The ancestry owner
 has no dependency on Coding implementation modules.
 
+## Windows Worker Entry Admission
+
+Twenty Windows Worker entry modules use a shared exact owner check at 22
+sites. Complete, partial and reserved stage review, plus launch-intent lookup,
+use one attempt ID validator. The callers retain the expected Product
+identity, platform observation, public error wording and types. The existing
+Harness owners still control locking, pinned read scopes, writes and
+retirement. Explicit owner types preserve five original fault-injection sites.
+All 20 caller modules match their prior ASTs after expanding the shared checks.
+
+This part removes 50 Python lines at the product edge and adds 30 in staging.
+The Linux run passes 638 cases, skips two native or host-runtime cases and
+reports 107 failures in two historical probe suites. The same 107 cases fail
+with the same normalized assertion details on the unchanged baseline.
+Native Windows routes remain pending. Ruff, mypy and the normalized import
+graph check pass. The staged module depends only on the existing Harness
+Windows Product owner and the standard library.
+
+The four complete, partial, unlaunched and crash retirement entries all bind
+the existing Harness retirement transactions and Windows retirement record
+reader. Coding retains each route's Product admission, receipt and review
+types, historical diagnostics and links to the original native/recovery
+observers. Existing retirement implementations contribute no migration credit.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

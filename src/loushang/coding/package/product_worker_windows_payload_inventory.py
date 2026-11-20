@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._worker_windows_attempt import (
     read_windows_product_worker_attempts,
 )
@@ -42,10 +43,8 @@ def inspect_coding_windows_product_worker_payload_attempts(
     product: WindowsLocalWheelProductSessionOwner,
 ) -> tuple[CodingWindowsWorkerPayloadAttemptV1, ...]:
     """List every retained payload attempt through the current Product root."""
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+    if not is_windows_product(
+        product, "coding", os.name, WindowsLocalWheelProductSessionOwner
     ):
         raise OSError("Windows Worker payload inventory requires a Product owner")
     return read_windows_product_worker_attempts(

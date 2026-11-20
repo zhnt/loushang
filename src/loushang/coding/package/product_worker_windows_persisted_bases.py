@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_history import (
     capture_windows_product_worker_persisted_history,
 )
@@ -86,11 +87,7 @@ def _read_coding_windows_worker_persisted_bases(
 ]:
     """Read one Product snapshot under quiescence, its GC gate, and pinned root."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker persisted bases require their Product")
     result, marker = capture_windows_product_worker_persisted_history(
         product,
@@ -112,9 +109,7 @@ def _read_coding_windows_worker_persisted_bases_under_gc_guard(
     """Read a pinned root while its caller holds the Product GC gate."""
 
     if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+        not is_windows_product(product, "coding", os.name)
         or type(root) is not int
         or root < 0
     ):
