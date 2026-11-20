@@ -1,15 +1,17 @@
-"""The versioned identity and receipt for one Session composition."""
+"""Read Session composition evidence and resolve capability mount intent."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from re import fullmatch
-from typing import TypeGuard
+from typing import TypeGuard, cast
 
 from loushang.foundation.json import JSONValue
+from loushang.harness.config.agent import CapabilityMountMode
 
 _IDENTITY_FIELDS = {"version", "setId", "planFingerprint"}
+_MOUNT_MODES = frozenset({"disabled", "on_demand", "always"})
 
 
 def composition_identity_fields(
@@ -192,3 +194,53 @@ def _nonempty_text(value: object) -> TypeGuard[str]:
 
 def _digest(value: object) -> TypeGuard[str]:
     return isinstance(value, str) and fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def configured_mount_mode(
+    settings_manager: object | None, capability: str, default: CapabilityMountMode
+) -> CapabilityMountMode:
+    """Read one mode from the existing Settings owner with its Product default."""
+    if settings_manager is None:
+        return default
+    get_settings = getattr(settings_manager, "get_settings", None)
+    if not callable(get_settings):
+        return default
+    configured = getattr(get_settings(), "capabilities", {})
+    if not isinstance(configured, Mapping):
+        return default
+    mode = configured.get(capability, default)
+    return mode if mode in _MOUNT_MODES else default
+
+
+def parse_mount(value: str) -> tuple[str, CapabilityMountMode]:
+    """Parse the existing command-line capability mount syntax."""
+    capability, separator, mode = value.partition("=")
+    capability = capability.strip()
+    mode = mode.strip()
+    if not separator or not capability:
+        raise ValueError("expected CAPABILITY=disabled|on_demand|always")
+    if mode not in _MOUNT_MODES:
+        raise ValueError("mount mode must be disabled, on_demand, or always")
+    return capability, cast(CapabilityMountMode, mode)
+
+
+def should_defer_mount(
+    plugin_id: str,
+    *,
+    enabled: bool,
+    mode: CapabilityMountMode,
+    has_history: bool,
+    startup: Mapping[str, object] | None,
+    legacy_disabled: bool,
+) -> bool:
+    """Defer a fresh on-demand mount when history has no eager selection."""
+    if not enabled or mode != "on_demand" or legacy_disabled:
+        return False
+    if not has_history:
+        return True
+    if startup is None:
+        return False
+    return not any(
+        item["pluginId"] == plugin_id
+        for item in cast(list[dict[str, object]], startup["selectedRevisions"])
+    )

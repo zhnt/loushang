@@ -2197,6 +2197,31 @@ dynamic extension assertion that reproduces on the prior checkpoint.
 Windows target selection is exercised from Linux. Native Windows
 verification remains open.
 
+## Capability Mounts And Exact Dependency Grants
+
+Bootstrap, Resume and the LSP CLI resolve mount modes through the staged
+composition evidence owner. The CLI parser uses the same declared mode
+validation. Deferred mount selection keeps the original short circuits and
+uses the existing startup receipt. Missing receipts on historical sessions
+retain the eager route. Coding declares the capability defaults, the Plugin
+identity and the legacy disabled choice.
+
+The existing Package Materializer calls the original grant resolver, which
+now uses the staged exact-source logic. Construction observes the declared
+directories in order and reuses Harness canonical Plugin source identity.
+A foreign source for a reserved Plugin receives the original Harness error
+and Product rejection code. Coding declares the source locations, reserved
+identities, distribution and editable-checkout evidence policy. The original
+resolver class, state, constructor and method paths stay at the Product edge.
+
+Coding Product removes 21 Python lines and staging adds 101, for 80 net
+production lines. Compatibility entry points, source-policy arguments and
+module boundaries account for the added plumbing. All 64 selected Linux cases
+pass across exact source grants, default Plugin publication, Resume and
+bootstrap. All 1,776 controlled cases match original settings and receipt
+reads, CLI errors, exact source checks and grant outcomes. Native Windows
+verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
