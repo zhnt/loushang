@@ -170,6 +170,9 @@ The built-in Loushang artwork replaces the Tauri starter icons for native
 packaging and window defaults. Browser previews use the same artwork as a
 favicon. Source assets, regeneration instructions and the future user override
 boundary are documented in [branding assets](assets/branding/README.md).
+On Linux Wayland, the window uses the stable desktop ID `ai.loushang`. The
+Debian package installs `ai.loushang.desktop` and its icon so the desktop can
+resolve the Dock icon for both installed and development windows.
 System tray and notification behavior are not implemented by this asset change.
 
 ## Toolchain
