@@ -93,10 +93,11 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
+from loushang.coding.harness.session.catalog_authority import CatalogProductAuthority
 from loushang.coding.harness.session.catalog_preparation import (
+    capture_selected_manifests,
     observe_requested_plugins,
     require_catalog_receipt,
-    require_current_manifests,
 )
 from loushang.coding.harness.session.managed_plugin_preparation import (
     prepare_managed_plugins,
@@ -208,12 +209,8 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductPluginDesiredSelectionV1,
-    PackageProductRuntimeActivationError,
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
-)
-from loushang.harness.plugin_management.package_product import (
-    PackageProductRuntimeReadError,
 )
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resource_catalog.product_snapshot_source import (
@@ -289,8 +286,8 @@ AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 _RESERVED_CODING_EXACT_TOOL_NAMES = frozenset(CODING_EXACT_OWNER_TOOL_NAMES)
-_CODING_BASE_PRODUCT_MAX_FILES = 64
-_CODING_BASE_PRODUCT_MAX_BYTES = 1024 * 1024
+_CATALOG_MANIFEST_MAX_FILES = 64
+_CATALOG_MANIFEST_MAX_BYTES = 1024 * 1024
 
 
 def _reject_peer_coding_exact_tools(
@@ -1091,6 +1088,11 @@ def _create_agent_session(
     product_external_data_compilation: CodingExternalDataProductCompilation | None = (
         None
     )
+    capture_catalog_manifests = partial(
+        capture_selected_manifests,
+        max_files=_CATALOG_MANIFEST_MAX_FILES,
+        max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
+    )
     builtin_product_preparation: CodingBuiltinProductCompositionPreparation | None = (
         None
     )
@@ -1427,14 +1429,7 @@ def _create_agent_session(
             if external_ids:
                 product_external_data_compilation = (
                     compile_coding_external_data_product_selection(
-                        tuple(
-                            product_runtime.capture_selected_plugin_manifest_for(
-                                plugin_id,
-                                max_files=64,
-                                max_total_bytes=1024 * 1024,
-                            )
-                            for plugin_id in external_ids
-                        ),
+                        capture_catalog_manifests(product_runtime, external_ids),
                         composition_set=resolved_composition_set,
                         session_id=session_id,
                         evaluated_at=coding_plugin_clock(),
@@ -1511,8 +1506,8 @@ def _create_agent_session(
             )
         selected = product_runtime.capture_selected_plugin_manifest_for(
             "coding.base",
-            max_files=_CODING_BASE_PRODUCT_MAX_FILES,
-            max_total_bytes=_CODING_BASE_PRODUCT_MAX_BYTES,
+            max_files=_CATALOG_MANIFEST_MAX_FILES,
+            max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
         )
         evaluated_at = coding_plugin_clock()
         compiled = compile_coding_base_product_selection(
@@ -1596,14 +1591,7 @@ def _create_agent_session(
             if external_ids:
                 compiled = extend_coding_base_product_data_resources(
                     compiled,
-                    tuple(
-                        product_runtime.capture_selected_plugin_manifest_for(
-                            plugin_id,
-                            max_files=64,
-                            max_total_bytes=1024 * 1024,
-                        )
-                        for plugin_id in external_ids
-                    ),
+                    capture_catalog_manifests(product_runtime, external_ids),
                     evaluated_at=evaluated_at,
                 )
         adapter, projection = _prepare_coding_catalog_projection(
@@ -1670,96 +1658,22 @@ def _create_agent_session(
                 "Initial Resource Catalog projection adapter is unavailable"
             )
         resource_catalog_adapter = prepared_resource_catalog_adapters.pop()
-        if product_capability_desired_selections:
-            if product_base_runtime is None:
-                raise RuntimeError("Coding Product Capability runtime is unavailable")
-            for selection in product_capability_desired_selections:
-                product_base_runtime.assert_plugin_desired_selection_current(selection)
-        if product_base_disabled_selection is not None:
-            if product_base_runtime is None:
-                raise RuntimeError(
-                    "Coding Product disabled-base runtime is unavailable"
-                )
-            product_base_runtime.assert_plugin_desired_selection_current(
-                product_base_disabled_selection
-            )
-            if product_external_data_compilation is not None:
-                product_external_data_compilation.assert_current(product_base_runtime)
+        catalog_authority = CatalogProductAuthority(
+            runtime=product_base_runtime,
+            capability_selections=product_capability_desired_selections,
+            disabled_base=product_base_disabled_selection,
+            external=product_external_data_compilation,
+            base=product_base_compilation,
+            product_label="Coding Product",
+        )
+        catalog_authority.require_current()
 
         def prepare_resource_catalog_refresh(
             catalog_generation: int,
         ) -> Any:
-            if product_capability_desired_selections:
-                if product_base_runtime is None:
-                    raise RuntimeError(
-                        "Coding Product Capability runtime is unavailable"
-                    )
-                try:
-                    for selection in product_capability_desired_selections:
-                        product_base_runtime.assert_plugin_desired_selection_current(
-                            selection
-                        )
-                except (
-                    PackageProductRuntimeActivationError,
-                    PackageProductRuntimeReadError,
-                ) as exc:
-                    raise CodingResourceCatalogAdmissionError(
-                        ("product_capability_selection_refresh_requires_restart",)
-                    ) from exc
-            if product_base_disabled_selection is not None:
-                if product_base_runtime is None:
-                    raise RuntimeError(
-                        "Coding Product disabled-base runtime is unavailable"
-                    )
-                try:
-                    product_base_runtime.assert_plugin_desired_selection_current(
-                        product_base_disabled_selection
-                    )
-                    external_ids = (
-                        product_base_runtime.selected_external_data_plugin_ids()
-                    )
-                    if external_ids != (
-                        tuple(
-                            item.manifest.name
-                            for item in product_external_data_compilation.selected_manifests
-                        )
-                        if product_external_data_compilation is not None
-                        else ()
-                    ):
-                        raise RuntimeError("Product external data selection changed")
-                    if product_external_data_compilation is not None:
-                        product_external_data_compilation.assert_current(
-                            product_base_runtime
-                        )
-                except (
-                    PackageProductRuntimeActivationError,
-                    PackageProductRuntimeReadError,
-                    RuntimeError,
-                ) as exc:
-                    raise CodingResourceCatalogAdmissionError(
-                        ("product_disabled_base_refresh_requires_restart",)
-                    ) from exc
-            if product_base_compilation is not None:
-                if product_base_runtime is None:
-                    raise RuntimeError("Coding Product base runtime is unavailable")
-                require_current_manifests(
-                    product_base_runtime,
-                    (product_base_compilation.selected_manifest,),
-                    "product_selected_base_refresh_requires_restart",
-                    CodingResourceCatalogAdmissionError,
-                )
-                require_current_manifests(
-                    product_base_runtime,
-                    product_base_compilation.selected_capability_manifests,
-                    "product_selected_capability_refresh_requires_restart",
-                    CodingResourceCatalogAdmissionError,
-                )
-                require_current_manifests(
-                    product_base_runtime,
-                    product_base_compilation.selected_external_data_manifests,
-                    "product_selected_resource_refresh_requires_restart",
-                    CodingResourceCatalogAdmissionError,
-                )
+            catalog_authority.require_current(
+                refresh_failure=CodingResourceCatalogAdmissionError
+            )
             resolved_cwd = Path(session_manager.get_cwd())
             receipt = require_catalog_receipt(
                 services.resource_loader, resolved_cwd, CodingResourceCatalogAdmissionError
@@ -2129,14 +2043,13 @@ def _create_agent_session(
                     product_external_data_compilation
                 ),
                 coding_selected_capability_manifests=(
-                    tuple(
-                        product_base_runtime.capture_selected_plugin_manifest_for(
-                            selection.installation_key.plugin_id,
-                            max_files=64,
-                            max_total_bytes=1024 * 1024,
-                        )
-                        for selection in product_capability_desired_selections
-                        if selection.desired_state == "installed_enabled"
+                    capture_catalog_manifests(
+                        product_base_runtime,
+                        (
+                            selection.installation_key.plugin_id
+                            for selection in product_capability_desired_selections
+                            if selection.desired_state == "installed_enabled"
+                        ),
                     )
                     if product_base_compilation is None
                     and product_base_runtime is not None
@@ -2225,8 +2138,8 @@ def _create_agent_session(
                                 selected_manifest = (
                                     product_base_runtime.capture_selected_plugin_manifest_for(
                                         "coding.lsp.default",
-                                        max_files=64,
-                                        max_total_bytes=1024 * 1024,
+                                        max_files=_CATALOG_MANIFEST_MAX_FILES,
+                                        max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
                                     )
                                 )
 

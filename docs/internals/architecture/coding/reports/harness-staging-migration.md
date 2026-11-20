@@ -1166,6 +1166,30 @@ match the baseline. Writer validation and restore projection match the
 original body after resolving the local diagnostic label. Ruff, focused
 mypy, docs and the normalized dependency graph checks pass.
 
+## Resource Catalog Product Evidence
+
+Initial Session construction and Catalog refresh use one retained evidence
+check for capability Desired State and a disabled Base. Refresh also compares
+external membership and revalidates selected Base, capability and resource
+manifests in the original order. The shared check calls the original Package
+Product authority and the existing external-data and manifest proofs. The
+startup path preserves its original exceptions and does not perform the
+refresh-only membership checks.
+
+Both external resource capture paths and the capability manifest handoff
+use the same ordered reader and Product-selected limits. The Coding edge
+still selects plugins, composition and sources, and binds each Catalog's
+product-specific policy. The temporary type references to the two Product
+compilations are recorded. The Catalog authority guard and manifest batch
+reader add 118 Python lines in staging and remove 87 at the Coding edge,
+for a net increase of 31 production lines.
+
+All 59 Catalog, external-data and architecture cases passed on the first
+candidate. All nine targeted cases passed with the final Product budget
+binding. An exact comparison covers 2,112 original startup and refresh
+observation and failure traces, plus nine ordered manifest-read cases.
+Ruff, mypy, documentation and the normalized dependency checks pass.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

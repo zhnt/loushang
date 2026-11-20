@@ -1,6 +1,6 @@
 """Observe and recheck the inputs to a session resource catalog."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from pathlib import Path
 
@@ -90,5 +90,23 @@ def require_current_manifests(
     for manifest in manifests:
         try:
             runtime.assert_selected_plugin_manifest_current(manifest)
-        except (PackageProductRuntimeActivationError, PackageProductRuntimeReadError) as exc:
+        except (
+            PackageProductRuntimeActivationError,
+            PackageProductRuntimeReadError,
+        ) as exc:
             raise admission_failure((reason,)) from exc
+
+
+def capture_selected_manifests(
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_ids: Iterable[str],
+    *,
+    max_files: int,
+    max_total_bytes: int,
+) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
+    return tuple(
+        runtime.capture_selected_plugin_manifest_for(
+            plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
+        )
+        for plugin_id in plugin_ids
+    )
