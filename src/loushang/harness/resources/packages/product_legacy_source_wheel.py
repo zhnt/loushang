@@ -27,6 +27,11 @@ _LEGACY_SOURCE_MAX_WHEEL_BYTES = 2 * 1024 * 1024
 _LegacyWheelT = TypeVar("_LegacyWheelT")
 
 
+def legacy_source_wheel_prefix(plugin_id: str, content_digest: str) -> str:
+    digest = sha256(f"{plugin_id}\0{content_digest}".encode()).hexdigest()
+    return f"loushang_legacy_{digest[:24]}"
+
+
 def _reacquire_legacy_local_plugin_wheel(
     source_root: Path,
     *,
@@ -81,12 +86,7 @@ def _reacquire_legacy_local_plugin_wheel(
             ):
                 raise ValueError("Legacy Plugin Source revision changed")
             handle.verify()
-            prefix = (
-                "loushang_legacy_"
-                + sha256(
-                    f"{plugin_id}\0{expected_content_digest}".encode()
-                ).hexdigest()[:24]
-            )
+            prefix = legacy_source_wheel_prefix(plugin_id, expected_content_digest)
             files: dict[str, bytes] = {}
             total_bytes = 0
             paths = sorted(published.root.rglob("*"))

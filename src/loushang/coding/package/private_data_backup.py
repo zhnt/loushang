@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from loushang.coding.harness.package_product.epoch_identity import matches_epoch_layout
 from loushang.coding.harness.plugin_management import private_data_backup as _programs
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -140,11 +141,9 @@ class CodingArchPrivateDataBackupReadSource:
         if os.name != "posix":
             raise RuntimeError("Coding Arch POSIX backup source is unavailable")
         epoch = resolve_coding_package_epoch_layout(self.layout)
-        if (
-            not isinstance(self.epoch_runtime, PackageProductPosixFencedRuntimeOwner)
-            or self.epoch_runtime.registry.store_id != epoch.store_id
-            or self.epoch_runtime.control_root != epoch.control_root
-        ):
+        if not isinstance(
+            self.epoch_runtime, PackageProductPosixFencedRuntimeOwner
+        ) or not matches_epoch_layout(self.epoch_runtime, epoch):
             raise ValueError("Coding Arch backup Product authority changed")
 
     def snapshot(self) -> PluginBackupRetentionSnapshotV1:

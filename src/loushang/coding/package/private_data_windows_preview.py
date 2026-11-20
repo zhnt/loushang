@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.harness.package_product.epoch_identity import matches_epoch_layout
 from loushang.coding.harness.plugin_management import (
     private_data_windows_preview as _programs,
 )
@@ -91,8 +92,7 @@ class CodingWindowsArchPrivateDataReadPreview:
         if (
             self.product.policy.product_id != "coding"
             or self.product.policy.project_scope_id != self.layout.scope_id
-            or self.product.epoch_runtime.registry.store_id != epoch.store_id
-            or self.product.epoch_runtime.control_root != epoch.control_root
+            or not matches_epoch_layout(self.product.epoch_runtime, epoch)
             or self.product.epoch_runtime.selected_store_root().parent
             != epoch.epochs_root
         ):

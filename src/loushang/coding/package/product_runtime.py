@@ -21,6 +21,9 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
 )
 from loushang.coding.plugin_manager.lifecycle import (
+    _workspace_scope_id as _workspace_scope_id,
+)
+from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout as resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.resume.activation_attempt_v2 import CodingResumeEffectOwnerV1
@@ -217,10 +220,7 @@ _RUNTIME_PROGRAM_VALUES = {
     "distribution_name": "loushang",
 }
 
-_RUNTIME_PROGRAM_BYTES = {
-    "value_001": b"loushang.coding-continuity-workspace/v1\x00",
-    "value_002": b"loushang.coding.resume-epoch/v1\x00",
-}
+_RESUME_EPOCH_DOMAIN = b"loushang.coding.resume-epoch/v1\0"
 
 
 _LIFECYCLE_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024

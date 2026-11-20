@@ -620,18 +620,24 @@ class CodingPluginManagementChange:
         }
 
 
+def _workspace_digest(workspace: Path) -> str:
+    # Keep the deployed Continuity namespace so existing journals stay reachable.
+    return hashlib.sha256(
+        b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
+    ).hexdigest()
+
+
+def _workspace_scope_id(workspace: Path) -> str:
+    return f"workspace:{_workspace_digest(workspace)}"
+
+
 def resolve_coding_plugin_lifecycle_state_layout(
     cwd: str | Path,
     *,
     platform_paths: PlatformPaths | None = None,
 ) -> CodingPluginLifecycleStateLayout:
     workspace = Path(cwd).expanduser().resolve(strict=False)
-    # Keep the deployed Continuity workspace identity and location.  PLC6D
-    # widens that namespace into the one Coding Product lifecycle authority;
-    # changing it would silently strand existing desired-state journals.
-    digest = hashlib.sha256(
-        b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
-    ).hexdigest()
+    digest = _workspace_digest(workspace)
     paths = platform_paths or resolve_platform_paths()
     root = paths.state / "plugins" / "coding" / "continuity" / "workspaces" / digest
     package_root = paths.data / "plugins" / "coding" / "workspaces" / digest
@@ -669,15 +675,13 @@ def resolve_ephemeral_coding_plugin_lifecycle_state_layout(
     base = Path(session_dir).expanduser().resolve(strict=False)
     root = base / "plugin-state" / "coding-lifecycle"
     workspace = Path(cwd).expanduser().resolve(strict=False)
-    digest = hashlib.sha256(
-        b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
-    ).hexdigest()
+    scope_id = _workspace_scope_id(workspace)
     return CodingPluginLifecycleStateLayout(
         root=root,
         private_state_base=base,
         package_root=base / "plugin-packages" / "coding-lifecycle",
         private_data_base=base,
-        scope_id=f"workspace:{digest}",
+        scope_id=scope_id,
         desired_state=root / "desired-state.jsonl",
         management_operations=root / "management-operations.jsonl",
         retirement_intents=root / "retirement-intents.jsonl",

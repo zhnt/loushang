@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from loushang.coding.package import product_runtime as _binding
 
+from .epoch_identity import matches_epoch_layout
+
 
 def legacy_state_requires_migration(
     lifecycle: _binding.CodingPluginLifecycleStateLayout, *, skip_missing: bool
@@ -186,10 +188,7 @@ def is_fresh_snapshot(
     ):
         raise TypeError(_binding._LIFECYCLE_PROGRAM_VALUES["value_006"])
     epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        runtime.registry.store_id != epoch.store_id
-        or runtime.control_root != epoch.control_root
-    ):
+    if not matches_epoch_layout(runtime, epoch):
         raise ValueError(_binding._LIFECYCLE_PROGRAM_VALUES["value_007"])
     fence = runtime.cutover_result.fence
     if (

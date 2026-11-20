@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from loushang.coding.package import legacy_local_binding_owner as _binding
 
+from .epoch_identity import matches_epoch_layout
+
 
 def bind_accepted_source(
     lifecycle: _binding.CodingPluginLifecycleStateLayout,
@@ -64,8 +66,7 @@ def bind_accepted_source(
     switch = epoch_runtime.cutover_result.switch_receipt
     if (
         switch is None
-        or epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
+        or not matches_epoch_layout(epoch_runtime, epoch)
         or switch.namespace_id != review.namespace_id
         or lifecycle.scope_id != review.scope_id
         or policy_revision != review.policy_revision

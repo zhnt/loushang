@@ -12,7 +12,21 @@ from typing import cast
 
 from loushang.coding.package import product_runtime as _binding
 
+from .epoch_identity import matches_epoch_layout
 from .startup import retry_fresh_bootstrap
+
+
+def _require_runtime_owner(lifecycle: object, epoch_runtime: object) -> None:
+    if not isinstance(lifecycle, _binding.CodingPluginLifecycleStateLayout):
+        raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_001"])
+    if not isinstance(
+        epoch_runtime,
+        (
+            _binding.PackageProductPosixFencedRuntimeOwner,
+            _binding.PackageProductWindowsFencedRuntimeOwner,
+        ),
+    ):
+        raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_002"])
 
 
 def open_product_state(
@@ -25,21 +39,9 @@ def open_product_state(
 ) -> _binding.CodingPackageProductStateOwners:
     """Open durable Product owners only for this workspace's fenced Store."""
 
-    if not isinstance(lifecycle, _binding.CodingPluginLifecycleStateLayout):
-        raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_001"])
-    if not isinstance(
-        epoch_runtime,
-        (
-            _binding.PackageProductPosixFencedRuntimeOwner,
-            _binding.PackageProductWindowsFencedRuntimeOwner,
-        ),
-    ):
-        raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_002"])
+    _require_runtime_owner(lifecycle, epoch_runtime)
     epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
+    if not matches_epoch_layout(epoch_runtime, epoch):
         raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_003"])
     _binding._require_current_coding_product_admission(require_current_admission)
     if before_recovery is not None:
@@ -166,16 +168,7 @@ def open_runtime(
     include_capabilities: bool,
     include_worker_candidates: bool,
 ) -> _binding.CodingPosixLocalWheelProductRuntimeOwner:
-    if not isinstance(lifecycle, _binding.CodingPluginLifecycleStateLayout):
-        raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_001"])
-    if not isinstance(
-        epoch_runtime,
-        (
-            _binding.PackageProductPosixFencedRuntimeOwner,
-            _binding.PackageProductWindowsFencedRuntimeOwner,
-        ),
-    ):
-        raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_002"])
+    _require_runtime_owner(lifecycle, epoch_runtime)
     if not isinstance(state, _binding.CodingPackageProductStateOwners):
         raise TypeError(_binding._RUNTIME_PROGRAM_VALUES["value_017"])
     if (
@@ -185,13 +178,7 @@ def open_runtime(
         or workspace != workspace.resolve(strict=True)
     ):
         raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_018"])
-    scope_id = (
-        "workspace:"
-        + _binding.sha256(
-            _binding._RUNTIME_PROGRAM_BYTES["value_001"]
-            + _binding.os.fsencode(str(workspace))
-        ).hexdigest()
-    )
+    scope_id = _binding._workspace_scope_id(workspace)
     if lifecycle.scope_id != scope_id:
         raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_019"])
     if not isinstance(runtime_version, str) or not runtime_version:
@@ -199,10 +186,7 @@ def open_runtime(
     if type(runtime_protocol_epoch) is not int or runtime_protocol_epoch < 1:
         raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_021"])
     epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
+    if not matches_epoch_layout(epoch_runtime, epoch):
         raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_003"])
     state_root = epoch_runtime.prepare_product_state_root()
     if (
@@ -603,9 +587,7 @@ def resume_epoch_fingerprint(
             and owner.epoch_runtime.observe_current_epoch_fence() != fence
         ):
             raise RuntimeError(_binding._RUNTIME_PROGRAM_VALUES["value_045"])
-        return _binding.sha256(
-            _binding._RUNTIME_PROGRAM_BYTES["value_002"] + encoded
-        ).hexdigest()
+        return _binding.sha256(_binding._RESUME_EPOCH_DOMAIN + encoded).hexdigest()
 
 
 def product_owner_for_factory(

@@ -9,7 +9,11 @@ from __future__ import annotations
 from typing import Literal
 
 from loushang.coding.package import legacy_local_acceptance as _binding
+from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    legacy_source_wheel_prefix,
+)
 
+from .epoch_identity import matches_epoch_layout
 from .legacy_local_review import observe_frozen_local_source
 
 _RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
@@ -49,12 +53,7 @@ def require_frozen_review(
             "acceptance lost its Source configuration"
         ),
     )
-    expected_prefix = (
-        "loushang_legacy_"
-        + _binding.sha256(
-            f"{plugin_id}\0{binding.content_digest}".encode()
-        ).hexdigest()[:24]
-    )
+    expected_prefix = legacy_source_wheel_prefix(plugin_id, binding.content_digest)
     if (
         review.store_id != fence.store_id
         or review.namespace_id != switch.namespace_id
@@ -200,10 +199,7 @@ def _require_current_epoch(
     epoch_runtime: _binding.PackageProductPosixFencedRuntimeOwner,
 ) -> None:
     epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
+    if not matches_epoch_layout(epoch_runtime, epoch):
         raise _acceptance_error("Product epoch changed")
 
 

@@ -2268,6 +2268,43 @@ The selected Linux run has 19 passes, including the existing receipt and
 payload coverage and architecture guards. The host-runtime query route
 is skipped under the local selectors.
 
+## Shared Epoch And Legacy Source Identity
+
+Application state open, runtime open, fresh bootstrap retry, Legacy
+acceptance and binding, POSIX backup and Windows preview now use one
+Store-ID and control-root comparison. Each entry retains its original
+admission, error and follow-up checks. The Windows preview still checks
+the selected Store parent after verifying the epoch identity. The
+comparison has a typing-only dependency on the Coding epoch layout. The
+final Package Product owner can take its existing native Store identity
+and control root when the product-neutral layout contract is ready.
+
+The original Coding lifecycle component owns its deployed workspace
+digest. Persistent and ephemeral layouts, runtime admission and resource
+preview use the same filesystem encoding and namespace. Frozen Legacy
+acceptance uses the existing Harness Legacy Wheel owner for its expected
+prefix, which keeps the review and materialization identities aligned.
+
+Coding Product removes four Python lines and staging adds three, for
+one net production line removed. The existing formal Harness Wheel owner
+keeps the same line count. The seven epoch entry guards match the original
+comparison order and failure paths in 1,568 controlled checks. Workspace
+scope and layout match in 35 cases, and Legacy Wheel identity matches in
+40 cases.
+
+The current source and 31 selected Worker cases also confirm that formal
+Harness owns Linux retention and checkpoint mechanics and Windows
+recovery inventory. Six selected Installation and revision cases pass.
+Their Product bindings carry the existing policy, labels and nominal
+records. These implementation owners predate this batch. Native Windows
+execution remains open.
+
+The 14 POSIX cutover scenarios pass, including replay and read-only
+preview. The combined package and architecture run has 301 passes and
+two child-handshake timeouts. The same two tests report the same failures
+on the unmodified starting commit `c55af7c8f`. Both cases pass when rerun
+on their own after the other suites finish.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

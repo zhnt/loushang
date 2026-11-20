@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import os
+import os as os
 import stat as stat
 import time as time
 from collections.abc import Callable
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from types import TracebackType
 
@@ -37,6 +36,9 @@ from loushang.coding.harness.package_product import (
     resource_preview as _resource_preview_programs,
 )
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.coding.plugin_manager.lifecycle import (
+    _workspace_scope_id as _workspace_scope_id,
+)
 from loushang.coding.resources.catalog import (
     CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY as CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
 )
@@ -272,15 +274,6 @@ class CodingFencedProductReadOnlyPreviewOwner:
     ) -> None:
         del exc_type, exc_value, traceback
         self.close()
-
-
-def _workspace_scope_id(workspace: Path) -> str:
-    return (
-        "workspace:"
-        + sha256(
-            b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
-        ).hexdigest()
-    )
 
 
 def _selection_evidence(
