@@ -9,6 +9,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.harness.plugin_management import (
+    private_data_backup_expiry,
+    private_data_restore,
+)
 from loushang.coding.harness.plugin_management import private_data_read as _programs
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -28,9 +32,6 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionPlanV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages._file_consumption import (
-    closing_descriptor as closing_descriptor,
-)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -47,19 +48,7 @@ from .private_data_backup import (
 from .private_data_backup import (
     _backup_parent as _backup_parent,
 )
-from .private_data_backup import (
-    _open_private_path as _open_private_path,
-)
-from .private_data_backup import (
-    _read_manifest as _read_manifest,
-)
-from .private_data_backup import (
-    _verify_archive as _verify_archive,
-)
-from .private_data_backup_expiry import (
-    CodingArchPrivateDataBackupExpiryPlanV1,
-    _expiry_preview,
-)
+from .private_data_backup_expiry_records import CodingArchPrivateDataBackupExpiryPlanV1
 from .private_data_deletion_journal import (
     CodingArchPrivateDataDeletionJournal as CodingArchPrivateDataDeletionJournal,
 )
@@ -67,21 +56,11 @@ from .private_data_deletion_preview import _OWNER_ID as _OWNER_ID
 from .private_data_deletion_preview import (
     _capture_target_snapshot as _capture_target_snapshot,
 )
-from .private_data_restore import (
-    CodingArchPrivateDataRestorePlanV1,
-    _current_completed_restore,
-    _restore_preview,
-)
-from .private_data_restore_confirmation import (
-    CodingArchPrivateDataRestoreConfirmationJournal as CodingArchPrivateDataRestoreConfirmationJournal,
-)
 from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationV1,
 )
-from .private_data_restore_confirmation import (
-    _require_restore_confirmation as _require_restore_confirmation,
-)
 from .private_data_restore_journal import CodingArchPrivateDataRestoreEventV1
+from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
 
 _READ_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
@@ -100,7 +79,6 @@ _PRIVATE_DATA_FLOW_VALUES = {
 
 _PRIVATE_DATA_QUERY_VALUES = {
     "message_01": "Coding Arch backup ID is invalid",
-    "message_02": "Coding Arch backup Installation changed",
     "message_03": "Coding Arch restore confirmation is stale",
 }
 
@@ -153,7 +131,7 @@ class CodingArchPrivateDataReadOwner:
         if not _digest(backup_id):
             raise ValueError("Coding Arch restore backup ID is invalid")
         with self.offline():
-            return _restore_preview(
+            return private_data_restore.preview_restore(
                 self.layout,
                 self.state_root,
                 source_root,
@@ -175,7 +153,7 @@ class CodingArchPrivateDataReadOwner:
         if not _digest(backup_id):
             raise ValueError("Coding Arch backup expiry ID is invalid")
         with self.offline():
-            return _expiry_preview(
+            return private_data_backup_expiry.preview_expiry(
                 self.layout,
                 self.state_root,
                 key,
@@ -190,7 +168,7 @@ class CodingArchPrivateDataReadOwner:
     def _current_completed_restore(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return _current_completed_restore(
+        return private_data_restore.current_completed_restore(
             self.layout,
             self.state_root,
             key,

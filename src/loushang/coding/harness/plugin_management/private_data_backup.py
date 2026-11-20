@@ -6,7 +6,11 @@ they are tracked intermediate dependencies, not final Harness neutrality.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from loushang.coding.package import private_data_backup as _binding
+
+from . import private_data_backup_records
 
 
 def retain(
@@ -24,7 +28,7 @@ def retain(
         )
         if source.root_identity is None:
             raise ValueError(_binding._PRIVATE_DATA_PROGRAM_VALUES["value_02"])
-        receipt = _binding._backup_receipt(key, source)
+        receipt = private_data_backup_records.make_backup_receipt(key, source)
         return _binding.retain_private_archive(
             source_root,
             source,
@@ -54,14 +58,25 @@ def verify(
     parent = _binding._backup_parent(self.layout, key)
     preview = _binding.CodingArchPrivateDataDeletionPreview(self.layout, self.product)
     with preview._offline():
-        with _binding.closing_descriptor(
-            _binding._open_private_path(self.layout.private_data_base, parent)
-        ) as parent_fd:
-            receipt, source = _binding._read_manifest(parent_fd, backup_id)
-            if receipt.installation_key != key or receipt.backup_id != backup_id:
-                raise ValueError(_binding._PRIVATE_DATA_PROGRAM_VALUES["value_04"])
-            _binding._verify_archive(parent_fd, backup_id, key, source, receipt)
-            return receipt
+        return verify_retained_archive(
+            self.layout.private_data_base, parent, key, backup_id
+        )
+
+
+def verify_retained_archive(
+    private_base: Path,
+    parent: Path,
+    key: _binding.PluginInstallationKeyV1,
+    backup_id: str,
+) -> _binding.CodingArchPrivateDataBackupReceiptV1:
+    with _binding.closing_descriptor(
+        _binding._open_private_path(private_base, parent)
+    ) as parent_fd:
+        receipt, source = _binding._read_manifest(parent_fd, backup_id)
+        if receipt.installation_key != key or receipt.backup_id != backup_id:
+            raise ValueError(_binding._PRIVATE_DATA_PROGRAM_VALUES["value_04"])
+        _binding._verify_archive(parent_fd, backup_id, key, source, receipt)
+        return receipt
 
 
 def retention_snapshot(

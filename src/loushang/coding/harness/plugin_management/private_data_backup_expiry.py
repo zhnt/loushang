@@ -6,9 +6,17 @@ they are tracked intermediate dependencies, not final Harness neutrality.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
 from typing import cast
 
 from loushang.coding.package import private_data_backup_expiry as _binding
+from loushang.coding.package.private_data_restore_journal import (
+    CodingArchPrivateDataRestoreEventV1,
+)
+from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
+
+from . import private_data_restore_confirmation
 
 
 def preview(
@@ -25,7 +33,7 @@ def preview(
         self.layout, self.product
     )._offline():
         restore = _binding.CodingArchPrivateDataRestoreOwner(self.layout, self.product)
-        return _binding._expiry_preview(
+        return preview_expiry(
             self.layout,
             self.product.state_root,
             key,
@@ -148,24 +156,19 @@ def require_recovery_authority(
         raise ValueError(_binding._PRIVATE_DATA_PROGRAM_VALUES["value_08"])
 
 
-def _expiry_preview(
+def preview_expiry(
     layout: _binding.CodingPluginLifecycleStateLayout,
-    state_root: _binding.Path,
+    state_root: Path,
     key: _binding.PluginInstallationKeyV1,
     backup_id: str,
     confirmation_id: str,
     *,
-    completed_restore: _binding.Callable[
-        [], tuple[_binding.CodingArchPrivateDataRestoreEventV1, str]
-    ],
-    desired_snapshot: _binding.Callable[[], _binding.PluginDesiredStateSnapshotV1],
+    completed_restore: Callable[[], tuple[CodingArchPrivateDataRestoreEventV1, str]],
+    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
 ) -> _binding.CodingArchPrivateDataBackupExpiryPlanV1:
     completion, target_id = completed_restore()
-    confirmations = _binding.CodingArchPrivateDataRestoreConfirmationJournal(
-        state_root
-    ).records()
-    confirmation = _binding._require_restore_confirmation(
-        confirmations,
+    confirmation = private_data_restore_confirmation.require_current_confirmation(
+        state_root,
         confirmation_id,
         key,
         backup_id,

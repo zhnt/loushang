@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from loushang.coding.package import private_data_restore_confirmation as _binding
+from loushang.coding.package.private_data_restore_journal import (
+    CodingArchPrivateDataRestoreEventV1,
+)
 
 
 def validate_confirmation(
@@ -95,16 +100,19 @@ def matches_restore_result(
     )
 
 
-def require_restore_confirmation(
-    records: tuple[_binding.CodingArchPrivateDataRestoreConfirmationV1, ...],
+def require_current_confirmation(
+    state_root: Path,
     confirmation_id: str,
     key: _binding.PluginInstallationKeyV1,
     backup_id: str,
-    completion: _binding.CodingArchPrivateDataRestoreEventV1,
+    completion: CodingArchPrivateDataRestoreEventV1,
     target_id: str,
     *,
     message: str,
 ) -> _binding.CodingArchPrivateDataRestoreConfirmationV1:
+    records = _binding.CodingArchPrivateDataRestoreConfirmationJournal(
+        state_root
+    ).records()
     matched = next(
         (item for item in reversed(records) if item.confirmation_id == confirmation_id),
         None,

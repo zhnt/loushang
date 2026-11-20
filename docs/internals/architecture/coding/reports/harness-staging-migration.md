@@ -1236,6 +1236,32 @@ two existing Hosted timing probes now instrument the moved compiler at its
 actual call site. An exact comparison matches 2,848 initial and refresh
 composition traces, including failure precedence and root custody.
 
+## Shared Private-Data Verification And Preview
+
+The POSIX read-only owner and the writable backup owner now call the same
+retained archive verifier. The original Harness reader and tree checker still
+own the actual I/O. The read-only caller retains its non-repairing quiescence
+and computes the backup path under that lock. The writable caller still
+computes its path before acquiring the original quiescence guard.
+
+Read-only verification, normal restore verification and expiry previews use
+the same confirmation journal lookup and exact evidence match. The callers
+keep the original snapshot authority, lock scope and failure diagnostics.
+Backup writers on both platforms call the existing receipt factory directly.
+Five private Product forwarding functions are removed. The issued receipts,
+plan records and their public import paths retain the same nominal classes.
+The read owner imports its two plan types from their declaring modules.
+The two added logical edges have no return path to the read owner.
+
+This batch removes 119 Product lines and adds 22 staging lines across 13
+modules, removing 97 production lines overall. All 31 affected tests pass,
+including the CLI and SDK paths through backup, restore, confirmation and
+expiry. All 52 existing record, journal, POSIX restore and expiry compatibility
+cases pass. Comparison against the prior checkpoint matches 88 archive and
+420 confirmation traces, including read failures and cleanup. The four
+affected record classes retain their historical imports and pickle identity.
+Native Windows validation remains pending.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

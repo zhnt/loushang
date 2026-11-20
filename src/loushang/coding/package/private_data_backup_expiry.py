@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast as cast
 
@@ -15,7 +13,6 @@ from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateL
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.private_data_backup import (
     execute_posix_expiry as execute_posix_expiry,
 )
@@ -49,12 +46,6 @@ from .private_data_restore import (
 )
 from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal as CodingArchPrivateDataRestoreConfirmationJournal,
-)
-from .private_data_restore_confirmation import (
-    _require_restore_confirmation as _require_restore_confirmation,
-)
-from .private_data_restore_journal import (
-    CodingArchPrivateDataRestoreEventV1,
 )
 from .private_data_restore_journal import (
     CodingArchPrivateDataRestoreJournal as CodingArchPrivateDataRestoreJournal,
@@ -139,27 +130,6 @@ class CodingArchPrivateDataBackupExpiryOwner:
         self, plan: CodingArchPrivateDataBackupExpiryPlanV1
     ) -> None:
         return _programs.require_recovery_authority(self, plan)
-
-
-def _expiry_preview(
-    layout: CodingPluginLifecycleStateLayout,
-    state_root: Path,
-    key: PluginInstallationKeyV1,
-    backup_id: str,
-    confirmation_id: str,
-    *,
-    completed_restore: Callable[[], tuple[CodingArchPrivateDataRestoreEventV1, str]],
-    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
-) -> CodingArchPrivateDataBackupExpiryPlanV1:
-    return _programs._expiry_preview(
-        layout,
-        state_root,
-        key,
-        backup_id,
-        confirmation_id,
-        completed_restore=completed_restore,
-        desired_snapshot=desired_snapshot,
-    )
 
 
 __all__ = [

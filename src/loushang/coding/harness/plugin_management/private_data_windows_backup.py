@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from loushang.coding.package import private_data_windows_backup as _binding
 
+from . import private_data_backup_records
+
 
 def retain(
     self: _binding.CodingWindowsArchPrivateDataBackupOwner,
@@ -33,7 +35,7 @@ def retain(
         source = _binding._capture_windows_target_snapshot(
             source_root, expected_root=expected_root
         )
-        receipt = _binding._backup_receipt(key, source)
+        receipt = private_data_backup_records.make_backup_receipt(key, source)
         parent_path = _binding.backup_parent(self.layout, key)
         _binding.prepare_windows_product_private_directory_chain(
             self.layout.package_root, "installation-backups", parent_path.name

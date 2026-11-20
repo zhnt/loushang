@@ -7,7 +7,6 @@ replay. Backup expiry and public restore commands remain separate decisions.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal as Literal
@@ -22,7 +21,6 @@ from loushang.coding.plugin_manager.lifecycle import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.private_data_backup import (
     read_deleted_restore_source as read_deleted_restore_source,
 )
@@ -73,9 +71,6 @@ from .private_data_restore_confirmation import (
 )
 from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationV1,
-)
-from .private_data_restore_confirmation import (
-    _require_restore_confirmation as _require_restore_confirmation,
 )
 from .private_data_restore_journal import (
     CodingArchPrivateDataRestoreEventV1,
@@ -137,7 +132,7 @@ class CodingArchPrivateDataRestoreOwner:
     def _current_completed_restore(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return _current_completed_restore(
+        return _programs.current_completed_restore(
             self.layout,
             self.product.state_root,
             key,
@@ -162,38 +157,6 @@ class CodingArchPrivateDataRestoreOwner:
         """Publish verified backup bytes only into an absent Installation root."""
 
         return _programs.restore(self, key, backup_id, expected_plan=expected_plan)
-
-
-def _current_completed_restore(
-    layout: CodingPluginLifecycleStateLayout,
-    state_root: Path,
-    key: PluginInstallationKeyV1,
-    backup_id: str,
-    *,
-    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
-) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-    return _programs._current_completed_restore(
-        layout, state_root, key, backup_id, desired_snapshot=desired_snapshot
-    )
-
-
-def _restore_preview(
-    layout: CodingPluginLifecycleStateLayout,
-    state_root: Path,
-    source_root: Path,
-    key: PluginInstallationKeyV1,
-    backup_id: str,
-    *,
-    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
-) -> CodingArchPrivateDataRestorePlanV1:
-    return _programs._restore_preview(
-        layout,
-        state_root,
-        source_root,
-        key,
-        backup_id,
-        desired_snapshot=desired_snapshot,
-    )
 
 
 def _require_no_foreign_restore_stage(

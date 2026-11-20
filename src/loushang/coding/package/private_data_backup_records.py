@@ -87,12 +87,6 @@ def backup_id(
     ).hexdigest()
 
 
-def _backup_receipt(
-    key: PluginInstallationKeyV1, source: CodingArchPrivateDataTargetSnapshotV1
-) -> CodingArchPrivateDataBackupReceiptV1:
-    return _record_programs.make_backup_receipt(key, source)
-
-
 class _BackupManifestCodec:
     max_manifest_bytes = 4 * 1024 * 1024
     files_name = "files"

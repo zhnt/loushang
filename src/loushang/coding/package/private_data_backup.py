@@ -61,9 +61,6 @@ from .private_data_backup_records import (
     _ArchBackupCodec,
 )
 from .private_data_backup_records import (
-    _backup_receipt as _backup_receipt,
-)
-from .private_data_backup_records import (
     _backup_retention_revision as _backup_retention_revision,
 )
 from .private_data_backup_records import backup_parent as _backup_parent

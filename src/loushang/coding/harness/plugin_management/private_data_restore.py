@@ -6,9 +6,13 @@ they are tracked intermediate dependencies, not final Harness neutrality.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 from loushang.coding.package import private_data_restore as _binding
+from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
+
+from . import private_data_restore_confirmation
 
 
 def confirm(
@@ -58,11 +62,8 @@ def verify_confirmation(
         self.layout, self.product
     )._offline():
         completion, target_id = self._current_completed_restore(key, backup_id)
-        records = _binding.CodingArchPrivateDataRestoreConfirmationJournal(
-            self.product.state_root
-        ).records()
-        matched = _binding._require_restore_confirmation(
-            records,
+        return private_data_restore_confirmation.require_current_confirmation(
+            self.product.state_root,
             confirmation_id,
             key,
             backup_id,
@@ -70,7 +71,6 @@ def verify_confirmation(
             target_id,
             message=_binding._PRIVATE_DATA_PROGRAM_VALUES["value_01"],
         )
-        return matched
 
 
 def preview(
@@ -86,7 +86,7 @@ def preview(
     with _binding.CodingArchPrivateDataDeletionPreview(
         self.layout, self.product
     )._offline():
-        return _binding._restore_preview(
+        return preview_restore(
             self.layout,
             self.product.state_root,
             source_root,
@@ -184,13 +184,13 @@ def restore(
             )
 
 
-def _current_completed_restore(
+def current_completed_restore(
     layout: _binding.CodingPluginLifecycleStateLayout,
     state_root: _binding.Path,
     key: _binding.PluginInstallationKeyV1,
     backup_id: str,
     *,
-    desired_snapshot: _binding.Callable[[], _binding.PluginDesiredStateSnapshotV1],
+    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
 ) -> tuple[_binding.CodingArchPrivateDataRestoreEventV1, str]:
     if not _binding._digest(backup_id):
         raise ValueError(_binding._PRIVATE_DATA_PROGRAM_VALUES["value_02"])
@@ -225,14 +225,14 @@ def _current_completed_restore(
     return completion, target.target_id
 
 
-def _restore_preview(
+def preview_restore(
     layout: _binding.CodingPluginLifecycleStateLayout,
     state_root: _binding.Path,
     source_root: _binding.Path,
     key: _binding.PluginInstallationKeyV1,
     backup_id: str,
     *,
-    desired_snapshot: _binding.Callable[[], _binding.PluginDesiredStateSnapshotV1],
+    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
 ) -> _binding.CodingArchPrivateDataRestorePlanV1:
     desired = desired_snapshot()
     if desired.installation(key).selection.desired_state != "absent":

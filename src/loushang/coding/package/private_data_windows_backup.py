@@ -47,9 +47,6 @@ from .private_data_backup_records import (
     _WindowsArchBackupCodec,
     backup_parent,
 )
-from .private_data_backup_records import (
-    _backup_receipt as _backup_receipt,
-)
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .private_data_windows_preview import (
     CodingWindowsArchPrivateDataReadPreview,

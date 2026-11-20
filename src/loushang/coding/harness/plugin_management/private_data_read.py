@@ -10,6 +10,8 @@ from contextlib import contextmanager
 
 from loushang.coding.package import private_data_read_owner as _binding
 
+from . import private_data_backup, private_data_restore_confirmation
+
 
 def assert_current(self: _binding.CodingArchPrivateDataReadOwner) -> None:
     _binding._assert_workspace(self.workspace, self.workspace_identity)
@@ -102,16 +104,12 @@ def verify_backup(
     if not _binding._digest(backup_id):
         raise ValueError(_binding._PRIVATE_DATA_QUERY_VALUES["message_01"])
     with self.offline():
-        with _binding.closing_descriptor(
-            _binding._open_private_path(
-                self.layout.private_data_base, _binding._backup_parent(self.layout, key)
-            )
-        ) as parent_fd:
-            receipt, source = _binding._read_manifest(parent_fd, backup_id)
-            if receipt.installation_key != key or receipt.backup_id != backup_id:
-                raise ValueError(_binding._PRIVATE_DATA_QUERY_VALUES["message_02"])
-            _binding._verify_archive(parent_fd, backup_id, key, source, receipt)
-            return receipt
+        return private_data_backup.verify_retained_archive(
+            self.layout.private_data_base,
+            _binding._backup_parent(self.layout, key),
+            key,
+            backup_id,
+        )
 
 
 def deletion_preview(
@@ -144,11 +142,8 @@ def verify_restore_confirmation(
 ) -> _binding.CodingArchPrivateDataRestoreConfirmationV1:
     with self.offline():
         completion, target_id = self._current_completed_restore(key, backup_id)
-        records = _binding.CodingArchPrivateDataRestoreConfirmationJournal(
-            self.state_root
-        ).records()
-        matched = _binding._require_restore_confirmation(
-            records,
+        return private_data_restore_confirmation.require_current_confirmation(
+            self.state_root,
             confirmation_id,
             key,
             backup_id,
@@ -156,4 +151,3 @@ def verify_restore_confirmation(
             target_id,
             message=_binding._PRIVATE_DATA_QUERY_VALUES["message_03"],
         )
-        return matched

@@ -29,9 +29,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .private_data_restore_journal import (
-    CodingArchPrivateDataRestoreEventV1,
-)
-from .private_data_restore_journal import (
     restore_id_for as restore_id_for,
 )
 
@@ -169,21 +166,6 @@ class CodingArchPrivateDataRestoreConfirmationJournal(
             max_records=_MAX_RECORDS,
             max_bytes=_MAX_BYTES,
         )
-
-
-def _require_restore_confirmation(
-    records: tuple[CodingArchPrivateDataRestoreConfirmationV1, ...],
-    confirmation_id: str,
-    key: PluginInstallationKeyV1,
-    backup_id: str,
-    completion: CodingArchPrivateDataRestoreEventV1,
-    target_id: str,
-    *,
-    message: str,
-) -> CodingArchPrivateDataRestoreConfirmationV1:
-    return _record_programs.require_restore_confirmation(
-        records, confirmation_id, key, backup_id, completion, target_id, message=message
-    )
 
 
 _SCHEMA_RESTORE_CONFIRMATION_V1 = RecordSchema.for_dataclass(
