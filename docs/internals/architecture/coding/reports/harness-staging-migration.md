@@ -2039,6 +2039,23 @@ authority and effect traces against the prior checkpoint. The known
 Continuity import test remains excluded under this machine's configured
 test root. Native Windows verification remains open.
 
+## Built-In Wheel Publication And Inspection
+
+Eight existing POSIX and Windows entry points now share the base Wheel
+and ordered capability Wheel assembly in staging. The edge supplies the
+explicit inspect or publish operation. Harness ExactProductSourceFiles
+and InstalledProductWheelRecipe retain native ACL and descriptor checks,
+deterministic bytes, fsync behavior and failure handling. Product policy
+keeps its installed assets, fixed filenames and nominal return records.
+
+The Product edge removes 71 Python lines and staging adds 48, for a net
+production reduction of 23 lines. The selected suite records 63 passes
+and one Windows-only skip. The resource refresh assertion for the
+workspace `review` skill reproduces with the same failure trace on the
+prior checkpoint. Across all eight entry points, 120 controlled
+comparisons match ordering, selected native operation, artifact facts
+and failure precedence. Native Windows verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
