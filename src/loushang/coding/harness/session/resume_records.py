@@ -93,7 +93,5 @@ def user_message_digest(
     return sha256(digest_domain + canonical_binding_bytes(payload)).hexdigest()
 
 
-def canonical_binding_bytes(value: object) -> bytes:
-    return dump_json_value(
-        value, name="RuntimeBinding metadata", ensure_ascii=True, sort_keys=True
-    ).encode("utf-8")
+def canonical_binding_bytes(value: object, *, name: str = "RuntimeBinding metadata") -> bytes:
+    return dump_json_value(value, name=name, ensure_ascii=True, sort_keys=True).encode("utf-8")

@@ -2097,6 +2097,29 @@ existing architecture assertions reproduced stale importer paths on the
 prior checkpoint and now track the exact staged owners. Native Windows
 verification remains open.
 
+## Resume Permission Request And Confirmation
+
+Staging assembles approval evidence and revalidates it against the current
+session before delegating confirmation to the existing Harness interactive
+resolver. It reuses Harness execution profile expansion, native Policy
+fingerprints and the staged canonical Resume encoder. Coding retains the
+original public entry and nominal confirmation type, Hosted subject policy,
+Embedded Root identity, historical hash namespaces and approval vocabulary.
+
+Revalidation checks the original target, Embedded approval owner and Hosted
+subject before comparing exact native profiles and current Policy evidence.
+It rebuilds the request through the public entry to observe current authority
+again before resolving the original action.
+
+Coding Product removes 96 Python lines and staging adds 201, for a net
+production increase of 105. Applying the current formatting to the original
+file alone would expand it from 209 to 273 lines. Explicit product constants
+and the retained public signatures also contribute to the cost. All 138
+selected Linux tests pass across confirmation, publication, first input,
+continuation and history. The 4,176 controlled comparisons match the previous
+checkpoint's request evidence, authority observations and failure order.
+Native Windows verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
