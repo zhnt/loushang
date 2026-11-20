@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from loushang.coding.resume import activation_projection_v2 as _binding
 
+from .selected_ancestry import SelectedAncestry
+
 
 def project_activation_history_steps(
     records: _binding.Iterable[_binding.AgentTranscriptRecord],
@@ -19,9 +21,7 @@ def project_activation_history_steps(
         or _binding.re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", current_session_id) is None
     ):
         raise ValueError(_binding._RESUME_OPERATION_VALUES["value_001"])
-    ancestry = _binding.hashlib.sha256(_binding._RESUME_OPERATION_BYTES["value_001"])
-    previous_id = None
-    seen = set()
+    ancestry = SelectedAncestry(_binding._ANCESTRY_DOMAIN)
     pending: dict[str, _binding.CodingActivationAttemptV1] = {}
     unknown = False
     selected_binding: (
@@ -29,9 +29,7 @@ def project_activation_history_steps(
     ) = None
     selected_binding_record_id: str | None = None
     for record in records:
-        if record.parent_id != previous_id or record.record_id in seen:
-            raise ValueError(_binding._RESUME_OPERATION_VALUES["value_002"])
-        seen.add(record.record_id)
+        ancestry.require_next(record, error=_binding._RESUME_OPERATION_VALUES["value_002"])
         payload = record.payload
         if isinstance(
             payload, _binding.ExtensionData
@@ -123,12 +121,7 @@ def project_activation_history_steps(
                         selected_binding_record_id = record.record_id
             else:
                 unknown = True
-        identity = _binding._encoded(
-            {"recordId": record.record_id, "parentId": record.parent_id}
-        )
-        ancestry.update(len(identity).to_bytes(4, "big"))
-        ancestry.update(identity)
-        previous_id = record.record_id
+        ancestry.advance(record, _binding._encoded)
         yield
     ancestry_digest = ancestry.hexdigest()
     if unknown:

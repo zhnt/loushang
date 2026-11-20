@@ -1091,6 +1091,32 @@ preceding Legacy source. All 13 current architecture cases pass after recording
 the retired forwarding entry in the location inventory. Ruff, mypy,
 documentation and the normalized dependency check pass.
 
+## Continuity History And Selection Authority
+
+The same read path now handles bounded history preview, tail fallback and
+identity checks. Resume and delete share the listed-reference and source
+revision checks. The provider retains rendering, Resume planning admission,
+and the compatibility and active-session checks before deletion. Native reads
+keep the original cancellation custody. The existing Harness owner still
+handles owner receipt publication and retirement ordering.
+
+The provider drops 101 Python lines and staging adds 130. The slice adds
+29 production lines. The 55 focused Continuity, preview and planning tests,
+Ruff, mypy and the normalized dependency comparison passed. Reader lookup,
+nominal history types and native runtime dependencies remain recorded for
+later extraction.
+
+The Runtime Binding, v1 activation and v2 activation projections now share
+one parent-link and duplicate-record check and the same length-prefixed
+ancestry digest. Each projection retains its historical namespace, codec,
+failure order and version rules. The v2 iterator still yields after each
+validated record. This part adds 12 Python lines, so the complete Session
+history batch adds 41. A further 208-case run verifies Binding, versions,
+activation, bounded previews, Continuity, Resume planning, continuation and
+the Windows launch intent regression. All 135 projection outcomes and
+errors compare equal with the preceding implementation. The ancestry owner
+has no dependency on Coding implementation modules.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

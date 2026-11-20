@@ -6,7 +6,6 @@ No projection result establishes present admission or native effect settlement.
 from __future__ import annotations
 
 import asyncio
-import hashlib as hashlib
 import re as re
 import time
 from collections.abc import Generator, Iterable
@@ -36,6 +35,9 @@ from loushang.coding.resume.activation_attempt_v2 import (
 )
 from loushang.coding.resume.activation_attempt_v2 import (
     validate_coding_activation_attempt_v2_record as validate_coding_activation_attempt_v2_record,
+)
+from loushang.coding.resume.binding import (
+    _ANCESTRY_DOMAIN as _ANCESTRY_DOMAIN,
 )
 from loushang.coding.resume.binding import (
     CODING_RUNTIME_BINDING_METADATA_KEY as CODING_RUNTIME_BINDING_METADATA_KEY,
@@ -77,9 +79,6 @@ _RESUME_OPERATION_VALUES = {
     "value_009": "Coding Binding v1 cannot close a v2 intent",
     "value_010": "Coding Binding v1 does not match its intent",
 }
-
-_RESUME_OPERATION_BYTES = {"value_001": b"loushang.coding.resume-ancestry/v1\x00"}
-
 
 @dataclass(frozen=True, slots=True)
 class CodingActivationAttemptProjectionV2:

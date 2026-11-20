@@ -15,6 +15,7 @@ from typing import Literal, cast
 
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
+from loushang.coding.harness.session.selected_ancestry import SelectedAncestry
 from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 from loushang.harness.transcript.codecs import (
     STANDARD_PAYLOAD_VERSION,
@@ -28,6 +29,7 @@ CODING_RUNTIME_BINDING_METADATA_KEY = "coding.runtimeBindingV1"
 CODING_RUNTIME_BINDING_VERSION = 1
 CODING_RUNTIME_BINDING_MAX_BYTES = 4096
 
+_ANCESTRY_DOMAIN = b"loushang.coding.resume-ancestry/v1\0"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _DIFFERENCE_CODE = re.compile(r"[a-z][a-z0-9._-]{0,63}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -148,19 +150,12 @@ def project_coding_runtime_binding_path(
     status: Literal["none", "bound", "unknown_version"] = "none"
     selected_binding: CodingRuntimeBindingV1 | None = None
     selected_record_id: str | None = None
-    ancestry = hashlib.sha256(b"loushang.coding.resume-ancestry/v1\0")
-    previous_id: str | None = None
-    seen: set[str] = set()
+    ancestry = SelectedAncestry(_ANCESTRY_DOMAIN)
     for record in records:
-        if record.parent_id != previous_id or record.record_id in seen:
-            raise ValueError("RuntimeBinding projection requires a complete parent-linked path")
-        seen.add(record.record_id)
-        previous_id = record.record_id
-        identity = _canonical_bytes({
-            "recordId": record.record_id, "parentId": record.parent_id,
-        })
-        ancestry.update(len(identity).to_bytes(4, "big"))
-        ancestry.update(identity)
+        ancestry.require_next(
+            record, error="RuntimeBinding projection requires a complete parent-linked path"
+        )
+        ancestry.advance(record, _canonical_bytes)
         observation = inspect_coding_runtime_binding(record.metadata)
         if observation.status == "absent":
             continue

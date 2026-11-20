@@ -11,10 +11,15 @@ from pathlib import Path
 from typing import ClassVar, Protocol
 
 from loushang.ai.types import AssistantMessage, UserMessage
+from loushang.coding.harness.session import continuity_history
 from loushang.coding.resume.history import (
-    read_coding_resume_header,
-    read_coding_resume_recent_page,
-    read_coding_resume_snapshot,
+    read_coding_resume_header as read_coding_resume_header,
+)
+from loushang.coding.resume.history import (
+    read_coding_resume_recent_page as read_coding_resume_recent_page,
+)
+from loushang.coding.resume.history import (
+    read_coding_resume_snapshot as read_coding_resume_snapshot,
 )
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.capabilities.owner_component_host import (
@@ -84,7 +89,6 @@ from loushang.harness.runtime import (
     SessionOperationResult,
 )
 from loushang.harness.transcript import (
-    AgentTranscriptSessionCatalog,
     SessionAssetHealthSummary,
     SessionIndexPage,
     SessionQuery,
@@ -95,7 +99,6 @@ from loushang.harness.transcript import (
     session_summary_revision,
     user_message_text,
 )
-from loushang.harness.transcript.jsonl_file import AgentTranscriptFileError
 
 CODING_CONTINUITY_PROVIDER_ID = "coding.sessions"
 CODING_CONTINUITY_IMPLEMENTATION = "coding.session_continuity"
@@ -103,6 +106,10 @@ CODING_CONTINUITY_IMPLEMENTATION_VERSION = 1
 CODING_EXPERIENCE_ID = "coding"
 
 _MAX_PREVIEW_CACHE = 256
+_STALE_SUMMARY_MESSAGE = "The selected Coding session summary is stale."
+_CHANGED_SINCE_LISTING_MESSAGE = (
+    "The selected Coding session changed after it was listed."
+)
 _MAX_CODING_CONTINUITY_IMPORT_BYTES = 64 * 1024 * 1024
 _RUNTIME_BINDING_ATTRIBUTE = "_loushang_coding_continuity"
 
@@ -378,122 +385,59 @@ class CodingContinuityProvider:
             if discovery.conflicts:
                 rows.append(("Conflicting copies", str(len(discovery.conflicts))))
         if summary.session_file is not None:
-            # A cancelled preview still owns each submitted native read until
-            # it settles. Stable references therefore keep root shutdown joined
-            # through real completion rather than just waiter cancellation.
-            try:
-                history = await settled_io(
-                    read_coding_resume_header,
-                    summary.session_file,
+            observed = await continuity_history.read_history_preview(
+                self._runtime,
+                summary.session_file,
+                session_id=summary.session_id,
+                authority_fingerprint=summary.authority_fingerprint,
+                max_bytes=1024 * 1024,
+            )
+            history_changed = observed.changed
+            history = observed.header
+            if history is None:
+                rows.append(
+                    (
+                        "History identity",
+                        "Changed; refresh" if history_changed else "Unavailable",
+                    )
                 )
-            except (OSError, ValueError):
-                rows.append(("History identity", "Unavailable"))
             else:
-                if history.header.conversation_id != summary.session_id:
-                    history_changed = True
-                    rows.append(("History identity", "Changed; refresh"))
-                else:
-                    rows.append(
-                        (
-                            "History identity",
-                            "Coding"
-                            if history.product_identity == "coding"
-                            else "Unverified",
-                        )
+                rows.append(
+                    (
+                        "History identity",
+                        "Coding"
+                        if history.product_identity == "coding"
+                        else "Unverified",
                     )
-                    rows.append(
-                        (
-                            "Historical composition",
-                            history.composition.set_id
-                            if history.composition is not None
-                            else "Legacy unknown",
-                        )
+                )
+                rows.append(
+                    (
+                        "Historical composition",
+                        history.composition.set_id
+                        if history.composition is not None
+                        else "Legacy unknown",
                     )
-                    try:
-                        from loushang.coding.runtime.agent_session_runtime import (
-                            AgentSessionRuntime,
-                        )
-
-                        if isinstance(self._runtime, AgentSessionRuntime):
-                            snapshot = await AgentSessionRuntime.preview_resume_history(
-                                self._runtime,
-                                summary.session_file,
-                                max_bytes=1024 * 1024,
-                            )
+                )
+                if observed.snapshot is not None:
+                    history_text = _readonly_history_text(
+                        observed.snapshot.selected_records
+                    )
+                    start_planning = getattr(
+                        self._runtime, "start_configured_resume_planning", None
+                    )
+                    if callable(start_planning):
+                        try:
+                            planning_started = await start_planning(observed.snapshot)
+                        except (OSError, RuntimeError, TypeError, ValueError):
+                            rows.append(("Resume preparation", "Unavailable"))
                         else:
-                            snapshot = await settled_io(
-                                read_coding_resume_snapshot,
-                                summary.session_file,
-                                max_bytes=1024 * 1024,
-                            )
-                    except AgentTranscriptFileError as exc:
-                        if exc.code != "session_file_too_large":
-                            rows.append(
-                                ("Recent history", "Bounded preview unavailable")
-                            )
-                        else:
-                            try:
-                                if isinstance(self._runtime, AgentSessionRuntime):
-                                    recent = await AgentSessionRuntime.preview_resume_recent_page(
-                                        self._runtime,
-                                        summary.session_file,
-                                    )
-                                else:
-                                    recent = await settled_io(
-                                        read_coding_resume_recent_page,
-                                        summary.session_file,
-                                    )
-                            except (OSError, ValueError):
-                                rows.append(
-                                    ("Recent history", "Bounded preview unavailable")
-                                )
-                            else:
-                                if not recent.records:
-                                    rows.append(
-                                        (
-                                            "Recent history",
-                                            "Bounded preview unavailable",
-                                        )
-                                    )
-                                elif recent.header_preview.header != history.header or (
-                                    summary.authority_fingerprint is not None
-                                    and recent.source_fingerprint
-                                    != summary.authority_fingerprint
-                                ):
-                                    history_changed = True
-                                else:
-                                    history_text = _readonly_history_text(
-                                        recent.records
-                                    )
-                                    rows.append(
-                                        ("Recent history", "Unverified tail preview")
-                                    )
-                    except (OSError, ValueError):
-                        rows.append(("Recent history", "Bounded preview unavailable"))
-                    else:
-                        if snapshot.header_preview.header != history.header or (
-                            summary.authority_fingerprint is not None
-                            and snapshot.source_fingerprint
-                            != summary.authority_fingerprint
-                        ):
-                            history_changed = True
-                        else:
-                            history_text = _readonly_history_text(
-                                snapshot.selected_records
-                            )
-                            start_planning = getattr(
-                                self._runtime, "start_configured_resume_planning", None
-                            )
-                            if callable(start_planning):
-                                try:
-                                    planning_started = await start_planning(snapshot)
-                                except (OSError, RuntimeError, TypeError, ValueError):
-                                    rows.append(("Resume preparation", "Unavailable"))
-                                else:
-                                    if planning_started is True:
-                                        rows.append(
-                                            ("Resume preparation", "In progress")
-                                        )
+                            if planning_started is True:
+                                rows.append(("Resume preparation", "In progress"))
+                elif observed.recent is not None:
+                    history_text = _readonly_history_text(observed.recent.records)
+                    rows.append(("Recent history", "Unverified tail preview"))
+                elif not history_changed:
+                    rows.append(("Recent history", "Bounded preview unavailable"))
         inspect_assets = getattr(
             self._runtime,
             "inspect_discovered_session_assets",
@@ -571,38 +515,14 @@ class CodingContinuityProvider:
         indexed = self._cached_target(target)
         summary = indexed.projection
         _require_unconflicted_summary(summary)
-        expected_revision = session_summary_revision(
-            summary,
-            indexed.source_revision,
+        reference = continuity_history.require_listed_reference(
+            indexed,
+            target_revision=target.revision,
+            stale_message=_STALE_SUMMARY_MESSAGE,
         )
-        if target.revision != expected_revision:
-            raise StaleContinuityTargetError(
-                "The selected Coding session summary is stale."
-            )
-        # Index rows are advisory projections. Resolve their raw identity against
-        # fresh path-level discovery so a same-source duplicate cannot be entered
-        # through a stale collapsed index entry.
-        reference: str | Path = (
-            summary.session_id
-            if summary.discovery is not None
-            else summary.session_file or summary.session_id
+        await continuity_history.require_current_source(
+            self._runtime, indexed, changed_message=_CHANGED_SINCE_LISTING_MESSAGE
         )
-        if summary.authority_fingerprint is not None:
-            if not session_summary_authority_is_current(summary):
-                raise StaleContinuityTargetError(
-                    "The selected Coding session changed after it was listed."
-                )
-        else:
-            current_revision = await asyncio.to_thread(
-                AgentTranscriptSessionCatalog(
-                    self._runtime.session_dir
-                ).load_authoritative_revision,
-                indexed.locator,
-            )
-            if current_revision != indexed.source_revision:
-                raise StaleContinuityTargetError(
-                    "The selected Coding session changed after it was listed."
-                )
         return reference
 
     async def prepare(
@@ -651,40 +571,19 @@ class CodingContinuityProvider:
             raise RuntimeError(
                 "Compatibility Sessions are read-only; resume them before deletion."
             )
-        expected_revision = session_summary_revision(
-            summary,
-            indexed.source_revision,
-        )
-        if target.revision != expected_revision:
-            raise StaleContinuityTargetError(
-                "The selected Coding session summary is stale."
-            )
-        reference: str | Path = (
-            summary.session_id
-            if summary.discovery is not None
-            else summary.session_file or summary.session_id
+        reference = continuity_history.require_listed_reference(
+            indexed,
+            target_revision=target.revision,
+            stale_message=_STALE_SUMMARY_MESSAGE,
         )
         if _same_session_reference(
             self._runtime.get_current_session_ref(),
             reference,
         ):
             raise ValueError("Cannot delete the currently active session")
-        if summary.authority_fingerprint is not None:
-            if not session_summary_authority_is_current(summary):
-                raise StaleContinuityTargetError(
-                    "The selected Coding session changed after it was listed."
-                )
-        else:
-            current_revision = await asyncio.to_thread(
-                AgentTranscriptSessionCatalog(
-                    self._runtime.session_dir
-                ).load_authoritative_revision,
-                indexed.locator,
-            )
-            if current_revision != indexed.source_revision:
-                raise StaleContinuityTargetError(
-                    "The selected Coding session changed after it was listed."
-                )
+        await continuity_history.require_current_source(
+            self._runtime, indexed, changed_message=_CHANGED_SINCE_LISTING_MESSAGE
+        )
         deleted = await self._runtime.delete_session(reference)
         if deleted:
             self._preview_items.pop(target.opaque_id, None)

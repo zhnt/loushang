@@ -6,7 +6,6 @@ current authority nor evidence that an effect or user input completed.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -14,7 +13,9 @@ from datetime import datetime
 from typing import Literal, cast
 
 from loushang.ai.types import UserMessage
+from loushang.coding.harness.session.selected_ancestry import SelectedAncestry
 from loushang.coding.resume.binding import (
+    _ANCESTRY_DOMAIN,
     inspect_coding_runtime_binding,
     validate_coding_runtime_binding_record,
 )
@@ -137,16 +138,14 @@ def project_coding_activation_attempt_path(
 
     if type(current_session_id) is not str or _IDENTIFIER.fullmatch(current_session_id) is None:
         raise ValueError("activation attempt current Session id is invalid")
-    ancestry = hashlib.sha256(b"loushang.coding.resume-ancestry/v1\0")
-    previous_id: str | None = None
-    seen: set[str] = set()
+    ancestry = SelectedAncestry(_ANCESTRY_DOMAIN)
     pending: CodingActivationAttemptV1 | None = None
     pending_record_id: str | None = None
     unknown_version = False
     for record in records:
-        if record.parent_id != previous_id or record.record_id in seen:
-            raise ValueError("activation attempt projection requires a complete path")
-        seen.add(record.record_id)
+        ancestry.require_next(
+            record, error="activation attempt projection requires a complete path"
+        )
         prefix_digest = ancestry.hexdigest()
         payload = record.payload
         if isinstance(payload, ExtensionData) and payload.extension_type.startswith(
@@ -192,12 +191,7 @@ def project_coding_activation_attempt_path(
                         raise ValueError("activation Binding does not match intent")
                     pending = None
                     pending_record_id = None
-        identity = _encoded({
-            "recordId": record.record_id, "parentId": record.parent_id,
-        })
-        ancestry.update(len(identity).to_bytes(4, "big"))
-        ancestry.update(identity)
-        previous_id = record.record_id
+        ancestry.advance(record, _encoded)
     if unknown_version:
         return CodingActivationAttemptPathProjection("unknown_version")
     if pending is not None:
