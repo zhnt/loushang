@@ -1389,6 +1389,37 @@ the fixture's workspace review skill. The comparison leaves that test and
 its later assertions intact. Native Worker and Windows execution were not
 exercised in this batch.
 
+## Session Owner Registration And Construction Rollback
+
+The staged Session binding owner prepares the original command registry and
+owner generation bindings. It preserves the empty registry for a
+Catalog-owned Session with Base disabled. The binding order is Base Tool,
+Base commands, LSP, then Arch. Once the Session controller exists, its tool
+registration slots still connect in LSP, Arch, Base order. Their nominal
+Product types and diagnostic labels remain intact.
+
+Construction failure releases the original Worker Tool, capability assembly,
+Base plugin evidence, locally acquired side-question binding and locally
+acquired capability runtime in that order. The existing Harness cleanup
+runner preserves the primary error and records failures of later steps.
+The existing Harness publication and retirement authorities still own
+receipt and graph state.
+
+Coding selects the nominal owners, command policy, tool options and Worker
+query registration. The staging module temporarily borrows the original
+Product assemblies and slot classes. It reuses the Harness command registry,
+deferred slot interface and cleanup runner. The change removes 138 Product
+lines and adds 180 staging lines, for a net increase of 42 production lines.
+The comparison against the preceding checkpoint matches 16,320 registration
+and late-binding traces and 972 rollback and cleanup-error traces.
+
+The Linux regression run passed 35 Session construction, publication,
+lifecycle and command cases. Two failure routes passed again after final
+rollback edits, and 17 architecture checks passed. The normalized Coding
+module-pair count remains 1,661, and the runtime import scan found no path
+from the new binding module back to itself. Native Windows and Worker
+execution remain unverified in this batch.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

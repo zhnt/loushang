@@ -13,7 +13,6 @@ from loushang.ai.api_registry import APIRegistry
 from loushang.ai.types import Tool, UserMessage
 from loushang.coding.arch._plugin_tool_owner import (
     CodingArchToolOwner,
-    CodingArchToolRegistrationSlot,
 )
 from loushang.coding.compaction.adapter import (
     coding_single_call_capacity_pressure,
@@ -22,12 +21,10 @@ from loushang.coding.compaction.adapter import (
 from loushang.coding.compaction.adapter import (
     execute_coding_compaction as _execute_coding_compaction,
 )
-from loushang.coding.composition.base_owners import CodingBaseToolRegistrationSlot
 from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssembly,
     CodingBasePluginAssemblyError,
     CodingBasePluginSessionAssembly,
-    build_coding_base_plugin_owners,
 )
 from loushang.coding.composition.base_product import (
     CodingBaseProductSessionAssembly,
@@ -54,6 +51,10 @@ from loushang.coding.composition.runtime_admission import (
 )
 from loushang.coding.composition.sets import CodingCompositionSetPlan
 from loushang.coding.harness.session import runtime_selection
+from loushang.coding.harness.session.owner_binding import (
+    prepare_owner_bindings,
+    rollback_unpublished_construction,
+)
 from loushang.coding.lsp._deferred_generation import (
     CodingDeferredLspGeneration,
     dormant_lsp_tool_infos,
@@ -61,7 +62,6 @@ from loushang.coding.lsp._deferred_generation import (
 from loushang.coding.lsp._plugin_opt_in import CodingLspPluginOptInAssembly
 from loushang.coding.lsp._plugin_tool_owner import (
     CodingLspToolOwner,
-    CodingLspToolRegistrationSlot,
 )
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_SESSION_REQUIREMENT,
@@ -144,13 +144,7 @@ from loushang.harness.session._resume_continuation import (
     _ResumeRuntimeCandidate,
 )
 from loushang.harness.session.bash import UserBashHookResult, UserBashRequest
-from loushang.harness.session.capability_composition_inputs import (
-    SessionCapabilityOwnerGenerationBinding,
-)
 from loushang.harness.session.changelog import read_changelog_for_cwd
-from loushang.harness.session.command_controller import (
-    SessionCommandGenerationRegistry,
-)
 from loushang.harness.session.composition import sleep_for_retry
 from loushang.harness.session.cwd_audit import CwdBoundServicesAudit
 from loushang.harness.session.event_types import AgentSessionEvent
@@ -170,7 +164,6 @@ from loushang.harness.session.resource_refresh_gate import (
     ResourceCatalogRefreshGatePort,
 )
 from loushang.harness.tools.core import ToolDefinition
-from loushang.harness.tools.workspace.factory import ToolsOptions
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -697,100 +690,19 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             StagedResourceCompositionCandidate | None
         ) = None
         locally_created_side_question_binding: LegacySideQuestionBinding | None = None
-        lsp_tool_registration_slot: CodingLspToolRegistrationSlot | None = None
-        arch_tool_registration_slot: CodingArchToolRegistrationSlot | None = None
-        owner_bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...] = ()
-        base_tool_registration_slot: CodingBaseToolRegistrationSlot | None = None
-        # Catalog-owned Sessions must never fall back to the historical
-        # unconditional standard-command publisher.  An empty registry is the
-        # explicit Product selection when ``coding.base`` is absent; the base
-        # owner stages its exact command generation into the same registry.
-        command_generations = (
-            SessionCommandGenerationRegistry()
-            if initial_resource_catalog_bootstrap is not None
-            else None
+        registrations = prepare_owner_bindings(
+            has_catalog_bootstrap=initial_resource_catalog_bootstrap is not None,
+            base_assembly=coding_base_plugin_assembly,
+            base_session_assembly=coding_base_plugin_session_assembly,
+            product_base=product_base,
+            capability_assembly=capability_plugin_assembly,
+            lsp_tool_owner=lsp_tool_owner,
+            arch_tool_owner=arch_tool_owner,
+            settings_manager=settings_manager,
+            diagnostics_service=diagnostics_service,
+            clock=coding_plugin_clock,
+            product_label="Coding",
         )
-        plugin_assembly = (
-            capability_plugin_assembly.plugin_assembly
-            if capability_plugin_assembly is not None
-            else (
-                coding_base_plugin_session_assembly.plugin_assembly
-                if coding_base_plugin_session_assembly is not None
-                else None
-            )
-        )
-        if coding_base_plugin_assembly is not None or product_base is not None:
-            if coding_plugin_clock is None or (
-                product_base is None and plugin_assembly is None
-            ):
-                raise ValueError("Coding base owner inputs are unavailable")
-            if product_base is not None:
-                base_host_environment = product_base.host_environment
-            else:
-                assert coding_base_plugin_assembly is not None
-                base_host_environment = coding_base_plugin_assembly.host_environment
-            if command_generations is None:
-                command_generations = SessionCommandGenerationRegistry()
-            get_external_tool_policy = getattr(
-                settings_manager,
-                "get_external_tool_policy",
-                None,
-            )
-            get_shell_path = getattr(settings_manager, "get_shell_path", None)
-            get_shell_command_prefix = getattr(
-                settings_manager,
-                "get_shell_command_prefix",
-                None,
-            )
-            tool_options = ToolsOptions(
-                diagnostics_service=diagnostics_service,
-                external_tool_policy=(
-                    get_external_tool_policy()
-                    if callable(get_external_tool_policy)
-                    else None
-                ),
-                host_environment=base_host_environment,
-                shell_path=(get_shell_path() if callable(get_shell_path) else None),
-                command_prefix=(
-                    get_shell_command_prefix()
-                    if callable(get_shell_command_prefix)
-                    else None
-                ),
-            )
-            if product_base is not None:
-                base_owners = product_base.build_owners(
-                    clock=coding_plugin_clock,
-                    tool_options=tool_options,
-                )
-            else:
-                assert coding_base_plugin_assembly is not None
-                assert plugin_assembly is not None
-                base_owners = build_coding_base_plugin_owners(
-                    coding_base_plugin_assembly,
-                    plugin_assembly,
-                    clock=coding_plugin_clock,
-                    tool_options=tool_options,
-                )
-            if base_owners.tool is not None:
-                base_tool_registration_slot = CodingBaseToolRegistrationSlot()
-                owner_bindings = (base_owners.tool.bind(base_tool_registration_slot),)
-            if base_owners.command is not None:
-                owner_bindings = (
-                    *owner_bindings,
-                    base_owners.command.bind(command_generations),
-                )
-        if lsp_tool_owner is not None:
-            lsp_tool_registration_slot = CodingLspToolRegistrationSlot()
-            owner_bindings = (
-                *owner_bindings,
-                lsp_tool_owner.bind(lsp_tool_registration_slot),
-            )
-        if arch_tool_owner is not None:
-            arch_tool_registration_slot = CodingArchToolRegistrationSlot()
-            owner_bindings = (
-                *owner_bindings,
-                arch_tool_owner.bind(arch_tool_registration_slot),
-            )
         resolution = None
         if extension_runner is not None and (
             resolved_capability_runtime is None or side_question_binding is None
@@ -942,9 +854,9 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
                     if capability_plugin_assembly is not None
                     else None
                 ),
-                capability_owner_generation_bindings=owner_bindings,
+                capability_owner_generation_bindings=registrations.generations,
                 owner_publication_hooks=owner_publication_hooks,
-                command_generation_registry=command_generations,
+                command_generation_registry=registrations.command_registry,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
                 resource_catalog_refresh_bootstrap_factory=(
                     resource_catalog_refresh_bootstrap_factory
@@ -958,12 +870,8 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
                     else None
                 ),
             )
-            if lsp_tool_registration_slot is not None:
-                lsp_tool_registration_slot.bind(self._composition.tool_controller)
-            if arch_tool_registration_slot is not None:
-                arch_tool_registration_slot.bind(self._composition.tool_controller)
-            if base_tool_registration_slot is not None:
-                base_tool_registration_slot.bind(self._composition.tool_controller)
+            for registration_slot in registrations.tool_slots:
+                registration_slot.bind(self._composition.tool_controller)
             if coding_worker_turn_tool is not None:
                 assert coding_product_worker_ordinary_binding is not None
                 receipt = coding_product_worker_ordinary_binding.activation_receipt
@@ -983,60 +891,14 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
                     )
                 )
         except BaseException as error:
-            run_cleanup_steps(
+            rollback_unpublished_construction(
                 error,
-                (
-                    *(
-                        (
-                            (
-                                "Coding Worker turn Tool admission rollback",
-                                self._coding_worker_turn_tool_lease.rollback_registration,
-                            ),
-                        )
-                        if self._coding_worker_turn_tool_lease is not None
-                        else ()
-                    ),
-                    *(
-                        (
-                            (
-                                "Coding Capability Plugin evidence cleanup",
-                                capability_plugin_assembly.abort_unpublished,
-                            ),
-                        )
-                        if capability_plugin_assembly is not None
-                        else ()
-                    ),
-                    *(
-                        (
-                            (
-                                "Coding base Plugin evidence cleanup",
-                                coding_base_plugin_assembly.close,
-                            ),
-                        )
-                        if coding_base_plugin_assembly is not None
-                        else ()
-                    ),
-                    *(
-                        (
-                            (
-                                "direct Session side-question cleanup",
-                                locally_created_side_question_binding.dispose,
-                            ),
-                        )
-                        if locally_created_side_question_binding is not None
-                        else ()
-                    ),
-                    *(
-                        (
-                            (
-                                "direct Session capability cleanup",
-                                locally_created_capability_runtime.dispose,
-                            ),
-                        )
-                        if locally_created_capability_runtime is not None
-                        else ()
-                    ),
-                ),
+                worker_tool_lease=self._coding_worker_turn_tool_lease,
+                capability_assembly=capability_plugin_assembly,
+                base_assembly=coding_base_plugin_assembly,
+                owned_side_question=locally_created_side_question_binding,
+                owned_runtime=locally_created_capability_runtime,
+                product_label="Coding",
             )
             raise
 

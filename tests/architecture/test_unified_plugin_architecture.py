@@ -4507,9 +4507,6 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
                 and node.func.id in command_catalog_names
             ):
                 standard_command_catalog_calls.append(path)
-    agent_session = Path("src/loushang/coding/session/agent_session.py").read_text(
-        encoding="utf-8"
-    )
     coding_sdk = Path("src/loushang/coding/__init__.py").read_text(encoding="utf-8")
     coding_bootstrap = Path('src/loushang/coding/composition/bootstrap.py').read_text(
         encoding="utf-8"
@@ -4538,6 +4535,9 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
     assert set(standard_command_catalog_calls) == {
         Path('src/loushang/coding/composition/base_owners.py')
     }
-    assert "build_coding_base_plugin_owners(" in agent_session
-    assert "SessionCommandGenerationRegistry()" in agent_session
+    owner_binding = Path(
+        "src/loushang/coding/harness/session/owner_binding.py"
+    ).read_text(encoding="utf-8")
+    assert "build_coding_base_plugin_owners(" in owner_binding
+    assert "SessionCommandGenerationRegistry()" in owner_binding
     assert "command_generations=self._command_generation_registry" in agent_product
