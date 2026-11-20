@@ -20,6 +20,9 @@ from loushang.coding.composition.dependency_grants import (
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.harness.session import plugin_preparation as _preparation_programs
+from loushang.coding.harness.session.registration_authority import (
+    bind_selected_registration_authority,
+)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
@@ -62,7 +65,6 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
     OwnerContributionPolicy,
-    OwnerContributionSnapshot,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
@@ -100,7 +102,6 @@ from loushang.harness.runtime.registration import OwnerGenerationRetirementRecei
 from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
-    SessionCapabilityOwnerAuthorityGate,
 )
 from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
     _PreparationFailureCleanup,
@@ -881,47 +882,14 @@ def _build_tool_owners(
     tool_modes: Mapping[str, CapabilityMountMode],
     clock: Callable[[], int],
 ) -> Mapping[str, CodingCapabilityToolOwner]:
-    trust_snapshots = selection.plan.source_trust_snapshots
-
-    def read_owner(
-        owner_id: str,
-        contribution_kind: str,
-        product_id: str,
-    ) -> OwnerContributionSnapshot:
-        policy = authority.policy
-        if (
-            owner_id != policy.owner_id
-            or contribution_kind != policy.contribution_kind
-            or product_id != policy.product_id
-        ):
-            raise ValueError("Coding Tool owner reader received another owner")
-        return authority.snapshot()
-
-    def read_trust(
-        plugin_id: str,
-        source_identity: str,
-    ) -> PluginSourceTrustSnapshotV1:
-        matches = tuple(
-            item
-            for item in trust_snapshots
-            if item.plugin_id == plugin_id
-            and item.package_source_identity == source_identity
-        )
-        if len(matches) != 1:
-            raise ValueError("Coding Tool owner requires one trust snapshot")
-        return matches[0]
-
-    def read_product_policy(product_id: str, requested_scope_id: str) -> str:
-        if product_id != CODING_PRODUCT_ID or requested_scope_id != scope_id:
-            raise ValueError("Coding Tool owner received another Product scope")
-        return selection.plan.context.policy_revision
-
-    gate = SessionCapabilityOwnerAuthorityGate(
-        authority_context=(plugin_assembly.product_composition.authority_context),
-        owner_snapshot_reader=read_owner,
-        trust_snapshot_reader=read_trust,
-        product_policy_revision_reader=read_product_policy,
+    gate = bind_selected_registration_authority(
+        selection,
+        plugin_assembly,
+        authority=authority,
+        product_id=CODING_PRODUCT_ID,
+        scope_id=scope_id,
         clock=clock,
+        label="Coding Tool owner",
     )
     admissions = plugin_assembly.product_composition.catalog_admissions
 

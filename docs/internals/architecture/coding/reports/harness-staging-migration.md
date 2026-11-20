@@ -1663,6 +1663,33 @@ observations, and seven historical nominal contracts match. Windows
 environment selection and capture are exercised in Linux tests. Native
 Windows execution remains unverified.
 
+## Registration Authority For Compiled And Selected Plugins
+
+Base Tool and Command owners and selected capability Tool owners now bind
+their current authority readers in one staged Session module. It resolves
+an exact owner and reads its live snapshot, requires one exact Plugin
+source trust snapshot, and uses the existing Harness registration gate for
+admission, stale evidence rejection and the single-use start witness.
+
+The compiled route still verifies the ordered owner snapshot inventory
+before constructing the gate and reads trust and policy from its compiled
+context. The selected route still checks the single owner's live policy,
+pins the selected plan trust snapshots and reads the plan policy revision
+when the gate is checked. Coding supplies the exact contribution choices,
+Product and scope, and diagnostics.
+
+This batch removes 71 Python lines from the Product edge and adds 138 in
+staging, for a net increase of 67. The staged module has typed entry points
+for both evidence sources and no Coding imports or intermediate Product
+dependency. The normalized Coding graph remains at 1,659 pairs.
+
+Controlled comparisons match 180 compiled and 180 selected observations
+covering invalid scope, missing or ambiguous trust, live owner changes and
+policy revision changes. All 37 focused non-live tests pass, including the
+actual Base, LSP and Arch owner paths and Harness revalidation after an
+asynchronous stage. The final LSP and Arch paths pass both rechecks.
+Native Windows execution remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
