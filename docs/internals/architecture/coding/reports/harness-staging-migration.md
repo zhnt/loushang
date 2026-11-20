@@ -1449,6 +1449,33 @@ Hosted architecture run passed 32. All 39 selected Embedded and Hosted
 cases passed on the final settlement path. Native Windows and Worker
 execution remain unverified in this batch.
 
+## Shared Legacy Removal History Proof
+
+Removal admission before the first fence and authenticated review after the
+fence both use the existing settled-management-history owner. That owner now
+checks operations, retirement records and retired Instance evidence for four
+paths, including the existing installation inventory and local-data
+admission. Both removal paths also share their lock checks and Installation
+evidence reads. Each continues to use its original snapshot authority and
+checks the same members with the original byte budget and error order.
+
+The pre-fence check retains the current cutover owner's default operation
+read limit. The post-fence review retains its second-stage owner, explicitly
+bounds the read and captures the operations digest before checking Instance
+evidence. The Product entry retains the historical record types, the
+installed/removed decision and the admissible disable set. The shared proof
+grants no repair access. Its normalized module graph remains at 1,662 pairs,
+and the added staged edge to the shared proof has no return path.
+
+This batch deletes four duplicate journal names in the Product layer and
+cuts 42 lines from staging, for 46 fewer production lines. The three proof
+routes match the preceding snapshot code across 864 comparisons covering
+read kwargs and ordering, missing evidence, rejected locks, parser failures,
+digest timing and the effective error chain. All 29 final Linux regression
+cases passed across removed and active local-data histories, including actual
+management journals and retired Instance records. The existing lifecycle
+architecture location check also passed. Native Windows was not exercised.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
