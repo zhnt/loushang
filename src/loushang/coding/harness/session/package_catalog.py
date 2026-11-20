@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,6 +73,18 @@ if TYPE_CHECKING:
     from loushang.coding.composition.capability_specs import (
         CodingCapabilityPluginConfig,
     )
+    from loushang.coding.resources.catalog import CodingResourceCatalogSourcePolicy
+    from loushang.harness.resource_catalog.product_inputs import (
+        InitialResourceCatalogProductAdapter,
+    )
+    from loushang.harness.resource_catalog.product_snapshot_source import (
+        ProductSelectedResourceInput,
+    )
+    from loushang.harness.resource_catalog.session_bootstrap import (
+        InitialSessionResourceCatalogBootstrap,
+    )
+    from loushang.harness.resources.types import ResourceBundle
+    from loushang.harness.session.bootstrap_services import BootstrapServices
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +102,15 @@ class CatalogProductAuthority:
         if self.external is not None:
             return self.external.product_composition
         return preparation.product_composition if preparation is not None else None
+
+    def snapshot_resources(
+        self, *, allow_empty_snapshot: bool
+    ) -> tuple[ProductSelectedResourceInput, ...] | None:
+        if self.base is not None:
+            return self.base.product_resource_inputs()
+        if self.external is not None:
+            return self.external.product_resource_inputs()
+        return () if allow_empty_snapshot else None
 
     def _require_runtime(self, role: str) -> PackageProductRuntimeBindingV1:
         if self.runtime is None:
@@ -381,3 +403,76 @@ def prepare_refresh_composition(
     if require_resource_seed:
         raise admission_failure(("product_selected_package_missing",))
     return None
+
+
+def prepare_catalog_refresh(
+    services: BootstrapServices,
+    *,
+    get_cwd: Callable[[], str],
+    session_id: str,
+    product_id: str,
+    catalog_generation: int,
+    authority: CatalogProductAuthority,
+    base: CodingBasePluginAssembly | None,
+    supplied: ProductCompositionAssemblyRequest | None,
+    custody: PreparationRootCustody[CodingCapabilityPluginCompositionPreparation],
+    include_configured: bool,
+    source_policy: CodingResourceCatalogSourcePolicy,
+    disabled_source_policy: CodingResourceCatalogSourcePolicy,
+    clock: Callable[[], int],
+    project_catalog: Callable[
+        ..., tuple[InitialResourceCatalogProductAdapter, ResourceBundle]
+    ],
+    admission_failure: _AdmissionFailure,
+) -> InitialSessionResourceCatalogBootstrap:
+    """Refresh the Catalog over the original selected composition and receipt."""
+    authority.require_current(refresh_failure=admission_failure)
+    cwd = Path(get_cwd())
+    receipt = require_catalog_receipt(services.resource_loader, cwd, admission_failure)
+    compiled = authority.base
+    disabled_base = authority.disabled_base is not None
+    evaluated_at = (
+        compiled.product_composition.authority_context.evaluated_at
+        if compiled is not None
+        else clock()
+        if base is not None
+        else int(time.time())
+    )
+    composition = prepare_refresh_composition(
+        receipt,
+        session_id=session_id,
+        evaluated_at=evaluated_at,
+        authority=authority,
+        base=base,
+        supplied=supplied,
+        preparation=custody.preparation,
+        include_configured=include_configured,
+        require_resource_seed=source_policy.include_package_resources,
+        admission_failure=admission_failure,
+    )
+    adapter, bundle = project_catalog(
+        services.resource_loader,
+        cwd=cwd,
+        session_id=session_id,
+        disabled_skills=services.settings_manager.get_settings().disabled_skills,
+        product_composition=composition,
+        product_snapshot_resources=authority.snapshot_resources(
+            allow_empty_snapshot=disabled_base and composition is not None
+        ),
+        admission_now=evaluated_at,
+        clock=(
+            clock if base is not None or compiled is not None or disabled_base else None
+        ),
+        receipt=receipt,
+        source_policy=(
+            disabled_source_policy
+            if disabled_base and composition is None
+            else source_policy
+        ),
+    )
+    return adapter.prepare_session_bootstrap(
+        product_id=product_id,
+        session_id=session_id,
+        base_resource_bundle=bundle,
+        catalog_generation=catalog_generation,
+    )

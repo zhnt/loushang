@@ -1474,7 +1474,8 @@ read kwargs and ordering, missing evidence, rejected locks, parser failures,
 digest timing and the effective error chain. All 29 final Linux regression
 cases passed across removed and active local-data histories, including actual
 management journals and retired Instance records. The existing lifecycle
-architecture location check also passed. Native Windows was not exercised.
+architecture location check and the broader 185-case regression passed.
+Native Windows was not exercised.
 
 ## Session Composition Receipt And Model History
 
@@ -1505,10 +1506,40 @@ validator formatting and explicit typed inputs account for the cost. The
 base comparison matches 256 header, 8,192 receipt, 864 publication and
 8,865 Model History traces, including chained errors and the order of
 publication. The focused Linux run passed 21 cases. All four final
-publication rechecks and both architecture checks passed. Three additional
-Session and CLI cases hit `transcript_writer:unsafe` at the same Harness
-lease check on this batch and on the prior checkpoint. Native Windows
+publication rechecks and both architecture checks passed. The 85-case
+regression passed 82 cases. Three Session and CLI cases hit
+`transcript_writer:unsafe` at the same Harness lease check on this batch and
+on the prior checkpoint. Native Windows
 and Worker execution were not exercised.
+
+## Catalog Adapter Admission And Refresh
+
+One staged adapter binds current loader receipts for Session startup,
+package previews, local Plugin discovery and refresh. It checks scope,
+time, supply routes and exact Resource admissions in the original order.
+It then uses the existing Harness loader selection, adapter and bootstrap.
+Coding retains its canonical source policies, Product ID and diagnostics,
+and the original compiler that selects and assembles Product Plugins.
+The adapter's only back-reference to Coding is the source policy annotation.
+
+The staged Package Product catalog owner now rechecks authority, captures
+the next receipt, reuses the existing composition selection and supplies
+the same adapter to the original Session bootstrap generation. Fenced
+startup and refresh share snapshot input projection, including the explicit
+empty snapshot for a disabled Base with a composition. The existing
+projection hook still receives the same clock and policy. The Harness
+refresh transaction remains the owner of publication, rollback and cleanup.
+
+This batch removes 119 Product lines and adds 232 staging lines, for a net
+increase of 113 production Python lines. The introduced function boundaries
+carry the original typed inputs, Product compiler and projection callback.
+The normalized graph remains at 1,662 pairs. Comparisons against the
+preceding checkpoint match 113,400 adapter and 384 refresh traces, including
+validation order, snapshot selection, clocks, failure and bootstrap calls.
+The Linux run passed 42 cases. The legacy direct-Session watcher case
+failed at the same system-prompt assertion on the prior checkpoint.
+Six final adapter and refresh cases and both architecture checks passed.
+Native Windows and Worker execution were not exercised.
 
 ## Cost And Final Acceptance
 

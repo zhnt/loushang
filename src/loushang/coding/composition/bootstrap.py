@@ -94,9 +94,9 @@ from loushang.coding.harness.session.managed_plugin_preparation import (
 )
 from loushang.coding.harness.session.package_catalog import (
     CatalogProductAuthority,
+    prepare_catalog_refresh,
     prepare_fenced_catalog,
     prepare_initial_composition,
-    prepare_refresh_composition,
 )
 from loushang.coding.harness.session.workspace_bootstrap import (
     bind_session_workspace,
@@ -1417,7 +1417,6 @@ def _create_agent_session(
             ),
         )
         compiled = prepared.authority.base
-        external = prepared.authority.external
         disabled_composition = (
             prepared.authority.disabled_composition(preparation_custody.preparation)
             if compiled is None
@@ -1431,14 +1430,8 @@ def _create_agent_session(
             product_composition=(
                 compiled.product_composition if compiled is not None else disabled_composition
             ),
-            product_snapshot_resources=(
-                compiled.product_resource_inputs()
-                if compiled is not None
-                else external.product_resource_inputs()
-                if external is not None
-                else ()
-                if disabled_composition is not None
-                else None
+            product_snapshot_resources=prepared.authority.snapshot_resources(
+                allow_empty_snapshot=disabled_composition is not None
             ),
             admission_now=(
                 prepared.evaluated_at if compiled is not None else coding_plugin_clock()
@@ -1515,71 +1508,22 @@ def _create_agent_session(
         def prepare_resource_catalog_refresh(
             catalog_generation: int,
         ) -> Any:
-            catalog_authority.require_current(
-                refresh_failure=CodingResourceCatalogAdmissionError
-            )
-            resolved_cwd = Path(session_manager.get_cwd())
-            receipt = require_catalog_receipt(
-                services.resource_loader, resolved_cwd, CodingResourceCatalogAdmissionError
-            )
-            evaluated_at = (
-                product_base_compilation.product_composition.authority_context.evaluated_at
-                if product_base_compilation is not None
-                else (
-                    coding_plugin_clock()
-                    if coding_base_plugin_assembly is not None
-                    else int(time.time())
-                )
-            )
-            product_composition = prepare_refresh_composition(
-                receipt,
+            return prepare_catalog_refresh(
+                services,
+                get_cwd=session_manager.get_cwd,
                 session_id=session_id,
-                evaluated_at=evaluated_at,
+                product_id=CODING_PRODUCT_ID,
+                catalog_generation=catalog_generation,
                 authority=catalog_authority,
                 base=coding_base_plugin_assembly,
                 supplied=catalog_product_composition_assembly,
-                preparation=preparation_custody.preparation,
+                custody=preparation_custody,
                 include_configured=include_configured_catalog_plugins,
-                require_resource_seed=resource_catalog_source_policy.include_package_resources,
+                source_policy=resource_catalog_source_policy,
+                disabled_source_policy=CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
+                clock=coding_plugin_clock,
+                project_catalog=_prepare_coding_catalog_projection,
                 admission_failure=CodingResourceCatalogAdmissionError,
-            )
-            adapter, refreshed_bundle = _prepare_coding_catalog_projection(
-                services.resource_loader,
-                cwd=resolved_cwd,
-                session_id=session_id,
-                disabled_skills=services.settings_manager.get_settings().disabled_skills,
-                product_composition=product_composition,
-                product_snapshot_resources=(
-                    product_base_compilation.product_resource_inputs()
-                    if product_base_compilation is not None
-                    else product_external_data_compilation.product_resource_inputs()
-                    if product_external_data_compilation is not None
-                    else ()
-                    if product_base_disabled_selection is not None
-                    and product_composition is not None
-                    else None
-                ),
-                admission_now=evaluated_at,
-                clock=(
-                    coding_plugin_clock
-                    if coding_base_plugin_assembly is not None
-                    or product_base_compilation is not None
-                    or product_base_disabled_selection is not None
-                    else None
-                ),
-                receipt=receipt,
-                source_policy=(
-                    CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
-                    if product_base_disabled_selection is not None
-                    and product_composition is None
-                    else resource_catalog_source_policy
-                ),
-            )
-            return adapter.prepare_session_bootstrap(
-                product_id=CODING_PRODUCT_ID,
-                session_id=session_id,
-                base_resource_bundle=refreshed_bundle,
-                catalog_generation=catalog_generation,
             )
 
         process_session: AgentSession | None = None
