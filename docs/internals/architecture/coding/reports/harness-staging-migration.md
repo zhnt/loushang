@@ -1476,6 +1476,40 @@ cases passed across removed and active local-data histories, including actual
 management journals and retired Instance records. The existing lifecycle
 architecture location check also passed. Native Windows was not exercised.
 
+## Session Composition Receipt And Model History
+
+The staged Session receipt codec reads the original header identity and
+startup record, including exact version, selected Plugin revisions, Worker
+evidence and owner generation ordering. The current-plan route invokes the
+existing Product registry at the original validation point. Historical
+reads avoid that registry and return detached data. The Coding entries retain
+the public nominal provenance record, header key, extension type, and
+current-plan policy. The same identity format supports Session forks and
+startup output. Session readiness, built-in Session information and Resume
+preview reuse the same receipt/header identity comparison.
+
+The existing staged selection owner now coordinates publication over the
+original Session lock and Transcript writer. It checks historical evidence
+before observing current selections, and marks readiness only after the
+original rejection or append points. The Product supplies its existing
+header key, extension type and diagnostic label. The receipt codec and the
+new read-only Model History helper have no imports from other Coding
+components. The Model History helper delegates invocation projection to
+Harness Transcript, keeps conflicts and missing evidence distinct, and
+reports the initial main invocation. Coding retains the original v1
+input binding checks and nominal outcome shape.
+
+The Product layer removes 180 physical Python lines and staging grows by
+335, for a net increase of 155. The retained Product boundary, expanded
+validator formatting and explicit typed inputs account for the cost. The
+base comparison matches 256 header, 8,192 receipt, 864 publication and
+8,865 Model History traces, including chained errors and the order of
+publication. The focused Linux run passed 21 cases. All four final
+publication rechecks and both architecture checks passed. Three additional
+Session and CLI cases hit `transcript_writer:unsafe` at the same Harness
+lease check on this batch and on the prior checkpoint. Native Windows
+and Worker execution were not exercised.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

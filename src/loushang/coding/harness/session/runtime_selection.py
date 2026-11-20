@@ -24,6 +24,8 @@ from loushang.harness.resources._catalog_records import (
     fingerprint_catalog_value,
 )
 
+from .composition_receipt import read_composition_header, read_composition_receipt
+
 if TYPE_CHECKING:
     from loushang.coding.composition.base_product import (
         CodingBaseProductCompilation,
@@ -384,3 +386,51 @@ def observe_composition_selection(
     if worker_selection is not None:
         evidence["workerSelection"] = worker_selection
     return evidence
+
+
+async def record_composition_startup(
+    session: AgentSession,
+    *,
+    existing_only: bool,
+    prepared_catalog_snapshot: object | None,
+    header_key: str,
+    extension_type: str,
+    label: str,
+) -> None:
+    """Correlate sealed history before appending the first startup receipt."""
+    plan = session._coding_composition_plan
+    if plan is None or not session.session_manager.persist:
+        return
+    identity = read_composition_header(
+        session.session_manager.get_header().metadata, header_key=header_key, label=label
+    )
+    if identity is None or identity[0] != plan.set_id:
+        raise ValueError(f"{label} composition startup changed its pinned set")
+    set_id, plan_fingerprint = identity
+    existing = read_composition_receipt(
+        session.session_manager.get_entries(), extension_type=extension_type, label=label
+    )
+    if existing is not None:
+        if (
+            existing.get("setId") != set_id
+            or existing.get("planFingerprint") != plan_fingerprint
+        ):
+            raise ValueError(f"{label} composition startup differs from its header")
+        if not existing_only:
+            session._coding_session_manager.mark_composition_startup_prepared()
+        return
+    startup_data = session._build_current_coding_composition_receipt(
+        prepared_catalog_snapshot=prepared_catalog_snapshot,
+    )
+    if session._coding_composition_had_entries_at_construction:
+        raise ValueError(
+            f"{label} has input without startup composition evidence; "
+            "create a new Session"
+        )
+    if existing_only:
+        return
+    await session.session_manager.append_custom_entry(
+        extension_type,
+        startup_data,
+    )
+    session._coding_session_manager.mark_composition_startup_prepared()

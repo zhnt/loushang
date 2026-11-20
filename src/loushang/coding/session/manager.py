@@ -26,6 +26,10 @@ from loushang.coding.composition.sets import (
     resolve_coding_composition_set,
 )
 from loushang.coding.harness.session.activation_history import find_input_records
+from loushang.coding.harness.session.composition_receipt import (
+    composition_identity_fields,
+    composition_receipt_matches,
+)
 from loushang.coding.harness.session.writer_acquisition import acquire_writer
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
@@ -499,11 +503,9 @@ class SessionManager(
             # composition until a new Session is created with a sealed choice.
             return None
         return {
-            CODING_COMPOSITION_HEADER_KEY: {
-                "version": 1,
-                "setId": provenance.set_id,
-                "planFingerprint": provenance.plan_fingerprint,
-            }
+            CODING_COMPOSITION_HEADER_KEY: composition_identity_fields(
+                provenance.set_id, provenance.plan_fingerprint
+            )
         }
 
     def get_runtime_capability(self, slot: str) -> object | tuple[object, ...]:
@@ -546,9 +548,8 @@ class SessionManager(
         startup = historical_startup_composition_record(self.get_entries())
         if startup is None:
             raise ValueError("Coding Session has no startup composition receipt")
-        if (
-            startup["setId"] != provenance.set_id
-            or startup["planFingerprint"] != provenance.plan_fingerprint
+        if not composition_receipt_matches(
+            startup, provenance.set_id, provenance.plan_fingerprint
         ):
             raise ValueError("Coding Session startup receipt differs from its header")
         self._coding_composition_ready = True

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from loushang.ai.types import UserMessage
+from loushang.coding.harness.session.model_history import find_initial_model_invocation
 from loushang.coding.resume.binding import (
     inspect_coding_runtime_binding,
     validate_coding_runtime_binding_record,
@@ -19,20 +19,7 @@ from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     coding_resume_input_record_digest,
 )
-from loushang.harness.transcript.kinds import (
-    MODEL_CALL_OUTCOME_KIND,
-    MODEL_INPUT_PREPARED_KIND,
-)
-from loushang.harness.transcript.model_call import (
-    ModelCallInvocationState,
-    project_model_call_invocations,
-)
-from loushang.harness.transcript.model_call_types import ModelCallOutcome
-from loushang.harness.transcript.model_input_types import (
-    ModelInputIntegrityError,
-    ModelInputSnapshot,
-)
-from loushang.harness.transcript.model_input_v2_types import ModelInputSnapshotV2
+from loushang.harness.transcript.model_call import ModelCallInvocationState
 
 CodingResumeModelOutcomeStatus: TypeAlias = Literal[
     "unknown", "conflict", "observed_completed", "observed_failed", "observed_cancelled",
@@ -87,45 +74,14 @@ def observe_coding_resume_model_outcome(
         return CodingResumeModelOutcomeObservationV1(query.input_id, status="conflict")
     index, input_record = matches[0]
     unknown = CodingResumeModelOutcomeObservationV1(query.input_id, input_record.record_id)
-    end = next((i for i in range(index + 1, len(path)) if isinstance(path[i].payload, UserMessage)), len(path))
-    candidates = []
-    for position, record in enumerate(path[index + 1:], start=index + 1):
-        payload = record.payload
-        if record.kind == MODEL_INPUT_PREPARED_KIND and not isinstance(payload, ModelInputSnapshot | ModelInputSnapshotV2):
-            return unknown
-        if not isinstance(payload, ModelInputSnapshot | ModelInputSnapshotV2):
-            continue
-        if (
-            payload.source_leaf_id == input_record.record_id
-            and payload.conversation_id == session_id
-            and payload.product_id == "coding" and payload.purpose == "main"
-        ):
-            candidates.append((position, payload))
-    if not candidates:
-        return unknown
-    # Repeated consumption or replay is not collapsed into the latest success.
-    if len(candidates) != 1:
-        return CodingResumeModelOutcomeObservationV1(query.input_id, input_record.record_id, status="conflict")
-    position, snapshot = candidates[0]
-    if position >= end:
-        return unknown
-    if len(snapshot.invocation_id) > 256 or len(snapshot.snapshot_id) > 256:
-        return unknown
-    for record in path[index + 1:]:
-        if record.kind == MODEL_CALL_OUTCOME_KIND and not isinstance(record.payload, ModelCallOutcome):
-            return unknown
-    if any(
-        isinstance(record.payload, ModelCallOutcome)
-        and record.payload.invocation_id == snapshot.invocation_id
-        for record in path[:position]
-    ):
-        return unknown
-    try:
-        invocations = project_model_call_invocations(path)
-    except ModelInputIntegrityError:
-        return unknown
-    invocation = next((item for item in invocations if item.invocation_id == snapshot.invocation_id), None)
-    if invocation is None or invocation.model_input_snapshot_ids != (snapshot.snapshot_id,):
+    invocation = find_initial_model_invocation(
+        path, index=index, session_id=session_id, product_id="coding"
+    )
+    if invocation == "conflict":
+        return CodingResumeModelOutcomeObservationV1(
+            query.input_id, input_record.record_id, status="conflict"
+        )
+    if invocation is None:
         return unknown
     return CodingResumeModelOutcomeObservationV1(
         query.input_id, input_record.record_id, invocation.invocation_id,

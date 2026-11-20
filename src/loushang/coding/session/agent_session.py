@@ -41,6 +41,7 @@ from loushang.coding.composition.plan import (
     CODING_PRODUCT_ID,
 )
 from loushang.coding.composition.provenance import (
+    CODING_COMPOSITION_HEADER_KEY,
     CODING_COMPOSITION_STARTUP_TYPE,
     historical_composition_provenance,
     historical_startup_composition_record,
@@ -51,6 +52,10 @@ from loushang.coding.composition.runtime_admission import (
 )
 from loushang.coding.composition.sets import CodingCompositionSetPlan
 from loushang.coding.harness.session import runtime_selection
+from loushang.coding.harness.session.composition_receipt import (
+    composition_identity_fields,
+    composition_receipt_matches,
+)
 from loushang.coding.harness.session.owner_binding import (
     prepare_owner_bindings,
     rollback_unpublished_construction,
@@ -1296,9 +1301,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             catalog_schema="loushang.coding-composition-catalog-selection/v1",
         )
         return {
-            "version": 1,
-            "setId": plan.set_id,
-            "planFingerprint": plan.fingerprint,
+            **composition_identity_fields(plan.set_id, plan.fingerprint),
             **evidence,
         }
 
@@ -1308,45 +1311,14 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         existing_only: bool = False,
         prepared_catalog_snapshot: object | None = None,
     ) -> None:
-        plan = self._coding_composition_plan
-        if plan is None or not self.session_manager.persist:
-            return
-        provenance = historical_composition_provenance(
-            self.session_manager.get_header().metadata
-        )
-        if provenance is None or provenance.set_id != plan.set_id:
-            raise ValueError(
-                "Coding Session composition startup changed its pinned set"
-            )
-        existing = historical_startup_composition_record(
-            self.session_manager.get_entries()
-        )
-        if existing is not None:
-            if (
-                existing.get("setId") != provenance.set_id
-                or existing.get("planFingerprint") != provenance.plan_fingerprint
-            ):
-                raise ValueError(
-                    "Coding Session composition startup differs from its header"
-                )
-            if not existing_only:
-                self._coding_session_manager.mark_composition_startup_prepared()
-            return
-        startup_data = self._build_current_coding_composition_receipt(
+        await runtime_selection.record_composition_startup(
+            self,
+            existing_only=existing_only,
             prepared_catalog_snapshot=prepared_catalog_snapshot,
+            header_key=CODING_COMPOSITION_HEADER_KEY,
+            extension_type=CODING_COMPOSITION_STARTUP_TYPE,
+            label="Coding Session",
         )
-        if self._coding_composition_had_entries_at_construction:
-            raise ValueError(
-                "Coding Session has input without startup composition evidence; "
-                "create a new Session"
-            )
-        if existing_only:
-            return
-        await self.session_manager.append_custom_entry(
-            CODING_COMPOSITION_STARTUP_TYPE,
-            startup_data,
-        )
-        self._coding_session_manager.mark_composition_startup_prepared()
 
     def _get_builtin_session_info(self) -> dict[str, object]:
         info = super()._get_builtin_session_info()
@@ -1358,8 +1330,9 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         )
         if startup is not None and (
             provenance is None
-            or startup["setId"] != provenance.set_id
-            or startup["planFingerprint"] != provenance.plan_fingerprint
+            or not composition_receipt_matches(
+                startup, provenance.set_id, provenance.plan_fingerprint
+            )
         ):
             raise ValueError(
                 "Coding Session composition startup differs from its header"

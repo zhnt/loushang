@@ -10,6 +10,8 @@ from typing import Literal
 
 from loushang.coding.resume import history as _binding
 
+from .composition_receipt import composition_receipt_matches
+
 
 def read_resume_snapshot(
     path: str | _binding.Path,
@@ -86,9 +88,8 @@ def read_resume_snapshot(
         provenance_conflict=(
             startup is not None
             and composition is not None
-            and (
-                startup["setId"] != composition.set_id
-                or startup["planFingerprint"] != composition.plan_fingerprint
+            and not composition_receipt_matches(
+                startup, composition.set_id, composition.plan_fingerprint
             )
         ),
         binding_status=binding_status,
