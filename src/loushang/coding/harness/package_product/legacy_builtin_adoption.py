@@ -7,6 +7,11 @@ Product policy and nominal contracts are explicit intermediate dependencies.
 from __future__ import annotations
 
 from loushang.coding.package import legacy_builtin_adoption as _binding
+from loushang.harness.package_product._plugin_bootstrap import (
+    bootstrap_reviewed_product_plugins,
+)
+
+from .reviewed_plugin_adoption import replay_reviewed_removals, reviewed_disabled_ids
 
 
 def adopt_builtin_snapshot(
@@ -52,15 +57,15 @@ def adopt_builtin_snapshot(
     )
     try:
         product = owner.runtime_owner.product_owner
-        disabled = {item.plugin_id for item in receipt.review.disabled_plugins}
-        disabled.update(
-            item.plugin_id
-            for item in receipt.review.builtin_intent
-            if item.desired_state == "installed_disabled"
+        disabled = reviewed_disabled_ids(receipt.review)
+        replay_reviewed_removals(
+            product,
+            receipt.review.removed_builtin_ids,
+            product_id=_binding._CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
+            operation_id_for=receipt.review.removed_builtin_operation_id,
+            error_prefix=_binding._REMOVAL_LABEL,
         )
-        for plugin_id in receipt.review.removed_builtin_ids:
-            _binding._preserve_removed_builtin(owner, receipt, plugin_id)
-        _binding.bootstrap_reviewed_product_plugins(
+        bootstrap_reviewed_product_plugins(
             product,
             _binding._BUILTINS,
             disabled_ids=disabled,

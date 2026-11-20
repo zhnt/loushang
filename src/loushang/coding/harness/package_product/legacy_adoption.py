@@ -9,6 +9,11 @@ from __future__ import annotations
 from typing import Literal
 
 from loushang.coding.package import legacy_local_adoption as _binding
+from loushang.harness.package_product._plugin_bootstrap import (
+    bootstrap_reviewed_product_plugins,
+)
+
+from .reviewed_plugin_adoption import replay_reviewed_removals, reviewed_disabled_ids
 
 
 def adopt_local_review(
@@ -155,18 +160,16 @@ def adopt_local_review(
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
     try:
-        disabled_builtins = {
-            item.plugin_id for item in acceptance.review.disabled_plugins
-        }
-        disabled_builtins.update(
-            item.plugin_id
-            for item in acceptance.review.builtin_intent
-            if item.desired_state == "installed_disabled"
-        )
+        disabled_builtins = reviewed_disabled_ids(acceptance.review)
         product = product_owner.runtime_owner.product_owner
-        for builtin_id in acceptance.review.removed_builtin_ids:
-            _binding._preserve_removed_builtin(product_owner, acceptance, builtin_id)
-        _binding.bootstrap_reviewed_product_plugins(
+        replay_reviewed_removals(
+            product,
+            acceptance.review.removed_builtin_ids,
+            product_id=_binding._CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
+            operation_id_for=acceptance.review.removed_builtin_operation_id,
+            error_prefix=_binding._REMOVAL_LABEL,
+        )
+        bootstrap_reviewed_product_plugins(
             product,
             (
                 _binding._LEGACY_ADOPTION_VALUES["value_007"],

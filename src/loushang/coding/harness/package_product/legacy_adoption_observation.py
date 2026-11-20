@@ -10,6 +10,8 @@ from typing import Literal
 
 from loushang.coding.package import legacy_local_adoption_read as _binding
 
+from .reviewed_plugin_adoption import reviewed_disabled_ids
+
 
 def adoption_settled(
     lifecycle: _binding.CodingPluginLifecycleStateLayout,
@@ -82,14 +84,7 @@ def adoption_settled(
             / _binding._LEGACY_PROGRAM_VALUES["value_005"]
         )
         desired = preview.selected_manifests.root_reader.desired_state
-        disabled_builtins = {
-            item.plugin_id for item in accepted.review.disabled_plugins
-        }
-        disabled_builtins.update(
-            item.plugin_id
-            for item in accepted.review.builtin_intent
-            if item.desired_state == "installed_disabled"
-        )
+        disabled_builtins = reviewed_disabled_ids(accepted.review)
         selection = _binding._LegacyAdoptionSelection(
             key=_binding.PluginInstallationKeyV1(
                 product_id=_binding._LEGACY_PROGRAM_VALUES["value_007"],

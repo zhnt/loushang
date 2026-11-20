@@ -9,13 +9,6 @@ from typing import Literal
 from loushang.coding.harness.package_product import legacy_adoption as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager as SettingsManager
-from loushang.harness.package_product._plugin_bootstrap import (
-    bootstrap_reviewed_product_plugins as bootstrap_reviewed_product_plugins,
-)
-from loushang.harness.package_product._plugin_bootstrap import (
-    preserve_removed_product_plugin,
-)
-from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
@@ -82,11 +75,10 @@ from .product_runtime import (
     CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
 )
 from .product_runtime import (
-    CodingFencedProductApplicationOwner,
-)
-from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
+
+_REMOVAL_LABEL = "Coding removed builtin Product"
 
 _LEGACY_ADOPTION_VALUES = {
     "value_001": "skill",
@@ -159,29 +151,6 @@ def adopt_coding_legacy_local_data_review(
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
         resource_kind=resource_kind,
-    )
-
-
-def _preserve_removed_builtin(
-    owner: CodingFencedProductApplicationOwner,
-    acceptance: CodingLegacyLocalAcceptanceV1,
-    plugin_id: str,
-) -> None:
-    """Write one reviewed absent tombstone through Product management."""
-
-    product = owner.runtime_owner.product_owner
-    key = PluginInstallationKeyV1(
-        product_id="coding",
-        installation_scope="workspace",
-        scope_id=product.policy.project_scope_id,
-        plugin_id=plugin_id,
-    )
-    operation_id = acceptance.review.removed_builtin_operation_id(plugin_id)
-    preserve_removed_product_plugin(
-        product,
-        key,
-        operation_id,
-        error_prefix="Coding removed builtin Product",
     )
 
 

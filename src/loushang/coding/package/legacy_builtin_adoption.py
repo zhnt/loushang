@@ -8,15 +8,6 @@ from pathlib import Path
 from loushang.coding.harness.package_product import legacy_builtin_adoption as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.package_product._plugin_bootstrap import (
-    bootstrap_reviewed_product_plugins as bootstrap_reviewed_product_plugins,
-)
-from loushang.harness.package_product._plugin_bootstrap import (
-    preserve_removed_product_plugin,
-)
-from loushang.harness.plugin_management.records import (
-    PluginInstallationKeyV1,
-)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
@@ -37,14 +28,13 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
-    CodingFencedProductApplicationOwner,
-)
-from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
 
 _BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
 
+
+_REMOVAL_LABEL = "Coding removed builtin Product"
 
 _LEGACY_ADOPTION_VALUES = {
     "value_001": "Windows builtin migration candidate must be explicit",
@@ -74,34 +64,6 @@ def adopt_coding_first_b_builtin_only(
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
         windows_candidate=windows_candidate,
-    )
-
-
-def _key(
-    owner: CodingFencedProductApplicationOwner, plugin_id: str
-) -> PluginInstallationKeyV1:
-    product = owner.runtime_owner.product_owner
-    return PluginInstallationKeyV1(
-        product_id="coding",
-        installation_scope="workspace",
-        scope_id=product.policy.project_scope_id,
-        plugin_id=plugin_id,
-    )
-
-
-def _preserve_removed_builtin(
-    owner: CodingFencedProductApplicationOwner,
-    receipt: CodingLegacyBuiltinOnlyAcceptanceV1,
-    plugin_id: str,
-) -> None:
-    product = owner.runtime_owner.product_owner
-    key = _key(owner, plugin_id)
-    operation_id = receipt.review.removed_builtin_operation_id(plugin_id)
-    preserve_removed_product_plugin(
-        product,
-        key,
-        operation_id,
-        error_prefix="Coding removed builtin Product",
     )
 
 

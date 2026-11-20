@@ -1367,7 +1367,8 @@ original explicit codec; this metadata adds no enablement reader or writer.
 
 ## Coding Harness Staging Owner Locations
 
-The staging migration preserves all 130 existing `disabled_plugins` source facts.
+Four adoption and observation readers share one reviewed `disabled_plugins`
+projection. The inventory records the shared reader and its original consumers.
 These reviewed operation locations replace the corresponding mechanism scopes;
 nominal fields and actual Product policy remain at their original Code edges.
 This updates the existing inventory without new assertions, gates or coverage.
@@ -1381,10 +1382,10 @@ This updates the existing inventory without new assertions, gates or coverage.
 | `src/loushang/coding/package/legacy_review.py::review_coding_legacy_installed_local_source` | `src/loushang/coding/harness/package_product/legacy_local_review.py::review_local_source` | 2 |
 | `src/loushang/coding/package/legacy_disabled_review.py::review_coding_first_b_disabled_only` | `src/loushang/coding/harness/package_product/legacy_disabled_review.py::review_disabled_snapshot` | 3 |
 | Retired private forwarding function `_require_frozen_review` in `src/loushang/coding/package/legacy_local_acceptance.py` | `src/loushang/coding/harness/package_product/legacy_local_acceptance.py::require_frozen_review` | 2 |
-| `src/loushang/coding/package/legacy_local_adoption_read.py::coding_legacy_local_data_adoption_settled` | `src/loushang/coding/harness/package_product/legacy_adoption_observation.py::adoption_settled` | 1 |
-| `src/loushang/coding/package/legacy_local_adoption.py::adopt_coding_legacy_local_data_review` | `src/loushang/coding/harness/package_product/legacy_adoption.py::adopt_local_review` | 1 |
-| `src/loushang/coding/package/legacy_builtin_adoption.py::adopt_coding_first_b_builtin_only` | `src/loushang/coding/harness/package_product/legacy_builtin_adoption.py::adopt_builtin_snapshot` | 1 |
-| `src/loushang/coding/package/legacy_removed_adoption.py::adopt_coding_first_b_removed_local` | `src/loushang/coding/harness/package_product/legacy_removed_adoption.py::adopt_removed_snapshot` | 1 |
+| `src/loushang/coding/package/legacy_local_adoption_read.py::coding_legacy_local_data_adoption_settled` | `src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py::reviewed_disabled_ids` via `src/loushang/coding/harness/package_product/legacy_adoption_observation.py::adoption_settled` | 1 shared |
+| `src/loushang/coding/package/legacy_local_adoption.py::adopt_coding_legacy_local_data_review` | `src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py::reviewed_disabled_ids` via `src/loushang/coding/harness/package_product/legacy_adoption.py::adopt_local_review` | 1 shared |
+| `src/loushang/coding/package/legacy_builtin_adoption.py::adopt_coding_first_b_builtin_only` | `src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py::reviewed_disabled_ids` via `src/loushang/coding/harness/package_product/legacy_builtin_adoption.py::adopt_builtin_snapshot` | 1 shared |
+| `src/loushang/coding/package/legacy_removed_adoption.py::adopt_coding_first_b_removed_local` | `src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py::reviewed_disabled_ids` via `src/loushang/coding/harness/package_product/legacy_removed_adoption.py::adopt_removed_snapshot` | 1 shared |
 | `src/loushang/coding/package/legacy_classification.py::classify_coding_legacy_workspace` | `src/loushang/coding/harness/package_product/legacy_classification.py::classify_workspace_evidence` | 3 |
 | `src/loushang/coding/package/legacy_classification.py::classify_coding_legacy_source_configuration` | `src/loushang/coding/harness/package_product/legacy_classification.py::classify_source_projection` | 2 |
 | `src/loushang/coding/package/legacy_configured_source.py::match_coding_legacy_local_skill_configured_source` | `src/loushang/coding/harness/package_product/legacy_source_matching.py::match_configured_source` | 2 |

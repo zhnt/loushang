@@ -8,12 +8,6 @@ from pathlib import Path
 from loushang.coding.harness.package_product import legacy_removed_adoption as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.package_product._plugin_bootstrap import (
-    bootstrap_reviewed_product_plugins as bootstrap_reviewed_product_plugins,
-)
-from loushang.harness.package_product._plugin_bootstrap import (
-    preserve_removed_product_plugin,
-)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
@@ -21,7 +15,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
-from .legacy_builtin_adoption import _key
 from .legacy_removed_acceptance import (
     CodingLegacyRemovedAcceptanceV1,
 )
@@ -33,14 +26,13 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
-    CodingFencedProductApplicationOwner,
-)
-from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
 
 _BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
 
+
+_REMOVAL_LABEL = "Coding removed local Product"
 
 _LEGACY_ADOPTION_VALUES = {"value_001": "Coding builtin-only Product"}
 
@@ -80,22 +72,6 @@ def _removed_operation_id(
         + sha256(
             f"{receipt.review.store_id}\0{receipt.review.review_id}\0{plugin_id}".encode()
         ).hexdigest()
-    )
-
-
-def _preserve_removed(
-    owner: CodingFencedProductApplicationOwner,
-    receipt: CodingLegacyRemovedAcceptanceV1,
-    plugin_id: str,
-) -> None:
-    product = owner.runtime_owner.product_owner
-    key = _key(owner, plugin_id)
-    operation_id = _removed_operation_id(receipt, plugin_id)
-    preserve_removed_product_plugin(
-        product,
-        key,
-        operation_id,
-        error_prefix="Coding removed local Product",
     )
 
 

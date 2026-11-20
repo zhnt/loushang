@@ -1262,6 +1262,35 @@ cases pass. Comparison against the prior checkpoint matches 88 archive and
 affected record classes retain their historical imports and pickle identity.
 Native Windows validation remains pending.
 
+## Reviewed Legacy Plugin Choices And Replay
+
+Builtin-only, removed-local and active-local adoption now share one staged
+removal replay. The shared implementation constructs the workspace installation
+key and calls the original Harness Package Product writer for each reviewed
+removal. Coding keeps the original historical operation IDs and policy. The
+removed-local route retains its sorted order and performs its removals before
+projecting disabled choices. The other routes retain the review tuple order
+and project disabled choices before their first removal. The read-only
+adoption observation reuses the projection under its existing read authority.
+
+The three writers call the existing Harness bootstrap owner directly. The
+retired Product functions include three tombstone adapters and the workspace
+key adapter shared by two Product modules. They remove 93 Product lines. The
+shared code and its consumers add 66 staging lines, yielding 27 fewer Python
+lines in production. The dependency check resolves four staged consumers and
+three nominal review typing imports. It verifies all new edges are acyclic
+and records the removed Product-to-Product key dependency.
+
+The three CLI interruption probes now intercept the real tombstone call at
+the shared replay owner. All 49 CLI and Legacy inventory cases pass, including
+three adoption routes, acceptance checkpoints and replay after the first
+tombstone. The five public entry bodies remain identical to the prior
+checkpoint. All 13 lifecycle architecture checks pass with the single
+disabled-choice reader recorded in the existing location inventory.
+The comparison against the prior checkpoint matches 810 traces across all
+three writers, including historical IDs, strictness modes, partial failures
+and cleanup. Native Windows replay remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

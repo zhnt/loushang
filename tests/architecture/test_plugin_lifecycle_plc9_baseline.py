@@ -65,17 +65,14 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/cli/package_cutover.py"),
     Path("src/loushang/coding/composition/bootstrap.py"),
     Path("src/loushang/coding/composition/continuity.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_adoption.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_adoption_observation.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_builtin_adoption.py"),
     Path("src/loushang/coding/harness/package_product/legacy_builtin_review.py"),
     Path("src/loushang/coding/harness/package_product/legacy_classification.py"),
     Path("src/loushang/coding/harness/package_product/legacy_disabled_review.py"),
     Path("src/loushang/coding/harness/package_product/legacy_local_acceptance.py"),
     Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_removed_adoption.py"),
     Path("src/loushang/coding/harness/package_product/legacy_removed_review.py"),
     Path("src/loushang/coding/harness/package_product/legacy_source_matching.py"),
+    Path("src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py"),
     Path("src/loushang/coding/harness/package_product/startup.py"),
     Path("src/loushang/coding/harness/session/configured_continuity.py"),
     Path("src/loushang/coding/package/legacy_builtin_review.py"),
@@ -269,12 +266,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "_require_disabled_only_preflight",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_builtin_adoption.py"
-            ),
-            "adopt_builtin_snapshot",
-        ): 1,
-        (
             Path("src/loushang/coding/package/legacy_builtin_review.py"),
             "CodingLegacyBuiltinOnlyReviewV1",
         ): 1,
@@ -353,20 +344,10 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "require_frozen_review",
         ): 2,
         (
-            Path("src/loushang/coding/harness/package_product/legacy_adoption.py"),
-            "adopt_local_review",
-        ): 1,
-        (
             Path(
-                "src/loushang/coding/harness/package_product/legacy_adoption_observation.py"
+                "src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py"
             ),
-            "adoption_settled",
-        ): 1,
-        (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_removed_adoption.py"
-            ),
-            "adopt_removed_snapshot",
+            "reviewed_disabled_ids",
         ): 1,
         (
             Path("src/loushang/coding/package/legacy_removed_review.py"),
