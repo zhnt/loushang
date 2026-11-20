@@ -10,7 +10,12 @@ from contextlib import contextmanager
 
 from loushang.coding.package import private_data_read_owner as _binding
 
-from . import private_data_backup, private_data_restore_confirmation
+from . import (
+    private_data_backup,
+    private_data_backup_expiry,
+    private_data_restore,
+    private_data_restore_confirmation,
+)
 
 
 def assert_current(self: _binding.CodingArchPrivateDataReadOwner) -> None:
@@ -151,3 +156,54 @@ def verify_restore_confirmation(
             target_id,
             message=_binding._PRIVATE_DATA_QUERY_VALUES["message_03"],
         )
+
+
+def restore_preview(
+    self: _binding.CodingArchPrivateDataReadOwner, key: _binding.PluginInstallationKeyV1, backup_id: str
+) -> _binding.CodingArchPrivateDataRestorePlanV1:
+    source_root = _binding.coding_arch_installation_private_data_root(self.layout, key)
+    if not _binding._digest(backup_id):
+        raise ValueError(_binding._PRIVATE_DATA_QUERY_VALUES["invalid_restore_backup"])
+    with self.offline():
+        return private_data_restore.preview_restore(
+            self.layout,
+            self.state_root,
+            source_root,
+            key,
+            backup_id,
+            desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
+        )
+
+
+def expiry_preview(
+    self: _binding.CodingArchPrivateDataReadOwner,
+    key: _binding.PluginInstallationKeyV1,
+    backup_id: str,
+    confirmation_id: str,
+) -> _binding.CodingArchPrivateDataBackupExpiryPlanV1:
+    if not _binding._digest(backup_id):
+        raise ValueError(_binding._PRIVATE_DATA_QUERY_VALUES["invalid_expiry_backup"])
+    with self.offline():
+        return private_data_backup_expiry.preview_expiry(
+            self.layout,
+            self.state_root,
+            key,
+            backup_id,
+            confirmation_id,
+            completed_restore=lambda: self._current_completed_restore(key, backup_id),
+            desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
+        )
+
+
+def current_completed_restore(
+    self: _binding.CodingArchPrivateDataReadOwner,
+    key: _binding.PluginInstallationKeyV1,
+    backup_id: str,
+) -> tuple[_binding.CodingArchPrivateDataRestoreEventV1, str]:
+    return private_data_restore.current_completed_restore(
+        self.layout,
+        self.state_root,
+        key,
+        backup_id,
+        desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
+    )

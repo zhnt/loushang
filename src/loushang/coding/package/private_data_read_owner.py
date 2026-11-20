@@ -9,10 +9,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.plugin_management import (
-    private_data_backup_expiry,
-    private_data_restore,
-)
 from loushang.coding.harness.plugin_management import private_data_read as _programs
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -40,13 +36,17 @@ from loushang.harness.workspace.paths import assert_workspace_directory_identity
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
-from .installation_private_data import coding_arch_installation_private_data_root
+from .installation_private_data import (
+    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+)
 from .private_data_backup import (
     CodingArchPrivateDataBackupReceiptV1,
-    _digest,
 )
 from .private_data_backup import (
     _backup_parent as _backup_parent,
+)
+from .private_data_backup import (
+    _digest as _digest,
 )
 from .private_data_backup_expiry_records import CodingArchPrivateDataBackupExpiryPlanV1
 from .private_data_deletion_journal import (
@@ -80,6 +80,8 @@ _PRIVATE_DATA_FLOW_VALUES = {
 _PRIVATE_DATA_QUERY_VALUES = {
     "message_01": "Coding Arch backup ID is invalid",
     "message_03": "Coding Arch restore confirmation is stale",
+    "invalid_restore_backup": "Coding Arch restore backup ID is invalid",
+    "invalid_expiry_backup": "Coding Arch backup expiry ID is invalid",
 }
 
 
@@ -127,18 +129,7 @@ class CodingArchPrivateDataReadOwner:
     def restore_preview(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> CodingArchPrivateDataRestorePlanV1:
-        source_root = coding_arch_installation_private_data_root(self.layout, key)
-        if not _digest(backup_id):
-            raise ValueError("Coding Arch restore backup ID is invalid")
-        with self.offline():
-            return private_data_restore.preview_restore(
-                self.layout,
-                self.state_root,
-                source_root,
-                key,
-                backup_id,
-                desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
-            )
+        return _programs.restore_preview(self, key, backup_id)
 
     def verify_restore_confirmation(
         self, key: PluginInstallationKeyV1, backup_id: str, confirmation_id: str
@@ -150,31 +141,12 @@ class CodingArchPrivateDataReadOwner:
     def expiry_preview(
         self, key: PluginInstallationKeyV1, backup_id: str, confirmation_id: str
     ) -> CodingArchPrivateDataBackupExpiryPlanV1:
-        if not _digest(backup_id):
-            raise ValueError("Coding Arch backup expiry ID is invalid")
-        with self.offline():
-            return private_data_backup_expiry.preview_expiry(
-                self.layout,
-                self.state_root,
-                key,
-                backup_id,
-                confirmation_id,
-                completed_restore=lambda: self._current_completed_restore(
-                    key, backup_id
-                ),
-                desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
-            )
+        return _programs.expiry_preview(self, key, backup_id, confirmation_id)
 
     def _current_completed_restore(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return private_data_restore.current_completed_restore(
-            self.layout,
-            self.state_root,
-            key,
-            backup_id,
-            desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
-        )
+        return _programs.current_completed_restore(self, key, backup_id)
 
     def assert_current(self) -> None:
         return _programs.assert_current(self)

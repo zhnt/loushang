@@ -1569,6 +1569,37 @@ focused Linux cases and three final cutover rechecks passed. The architecture
 run passed 12 cases, and the moved location constraint passed its final
 recheck. Native Windows routes were not exercised.
 
+## Installation Private Root And Offline Previews
+
+Session private-root preparation now uses the staged Installation owner.
+It checks the exact Desired selection, then captures and verifies the
+selected manifest before creating any directory. The Windows route reuses
+the existing generation binding and ACL owner, rechecks identity after
+preparing the child, then recaptures the authoritative manifest. The POSIX
+route uses the original private-tree preparation. Coding retains the
+historical Installation and Session path hashes, plugin identity, and
+nominal generation and receipt declarations. The three Windows inspection
+and restore entries reuse one Product state-root check. Inspection still
+uses the existing read-only lineage entry.
+
+POSIX restore and expiry previews now use the staged read owner for
+generation and archive proof. They take the existing epoch, runtime and GC
+read scopes, preserve failure order and use the original Desired snapshot.
+Backup, deletion and restore publication authorities stay with their
+existing owners. The error text, path rule and compatibility hooks remain
+at the Product edge. The root staging import borrows that Product seam at
+runtime. Its physical module cycle is recorded, with the normalized graph
+unchanged at 1,659 pairs.
+
+The Product edge removes 83 lines and staging adds 153, for a net increase
+of 70 physical Python lines. The previous checkpoint matches 5,832 root
+admission, 42 Windows lineage entry and 60 preview traces. The existing
+Linux-based Windows compatibility probe has the same 17 passes and 69
+historical trace-digest failures as the previous checkpoint. All 86
+normalized observations match. The Linux runtime run passes all 18 cases,
+including actual Session cache creation, read-only preview, cleanup and
+deletion replay. Native Windows remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
