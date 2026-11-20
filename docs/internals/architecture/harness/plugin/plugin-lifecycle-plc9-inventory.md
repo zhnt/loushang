@@ -1380,7 +1380,7 @@ This updates the existing inventory without new assertions, gates or coverage.
 | `src/loushang/coding/package/legacy_builtin_review.py::review_coding_first_b_builtin_only` | `src/loushang/coding/harness/package_product/legacy_builtin_review.py::review_builtin_snapshot` | 2 |
 | `src/loushang/coding/package/legacy_review.py::review_coding_legacy_installed_local_source` | `src/loushang/coding/harness/package_product/legacy_local_review.py::review_local_source` | 2 |
 | `src/loushang/coding/package/legacy_disabled_review.py::review_coding_first_b_disabled_only` | `src/loushang/coding/harness/package_product/legacy_disabled_review.py::review_disabled_snapshot` | 3 |
-| `src/loushang/coding/package/legacy_local_acceptance.py::_require_frozen_review` | `src/loushang/coding/harness/package_product/legacy_local_acceptance.py::require_frozen_review` | 2 |
+| Retired private forwarding function `_require_frozen_review` in `src/loushang/coding/package/legacy_local_acceptance.py` | `src/loushang/coding/harness/package_product/legacy_local_acceptance.py::require_frozen_review` | 2 |
 | `src/loushang/coding/package/legacy_local_adoption_read.py::coding_legacy_local_data_adoption_settled` | `src/loushang/coding/harness/package_product/legacy_adoption_observation.py::adoption_settled` | 1 |
 | `src/loushang/coding/package/legacy_local_adoption.py::adopt_coding_legacy_local_data_review` | `src/loushang/coding/harness/package_product/legacy_adoption.py::adopt_local_review` | 1 |
 | `src/loushang/coding/package/legacy_builtin_adoption.py::adopt_coding_first_b_builtin_only` | `src/loushang/coding/harness/package_product/legacy_builtin_adoption.py::adopt_builtin_snapshot` | 1 |

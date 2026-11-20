@@ -11,7 +11,6 @@ from loushang.coding.harness.package_product import (
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
-    _FrozenSources,
     _SourceConsumptionProtocol,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -79,15 +78,6 @@ def coding_accepted_legacy_local_source_consumed(
     ).consumed()
 
 
-def _frozen_sources(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-    acceptance: CodingLegacyLocalAcceptanceV1,
-    settings: SettingsManager,
-) -> _FrozenSources:
-    return _programs.frozen_sources(lifecycle, epoch_runtime, acceptance, settings)
-
-
 def _receipt_bytes(identity: dict[str, object], phase: str) -> bytes:
     return canonical_json_bytes({**identity, "phase": phase}) + b"\n"
 
@@ -102,7 +92,7 @@ def _consumption_protocol(
     acceptance: CodingLegacyLocalAcceptanceV1,
     settings: SettingsManager,
 ) -> _SourceConsumptionProtocol:
-    frozen = _frozen_sources(lifecycle, epoch_runtime, acceptance, settings)
+    frozen = _programs.frozen_sources(lifecycle, epoch_runtime, acceptance, settings)
     return _SourceConsumptionProtocol(
         epoch_runtime,
         acceptance,

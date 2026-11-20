@@ -26,7 +26,7 @@ def bind_accepted_source(
     )
     if accepted is None:
         raise _binding.CodingLegacyBindingError(
-            _binding._LEGACY_ADOPTION_VALUES["value_001"]
+            "Legacy local Source has no accepted review"
         )
     reacquired = _binding.reacquire_coding_legacy_installed_local_source(
         lifecycle, epoch_runtime, plugin_id=plugin_id
@@ -39,7 +39,7 @@ def bind_accepted_source(
         inspected = _binding.inspect_coding_legacy_local_data_wheel(candidate)
     except (OSError, ValueError) as exc:
         raise _binding.CodingLegacyBindingError(
-            _binding._LEGACY_ADOPTION_VALUES["value_005"]
+            "Legacy local Source Resource type is unsupported"
         ) from exc
     if (
         inspected.resource_kind != accepted.resource_kind
@@ -58,7 +58,7 @@ def bind_accepted_source(
         or candidate.artifact_digest != review.wheel_artifact_digest
     ):
         raise _binding.CodingLegacyBindingError(
-            _binding._LEGACY_ADOPTION_VALUES["value_002"]
+            "Legacy local Source differs from accepted review"
         )
     epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
     switch = epoch_runtime.cutover_result.switch_receipt
@@ -71,13 +71,13 @@ def bind_accepted_source(
         or policy_revision != review.policy_revision
     ):
         raise _binding.CodingLegacyBindingError(
-            _binding._LEGACY_ADOPTION_VALUES["value_003"]
+            "Legacy local Source Product authority changed"
         )
     epoch_runtime.assert_current()
     source_root = epoch_runtime.prepare_product_source_root()
     state_root = epoch_runtime.prepare_product_state_root()
     catalog = _binding.CodingLegacyLocalBindingCatalog(
-        state_root / _binding._LEGACY_ADOPTION_VALUES["value_004"],
+        state_root / _binding._BINDINGS_JOURNAL,
         source_root=source_root,
         store_id=epoch.store_id,
         namespace_id=switch.namespace_id,

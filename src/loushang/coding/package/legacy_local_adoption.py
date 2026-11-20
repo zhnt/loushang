@@ -162,21 +162,6 @@ def adopt_coding_legacy_local_data_review(
     )
 
 
-def _settle_reviewed_removed_local_before_active_adoption(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    *,
-    workspace: Path,
-    runtime_version: str,
-    runtime_protocol_epoch: int,
-) -> None:
-    return _programs.settle_removed_before_adoption(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-    )
-
-
 def _preserve_removed_builtin(
     owner: CodingFencedProductApplicationOwner,
     acceptance: CodingLegacyLocalAcceptanceV1,

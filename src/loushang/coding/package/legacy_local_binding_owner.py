@@ -30,13 +30,7 @@ from .legacy_skill_cutover_admission import (
     inspect_coding_legacy_local_data_wheel as inspect_coding_legacy_local_data_wheel,
 )
 
-_LEGACY_ADOPTION_VALUES = {
-    "value_001": "Legacy local Source has no accepted review",
-    "value_002": "Legacy local Source differs from accepted review",
-    "value_003": "Legacy local Source Product authority changed",
-    "value_004": "legacy-local-bindings.jsonl",
-    "value_005": "Legacy local Source Resource type is unsupported",
-}
+_BINDINGS_JOURNAL = "legacy-local-bindings.jsonl"
 
 
 def bind_coding_accepted_legacy_local_source(

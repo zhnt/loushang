@@ -30,7 +30,7 @@ def adopt_local_review(
     }:
         raise ValueError(_binding._LEGACY_ADOPTION_VALUES["value_004"])
 
-    _binding._settle_reviewed_removed_local_before_active_adoption(
+    settle_removed_before_adoption(
         lifecycle,
         workspace=workspace,
         runtime_version=runtime_version,

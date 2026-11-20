@@ -88,10 +88,6 @@ def classify_coding_legacy_source_configuration(
     return _programs.classify_source_projection(source_projection)
 
 
-def _valid_package_source(value: object) -> bool:
-    return _programs.valid_package_source(value)
-
-
 __all__ = [
     "CodingLegacySourceConfigurationV1",
     "CodingLegacyWorkspaceClassificationV1",

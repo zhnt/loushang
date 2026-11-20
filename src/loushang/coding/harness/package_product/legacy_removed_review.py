@@ -6,11 +6,13 @@ Product policy and nominal contracts are explicit intermediate dependencies.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from loushang.coding.package import legacy_removed_review as _binding
 
 
 def snapshot_has_operations(
-    members: _binding.Mapping[_binding.CodingLegacyInventoryDomain, tuple[str, ...]],
+    members: Mapping[_binding.CodingLegacyInventoryDomain, tuple[str, ...]],
 ) -> bool:
     if any(
         members[domain] != expected
@@ -63,7 +65,7 @@ def admit_removed_snapshot(
             raise _binding.CodingLegacyRemovedReviewError(
                 _binding._LEGACY_PROGRAM_VALUES["value_001"]
             )
-        has_operations = _binding._removed_snapshot_has_operations(members)
+        has_operations = snapshot_has_operations(members)
         for domain in ("desired_state", "instance_state", "lock_history"):
             for name in members[domain]:
                 if (
@@ -210,7 +212,7 @@ def review_removed_snapshot(
         )
         for domain in _binding._EXPECTED
     }
-    has_operations = _binding._removed_snapshot_has_operations(members)
+    has_operations = snapshot_has_operations(members)
     for domain in ("desired_state", "instance_state", "lock_history"):
         for name in members[domain]:
             if (

@@ -10,6 +10,8 @@ from typing import Literal
 
 from loushang.coding.package import legacy_local_acceptance as _binding
 
+_RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
+
 
 def require_frozen_review(
     lifecycle: _binding.CodingPluginLifecycleStateLayout,
@@ -33,9 +35,7 @@ def require_frozen_review(
         None,
     )
     if fence is None or switch is None or selected is None:
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_PROGRAM_VALUES["value_001"]
-        )
+        raise _acceptance_error("acceptance lost its first-B Installation")
     legacy_state = _binding.CodingFirstBLegacyStateObserver(
         lifecycle, epoch_runtime
     ).observe(
@@ -47,13 +47,11 @@ def require_frozen_review(
         lifecycle,
         epoch_runtime,
         domain="source_configuration",
-        member_name=_binding._LEGACY_PROGRAM_VALUES["value_002"],
+        member_name=_binding._SOURCE_CONFIGURATION_MEMBER,
         maximum_bytes=2 * 1024 * 1024,
     )
     if source_raw is None:
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_PROGRAM_VALUES["value_003"]
-        )
+        raise _acceptance_error("acceptance lost its Source configuration")
     source_projection = _binding.json.loads(source_raw)
     source = _binding.classify_coding_legacy_source_configuration(source_projection)
     configured = _binding.match_coding_legacy_local_skill_configured_source(
@@ -98,19 +96,12 @@ def require_frozen_review(
         != tuple(
             item
             for item in inventory.inventory.removed_plugin_ids
-            if item
-            in {
-                _binding._LEGACY_PROGRAM_VALUES["value_005"],
-                _binding._LEGACY_PROGRAM_VALUES["value_006"],
-                _binding._LEGACY_PROGRAM_VALUES["value_007"],
-            }
+            if item in _binding._BUILTINS
         )
         or review.configured_plugin_source_scope
         != (None if configured is None else configured.scope)
     ):
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_PROGRAM_VALUES["value_004"]
-        )
+        raise _acceptance_error("acceptance changed first-B evidence")
 
 
 def accept_local_review(
@@ -128,23 +119,14 @@ def accept_local_review(
         lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
     )
     if accepted_review_id != review.review_id:
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_ADOPTION_VALUES["value_001"]
-        )
-    epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_ADOPTION_VALUES["value_002"]
-        )
+        raise _acceptance_error("review ID changed")
+    _require_current_epoch(lifecycle, epoch_runtime)
     proposed = _binding.CodingLegacyLocalAcceptanceV1.create(
         review, resource_kind=resource_kind
     )
 
     def require_current_review() -> None:
-        _binding._require_live_resource_kind(
+        require_live_resource_kind(
             lifecycle, epoch_runtime, plugin_id=plugin_id, resource_kind=resource_kind
         )
         if (
@@ -156,15 +138,13 @@ def accept_local_review(
             )
             != review
         ):
-            raise _binding.CodingLegacyLocalAcceptanceError(
-                _binding._LEGACY_ADOPTION_VALUES["value_003"]
-            )
+            raise _acceptance_error("review changed before acceptance")
 
     return _binding._acceptance_protocol(epoch_runtime).accept(
         proposed,
         plugin_id=review.plugin_id,
         installation_key=lambda: _binding.PluginInstallationKeyV1(
-            product_id=_binding._LEGACY_ADOPTION_VALUES["value_004"],
+            product_id=_binding._PRODUCT_ID,
             installation_scope="workspace",
             scope_id=review.scope_id,
             plugin_id=review.plugin_id,
@@ -183,19 +163,12 @@ def reopen_local_acceptance(
     """Reopen a receipt against frozen first-B evidence without live Source."""
 
     if not isinstance(plugin_id, str) or not plugin_id:
-        raise ValueError(_binding._LEGACY_ADOPTION_VALUES["value_005"])
-    epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_ADOPTION_VALUES["value_002"]
-        )
+        raise ValueError(f"{_binding._ACCEPTANCE_LABEL} Plugin identity is required")
+    _require_current_epoch(lifecycle, epoch_runtime)
     record = _binding._acceptance_protocol(epoch_runtime).reopen(plugin_id)
     if record is None:
         return None
-    _binding._require_frozen_review(
+    require_frozen_review(
         lifecycle,
         epoch_runtime,
         record.review,
@@ -215,7 +188,7 @@ def read_local_acceptance(
 ) -> _binding.CodingLegacyLocalAcceptanceV1 | None:
     """Additionally require that the original live Source still matches."""
 
-    record = _binding.reopen_coding_legacy_installed_local_acceptance(
+    record = reopen_local_acceptance(
         lifecycle,
         epoch_runtime,
         plugin_id=plugin_id,
@@ -229,37 +202,40 @@ def read_local_acceptance(
     if record != _binding.CodingLegacyLocalAcceptanceV1.create(
         review, resource_kind=record.resource_kind
     ):
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_ADOPTION_VALUES["value_006"]
-        )
+        raise _acceptance_error("acceptance conflicts with current review")
     epoch_runtime.assert_current()
     return record
+
+
+def _require_current_epoch(
+    lifecycle: _binding.CodingPluginLifecycleStateLayout,
+    epoch_runtime: _binding.PackageProductPosixFencedRuntimeOwner,
+) -> None:
+    epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
+    if (
+        epoch_runtime.registry.store_id != epoch.store_id
+        or epoch_runtime.control_root != epoch.control_root
+    ):
+        raise _acceptance_error("Product epoch changed")
+
+
+def _acceptance_error(reason: str) -> _binding.CodingLegacyLocalAcceptanceError:
+    return _binding.CodingLegacyLocalAcceptanceError(
+        f"{_binding._ACCEPTANCE_LABEL} {reason}"
+    )
 
 
 def validate_acceptance(self: _binding.CodingLegacyLocalAcceptanceV1) -> None:
     if (
         not isinstance(self.review, _binding.CodingLegacyLocalAdoptionReviewV1)
         or type(self.acceptance_version) is not int
-        or (self.acceptance_version, self.resource_kind)
-        not in {
-            (1, _binding._LEGACY_RECORD_SKILL),
-            (2, _binding._LEGACY_RECORD_PROMPT),
-            (3, _binding._LEGACY_RECORD_THEME),
-        }
+        or _RESOURCE_KIND_VERSION.get(self.resource_kind) != self.acceptance_version
     ):
-        raise ValueError(_binding._LEGACY_RECORD_VALUES["value_001"])
-    identity = {
-        "acceptanceVersion": self.acceptance_version,
-        "reviewId": self.review.review_id,
-        "pluginId": self.review.plugin_id,
-    }
-    if self.acceptance_version >= 2:
-        identity["resourceKind"] = self.resource_kind
-    if (
-        self.acceptance_id
-        != _binding.sha256(_binding.canonical_json_bytes(identity)).hexdigest()
+        raise ValueError(f"{_binding._ACCEPTANCE_LABEL} acceptance record is invalid")
+    if self.acceptance_id != _acceptance_id(
+        self.review, self.acceptance_version, self.resource_kind
     ):
-        raise ValueError(_binding._LEGACY_RECORD_VALUES["value_002"])
+        raise ValueError(f"{_binding._ACCEPTANCE_LABEL} acceptance identity changed")
 
 
 def create_acceptance(
@@ -269,22 +245,27 @@ def create_acceptance(
     resource_kind: Literal["skill", "prompt", "theme"],
 ) -> _binding.CodingLegacyLocalAcceptanceV1:
     if not isinstance(review, _binding.CodingLegacyLocalAdoptionReviewV1):
-        raise TypeError(_binding._LEGACY_RECORD_VALUES["value_003"])
+        raise TypeError(f"{_binding._ACCEPTANCE_LABEL} review is required")
     if any(
         item.plugin_id not in _binding._BUILTINS for item in review.disabled_plugins
     ):
         raise ValueError("Legacy local adoption supports built-in disables only")
-    if resource_kind not in {
-        _binding._LEGACY_RECORD_SKILL,
-        _binding._LEGACY_RECORD_PROMPT,
-        _binding._LEGACY_RECORD_THEME,
-    }:
+    acceptance_version = _RESOURCE_KIND_VERSION.get(resource_kind)
+    if acceptance_version is None:
         raise ValueError("Unsupported legacy local Resource type")
-    acceptance_version = {
-        _binding._LEGACY_RECORD_SKILL: 1,
-        _binding._LEGACY_RECORD_PROMPT: 2,
-        _binding._LEGACY_RECORD_THEME: 3,
-    }[resource_kind]
+    return cls(
+        review,
+        _acceptance_id(review, acceptance_version, resource_kind),
+        acceptance_version=acceptance_version,
+        resource_kind=resource_kind,
+    )
+
+
+def _acceptance_id(
+    review: _binding.CodingLegacyLocalAdoptionReviewV1,
+    acceptance_version: int,
+    resource_kind: Literal["skill", "prompt", "theme"],
+) -> str:
     identity = {
         "acceptanceVersion": acceptance_version,
         "reviewId": review.review_id,
@@ -292,12 +273,7 @@ def create_acceptance(
     }
     if acceptance_version >= 2:
         identity["resourceKind"] = resource_kind
-    return cls(
-        review,
-        _binding.sha256(_binding.canonical_json_bytes(identity)).hexdigest(),
-        acceptance_version=acceptance_version,
-        resource_kind=resource_kind,
-    )
+    return _binding.sha256(_binding.canonical_json_bytes(identity)).hexdigest()
 
 
 def decode_acceptance(
@@ -308,38 +284,38 @@ def decode_acceptance(
         {"acceptanceId", "acceptanceVersion", "review", "resourceKind"},
     ):
         raise _binding.JournalCodecError(
-            _binding._LEGACY_RECORD_VALUES["value_004"],
-            code=_binding._LEGACY_RECORD_VALUES["value_005"],
+            f"Invalid {_binding._ACCEPTANCE_LABEL} acceptance",
+            code=_binding._ACCEPTANCE_CODEC_ERROR_CODE,
         )
     try:
         if type(value["acceptanceVersion"]) is not int:
-            raise ValueError(_binding._LEGACY_RECORD_VALUES["value_006"])
+            raise ValueError(
+                f"Unsupported {_binding._ACCEPTANCE_LABEL} acceptance version"
+            )
         resource_kind: Literal["skill", "prompt", "theme"]
         if value["acceptanceVersion"] == 1 and "resourceKind" not in value:
-            resource_kind = _binding._LEGACY_RECORD_SKILL
-        elif (
-            value["acceptanceVersion"] == 2
-            and value.get("resourceKind") == _binding._LEGACY_RECORD_PROMPT
-        ):
-            resource_kind = _binding._LEGACY_RECORD_PROMPT
-        elif (
-            value["acceptanceVersion"] == 3
-            and value.get("resourceKind") == _binding._LEGACY_RECORD_THEME
-        ):
-            resource_kind = _binding._LEGACY_RECORD_THEME
+            resource_kind = "skill"
+        elif value["acceptanceVersion"] == 2 and value.get("resourceKind") == "prompt":
+            resource_kind = "prompt"
+        elif value["acceptanceVersion"] == 3 and value.get("resourceKind") == "theme":
+            resource_kind = "theme"
         else:
-            raise ValueError(_binding._LEGACY_RECORD_VALUES["value_007"])
+            raise ValueError(
+                f"Unsupported {_binding._ACCEPTANCE_LABEL} acceptance type"
+            )
         record = cls.create(
             _binding.CodingLegacyLocalAdoptionReviewV1.from_dict(value["review"]),
             resource_kind=resource_kind,
         )
         if record.acceptance_id != value["acceptanceId"]:
-            raise ValueError(_binding._LEGACY_RECORD_VALUES["value_002"])
+            raise ValueError(
+                f"{_binding._ACCEPTANCE_LABEL} acceptance identity changed"
+            )
         return record
     except (TypeError, ValueError) as exc:
         raise _binding.JournalCodecError(
-            _binding._LEGACY_RECORD_VALUES["value_004"],
-            code=_binding._LEGACY_RECORD_VALUES["value_005"],
+            f"Invalid {_binding._ACCEPTANCE_LABEL} acceptance",
+            code=_binding._ACCEPTANCE_CODEC_ERROR_CODE,
         ) from exc
 
 
@@ -350,6 +326,7 @@ def require_live_resource_kind(
     plugin_id: str,
     resource_kind: Literal["skill", "prompt", "theme"],
 ) -> None:
+    # Keep the cutover inspector out of the acceptance codec's import path.
     from loushang.coding.package.legacy_reacquisition import (
         reacquire_coding_legacy_installed_local_source,
     )
@@ -363,10 +340,6 @@ def require_live_resource_kind(
     try:
         inspected = inspect_coding_legacy_local_data_wheel(reacquired.wheel)
     except (OSError, ValueError) as exc:
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_CHAIN_VALUES["value_002"]
-        ) from exc
+        raise _acceptance_error("Resource type is unsupported") from exc
     if inspected.resource_kind != resource_kind:
-        raise _binding.CodingLegacyLocalAcceptanceError(
-            _binding._LEGACY_CHAIN_VALUES["value_001"]
-        )
+        raise _acceptance_error("Resource type differs from accepted route")

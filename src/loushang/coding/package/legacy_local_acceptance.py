@@ -10,12 +10,9 @@ import json as json
 import os as os
 from dataclasses import dataclass
 from hashlib import sha256 as sha256
-from typing import Final, Literal
+from typing import Literal
 
 from loushang.coding.harness.package_product import legacy_local_acceptance as _programs
-from loushang.coding.harness.package_product import (
-    legacy_local_acceptance as _record_programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
@@ -66,46 +63,10 @@ _MAX_DESIRED_BYTES = 32 * 1024 * 1024
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 
 
-_LEGACY_PROGRAM_VALUES = {
-    "value_001": "Coding legacy local acceptance lost its first-B Installation",
-    "value_002": "coding-source-configuration.json",
-    "value_003": "Coding legacy local acceptance lost its Source configuration",
-    "value_004": "Coding legacy local acceptance changed first-B evidence",
-    "value_005": "coding.base",
-    "value_006": "coding.lsp.default",
-    "value_007": "coding.arch.default",
-}
-
-
-_LEGACY_ADOPTION_VALUES = {
-    "value_001": "Coding legacy local review ID changed",
-    "value_002": "Coding legacy local Product epoch changed",
-    "value_003": "Coding legacy local review changed before acceptance",
-    "value_004": "coding",
-    "value_005": "Coding legacy local Plugin identity is required",
-    "value_006": "Coding legacy local acceptance conflicts with current review",
-}
-
-
-_LEGACY_RECORD_VALUES = {
-    "value_001": "Coding legacy local acceptance record is invalid",
-    "value_002": "Coding legacy local acceptance identity changed",
-    "value_003": "Coding legacy local review is required",
-    "value_004": "Invalid Coding legacy local acceptance",
-    "value_005": "coding_legacy_local_acceptance_invalid",
-    "value_006": "Unsupported Coding legacy local acceptance version",
-    "value_007": "Unsupported Coding legacy local acceptance type",
-}
-
-_LEGACY_RECORD_PROMPT: Final[Literal["prompt"]] = "prompt"
-_LEGACY_RECORD_SKILL: Final[Literal["skill"]] = "skill"
-_LEGACY_RECORD_THEME: Final[Literal["theme"]] = "theme"
-
-
-_LEGACY_CHAIN_VALUES = {
-    "value_001": "Coding legacy local Resource type differs from accepted route",
-    "value_002": "Coding legacy local Resource type is unsupported",
-}
+_PRODUCT_ID = "coding"
+_SOURCE_CONFIGURATION_MEMBER = "coding-source-configuration.json"
+_ACCEPTANCE_LABEL = "Coding legacy local"
+_ACCEPTANCE_CODEC_ERROR_CODE = "coding_legacy_local_acceptance_invalid"
 
 
 class CodingLegacyLocalAcceptanceError(RuntimeError):
@@ -120,7 +81,7 @@ class CodingLegacyLocalAcceptanceV1:
     resource_kind: Literal["skill", "prompt", "theme"] = "skill"
 
     def __post_init__(self) -> None:
-        return _record_programs.validate_acceptance(self)
+        _programs.validate_acceptance(self)
 
     @classmethod
     def create(
@@ -129,9 +90,7 @@ class CodingLegacyLocalAcceptanceV1:
         *,
         resource_kind: Literal["skill", "prompt", "theme"] = "skill",
     ) -> CodingLegacyLocalAcceptanceV1:
-        return _record_programs.create_acceptance(
-            cls, review, resource_kind=resource_kind
-        )
+        return _programs.create_acceptance(cls, review, resource_kind=resource_kind)
 
     def to_dict(self) -> dict[str, object]:
         record: dict[str, object] = {
@@ -145,7 +104,7 @@ class CodingLegacyLocalAcceptanceV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyLocalAcceptanceV1:
-        return _record_programs.decode_acceptance(cls, value)
+        return _programs.decode_acceptance(cls, value)
 
 
 _CODEC = FunctionalJournalRecordCodec(
@@ -203,37 +162,6 @@ def read_coding_legacy_installed_local_acceptance(
     )
 
 
-def _require_live_resource_kind(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-    *,
-    plugin_id: str,
-    resource_kind: Literal["skill", "prompt", "theme"],
-) -> None:
-    # The inspector is imported here to keep Product cutover composition out of
-    # the acceptance record codec's module initialization path.
-    return _programs.require_live_resource_kind(
-        lifecycle, epoch_runtime, plugin_id=plugin_id, resource_kind=resource_kind
-    )
-
-
-def _require_frozen_review(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-    review: CodingLegacyLocalAdoptionReviewV1,
-    *,
-    plugin_id: str,
-    policy_revision: str,
-) -> None:
-    return _programs.require_frozen_review(
-        lifecycle,
-        epoch_runtime,
-        review,
-        plugin_id=plugin_id,
-        policy_revision=policy_revision,
-    )
-
-
 def _acceptance_protocol(
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
 ) -> _LocalAcceptanceProtocol[CodingLegacyLocalAcceptanceV1]:
@@ -241,7 +169,7 @@ def _acceptance_protocol(
         epoch_runtime,
         _CODEC,
         CodingLegacyLocalAcceptanceError,
-        "Coding legacy local",
+        _ACCEPTANCE_LABEL,
         _MAX_ACCEPTANCE_BYTES,
         _MAX_DESIRED_BYTES,
     )

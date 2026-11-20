@@ -23,9 +23,6 @@ from loushang.harness.plugin_management.records import (
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWheelBindingV1,
-)
 
 from .legacy_data_trust import (
     trust_class_for_legacy_data_resource as trust_class_for_legacy_data_resource,
@@ -40,21 +37,13 @@ from .product_runtime import (
     CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
 )
 from .product_runtime import (
-    CodingFencedProductApplicationOwner,
+    CodingFencedProductApplicationOwner as CodingFencedProductApplicationOwner,
+)
+from .product_runtime import (
     open_coding_fenced_product_application_owner,
 )
 
-_LEGACY_ADOPTION_VALUES = {
-    "value_001": "Legacy local migration requires a POSIX Product epoch",
-    "value_002": "Legacy local data Resource has no accepted enabled selection",
-    "value_003": "coding",
-    "value_004": "Legacy local Installation has no accepted review",
-}
-
-
-_LEGACY_CHAIN_VALUES = {
-    "value_001": "Legacy local Installation has no exact Product Source binding"
-}
+_PRODUCT_ID = "coding"
 
 
 class CodingLegacyLocalInstallationError(RuntimeError):
@@ -97,7 +86,7 @@ def install_coding_accepted_legacy_local_plugin(
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
     try:
-        return _install(owner, lifecycle, plugin_id=plugin_id)
+        return _programs.install_accepted_plugin(owner, lifecycle, plugin_id=plugin_id)
     finally:
         owner.close()
 
@@ -141,23 +130,6 @@ def enable_coding_accepted_legacy_local_data_plugin(
         runtime_protocol_epoch=runtime_protocol_epoch,
         resource_kind=resource_kind,
     )
-
-
-def _install(
-    owner: CodingFencedProductApplicationOwner,
-    lifecycle: CodingPluginLifecycleStateLayout,
-    *,
-    plugin_id: str,
-) -> CodingLegacyLocalInstallReceiptV1:
-    return _programs.install_accepted_plugin(owner, lifecycle, plugin_id=plugin_id)
-
-
-def _accepted_source(
-    owner: CodingFencedProductApplicationOwner,
-    plugin_id: str,
-    accepted: CodingLegacyLocalAcceptanceV1,
-) -> PackageProductLocalWheelBindingV1:
-    return _programs.accepted_source(owner, plugin_id, accepted)
 
 
 def _install_operation_id(store_id: str, acceptance_id: str) -> str:

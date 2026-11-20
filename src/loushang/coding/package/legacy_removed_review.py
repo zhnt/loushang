@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json as json
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from hashlib import sha256 as sha256
 from pathlib import Path as Path
@@ -121,12 +120,6 @@ _LEGACY_PROGRAM_VALUES = {
     "value_018": "Old settings paths are unavailable",
     "value_019": "Old removal Source set is unsupported",
 }
-
-
-def _removed_snapshot_has_operations(
-    members: Mapping[CodingLegacyInventoryDomain, tuple[str, ...]],
-) -> bool:
-    return _programs.snapshot_has_operations(members)
 
 
 class CodingLegacyRemovedReviewError(ValueError):

@@ -1072,6 +1072,25 @@ Both persisted receipt cases also pass on the unchanged baseline. Ruff,
 focused mypy and dependency and documentation checks passed. The
 normalized graph adds no module pairs.
 
+## Legacy Acceptance And Adoption Reuse
+
+The local acceptance record shares one identity calculation between
+construction and validation. Accept and reopen share the current-epoch check.
+The existing Harness journal owns locking, Desired State checks, publication
+and replay. Product keeps the public entries, nominal record and error
+classes, configured identity, source member and diagnostic label. Installation,
+source consumption, classification and removal review call their existing
+implementations directly. The batch removes eight private forwarding functions
+and seven numbered value maps across seven owner pairs.
+
+Relative to `9f336e480`, the batch removes 142 Python lines at the Coding
+edge and 21 in staging, for 163 fewer production lines. The local acceptance
+pair drops from 628 to 529 lines. All 86 Legacy runtime cases pass. Five public
+entries, three wire and pickle cases, and 23 rejection traces match the
+preceding Legacy source. All 13 current architecture cases pass after recording
+the retired forwarding entry in the location inventory. Ruff, mypy,
+documentation and the normalized dependency check pass.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
@@ -1079,6 +1098,18 @@ other production code and the whole system separately; tests, development
 scripts and docs are separate costs. Staging remains inside Coding and is not
 system deletion. Report actual duplicate removal separately from ownership
 movement; explain any necessary generic/compatibility growth.
+
+At `9f336e480`, the four earliest batch commits account for 6,042 of the 6,587
+net production lines added against the Goal baseline. The largest is Legacy
+package migration at 2,059 lines. An AST count of the changed Product modules
+finds 206 entries with a single call to staging, occupying 2,108 physical
+lines, and 75 newly introduced numbered value maps occupying 695 lines. These
+are structural footprints. The original signatures, diagnostics and stored
+values already contributed to the baseline, and some must stay for
+compatibility. Legacy local acceptance illustrates the combined cost: 419
+original lines became 256 Product lines and 372 staging lines. Its repeated
+typed signatures, calls through internal Product forwarders, and numbered
+value maps are candidates for consolidation at the owning boundary.
 
 Whole-Goal acceptance requires all frozen migration targets, their real
 consumers, single implementation owners, complete mappings, explicit permitted

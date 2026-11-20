@@ -125,7 +125,7 @@ def classify_source_projection(
                     _binding.CodingScopedLegacyDisableV1(scope, item) for item in value
                 )
             elif key in {"packages", "package_sources"}:
-                if any(not _binding._valid_package_source(item) for item in value):
+                if any(not valid_package_source(item) for item in value):
                     raise ValueError(_binding._LEGACY_EVIDENCE_VALUES["value_010"])
             elif any(not isinstance(item, str) or not item for item in value):
                 raise ValueError(_binding._LEGACY_EVIDENCE_VALUES["value_007"])

@@ -7,6 +7,7 @@ Product policy and nominal contracts are explicit intermediate dependencies.
 from __future__ import annotations
 
 from loushang.coding.package import legacy_source_consumption as _binding
+from loushang.harness.package_product._legacy_local_migration import _FrozenSources
 
 
 def frozen_sources(
@@ -14,7 +15,7 @@ def frozen_sources(
     epoch_runtime: _binding.PackageProductPosixFencedRuntimeOwner,
     acceptance: _binding.CodingLegacyLocalAcceptanceV1,
     settings: _binding.SettingsManager,
-) -> _binding._FrozenSources:
+) -> _FrozenSources:
     evidence = _binding.read_coding_legacy_source_evidence(
         lifecycle,
         epoch_runtime,
@@ -69,7 +70,7 @@ def frozen_sources(
         raise _binding.CodingLegacySourceConsumptionError(
             _binding._LEGACY_PROGRAM_VALUES["value_003"]
         )
-    return _binding._FrozenSources(
+    return _FrozenSources(
         projection_digest=evidence.projection_digest,
         by_plugin=by_plugin,
         ordered_paths=ordered_paths,

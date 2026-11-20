@@ -9,6 +9,9 @@ from __future__ import annotations
 from typing import Literal
 
 from loushang.coding.package import legacy_local_installation as _binding
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWheelBindingV1,
+)
 
 
 def enable_accepted_data_plugin(
@@ -34,7 +37,7 @@ def enable_accepted_data_plugin(
             owner.epoch_runtime, _binding.PackageProductPosixFencedRuntimeOwner
         ):
             raise _binding.CodingLegacyLocalInstallationError(
-                _binding._LEGACY_ADOPTION_VALUES["value_001"]
+                "Legacy local migration requires a POSIX Product epoch"
             )
         accepted = _binding.reopen_coding_legacy_installed_local_acceptance(
             lifecycle,
@@ -48,14 +51,14 @@ def enable_accepted_data_plugin(
             or accepted.review.desired_state != "installed_enabled"
         ):
             raise _binding.CodingLegacyLocalInstallationError(
-                _binding._LEGACY_ADOPTION_VALUES["value_002"]
+                "Legacy local data Resource has no accepted enabled selection"
             )
-        source = _binding._accepted_source(owner, plugin_id, accepted)
+        source = accepted_source(owner, plugin_id, accepted)
         install_id = _binding._install_operation_id(
             accepted.review.store_id, accepted.acceptance_id
         )
         key = _binding.PluginInstallationKeyV1(
-            product_id=_binding._LEGACY_ADOPTION_VALUES["value_003"],
+            product_id=_binding._PRODUCT_ID,
             installation_scope="workspace",
             scope_id=lifecycle.scope_id,
             plugin_id=plugin_id,
@@ -93,7 +96,7 @@ def install_accepted_plugin(
         owner.epoch_runtime, _binding.PackageProductPosixFencedRuntimeOwner
     ):
         raise _binding.CodingLegacyLocalInstallationError(
-            _binding._LEGACY_ADOPTION_VALUES["value_001"]
+            "Legacy local migration requires a POSIX Product epoch"
         )
     accepted = _binding.reopen_coding_legacy_installed_local_acceptance(
         lifecycle,
@@ -103,14 +106,14 @@ def install_accepted_plugin(
     )
     if accepted is None:
         raise _binding.CodingLegacyLocalInstallationError(
-            _binding._LEGACY_ADOPTION_VALUES["value_004"]
+            "Legacy local Installation has no accepted review"
         )
-    source = _binding._accepted_source(owner, plugin_id, accepted)
+    source = accepted_source(owner, plugin_id, accepted)
     operation_id = _binding._install_operation_id(
         accepted.review.store_id, accepted.acceptance_id
     )
     key = _binding.PluginInstallationKeyV1(
-        product_id=_binding._LEGACY_ADOPTION_VALUES["value_003"],
+        product_id=_binding._PRODUCT_ID,
         installation_scope="workspace",
         scope_id=lifecycle.scope_id,
         plugin_id=plugin_id,
@@ -139,7 +142,7 @@ def accepted_source(
     owner: _binding.CodingFencedProductApplicationOwner,
     plugin_id: str,
     accepted: _binding.CodingLegacyLocalAcceptanceV1,
-) -> _binding.PackageProductLocalWheelBindingV1:
+) -> PackageProductLocalWheelBindingV1:
     sources = tuple(
         item
         for item in owner.runtime_owner.product_owner.policy.bindings
@@ -151,6 +154,6 @@ def accepted_source(
     )
     if len(sources) != 1:
         raise _binding.CodingLegacyLocalInstallationError(
-            _binding._LEGACY_CHAIN_VALUES["value_001"]
+            "Legacy local Installation has no exact Product Source binding"
         )
     return sources[0]
