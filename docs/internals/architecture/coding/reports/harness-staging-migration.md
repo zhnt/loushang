@@ -1891,6 +1891,35 @@ checkpoint and current sources, before the root Session can create a child.
 Windows Tool projection is covered by host fixtures. Native Windows
 execution remains unverified.
 
+## Guarded Workspace Selection And Owner Replacement
+
+Ordinary Session factory acquisition and Resume activation now use the same
+staged selection scope directly. Both preserve workspace admission before
+selection and keep the same lock through acquisition. Only Resume invokes
+the current owner check and projects the fenced epoch. A cached current
+owner returns without reopening. First acquisition and stale-owner
+replacement share one open path. Replacement retains the old owner only
+after the new owner opens, and keeps it for the original cleanup route.
+
+Legacy and fenced Resume observations share canonical encoding and a size
+check. They keep their distinct evidence fields, the legacy fence-absence
+proof and the second live observation of a fenced owner. The bytes and
+wire identities are preserved. The existing startup recovery program now
+has a direct staged caller. The public Base and builtin runtime-owner
+entrypoints call the same staged opener with their original options.
+
+The 15 prior forwarders were reviewed for live callers, faults and nominal
+contracts. Three internal forwards are gone, along with the redundant
+selection context adapter. Public Product operations, legacy import paths,
+the catalog freshness seam and the timed fresh startup hook are retained.
+The Product edge removes 76 lines and staging adds 18, for a net reduction
+of 58 production Python lines. The normalized dependency graph stays at
+1,659 pairs. All 650 comparisons against the previous checkpoint match,
+including admission order, cached-owner retention, legacy and fenced
+fingerprints and public opener arguments. The non-live Linux route reports
+35 passing cases and one native Windows skip. Native Windows execution
+remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

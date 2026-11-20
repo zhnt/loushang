@@ -6,8 +6,7 @@ import inspect
 import json as json
 import os as os
 import sys as sys
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from importlib.metadata import version as version
@@ -417,14 +416,6 @@ class CodingFencedProductApplicationSelection:
         self._selection_in_progress = False
         self._fenced = False
 
-    @contextmanager
-    def _workspace_selection_scope(self) -> Iterator[None]:
-        # Admission callbacks may observe this original owner while selecting.
-        # Reentrant reads are safe; nested selection or disposal would change
-        # the owner underneath the admitted operation.
-        with _programs.workspace_selection_scope(self) as borrowed:
-            yield borrowed
-
     def factory_for_session(
         self,
         manager: SessionManager,
@@ -435,17 +426,9 @@ class CodingFencedProductApplicationSelection:
         | WindowsLocalWheelProductRuntimeFactory
         | None
     ):
-        if not isinstance(manager, SessionManager):
-            raise TypeError("Coding Product Session manager is required")
-        # The legacy Session API permits a not-yet-created cwd. Use the same
-        # canonical workspace identity as its lifecycle layout; a present B
-        # fence still requires the Product owner to validate the real root.
-        workspace = Path(manager.get_cwd()).resolve(strict=False)
-        with self._workspace_selection_scope():
-            owner = self._select_workspace_unlocked(
-                workspace, settings_manager=settings_manager
-            )
-            return owner.factory_for_session(manager) if owner is not None else None
+        return _programs.factory_for_session(
+            self, manager, settings_manager=settings_manager
+        )
 
     def prepare_resume_epoch(
         self,
@@ -467,22 +450,6 @@ class CodingFencedProductApplicationSelection:
             workspace,
             require_current_admission=require_current_admission,
             settings_manager=settings_manager,
-        )
-
-    def _select_workspace_unlocked(
-        self,
-        workspace: Path,
-        *,
-        settings_manager: SettingsManager | None,
-        require_current_admission: Callable[[], None] | None = None,
-    ) -> CodingFencedProductApplicationOwner | None:
-        """Use the original selection/recovery path while its lock is held."""
-
-        return _programs.select_workspace(
-            self,
-            workspace,
-            settings_manager=settings_manager,
-            require_current_admission=require_current_admission,
         )
 
     def resume_epoch_fingerprint(self, workspace: Path) -> str:
@@ -908,25 +875,6 @@ def is_coding_fresh_first_b_snapshot(
     return _lifecycle_programs.is_fresh_snapshot(lifecycle, runtime)
 
 
-def _retry_fresh_coding_product_bootstrap_for_session(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    *,
-    workspace: Path,
-    settings_manager: SettingsManager | None,
-    windows_candidate: bool = False,
-    require_current_admission: Callable[[], None] | None = None,
-) -> None:
-    """Resume only a proven fresh first-B cutover; preserve adopted B state."""
-
-    return _lifecycle_programs.retry_fresh_bootstrap(
-        lifecycle,
-        workspace=workspace,
-        settings_manager=settings_manager,
-        windows_candidate=windows_candidate,
-        require_current_admission=require_current_admission,
-    )
-
-
 def _bootstrap_coding_builtin_plugin(
     owner: CodingFencedProductApplicationOwner,
     plugin_id: str,
@@ -955,7 +903,7 @@ def open_coding_base_product_runtime_owner(
 ) -> CodingPosixLocalWheelProductRuntimeOwner:
     """Compose the installed base Plugin from one fenced Product authority."""
 
-    return _open_coding_product_runtime_owner(
+    return _programs.open_runtime(
         lifecycle,
         epoch_runtime,
         state,
@@ -963,6 +911,7 @@ def open_coding_base_product_runtime_owner(
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
         include_capabilities=False,
+        include_worker_candidates=False,
     )
 
 
@@ -980,7 +929,7 @@ def open_coding_builtin_product_runtime_owner(
 ) -> CodingPosixLocalWheelProductRuntimeOwner:
     """Compose all three first-party Packages without granting execution."""
 
-    return _open_coding_product_runtime_owner(
+    return _programs.open_runtime(
         lifecycle,
         epoch_runtime,
         state,
@@ -989,31 +938,6 @@ def open_coding_builtin_product_runtime_owner(
         runtime_protocol_epoch=runtime_protocol_epoch,
         include_capabilities=True,
         include_worker_candidates=worker_candidates,
-    )
-
-
-def _open_coding_product_runtime_owner(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: (
-        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
-    ),
-    state: CodingPackageProductStateOwners,
-    *,
-    workspace: Path,
-    runtime_version: str,
-    runtime_protocol_epoch: int,
-    include_capabilities: bool,
-    include_worker_candidates: bool = False,
-) -> CodingPosixLocalWheelProductRuntimeOwner:
-    return _programs.open_runtime(
-        lifecycle,
-        epoch_runtime,
-        state,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-        include_capabilities=include_capabilities,
-        include_worker_candidates=include_worker_candidates,
     )
 
 

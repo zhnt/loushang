@@ -6,10 +6,13 @@ explicit intermediate Code dependencies; no parallel state or effect owner.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import cast
 
 from loushang.coding.package import product_runtime as _binding
+
+from .startup import retry_fresh_bootstrap
 
 
 def open_product_state(
@@ -368,7 +371,8 @@ def open_runtime(
 @contextmanager
 def workspace_selection_scope(
     self: _binding.CodingFencedProductApplicationSelection,
-) -> _binding.Iterator[None]:
+) -> Iterator[None]:
+    # Admission may observe the current owner without starting a new selection.
     with self._lock:
         if self._selection_in_progress:
             raise RuntimeError(_binding._RUNTIME_PROGRAM_VALUES["value_035"])
@@ -379,6 +383,30 @@ def workspace_selection_scope(
             yield
         finally:
             self._selection_in_progress = False
+
+
+def factory_for_session(
+    self: _binding.CodingFencedProductApplicationSelection,
+    manager: _binding.SessionManager,
+    *,
+    settings_manager: _binding.SettingsManager | None,
+) -> (
+    _binding.PosixLocalWheelProductRuntimeFactory
+    | _binding.WindowsLocalWheelProductRuntimeFactory
+    | None
+):
+    if not isinstance(manager, _binding.SessionManager):
+        raise TypeError("Coding Product Session manager is required")
+    # A legacy Session may name a workspace that has yet to be created.
+    workspace = _binding.Path(manager.get_cwd()).resolve(strict=False)
+    with workspace_selection_scope(self):
+        owner = select_workspace(
+            self,
+            workspace,
+            settings_manager=settings_manager,
+            require_current_admission=None,
+        )
+        return owner.factory_for_session(manager) if owner is not None else None
 
 
 def prepare_resume_epoch(
@@ -414,9 +442,10 @@ def prepare_resume_epoch(
         if self._fenced:
             raise RuntimeError(_binding._RUNTIME_PROGRAM_VALUES["value_036"])
 
-    with self._workspace_selection_scope():
+    with workspace_selection_scope(self):
         current()
-        self._select_workspace_unlocked(
+        select_workspace(
+            self,
             workspace,
             settings_manager=settings_manager,
             require_current_admission=current,
@@ -437,8 +466,14 @@ def select_workspace(
     if self._fenced:
         raise RuntimeError(_binding._RUNTIME_PROGRAM_VALUES["value_036"])
     owner = self._owners.get(workspace)
+    if owner is not None and self._external_bindings_current(
+        owner,
+        lifecycle=_binding.resolve_coding_plugin_lifecycle_state_layout(workspace),
+    ):
+        return owner
+
+    lifecycle = _binding.resolve_coding_plugin_lifecycle_state_layout(workspace)
     if owner is None:
-        lifecycle = _binding.resolve_coding_plugin_lifecycle_state_layout(workspace)
         epoch = _binding.resolve_coding_package_epoch_layout(lifecycle)
         unadmitted_platform = (
             _binding.os.name == "posix"
@@ -482,46 +517,31 @@ def select_workspace(
                     read_only=True,
                 ).current(epoch.store_id)
                 raise RuntimeError(_binding._RUNTIME_PROGRAM_VALUES["value_040"])
-            _binding._retry_fresh_coding_product_bootstrap_for_session(
+            retry_fresh_bootstrap(
                 lifecycle,
                 workspace=workspace,
                 settings_manager=settings_manager,
                 windows_candidate=self._windows_candidate,
                 require_current_admission=require_current_admission,
             )
-        owner = _binding.open_coding_fenced_product_application_owner(
-            lifecycle,
-            workspace=workspace,
-            runtime_version=_binding.version(
-                _binding._RUNTIME_PROGRAM_VALUES["distribution_name"]
-            ),
-            runtime_protocol_epoch=_binding.CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            worker_candidates=self._worker_candidates,
-            windows_candidate=self._windows_candidate,
-            require_current_admission=require_current_admission,
-        )
-        self._owners[workspace] = owner
-        self._legacy_workspaces.pop(workspace, None)
-    elif not self._external_bindings_current(
-        owner,
-        lifecycle=_binding.resolve_coding_plugin_lifecycle_state_layout(workspace),
-    ):
-        lifecycle = _binding.resolve_coding_plugin_lifecycle_state_layout(workspace)
-        replacement = _binding.open_coding_fenced_product_application_owner(
-            lifecycle,
-            workspace=workspace,
-            runtime_version=_binding.version(
-                _binding._RUNTIME_PROGRAM_VALUES["distribution_name"]
-            ),
-            runtime_protocol_epoch=_binding.CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            worker_candidates=self._worker_candidates,
-            windows_candidate=self._windows_candidate,
-            require_current_admission=require_current_admission,
-        )
+
+    selected = _binding.open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version=_binding.version(
+            _binding._RUNTIME_PROGRAM_VALUES["distribution_name"]
+        ),
+        runtime_protocol_epoch=_binding.CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=self._worker_candidates,
+        windows_candidate=self._windows_candidate,
+        require_current_admission=require_current_admission,
+    )
+    if owner is not None:
         self._retained_owners.append(owner)
-        owner = replacement
-        self._owners[workspace] = owner
-    return owner
+    self._owners[workspace] = selected
+    if owner is None:
+        self._legacy_workspaces.pop(workspace, None)
+    return selected
 
 
 def resume_epoch_fingerprint(
@@ -541,6 +561,8 @@ def resume_epoch_fingerprint(
         owner = self._owners.get(workspace)
         if self._fenced:
             raise RuntimeError(_binding._RUNTIME_PROGRAM_VALUES["value_043"])
+        fence = None
+        document: dict[str, object]
         if owner is None:
             lifecycle = self._legacy_workspaces.get(workspace)
             if lifecycle is None:
@@ -555,35 +577,31 @@ def resume_epoch_fingerprint(
             else:
                 raise RuntimeError(_binding._RUNTIME_PROGRAM_VALUES["value_046"])
             identity = workspace.stat()
-            encoded = _binding.json.dumps(
-                {
-                    "workspace": str(workspace),
-                    "workspaceIdentity": [identity.st_dev, identity.st_ino],
-                    "storage": "legacy",
-                    "stateRoot": str(lifecycle.root),
-                    "packageRoot": str(lifecycle.package_root),
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
-            if len(encoded) > 8192:
-                raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_044"])
-            return _binding.sha256(
-                _binding._RUNTIME_PROGRAM_BYTES["value_002"] + encoded
-            ).hexdigest()
-        fence = owner.epoch_runtime.observe_current_epoch_fence()
-        encoded = _binding.json.dumps(
-            {
+            document = {
+                "workspace": str(workspace),
+                "workspaceIdentity": [identity.st_dev, identity.st_ino],
+                "storage": "legacy",
+                "stateRoot": str(lifecycle.root),
+                "packageRoot": str(lifecycle.package_root),
+            }
+        else:
+            fence = owner.epoch_runtime.observe_current_epoch_fence()
+            document = {
                 "workspace": str(workspace),
                 "fence": fence.to_dict(),
-            },
+            }
+        encoded = _binding.json.dumps(
+            document,
             ensure_ascii=True,
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
         if len(encoded) > 8192:
             raise ValueError(_binding._RUNTIME_PROGRAM_VALUES["value_044"])
-        if owner.epoch_runtime.observe_current_epoch_fence() != fence:
+        if (
+            owner is not None
+            and owner.epoch_runtime.observe_current_epoch_fence() != fence
+        ):
             raise RuntimeError(_binding._RUNTIME_PROGRAM_VALUES["value_045"])
         return _binding.sha256(
             _binding._RUNTIME_PROGRAM_BYTES["value_002"] + encoded
