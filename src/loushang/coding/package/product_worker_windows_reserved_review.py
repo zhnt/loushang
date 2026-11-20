@@ -42,7 +42,6 @@ from .product_worker_windows_stage_retirement import (
 from .product_worker_windows_stage_review import FileIdentity, _inspection
 
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
-_MAX_REVIEW_BYTES = 32768
 
 _RESERVED_HISTORY_ERROR = "coding_worker_reserved_history_unverified"
 _UNLAUNCHED_HISTORY_ERROR = "coding_worker_unlaunched_history_unverified"
@@ -62,10 +61,6 @@ class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsReservedStageReviewMet
     _record_kind = "reserved"
     _record_error = CodingWindowsWorkerReservedReviewError
     _record_error_code = "coding_worker_reserved_review_invalid"
-
-    @classmethod
-    def _record_maximum(cls) -> int:
-        return _MAX_REVIEW_BYTES
 
     attempt_id: str
     intent_fingerprint: str

@@ -2399,6 +2399,26 @@ The selected Linux routes have 233 passes after the C5 test fixture
 was corrected to the required journal filename. Seven host-runtime
 scenarios were skipped by the local selector.
 
+## Windows Worker Stage Retirement Custody
+
+The existing Harness Package Product owner now uses the same offline
+write scope and bound state root for complete, partial, unlaunched, and
+crash stage retirement. Each route retains its own history and replay
+proof. They persist the start review through one records owner, build the
+receipt from the reviewed identity, and check for a retained stage before
+publishing the receipt. The unlaunched route still checks the native
+revision after reading the persisted review.
+
+Harness Worker History now owns the review and receipt byte limits used
+by both the wire types and the retirement records. Coding retains its
+nominal records, error types, Product admission and historical paths.
+Coding Product removes 69 Python lines and formal Harness adds 37, for a
+net reduction of 32 production lines.
+
+The selected Linux regression has 282 passes. All 6,048 controlled
+comparisons match the prior result, error and lock or publication trace
+across the four routes. Native Windows execution was not run.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

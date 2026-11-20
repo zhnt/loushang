@@ -35,7 +35,6 @@ from .product_worker_windows_stage_retirement import (
 )
 from .product_worker_windows_stage_review import FileIdentity, _inspection
 
-_MAX_REVIEW_BYTES = 32768
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 _MAX_DEPTH = 16
 _PARTIAL_DEBTS = (
@@ -58,10 +57,6 @@ class CodingWindowsWorkerPartialStageReviewV1(_WindowsPartialStageReviewMethods)
     _record_kind = "partial"
     _record_error = CodingWindowsWorkerPartialStageReviewError
     _record_error_code = "coding_worker_partial_stage_review_invalid"
-
-    @classmethod
-    def _record_maximum(cls) -> int:
-        return _MAX_REVIEW_BYTES
 
     attempt_id: str
     lease_owner_revision: int

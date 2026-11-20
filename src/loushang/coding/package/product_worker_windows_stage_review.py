@@ -46,7 +46,6 @@ from .product_worker_windows_recovery_inventory import (
 _MARKER = "worker-payload.json"
 _MAX_MARKER_BYTES = 1024
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
-_MAX_REVIEW_BYTES = 32768
 _READ_CHUNK = 1024 * 1024
 _DIRECTORY_ATTRIBUTES = 0x00000010 | 0x00000020 | 0x00002000
 _FILE_ATTRIBUTES = 0x00000020 | 0x00000080 | 0x00002000
@@ -66,10 +65,6 @@ class CodingWindowsWorkerStageReviewV1(_WindowsCompleteStageReviewMethods):
     _record_kind = "full"
     _record_error = CodingWindowsWorkerStageReviewError
     _record_error_code = "coding_worker_stage_review_record_invalid"
-
-    @classmethod
-    def _record_maximum(cls) -> int:
-        return _MAX_REVIEW_BYTES
 
     attempt_id: str
     intent_fingerprint: str

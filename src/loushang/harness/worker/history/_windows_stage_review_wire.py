@@ -31,6 +31,8 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
     no_effect_history_matches,
 )
 
+WINDOWS_STAGE_REVIEW_MAX_BYTES = 32768
+
 
 class _WindowsStageReviewWireMethods:
     __slots__ = ()
@@ -42,7 +44,7 @@ class _WindowsStageReviewWireMethods:
 
     @classmethod
     def _record_maximum(cls) -> int:
-        raise NotImplementedError
+        return WINDOWS_STAGE_REVIEW_MAX_BYTES
 
     @classmethod
     def _bind_record_schema(cls) -> None:

@@ -76,11 +76,15 @@ from loushang.harness.worker.history._windows_product_journals import (
     WindowsSupervisorJournal,
 )
 from loushang.harness.worker.history._windows_recovery import (
+    WINDOWS_STAGE_RETIREMENT_RECEIPT_MAX_BYTES,
     WindowsRecoveryAdmission,
     WindowsRecoveryAttemptV1,
     project_windows_recovery_attempts,
 )
 from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
+from loushang.harness.worker.history._windows_stage_review_wire import (
+    WINDOWS_STAGE_REVIEW_MAX_BYTES,
+)
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from loushang.harness.worker.payload._selected_payload import (
     _PendingPayload,
@@ -258,8 +262,8 @@ class WindowsWorkerRetirementRecords(Generic[_RetirementReviewT, IntentT]):
     stem: str
     review_type: type[_RetirementReviewT]
     receipt_type: type[IntentT]
-    review_maximum_bytes: int
-    receipt_maximum_bytes: int
+    review_maximum_bytes: int = WINDOWS_STAGE_REVIEW_MAX_BYTES
+    receipt_maximum_bytes: int = WINDOWS_STAGE_RETIREMENT_RECEIPT_MAX_BYTES
     read_bytes: Callable[[Path, int], bytes | None]
     error_type: type[Exception]
     start_invalid: str
@@ -292,6 +296,11 @@ class WindowsWorkerRetirementRecords(Generic[_RetirementReviewT, IntentT]):
             attempt_id,
             invalid_error=lambda: self.error_type(self.start_invalid),
         )
+
+    def publish_start(
+        self, path: Path, review: _RetirementReviewT, *, write: _ReceiptWriter
+    ) -> None:
+        write(path, review.to_bytes(), maximum_bytes=self.review_maximum_bytes)
 
     def read_root_intent(
         self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
