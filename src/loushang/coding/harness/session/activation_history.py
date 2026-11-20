@@ -6,16 +6,23 @@ explicit intermediate Code dependencies; no parallel state or effect owner.
 
 from __future__ import annotations
 
+from collections.abc import Generator, Iterable
+
 from loushang.coding.resume import activation_projection_v2 as _binding
 
 from .selected_ancestry import SelectedAncestry
 
 
 def project_activation_history_steps(
-    records: _binding.Iterable[_binding.AgentTranscriptRecord],
+    records: Iterable[_binding.AgentTranscriptRecord],
     *,
     current_session_id: str,
-) -> _binding.Generator[None, None, _binding.CodingActivationAttemptProjectionV2]:
+    input_id: str | None = None,
+) -> Generator[
+    _binding.AgentTranscriptRecord | None,
+    None,
+    _binding.CodingActivationAttemptProjectionV2,
+]:
     if (
         type(current_session_id) is not str
         or _binding.re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", current_session_id) is None
@@ -29,7 +36,10 @@ def project_activation_history_steps(
     ) = None
     selected_binding_record_id: str | None = None
     for record in records:
-        ancestry.require_next(record, error=_binding._RESUME_OPERATION_VALUES["value_002"])
+        ancestry.require_next(
+            record, error=_binding._RESUME_OPERATION_VALUES["value_002"]
+        )
+        observed_binding: _binding.CodingRuntimeBindingV1 | None = None
         payload = record.payload
         if isinstance(
             payload, _binding.ExtensionData
@@ -83,9 +93,7 @@ def project_activation_history_steps(
                     _binding.validate_coding_resume_v2_user_record(
                         record, intent=matched
                     )
-                    if binding_v2.session_id == current_session_id and not unknown:
-                        selected_binding = binding_v2
-                        selected_binding_record_id = record.record_id
+                    observed_binding = binding_v2
                     del pending[binding_v2.session_id]
             elif reserved == {_binding.CODING_RUNTIME_BINDING_METADATA_KEY}:
                 observation = _binding.inspect_coding_runtime_binding(record.metadata)
@@ -116,13 +124,21 @@ def project_activation_history_steps(
                                 _binding._RESUME_OPERATION_VALUES["value_010"]
                             )
                         del pending[binding.session_id]
-                    if binding.session_id == current_session_id and not unknown:
-                        selected_binding = binding
-                        selected_binding_record_id = record.record_id
+                    observed_binding = binding
             else:
                 unknown = True
+        match = None
+        if (
+            observed_binding is not None
+            and observed_binding.session_id == current_session_id
+            and not unknown
+        ):
+            selected_binding = observed_binding
+            selected_binding_record_id = record.record_id
+            if observed_binding.input_id == input_id:
+                match = record
         ancestry.advance(record, _binding._encoded)
-        yield
+        yield match
     ancestry_digest = ancestry.hexdigest()
     if unknown:
         return _binding.CodingActivationAttemptProjectionV2(
@@ -149,3 +165,24 @@ def project_activation_history_steps(
         binding=selected_binding,
         binding_record_id=selected_binding_record_id,
     )
+
+
+def find_input_records(
+    records: Iterable[_binding.AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+    input_id: str,
+) -> list[_binding.AgentTranscriptRecord] | None:
+    """Find exact-session inputs while verifying the whole selected path."""
+    steps = project_activation_history_steps(
+        records, current_session_id=current_session_id, input_id=input_id
+    )
+    matches: list[_binding.AgentTranscriptRecord] = []
+    while True:
+        try:
+            record = next(steps)
+        except StopIteration as complete:
+            # A later unknown version invalidates even an earlier known input.
+            return None if complete.value.status == "unknown_version" else matches
+        if record is not None:
+            matches.append(record)

@@ -1141,6 +1141,31 @@ reader. Coding retains each route's Product admission, receipt and review
 types, historical diagnostics and links to the original native/recovery
 observers. Existing retirement implementations contribute no migration credit.
 
+## Resume Writer Acquisition And Input Lookup
+
+The selected-history projection now provides validated input record matches
+while verifying the parent chain and the exact v1 or v2 binding. Input lookup
+uses one history walk. It no longer redecodes the whole path or searches it
+again for each v2 intent. An unknown or invalid suffix still invalidates an
+earlier match. The Session manager retains pending-input selection, exact
+record digest and conflict checks, and delegates the durable lookup to the
+original Transcript authority.
+
+Writer acquisition now coordinates the bounded source read, current Plan
+comparison, original Transcript factory acquisition and in-factory
+publication fence. It checks all acquired records and restores the verified
+selected branch before returning the Session. The Coding entry retains its
+required-capability gate and historical header policy. Source changes after
+the initial read still reject and release the original owned preparation.
+
+The batch removes 131 Python lines at the Coding edge and adds 146 in
+staging, for 15 additional production lines. The lookup and Hosted run has
+193 passes and one skip. The subsequent Writer and lookup run passes all 87
+selected cases. All 136 comparative lookup outcomes and durable read calls
+match the baseline. Writer validation and restore projection match the
+original body after resolving the local diagnostic label. Ruff, focused
+mypy, docs and the normalized dependency graph checks pass.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

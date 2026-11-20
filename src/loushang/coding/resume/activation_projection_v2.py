@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import re as re
 import time
-from collections.abc import Generator, Iterable
+from collections.abc import Iterable
 from collections.abc import Mapping as Mapping
 from dataclasses import dataclass
 from typing import Literal
@@ -96,7 +96,7 @@ def project_coding_activation_attempt_path_v2(
     *,
     current_session_id: str,
 ) -> CodingActivationAttemptProjectionV2:
-    steps = _project_coding_activation_attempt_path_v2_steps(
+    steps = _programs.project_activation_history_steps(
         records, current_session_id=current_session_id
     )
     while True:
@@ -113,7 +113,7 @@ async def project_coding_activation_attempt_path_v2_async(
 ) -> CodingActivationAttemptProjectionV2:
     """Perform the same complete historical check while allowing UI work."""
 
-    steps = _project_coding_activation_attempt_path_v2_steps(
+    steps = _programs.project_activation_history_steps(
         records, current_session_id=current_session_id
     )
     deadline = time.monotonic() + 0.008
@@ -128,15 +128,3 @@ async def project_coding_activation_attempt_path_v2_async(
                 deadline = time.monotonic() + 0.008
     finally:
         steps.close()
-
-
-def _project_coding_activation_attempt_path_v2_steps(
-    records: Iterable[AgentTranscriptRecord],
-    *,
-    current_session_id: str,
-) -> Generator[None, None, CodingActivationAttemptProjectionV2]:
-    return (
-        yield from _programs.project_activation_history_steps(
-            records, current_session_id=current_session_id
-        )
-    )
