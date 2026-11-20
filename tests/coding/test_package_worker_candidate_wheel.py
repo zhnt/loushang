@@ -118,6 +118,7 @@ from loushang.coding.package.product_worker_history_stage_v2 import (
     stage_coding_product_worker_v2_preparation,
 )
 from loushang.coding.package.product_worker_installed_native import (
+    _product_native_release_custody,
     open_coding_product_installed_worker_release_reader,
 )
 from loushang.coding.package.product_worker_native_approval import (
@@ -125,8 +126,6 @@ from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalJournal,
 )
 from loushang.coding.package.product_worker_native_install import (
-    _verified_wheel_members,
-    _write_stage,
     install_coding_product_worker_native_release,
     repair_coding_product_worker_native_release,
     review_coding_product_worker_native_release,
@@ -1548,9 +1547,10 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         product.state_root / ".worker-native-release-stage-complete"
                     )
                     complete_stage.mkdir(mode=0o700)
-                    _write_stage(
+                    custody = _product_native_release_custody()
+                    custody._write_stage(
                         complete_stage,
-                        _verified_wheel_members(native_wheel),
+                        custody._verified_wheel_members(native_wheel),
                         native_wheel,
                         native_approval,
                         product,

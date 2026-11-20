@@ -2536,6 +2536,28 @@ lists the shared program and the actual C5 consumers. Forty-two controlled
 before-and-after cases match admission, error and preparation order on
 both platforms. Native Windows execution was not run.
 
+## Native Worker Release Publication
+
+Linux install and repair share the existing Harness approval, pinned
+Product root, stage verification, and publication sequence. Install
+still owns its temporary staging directory and exact installed replay.
+Repair only accepts one complete existing stage. The shared operation
+verifies under the pinned descriptor, rechecks current approval and root
+identity, publishes without replacement, verifies the published identity,
+and flushes the parent. Each caller keeps its original final read order.
+
+The Coding install adapters remove two private test forwards. The
+fixtures construct the same interrupted state with the actual Harness
+release owner. Coding Product removes 19 Python lines and formal Harness
+removes 11. The system removes 30 production lines.
+
+The Linux suite has 336 passes, including 50 install and 30 repair
+observations. The native host repair case is skipped by the local
+selector. The existing Windows Harness owners for cleanup evidence,
+Supervisor and native settlement, and lease repair pass 11 controlled
+checks. Windows C5 recovery was inspected at its actual owner. Native
+Windows and the complete Windows C5 recovery route were not executed.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

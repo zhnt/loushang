@@ -13,7 +13,8 @@ import os
 import re
 import stat
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import Field, dataclass, replace
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError
@@ -199,87 +200,49 @@ class _LinuxWorkerNativeReleaseCustody(Generic[A, V, C, M, R]):
             or catalog.get("profileSourceSha256") != approved.profile_sha256
         ):
             raise ValueError("Worker native profile approval changed")
-        with product_owner.gc_gate.guard(require_write=True):
-            product_owner.assert_root_gc_authority_current()
-            self._require_current_approval(approval_owner, approved)
-            if not any(
-                (
-                    binding.source_trust_class == self.trust_class
-                    for binding in product_owner.policy.bindings
-                )
+        with self._approved_release_parent(
+            product_owner, approval_owner, approved
+        ) as (parent, parent_fd):
+            target = parent / _PRODUCT_NATIVE_RELEASE_ROOT
+            if any(
+                (name.startswith(_STAGE_PREFIX) for name in os.listdir(parent_fd))
             ):
-                raise ValueError(
-                    f"{self.product_label} Product Worker candidate owner is required"
+                raise self.error_type()(
+                    "Worker native release has unsettled staging debt"
                 )
-            parent = product_owner.state_root
-            parent_fd = os.open(
-                parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-            )
-            try:
-                self._require_private_root(parent_fd)
-                target = parent / _PRODUCT_NATIVE_RELEASE_ROOT
-                if any(
-                    (name.startswith(_STAGE_PREFIX) for name in os.listdir(parent_fd))
+            if target.exists() or target.is_symlink():
+                reader = self.open_reader(product_owner)
+                closure = reader.current_closure()
+                receipt = self.read_receipt(target, product_owner)
+                if (
+                    receipt["wheelSha256"] != approved.wheel_sha256
+                    or receipt["catalogSha256"] != approved.catalog_sha256
+                    or closure.containment_launcher_digest
+                    != approved.launcher_sha256
+                    or (
+                        closure.containment_profile_digest
+                        != approved.profile_sha256
+                    )
                 ):
                     raise self.error_type()(
-                        "Worker native release has unsettled staging debt"
+                        "Worker native release replacement requires a new operation"
                     )
-                if target.exists() or target.is_symlink():
-                    reader = self.open_reader(product_owner)
-                    closure = reader.current_closure()
-                    receipt = self.read_receipt(target, product_owner)
-                    if (
-                        receipt["wheelSha256"] != approved.wheel_sha256
-                        or receipt["catalogSha256"] != approved.catalog_sha256
-                        or closure.containment_launcher_digest
-                        != approved.launcher_sha256
-                        or (
-                            closure.containment_profile_digest
-                            != approved.profile_sha256
-                        )
-                    ):
-                        raise self.error_type()(
-                            "Worker native release replacement requires a new operation"
-                        )
-                    return reader
-                with TemporaryDirectory(prefix=_STAGE_PREFIX, dir=parent) as raw:
-                    stage = Path(raw)
-                    self._write_stage(stage, files, wheel, approved, product_owner)
-                    stage_fd = os.open(
-                        stage.name,
-                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-                        dir_fd=parent_fd,
-                    )
-                    try:
-                        closure, receipt = self.verify_descriptor(
-                            stage_fd, product_owner
-                        )
-                        self._require_approved_native_release(
-                            closure, receipt, approved
-                        )
-                        os.fsync(stage_fd)
-                        self._require_same_stage(parent_fd, stage.name, stage_fd)
-                        self._require_current_approval(approval_owner, approved)
-                        product_owner.assert_root_gc_authority_current()
-                        self._require_same_product_root(parent, parent_fd)
-                        _rename_directory_noreplace(
-                            parent_fd,
-                            stage.name,
-                            parent_fd,
-                            _PRODUCT_NATIVE_RELEASE_ROOT,
-                        )
-                        self._require_same_stage(
-                            parent_fd, _PRODUCT_NATIVE_RELEASE_ROOT, stage_fd
-                        )
-                        os.fsync(parent_fd)
-                    finally:
-                        os.close(stage_fd)
-                reader = self.open_reader(product_owner)
-                closure, receipt = self.verify_root(target, product_owner)
-                self._require_approved_native_release(closure, receipt, approved)
                 return reader
-            finally:
-                os.close(parent_fd)
+            with TemporaryDirectory(prefix=_STAGE_PREFIX, dir=parent) as raw:
+                stage = Path(raw)
+                self._write_stage(stage, files, wheel, approved, product_owner)
+                self._publish_approved_stage(
+                    parent,
+                    parent_fd,
+                    stage.name,
+                    product_owner,
+                    approval_owner,
+                    approved,
+                )
+            reader = self.open_reader(product_owner)
+            closure, receipt = self.verify_root(target, product_owner)
+            self._require_approved_native_release(closure, receipt, approved)
+            return reader
 
     def repair(
         self,
@@ -298,14 +261,47 @@ class _LinuxWorkerNativeReleaseCustody(Generic[A, V, C, M, R]):
             raise TypeError(
                 f"{self.product_label} Product native repair owners are required"
             )
+        with self._approved_release_parent(
+            product_owner, approval_owner, approved
+        ) as (parent, parent_fd):
+            stages = tuple(
+                (
+                    name
+                    for name in os.listdir(parent_fd)
+                    if name.startswith(_STAGE_PREFIX)
+                )
+            )
+            target = parent / _PRODUCT_NATIVE_RELEASE_ROOT
+            if len(stages) != 1 or target.exists() or target.is_symlink():
+                raise self.error_type()(
+                    "Worker native release repair state is ambiguous"
+                )
+            stage_name = stages[0]
+            self._publish_approved_stage(
+                parent,
+                parent_fd,
+                stage_name,
+                product_owner,
+                approval_owner,
+                approved,
+            )
+            closure, receipt = self.verify_root(target, product_owner)
+            self._require_approved_native_release(closure, receipt, approved)
+            return self.open_reader(product_owner)
+
+    @contextmanager
+    def _approved_release_parent(
+        self,
+        product_owner: PosixLocalWheelProductSessionOwner,
+        approval_owner: _ApprovalOwner[A],
+        approved: A,
+    ) -> Iterator[tuple[Path, int]]:
         with product_owner.gc_gate.guard(require_write=True):
             product_owner.assert_root_gc_authority_current()
             self._require_current_approval(approval_owner, approved)
             if not any(
-                (
-                    binding.source_trust_class == self.trust_class
-                    for binding in product_owner.policy.bindings
-                )
+                binding.source_trust_class == self.trust_class
+                for binding in product_owner.policy.bindings
             ):
                 raise ValueError(
                     f"{self.product_label} Product Worker candidate owner is required"
@@ -316,46 +312,39 @@ class _LinuxWorkerNativeReleaseCustody(Generic[A, V, C, M, R]):
             )
             try:
                 self._require_private_root(parent_fd)
-                stages = tuple(
-                    (
-                        name
-                        for name in os.listdir(parent_fd)
-                        if name.startswith(_STAGE_PREFIX)
-                    )
-                )
-                target = parent / _PRODUCT_NATIVE_RELEASE_ROOT
-                if len(stages) != 1 or target.exists() or target.is_symlink():
-                    raise self.error_type()(
-                        "Worker native release repair state is ambiguous"
-                    )
-                stage_name = stages[0]
-                stage_fd = os.open(
-                    stage_name,
-                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-                    dir_fd=parent_fd,
-                )
-                try:
-                    closure, receipt = self.verify_descriptor(stage_fd, product_owner)
-                    self._require_approved_native_release(closure, receipt, approved)
-                    os.fsync(stage_fd)
-                    self._require_same_stage(parent_fd, stage_name, stage_fd)
-                    self._require_current_approval(approval_owner, approved)
-                    product_owner.assert_root_gc_authority_current()
-                    self._require_same_product_root(parent, parent_fd)
-                    _rename_directory_noreplace(
-                        parent_fd, stage_name, parent_fd, _PRODUCT_NATIVE_RELEASE_ROOT
-                    )
-                    self._require_same_stage(
-                        parent_fd, _PRODUCT_NATIVE_RELEASE_ROOT, stage_fd
-                    )
-                    os.fsync(parent_fd)
-                finally:
-                    os.close(stage_fd)
-                closure, receipt = self.verify_root(target, product_owner)
-                self._require_approved_native_release(closure, receipt, approved)
-                return self.open_reader(product_owner)
+                yield parent, parent_fd
             finally:
                 os.close(parent_fd)
+
+    def _publish_approved_stage(
+        self,
+        parent: Path,
+        parent_fd: int,
+        stage_name: str,
+        product_owner: PosixLocalWheelProductSessionOwner,
+        approval_owner: _ApprovalOwner[A],
+        approved: A,
+    ) -> None:
+        stage_fd = os.open(
+            stage_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=parent_fd,
+        )
+        try:
+            closure, receipt = self.verify_descriptor(stage_fd, product_owner)
+            self._require_approved_native_release(closure, receipt, approved)
+            os.fsync(stage_fd)
+            self._require_same_stage(parent_fd, stage_name, stage_fd)
+            self._require_current_approval(approval_owner, approved)
+            product_owner.assert_root_gc_authority_current()
+            self._require_same_product_root(parent, parent_fd)
+            _rename_directory_noreplace(
+                parent_fd, stage_name, parent_fd, _PRODUCT_NATIVE_RELEASE_ROOT
+            )
+            self._require_same_stage(parent_fd, _PRODUCT_NATIVE_RELEASE_ROOT, stage_fd)
+            os.fsync(parent_fd)
+        finally:
+            os.close(stage_fd)
 
     def _require_approved_native_release(
         self, closure: C, receipt: dict[str, object], approved: A
