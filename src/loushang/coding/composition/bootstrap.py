@@ -31,7 +31,6 @@ from loushang.coding.composition.base_plugin import (
 from loushang.coding.composition.base_product import (
     CodingBaseProductCompilation,
     compile_coding_base_product_selection,
-    extend_coding_base_product_data_resources,
 )
 from loushang.coding.composition.capabilities import (
     CODING_ARCH_CAPABILITY,
@@ -48,10 +47,6 @@ from loushang.coding.composition.capability_plugins import (
     create_coding_capability_plugin_composition_request,
     prepare_coding_capability_plugin_composition,
 )
-from loushang.coding.composition.external_data import (
-    CodingExternalDataProductCompilation,
-    compile_coding_external_data_product_selection,
-)
 from loushang.coding.composition.invocation_profile import (
     CODING_READ_ONLY_AGENT_INVOCATION_PRODUCT_PROFILE,
     CodingAgentInvocationProductProfile,
@@ -63,7 +58,6 @@ from loushang.coding.composition.plan import (
 )
 from loushang.coding.composition.product_capability_plugins import (
     CodingBuiltinProductCompositionPreparation,
-    prepare_coding_builtin_product_composition,
     prepare_coding_product_capability_plugin_composition,
 )
 from loushang.coding.composition.provenance import (
@@ -93,14 +87,16 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
-from loushang.coding.harness.session.catalog_authority import CatalogProductAuthority
 from loushang.coding.harness.session.catalog_preparation import (
     capture_selected_manifests,
-    observe_requested_plugins,
     require_catalog_receipt,
 )
 from loushang.coding.harness.session.managed_plugin_preparation import (
     prepare_managed_plugins,
+)
+from loushang.coding.harness.session.package_catalog import (
+    CatalogProductAuthority,
+    prepare_fenced_catalog,
 )
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
@@ -204,11 +200,11 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.package_product.product_local_wheel_runtime import (
+    PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductRuntimeFactory,
     WindowsLocalWheelProductRuntimeFactory,
 )
 from loushang.harness.package_product.product_runtime import (
-    PackageProductPluginDesiredSelectionV1,
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
 )
@@ -1077,16 +1073,8 @@ def _create_agent_session(
         CodingCapabilityPluginCompositionPreparation
     ] = PreparationRootCustody()
     base_plugin_session_preparation = None
-    product_base_compilation: CodingBaseProductCompilation | None = None
-    product_base_runtime: PackageProductRuntimeBindingV1 | None = None
-    product_base_disabled_selection: PackageProductPluginDesiredSelectionV1 | None = (
-        None
-    )
-    product_capability_desired_selections: tuple[
-        PackageProductPluginDesiredSelectionV1, ...
-    ] = ()
-    product_external_data_compilation: CodingExternalDataProductCompilation | None = (
-        None
+    catalog_authority = CatalogProductAuthority(
+        None, (), None, None, None, "Coding Product"
     )
     capture_catalog_manifests = partial(
         capture_selected_manifests,
@@ -1097,6 +1085,53 @@ def _create_agent_session(
         None
     )
 
+    def prepare_capability_roots(
+        state_prefix: str, private_prefix: str, *, arch_enabled: bool
+    ) -> Path:
+        return preparation_custody.prepare_roots(
+            make_state=lambda: (
+                _ExplicitTemporaryDirectory(prefix=state_prefix)
+                if not session_manager.persist
+                else None
+            ),
+            make_private=lambda: (
+                _ExplicitTemporaryDirectory(prefix=private_prefix)
+                if arch_enabled and (not session_manager.persist)
+                else None
+            ),
+            persistent_root=lambda: _coding_capability_plugin_state_root(
+                session_manager, session_id=session_id
+            ),
+        )
+
+    def build_capability_configurations(
+        *, lsp_enabled: bool, arch_enabled: bool, make_arch_root: Callable[[], Path]
+    ) -> dict[str, CodingLspPluginConfigV1 | CodingArchPluginConfigV1]:
+        configurations: dict[
+            str,
+            CodingLspPluginConfigV1 | CodingArchPluginConfigV1,
+        ] = {}
+        if lsp_enabled:
+            configurations["coding.lsp.default"] = (
+                CodingLspPluginConfigV1.from_runtime_inputs(
+                    workspace_root=session_manager.get_cwd(),
+                    definitions=resolved_lsp_definitions,
+                    baseline_environment=resolved_lsp_environment,
+                )
+            )
+        if arch_enabled:
+            configurations["coding.arch.default"] = (
+                CodingArchPluginConfigV1.from_runtime_inputs(
+                    workspace_root=session_manager.get_cwd(),
+                    private_data_root=(
+                        Path(preparation_custody.private_root.name)
+                        if preparation_custody.private_root is not None
+                        else make_arch_root()
+                    ),
+                )
+            )
+        return configurations
+
     def prepare_capability_plugins(
         plan_seed: ProductPluginPlanSeed | None = None,
     ) -> Any:
@@ -1104,22 +1139,10 @@ def _create_agent_session(
         preparation_custody.begin_once(
             "Coding Capability Plugins were already prepared"
         )
-        state_root = preparation_custody.prepare_roots(
-            make_state=lambda: (
-                _ExplicitTemporaryDirectory(
-                    prefix="loushang-coding-capability-plugins-"
-                )
-                if not session_manager.persist
-                else None
-            ),
-            make_private=lambda: (
-                _ExplicitTemporaryDirectory(prefix="loushang-coding-arch-private-")
-                if arch_enabled_for_session and (not session_manager.persist)
-                else None
-            ),
-            persistent_root=lambda: _coding_capability_plugin_state_root(
-                session_manager, session_id=session_id
-            ),
+        state_root = prepare_capability_roots(
+            "loushang-coding-capability-plugins-",
+            "loushang-coding-arch-private-",
+            arch_enabled=arch_enabled_for_session,
         )
         policy_revision = (
             plan_seed.plan.context.policy_revision if plan_seed is not None else None
@@ -1142,29 +1165,11 @@ def _create_agent_session(
                 plugin_ids=plugin_ids,
             )
         )
-        configurations: dict[
-            str,
-            CodingLspPluginConfigV1 | CodingArchPluginConfigV1,
-        ] = {}
-        if eager_lsp_enabled_for_session:
-            configurations["coding.lsp.default"] = (
-                CodingLspPluginConfigV1.from_runtime_inputs(
-                    workspace_root=session_manager.get_cwd(),
-                    definitions=resolved_lsp_definitions,
-                    baseline_environment=resolved_lsp_environment,
-                )
-            )
-        if arch_enabled_for_session:
-            configurations["coding.arch.default"] = (
-                CodingArchPluginConfigV1.from_runtime_inputs(
-                    workspace_root=session_manager.get_cwd(),
-                    private_data_root=(
-                        Path(preparation_custody.private_root.name)
-                        if preparation_custody.private_root is not None
-                        else state_root / "private-data" / "coding-arch-default"
-                    ),
-                )
-            )
+        configurations = build_capability_configurations(
+            lsp_enabled=eager_lsp_enabled_for_session,
+            arch_enabled=arch_enabled_for_session,
+            make_arch_root=lambda: state_root / "private-data" / "coding-arch-default",
+        )
         assert managed is not None
         try:
             return prepare_coding_capability_plugin_composition(
@@ -1341,13 +1346,9 @@ def _create_agent_session(
         resolved_cwd: Path,
         product_runtime: PackageProductRuntimeBindingV1,
     ) -> ResourceBundle:
-        nonlocal product_base_compilation, product_base_runtime
-        nonlocal product_base_disabled_selection
-        nonlocal product_capability_desired_selections
-        nonlocal product_external_data_compilation
-        nonlocal builtin_product_preparation
+        nonlocal catalog_authority, builtin_product_preparation
 
-        if not product_base_requested or product_base_compilation is not None:
+        if not product_base_requested or catalog_authority.base is not None:
             raise RuntimeError("Coding Product base Catalog was already prepared")
         if prepared_resource_catalog_adapters:
             raise RuntimeError("Coding Product base cannot mix Catalog routes")
@@ -1356,60 +1357,24 @@ def _create_agent_session(
             tools=construction_tools,
         )
 
-        def build_product_capability_configurations(
-            selected_ids: list[str],
-        ) -> dict[str, CodingLspPluginConfigV1 | CodingArchPluginConfigV1]:
-            """Reuse config expressions without transferring state ownership."""
-
-            configurations: dict[
-                str, CodingLspPluginConfigV1 | CodingArchPluginConfigV1
-            ] = {}
-            if "coding.lsp.default" in selected_ids:
-                configurations["coding.lsp.default"] = (
-                    CodingLspPluginConfigV1.from_runtime_inputs(
-                        workspace_root=session_manager.get_cwd(),
-                        definitions=resolved_lsp_definitions,
-                        baseline_environment=resolved_lsp_environment,
-                    )
-                )
-            if "coding.arch.default" in selected_ids:
-                configurations["coding.arch.default"] = (
-                    CodingArchPluginConfigV1.from_runtime_inputs(
-                        workspace_root=session_manager.get_cwd(),
-                        private_data_root=(
-                            Path(preparation_custody.private_root.name)
-                            if preparation_custody.private_root is not None
-                            else prepare_coding_product_arch_private_data_root(
-                                resolve_coding_plugin_lifecycle_state_layout(
-                                    session_manager.get_cwd()
-                                ),
-                                product_runtime,
-                                session_id=session_id,
-                            )
-                        ),
-                    )
-                )
-            return configurations
-
-        def prepare_capability_roots(enabled_ids: list[str]) -> Path:
-            return preparation_custody.prepare_roots(
-                make_state=lambda: (
-                    _ExplicitTemporaryDirectory(
-                        prefix="loushang-coding-product-capability-plugins-"
-                    )
-                    if not session_manager.persist
-                    else None
-                ),
-                make_private=lambda: (
-                    _ExplicitTemporaryDirectory(
-                        prefix="loushang-coding-product-arch-private-"
-                    )
-                    if "coding.arch.default" in enabled_ids
-                    and (not session_manager.persist)
-                    else None
-                ),
-                persistent_root=lambda: _coding_capability_plugin_state_root(
-                    session_manager, session_id=session_id
+        def prepare_capability_inputs(
+            enabled_ids: list[str],
+        ) -> tuple[Path, dict[str, CodingLspPluginConfigV1 | CodingArchPluginConfigV1]]:
+            arch_enabled = "coding.arch.default" in enabled_ids
+            state_root = prepare_capability_roots(
+                "loushang-coding-product-capability-plugins-",
+                "loushang-coding-product-arch-private-",
+                arch_enabled=arch_enabled,
+            )
+            return state_root, build_capability_configurations(
+                lsp_enabled="coding.lsp.default" in enabled_ids,
+                arch_enabled=arch_enabled,
+                make_arch_root=lambda: prepare_coding_product_arch_private_data_root(
+                    resolve_coding_plugin_lifecycle_state_layout(
+                        session_manager.get_cwd()
+                    ),
+                    product_runtime,
+                    session_id=session_id,
                 ),
             )
 
@@ -1420,194 +1385,117 @@ def _create_agent_session(
         base_selection = product_runtime.capture_plugin_desired_selection_for(
             "coding.base"
         )
-        if base_selection.desired_state == "installed_disabled" or (
-            base_selection.desired_state == "absent" and base_selection.recorded
-        ):
-            product_base_disabled_selection = base_selection
-            product_base_runtime = product_runtime
-            external_ids = product_runtime.selected_external_data_plugin_ids()
-            if external_ids:
-                product_external_data_compilation = (
-                    compile_coding_external_data_product_selection(
-                        capture_catalog_manifests(product_runtime, external_ids),
-                        composition_set=resolved_composition_set,
-                        session_id=session_id,
-                        evaluated_at=coding_plugin_clock(),
-                    )
-                )
-            enabled_capability_ids, product_capability_desired_selections = (
-                observe_requested_plugins(
-                    product_runtime,
-                    requested_capabilities,
-                    CodingResourceCatalogAdmissionError,
-                )
+        disabled_base = (
+            base_selection
+            if base_selection.desired_state == "installed_disabled"
+            or (base_selection.desired_state == "absent" and base_selection.recorded)
+            else None
+        )
+        if disabled_base is None and base_selection.desired_state != "installed_enabled":
+            raise CodingResourceCatalogAdmissionError(
+                ("product_requested_base_not_installed",)
             )
-            if enabled_capability_ids:
-                state_root = prepare_capability_roots(enabled_capability_ids)
-                no_base_configurations = build_product_capability_configurations(
-                    enabled_capability_ids
-                )
-                try:
-                    preparation_custody.preparation = (
-                        prepare_coding_product_capability_plugin_composition(
-                            product_runtime,
-                            session_id=session_id,
-                            configurations=no_base_configurations,
-                            state_root=state_root,
-                            clock=coding_plugin_clock,
-                            resume_parents=_resume_plugin_parents,
-                        )
+
+        def compile_base(
+            selected: PackageProductSelectedPluginManifestV1, evaluated_at: int
+        ) -> CodingBaseProductCompilation:
+            return compile_coding_base_product_selection(
+                selected,
+                resolved_composition_set,
+                installation_key=selected.snapshot.installation_key,
+                session_id=session_id,
+                host_environment=session_host_environment,
+                evaluated_at=evaluated_at,
+                include_tool_contribution=(
+                    session_no_tools_mode is None
+                    and (
+                        resolved_invocation_profile is None
+                        or resolved_invocation_profile.include_base_tool_contribution
                     )
-                except BaseException:
-                    preparation_custody.cleanup_roots_sequentially()
-                    raise
-                preparation_custody.attach_cleanup(preparation_custody.preparation)
-            elif _resume_plugin_parents is not None:
-                raise CodingResourceCatalogAdmissionError(
-                    ("resume_plugin_participation_changed",)
-                )
-            receipt = require_catalog_receipt(
-                loader, resolved_cwd, CodingResourceCatalogAdmissionError
+                ),
+                include_tool_claim_prompt=(
+                    session_no_tools_mode is None
+                    and (
+                        resolved_invocation_profile is None
+                        or resolved_invocation_profile.include_base_tool_claim_prompt
+                    )
+                ),
+                include_skill_contribution=(
+                    resolved_invocation_profile is None
+                    or resolved_invocation_profile.include_base_skill_contribution
+                ),
+                include_command_contribution=(
+                    resolved_invocation_profile is None
+                    or resolved_invocation_profile.include_base_command_contribution
+                ),
             )
-            composition = (
-                product_external_data_compilation.product_composition
-                if product_external_data_compilation is not None
+
+        prepared = prepare_fenced_catalog(
+            product_runtime,
+            loader=loader,
+            cwd=resolved_cwd,
+            session_id=session_id,
+            composition_set=resolved_composition_set,
+            base_plugin_id="coding.base",
+            disabled_base=disabled_base,
+            requested_capabilities=requested_capabilities,
+            max_files=_CATALOG_MANIFEST_MAX_FILES,
+            max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
+            clock=coding_plugin_clock,
+            compile_base=compile_base,
+            prepare_capability_inputs=prepare_capability_inputs,
+            custody=preparation_custody,
+            resume_parents=_resume_plugin_parents,
+            admission_failure=CodingResourceCatalogAdmissionError,
+            product_label=catalog_authority.product_label,
+            cleanup_labels=(
+                "Coding Product Capability state cleanup",
+                "Coding Product Arch private-state cleanup",
+            ),
+        )
+        compiled = prepared.authority.base
+        external = prepared.authority.external
+        disabled_composition = None
+        if compiled is None:
+            disabled_composition = (
+                external.product_composition
+                if external is not None
                 else preparation_custody.preparation.product_composition
                 if preparation_custody.preparation is not None
                 else None
             )
-            adapter, projection = _prepare_coding_catalog_projection(
-                loader,
-                cwd=resolved_cwd,
-                session_id=session_id,
-                disabled_skills=services.settings_manager.get_settings().disabled_skills,
-                product_composition=composition,
-                product_snapshot_resources=(
-                    product_external_data_compilation.product_resource_inputs()
-                    if product_external_data_compilation is not None
-                    else ()
-                    if composition is not None
-                    else None
-                ),
-                admission_now=coding_plugin_clock(),
-                clock=coding_plugin_clock,
-                receipt=receipt,
-                source_policy=(
-                    CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
-                    if composition is not None
-                    else CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
-                ),
-            )
-            prepared_resource_catalog_adapters.append(adapter)
-            return projection
-        if base_selection.desired_state != "installed_enabled":
-            raise CodingResourceCatalogAdmissionError(
-                ("product_requested_base_not_installed",)
-            )
-        selected = product_runtime.capture_selected_plugin_manifest_for(
-            "coding.base",
-            max_files=_CATALOG_MANIFEST_MAX_FILES,
-            max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
-        )
-        evaluated_at = coding_plugin_clock()
-        compiled = compile_coding_base_product_selection(
-            selected,
-            resolved_composition_set,
-            installation_key=selected.snapshot.installation_key,
-            session_id=session_id,
-            host_environment=session_host_environment,
-            evaluated_at=evaluated_at,
-            include_tool_contribution=(
-                session_no_tools_mode is None
-                and (
-                    resolved_invocation_profile is None
-                    or resolved_invocation_profile.include_base_tool_contribution
-                )
-            ),
-            include_tool_claim_prompt=(
-                session_no_tools_mode is None
-                and (
-                    resolved_invocation_profile is None
-                    or resolved_invocation_profile.include_base_tool_claim_prompt
-                )
-            ),
-            include_skill_contribution=(
-                resolved_invocation_profile is None
-                or resolved_invocation_profile.include_base_skill_contribution
-            ),
-            include_command_contribution=(
-                resolved_invocation_profile is None
-                or resolved_invocation_profile.include_base_command_contribution
-            ),
-        )
-        receipt = require_catalog_receipt(
-            loader, resolved_cwd, CodingResourceCatalogAdmissionError
-        )
-        enabled_capability_ids, product_capability_desired_selections = (
-            observe_requested_plugins(
-                product_runtime,
-                requested_capabilities,
-                CodingResourceCatalogAdmissionError,
-            )
-        )
-        if enabled_capability_ids:
-            state_root = prepare_capability_roots(enabled_capability_ids)
-            configurations = build_product_capability_configurations(
-                enabled_capability_ids
-            )
-            try:
-                builtin_product_preparation = (
-                    prepare_coding_builtin_product_composition(
-                        product_runtime,
-                        base_compilation=compiled,
-                        session_id=session_id,
-                        configurations=configurations,
-                        external_data_plugin_ids=(
-                            product_runtime.selected_external_data_plugin_ids()
-                        ),
-                        state_root=state_root,
-                        clock=coding_plugin_clock,
-                        resume_parents=_resume_plugin_parents,
-                    )
-                )
-            except BaseException as error:
-                preparation_custody.cleanup_roots_with_notes(
-                    error,
-                    state_label="Coding Product Capability state cleanup",
-                    private_label="Coding Product Arch private-state cleanup",
-                )
-                raise
-            preparation_custody.preparation = (
-                builtin_product_preparation.capability_preparation
-            )
-            preparation_custody.attach_cleanup(preparation_custody.preparation)
-            compiled = builtin_product_preparation.base_compilation
-        else:
-            if _resume_plugin_parents is not None:
-                raise CodingResourceCatalogAdmissionError(
-                    ("resume_plugin_participation_changed",)
-                )
-            external_ids = product_runtime.selected_external_data_plugin_ids()
-            if external_ids:
-                compiled = extend_coding_base_product_data_resources(
-                    compiled,
-                    capture_catalog_manifests(product_runtime, external_ids),
-                    evaluated_at=evaluated_at,
-                )
         adapter, projection = _prepare_coding_catalog_projection(
             loader,
             cwd=resolved_cwd,
             session_id=session_id,
             disabled_skills=(services.settings_manager.get_settings().disabled_skills),
-            product_composition=compiled.product_composition,
-            product_snapshot_resources=compiled.product_resource_inputs(),
-            admission_now=evaluated_at,
+            product_composition=(
+                compiled.product_composition if compiled is not None else disabled_composition
+            ),
+            product_snapshot_resources=(
+                compiled.product_resource_inputs()
+                if compiled is not None
+                else external.product_resource_inputs()
+                if external is not None
+                else ()
+                if disabled_composition is not None
+                else None
+            ),
+            admission_now=(
+                prepared.evaluated_at if compiled is not None else coding_plugin_clock()
+            ),
             clock=coding_plugin_clock,
-            receipt=receipt,
-            source_policy=resource_catalog_source_policy,
+            receipt=prepared.receipt,
+            source_policy=(
+                resource_catalog_source_policy
+                if compiled is not None
+                else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+                if disabled_composition is not None
+                else CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
+            ),
         )
-        product_base_compilation = compiled
-        product_base_runtime = product_runtime
+        catalog_authority = prepared.authority
+        builtin_product_preparation = prepared.builtin
         prepared_resource_catalog_adapters.append(adapter)
         return projection
 
@@ -1658,14 +1546,11 @@ def _create_agent_session(
                 "Initial Resource Catalog projection adapter is unavailable"
             )
         resource_catalog_adapter = prepared_resource_catalog_adapters.pop()
-        catalog_authority = CatalogProductAuthority(
-            runtime=product_base_runtime,
-            capability_selections=product_capability_desired_selections,
-            disabled_base=product_base_disabled_selection,
-            external=product_external_data_compilation,
-            base=product_base_compilation,
-            product_label="Coding Product",
-        )
+        product_base_compilation = catalog_authority.base
+        product_base_runtime = catalog_authority.runtime
+        product_base_disabled_selection = catalog_authority.disabled_base
+        product_capability_desired_selections = catalog_authority.capability_selections
+        product_external_data_compilation = catalog_authority.external
         catalog_authority.require_current()
 
         def prepare_resource_catalog_refresh(
@@ -2376,8 +2261,8 @@ def _create_agent_session(
                     host_environment=session_host_environment,
                     selected_exact_tool_names=(
                         *(
-                            product_base_compilation.tool_names
-                            if product_base_compilation is not None
+                            catalog_authority.base.tool_names
+                            if catalog_authority.base is not None
                             else coding_base_plugin_assembly.tool_names
                             if coding_base_plugin_assembly is not None
                             else ()

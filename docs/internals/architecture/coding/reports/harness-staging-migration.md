@@ -1190,6 +1190,34 @@ binding. An exact comparison covers 2,112 original startup and refresh
 observation and failure traces, plus nine ordered manifest-read cases.
 Ruff, mypy, documentation and the normalized dependency checks pass.
 
+## Fenced Package Product Catalog Preparation
+
+The staged Package Catalog module now owns the ordered startup preparation
+that supplies the retained evidence used by Session construction and refresh.
+Base-enabled startup captures the Base manifest, compiles its Profile inputs
+and requires the loader receipt before observing requested capabilities.
+Base-disabled startup observes external resource membership and prepares
+enabled capabilities before requiring the receipt. Both routes reuse the
+existing Package Product runtime, plugin preparation and root-custody
+owners. The enabled route keeps cleanup notes on the original failure and
+the disabled route retains its original sequential cleanup behavior.
+
+Coding chooses Base availability, capability IDs and configuration, Profile
+contributions, private paths and the Catalog source policy. Managed and
+fenced preparation reuse the same local root and LSP/Arch configuration
+assembly while supplying their original prefixes and persistent Arch paths.
+The Catalog evidence checker moved into the preparation module unchanged.
+
+The batch removes 115 Python lines at the Coding edge and adds 164 in
+staging, for a net increase of 49 production lines. There is one reviewed
+typing-only dependency on the original Capability configuration union. The
+target has no path back to the startup caller. All 76 Catalog, Resume and
+architecture cases pass on the staged preparation. All nine targeted cases
+pass after the root/configuration reuse. The final source matches 1,430
+startup and fault-injection traces and 164 managed configuration traces,
+including failure precedence and cleanup. Ruff, mypy and documentation
+checks pass.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
