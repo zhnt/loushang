@@ -2591,6 +2591,13 @@ on Linux. The POSIX/controlled-Windows settings custody probe reproduces all
 at the active Config reader and projection budget, all 77 existing trace
 assertions pass on both revisions.
 
+The cumulative PLC9 inventory exposed a second declaration of the legacy
+enablement key in the consumption binding. The Source policy now declares
+the keys that block consumption and derives the captured key set from them.
+The original inventory assertion passes with one enablement-key declaration.
+Eight consumption, refusal and replay cases pass. This follow-up removes
+another three production lines.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
