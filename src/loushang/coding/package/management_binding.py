@@ -6,29 +6,44 @@ import os
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import sha256 as sha256
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.harness.package_product import management as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.plugin_management import (
-    PluginInstallationKeyV1,
+    PluginInstallationKeyV1 as PluginInstallationKeyV1,
+)
+from loushang.harness.plugin_management import (
     PluginManagementApplicationCommandV1,
     PluginManagementApplicationPorts,
     PluginManagementApplicationResultV1,
-    PluginManagementCommandApplication,
     PluginManagementProjectionV1,
     PluginManagementQueryV1,
-    PluginManagementReadModelProjector,
-    PluginManagementSourceRecordV1,
     PluginManagementSourceSnapshotV1,
 )
-from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
+from loushang.harness.plugin_management import (
+    PluginManagementCommandApplication as PluginManagementCommandApplication,
+)
+from loushang.harness.plugin_management import (
+    PluginManagementReadModelProjector as PluginManagementReadModelProjector,
+)
+from loushang.harness.plugin_management import (
+    PluginManagementSourceRecordV1 as PluginManagementSourceRecordV1,
+)
+from loushang.harness.plugin_management.assembly import (
+    bind_plugin_desired_state as bind_plugin_desired_state,
+)
 from loushang.harness.plugin_management.desired_command import (
-    PluginDesiredCommandAuthorityV1,
+    PluginDesiredCommandAuthorityV1 as PluginDesiredCommandAuthorityV1,
+)
+from loushang.harness.plugin_management.desired_command import (
     PluginDesiredRepairResultV1,
-    resume_plugin_desired_operation,
+)
+from loushang.harness.plugin_management.desired_command import (
+    resume_plugin_desired_operation as resume_plugin_desired_operation,
 )
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
@@ -43,17 +58,19 @@ from loushang.harness.plugin_management.package_operation_explanation import (
     PackageOperationExplanationV1,
 )
 from loushang.harness.plugin_management.retirement import (
-    PluginRetirementIntentLedger,
+    PluginRetirementIntentLedger as PluginRetirementIntentLedger,
 )
 from loushang.harness.plugin_management.retirement_sets import (
-    PluginRetirementSetLedger,
+    PluginRetirementSetLedger as PluginRetirementSetLedger,
 )
-from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.plugin_management.service import (
+    PluginManagementService as PluginManagementService,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.journal import (
     PackageLifecycleJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
@@ -67,17 +84,36 @@ from .epoch_layout import (
     coding_fenced_product_exists as coding_fenced_product_exists,
 )
 from .epoch_layout import (
-    resolve_coding_package_epoch_layout,
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
 from .external_data_wheel import (
-    CodingExternalDataWheelBindingV1,
-    CodingExternalDataWheelCatalog,
-    CodingExternalDataWheelError,
+    CodingExternalDataWheelBindingV1 as CodingExternalDataWheelBindingV1,
 )
-from .product_runtime import open_coding_package_product_state
+from .external_data_wheel import (
+    CodingExternalDataWheelCatalog,
+)
+from .external_data_wheel import (
+    CodingExternalDataWheelError as CodingExternalDataWheelError,
+)
+from .product_runtime import (
+    open_coding_package_product_state as open_coding_package_product_state,
+)
 
 CODING_CLI_MANAGEMENT_ACTOR_ID = "coding:cli"
 CODING_CLI_MANAGEMENT_POLICY_REVISION = "coding-plugin-management-cli-v1"
+
+
+_RUNTIME_PROGRAM_VALUES = {
+    "value_001": "Fenced Product management state is unsafe",
+    "value_002": "Fenced Product management state is absent",
+    "value_003": "gc-reservations.jsonl",
+    "value_004": "desired-state.jsonl",
+    "value_005": "management-operations.jsonl",
+    "value_006": "coding-product-source:",
+    "value_007": "coding",
+    "value_008": "coding_product_not_fenced",
+    "value_009": "coding_management_workspace_changed",
+}
 
 
 def explain_coding_fenced_package_operation(
@@ -170,49 +206,13 @@ def read_coding_fenced_desired_transition(
 def read_coding_fenced_handoff_desired_commit(
     layout: CodingPluginLifecycleStateLayout,
     handoff: PackageRetentionHandoffReceiptV1,
-) -> tuple[
-    int, dict[str, object], Literal["owner_receipt", "verified_transition"]
-] | None:
+) -> (
+    tuple[int, dict[str, object], Literal["owner_receipt", "verified_transition"]]
+    | None
+):
     """Prove an exact Desired commit even before handoff settlement is journaled."""
 
-    desired_request = handoff.request.desired_request
-    if handoff.desired_receipt is not None:
-        return (
-            handoff.desired_receipt.inventory_revision,
-            desired_request.root_ref.to_dict(),
-            "owner_receipt",
-        )
-    if handoff.state != "dependency_pinned":
-        return None
-    transition = read_coding_fenced_desired_transition(
-        layout, desired_request.command_id
-    )
-    if transition is None:
-        return None
-    key = transition.mutation.installation_key
-    selected = transition.committed_state.selection.package_revision
-    if (
-        transition.mutation.expected_inventory_revision
-        != desired_request.expected_inventory_revision
-        or transition.inventory_revision
-        != desired_request.expected_inventory_revision + 1
-        or (key.product_id, key.scope_id, key.plugin_id)
-        != (
-            desired_request.product_id,
-            desired_request.scope_id,
-            desired_request.plugin_id,
-        )
-        or selected is None
-        or selected.plugin_version != desired_request.root_ref.version
-        or selected.package_content_digest
-        != desired_request.root_ref.artifact_digest
-    ):
-        return None
-    return (
-        transition.inventory_revision,
-        desired_request.root_ref.to_dict(),
-        "verified_transition",
-    )
+    return _programs.read_handoff_desired_commit(layout, handoff)
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,76 +230,7 @@ class _ProductCliOwner:
         PackageProductPosixFencedRuntimeOwner,
         PluginManagementApplicationPorts,
     ]:
-        from .private_data_backup import CodingArchPrivateDataBackupReadSource
-
-        self.assert_workspace_current()
-        epoch = resolve_coding_package_epoch_layout(self.layout)
-        runtime = PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs(), read_only=read_only
-        )
-        try:
-            self.assert_workspace_current()
-            state_root = runtime.control_root / "product-state"
-            if read_only:
-                try:
-                    state_metadata = state_root.lstat()
-                except FileNotFoundError as exc:
-                    raise ValueError(
-                        "Fenced Product management state is absent"
-                    ) from exc
-                if (
-                    not stat.S_ISDIR(state_metadata.st_mode)
-                    or stat.S_IMODE(state_metadata.st_mode) & 0o077
-                    or state_metadata.st_uid != os.geteuid()
-                ):
-                    raise ValueError("Fenced Product management state is unsafe")
-                load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
-                desired = bind_plugin_desired_state(
-                    state_root / "gc-reservations.jsonl",
-                    state_root / "desired-state.jsonl",
-                    load_policy=load_policy,
-                ).desired
-                management = PluginManagementService(
-                    desired_state=desired,
-                    operation_journal_path=state_root / "management-operations.jsonl",
-                    load_policy=load_policy,
-                )
-            else:
-                runtime.prepare_product_state_root()
-                state = open_coding_package_product_state(
-                    self.layout, runtime, before_recovery=self.assert_workspace_current
-                )
-                desired = state.desired_state
-                management = state.management
-            retirement_intents = PluginRetirementIntentLedger(
-                management.retirement_intent_journal_path,
-                load_policy=load_policy if read_only else None,
-            )
-            retirement = PluginRetirementSetLedger(
-                management.retirement_set_journal_path,
-                retirement_intents=retirement_intents,
-                load_policy=load_policy if read_only else None,
-            )
-            ports = PluginManagementApplicationPorts(
-                commands=PluginManagementCommandApplication(management),
-                queries=PluginManagementReadModelProjector(
-                    desired_state=desired,
-                    operations=management,
-                    retirement=retirement,
-                    source=_product_sources(
-                        self.layout, runtime, desired, read_only=read_only
-                    ),
-                    backup_retention=CodingArchPrivateDataBackupReadSource(
-                        self.layout, runtime
-                    ),
-                ),
-            )
-            runtime.assert_current()
-            self.assert_workspace_current()
-            return runtime, ports
-        except BaseException:
-            runtime.close()
-            raise
+        return _programs.open_management(self, read_only=read_only)
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,65 +239,7 @@ class _ProductSources:
     desired_state: PluginDesiredStateLedger
 
     def snapshot(self) -> PluginManagementSourceSnapshotV1:
-        all_bindings = self.catalog.records()
-        selected = {
-            item.installation_key.plugin_id: item.selection.package_revision
-            for item in self.desired_state.snapshot().installations
-            if item.installation_key.product_id == "coding"
-            and item.installation_key.scope_id == self.catalog.scope_id
-        }
-        latest: dict[str, CodingExternalDataWheelBindingV1] = {}
-        for item in all_bindings:
-            prior = latest.get(item.plugin_id)
-            if prior is None or item.record_revision > prior.record_revision:
-                latest[item.plugin_id] = item
-        for item in all_bindings:
-            revision = selected.get(item.plugin_id)
-            if (
-                revision is not None
-                and revision.package_source_identity
-                == str(self.catalog.source_root / item.wheel_filename)
-                and revision.package_content_digest == item.artifact_digest
-            ):
-                latest[item.plugin_id] = item
-        records = []
-        for item in latest.values():
-            availability: Literal["available", "unavailable"]
-            try:
-                self.catalog.verify_record(item)
-            except (CodingExternalDataWheelError, OSError):
-                availability = "unavailable"
-            else:
-                availability = "available"
-            records.append(
-                PluginManagementSourceRecordV1(
-                    installation_key=PluginInstallationKeyV1(
-                        product_id="coding",
-                        installation_scope="workspace",
-                        scope_id=item.scope_id,
-                        plugin_id=item.plugin_id,
-                    ),
-                    source_identity=f"local:{self.catalog.source_root / item.wheel_filename}",
-                    source_kind="local",
-                    availability=availability,
-                    source_location=item.original_source,
-                    plugin_version=item.version,
-                    manifest_enabled_default=None,
-                )
-            )
-        ordered = tuple(sorted(records, key=lambda value: value.installation_key))
-        owner_revision = sha256(
-            canonical_json_bytes(
-                {
-                    "bindings": [item.to_dict() for item in all_bindings],
-                    "selected": [item.to_dict() for item in ordered],
-                }
-            )
-        ).hexdigest()
-        return PluginManagementSourceSnapshotV1(
-            owner_revision=f"coding-product-source:{owner_revision}",
-            records=ordered,
-        )
+        return _programs.source_snapshot(self)
 
 
 def _product_sources(
@@ -477,45 +350,12 @@ def repair_coding_fenced_cli_desired_operation(
 ) -> PluginDesiredRepairResultV1:
     """Resume only a pending Desired State command issued by this CLI owner."""
 
-    if workspace_guard is not None:
-        workspace_guard()
-    if not coding_fenced_product_exists(layout):
-        raise ValueError("coding_product_not_fenced")
-    identity = workspace.lstat()
-    if (
-        not stat.S_ISDIR(identity.st_mode)
-        or workspace.resolve(strict=True) != workspace
-    ):
-        raise ValueError("coding_management_workspace_changed")
-
-    def assert_workspace_current() -> None:
-        if workspace_guard is not None:
-            workspace_guard()
-        try:
-            current = workspace.lstat()
-            if (current.st_dev, current.st_ino) != (
-                identity.st_dev,
-                identity.st_ino,
-            ) or workspace.resolve(strict=True) != workspace:
-                raise ValueError("coding_management_workspace_changed")
-        except OSError as error:
-            raise ValueError("coding_management_workspace_changed") from error
-        if workspace_guard is not None:
-            workspace_guard()
-
-    return resume_plugin_desired_operation(
-        build_coding_fenced_product_management_cli_ports(
-            layout, workspace_guard=assert_workspace_current
-        ),
-        PluginDesiredCommandAuthorityV1(
-            product_id="coding",
-            installation_scope="workspace",
-            scope_id=layout.scope_id,
-            actor_id=CODING_CLI_MANAGEMENT_ACTOR_ID,
-            policy_revision=CODING_CLI_MANAGEMENT_POLICY_REVISION,
-        ),
-        operation_id=operation_id,
+    return _programs.repair_desired_operation(
+        layout,
+        operation_id,
+        workspace=workspace,
         correlation_id=correlation_id,
+        workspace_guard=workspace_guard,
     )
 
 

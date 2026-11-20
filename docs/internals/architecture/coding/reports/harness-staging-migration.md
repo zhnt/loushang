@@ -440,6 +440,296 @@ failure and native Windows routes are explicit remaining verification limits;
 whole-Goal acceptance, final dependency elimination and remote delivery have
 not occurred.
 
+## Package Runtime And Plugin Lifecycle: In Progress
+
+This third batch reviews the frozen 33-file, 10,003-line package-runtime and
+plugin-manager inventory. It has not reached batch acceptance. Five original
+modules currently dispatch 19 complete runtime, management, preview, repair
+and lifecycle operations to five staged modules. These operations occupied
+1,217 original lines; this is ownership movement, not net deletion. Original
+state objects, locks, public defaults, nominal classes and cleanup authority
+remain unchanged. Existing Harness effect owners execute the operations.
+
+The frozen first-19-operation snapshot contains 104,703 Python lines in all Coding, including 8,373
+lines in 60 staged files. Coding excluding staging contains 96,330 lines;
+the root remains 399 lines and declarations remain 143 lines. Relative to the
+original 100,715-line baseline, production grows by 3,988 lines, all inside
+Coding. Actual Harness, Hosting, other production code, tests and development
+scripts have no changes. This candidate adds 578 lines beyond the accepted
+Legacy checkpoint. Compatibility wrappers, explicit Product declarations,
+types and binding qualification remain material costs, not deletion benefits.
+
+All 211 captured original symbol contracts compare equal. All 19 moved bodies
+compare equal after resolving original bindings, policy declarations and
+relative imports; only genuine function docstring indentation is normalized,
+never executable strings. Ruff and mypy pass for the ten changed source files.
+The nine-file lifecycle/CLI/repair/catalog/preview/resume consumer regression
+completed with 324 passed and 5 skipped in 1,645.70 seconds against the frozen
+first-19-operation snapshot. That source snapshot is archived separately; its
+passing result does not cover later observation, CLI reuse or startup edits.
+
+The baseline revision-custody probe reports 39 failures and 13 passing cases
+before these changes. Its exact source-path resolution trace differs from its
+frozen expected trace. One failing normal case also reproduces on the clean
+pre-Legacy checkpoint `5aa7d44f2`; neither `builtin_wheel.py` nor
+`product_revisions.py` has changed from the original baseline. This establishes
+that the observed mismatch predates this candidate, not its complete cause.
+No expected fixture, Product behavior, timeout or gate was changed. The probe
+remains a verification limitation requiring comparison of actual baseline and
+candidate observations where affected.
+
+For that first snapshot, logical dependency normalization preserves all 1,650 original internal
+module pairs with no added or removed pair. All 57 staged program modules with
+original-binding backreferences are recorded as intermediate debt, including
+the shared history proof. This does not erase physical import cycles or prove
+final Harness neutrality. Product factories and nominal state still borrowed
+by this batch must be replaced at complete capability boundaries before final
+extraction to actual Harness.
+
+Remaining review includes complete read-only discovery and owner-evidence
+joins, external Wheel record validation/encoding, remaining startup/retry
+coordination and Product resource preview. UI rendering, actual Product
+composition/default declarations, historical nominal contracts and already
+shared leaf operations are assessed separately; an existing shared engine is
+not migrated or counted again. The wider frozen Worker and execution scope
+remains required after this batch.
+
+### Further Observation Chain Work: In Progress
+
+The existing validation worktree runs one immutable candidate at a time.
+After its first runtime regression completed, the eleven-file source snapshot
+was archived with hashes before refreshing that directory from the active
+`harness/coding-harness-staging-batch3` worktree. Both worktrees keep the same
+two accepted commits as ancestors. Further edits happen only in the active
+worktree; validation snapshots remain fixed through each runtime run. Both
+worktrees belong to this Goal and require safe cleanup after delivery.
+
+The subsequent candidate moves another ten complete operations, 884 original
+lines, covering bounded settings capture, current preview, read-only discovery,
+exact inert artifact classification and management/preview drift rechecks. A
+further 202-line resource-preview operation joins selected manifests, Product
+composition, catalog resources and before/after revision evidence without live
+activation. Product identities, legacy trust-class declarations, actual
+composition/catalog factories, capture quotas and CLI guidance remain at Code
+edges. Existing Harness catalog, resource projection and revision owners remain
+in use; no new settings or lifecycle manager was introduced.
+
+All ten observation programs and the resource-preview body compare equal to
+their originals after explicit binding/policy resolution. Ruff passes, mypy
+passes for the eight observation sources and the two preview sources, and all
+53 original observation symbol contracts and 211 original package/lifecycle
+contracts remain equal. These symbol sets overlap and are not summed as unique
+coverage. The existing strict Harness settings reader would change duplicate
+JSON key acceptance and error priority; it is therefore not silently substituted
+for the original bounded raw read. Later final extraction must close that
+specific compatibility gap at the existing configuration owner.
+
+The CLI install/update route now reuses the existing
+`_plugin_bootstrap._product_plugin_runtime` owner for factory selection,
+creation, activation and bound/unbound cleanup. Its other existing consumer is
+Plugin bootstrap. Actual CLI IDs, source admission, lifecycle intent, output
+and failure reporting remain Code responsibilities. The opened Product belongs
+to the CLI workspace, which the shared scope uses for its runtime request.
+The old nominal import names remain available. This removes 10 lines from the
+complete CLI file including import cost, without changing actual Harness code
+or introducing callbacks/another runtime manager. The later nine-route snapshot covers real CLI installation/update, failure
+handoff and workspace replacement. It completes with 324 passed, 5 skipped
+and four native-discovery failures in 129.96 seconds. All four failures also
+reproduce in the unmodified pre-Legacy baseline `5aa7d44f2`, where the exact
+local-discovery file reports 4 failed and 1 passed in 17.73 seconds. Native
+Skill/Prompt rows are missing and one root-swap expectation does not trigger;
+the cause was not established in that snapshot. The follow-up fixture-isolation
+evidence below resolves these cases without changing Product source or
+expected assertions.
+At that checkpoint this remained a baseline verification limitation; the
+follow-up identifies ancestor project-context discovery as the cause.
+
+The 30-operation snapshot contains 105,062 Python lines in Coding: 9,610 in 65 staged
+files and 95,452 outside staging. Root source remains 399 lines, with 143
+separate declaration lines. Production is 4,347 lines above the original
+baseline; actual Harness, Hosting, other production code, tests and development
+scripts remain unchanged. Thirty complete runtime/lifecycle/observation
+operations have moved in this uncommitted batch, covering 2,303 original lines.
+This is not whole-batch acceptance or a deletion claim. The additional staged
+observation/preview work and CLI reuse cost 359 production lines beyond the
+frozen first-19-operation snapshot. Later startup/source-record runtime validation is pending.
+
+### Startup, Source Records And Compatibility Projection: In Progress
+
+Another fifteen complete operations, 568 original lines across five original
+modules, now stage first initialization, bootstrap/retry, historical fresh-
+snapshot proof, external data/dependency/Worker record admission and wire
+operations, and enablement compatibility publication/mutation fencing. The
+same original nominal records, registry, locks, resource owners and Product
+approval functions remain in use. Actual default plugin IDs, package
+distribution identity, historical path/error declarations and snapshot byte
+caps stay in Code declarations. Existing catalog, Journal, bootstrap,
+configuration-registry and platform owners retain their original effects.
+
+All fifteen bodies match their originals after binding/policy resolution;
+the earlier nineteen runtime bodies also still match after distribution
+identity was moved to explicit Code declarations. All 86 captured original
+startup/source-record/compatibility symbols remain equal. Ruff passes and
+mypy passes thirteen affected sources. These checks establish source and
+contract evidence. Its affected runtime snapshot completes with 156 passed
+and two existing architecture-inventory location failures in 122.72 seconds.
+Runtime startup, retry, source publication/failure probes, Worker source facts
+and compatibility routes pass. The two failures identify moved source owners,
+not additional Desired State writers; the sole-writer assertion still passes.
+
+The 45-operation snapshot contains 105,425 Python lines, including 10,290 in 70 staged
+files and 95,135 outside staging. Root source remains 399 lines and separate
+declarations remain 143 lines. The current uncommitted runtime/lifecycle batch
+contains 45 complete moved operations covering 2,871 original lines, plus the
+existing CLI runtime-scope reuse. Production grows by 4,710 lines relative to
+the original baseline, all in Coding. Actual Harness, Hosting, other production
+code, tests and development scripts remain unchanged. Staged ownership
+movement is not system deletion. All 67 staged modules with original-binding
+backreferences remain explicit intermediate debt.
+
+The 33-file batch retains ten reviewed Product/compatibility boundaries;
+thirteen modules are partially migrated, one partially reuses an existing
+owner and nine still require semantic disposition. Whole-batch acceptance,
+the wider frozen Worker/execution scope and unified remote delivery remain due.
+The existing architecture inventory also names source scopes that have moved;
+its expected owner locations must be reconciled with reviewed mappings while
+preserving existing assertions and coverage, without adding or expanding gates.
+
+### Owner Evidence And Exact Inventory Maintenance: In Progress
+
+Six further complete record/proof operations, 185 original lines, now stage
+owner-generation validation, construction, wire encoding/decoding, historical
+identity and read-only operation handoff evidence. The existing Session
+`_OwnerGenerationEvidenceLedger` remains the sole journal/publication owner;
+its previous sharing is baseline, not new migration benefit. Original nominal
+records, codec identity, historical hash domain, Product scope decisions and
+repair guidance remain Code-edge declarations/bindings. All six bodies match
+their originals, all sixteen captured original symbol contracts remain equal,
+and Ruff/mypy pass the four affected sources. The frozen follow-up run passes
+35 cases in 53.24 seconds, covering owner evidence, support projection, real CLI
+installation and the updated existing architecture inventory.
+
+The existing PLC9 inventory now points to the reviewed staged owners. A
+static mapping proves its 130 `disabled_plugins` source facts remain exactly
+130 after relocation, with no unmatched added/removed fact. All 155 existing
+assertions and the existing test function names remain unchanged. Only exact
+file/scope inventory values and the accompanying inventory document changed;
+no workflow, trigger, platform, matrix, coverage or gate assertion was added.
+Fresh-state construction is mapped to the staged complete runtime owner;
+management still holds the same two actual Desired State write sites. The
+updated existing architecture assertions pass in that 35-case follow-up run.
+
+The 51-operation snapshot contains 105,554 Python lines: 10,513 in 72 staged files and
+95,041 outside staging, with root source 399 lines and declarations 143 lines.
+The current uncommitted batch holds 51 complete moved operations covering
+3,056 original lines, plus the ten-line CLI runtime-scope reuse reduction.
+Production is 4,839 lines above the original baseline, entirely in Coding.
+Actual Harness, Hosting and other production sources remain unchanged. The
+existing architecture test inventory grows by 48 lines, reported separately;
+Product development scripts remain unchanged. All 69 staged original-binding
+backreferences remain explicit intermediate debt.
+
+The 33-file inventory now records seventeen concrete Product/compatibility
+retentions, fifteen partially migrated modules and one partial existing-owner
+reuse. This is a complete disposition inventory, not complete mechanism or
+batch acceptance. Remaining Code operations in those partial modules still
+need per-operation closure and consumer validation. In particular, the small
+historical CLI workspace-error adapter remains because it refuses identity
+mismatch before path resolution and suppresses initial lstat errors; the
+existing shared check resolves first and chains lstat failures. Replacing it
+without compatible semantics would change failure priority. The wider frozen
+Worker/execution range and final unified remote delivery remain required.
+
+### Source Capture And Membership Closure: In Progress
+
+Five more original operations, 116 original lines, now stage complete Source
+capture lifetimes, the existing private-directory read proof and dependency
+filename admission. Data and Dependency endpoints share one full epoch/fence/
+catalog/capture/close implementation; the nominal catalog lookup remains at its
+original point after epoch/fence observation, rather than being cached before
+opening. Actual filenames and error identity remain Code declarations. Worker
+keeps its real Windows/POSIX routes. Read-only directory checks retain the
+same flags, owner/mode/inode checks and close ordering. Dependency parsing
+reuses the original `packaging` parser through the original fault binding.
+All five bodies compare equal after specializing only the fixed source kind
+and resolving declarations; the distinct original public docs remain at Code
+edges. This is mechanism deduplication plus staging, not a net-line deletion
+claim after compatibility and policy cost.
+
+Four more operations, 144 original lines, now stage canonical owner
+contributions, holder-reference encoding/validation and the compatibility
+projection under the existing capture owner. Foreign/V1 references still
+return no inactivity proof and remain fail-closed. Actual Product scope and
+holder namespace remain declared in Code; no new ledger, manager or callback
+framework was added. All four bodies compare equal, Ruff/mypy pass the two
+membership sources, the six source-capture/proof sources pass mypy, and all
+211 original package/lifecycle symbol contracts remain equal. The frozen source and membership regression passes 335 cases in 430.22
+seconds, including the existing PLC9 inventory and native-discovery tests.
+
+The four native-discovery failures have a demonstrated fixture cause. In the
+unchanged pre-Legacy baseline, read-only post-mortem inspection observes
+`receipt.project_resource_root == /home/dev/lsspace`, while the intended test
+workspace is inside its private RunLease basetemp. The inherited workspace
+`AGENTS.md` becomes the nearest legacy project context; therefore native rows
+come from that ancestor and the test's workspace-swap hook never fires.
+Each of the four existing fixture workspaces now declares its own `AGENTS.md`.
+All original assertions and five test names remain unchanged. The exact setup
+on unchanged baseline Product source passes all five cases in 16.13 seconds;
+the temporary baseline test edit was restored byte-for-byte and that worktree
+is clean. The same five cases pass in the 335-case staged candidate run.
+This fixture isolation adds no test, assertion, route or PR gate.
+
+The 60-entry snapshot contains 105,700 Python lines: 10,806 in 74 staged files and
+94,894 outside staging. Root source remains 399 lines; declarations remain
+143 lines. The uncommitted batch now covers sixty original operation entries
+and fifty-nine implementation bodies, totaling 3,316 original lines. The
+shared Data/Dependency implementation accounts for the one fewer body.
+Production is 4,985 lines above the original baseline, all in Coding. Actual
+Harness, Hosting and other production code remain unchanged. Existing test
+inventory/setup changes total +59 lines; Product development scripts remain
+unchanged. All 71 staged original-binding backreferences remain explicit
+intermediate debt. Staging and a reviewed inventory do not establish whole
+batch or whole-Goal completion.
+
+### Reviewed Retention Within The Runtime/Lifecycle Batch
+
+These ten decisions concern specific Product/compatibility boundaries, not
+acceptance of the remaining 33-file batch. None is counted as migrated code.
+
+| Original Code module | Concrete retention reason / existing implementation owner |
+| --- | --- |
+| `package.__init__` | Namespace only. |
+| `package._legacy_names` | Frozen historical import-name compatibility. |
+| `plugin_manager.__init__` | Namespace only. |
+| `plugin_manager._legacy_names` | Frozen historical import-name compatibility. |
+| `package.source_snapshot` | Actual settings keys, projection path and compatibility decisions; `_LegacySourceProjection` and the existing Windows private-directory owner already provide IO/lifetime. |
+| `package.cutover_backup` | Historical nominal DTO and wire contract; `inspect_legacy_cutover_backup` already owns snapshot proof. Product entry selects its epoch and read-only route. |
+| `package.product_revisions` | Actual builtin IDs, paths, factory/resource admission declarations in `ProductSelectedRevisionPolicy`; existing selected-resolution owner and validators implement the mechanisms. |
+| `package.product_repair_rpc` | Product identity/scope and local repair-client endpoint binding. |
+| `package.product_repair_ui` | Actual command syntax, action policy, result identity and user rendering; repair effects delegate to the repair client. |
+| `plugin_manager.command_rpc` | Actual RPC actor, policy revision and Product authority; submit/resume already call existing Harness desired-command operations. |
+
+The per-file inventory keeps other modules pending or partially migrated.
+In particular, remaining discovery/projection, external record mechanisms,
+startup retry and resource preview coordination cannot be retained wholesale
+merely because they refer to Code nominal types or Product identifiers.
+
+## Package And Plugin Lifecycle Checkpoint
+
+The local checkpoint covers fenced state and runtime opening, startup and
+retry, source admission and record custody, read-only discovery and preview,
+owner and membership evidence, compatibility projection and CLI runtime
+lifetime reuse. The original fifty-nine staged implementations serve sixty
+operation entries. The source and membership run closed the four discovery
+fixture failures on this candidate and passes all 335 cases. Earlier focused
+results cover the affected recovery, replay and fault-order routes listed above.
+
+The wider frozen inventory still includes remaining CLI command transaction
+coordination, outstanding Worker chains and the Session execution scope.
+This checkpoint records the verified lifecycle and observation paths as a
+local batch. Existing platform and installed-entry validation limits continue
+to apply to the cumulative Goal.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

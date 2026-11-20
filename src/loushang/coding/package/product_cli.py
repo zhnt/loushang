@@ -19,9 +19,14 @@ from loushang.coding.package.management_binding import (
     read_coding_fenced_package_handoff,
 )
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._plugin_bootstrap import (
+    _product_plugin_runtime,
+)
 from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeBindingV1,
-    PackageProductRuntimeRequestV1,
+    PackageProductRuntimeBindingV1 as PackageProductRuntimeBindingV1,
+)
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeRequestV1 as PackageProductRuntimeRequestV1,
 )
 from loushang.harness.plugin_management import (
     PluginDesiredStateMutationV1,
@@ -75,19 +80,9 @@ def route_coding_fenced_data_wheels(
                 operation_id = f"coding-external-{action}:{secrets.token_hex(16)}"
                 current_operation_id = operation_id
                 runtime_id = f"coding-external-cli:{secrets.token_hex(16)}"
-                factory = product.factory_for_session(
-                    session_id=runtime_id, cwd=workspace, runtime_id=runtime_id
-                )
-                runtime: PackageProductRuntimeBindingV1 | None = None
-                try:
-                    runtime = factory.create(
-                        PackageProductRuntimeRequestV1(
-                            product_id="coding",
-                            session_id=runtime_id,
-                            cwd=str(workspace),
-                        )
-                    )
-                    runtime.activate()
+                with _product_plugin_runtime(
+                    product, product_id="coding", session_id=runtime_id
+                ) as runtime:
                     outcome = runtime.lifecycle.route(
                         PackageProductLifecycleIntentV1(
                             operation_id=operation_id,
@@ -101,11 +96,6 @@ def route_coding_fenced_data_wheels(
                         ),
                         entrypoint="cli",
                     )
-                finally:
-                    if runtime is None:
-                        factory.dispose_unbound_runtime()
-                    else:
-                        runtime.dispose_runtime()
                 if not outcome.handled or outcome.record is None:
                     raise RuntimeError(f"Package Product {action} was not handled")
                 if outcome.record.lifecycle == "failed":

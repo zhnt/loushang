@@ -2,36 +2,68 @@
 
 from __future__ import annotations
 
-import json
-import os
-import stat
+import json as json
+import os as os
+import stat as stat
 from collections.abc import Callable
-from dataclasses import dataclass, replace
-from hashlib import sha256
+from dataclasses import dataclass
+from dataclasses import replace as replace
+from hashlib import sha256 as sha256
 from pathlib import Path
 
-from loushang.coding.composition.plan import CODING_PRODUCT_ID
-from loushang.coding.composition.sets import resolve_coding_composition_set
-from loushang.coding.control.settings_store import (
-    default_global_settings_path,
-    default_project_settings_path,
+from loushang.coding.composition.plan import CODING_PRODUCT_ID as CODING_PRODUCT_ID
+from loushang.coding.composition.sets import (
+    resolve_coding_composition_set as resolve_coding_composition_set,
 )
-from loushang.coding.package.epoch_layout import coding_fenced_product_exists
+from loushang.coding.control.settings_store import (
+    default_global_settings_path as default_global_settings_path,
+)
+from loushang.coding.control.settings_store import (
+    default_project_settings_path as default_project_settings_path,
+)
+from loushang.coding.harness.plugin_management import preview_snapshot as _programs
+from loushang.coding.package.epoch_layout import (
+    coding_fenced_product_exists as coding_fenced_product_exists,
+)
 from loushang.coding.package.product_preview import (
     CodingCurrentDataResourcePreviewV1,
-    CodingFencedProductReadOnlyPreviewOwner,
+)
+from loushang.coding.package.product_preview import (
+    CodingFencedProductReadOnlyPreviewOwner as CodingFencedProductReadOnlyPreviewOwner,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.harness.config.agent._settings_codec import CONTROL_CONFIG_CODEC
+from loushang.harness.config.agent._settings_codec import (
+    CONTROL_CONFIG_CODEC as CONTROL_CONFIG_CODEC,
+)
 from loushang.harness.config.agent.types import ControlConfig
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
 )
 
 _MAX_SETTINGS_BYTES = 1024 * 1024
+
+
+_RUNTIME_PROGRAM_VALUES = {
+    "value_001": "plugin_preview_product_not_fenced",
+    "value_002": "plugin_preview_settings_unavailable",
+    "value_003": "plugin_preview_settings_stale",
+    "value_004": "plugin_preview_owner_unavailable",
+    "value_005": "Plugin current preview requires a typed request",
+    "value_006": "plugin_preview_scope_mismatch",
+    "value_007": "plugin_preview_platform_unsupported",
+    "value_008": "plugin_preview_composition_invalid",
+    "value_009": "Plugin preview settings must be a JSON object",
+    "value_010": "Plugin preview settings have invalid fields",
+    "value_011": "Plugin preview settings file is unsafe",
+    "value_012": "Plugin preview settings file is too large",
+}
+
+_RUNTIME_PROGRAM_BYTES = {
+    "value_001": b"loushang.coding.preview.disabled-skills/v1\x00"
+}
 
 
 class CodingCurrentPreviewError(RuntimeError):
@@ -51,107 +83,17 @@ class CodingCurrentPreviewQuery:
     def configured_capabilities(self) -> dict[str, str]:
         """Read the CLI inference input under the same bounded settings policy."""
 
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-        if not coding_fenced_product_exists(self.layout):
-            raise CodingCurrentPreviewError(code="plugin_preview_product_not_fenced")
-        try:
-            settings = _capture_preview_settings(self.workspace)
-        except (OSError, RuntimeError, ValueError, TypeError) as exc:
-            raise CodingCurrentPreviewError(
-                code="plugin_preview_settings_unavailable"
-            ) from exc
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-        return dict(settings.capabilities)
+        return _programs.configured_capabilities(self)
 
     def owner_revisions(self) -> tuple[str, str, str]:
         """Read Product policy, authority, and Skill settings without composing."""
 
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-        if not coding_fenced_product_exists(self.layout):
-            raise CodingCurrentPreviewError(code="plugin_preview_product_not_fenced")
-        try:
-            _disabled, settings_revision = _capture_disabled_skills(self.workspace)
-            with CodingFencedProductReadOnlyPreviewOwner.open(
-                self.layout, workspace_guard=self.workspace_guard
-            ) as owner:
-                policy_revision = owner.policy.policy_revision
-                authority_revision = owner.policy.authority_revision
-                owner.epoch_runtime.assert_current()
-            _after, after_settings_revision = _capture_disabled_skills(self.workspace)
-        except (OSError, RuntimeError, ValueError, TypeError) as exc:
-            raise CodingCurrentPreviewError(
-                code="plugin_preview_owner_unavailable"
-            ) from exc
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-        if settings_revision != after_settings_revision:
-            raise CodingCurrentPreviewError(code="plugin_preview_settings_stale")
-        return policy_revision, authority_revision, settings_revision
+        return _programs.owner_revisions(self)
 
     def preview_current(
         self, request: PluginCurrentPreviewRequestV1
     ) -> CodingCurrentDataResourcePreviewV1:
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-        if not isinstance(request, PluginCurrentPreviewRequestV1):
-            raise TypeError("Plugin current preview requires a typed request")
-        if (
-            request.product_id != CODING_PRODUCT_ID
-            or request.scope_id != self.layout.scope_id
-        ):
-            raise CodingCurrentPreviewError(code="plugin_preview_scope_mismatch")
-        if not coding_fenced_product_exists(self.layout):
-            raise CodingCurrentPreviewError(code="plugin_preview_product_not_fenced")
-        if os.name != "posix":
-            raise CodingCurrentPreviewError(code="plugin_preview_platform_unsupported")
-        try:
-            resolve_coding_composition_set(request.composition_set_id)
-        except (TypeError, ValueError) as exc:
-            raise CodingCurrentPreviewError(
-                code="plugin_preview_composition_invalid"
-            ) from exc
-        try:
-            disabled_skills, settings_revision = _capture_disabled_skills(
-                self.workspace
-            )
-        except (OSError, RuntimeError, ValueError, TypeError) as exc:
-            raise CodingCurrentPreviewError(
-                code="plugin_preview_settings_unavailable"
-            ) from exc
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-        try:
-            with CodingFencedProductReadOnlyPreviewOwner.open(
-                self.layout, workspace_guard=self.workspace_guard
-            ) as owner:
-                preview = owner.preview_current_data_resources(
-                    workspace=self.workspace,
-                    composition_set_id=request.composition_set_id,
-                    disabled_skills=disabled_skills,
-                )
-        except (OSError, RuntimeError, ValueError) as exc:
-            raise CodingCurrentPreviewError(
-                code="plugin_preview_owner_unavailable"
-            ) from exc
-        try:
-            _after_skills, after_revision = _capture_disabled_skills(self.workspace)
-        except (OSError, RuntimeError, ValueError, TypeError) as exc:
-            raise CodingCurrentPreviewError(
-                code="plugin_preview_settings_unavailable"
-            ) from exc
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-        gaps = set(preview.evidence_gaps)
-        if settings_revision != after_revision:
-            gaps.add("stale_snapshot")
-        return replace(
-            preview,
-            disabled_skill_settings_revision=settings_revision,
-            evidence_gaps=tuple(sorted(gaps)),
-        )
+        return _programs.preview_current(self, request)
 
 
 def bind_coding_current_preview_query(
@@ -175,60 +117,17 @@ def bind_coding_current_preview_query(
 def _capture_disabled_skills(workspace: Path) -> tuple[tuple[str, ...], str]:
     """Apply the Product codec without a lock; hash only the relevant projection."""
 
-    settings = _capture_preview_settings(workspace)
-    digest = sha256(b"loushang.coding.preview.disabled-skills/v1\0")
-    digest.update(json.dumps(
-        settings.disabled_skills,
-        ensure_ascii=True,
-        separators=(",", ":"),
-    ).encode("utf-8"))
-    return settings.disabled_skills, f"sha256:{digest.hexdigest()}"
+    return _programs.capture_disabled_resource_settings(workspace)
 
 
 def _capture_preview_settings(workspace: Path) -> ControlConfig:
     """Read only declared settings bytes for preview and CLI choice inference."""
 
-    settings = CONTROL_CONFIG_CODEC.default()
-    for label, path in (
-        ("global", default_global_settings_path()),
-        ("project", default_project_settings_path(workspace)),
-    ):
-        body = _read_settings_bytes(path)
-        if body is None:
-            continue
-        document = json.loads(body.decode("utf-8"))
-        if not isinstance(document, dict):
-            raise ValueError("Plugin preview settings must be a JSON object")
-        result = CONTROL_CONFIG_CODEC.apply(settings, document, layer=label)
-        if result.issues:
-            raise ValueError("Plugin preview settings have invalid fields")
-        settings = result.value
-    return settings
+    return _programs.capture_preview_settings(workspace)
 
 
 def _read_settings_bytes(path: Path) -> bytes | None:
-    try:
-        descriptor = os.open(
-            path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
-        )
-    except FileNotFoundError:
-        return None
-    try:
-        opened = os.fstat(descriptor)
-        visible = path.lstat()
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
-            or opened.st_size > _MAX_SETTINGS_BYTES
-        ):
-            raise ValueError("Plugin preview settings file is unsafe")
-        with os.fdopen(descriptor, "rb", closefd=False) as stream:
-            body = stream.read(_MAX_SETTINGS_BYTES + 1)
-        if len(body) > _MAX_SETTINGS_BYTES:
-            raise ValueError("Plugin preview settings file is too large")
-        return body
-    finally:
-        os.close(descriptor)
+    return _programs.read_settings_bytes(path)
 
 
 __all__ = [

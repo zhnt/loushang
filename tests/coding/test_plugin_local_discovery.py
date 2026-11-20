@@ -23,6 +23,13 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.plugin.__main__ import main as author_cli_main
 
 
+def _declare_fixture_project(workspace: Path) -> None:
+    """Keep legacy resource discovery independent of ancestor context files."""
+    (workspace / "AGENTS.md").write_text(
+        "# Local discovery fixture\n", encoding="utf-8"
+    )
+
+
 def _discover(workspace: Path, *options: str) -> tuple[int, dict[str, object], str]:
     stdout, stderr = StringIO(), StringIO()
     code = asyncio.run(
@@ -78,6 +85,7 @@ def test_local_discovery_lists_native_resources_without_product_or_writes(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    _declare_fixture_project(workspace)
     skill = workspace / "skills" / "review" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text(
@@ -163,6 +171,7 @@ def test_malformed_native_entry_keeps_readable_sibling_as_partial_metadata(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    _declare_fixture_project(workspace)
     unsafe = workspace / "skills" / "bad" / "SKILL.md"
     unsafe.parent.mkdir(parents=True)
     outside = workspace / "outside"
@@ -201,6 +210,7 @@ def test_native_fallback_refuses_root_replacement_before_open(
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    _declare_fixture_project(workspace)
     receipt = CodingResourceLoader(
         workspace_root=workspace
     ).prepare_catalog_input_receipt(workspace)
@@ -238,6 +248,7 @@ def test_public_discovery_keeps_same_name_native_and_installed_rows_when_source_
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
+    _declare_fixture_project(workspace)
     assert cutover_cli_main(["--workspace", str(workspace)]) == 0
     capsys.readouterr()
 

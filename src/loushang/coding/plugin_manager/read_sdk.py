@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
+from loushang.coding.harness.plugin_management import support_read as _programs
 from loushang.coding.package.management_binding import (
     build_coding_fenced_product_management_cli_ports,
 )
@@ -41,6 +42,11 @@ from loushang.harness.plugin_management.operation_explanation import (
     project_plugin_operation_explanation,
 )
 from loushang.harness.workspace.paths import assert_workspace_directory_identity
+
+_RUNTIME_PROGRAM_VALUES = {
+    "value_001": "Plugin support Desired State revision is invalid",
+    "value_002": "Plugin support Product evidence gaps are invalid",
+}
 
 
 class CodingPluginManagementReadSdkError(RuntimeError):
@@ -151,51 +157,8 @@ class CodingPluginManagementReadClientV1:
     ) -> dict[str, object]:
         """Join management and Product preview without asserting Session use."""
 
-        from loushang.coding.plugin_manager.support_status import (
-            project_coding_plugin_support_status,
-        )
-
-        before = self.management_snapshot(correlation_id=f"{correlation_id}:before")
-        preview = self.preview_current(
-            correlation_id=f"{correlation_id}:preview",
-            composition_set_id=composition_set_id,
-        )
-        after = self.management_snapshot(correlation_id=f"{correlation_id}:after")
-        policy_revision, authority_revision, settings_revision = (
-            bind_coding_current_preview_query(
-                self.workspace, workspace_guard=self._assert_workspace_identity
-            ).owner_revisions()
-        )
-        def desired_revision(document: dict[str, object]) -> int:
-            revisions = document.get("ownerRevisions")
-            value = revisions.get("desiredState") if isinstance(revisions, dict) else None
-            if type(value) is not int:
-                raise ValueError("Plugin support Desired State revision is invalid")
-            return value
-
-        first_revision = desired_revision(before)
-        last_revision = desired_revision(after)
-        drift: set[str] = set()
-        if first_revision != last_revision:
-            drift.add("desired_state_drift")
-        if before.get("ownerRevisions") != after.get("ownerRevisions"):
-            drift.add("management_owner_drift")
-        if preview.get("productPolicyRevision") != policy_revision:
-            drift.add("product_policy_drift")
-        if preview.get("productAuthorityRevision") != authority_revision:
-            drift.add("product_authority_drift")
-        if preview.get("disabledSkillSettingsRevision") != settings_revision:
-            drift.add("disabled_skill_settings_drift")
-        if drift:
-            gaps = preview.get("evidenceGaps")
-            if not isinstance(gaps, list):
-                raise ValueError("Plugin support Product evidence gaps are invalid")
-            preview = {
-                **preview,
-                "evidenceGaps": sorted(set(gaps) | drift | {"stale_snapshot"}),
-            }
-        return project_coding_plugin_support_status(
-            after, preview, correlation_id=correlation_id
+        return _programs.support_status(
+            self, correlation_id=correlation_id, composition_set_id=composition_set_id
         )
 
     def explain_operation(
@@ -247,7 +210,10 @@ def open_coding_plugin_management_read_client(
     if not stat.S_ISDIR(metadata.st_mode):
         raise ValueError("Plugin management workspace is unavailable")
     identity = (metadata.st_dev, metadata.st_ino)
-    if expected_workspace_identity is not None and identity != expected_workspace_identity:
+    if (
+        expected_workspace_identity is not None
+        and identity != expected_workspace_identity
+    ):
         raise CodingPluginManagementReadSdkError(
             "Coding management workspace changed",
             code="coding_management_workspace_changed",
