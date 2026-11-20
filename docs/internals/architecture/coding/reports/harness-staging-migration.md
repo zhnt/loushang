@@ -1751,6 +1751,31 @@ constraints. Controlled comparisons match 1,008 settled-history and removal
 traces and 360 local eligibility observations. Native Windows execution
 remains unverified.
 
+## Extension Runtime Profiles And Declaration Refresh
+
+The staged Session owner now converts Extension declaration snapshots into
+named layers and executable Provider factory descriptors, and checks pure
+declaration changes before refresh. Existing Harness admission, Profile
+resolution, resource projection and side-question binding retain their
+authority. Startup and refresh use the same declaration translation.
+The declared implementation key and the executable descriptor now use
+one formatter. Resource and Session restart evidence use one projection
+with the original capability grouping, order and fingerprint kinds.
+
+Coding retains the exact permitted Extension slot and permission, default
+Profile, Product diagnostics and the public preflight and resolution
+types. The staged module has no Coding imports. The edge removes 239 Python
+lines and staging adds 270, for a net increase of 31. The independent
+typed interface and the original Product entrypoints account for the
+adapter cost. Normalized dependencies remain at 1,659 pairs.
+
+All 53 focused non-live Linux cases pass, including live Session reload
+logic under controlled test owners, factory disposal and the existing
+authority constraints. Baseline comparisons match 239 declaration, 717
+refresh and 48 factory observations, including errors, restart evidence
+and effect order. The five public exports and historical import location
+remain compatible. Native Windows execution remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
