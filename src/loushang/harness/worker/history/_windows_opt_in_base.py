@@ -7,16 +7,19 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
-from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
 from loushang.harness.worker.history._opt_in import (
     _OPAQUE,
     _OptInDecisionMethods,
     fold_opt_in_events,
 )
 from loushang.harness.worker.history._windows_prepared import (
+    _record_tuple_field,
     _WindowsPreparedSourceMethods,
 )
 from loushang.harness.worker.history._windows_semantic_contracts import (
@@ -27,10 +30,11 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsOptInBaseMethods(
-    _WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods
-):
+class _WindowsOptInBaseMethods(_WindowsPreparedSourceMethods):
     __slots__ = ()
+    _wire_label = "Windows Worker opt-in semantic base"
+    _wire_lists = ("latestDecisions", "retiredOperationIds")
+    _wire_errors = (TypeError, UnicodeError, ValueError)
     scope_id: str
     store_id: str
     source_snapshot_digest: str
@@ -42,6 +46,15 @@ class _WindowsOptInBaseMethods(
     _decision_type: ClassVar[type[_OptInDecisionMethods]]
     _error_type: ClassVar[type[RuntimeError]]
     _replay_type: ClassVar[Callable[..., object]]
+
+    @classmethod
+    def _bind_record_schema(cls) -> None:
+        cls._bind_windows_wire_schema(
+            _record_tuple_field(
+                "latest_decisions", lambda item: cls._decision_type.from_dict(item)
+            ),
+            RecordField("retired_operation_ids", decoder=tuple, encoder=list),
+        )
 
     def __post_init__(self) -> None:
         if (

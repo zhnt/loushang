@@ -32,6 +32,12 @@ from loushang.harness.worker.history._base_codec import _unchanged
 from loushang.harness.worker.history._windows_checkpoint import (
     _WindowsHistoryCheckpointMethods,
 )
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
+)
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME as _CHECKPOINT_NAME,
+)
 
 from .legacy_windows_receipt import _receipt_io
 from .product_worker_native_approval import CodingWorkerNativeApprovalDecisionV1
@@ -53,8 +59,7 @@ from .product_worker_windows_package_references import (
     _review_coding_windows_worker_package_references_under_guard,
 )
 
-_MAX_BYTES = 8 * 1024 * 1024
-_CHECKPOINT_NAME = "worker-history-checkpoint-v1.json"
+_MAX_BYTES = WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES
 _PREPARATION_NAME = "worker-history-preparation-v1.json"
 _BASE_NAMES = (
     "optIn",

@@ -2467,6 +2467,30 @@ before-and-after recovery observations match results, errors, persisted
 bytes, lock order, injected faults and file descriptor release. The
 Coding consumer route has 18 passes and three host-runtime skips.
 
+## Windows Worker History Wire And Persisted Read
+
+The six existing Harness Worker History owners now bind their wire fields
+to the nominal Product dataclasses. The shared binder builds the full and
+digest schemas from the same field declarations. Coding supplies its typed
+records, Product receipt rules, and the Product-specific launch-intent
+error. The cutover marker uses its existing Harness proof and wire owner.
+
+The persisted reader uses the original checkpoint, marker, and six base
+paths and limits from Harness history definitions. It still opens each
+base with the original 32 MiB storage limit. Launch-intent decoding keeps
+its 16 MiB cap. It still decodes the marker only when required and
+rechecks the snapshot while it holds the original GC and pinned-root scope.
+
+Coding Product removes 212 Python lines and formal Harness adds 159, for
+a net reduction of 53 production lines and one Coding module dependency.
+
+The 378 selected Linux cases include 171 persisted-read custody traces.
+The six codecs match 656 historical wire observations and load all 12
+legacy pickle fixtures. The persisted-read probe now targets the actual
+cutover codec binding. Its former import hook reproduced the same 40
+failures on the parent commit. The original expectations pass with the
+updated hook. Native Windows execution was not run.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

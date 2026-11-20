@@ -81,7 +81,15 @@ from loushang.harness.worker.history._windows_recovery import (
     WindowsRecoveryAttemptV1,
     project_windows_recovery_attempts,
 )
-from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_BASE_FILES,
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+    WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES,
+    WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+    WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES,
+    WindowsHistoryNames,
+)
 from loushang.harness.worker.history._windows_stage_review_wire import (
     WINDOWS_STAGE_REVIEW_MAX_BYTES,
 )
@@ -127,10 +135,6 @@ def read_windows_product_worker_persisted_bases(
     require_cutover: bool,
     io: WindowsPrivateReceiptIO,
     history_names: WindowsHistoryNames,
-    checkpoint_name: str,
-    base_files: tuple[tuple[str, str], ...],
-    cutover_name: str,
-    limits: Callable[[], tuple[int, int, int]],
     decode_checkpoint: Callable[[bytes], _PersistedCheckpointT],
     make_result: Callable[[_PersistedCheckpointT, tuple[bytes, ...]], _PersistedBasesT],
     cutover_codec: Callable[
@@ -148,23 +152,30 @@ def read_windows_product_worker_persisted_bases(
             raise ValueError("Windows Worker persisted root changed")
         names = tuple(windows_listdir_at(root))
         if require_cutover:
-            if names.count(cutover_name) != 1:
+            if names.count(WINDOWS_WORKER_HISTORY_CUTOVER_NAME) != 1:
                 raise ValueError("Windows Worker cutover marker is absent")
-            known_names = tuple(name for name in names if name != cutover_name)
+            known_names = tuple(
+                name for name in names if name != WINDOWS_WORKER_HISTORY_CUTOVER_NAME
+            )
         else:
             known_names = names
         history_names.require_known(known_names)
         if any(name.casefold().endswith(".stage") for name in names):
             raise ValueError("Windows Worker persisted stage remains")
         checkpoint_raw = io._read_file(
-            root, acl, checkpoint_name, maximum_bytes=limits()[0]
+            root,
+            acl,
+            WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+            maximum_bytes=WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
         )
         if checkpoint_raw is None:
             raise ValueError("Windows Worker persisted checkpoint is absent")
         checkpoint = decode_checkpoint(checkpoint_raw)
         raw_bases = tuple(
-            io._read_file(root, acl, name, maximum_bytes=limits()[1])
-            for _, name in base_files
+            io._read_file(
+                root, acl, name, maximum_bytes=WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES
+            )
+            for _, name in WINDOWS_WORKER_BASE_FILES
         )
         if any(raw is None for raw in raw_bases):
             raise ValueError("Windows Worker persisted base is absent")
@@ -182,8 +193,8 @@ def read_windows_product_worker_persisted_bases(
             cutover_raw = io._read_file(
                 root,
                 acl,
-                cutover_name,
-                maximum_bytes=limits()[2],
+                WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+                maximum_bytes=WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES,
             )
             if cutover_raw is None:
                 raise ValueError("Windows Worker cutover marker is absent")
@@ -192,13 +203,18 @@ def read_windows_product_worker_persisted_bases(
             io._read_file(
                 root,
                 acl,
-                checkpoint_name,
-                maximum_bytes=limits()[0],
+                WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+                maximum_bytes=WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
             )
             != checkpoint_raw
             or tuple(
-                io._read_file(root, acl, name, maximum_bytes=limits()[1])
-                for _, name in base_files
+                io._read_file(
+                    root,
+                    acl,
+                    name,
+                    maximum_bytes=WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES,
+                )
+                for _, name in WINDOWS_WORKER_BASE_FILES
             )
             != raw_bases
             or (
@@ -206,8 +222,8 @@ def read_windows_product_worker_persisted_bases(
                 and io._read_file(
                     root,
                     acl,
-                    cutover_name,
-                    maximum_bytes=limits()[2],
+                    WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+                    maximum_bytes=WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES,
                 )
                 != cutover_raw
             )

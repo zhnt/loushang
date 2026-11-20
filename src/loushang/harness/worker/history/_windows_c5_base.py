@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -19,7 +22,6 @@ from loushang.harness.worker.history._activation import (
     fold_activation_attempt_history,
     project_retained_attempts,
 )
-from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
 from loushang.harness.worker.history._windows_prepared import (
     _WindowsPreparedSourceMethods,
 )
@@ -32,8 +34,11 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsC5BaseMethods(_WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods):
+class _WindowsC5BaseMethods(_WindowsPreparedSourceMethods):
     __slots__ = ()
+    _wire_label = "Windows Worker C5 semantic base"
+    _wire_lists = ("retiredAttemptIds",)
+    _wire_errors = (KeyError, RecursionError, TypeError, UnicodeError, ValueError)
     scope_id: str
     store_id: str
     source_snapshot_digest: str
@@ -62,6 +67,19 @@ class _WindowsC5BaseMethods(_WindowsPreparedSourceMethods, _SourceBoundBaseWireM
             )
         )
         return frozenset((*self.retired_attempt_ids, *current))
+
+    @classmethod
+    def _bind_record_schema(cls) -> None:
+        cls._bind_windows_wire_schema(
+            RecordField(
+                "last_record",
+                decoder=lambda value: (
+                    None if value is None else _StateRecord.from_dict(value)
+                ),
+                encoder=lambda value: None if value is None else value.to_dict(),
+            ),
+            RecordField("retired_attempt_ids", decoder=tuple, encoder=list),
+        )
 
     def __post_init__(self) -> None:
         try:
