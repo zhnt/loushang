@@ -33,7 +33,7 @@ from .legacy_local_acceptance import (
 from .legacy_source_evidence import (
     read_coding_legacy_source_evidence as read_coding_legacy_source_evidence,
 )
-from .source_snapshot import _verify_loaded_settings
+from .source_snapshot import _SOURCE_KEYS, _source_projection
 
 _MAX_RECEIPT_BYTES = 4096
 
@@ -104,7 +104,8 @@ def _consumption_protocol(
             plugin_id=plugin_id,
             policy_revision=acceptance.review.policy_revision,
         ),
-        lambda path, patch: _verify_loaded_settings(path, patch),
+        _source_projection,
+        _SOURCE_KEYS - {"disabled_plugins", "plugin_sources"},
         lambda identity, phase: _receipt_bytes(identity, phase),
         CodingLegacySourceConsumptionError,
         _MAX_RECEIPT_BYTES,

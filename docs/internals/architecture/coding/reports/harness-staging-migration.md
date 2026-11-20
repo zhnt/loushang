@@ -2558,6 +2558,39 @@ Supervisor and native settlement, and lease repair pass 11 controlled
 checks. Windows C5 recovery was inspected at its actual owner. Native
 Windows and the complete Windows C5 recovery route were not executed.
 
+### First-fence Source projection reuse
+
+Package Product's existing `_LegacySourceProjection` now owns settings
+capture, read-only freshness checks and verification of the archived Source
+projection. Its writer and verifier use one canonical encoder. Archived
+reads retain the original scope and path checks, strict JSON and duplicate-key
+rejection, byte budget, error precedence and digest. Consumption reopens the
+same settings facts through this owner, under the original transaction and
+receipt order. Coding supplies the historical projection name, source-key
+policy, classifier and nominal result.
+
+The standalone staged Source verifier and its original-module dependency
+retire. Coding keeps the first-B read/list domain allowances and nominal
+errors, while `_LegacyFirstSnapshot` still checks fence authority for each
+operation. Existing Harness owners also perform the cutover backup proof,
+retired Instance inspection, durable backup topology custody and attached
+Transcript discovery. Retention in Coding covers Product trust classes,
+layout, closed backup-kind policy, and the operator's RPC and TUI bindings.
+
+This batch reduces Python production code by 53 lines. Coding outside staging
+loses 34 lines and staging loses 74. The formal Harness owner grows by 55.
+The comparative probe matches 287 parent outcomes for wire bytes, nominal
+results and pickle bytes, error causes and failure order. Native Windows
+execution remains pending. The read-only settings admission comparison also
+matches 468 decisions and settings-scope read traces.
+
+The Linux regression passes 240 cases across Source capture, installation
+inventory, offline cutover and replay. Four native Windows cases are skipped
+on Linux. The POSIX/controlled-Windows settings custody probe reproduces all
+77 outdated injection-hook failures on the parent. After pointing the probe
+at the active Config reader and projection budget, all 77 existing trace
+assertions pass on both revisions.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

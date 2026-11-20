@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -28,7 +28,6 @@ _SOURCE_KEYS = frozenset(
 _PROJECTION_NAME = "coding-source-configuration.json"
 _MAX_SETTINGS_BYTES = 4 * 1024 * 1024
 _SOURCE_KEY_MARKERS = ("plugin", "package", "resource", "source")
-_PRE_B_SETTINGS_KEYS = _SOURCE_KEYS | {"packages"}
 
 
 _source_projection = _LegacySourceProjection(
@@ -60,12 +59,6 @@ def hold_coding_pre_b_source_configuration(
         yield root
 
 
-def _verify_loaded_settings(
-    path: Path, loaded_patch: Mapping[str, object]
-) -> tuple[bool, str | None]:
-    return _source_projection.verify_loaded_settings(path, loaded_patch)
-
-
 def read_coding_settings_patch_without_writes(
     path: Path,
 ) -> tuple[bool, str | None, dict[str, object]]:
@@ -85,15 +78,7 @@ def require_coding_fresh_settings_without_writes(*paths: Path) -> None:
 def coding_settings_have_pre_b_inputs_without_writes(*paths: Path) -> bool:
     """Recognize settings needing the compatible Session storage route."""
 
-    for path in paths:
-        _, _, patch = read_coding_settings_patch_without_writes(path)
-        for key in _PRE_B_SETTINGS_KEYS:
-            if key not in patch:
-                continue
-            value = patch[key]
-            if not isinstance(value, list) or value:
-                return True
-    return False
+    return _source_projection.has_pre_fence_inputs(*paths)
 
 
 @contextmanager

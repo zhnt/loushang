@@ -4,36 +4,21 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from hashlib import sha256 as sha256
 from pathlib import Path
 
-from loushang.coding.harness.package_product import legacy_source_evidence as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.foundation.json import _unique_json_object_hook
 
 from .legacy_classification import (
     CodingLegacySourceConfigurationV1,
-)
-from .legacy_classification import (
-    classify_coding_legacy_source_configuration as classify_coding_legacy_source_configuration,
+    classify_coding_legacy_source_configuration,
 )
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
     read_coding_first_b_snapshot_member,
 )
+from .source_snapshot import _source_projection
 
 _MAX_PROJECTION_BYTES = 8 * 1024 * 1024
-
-
-_LEGACY_EVIDENCE_VALUES = {
-    "value_001": "Coding legacy Source settings projection exceeds budget",
-    "value_002": "Coding legacy Source settings scopes overlap",
-    "value_003": "Coding legacy Source settings path is invalid",
-    "value_004": "Coding Source projection is not an object",
-    "value_005": "Coding Source settings path changed",
-    "value_006": "Coding Source projection bytes changed",
-    "value_007": "Coding legacy Source settings projection is invalid",
-}
 
 
 class CodingLegacySourceEvidenceError(ValueError):
@@ -68,7 +53,7 @@ def read_coding_legacy_source_evidence(
         lifecycle,
         epoch_runtime,
         domain="source_configuration",
-        member_name="coding-source-configuration.json",
+        member_name=_source_projection.projection_name,
         maximum_bytes=_MAX_PROJECTION_BYTES,
     )
     if raw is None:
@@ -90,20 +75,15 @@ def parse_coding_legacy_source_evidence(
 ) -> CodingLegacySourceEvidenceV1:
     """Validate the exact settings paths and source patches frozen at cutover."""
 
-    return _programs.parse_source_evidence(
+    classification, digest = _source_projection.verify_snapshot(
         raw,
         global_settings_path=global_settings_path,
         project_settings_path=project_settings_path,
+        classify=classify_coding_legacy_source_configuration,
+        maximum_bytes=_MAX_PROJECTION_BYTES,
+        error_type=CodingLegacySourceEvidenceError,
     )
-
-
-_unique_object = _unique_json_object_hook(
-    lambda: "Coding Source projection has duplicate JSON keys",
-)
-
-
-def _reject_non_json_constant(value: str) -> object:
-    raise ValueError(f"Coding Source projection has invalid constant: {value}")
+    return CodingLegacySourceEvidenceV1(raw, classification, digest)
 
 
 __all__ = [
