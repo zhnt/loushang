@@ -87,10 +87,6 @@ _LEGACY_PROGRAM_VALUES = {
     "value_002": "Coding pre-B snapshot preparation is required",
     "value_003": "Package snapshot receipt is required",
     "value_004": "Coding legacy Plugin identity is required",
-    "value_005": "skill",
-    "value_006": "prompt",
-    "value_007": "theme",
-    "value_008": "Unsupported legacy Resource type",
     "value_009": "Legacy Skill snapshot shape is unsupported",
     "value_010": "package-lock.json.lock",
     "value_011": "Legacy Package lock changed",
@@ -107,9 +103,6 @@ _LEGACY_PROGRAM_VALUES = {
     "value_031": "Legacy management lock changed",
     "value_033": "Legacy retirement journals are missing",
     "value_034": "Legacy Instance evidence is missing",
-    "value_035": "coding_legacy_skill_snapshot_refused",
-    "value_036": "coding_legacy_prompt_snapshot_refused",
-    "value_037": "coding_legacy_theme_snapshot_refused",
     "value_038": "Coding first-B Source configuration is missing",
     "value_039": "Coding first-B Installation set is unsupported",
     "value_040": "Coding first-B local Skill snapshot is unsupported",
@@ -117,12 +110,10 @@ _LEGACY_PROGRAM_VALUES = {
 }
 
 
-_LEGACY_CHAIN_VALUES = {
-    "value_001": "skill",
-    "value_002": "prompt",
-    "value_003": "theme",
-    "value_004": "Unsupported legacy Resource type",
-    "value_005": "Legacy data Resource type changed",
+_RESOURCE_REFUSAL_CODES = {
+    "skill": "coding_legacy_skill_snapshot_refused",
+    "prompt": "coding_legacy_prompt_snapshot_refused",
+    "theme": "coding_legacy_theme_snapshot_refused",
 }
 
 

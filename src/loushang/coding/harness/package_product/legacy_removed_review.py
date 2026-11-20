@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from loushang.coding.harness.package_product.legacy_management_evidence import (
     read_settled_management_history,
+    require_empty_lock_markers,
 )
 from loushang.coding.package import legacy_removed_review as _binding
 
@@ -64,16 +65,22 @@ def _require_journal_locks(
     members: Mapping[_binding.CodingLegacyInventoryDomain, tuple[str, ...]],
     read_member: Callable[..., bytes | None],
 ) -> None:
-    for domain in ("desired_state", "instance_state", "lock_history"):
-        for name in members[domain]:
-            if (
-                name.endswith(".lock")
-                and read_member(domain=domain, member_name=name, maximum_bytes=8)
-                != b"\0"
-            ):
-                raise _binding.CodingLegacyRemovedReviewError(
-                    _binding._LEGACY_PROGRAM_VALUES["value_013"]
-                )
+    domains: tuple[CodingLegacyEvidenceDomain, ...] = (
+        "desired_state",
+        "instance_state",
+        "lock_history",
+    )
+    require_empty_lock_markers(
+        read_member,
+        (
+            (domain, name)
+            for domain in domains
+            for name in members[domain]
+            if name.endswith(".lock")
+        ),
+        error_type=_binding.CodingLegacyRemovedReviewError,
+        message=_binding._LEGACY_PROGRAM_VALUES["value_013"],
+    )
 
 
 def _read_installation_evidence(

@@ -1727,6 +1727,30 @@ three subprocess handshake timeouts. All three cases pass in isolation
 against the final code with their original time limits. Native Windows
 execution remains unverified.
 
+## Legacy Lock Markers And Local Adoption Eligibility
+
+One staged management evidence reader now checks old journal lock markers
+for builtin review, removed-local review, active-local admission, and
+ordinary first-fence inventory. Each route still supplies the original
+snapshot read authority, marker set, read order, byte bound and error.
+Builtin and settled-history proof share the four service lock names.
+Settled history still requires the additional runtime markers when its
+journal is present. No route acquires a repair or write capability.
+
+The pre-fence and fenced local admission paths now share the installation
+count, requested Plugin and removal eligibility checks before matching
+configured Sources. Live resource reacquisition and first-fence observation
+retain their original execution points. The Product declaration shares one
+set of supported resource types and their historical refusal codes.
+
+The Product edge removes 19 lines and staging adds one, for a net reduction
+of 18 physical Python lines. Normalized dependencies remain at 1,659 pairs.
+All 42 focused non-live Linux cases pass, covering old management journal
+shapes, configured sources, removal replay and the existing architecture
+constraints. Controlled comparisons match 1,008 settled-history and removal
+traces and 360 local eligibility observations. Native Windows execution
+remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

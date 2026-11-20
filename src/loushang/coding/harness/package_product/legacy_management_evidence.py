@@ -8,10 +8,30 @@ intermediate dependencies; callers retain their distinct error identities.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from types import ModuleType
 
 from loushang.coding.package import legacy_installation_inventory as _wire
+
+SERVICE_LOCK_MARKERS = (
+    ("desired_state", "desired-state.jsonl.lock"),
+    ("desired_state", "management-operations.jsonl.lock"),
+    ("instance_state", "retirement-intents.jsonl.lock"),
+    ("instance_state", "retirement-sets.jsonl.lock"),
+)
+
+
+def require_empty_lock_markers(
+    read_member: Callable[..., bytes | None],
+    markers: Iterable[tuple[str, str]],
+    *,
+    error_type: type[ValueError],
+    message: str,
+) -> None:
+    """Read each legacy marker in order under the caller's snapshot authority."""
+    for domain, name in markers:
+        if read_member(domain=domain, member_name=name, maximum_bytes=8) != b"\0":
+            raise error_type(message)
 
 
 def verify_settled_history(
@@ -24,20 +44,15 @@ def verify_settled_history(
     error_type: type[ValueError],
     messages: tuple[str, str, str, str],
 ) -> None:
-    service_locks: tuple[tuple[_wire.CodingLegacyEvidenceDomain, str], ...] = (
-        ("desired_state", _wire._LEGACY_PROGRAM_VALUES["value_012"]),
-        ("desired_state", _wire._LEGACY_PROGRAM_VALUES["value_013"]),
-        ("instance_state", _wire._LEGACY_PROGRAM_VALUES["value_014"]),
-        ("instance_state", _wire._LEGACY_PROGRAM_VALUES["value_015"]),
-    )
+    markers: tuple[tuple[str, str], ...] = SERVICE_LOCK_MARKERS
     if _wire._LEGACY_PROGRAM_VALUES["value_010"] in instance_members:
-        service_locks += (
-            ("instance_state", _wire._LEGACY_PROGRAM_VALUES["value_018"]),
-            ("instance_state", _wire._LEGACY_PROGRAM_VALUES["value_019"]),
+        markers += (
+            ("instance_state", "instance-runtime.jsonl.lock"),
+            ("instance_state", "instance-runtime.security-acceptances.jsonl.lock"),
         )
-    for domain, name in service_locks:
-        if read_member(domain=domain, member_name=name, maximum_bytes=8) != b"\x00":
-            raise error_type(messages[1])
+    require_empty_lock_markers(
+        read_member, markers, error_type=error_type, message=messages[1]
+    )
     read_settled_management_history(
         lifecycle=lifecycle,
         instance_members=instance_members,

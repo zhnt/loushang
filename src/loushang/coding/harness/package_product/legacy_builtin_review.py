@@ -6,7 +6,11 @@ Product policy and nominal contracts are explicit intermediate dependencies.
 
 from __future__ import annotations
 
+from functools import partial
+
 from loushang.coding.package import legacy_builtin_review as _binding
+
+from .legacy_management_evidence import SERVICE_LOCK_MARKERS, require_empty_lock_markers
 
 
 def admit_builtin_snapshot(
@@ -64,24 +68,12 @@ def admit_builtin_snapshot(
             raw, lifecycle=lifecycle
         )
         if has_operations:
-            for domain, name in (
-                ("desired_state", _binding._LEGACY_PROGRAM_VALUES["value_005"]),
-                ("desired_state", _binding._LEGACY_PROGRAM_VALUES["value_006"]),
-                ("instance_state", _binding._LEGACY_PROGRAM_VALUES["value_007"]),
-                ("instance_state", _binding._LEGACY_PROGRAM_VALUES["value_008"]),
-            ):
-                if (
-                    owner.read_regular_member(
-                        snapshot.receipt_id,
-                        domain=domain,
-                        member_name=name,
-                        maximum_bytes=8,
-                    )
-                    != b"\0"
-                ):
-                    raise _binding.CodingLegacyBuiltinOnlyReviewError(
-                        _binding._LEGACY_PROGRAM_VALUES["value_012"]
-                    )
+            require_empty_lock_markers(
+                partial(owner.read_regular_member, snapshot.receipt_id),
+                SERVICE_LOCK_MARKERS,
+                error_type=_binding.CodingLegacyBuiltinOnlyReviewError,
+                message=_binding._LEGACY_PROGRAM_VALUES["value_012"],
+            )
             operations_raw = owner.read_regular_member(
                 snapshot.receipt_id,
                 domain="desired_state",

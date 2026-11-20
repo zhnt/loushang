@@ -6,6 +6,8 @@ Product policy and nominal contracts are explicit intermediate dependencies.
 
 from __future__ import annotations
 
+from functools import partial
+
 from loushang.coding.package import legacy_installation_inventory as _binding
 
 from . import legacy_management_evidence as _management_evidence
@@ -78,29 +80,23 @@ def read_inventory(
             raise _binding.CodingLegacyInventoryError(
                 _binding._LEGACY_PROGRAM_VALUES["value_007"]
             )
-        if _binding._LEGACY_PROGRAM_VALUES["value_008"] in lock_members and (
-            _binding.read_coding_first_b_snapshot_member(
-                lifecycle,
-                epoch_runtime,
-                domain="lock_history",
-                member_name=_binding._LEGACY_PROGRAM_VALUES["value_008"],
-                maximum_bytes=8,
-            )
-            != b"\0"
-        ):
-            raise _binding.CodingLegacyInventoryError(
-                _binding._LEGACY_PROGRAM_VALUES["value_009"]
+        read_member = partial(
+            _binding.read_coding_first_b_snapshot_member, lifecycle, epoch_runtime
+        )
+        package_lock = _binding._LEGACY_PROGRAM_VALUES["value_008"]
+        if package_lock in lock_members:
+            _management_evidence.require_empty_lock_markers(
+                read_member,
+                (("lock_history", package_lock),),
+                error_type=_binding.CodingLegacyInventoryError,
+                message=_binding._LEGACY_PROGRAM_VALUES["value_009"],
             )
         if has_operations:
             _management_evidence.verify_settled_history(
                 lifecycle=lifecycle,
                 instance_members=instance_members,
                 desired=desired,
-                read_member=lambda **fields: (
-                    _binding.read_coding_first_b_snapshot_member(
-                        lifecycle, epoch_runtime, **fields
-                    )
-                ),
+                read_member=read_member,
                 receiver=_binding,
                 error_type=_binding.CodingLegacyInventoryError,
                 messages=(

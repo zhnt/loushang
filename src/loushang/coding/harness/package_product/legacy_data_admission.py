@@ -6,13 +6,19 @@ Product policy and nominal contracts are explicit intermediate dependencies.
 
 from __future__ import annotations
 
-from typing import Literal
+from functools import partial
+from typing import TYPE_CHECKING, Literal
 
 from loushang.coding.package import legacy_skill_cutover_admission as _binding
 
 from . import legacy_management_evidence as _management_evidence
 from .legacy_reacquisition import reacquire_bound_wheel
 from .legacy_source_matching import index_configured_sources
+
+if TYPE_CHECKING:
+    from loushang.coding.package.legacy_installation_inventory import (
+        CodingLegacyInstallationInventoryV1,
+    )
 
 
 def admit_local_snapshot(
@@ -37,12 +43,8 @@ def admit_local_snapshot(
         raise TypeError(_binding._LEGACY_PROGRAM_VALUES["value_003"])
     if not isinstance(plugin_id, str) or not plugin_id:
         raise ValueError(_binding._LEGACY_PROGRAM_VALUES["value_004"])
-    if resource_kind not in {
-        _binding._LEGACY_PROGRAM_VALUES["value_005"],
-        _binding._LEGACY_PROGRAM_VALUES["value_006"],
-        _binding._LEGACY_PROGRAM_VALUES["value_007"],
-    }:
-        raise ValueError(_binding._LEGACY_PROGRAM_VALUES["value_008"])
+    if resource_kind not in _binding._RESOURCE_REFUSAL_CODES:
+        raise ValueError("Unsupported legacy Resource type")
     owner = prepared.owner
     receipt_id = snapshot.receipt_id
     try:
@@ -74,17 +76,15 @@ def admit_local_snapshot(
             allow_retirement=True,
             allow_retired_runtime=True,
         )
-        if (
-            _binding._LEGACY_PROGRAM_VALUES["value_010"] in lock_members
-            and owner.read_regular_member(
-                receipt_id,
-                domain="lock_history",
-                member_name=_binding._LEGACY_PROGRAM_VALUES["value_010"],
-                maximum_bytes=8,
+        read_member = partial(owner.read_regular_member, receipt_id)
+        package_lock = _binding._LEGACY_PROGRAM_VALUES["value_010"]
+        if package_lock in lock_members:
+            _management_evidence.require_empty_lock_markers(
+                read_member,
+                (("lock_history", package_lock),),
+                error_type=ValueError,
+                message=_binding._LEGACY_PROGRAM_VALUES["value_011"],
             )
-            != b"\0"
-        ):
-            raise ValueError(_binding._LEGACY_PROGRAM_VALUES["value_011"])
         source_raw = owner.read_regular_member(
             receipt_id,
             domain="source_configuration",
@@ -112,9 +112,7 @@ def admit_local_snapshot(
                 lifecycle=lifecycle,
                 instance_members=instance_members,
                 desired=desired,
-                read_member=lambda **fields: owner.read_regular_member(
-                    receipt_id, **fields
-                ),
+                read_member=read_member,
                 receiver=_binding,
                 error_type=ValueError,
                 messages=(
@@ -135,20 +133,13 @@ def admit_local_snapshot(
             else ()
         )
         removed_local_ids = {item.binding.plugin_id for item in removed_local}
-        if (
-            not 0 < len(inventory.active_local) <= _binding._MAX_LOCAL_DATA_PLUGINS
-            or plugin_id
-            not in {item.binding.plugin_id for item in inventory.active_local}
-            or any(
-                item not in _binding._REMOVABLE_BUILTIN_PLUGIN_IDS | removed_local_ids
-                for item in inventory.removed_plugin_ids
-            )
-        ):
-            raise ValueError(_binding._LEGACY_PROGRAM_VALUES["value_018"])
-        canonical_names: set[tuple[str, str]] = set()
-        source_identities = tuple(
-            item.binding.source_identity for item in inventory.active_local
+        source_identities = _adoptable_source_identities(
+            inventory,
+            plugin_id,
+            removed_local_ids,
+            _binding._LEGACY_PROGRAM_VALUES["value_018"],
         )
+        canonical_names: set[tuple[str, str]] = set()
         for index, installation in enumerate(inventory.active_local):
             binding = installation.binding
             if not binding.source_identity.startswith("local:/"):
@@ -180,15 +171,7 @@ def admit_local_snapshot(
     ) as exc:
         raise _binding.PackagePosixEpochCutoverError(
             _binding._LEGACY_PROGRAM_VALUES["value_019"],
-            code=(
-                _binding._LEGACY_PROGRAM_VALUES["value_035"]
-                if resource_kind == _binding._LEGACY_PROGRAM_VALUES["value_005"]
-                else (
-                    _binding._LEGACY_PROGRAM_VALUES["value_036"]
-                    if resource_kind == _binding._LEGACY_PROGRAM_VALUES["value_006"]
-                    else _binding._LEGACY_PROGRAM_VALUES["value_037"]
-                )
-            ),
+            code=_binding._RESOURCE_REFUSAL_CODES[resource_kind],
         ) from exc
 
 
@@ -254,6 +237,22 @@ def require_fenced_local_snapshot(
                 scope_id=lifecycle.scope_id,
             )
         }
+    source_identities = _adoptable_source_identities(
+        inventory,
+        plugin_id,
+        removed_local_ids,
+        _binding._LEGACY_PROGRAM_VALUES["value_039"],
+    )
+    index_configured_sources(source, source_identities)
+    epoch_runtime.assert_current()
+
+
+def _adoptable_source_identities(
+    inventory: CodingLegacyInstallationInventoryV1,
+    plugin_id: str,
+    removed_local_ids: set[str],
+    message: str,
+) -> tuple[str, ...]:
     if (
         not 0 < len(inventory.active_local) <= _binding._MAX_LOCAL_DATA_PLUGINS
         or plugin_id not in {item.binding.plugin_id for item in inventory.active_local}
@@ -262,12 +261,8 @@ def require_fenced_local_snapshot(
             for item in inventory.removed_plugin_ids
         )
     ):
-        raise ValueError(_binding._LEGACY_PROGRAM_VALUES["value_039"])
-    source_identities = tuple(
-        item.binding.source_identity for item in inventory.active_local
-    )
-    index_configured_sources(source, source_identities)
-    epoch_runtime.assert_current()
+        raise ValueError(message)
+    return tuple(item.binding.source_identity for item in inventory.active_local)
 
 
 def require_data_kind(
@@ -279,12 +274,8 @@ def require_data_kind(
 ) -> None:
     """Reacquire exact live bytes and enforce the operator's selected type."""
 
-    if resource_kind not in {
-        _binding._LEGACY_CHAIN_VALUES["value_001"],
-        _binding._LEGACY_CHAIN_VALUES["value_002"],
-        _binding._LEGACY_CHAIN_VALUES["value_003"],
-    }:
-        raise ValueError(_binding._LEGACY_CHAIN_VALUES["value_004"])
+    if resource_kind not in _binding._RESOURCE_REFUSAL_CODES:
+        raise ValueError("Unsupported legacy Resource type")
 
     _binding.require_coding_fenced_single_legacy_skill_snapshot(
         lifecycle, epoch_runtime, plugin_id=plugin_id
@@ -294,5 +285,5 @@ def require_data_kind(
     )
     inspected = _binding.inspect_coding_legacy_local_data_wheel(reacquired.wheel)
     if inspected.resource_kind != resource_kind:
-        raise ValueError(_binding._LEGACY_CHAIN_VALUES["value_005"])
+        raise ValueError(_binding._LEGACY_PROGRAM_VALUES["value_027"])
     epoch_runtime.assert_current()
