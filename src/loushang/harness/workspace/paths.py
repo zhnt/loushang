@@ -102,6 +102,24 @@ def _curly_quote_path_variant(path: str) -> str:
     return path.replace("'", "\u2019")
 
 
+def require_workspace_directory(path: str | Path, *, unavailable: str) -> Path:
+    """Resolve an existing workspace before an owner checks its scope."""
+    root = Path(path).expanduser().resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError(unavailable)
+    return root
+
+
+def capture_workspace_directory_identity(
+    workspace: Path, *, unavailable: str
+) -> tuple[int, int]:
+    """Capture the root itself after the caller's admission checks."""
+    metadata = workspace.lstat()
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise ValueError(unavailable)
+    return metadata.st_dev, metadata.st_ino
+
+
 def assert_workspace_directory_identity(
     workspace: Path,
     identity: tuple[int, int],

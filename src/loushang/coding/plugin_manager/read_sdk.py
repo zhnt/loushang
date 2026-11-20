@@ -6,7 +6,6 @@ does not activate Product state, create a Session, or grant command authority.
 
 from __future__ import annotations
 
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -14,7 +13,7 @@ from typing import Literal
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.harness.plugin_management import support_read as _programs
 from loushang.coding.package.management_binding import (
-    build_coding_fenced_product_management_cli_ports,
+    build_coding_fenced_product_management_cli_ports as build_coding_fenced_product_management_cli_ports,
 )
 from loushang.coding.plugin_manager.binding import (
     build_coding_plugin_management_cli_read_binding,
@@ -90,19 +89,7 @@ class CodingPluginManagementReadClientV1:
         return self.layout.scope_id
 
     def snapshot(self, query: PluginManagementQueryV1) -> PluginManagementProjectionV1:
-        if (
-            not isinstance(query, PluginManagementQueryV1)
-            or query.product_id != CODING_PRODUCT_ID
-            or query.installation_scope != "workspace"
-            or query.scope_id != self.layout.scope_id
-        ):
-            raise ValueError("Plugin management read changed workspace scope")
-        self._assert_workspace_identity()
-        projection = build_coding_fenced_product_management_cli_ports(
-            self.layout, workspace_guard=self._assert_workspace_identity
-        ).queries.snapshot(query)
-        self._assert_workspace_identity()
-        return projection
+        return _programs.read_fenced_snapshot(self, query)
 
     def management_snapshot(
         self,
@@ -203,28 +190,9 @@ def open_coding_plugin_management_read_client(
     *,
     expected_workspace_identity: tuple[int, int] | None = None,
 ) -> CodingPluginManagementReadClientV1:
-    root = Path(workspace).expanduser().resolve(strict=True)
-    if not root.is_dir():
-        raise ValueError("Plugin management workspace is unavailable")
-    metadata = root.lstat()
-    if not stat.S_ISDIR(metadata.st_mode):
-        raise ValueError("Plugin management workspace is unavailable")
-    identity = (metadata.st_dev, metadata.st_ino)
-    if (
-        expected_workspace_identity is not None
-        and identity != expected_workspace_identity
-    ):
-        raise CodingPluginManagementReadSdkError(
-            "Coding management workspace changed",
-            code="coding_management_workspace_changed",
-        )
-    client = CodingPluginManagementReadClientV1(
-        workspace=root,
-        layout=resolve_coding_plugin_lifecycle_state_layout(root),
-        workspace_identity=identity,
+    return _programs.open_read_client(
+        workspace, expected_workspace_identity=expected_workspace_identity
     )
-    client.assert_workspace_current()
-    return client
 
 
 def bind_coding_plugin_management_rpc_query(

@@ -2305,6 +2305,39 @@ two child-handshake timeouts. The same two tests report the same failures
 on the unmodified starting commit `c55af7c8f`. Both cases pass when rerun
 on their own after the other suites finish.
 
+## Scoped Plugin Management Clients
+
+SDK and TUI command clients share staged workspace admission and guarded
+port acquisition. CLI, TUI support and JSONL reads use staged read-client
+admission and scoped fenced projections. Both reuse the Harness Workspace
+identity capture alongside its existing identity assertion. The read path
+captures the directory identity before layout resolution. The command
+path checks the admitted Product fence before capturing the directory
+identity. Read-only admission still uses its original query route.
+
+JSONL read, Desired State and Package repair share the original Session
+witness, workspace and identity checks. The command and repair bindings
+reuse one matching-workspace check before they can return a mutation
+client. The existing formal Harness command owner still performs
+submission, inventory CAS and owned replay. Coding retains its nominal
+clients and errors, actor and Product policies, legacy bindings, and
+presentation. The temporary programs still borrow these declarations.
+The next owner can take the neutral scope, identity, ports, and admitted
+Session witness.
+
+Coding Product removes 107 Python lines. Staging adds 167 and formal
+Harness Workspace adds 18, so production adds 78 lines. The extra source
+covers staging entry definitions and the original signatures retained by
+callers. The complete client paths share directory capture, the command
+fence check and the JSONL mutation rebind check. Existing Harness
+submission and replay were already shared.
+
+All 18 selected SDK/TUI/JSONL integration cases and 24 consumer cases
+pass on Linux. The 11,880 controlled traces match original exception
+identity, error codes and call order across directory, fence, and
+projection faults. Four JSONL scope code paths retain their normalized
+operation bodies. Native Windows validation remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
