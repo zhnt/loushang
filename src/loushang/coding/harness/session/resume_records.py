@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.foundation.json import JSONValue, dump_json_value
+from loushang.harness.conversation.jsonl_codec import ConversationJsonlRecordCodec
 from loushang.harness.transcript.codecs import (
     STANDARD_PAYLOAD_VERSION,
     create_agent_transcript_payload_registry,
@@ -91,6 +92,16 @@ def user_message_digest(
         AGENT_MESSAGE_KIND, STANDARD_PAYLOAD_VERSION, message
     )
     return sha256(digest_domain + canonical_binding_bytes(payload)).hexdigest()
+
+
+def input_record_digest(record: AgentTranscriptRecord, *, digest_domain: bytes) -> str:
+    """Hash the complete original binding record through the Transcript codec."""
+    payload = ConversationJsonlRecordCodec(
+        create_agent_transcript_payload_registry()
+    ).encode_record(record)
+    return sha256(
+        digest_domain + canonical_binding_bytes(payload, name="Resume input lookup record")
+    ).hexdigest()
 
 
 def canonical_binding_bytes(value: object, *, name: str = "RuntimeBinding metadata") -> bytes:

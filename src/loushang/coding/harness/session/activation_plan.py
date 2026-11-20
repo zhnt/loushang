@@ -7,9 +7,12 @@ explicit intermediate Code dependencies; no parallel state or effect owner.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from hashlib import sha256
 from typing import Literal, TypeVar
 
 from loushang.coding.resume import activation_plan as _binding
+
+from .resume_records import canonical_binding_bytes
 
 _RefT = TypeVar(
     "_RefT", bound="_binding.ActivationOwnerInputRefV1 | _binding.ActivationOwnerSelectionRefV1"
@@ -47,20 +50,19 @@ def build_activation_plan(
     """Aggregate historical facts and existing owner choices without effects."""
 
     _binding._require_plan_workspace_root(workspace_root)
-    errors = _binding._RESUME_PLAN_PROGRAM_VALUES
     inputs = _checked_owner_refs(
         owner_inputs,
         _binding.ActivationOwnerInputRefV1,
-        type_error=errors["value_002"],
-        order_error=errors["value_003"],
-        budget_error=errors["value_001"],
+        type_error="activation Plan owner inputs are invalid",
+        order_error="activation Plan owner inputs must be sorted and unique",
+        budget_error="activation Plan owner inputs exceed their budget",
     )
     selections = _checked_owner_refs(
         owner_selections,
         _binding.ActivationOwnerSelectionRefV1,
-        type_error=errors["value_005"],
-        order_error=errors["value_006"],
-        budget_error=errors["value_004"],
+        type_error="activation Plan owner selections are invalid",
+        order_error="activation Plan owner selections must be sorted and unique",
+        budget_error="activation Plan owner selections exceed their budget",
     )
     comparison = _binding.compare_coding_resume_composition(
         history, current_composition
@@ -70,27 +72,27 @@ def build_activation_plan(
         type(session_id) is not str
         or _binding._IDENTIFIER.fullmatch(session_id) is None
     ):
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_007"])
+        raise ValueError("activation Plan Session id is invalid")
     if history.selected_leaf_id is not None and (
         type(history.selected_leaf_id) is not str
         or _binding._IDENTIFIER.fullmatch(history.selected_leaf_id) is None
     ):
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_008"])
+        raise ValueError("activation Plan selected leaf id is invalid")
     if (
         type(history.source_fingerprint) is not str
         or _binding._SOURCE_FINGERPRINT.fullmatch(history.source_fingerprint) is None
     ):
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_009"])
+        raise ValueError("activation Plan source fingerprint is invalid")
     if (
         type(history.source_content_digest) is not str
         or _binding._DIGEST.fullmatch(history.source_content_digest) is None
     ):
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_010"])
+        raise ValueError("activation Plan source content digest is invalid")
     if history.selected_ancestry_digest is not None and (
         type(history.selected_ancestry_digest) is not str
         or _binding._DIGEST.fullmatch(history.selected_ancestry_digest) is None
     ):
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_011"])
+        raise ValueError("activation Plan ancestry digest is invalid")
     status: Literal["needs_final_validation", "unavailable"] = (
         "unavailable"
         if comparison.status == "unavailable"
@@ -115,7 +117,7 @@ def build_activation_plan(
             )
             != history.selected_leaf_id
         ):
-            raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_013"])
+            raise ValueError("activation Plan selected history facts differ")
     identity = {
         "schemaVersion": 1,
         "sessionId": session_id,
@@ -149,17 +151,10 @@ def build_activation_plan(
         ],
         "status": status,
     }
-    encoded = _binding.dump_json_value(
-        identity,
-        name=_binding._RESUME_PLAN_PROGRAM_VALUES["value_014"],
-        ensure_ascii=True,
-        sort_keys=True,
-    ).encode("utf-8")
+    encoded = canonical_binding_bytes(identity, name=_binding._PLAN_LABEL)
     if len(encoded) > _binding._ACTIVATION_PLAN_MAX_BYTES:
-        raise ValueError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_012"])
-    plan_id = _binding.hashlib.sha256(
-        _binding._RESUME_PLAN_PROGRAM_BYTES["value_001"] + encoded
-    ).hexdigest()
+        raise ValueError("activation Plan exceeds its byte budget")
+    plan_id = sha256(_binding._PLAN_DIGEST_DOMAIN + encoded).hexdigest()
     return _binding.SessionActivationPlanV1(
         plan_id=plan_id,
         session_id=session_id,
@@ -263,7 +258,7 @@ def require_current_plan_source(
     """Reject stale read evidence; live Writer and owner checks are separate."""
 
     if not isinstance(plan, _binding.SessionActivationPlanV1):
-        raise TypeError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_017"])
+        raise TypeError(f"invalid {_binding._PLAN_LABEL}")
     current = _binding.resolve_coding_composition_set(
         plan.composition_comparison.candidate_set_id,
     )
@@ -277,7 +272,7 @@ def require_current_plan_source(
         != _binding.compare_coding_resume_composition(history, current)
     ):
         raise _binding.ResumePlanStaleError(
-            _binding._RESUME_PLAN_PROGRAM_VALUES["value_018"]
+            f"{_binding._PLAN_LABEL} source changed"
         )
 
 
@@ -292,14 +287,14 @@ def require_current_plan_inputs(
     """
 
     if not isinstance(plan, _binding.SessionActivationPlanV1):
-        raise TypeError(_binding._RESUME_PLAN_PROGRAM_VALUES["value_017"])
+        raise TypeError(f"invalid {_binding._PLAN_LABEL}")
     inputs = _checked_owner_refs(
         current_owner_inputs,
         _binding.ActivationOwnerInputRefV1,
-        type_error=_binding._RESUME_PLAN_PROGRAM_VALUES["value_019"],
-        order_error=_binding._RESUME_PLAN_PROGRAM_VALUES["value_020"],
+        type_error=f"{_binding._PLAN_LABEL} owner inputs are invalid",
+        order_error=f"{_binding._PLAN_LABEL} owner inputs must be sorted and unique",
     )
     if inputs != plan.owner_inputs:
         raise _binding.ResumePlanStaleError(
-            _binding._RESUME_PLAN_PROGRAM_VALUES["value_021"]
+            f"{_binding._PLAN_LABEL} owner inputs changed"
         )

@@ -2146,6 +2146,31 @@ Linux cases pass, including first input and native Worker settlement.
 Across 12,369 controlled comparisons the original results, failure causes
 and call order match. Native Windows verification remains open.
 
+## Composition History Comparison And Resume Evidence Digests
+
+The staged composition history comparison supplies the unchanged results
+used by foreground and background planning, Hosted preview and stale Plan
+source validation. It classifies identity, provenance, ancestry, Binding and
+activation in their deployed precedence before comparing the recorded set
+and plan fingerprint. Coding checks the nominal input types and membership
+in its canonical set registry and constructs the original result type.
+
+The canonical set keeps its original ASCII JSON fingerprint format.
+Activation Plan construction and exact bound-input lookup reuse the staged
+Resume encoder with their original labels and hash domains. Input lookup
+continues to encode the complete record through the existing Transcript
+codec, including the persisted payload, metadata, timestamp and parent.
+Plan budgets and source checks remain in their original order. The staged
+composition history code imports Coding only for type annotations.
+
+Coding Product removes 55 Python lines and staging gains 67, for 12 net
+production lines. An activation Plan error table and duplicate Resume
+encoding paths exit. All 117 selected Linux cases pass, with three previously
+reproduced `transcript_writer:unsafe` cases deselected under the configured
+test root. Across 7,268 controlled cases the original digests, comparisons,
+Plans and error outcomes match. Five legacy values also retain their nominal
+pickle identity. Native Windows verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

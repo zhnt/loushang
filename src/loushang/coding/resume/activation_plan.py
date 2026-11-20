@@ -6,7 +6,6 @@ discardable and never constitutes Writer, Plugin, Approval, or Worker authority.
 
 from __future__ import annotations
 
-import hashlib as hashlib
 import os
 import re
 from collections.abc import Callable, Sequence
@@ -31,7 +30,6 @@ from loushang.coding.resume.composition_comparison import (
     compare_coding_resume_composition as compare_coding_resume_composition,
 )
 from loushang.coding.resume.history import CodingResumeHistoryPreview
-from loushang.foundation.json import dump_json_value as dump_json_value
 from loushang.harness.resources.loader import ResourceLoader
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -47,31 +45,8 @@ _POLICY_INPUT_OWNER = "coding.policy"
 _SUBJECT_INPUT_OWNER = "coding.subject"
 
 
-_RESUME_PLAN_PROGRAM_VALUES = {
-    "value_001": "activation Plan owner inputs exceed their budget",
-    "value_002": "activation Plan owner inputs are invalid",
-    "value_003": "activation Plan owner inputs must be sorted and unique",
-    "value_004": "activation Plan owner selections exceed their budget",
-    "value_005": "activation Plan owner selections are invalid",
-    "value_006": "activation Plan owner selections must be sorted and unique",
-    "value_007": "activation Plan Session id is invalid",
-    "value_008": "activation Plan selected leaf id is invalid",
-    "value_009": "activation Plan source fingerprint is invalid",
-    "value_010": "activation Plan source content digest is invalid",
-    "value_011": "activation Plan ancestry digest is invalid",
-    "value_012": "activation Plan exceeds its byte budget",
-    "value_013": "activation Plan selected history facts differ",
-    "value_014": "Coding activation Plan",
-    "value_017": "invalid Coding activation Plan",
-    "value_018": "Coding activation Plan source changed",
-    "value_019": "Coding activation Plan owner inputs are invalid",
-    "value_020": "Coding activation Plan owner inputs must be sorted and unique",
-    "value_021": "Coding activation Plan owner inputs changed",
-}
-
-_RESUME_PLAN_PROGRAM_BYTES = {
-    "value_001": b"loushang.coding.session-activation-plan/v1\x00"
-}
+_PLAN_LABEL = "Coding activation Plan"
+_PLAN_DIGEST_DOMAIN = b"loushang.coding.session-activation-plan/v1\0"
 
 
 class ResumePlanStaleError(ValueError):
