@@ -831,6 +831,38 @@ backreferences remain in the exit inventory. Normalized logical dependencies
 remain at 1,650 module pairs. The only test source change for this batch is
 the four-line update to the existing Worker path inventory.
 
+## CLI Package Commands
+
+Removal now stages the revision retry, original idempotency calculation,
+Desired State compare-and-submit, follow-up retirement reads and failure
+evidence. Coding keeps CLI scope admission and the original success and
+failure rendering. The coordinator uses the same Harness command and read
+ports. Each operand resets its failure identity before the next attempt, and
+an uncertain retirement result is observed through the original read paths.
+This preserves the distinction between a committed removal, a pending
+operation and unknown cleanup evidence.
+
+Install/update also stages source admission, the existing PackageProduct
+runtime scope, operation routing and the independent reads used after a failed
+handoff. Coding keeps the success and failure bytes, scope refusal, actual
+operation and runtime identity, and follow-up repair guidance. The original
+factory lifetime still uses `_product_plugin_runtime`. Neither success output
+nor failure reporting changes the replay or cleanup authority.
+
+Ruff and mypy pass for the three files. The core transactions and observed
+failure facts match the prior source after restoring the original renderers
+and explicit policy values. Uninstall alone passed all eight real CLI tests,
+including batch output and retirement interruption. The full CLI candidate then passed the same eight public journey and
+failure cases in 145.33 seconds, including exact partial-commit reporting. The command slice removes 120 lines at the
+Coding edge and adds 279 staged lines, a net production increase of 159 lines.
+Logical dependency review records two actual new edges, to the existing
+Product identity and to the nominal Wheel source record used by the renderer.
+Neither target has a path back to the CLI. The overall graph has 1,652 logical
+module pairs and 82 separately tracked staged backreferences. Current Coding
+contains 106,916 Python lines, including 12,981 in staging and 93,935 at the
+product edge. The production increase from the startup baseline is 6,201 lines.
+The command slice is ready as a local checkpoint.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
