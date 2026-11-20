@@ -13,13 +13,19 @@ const scenarios = [
   { name: "density-150", width: 1440, height: 720, rail: 280, scale: 1.5 },
 ];
 
-test("dragging the sidebar divider resizes without selecting text", async ({ page }) => {
+test("the sidebar divider resizes without text selection or a mouse focus outline", async ({ page }) => {
   await page.setViewportSize({ width: 1240, height: 720 });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "GUI development" })).toBeVisible();
   await page.getByRole("button", { name: "Toggle sidebar" }).click();
 
   const divider = page.getByRole("separator", { name: "Sidebar width" });
+  await expect(divider).toHaveAttribute("aria-valuenow", "280");
+  await divider.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(divider).toHaveAttribute("aria-valuenow", "290");
+  await expect(divider).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("ArrowLeft");
   await expect(divider).toHaveAttribute("aria-valuenow", "280");
   // Some engines do not select text from the divider even if pointerdown is uncanceled.
   await divider.evaluate((element) => {
@@ -37,10 +43,14 @@ test("dragging the sidebar divider resizes without selecting text", async ({ pag
   expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
   await expect(divider).toHaveAttribute("data-default-prevented", "true", { timeout: 500 });
   await page.mouse.up();
+  await expect(divider).toBeFocused();
+  await expect(divider).toHaveCSS("outline-style", "none");
   await page.keyboard.press("ArrowRight");
   await expect(divider).toHaveAttribute("aria-valuenow", "226");
+  await expect(divider).toHaveCSS("outline-style", "solid");
   await divider.dblclick();
   await expect(divider).toHaveAttribute("aria-valuenow", "280");
+  await expect(divider).toHaveCSS("outline-style", "none");
 });
 
 async function verifyLayout(page: Page, info: TestInfo, mode: string) {

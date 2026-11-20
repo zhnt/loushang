@@ -14,9 +14,9 @@ code, kbd, pre, samp { font-family: var(--font-mono); }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.48; }
 :is(button, input, select, textarea, summary, a[href], [tabindex]):focus-visible { outline: 2px solid var(--control-focus); outline-offset: -2px; }
-/* WebKit can retain focus-visible when a pointer opens or closes a dialog. */
+/* Restore and resize handlers can retain focus-visible after pointer input. */
 .desktop-shell[data-input-modality="pointer"] :is(
-  .account-menu button, .settings-dialog button, .project-label, .workspace-editor button
+  .account-menu button, .settings-dialog button, .project-label, .workspace-editor button, .sidebar-resizer
 ):focus { outline: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
