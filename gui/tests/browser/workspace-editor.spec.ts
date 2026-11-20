@@ -77,3 +77,56 @@ test("manages folders in one logical workspace without disabling its chat entry"
   await expect(page.getByRole("heading", { name: "Integration / New Session" })).toBeVisible();
   expect(edits).toEqual(["add-path", "set-default-path"]);
 });
+
+test("leaves delete confirmation when AppHost rejects the request", async ({ page }) => {
+  await page.addInitScript(() => Object.assign(window, { __LOUSHANG_MANAGED_TEST__: true }));
+  const id = "a".repeat(32);
+  let deleteAttempts = 0;
+  await page.route("**/api/loushang", async (route) => {
+    const input = route.request().postDataJSON();
+    let result: object = {};
+    if (input.operation === "environment") result = { supported: true, workspace: "" };
+    else if (input.operation === "manage") result = { state: "running", serviceInstanceId: "test-host" };
+    else if (input.action === "navigation") result = {
+      projects: deleteAttempts < 2 ? [{ id, name: "Integration", path: null, paths: [], sessions: [] }] : [],
+      temporarySessions: [],
+    };
+    else if (input.action === "delete-workspace-with-history") {
+      expect(input.workspaceId).toBe(id);
+      if (++deleteAttempts === 1) {
+        return route.fulfill({ status: 503, json: { error: "operation_unavailable" } });
+      }
+    }
+    return route.fulfill({ json: { result } });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+  const projectRow = page.getByRole("button", { name: "Integration", exact: true });
+  await projectRow.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Manage workspace", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Manage workspace" });
+  const remove = editor.getByRole("button", { name: "Delete workspace", exact: true });
+  const confirm = editor.getByRole("button", { name: "Confirm workspace deletion" });
+  await remove.click();
+  await expect(confirm).toHaveAccessibleDescription(
+    "Permanently delete “Integration” and all its conversations? Linked folders and their files will be kept.",
+  );
+  await editor.getByRole("button", { name: "Cancel" }).click();
+  expect(deleteAttempts).toBe(0);
+  await remove.click();
+  await confirm.click();
+
+  await expect(editor.getByRole("alert")).toHaveText("This workspace cannot be deleted right now.");
+  await expect(confirm).toHaveCount(0);
+  await expect(remove).toBeEnabled();
+  expect(deleteAttempts).toBe(1);
+
+  await remove.click();
+  await expect(editor.getByRole("alert")).toHaveCount(0);
+  expect(deleteAttempts).toBe(1);
+  await confirm.click();
+  await expect(editor).toBeHidden();
+  await expect(projectRow).toHaveCount(0);
+  expect(deleteAttempts).toBe(2);
+});

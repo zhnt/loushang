@@ -94,3 +94,8 @@ class HostedWorkspaceModelsPort(Protocol):
 @runtime_checkable
 class HostedSessionHistoryDeletionPort(Protocol):
     async def delete_session_history(self, identity: SessionIdentityV1) -> None: ...
+
+
+@runtime_checkable
+class HostedWorkspaceHistoryDeletionPort(Protocol):
+    async def workspace_deletion_scopes(self, workspace_id: str) -> frozenset[str]: ...

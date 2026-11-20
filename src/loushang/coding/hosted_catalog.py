@@ -636,6 +636,35 @@ class CodingHostedSessionCatalogV1(
                 key: value for key, value in self._records.items() if value.identity != identity
             }
 
+    def _workspace_transcripts(self) -> tuple[Path, ...]:
+        paths: list[Path] = []
+        scopes = {scope.session_dir: scope for scope in self.scopes}
+        for directory, scope in scopes.items():
+            if directory != directory.resolve():
+                raise CodingHostedCatalogError()
+            if self._directory_revision(directory) is None:
+                continue
+            layout = self._candidate_layout(directory)
+            scan = layout.scan_candidate_path_snapshot(layout.namespace, raise_on_error=True)
+            if not scan.complete:
+                raise CodingHostedCatalogError()
+            paths.extend(
+                path for path in scan.paths if self._read_record(scope, path) is not None
+            )
+        return tuple(paths)
+
+    async def delete_workspace_history(self) -> None:
+        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
+
+        async with self._lock:
+            if not self._closing:
+                for path in await settled_io(self._workspace_transcripts):
+                    await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
+                    self._records.clear()
+        # Fence only after deletion has finished, then let retries settle
+        # any original factory cleanup before removing the registration.
+        await self.close()
+
     async def discover_sessions(
         self,
         scope: HostedSessionDiscoveryScopeV1,

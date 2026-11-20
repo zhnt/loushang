@@ -108,6 +108,7 @@ fn workspace_error(creating: bool, code: &str) -> &'static str {
         "permission_denied" => "permission_denied",
         "workspace_registration_failed" => "workspace_registration_failed",
         "operation_unavailable" => "operation_unavailable",
+        "cleanup_incomplete" => "cleanup_incomplete",
         _ => "connection_failed",
     }
 }
@@ -138,6 +139,7 @@ async fn dispatch(routed: Routed) -> Result<Value> {
                             | "create-workspace"
                             | "rename-workspace"
                             | "delete-workspace"
+                            | "delete-workspace-with-history"
                             | "add-path"
                             | "remove-path"
                             | "update-path"

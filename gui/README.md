@@ -37,6 +37,11 @@ on the connected AppHost. Workspace and Mux identities survive a folder change,
 and Session history stays in the existing AppHost-owned transcript store.
 Ordinary chats use the default Workspace without any user folder.
 
+**Delete workspace** asks for confirmation before permanently removing a
+workspace and its conversations, including previously closed conversations.
+Linked folders and their files stay on disk. A missing folder does not block
+workspace deletion.
+
 File and command operations go through the existing authorization flow and are
 limited to the admitted folder identities. A relative path uses the default
 folder. An absolute path or an explicit command working directory can target

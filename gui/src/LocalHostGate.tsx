@@ -108,13 +108,39 @@ export default function LocalHostGate() {
     }
     workspaceMutation.current = true;
     setWorkspacePending(true);
-    ++workspaceEpoch.current;
+    const epoch = ++workspaceEpoch.current;
+    const origin = connectionId.current;
+    const deleting = edit.action === "delete-workspace-with-history";
+    let resume: (() => void) | undefined;
     try {
-      await webRequest({ operation: "workspace", ...edit }, connectionId.current);
-      await refreshDirectory();
+      if (deleting) resume = await workspaceClients.current.get(edit.workspaceId)?.suspend();
+      if (epoch !== workspaceEpoch.current) return;
+      await webRequest({ operation: "workspace", ...edit }, origin);
+      if (epoch !== workspaceEpoch.current) return;
+      if (!deleting) {
+        await refreshDirectory();
+        return;
+      }
+      const id = edit.workspaceId;
+      ++workspaceEpoch.current;
+      const deletedClient = workspaceClients.current.get(id);
+      workspaceClients.current.delete(id);
+      if (deletedClient && clientRef.current === deletedClient) {
+        clientRef.current = null;
+        setClient(null);
+        setWorkspace("");
+      }
+      setSelection((current) => current?.workspace === id ? null : current);
+      setDirectory((current) => ({
+        ...current, projects: current.projects.filter((project) => projectKey(project) !== id),
+      }));
     } finally {
+      resume?.();
       workspaceMutation.current = false;
       setWorkspacePending(false);
+      if (deleting && origin === connectionId.current) {
+        void refreshDirectory().catch(() => { if (origin === connectionId.current) setWorkspaceError(true); });
+      }
     }
   };
 

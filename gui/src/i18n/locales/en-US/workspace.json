@@ -20,13 +20,15 @@
     "close": "Close",
     "confirmDelete": "Confirm workspace deletion",
     "delete": "Delete workspace",
+    "deleteImpact": "Permanently delete “{{name}}” and all its conversations? Linked folders and their files will be kept.",
     "saveFailed": "The workspace could not be updated.",
     "available": "Available",
     "missing": "Folder not found",
     "unsafe": "Folder or parent was replaced by a link",
     "not_directory": "Path is not a folder",
     "permission_denied": "Permission denied",
-    "deleteBlocked": "This workspace still retains session history."
+    "deleteBlocked": "This workspace cannot be deleted right now.",
+    "deleteIncomplete": "Deletion did not complete. Confirm again to finish deleting the workspace and its conversations."
   },
   "sidebar": {
     "pin": "Pin",
