@@ -21,10 +21,12 @@ from loushang.coding.arch._provider_api import (
 )
 from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssembly,
-    CodingBasePluginAssemblyError,
     prepare_coding_base_plugin_session,
     prepare_coding_base_resource_plan_seed,
     prepare_managed_coding_base_plugin_assembly,
+)
+from loushang.coding.composition.base_plugin import (
+    CodingBasePluginAssemblyError as CodingBasePluginAssemblyError,
 )
 from loushang.coding.composition.base_product import (
     CodingBaseProductCompilation,
@@ -96,6 +98,9 @@ from loushang.coding.harness.session.catalog_preparation import (
     require_catalog_receipt,
     require_current_manifests,
 )
+from loushang.coding.harness.session.managed_plugin_preparation import (
+    prepare_managed_plugins,
+)
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_CAPABILITY_DEFINITION,
@@ -125,9 +130,13 @@ from loushang.coding.plugin_manager.enablement_compatibility import (
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
-    build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    build_coding_plugin_lifecycle as build_coding_plugin_lifecycle,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout as resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.prompt.defaults import (
     CODING_KERNEL_SYSTEM_PROMPT,
@@ -538,6 +547,13 @@ def _resolve_coding_kernel_prompt(plan: CodingCompositionSetPlan) -> str:
     if plan.kernel_prompt_revision != CODING_KERNEL_PROMPT_REVISION:
         raise ValueError("Unsupported Coding Kernel Prompt revision")
     return CODING_KERNEL_SYSTEM_PROMPT
+
+
+_MANAGED_PACKAGE_AUTHORITY_MISMATCH = (
+    "Durable Coding base package storage must use the canonical workspace authority",
+    "coding_base_package_authority_mismatch",
+)
+_MANAGED_PACKAGE_REPLAY_CHECK = "coding_base_exact_replay"
 
 
 class CodingPackageProductLegacyPathError(RuntimeError):
@@ -987,191 +1003,75 @@ def _create_agent_session(
             session_id=session_id,
         )
     coding_base_plugin_assembly: CodingBasePluginAssembly | None = None
-    base_ephemeral_state = None
-    base_state_cleanup: Callable[[], None] | None = None
     capability_management_state_cleanup: Callable[[], None] | None = None
     deferred_lsp_management_state_cleanup: Callable[[], None] | None = None
-    coding_plugin_lifecycle: CodingPluginLifecycle | None = None
-    coding_plugin_package_materializer: PackageMaterializer | None = None
+    managed = None
+    use_managed_base = "coding.base" in requested_plugin_ids
     if (
         package_product_runtime_factory is None
         and initial_resource_catalog_product_composition_assembly is None
-        and (
-            "coding.base" in requested_plugin_ids
-            or capability_plugins_enabled_for_session
-        )
+        and (use_managed_base or capability_plugins_enabled_for_session)
     ):
-        # Transcript persistence is independent from Product desired state.
-        # A configured settings runtime is the production persistence seam;
-        # explicitly in-memory service fixtures retain disposable evidence.
-        base_ephemeral_state = (
-            None
-            if (
-                session_manager.persist
-                or services.settings_manager.global_base_dir is not None
+        def prepare_primary(
+            lifecycle: CodingPluginLifecycle,
+            selected_materializer: PackageMaterializer,
+            cleanup: Callable[[], None] | None,
+        ) -> CodingBasePluginAssembly | None:
+            return prepare_managed_coding_base_plugin_assembly(
+                resolved_composition_set,
+                session_id=session_id,
+                package_materializer=selected_materializer,
+                lifecycle=lifecycle,
+                legacy_disabled=("coding.base" in legacy_disabled_plugin_ids),
+                host_environment=session_host_environment,
+                include_tool_contribution=(
+                    session_no_tools_mode is None
+                    and (
+                        resolved_invocation_profile is None
+                        or resolved_invocation_profile.include_base_tool_contribution
+                    )
+                ),
+                include_tool_claim_prompt=(
+                    session_no_tools_mode is None
+                    and (
+                        resolved_invocation_profile is None
+                        or resolved_invocation_profile.include_base_tool_claim_prompt
+                    )
+                ),
+                include_skill_contribution=(
+                    resolved_invocation_profile is None
+                    or resolved_invocation_profile.include_base_skill_contribution
+                ),
+                include_command_contribution=(
+                    resolved_invocation_profile is None
+                    or resolved_invocation_profile.include_base_command_contribution
+                ),
+                state_cleanup=cleanup,
+                session_owner_id=(
+                    _session_manager_plugin_owner_id(session_manager)
+                ),
             )
-            else _ExplicitTemporaryDirectory(prefix="loushang-coding-plugin-")
+
+        # A configured settings runtime keeps Product desired state durable
+        # even when the Session itself has no persistent transcript.
+        managed = prepare_managed_plugins(
+            session_manager=session_manager,
+            services=services,
+            session_id=session_id,
+            package_materializer=package_materializer,
+            resolved_package_materializer=resolved_package_materializer,
+            ephemeral_prefix=(
+                None
+                if session_manager.persist or services.settings_manager.global_base_dir is not None
+                else "loushang-coding-plugin-"
+            ),
+            prepare_primary=prepare_primary if use_managed_base else None,
+            needs_eager=eager_capability_plugins_enabled_for_session,
+            needs_deferred=defer_lsp_for_session,
         )
-        base_package_materializer: PackageMaterializer | None = None
-        recorded_base_lockfile_diagnostics: list[dict[str, object]] = []
-        try:
-            lifecycle_layout = (
-                resolve_coding_plugin_lifecycle_state_layout(session_manager.get_cwd())
-                if base_ephemeral_state is None
-                else resolve_ephemeral_coding_plugin_lifecycle_state_layout(
-                    base_ephemeral_state.name,
-                    cwd=session_manager.get_cwd(),
-                )
-            )
-            if (
-                base_ephemeral_state is None
-                and package_materializer is not None
-                and not package_materializer.uses_storage_authority(
-                    install_root=lifecycle_layout.package_install_root,
-                    lockfile_path=lifecycle_layout.package_lockfile,
-                    plugin_revision_root=lifecycle_layout.plugin_revision_root,
-                )
-            ):
-                raise CodingBasePluginAssemblyError(
-                    "Durable Coding base package storage must use the canonical "
-                    "workspace authority",
-                    code="coding_base_package_authority_mismatch",
-                )
-            lifecycle = build_coding_plugin_lifecycle(lifecycle_layout)
-            coding_plugin_lifecycle = lifecycle
-            base_package_materializer = package_materializer or PackageMaterializer(
-                install_root=lifecycle_layout.package_install_root,
-                lockfile_path=lifecycle_layout.package_lockfile,
-                plugin_revision_root=lifecycle_layout.plugin_revision_root,
-                backend=GitPackageMaterializerBackend(),
-            )
-            if base_package_materializer is not resolved_package_materializer:
-                recorded_base_lockfile_diagnostics = (
-                    base_package_materializer.get_lockfile_diagnostics()
-                )
-                record_package_lockfile_diagnostics(
-                    recorded_base_lockfile_diagnostics,
-                    diagnostics_service=services.diagnostics_service,
-                    session_id=session_id,
-                )
-            coding_plugin_package_materializer = base_package_materializer
-            if base_ephemeral_state is not None:
-                ephemeral_lifecycle = lifecycle
-                ephemeral_state = base_ephemeral_state
-                cleanup_claims_remaining = int(
-                    "coding.base" in requested_plugin_ids
-                ) + int(eager_capability_plugins_enabled_for_session) + int(
-                    defer_lsp_for_session
-                )
-                cleanup_claims_done = False
-
-                def create_lifecycle_cleanup_claim() -> Callable[[], None]:
-                    claim_released = False
-
-                    def release() -> None:
-                        nonlocal cleanup_claims_remaining
-                        nonlocal cleanup_claims_done
-                        nonlocal claim_released
-                        if not claim_released:
-                            cleanup_claims_remaining -= 1
-                            claim_released = True
-                        if cleanup_claims_remaining == 0 and not cleanup_claims_done:
-                            ephemeral_lifecycle.release_owned_process_startup_lease()
-                            ephemeral_state.cleanup()
-                            cleanup_claims_done = True
-
-                    return release
-
-                if "coding.base" in requested_plugin_ids:
-                    base_state_cleanup = create_lifecycle_cleanup_claim()
-                if eager_capability_plugins_enabled_for_session:
-                    capability_management_state_cleanup = (
-                        create_lifecycle_cleanup_claim()
-                    )
-                if defer_lsp_for_session:
-                    deferred_lsp_management_state_cleanup = (
-                        create_lifecycle_cleanup_claim()
-                    )
-            lifecycle.complete_startup_recovery()
-            if "coding.base" in requested_plugin_ids:
-                coding_base_plugin_assembly = prepare_managed_coding_base_plugin_assembly(
-                    resolved_composition_set,
-                    session_id=session_id,
-                    package_materializer=base_package_materializer,
-                    lifecycle=lifecycle,
-                    legacy_disabled=("coding.base" in legacy_disabled_plugin_ids),
-                    host_environment=session_host_environment,
-                    include_tool_contribution=(
-                        session_no_tools_mode is None
-                        and (
-                            resolved_invocation_profile is None
-                            or resolved_invocation_profile.include_base_tool_contribution
-                        )
-                    ),
-                    include_tool_claim_prompt=(
-                        session_no_tools_mode is None
-                        and (
-                            resolved_invocation_profile is None
-                            or resolved_invocation_profile.include_base_tool_claim_prompt
-                        )
-                    ),
-                    include_skill_contribution=(
-                        resolved_invocation_profile is None
-                        or resolved_invocation_profile.include_base_skill_contribution
-                    ),
-                    include_command_contribution=(
-                        resolved_invocation_profile is None
-                        or resolved_invocation_profile.include_base_command_contribution
-                    ),
-                    state_cleanup=base_state_cleanup,
-                    session_owner_id=(
-                        _session_manager_plugin_owner_id(session_manager)
-                    ),
-                )
-        except BaseException as error:
-            if isinstance(error, CodingBasePluginAssemblyError):
-                services.diagnostics_service.capture_failure(
-                    code=error.code,
-                    error=str(error),
-                    phase="startup",
-                    source="bootstrap",
-                    session_id=session_id,
-                    details={
-                        "check": "coding_base_exact_replay",
-                        "ok": False,
-                    },
-                )
-            # Exact-replay validation refreshes the durable lock after the
-            # initial bootstrap diagnostic pass.  Preserve the public startup
-            # diagnostic contract when that refresh discovers corruption.
-            if base_package_materializer is not None:
-                refreshed_diagnostics = (
-                    base_package_materializer.get_lockfile_diagnostics()
-                )
-                record_package_lockfile_diagnostics(
-                    [
-                        diagnostic
-                        for diagnostic in refreshed_diagnostics
-                        if diagnostic not in recorded_base_lockfile_diagnostics
-                    ],
-                    diagnostics_service=services.diagnostics_service,
-                    session_id=session_id,
-                )
-            if base_state_cleanup is not None:
-                base_state_cleanup()
-            if capability_management_state_cleanup is not None:
-                capability_management_state_cleanup()
-            if deferred_lsp_management_state_cleanup is not None:
-                deferred_lsp_management_state_cleanup()
-            if coding_plugin_lifecycle is not None:
-                coding_plugin_lifecycle.release_owned_process_startup_lease()
-            if (
-                capability_management_state_cleanup is None
-                and base_state_cleanup is None
-                and base_ephemeral_state is not None
-            ):
-                base_ephemeral_state.cleanup()
-            raise
+        coding_base_plugin_assembly = managed.primary
+        capability_management_state_cleanup = managed.eager_cleanup
+        deferred_lsp_management_state_cleanup = managed.deferred_cleanup
 
     def coding_plugin_clock() -> int:
         return time.time_ns() // 1_000_000
@@ -1263,15 +1163,14 @@ def _create_agent_session(
                     ),
                 )
             )
-        assert coding_plugin_lifecycle is not None
-        assert coding_plugin_package_materializer is not None
+        assert managed is not None
         try:
             return prepare_coding_capability_plugin_composition(
                 request,
                 session_id=session_id,
                 configurations=configurations,
-                package_materializer=coding_plugin_package_materializer,
-                lifecycle=coding_plugin_lifecycle,
+                package_materializer=managed.materializer,
+                lifecycle=managed.lifecycle,
                 legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
                 session_owner_id=_session_manager_plugin_owner_id(session_manager),
                 management_state_cleanup=capability_management_state_cleanup,
@@ -2352,8 +2251,7 @@ def _create_agent_session(
                                 if temporary_state is not None:
                                     preparation.state_cleanup = temporary_state.cleanup
                             else:
-                                assert coding_plugin_package_materializer is not None
-                                assert coding_plugin_lifecycle is not None
+                                assert managed is not None
                                 preparation = prepare_coding_capability_plugin_composition(
                                     create_coding_capability_plugin_composition_request(
                                         clock=coding_plugin_clock,
@@ -2361,8 +2259,8 @@ def _create_agent_session(
                                     ),
                                     session_id=session_id,
                                     configurations={"coding.lsp.default": config},
-                                    package_materializer=coding_plugin_package_materializer,
-                                    lifecycle=coding_plugin_lifecycle,
+                                    package_materializer=managed.materializer,
+                                    lifecycle=managed.lifecycle,
                                     legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
                                     session_owner_id=_session_manager_plugin_owner_id(
                                         session_manager
@@ -2516,9 +2414,6 @@ def _create_agent_session(
         if cleanup is not None and cleanup.owns_session(constructed_session):
             raise
         failure_custodian = coding_capability_plugin_failure_custodian(error)
-        capability_plugin_cleanup: Callable[[], None] | None
-        capability_management_cleanup: Callable[[], None] | None
-        arch_private_cleanup: Callable[[], None] | None
         (
             capability_plugin_cleanup,
             capability_management_cleanup,
@@ -2527,37 +2422,17 @@ def _create_agent_session(
             failure_custodian=failure_custodian,
             management_cleanup=capability_management_state_cleanup,
         )
-        cleanup_steps = []
-        if deferred_lsp_management_state_cleanup is not None:
-            cleanup_steps.append(
-                (
-                    "Deferred Coding LSP management-state cleanup",
-                    deferred_lsp_management_state_cleanup,
-                )
-            )
-        if capability_management_cleanup is not None:
-            cleanup_steps.append(
-                (
-                    "Coding Capability Plugin management-state cleanup",
-                    capability_management_cleanup,
-                )
-            )
-        if capability_plugin_cleanup is not None:
-            cleanup_steps.append(
-                (
-                    "Coding Capability Plugin preparation cleanup",
-                    capability_plugin_cleanup,
-                )
-            )
-        if arch_private_cleanup is not None:
-            cleanup_steps.append(
-                ("Coding Arch private-state cleanup", arch_private_cleanup)
-            )
-        if coding_base_plugin_assembly is not None:
-            cleanup_steps.append(
-                ("Coding base Plugin cleanup", coding_base_plugin_assembly.close)
-            )
-        run_cleanup_steps(error, cleanup_steps)
+        cleanup_steps = (
+            ("Deferred Coding LSP management-state cleanup", deferred_lsp_management_state_cleanup),
+            ("Coding Capability Plugin management-state cleanup", capability_management_cleanup),
+            ("Coding Capability Plugin preparation cleanup", capability_plugin_cleanup),
+            ("Coding Arch private-state cleanup", arch_private_cleanup),
+            (
+                "Coding base Plugin cleanup",
+                coding_base_plugin_assembly.close if coding_base_plugin_assembly is not None else None,
+            ),
+        )
+        run_cleanup_steps(error, ((label, close) for label, close in cleanup_steps if close is not None))
         raise
     try:
         result.session.cwd_bound_services_audit = (

@@ -964,6 +964,60 @@ The three Coding modules supply nominal review/receipt records, native
 observation bindings and established Product admission. These six reviewed
 modules contribute no new staged implementation count.
 
+## Managed Plugin Startup And Cleanup
+
+The managed startup program now runs in
+`coding.harness.session.managed_plugin_preparation`. It opens the selected
+state layout, checks the supplied package storage authority before recovery,
+records lockfile diagnostics, shares one startup lease and temporary root
+across the selected consumers, and transfers the cleanup claims after the
+existing Harness lifecycle completes recovery. The failure route preserves
+the order of the diagnostic, claim releases, lease release and root cleanup.
+Coding selects the managed route, declares its path and diagnostic identity,
+and supplies the existing Base composition operation and its Profile
+settings. The staged module temporarily borrows the bootstrap bindings that
+also serve fault injection.
+
+The Base and capability consumers share one result for the lifecycle and
+materializer.
+The startup extraction removes 125 lines from `composition/bootstrap.py`
+and adds 163 to staging. Separately, seven fixed resource validation messages
+use the original literals at their raise sites and drop the intermediate
+lookups. The candidate adds 31 production lines against the prior local
+checkpoint. The normalized dependency graph has the same 1,652 logical
+module pairs. The additional original-module backreference is recorded.
+
+All 22 focused bootstrap, lifecycle, catalog refresh and architecture cases
+passed, including injected Base assembly and LSP preparation failures and
+the original lock diagnostic assertion. Ruff and focused mypy passed. The
+platform and persisted Session limits from earlier batches still apply.
+
+## Shared First-Snapshot Acceptance
+
+The builtin-only, disabled-only and removed-local acceptance entries use
+one staged review acceptance and reopen program. The Coding entries retain
+their review selection, nominal records and errors. The original Harness
+receipt journal still owns native reads, lock order, publication and replay.
+The shared read preserves the builtin epoch checks around a missing receipt,
+the disabled-only distinction between a missing journal and an empty record
+set, and the native Windows selection on the builtin path.
+
+Three staged modules totaling 225 lines were replaced with 75 shared lines.
+The Coding entry modules add 17 lines net, for 133 production lines removed.
+The replacement imports existing Harness owners and standard library types.
+It removes all three original-module backreferences. The 64 synchronous
+baseline trace comparisons cover rejection, replay, inspection order and
+platform dispatch. All 79 focused Linux cases passed, including durable
+acceptance and replay, receipt replacement refusals, the original receipt
+publication probe, real CLI adoption and the existing lifecycle architecture
+checks. Native Windows validation remains pending.
+
+Together with managed startup and the resource validation lookup cleanup,
+the batch removes 102 production lines since the previous local checkpoint.
+Coding contains 107,251 Python lines, including 14,162 in staging and
+93,089 at the product edge. The Goal baseline comparison still shows 6,536
+additional production lines.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

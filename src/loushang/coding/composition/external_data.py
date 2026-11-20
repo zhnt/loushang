@@ -86,14 +86,10 @@ from loushang.harness.session.product_composition_assembly import (
 
 _RESOURCE_COMPOSITION_PROGRAM_VALUES = {
     "value_001": "coding-external-data-v1:",
-    "value_002": "Product external data selections must be sorted and nonempty",
-    "value_003": "Product external data Plugin identity is duplicated",
     "value_004": "Coding composition set is required",
     "value_005": "Coding Product Session id is invalid",
     "value_006": "Coding Product evaluation time is invalid",
-    "value_007": "Product external data Resource selection changed",
     "value_008": "coding",
-    "value_009": "Product data Resource body identity is duplicated",
 }
 
 

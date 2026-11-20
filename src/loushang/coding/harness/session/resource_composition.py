@@ -99,17 +99,17 @@ def extend_data_resources(
     if base.plan.selected_plugin_ids != (
         _binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_003"],
     ):
-        raise ValueError(_binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_004"])
+        raise ValueError("External data extension requires the base-only plan")
     if tuple(sorted(item.manifest.name for item in external)) != tuple(
         item.manifest.name for item in external
     ):
-        raise ValueError(_binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_005"])
+        raise ValueError("External data selections must be sorted and unique")
     external_owners: set[str] = set()
     for selected in external:
         trust = selected.source_trust_snapshot
         pairs = selected.verified_data_only_declarations()
         if trust is None or _external_selection_rejected(trust, pairs):
-            raise ValueError(_binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_006"])
+            raise ValueError("External Product data Resource selection changed")
         external_owners.add(pairs[0][0].owner)
     original = base.plan
     plan = _binding.PluginSelectionPlanV2(

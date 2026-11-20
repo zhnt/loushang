@@ -22,9 +22,9 @@ def compile_data_selection(
     if not selected or tuple(sorted(item.manifest.name for item in selected)) != tuple(
         item.manifest.name for item in selected
     ):
-        raise ValueError(_binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_002"])
+        raise ValueError("Product external data selections must be sorted and nonempty")
     if len({item.manifest.name for item in selected}) != len(selected):
-        raise ValueError(_binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_003"])
+        raise ValueError("Product external data Plugin identity is duplicated")
     if not isinstance(composition_set, _binding.CodingCompositionSetPlan):
         raise TypeError(_binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_004"])
     if not isinstance(session_id, str) or not session_id.strip():
@@ -49,7 +49,7 @@ def compile_data_selection(
             or item.snapshot.installation_key.plugin_id != item.manifest.name
             or item.snapshot.instance_revision_ref.plugin_id != item.manifest.name
         ):
-            raise ValueError(_binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_007"])
+            raise ValueError("Product external data Resource selection changed")
         owners.add(declarations[0][0].owner)
         trusts.append(trust)
         pairs.extend(
@@ -157,7 +157,7 @@ def external_resource_inputs(
     by_id = {item.manifest.name: item for item in self.selected_manifests}
     bodies = {item.admission_fingerprint: item for item in self.resource_bodies}
     if len(bodies) != len(self.resource_bodies):
-        raise ValueError(_binding._RESOURCE_COMPOSITION_PROGRAM_VALUES["value_009"])
+        raise ValueError("Product data Resource body identity is duplicated")
     return tuple(
         _binding.ProductSelectedResourceInput(
             admission=admission,

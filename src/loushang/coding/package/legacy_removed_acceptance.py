@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.coding.harness.package_product import (
-    legacy_removed_acceptance as _programs,
+    first_snapshot_acceptance,
 )
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
@@ -22,21 +22,13 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 
 from .epoch_layout import (
-    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+    resolve_coding_package_epoch_layout,
 )
 from .legacy_disabled_acceptance import CodingLegacyDisabledOnlyAcceptanceError
 from .legacy_removed_review import (
     CodingLegacyRemovedReviewV1,
+    review_coding_first_b_removed_local,
 )
-from .legacy_removed_review import (
-    review_coding_first_b_removed_local as review_coding_first_b_removed_local,
-)
-
-_LEGACY_ADOPTION_VALUES = {
-    "value_001": "Old removal review ID changed",
-    "value_002": "Product Store changed",
-    "value_003": "Old removal acceptance conflicts with first-B review",
-}
 
 
 class CodingLegacyRemovedAcceptanceError(RuntimeError):
@@ -106,11 +98,18 @@ def accept_coding_first_b_removed_local(
 ) -> CodingLegacyRemovedAcceptanceV1:
     """Commit acceptance before the first Product Desired mutation."""
 
-    return _programs.accept_removed_review(
-        lifecycle,
+    review = review_coding_first_b_removed_local(
+        lifecycle, epoch_runtime, settings_manager=settings_manager
+    )
+    return first_snapshot_acceptance.accept_review(
         epoch_runtime,
-        settings_manager=settings_manager,
+        _acceptance_journal,
         accepted_review_id=accepted_review_id,
+        current_review_id=review.review_id,
+        create=lambda: CodingLegacyRemovedAcceptanceV1.create(review),
+        expected_store_id=lambda: resolve_coding_package_epoch_layout(lifecycle).store_id,
+        changed_review="Old removal review ID changed",
+        conflict_message="Old removal acceptance conflicts with prior review",
     )
 
 
@@ -122,8 +121,15 @@ def read_coding_first_b_removed_local_acceptance(
 ) -> CodingLegacyRemovedAcceptanceV1 | None:
     """Reopen acceptance against the current authenticated first-B review."""
 
-    return _programs.read_removed_acceptance(
-        lifecycle, epoch_runtime, settings_manager=settings_manager
+    return first_snapshot_acceptance.read_acceptance(
+        epoch_runtime,
+        _acceptance_journal,
+        expected_store_id=resolve_coding_package_epoch_layout(lifecycle).store_id,
+        review=lambda: review_coding_first_b_removed_local(
+            lifecycle, epoch_runtime, settings_manager=settings_manager
+        ),
+        create=CodingLegacyRemovedAcceptanceV1.create,
+        conflict_message="Old removal acceptance conflicts with first-B review",
     )
 
 
