@@ -25,6 +25,11 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
         if not inspect.iscoroutinefunction(progress):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return await progress(*args, call.execution_id)
+    if call.operation is ExecutionOperationV1.RESOURCE:
+        exchange = getattr(client, "session_resource", None)
+        if not inspect.iscoroutinefunction(exchange):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await exchange(*args, call.resource_query)
     if call.operation is ExecutionOperationV1.SNAPSHOT:
         return await client.snapshot_execution_session(*args)
     if call.operation is ExecutionOperationV1.EVENTS:

@@ -68,6 +68,7 @@ from loushang.coding.resume.input_lookup import (
 )
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session.manager import SessionManager
+from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.approval.plugin_activation import (
     PluginActivationDecisionJournal,
@@ -199,6 +200,7 @@ async def prepare_coding_resume_continuation(
     require_current_admission: Callable[[CodingActivationAttemptV1], None],
     require_current_epoch_settlement: Callable[[CodingActivationAttemptV1, Mapping[str, object]], None],
     images: list[ImagePart] | None = None,
+    input_metadata: Mapping[str, JSONValue] | None = None,
     services: BootstrapServices | None = None,
     model: Model | ModelSelection | None = None,
     thinking_level: ThinkingLevel | None = None,
@@ -440,9 +442,20 @@ async def prepare_coding_resume_continuation(
             attempt_id=attempt.attempt_id,
         )
         phase = "input_commit"
-        record_id = await session._commit_resume_first_user_input(
-            message, attempt_id=attempt.attempt_id, require_current_admission=require_current_admission,
-        )
+        router = session._composition.session_runtime.agent_event_router
+        previous_metadata = router.prepare_message_metadata
+        if input_metadata is not None:
+            def prepare(metadata_message):
+                prior = previous_metadata(metadata_message) if previous_metadata is not None else None
+                return {**(prior or {}), **input_metadata}
+            router.prepare_message_metadata = prepare
+        try:
+            record_id = await session._commit_resume_first_user_input(
+                message, attempt_id=attempt.attempt_id, require_current_admission=require_current_admission,
+            )
+        finally:
+            if input_metadata is not None:
+                router.prepare_message_metadata = previous_metadata
         _, committed_input = manager._require_committed_resume_input(attempt.attempt_id, record_id)
         query = CodingResumeInputLookupQueryV1(
             attempt.request_id, coding_resume_input_record_digest(committed_input),

@@ -376,7 +376,7 @@ class PromptController:
 
 
 def _user_message(text: str, images: list[ImagePart] | None = None) -> UserMessage:
-    content: list[TextPart | ImagePart] = [TextPart(type="text", text=text)]
+    content: list[TextPart | ImagePart] = [TextPart(type="text", text=text)] if text or not images else []
     if images:
         content.extend(images)
     return UserMessage(

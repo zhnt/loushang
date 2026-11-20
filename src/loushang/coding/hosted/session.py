@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, cast
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
-from loushang.ai.types import AssistantMessage, ToolCall, UserMessage
+from loushang.ai.types import AssistantMessage, ImagePart, ToolCall, UserMessage
 from loushang.apphost import SessionBindingKeyV1
 from loushang.apphost.integrations.session_control import _HostedApprovalPresentation
 from loushang.appserver.protocol import (
@@ -40,6 +40,11 @@ from loushang.coding.hosted.catalog import (
     CodingHostedCatalogError,
     CodingHostedHistoryCandidateBindingV1,
     CodingHostedScopeV1,
+)
+from loushang.coding.hosted.resources import (
+    SUBMISSION_ID,
+    HostedResourceAccess,
+    image_ids,
 )
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
@@ -66,6 +71,7 @@ from loushang.coding.session.manager import SessionManager
 from loushang.foundation._owned_tasks import (
     _observe_task_result as _observe_close,
 )
+from loushang.foundation.json import JSONValue
 from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
@@ -97,7 +103,10 @@ from loushang.harness.transcript.session_catalog import (
     build_agent_transcript_session_context,
     load_agent_transcript_session_metadata,
 )
-from loushang.harness.transcript.types import AgentTranscriptContext
+from loushang.harness.transcript.types import (
+    AgentTranscriptContext,
+    AgentTranscriptRecord,
+)
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 _TEXT_LIMIT = 16_384
@@ -135,7 +144,7 @@ class CodingHostedHistoryBindingV1:
         remaining = _TEXT_LIMIT
         omitted = False
         for entry in reversed(history.selected_records):
-            record = _message_record(entry.payload)
+            record = _committed_message_record(entry)
             if record is None:
                 continue
             if len(records) >= 128 or len(record.text) > remaining:
@@ -292,8 +301,13 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         remaining = _TEXT_LIMIT
         omitted = False
         truncated = False
-        for message in reversed(self._session.messages):
-            record = _message_record(message)
+        manager = self._session.session_manager
+        messages = (
+            ((entry.payload, _committed_message_record(entry)) for entry in reversed(manager.get_active_entries()))
+            if isinstance(manager, SessionManager) and manager.persist
+            else ((message, _message_record(message)) for message in reversed(self._session.messages))
+        )
+        for message, record in messages:
             if record is None:
                 continue
             if len(records) >= 128 or len(record.text) > remaining:
@@ -420,13 +434,22 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
     def execution_available(self) -> bool:
         return self._goal.execution_available
 
+    def canonical_records(self) -> list[AgentTranscriptRecord]:
+        return self._session.session_manager.entries
+
+    def create_resource_access(self) -> HostedResourceAccess:
+        manager = self._session.session_manager
+        return HostedResourceAccess(self.identity.session_id, manager.session_dir, self.canonical_records)
+
     def create_execution_work(
         self, text: str, cancel_requested: Callable[[], bool],
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> ExecutionWorkV1:
         from loushang.coding.hosted._execution_work import CodingExecutionWorkV1
 
         return CodingExecutionWorkV1(
-            self._session, text, cancel_requested,
+            self._session, text, cancel_requested, images=images, input_metadata=input_metadata,
             start_title=self.start_title_if_unnamed,
             wait_for_title=self.wait_for_title,
         )
@@ -706,7 +729,12 @@ def _session_title(name: str | None, messages: Iterable[object]) -> str:
     return "New Session"
 
 
-def _message_record(message: object) -> TranscriptRecordV1 | None:
+def _committed_message_record(entry: AgentTranscriptRecord) -> TranscriptRecordV1 | None:
+    submission = entry.metadata.get(SUBMISSION_ID)
+    return _message_record(entry.payload, entry.record_id, submission if isinstance(submission, str) else None)
+
+
+def _message_record(message: object, record_id: str | None = None, submission: str | None = None) -> TranscriptRecordV1 | None:
     if not isinstance(message, UserMessage | AssistantMessage):
         return None
     text = _message_text(message)
@@ -722,6 +750,9 @@ def _message_record(message: object) -> TranscriptRecordV1 | None:
         if isinstance(message, UserMessage)
         else TranscriptRecordKindV1.ASSISTANT,
         _bounded(text),
+        record_id,
+        image_ids(message)[:16] if record_id is not None else (),
+        submission,
     )
 
 

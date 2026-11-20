@@ -29,6 +29,7 @@ SOURCES = (
     "src/loushang/appserver/execution/codec.py",
     "src/loushang/appserver/execution/goal_codec.py",
     "src/loushang/appserver/execution/goal_model.py",
+    "src/loushang/appserver/execution/resources.py",
 )
 # Only integer representations are bridge policy. Bounds and cross-field
 # invariants still require independent validators and reference codec evidence.
@@ -43,6 +44,9 @@ DECIMAL = {
     "MuxDetachV1.controller_generation",
 }
 SAFE = {
+    "ResourceV1.size_bytes",
+    "SessionResourceQueryV1.offset",
+    "SessionResourceQueryV1.total_bytes",
     "ExecutionGoalProgressV1.advances",
     "ExecutionGoalProgressV1.model_calls",
     "ExecutionGoalProgressV1.batch_count",
@@ -155,6 +159,17 @@ def generate() -> dict[str, str]:
                 ]
             )
         # The codec adds these canonical optional fields outside its static _FIELDS.
+        if cls is app.TranscriptRecordV1:
+            ts.extend(["  readonly recordId?: string;", "  readonly resourceIds?: readonly string[];",
+                       "  readonly submissionId?: string;"])
+            rs.extend([
+                '    #[serde(rename = "recordId", skip_serializing_if = "Option::is_none")]',
+                "    pub record_id: Option<String>,",
+                '    #[serde(rename = "resourceIds", skip_serializing_if = "Vec::is_empty")]',
+                "    pub resource_ids: Vec<String>,",
+                '    #[serde(rename = "submissionId", skip_serializing_if = "Option::is_none")]',
+                "    pub submission_id: Option<String>,",
+            ])
         if cls is app.SessionSnapshotV1:
             key = "SessionSnapshotV1.submission_mode"
             mode = annotation(Literal["execution"], key, True)

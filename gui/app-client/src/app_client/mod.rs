@@ -98,7 +98,13 @@ pub enum ControlCommand {
         session_id: String,
         submission_id: String,
         text: String,
+        resource_refs: Vec<serde_json::Value>,
         reply: SyncSender<Result<ControlResult, ()>>,
+    },
+    Resource {
+        session_id: String,
+        query: serde_json::Value,
+        reply: SyncSender<Result<serde_json::Value, ()>>,
     },
     StartGoal {
         session_id: String,
@@ -717,10 +723,26 @@ fn process_controls<R: Read, W: Write>(
                 session_id,
                 submission_id,
                 text,
+                resource_refs,
                 reply,
             } => {
-                let result =
-                    authority.submit(channel, &session_id, &submission_id, &text, &request_id);
+                let result = authority.submit(
+                    channel,
+                    &session_id,
+                    &submission_id,
+                    (&text, resource_refs),
+                    &request_id,
+                );
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::Resource {
+                session_id,
+                query,
+                reply,
+            } => {
+                let result = authority.resource(channel, &session_id, query, &request_id);
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

@@ -13,6 +13,10 @@ from loushang.appserver.execution.model import (
     ExecutionSessionViewV1,
     ResourceRefV1,
 )
+from loushang.appserver.execution.resources import (
+    SessionResourceQueryV1,
+    SessionResourceResultV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -117,6 +121,16 @@ class ScopedExecutionClientV1(_ScopedInteractiveGoal):
         binding = scope._service._execution_binding(session)
         self._check(control, session)
         return session, binding
+
+    async def session_resource(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        query: SessionResourceQueryV1,
+    ) -> SessionResourceResultV1:
+        _, binding = await self._resolve(control, expected_instance_id)
+        exchange = getattr(binding.port, "session_resource", None)
+        if exchange is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return exchange(query)
 
     async def submit_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,

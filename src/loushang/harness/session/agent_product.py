@@ -347,6 +347,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         text: str,
         *,
         source: str = "execution",
+        images: list[ImagePart] | None = None,
         check_cancelled: Callable[[], None] | None = None,
     ) -> PromptExecutionResult:
         """Opt-in full invocation input result, retaining the legacy prompt API."""
@@ -363,6 +364,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 self._composition.command_controller.dispatch_command_async,
                 text,
                 source=source,
+                images=images,
                 check_cancelled=check_cancelled,
             )
             await self._composition.retry_runtime.settle()

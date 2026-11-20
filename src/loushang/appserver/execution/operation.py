@@ -18,6 +18,7 @@ class ExecutionOperationV1(str, Enum):
     INTERRUPT = "execution/interrupt"
     SNAPSHOT = "execution/snapshot"
     EVENTS = "execution/read_events"
+    RESOURCE = "session/resource"
     RESUME_INPUT_LOOKUP = "session/lookup_resume_input"
 
 

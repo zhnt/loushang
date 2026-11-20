@@ -41,7 +41,9 @@
     "modelChanged": "Session model changed to {{model}}.",
     "interruptReason": "Interrupt was not accepted.",
     "thinkingChanged": "Reasoning effort updated.",
-    "thinkingRejected": "Could not change reasoning effort."
+    "thinkingRejected": "Could not change reasoning effort.",
+    "imageInputUnsupported": "The selected model does not accept images.",
+    "resourceUnavailable": "An image is unavailable or could not be uploaded. Your draft is saved."
   },
   "choice": {
     "title": "Choose a direction",
@@ -131,5 +133,16 @@
   },
   "welcome": "What would you like to work on?",
   "emptySession": "No Session is available.",
-  "opening": "Opening {{appName}}…"
+  "opening": "Opening {{appName}}…",
+  "attachments": {
+    "add": "Add images",
+    "preview": "Preview {{name}}",
+    "close": "Close preview",
+    "remove": "Remove {{name}}",
+    "image": "Image",
+    "invalid": "Choose up to four PNG, JPEG, WebP or GIF images, up to 4 MB each.",
+    "sessionResources": "Session resources",
+    "unavailable": "Image unavailable.",
+    "empty": "No images in this session."
+  }
 }

@@ -52,6 +52,7 @@ from .model import (
     ResourceRefV1,
     _identifier,
 )
+from .resources import ResourceV1, SessionResourceQueryV1, SessionResourceResultV1
 
 EXECUTION_PROTOCOL_VERSION = "loushang.execution/v1"
 
@@ -61,6 +62,9 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ResumeInputLookupQueryV1: ("input_id", "record_digest"),
     ResumeInputLookupResultV1: ("input_id", "record_id", "status"),
     ResourceRefV1: ("id", "sha256"),
+    ResourceV1: ("id", "kind", "source", "media_type", "size_bytes"),
+    SessionResourceQueryV1: ("action", "resource_id", "offset", "total_bytes", "media_type", "data"),
+    SessionResourceResultV1: ("resources", "data"),
     AckV1: (), AppFailureV1: ("code",), ExecutionFailureV1: ("code",),
     SessionIdentityV1: ("product_id", "continuity_id", "session_id", "scope", "scope_fingerprint"),
     TranscriptRecordV1: ("kind", "text"),
@@ -83,6 +87,7 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ExecutionInterruptResultV1: ("record", "disposition"),
 }
 _KINDS: dict[str, type] = {
+    "session_resource": SessionResourceResultV1,
     "resume_input_lookup": ResumeInputLookupResultV1,
     **GOAL_KINDS,
     "record": ExecutionRecordV1, "snapshot": ExecutionSessionSnapshotV1,
@@ -108,6 +113,13 @@ def _encode(value: object) -> object:
     if fields is None:
         raise InvalidAppMessageError()
     encoded = {_camel(name): _encode(getattr(value, name)) for name in fields}
+    if type(value) is TranscriptRecordV1:
+        if value.record_id is not None:
+            encoded["recordId"] = value.record_id
+        if value.submission_id is not None:
+            encoded["submissionId"] = value.submission_id
+        if value.resource_ids:
+            encoded["resourceIds"] = _encode(value.resource_ids)
     if type(value) is SessionSnapshotV1:
         if value.submission_mode is SessionSubmissionModeV1.EXECUTION:
             encoded["submissionMode"] = value.submission_mode.value
@@ -156,6 +168,8 @@ def _decode(expected: object, raw: object) -> object:
         raise InvalidAppMessageError()
     fields = _FIELDS[expected]
     wire_fields = {_camel(name) for name in fields}
+    if expected is TranscriptRecordV1 and type(raw) is dict:
+        wire_fields.update({"recordId", "resourceIds", "submissionId"} & raw.keys())
     if expected is SessionSnapshotV1 and type(raw) is dict:
         wire_fields.update({"submissionMode", "userChoice"} & raw.keys())
     if expected is ExecutionSessionSnapshotV1 and type(raw) is dict:
@@ -167,6 +181,13 @@ def _decode(expected: object, raw: object) -> object:
     values = {
         name: _decode(annotations[name], value[_camel(name)]) for name in fields
     }
+    if expected is TranscriptRecordV1:
+        if "recordId" in value:
+            values["record_id"] = _string(value["recordId"])
+        if "submissionId" in value:
+            values["submission_id"] = _string(value["submissionId"])
+        if "resourceIds" in value:
+            values["resource_ids"] = _decode(tuple[str, ...], value["resourceIds"])
     if expected is SessionSnapshotV1:
         mode = (
             _decode(SessionSubmissionModeV1, value["submissionMode"])
@@ -214,6 +235,8 @@ def encode_call(call: ExecutionCallV1) -> bytes:
         body["text"] = call.text
     if call.resource_refs:
         body["resourceRefs"] = _encode(call.resource_refs)
+    if call.resource_query is not None:
+        body["resourceQuery"] = _encode(call.resource_query)
     if call.resume_query is not None:
         body["resumeQuery"] = _encode(call.resume_query)
     return _dumps({
@@ -241,6 +264,8 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             fields.add("text")
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP:
             fields.add("resumeQuery")
+        if operation is ExecutionOperationV1.RESOURCE:
+            fields.add("resourceQuery")
         raw = root["payload"]
         if operation is ExecutionOperationV1.SUBMIT and type(raw) is dict and "resourceRefs" in raw:
             fields.add("resourceRefs")
@@ -260,6 +285,8 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             include_goal_batches=include_batches,
             resource_refs=cast(tuple[ResourceRefV1, ...], _decode(tuple[ResourceRefV1, ...], body["resourceRefs"]))
             if "resourceRefs" in fields else (),
+            resource_query=cast(SessionResourceQueryV1, _decode(SessionResourceQueryV1, body["resourceQuery"]))
+            if "resourceQuery" in fields else None,
             **decode_goal_fields(operation, body, _decode),
         )
     except (TypeError, ValueError, KeyError, RecursionError):

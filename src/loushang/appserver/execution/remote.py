@@ -23,6 +23,7 @@ from .model import (
     ExecutionUpdateV1,
     ResourceRefV1,
 )
+from .resources import SessionResourceQueryV1, SessionResourceResultV1
 
 _Send = Callable[[Callable[[str], ExecutionCallV1], type[object], bool, bool], Awaitable[object]]
 
@@ -56,6 +57,18 @@ class RemoteExecutionClientV1:
         if type(result) is not ResumeInputLookupResultV1 or result.input_id != query.input_id:
             raise InvalidAppMessageError()
         return result
+
+    async def session_resource(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        query: SessionResourceQueryV1,
+    ) -> SessionResourceResultV1:
+        result = await self._send(
+            lambda request_id: ExecutionCallV1(
+                request_id, ExecutionOperationV1.RESOURCE, control, expected_instance_id,
+                resource_query=query,
+            ), SessionResourceResultV1, query.action != "upload", False,
+        )
+        return cast(SessionResourceResultV1, result)
 
     async def _call(
         self, operation: ExecutionOperationV1, control: SessionSnapshotRequestV1,

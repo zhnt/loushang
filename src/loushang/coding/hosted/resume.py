@@ -15,6 +15,7 @@ from typing import cast
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.reasoning import available_thinking_levels
+from loushang.ai.types import ImagePart
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
@@ -45,6 +46,7 @@ from loushang.coding.hosted.goal_recovery import (
     unavailable_recovery,
 )
 from loushang.coding.hosted.models import load_workspace_models
+from loushang.coding.hosted.resources import HostedResourceAccess
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSnapshotProjectionV1,
@@ -68,6 +70,7 @@ from loushang.coding.resume.input_lookup import (
 from loushang.coding.resume.permission_confirmation import NativeResumePolicy
 from loushang.coding.runtime.resume_planning import ResumePlanningSlot
 from loushang.coding.session.agent_session import AgentSession
+from loushang.foundation.json import JSONValue
 from loushang.harness.approval import (
     ApprovalOutcome,
     DenyApprovalResolver,
@@ -359,8 +362,20 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             time_budget_seconds=5.0,
         )
 
+    def create_resource_access(self) -> HostedResourceAccess:
+        return HostedResourceAccess(self.identity.session_id, self._source.record.scope.session_dir,
+                                    self._resource_records)
+
+    def _resource_records(self):
+        if self._active is not None:
+            return self._active.canonical_records()
+        self._source.require_current_source()
+        return self._source.history.records
+
     def create_execution_work(
         self, text: str, cancel_requested: Callable[[], bool],
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> ExecutionWorkV1:
         from loushang.coding.hosted._execution_work import (
             current_coding_hosted_resume_subject,
@@ -368,14 +383,14 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         )
 
         if self._active is not None:
-            return self._active.create_execution_work(text, cancel_requested)
+            return self._active.create_execution_work(text, cancel_requested, images, input_metadata)
         scope, control, subject_digest = current_coding_hosted_resume_subject()
         submission_id = current_coding_hosted_resume_submission_id()
         if submission_id is None:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return _HostedResumeExecutionWorkV1(
             self, text, cancel_requested, scope, control, subject_digest,
-            submission_id,
+            submission_id, images, input_metadata,
         )
 
     async def wait_for_title(self) -> None:
@@ -500,6 +515,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         subject_control: SessionSnapshotRequestV1,
         subject_digest: str,
         submission_id: str,
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> _ActivatedHostedResumeV1:
 
         from loushang.coding.composition.capability_plugins import (
@@ -644,6 +661,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 attempt=attempt,
                 input_record_id=f"resume-record:{stable}",
                 text=text,
+                images=images,
+                input_metadata=input_metadata,
                 created_at=datetime.now(UTC),
                 require_current_admission=admit,
                 require_current_epoch_settlement=settle,
@@ -733,9 +752,13 @@ class _HostedResumeExecutionWorkV1(_HostedAgentExecutionWork):
         control: SessionSnapshotRequestV1,
         subject_digest: str,
         submission_id: str,
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> None:
         self._binding = binding
         self._text = text
+        self._images = images
+        self._input_metadata = input_metadata
         self._cancel_requested = cancel_requested
         self._scope = scope
         self._control = control
@@ -757,6 +780,8 @@ class _HostedResumeExecutionWorkV1(_HostedAgentExecutionWork):
                 subject_control=self._control,
                 subject_digest=self._subject_digest,
                 submission_id=self._submission_id,
+                images=self._images,
+                input_metadata=self._input_metadata,
             )
             session = activated.session
             self._session = session

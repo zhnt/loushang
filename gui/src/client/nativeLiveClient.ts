@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { validateGoalProgress } from "../../contracts/goalProgress";
 import { validateUserChoice } from "../../contracts/userChoice";
+import { resourceResult } from "./sessionResources";
 import { ApprovalResponses } from "./approvalResponses";
 import { validateInteractiveGoalRecovery } from "../../contracts/interactiveGoalRecovery";
 import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
@@ -62,6 +63,7 @@ const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatusV1>([
 const APP_ERROR_CODES = new Set([
   "invalid_request", "not_found", "already_exists", "already_attached", "product_mismatch",
   "revision_conflict", "snapshot_required", "stale_attachment", "attachment_lagged",
+  "resource_unavailable", "image_input_unsupported", "resource_input_committed",
   "session_unavailable", "operation_unavailable", "permission_denied", "workspace_preview_binary", "workspace_preview_too_large", "workspace_registration_failed", "cleanup_incomplete", "service_closed",
 ]);
 
@@ -274,6 +276,15 @@ export function createNativeLiveClient(): HarnessClientUiPort {
         return unknown;
       }
     },
+    async sessionResource(sessionId, query) {
+      return resourceResult(await invoke("live_session_resource", { sessionId, query }));
+    },
+    async findSubmission(sessionId, submissionId, serviceInstanceId) {
+      const result = await invoke<{ accepted: boolean; reason?: string; executionId?: string }>(
+        "live_find_submission", { sessionId, submissionId, serviceInstanceId },
+      );
+      return { ...result, submissionId };
+    },
     async submitText(input) {
       const receipt = await invoke<{ accepted: boolean; reason?: string | null; executionId?: string | null }>("live_submit_text", { input });
       return {
@@ -389,6 +400,22 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
     for (const rawRecord of sourceSnapshot.records) {
       const record = object(rawRecord);
       if (!["user", "assistant", "status", "error"].includes(String(record.kind))) throw new Error("record kind");
+      if (record.recordId !== undefined) {
+        const id = boundedString(record.recordId, 512, false);
+        if (Array.from(id).some((char) => {
+          const code = char.charCodeAt(0);
+          return code < 32 || (code >= 127 && code <= 159);
+        })) throw new Error("record identifier");
+      }
+      if (record.submissionId !== undefined) {
+        if (!record.recordId || record.kind !== "user") throw new Error("record submission");
+        identifier(record.submissionId);
+      }
+      if (record.resourceIds !== undefined && (record.kind !== "user" || !record.recordId
+        || !Array.isArray(record.resourceIds) || record.resourceIds.length > 16
+        || record.resourceIds.some((id) => typeof id !== "string" || !/^[a-f0-9]{64}$/.test(id)))) {
+        throw new Error("record resources");
+      }
       transcriptLength += [...boundedString(record.text, 262_144, true)].length;
     }
     if (transcriptLength > 65_536) throw new Error("transcript budget");
@@ -564,7 +591,9 @@ function projectSession(
 ): SessionSnapshot {
   const source = snapshot.source.source;
   const messages: ConversationMessage[] = source.records.map((record, index) => ({
-    id: `live-${source.identity.sessionId}-${index}`,
+    id: record.recordId ?? `live-${source.identity.sessionId}-${index}`,
+    resourceIds: record.resourceIds,
+    submissionId: record.submissionId,
     role: record.kind === "user" || record.kind === "status" ? record.kind : "assistant",
     content: record.text,
     systemNotice: record.kind === "status" && record.text === "Sending a message resumes the session runtime."

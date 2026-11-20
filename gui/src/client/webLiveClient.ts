@@ -5,6 +5,7 @@ import { ApprovalResponses } from "./approvalResponses";
 import { validateInteractiveGoalRecovery } from "../../contracts/interactiveGoalRecovery";
 import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
+import { resourceResult } from "./sessionResources";
 import { webRequest } from "./hostApi";
 import type { WorkspacePreview, WorkspacePreviewRequest, WorkspacePreviewScope } from "./workspacePreview";
 
@@ -201,6 +202,9 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
         }
         return unknown;
       }
+    },
+    async sessionResource(sessionId, query) {
+      return resourceResult(await call("resource", { sessionId, query }));
     },
     async findSubmission(sessionId, submissionId, serviceInstanceId) {
       if (current?.source.kind !== "live" || current.source.serviceInstanceId !== serviceInstanceId) {

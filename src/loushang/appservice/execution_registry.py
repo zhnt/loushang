@@ -179,6 +179,11 @@ class ExecutionRegistryV1:
                 if prior[0] != digest:
                     raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.SUBMISSION_CONFLICT)
                 return self._records[prior[1]]
+            original_digest = getattr(binding.port, "resource_submission_digest", None)
+            if original_digest is not None and (persisted := original_digest(submission_id)) is not None:
+                if persisted != digest:
+                    raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.SUBMISSION_CONFLICT)
+                raise AppServiceError(AppErrorCodeV1.RESOURCE_INPUT_COMMITTED)
         if key in self._active or len(self._active) >= self.limits.active:
             raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.BUSY)
         if submission_id is not None and (
@@ -314,7 +319,9 @@ class ExecutionRegistryV1:
         if state.interrupt_requested:
             return self._finish(invocation, ExecutionOutcomeV1(ExecutionStatusV1.INTERRUPTED))
         try:
-            port.start_execution(ExecutionRequestV1(state.execution_id, input.text, input.resource_refs))
+            port.start_execution(ExecutionRequestV1(
+                state.execution_id, input.text, input.resource_refs, invocation.record.submission_id,
+            ))
         except Exception:
             return self._finish(invocation, ExecutionOutcomeV1(
                 ExecutionStatusV1.FAILED, "execution_start_failed",

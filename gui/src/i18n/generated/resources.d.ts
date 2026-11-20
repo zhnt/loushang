@@ -294,6 +294,17 @@ export default interface Resources {
       "title": "Tool approval",
       "unavailable": "This request is unavailable."
     },
+    "attachments": {
+      "add": "Add images",
+      "close": "Close preview",
+      "empty": "No images in this session.",
+      "image": "Image",
+      "invalid": "Choose up to four PNG, JPEG, WebP or GIF images, up to 4 MB each.",
+      "preview": "Preview {{name}}",
+      "remove": "Remove {{name}}",
+      "sessionResources": "Session resources",
+      "unavailable": "Image unavailable."
+    },
     "bridge": {
       "locked": "Native bridge locked",
       "verified": "Rust invoke + event verified",
@@ -376,6 +387,7 @@ export default interface Resources {
       "fixtureAccepted": "Fixture accepted the prompt. Advance it step by step.",
       "fixtureInterrupted": "Fixture execution interrupted.",
       "fixtureReady": "Fixture snapshot installed. No backend is running.",
+      "imageInputUnsupported": "The selected model does not accept images.",
       "interruptFailed": "Interrupt failed. Resynchronize before retrying.",
       "interruptReason": "Interrupt was not accepted.",
       "interruptRejected": "Interrupt was not accepted.",
@@ -390,6 +402,7 @@ export default interface Resources {
       "noEvent": "No fixture event is waiting.",
       "playback": "Playback: {{label}}.",
       "rejected": "Submission rejected.",
+      "resourceUnavailable": "An image is unavailable or could not be uploaded. Your draft is saved.",
       "sending": "Sending first message…",
       "submitFailed": "Submit failed before its outcome could be confirmed. The draft was preserved.",
       "thinkingChanged": "Reasoning effort updated.",

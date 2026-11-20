@@ -106,7 +106,7 @@ fn main() {
                                 "interrupt" => app_client::ControlCommand::Interrupt {
                                     session_id: session_id.clone(), execution_id: text.clone(), reply },
                                 _ => app_client::ControlCommand::Submit {
-                                    session_id: session_id.clone(), submission_id: submission_id.clone(), text: text.clone(), reply },
+                                    session_id: session_id.clone(), submission_id: submission_id.clone(), text: text.clone(), resource_refs: Vec::new(), reply },
                             };
                             commands.send(command).map_err(|_| ())?;
                             pending.replace(Some(receive));

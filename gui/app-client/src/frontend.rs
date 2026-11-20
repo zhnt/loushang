@@ -824,6 +824,11 @@ fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
     let session_id = field(input, "sessionId")?.to_owned();
     match action {
         "submit" | "find-submission" | "goal-start" => submission(view, action, session_id, input),
+        "resource" => view.control(None, |reply| ControlCommand::Resource {
+            session_id,
+            query: input["query"].clone(),
+            reply,
+        }),
         "interrupt" => {
             let execution_id = field(input, "executionId")?.to_owned();
             let result = view.control(None, |reply| ControlCommand::Interrupt {
@@ -995,11 +1000,16 @@ fn submission(view: &View, action: &str, session_id: String, input: &Value) -> R
             }
         })
     } else {
-        let text = field(input, "text")?.to_owned();
+        let text = input["text"].as_str().ok_or("invalid_request")?.to_owned();
+        let resource_refs = match input.get("resourceRefs") {
+            Some(value) => value.as_array().ok_or("invalid_request")?.clone(),
+            None => Vec::new(),
+        };
         view.control(instance, |reply| ControlCommand::Submit {
             session_id,
             submission_id: id.to_owned(),
             text,
+            resource_refs,
             reply,
         })
     };

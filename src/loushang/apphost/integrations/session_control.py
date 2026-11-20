@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cas
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
-from loushang.ai.types import AssistantMessage
+from loushang.ai.types import AssistantMessage, ImagePart
 from loushang.apphost.application import _method_descriptor
 from loushang.apphost.contracts import SessionBindingKeyV1
 from loushang.appserver.protocol import (
@@ -516,14 +516,14 @@ class _HostedAgentExecutionWork:
         return observe
 
     async def _execute_hosted_prompt(
-        self, control: ExecutionControlV1
+        self, control: ExecutionControlV1, images: list[ImagePart] | None = None,
     ) -> ExecutionOutcomeV1:
         self._unsubscribe = self.session.agent.subscribe(self._outcome_observer())
         self._unbind_turn = control.bind_turn_interrupt(
             lambda: self.session.abort() if self.session.is_streaming else False
         )
         result = await self.session.execute_prompt(
-            self.text, source="appservice", check_cancelled=self._checkpoint
+            self.text, images=images, source="appservice", check_cancelled=self._checkpoint
         )
         if result.failure_code is not None:
             return ExecutionOutcomeV1(

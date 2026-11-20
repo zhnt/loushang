@@ -12,6 +12,11 @@ from uuid import uuid4
 from loushang.ai.model import normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
+from loushang.appserver.execution.model import ExecutionInputV1, ResourceRefV1
+from loushang.appserver.execution.resources import (
+    SessionResourceQueryV1,
+    SessionResourceResultV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -55,6 +60,7 @@ from ._execution_work import (
     current_coding_hosted_resume_submission_id as current_coding_hosted_resume_submission_id,
 )
 from .execution_goal import _HostedExecutionGoal
+from .resources import SUBMISSION_DIGEST, SUBMISSION_ID, HostedResourceAccess
 from .resume import CodingDeferredHostedSessionV1
 from .service_adapter import (
     CodingHostedEventProjectionV1,
@@ -147,6 +153,7 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
                     or owner.identity != binding.identity and not projected):
                 raise ValueError("execution close owner must own the exact Product binding")
         self._product_binding = binding
+        self._resource_access: HostedResourceAccess | None = None
         self._content: set[Callable[[ExecutionContentEventV1], None]] = set()
         self._draft = ""
         self._truncated = False
@@ -179,12 +186,39 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
         ):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
 
+    def _resources(self) -> HostedResourceAccess:
+        if self._resource_access is None:
+            self._resource_access = self._product_binding.create_resource_access()
+        return self._resource_access
+
+    def resource_submission_digest(self, submission_id: str) -> str | None:
+        try:
+            return self._resources().submission_digest(submission_id)
+        except (ValueError, OSError):
+            raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from None
+
+    def require_resource_input(self, refs: tuple[ResourceRefV1, ...]) -> None:
+        model = self._product_binding.current_model
+        if not model or not model.supports_image_input:
+            raise AppServiceError(AppErrorCodeV1.IMAGE_INPUT_UNSUPPORTED)
+        self._resources().images(refs)
+
+    def session_resource(self, query: SessionResourceQueryV1) -> SessionResourceResultV1:
+        self._require_execution_open()
+        return self._resources().exchange(query)
+
     def start_execution(self, request: ExecutionRequestV1) -> None:
         self.require_submission_ready()
+        metadata = {
+            SUBMISSION_ID: request.submission_id,
+            SUBMISSION_DIGEST: ExecutionInputV1(request.text, request.resource_refs).digest(),
+        } if request.resource_refs and request.submission_id is not None else None
         self._guard.start(
             request,
             self._product_binding.create_execution_work(
-                request.text, lambda: self._guard.interrupt_requested
+                request.text, lambda: self._guard.interrupt_requested,
+                self._resources().images(request.resource_refs) if request.resource_refs else None,
+                metadata
             ),
         )
 
@@ -308,6 +342,8 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
             self._guard.interrupt(state.execution_id, InterruptModeV1.WHOLE_EXECUTION)
             await self._guard.retry_settlement(state.execution_id)
         await super().close()
+        if self._resource_access is not None:
+            self._resource_access.close()
         self._content.clear()
 
     def _require_execution_open(self) -> None:
