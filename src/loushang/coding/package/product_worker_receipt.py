@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import Protocol, cast
 
 from loushang.coding.hosted._worker_canary import (
     CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID,
@@ -22,9 +22,6 @@ from loushang.harness.journal import (
     JournalFormatProfile,
     JournalLoadPolicy,
     JournalRecordCodec,
-)
-from loushang.harness.journal._rooted_io import (
-    RootedFile,
 )
 from loushang.harness.package_product._worker_product_authority import (
     _PosixWorkerProductReceiptAuthority,
@@ -59,7 +56,6 @@ from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntim
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker.history._receipt_store import (
     ReceiptHistory,
-    assert_checkpoint_fingerprint_fresh,
 )
 from loushang.harness.worker.history._receipts import (
     _MAX_RECEIPT_SEGMENT_BYTES,
@@ -76,7 +72,6 @@ from loushang.harness.worker.product_activation import (
 )
 
 from .product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
-from .product_worker_history_segments import CodingWorkerSegmentedHistoryV1
 from .product_worker_installed_native import (
     CodingProductInstalledWorkerReleaseReader,
     CodingWorkerNativeLaunchMaterialV1,
@@ -90,9 +85,6 @@ from .product_worker_policy import (
     CodingWorkerPolicySelectionError,
     derive_coding_selected_worker_policy,
 )
-
-if TYPE_CHECKING:
-    from .product_worker_history_checkpoint import CodingWorkerHistoryCheckpointV1
 
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
@@ -287,40 +279,6 @@ class CodingWorkerProductReceiptOwner(
             opt_in_journal=opt_in_journal,
             native_closure_reader=native_closure_reader,
             session_discovery_reader=session_discovery_reader,
-        )
-
-    def _checkpoint_writer_fence(
-        self, rooted: RootedFile
-    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
-        return cast(
-            "tuple[CodingWorkerHistoryCheckpointV1, ...]",
-            super()._checkpoint_writer_fence(rooted),
-        )
-
-    @staticmethod
-    def _assert_checkpoint_source(
-        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
-        history: CodingWorkerSegmentedHistoryV1,
-    ) -> int:
-        from .product_worker_history_checkpoint import _CHECKPOINT_HISTORY
-
-        return _CHECKPOINT_HISTORY.verify_source_revision(
-            checkpoints,
-            history,
-            stream_index=1,
-            error_type=CodingWorkerReceiptError,
-            code="coding_worker_receipt_checkpoint_source_changed",
-        )
-
-    @staticmethod
-    def _assert_checkpoint_fingerprint_fresh(
-        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
-        fingerprint: str,
-    ) -> None:
-        assert_checkpoint_fingerprint_fresh(
-            checkpoints,
-            fingerprint,
-            error_type=CodingWorkerReceiptError,
         )
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:

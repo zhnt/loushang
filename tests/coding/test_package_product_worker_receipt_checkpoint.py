@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from loushang.coding.package.product_worker_history_checkpoint import (
+    _CHECKPOINT_HISTORY,
     CodingWorkerHistoryCheckpointV1,
 )
 from loushang.coding.package.product_worker_history_segments import (
@@ -15,8 +16,10 @@ from loushang.coding.package.product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
 )
 from loushang.coding.package.product_worker_receipt import (
-    CodingWorkerProductReceiptOwner,
     CodingWorkerReceiptError,
+)
+from loushang.harness.worker.history._receipt_store import (
+    assert_checkpoint_fingerprint_fresh,
 )
 
 
@@ -52,8 +55,12 @@ def test_receipt_checkpoint_source_requires_exact_old_bytes() -> None:
         manifest=None, segments=(original + appended,)
     )
     assert (
-        CodingWorkerProductReceiptOwner._assert_checkpoint_source(
-            (checkpoint,), history
+        _CHECKPOINT_HISTORY.verify_source_revision(
+            (checkpoint,),
+            history,
+            stream_index=1,
+            error_type=CodingWorkerReceiptError,
+            code="coding_worker_receipt_checkpoint_source_changed",
         )
         == 1
     )
@@ -63,13 +70,17 @@ def test_receipt_checkpoint_source_requires_exact_old_bytes() -> None:
         segments=(b'{"journalRevision":9}\n' + appended,),
     )
     with pytest.raises(CodingWorkerReceiptError) as changed:
-        CodingWorkerProductReceiptOwner._assert_checkpoint_source(
-            (checkpoint,), rewritten
+        _CHECKPOINT_HISTORY.verify_source_revision(
+            (checkpoint,),
+            rewritten,
+            stream_index=1,
+            error_type=CodingWorkerReceiptError,
+            code="coding_worker_receipt_checkpoint_source_changed",
         )
     assert changed.value.code == "coding_worker_receipt_checkpoint_source_changed"
 
     with pytest.raises(CodingWorkerReceiptError) as retired:
-        CodingWorkerProductReceiptOwner._assert_checkpoint_fingerprint_fresh(
-            (checkpoint,), "b" * 64
+        assert_checkpoint_fingerprint_fresh(
+            (checkpoint,), "b" * 64, error_type=CodingWorkerReceiptError
         )
     assert retired.value.code == "coding_worker_receipt_fingerprint_retired"

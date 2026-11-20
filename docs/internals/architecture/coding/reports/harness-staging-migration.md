@@ -2366,6 +2366,39 @@ Across the related Linux routes, 155 cases passed. The FIFO refusal
 case reached its subprocess timeout during parallel verification and
 passed on its own. Five native Windows cases were skipped on Linux.
 
+## Worker Checkpoint Writer Custody
+
+Start-gate, receipt, and Supervisor writers now use one bound checkpoint
+read and error translation in the existing Harness checkpoint owner.
+Scope and Store identity still resolve inside the original translation
+region. The operation uses the caller's pinned root and writer authority.
+The separate owner-required checks for C5 and opt-in remain in their
+stream owners.
+
+The unused Coding checkpoint guards and cast-only writer forwards have
+been removed from receipt, start-gate and C5. The existing prefix and
+retired-ID tests exercise the Harness functions called by the live
+streams. The C5 source test uses its actual journal owner. The Product
+edge retains the historical class/module identity and event schemas.
+
+Coding Product removes 102 Python lines, staging has zero line change,
+and formal Harness adds 11. That removes 91 production lines and five
+normalized Coding module dependencies. Existing tests add 21 lines while
+retaining the same cases. All 84 controlled read and fault comparisons
+match return content, error codes, causes and resolution order.
+
+The current Windows payload plan, native stage materialization, launch
+binding, retained receipt, backend release, and history capture use their
+existing formal Harness owners. POSIX registered payload repair and gated
+orphan review and settlement also use their existing formal owners. The
+143 selected recovery and controlled Windows contract cases pass on
+Linux. Native Windows and the original host-runtime scenarios remain
+open.
+
+The selected Linux routes have 233 passes after the C5 test fixture
+was corrected to the required journal filename. Seven host-runtime
+scenarios were skipped by the local selector.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

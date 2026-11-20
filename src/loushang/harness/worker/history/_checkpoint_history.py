@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
 from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -32,6 +32,9 @@ from ._anchor import (
 )
 from ._checkpoint import _CheckpointMethods
 from ._snapshot import CODING_WORKER_HISTORY_STREAM_STEMS, _SnapshotMethods
+
+if TYPE_CHECKING:
+    from ._rooted_supervisor import WorkerHistoryAccess
 
 _STEM = "worker-history-checkpoints"
 _MAX_RECORD_BYTES = 4 * 1024 * 1024
@@ -101,6 +104,19 @@ class CheckpointHistory(Generic[_CheckpointT, _AnchorT]):
             CodingWorkerHistorySegmentError,
         ) as exc:
             raise error_type(cast(_CodedFailure, exc).code) from exc
+
+    def read_bound_writer_fence(
+        self,
+        rooted: RootedFile,
+        access: WorkerHistoryAccess,
+        *,
+        error_type: Callable[[str], Exception],
+    ) -> tuple[_CheckpointT, ...]:
+        """Read the anchored tip with the bound stream's original error type."""
+        with self.translated_errors(error_type):
+            return self.read_writer_fence(
+                rooted, scope_id=access.scope_id, store_id=access.store_id
+            )
 
     def verify_source_revision(
         self,
