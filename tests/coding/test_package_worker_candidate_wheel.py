@@ -32,7 +32,6 @@ import pytest
 
 import loushang.coding.package.product_backup_types as backup_types_module
 import loushang.coding.package.product_worker_activation_state_journal as activation_state_journal_module
-import loushang.coding.package.product_worker_crash_c5_settlement as crash_c5_module
 import loushang.coding.package.product_worker_history_checkpoint as checkpoint_module
 import loushang.coding.package.product_worker_history_retention as history_retention_module
 import loushang.coding.package.product_worker_history_stage_v2 as history_stage_v2_module
@@ -879,7 +878,7 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
                 return False
 
             with patch.object(
-                crash_c5_module._UnderGuardCleanupEvidenceAuthority,
+                gated_recovery_core.UnderGuardCleanupEvidenceAuthority,
                 "verify_changed_boot_absence",
                 reject_changed_boot,
             ):
@@ -905,7 +904,7 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
             "verify_changed_boot_absence" if prior_boot else "verify_tree_settlement"
         )
         original_verify = getattr(
-            crash_c5_module._UnderGuardCleanupEvidenceAuthority,
+            gated_recovery_core.UnderGuardCleanupEvidenceAuthority,
             verification_method,
         )
 
@@ -930,7 +929,7 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
             return result
 
         with patch.object(
-            crash_c5_module._UnderGuardCleanupEvidenceAuthority,
+            gated_recovery_core.UnderGuardCleanupEvidenceAuthority,
             verification_method,
             verify_while_writer_waits,
         ):

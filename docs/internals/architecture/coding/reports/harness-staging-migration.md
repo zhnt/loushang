@@ -2442,6 +2442,31 @@ custody traces. Another 129 publication and proof cases pass. A direct
 comparison of 20 legacy modules matches all 77 exports, including record
 slots and pickled class identities.
 
+## Linux Worker C5 Recovery Evidence
+
+Harness Package Product constructs the recovery evidence under the
+existing runtime and GC custody. Coding supplies the nominal evidence
+types with the static ID and fingerprint required by the Worker C5
+coordinator. The same Product bindings now reach the evidence constructor
+without rebuilding them through a second Coding entry.
+
+Initial registered-lease settlement and its durable replay share one
+runtime revision check and one GC write scope. Both revalidate the state
+root before and after their distinct proof and state operations. Registered
+lease repair, payload repair, and C5 CAS still have separate commitments
+and retries. The crash route keeps its independent boot and native
+settlement proofs. Fault injection now targets the implementations called
+under real recovery custody.
+
+Coding Product removes 101 Python lines and formal Harness adds seven.
+The system removes 94 production lines and four normalized Coding module
+dependencies.
+
+All 218 selected Linux contract and history cases pass. The 85
+before-and-after recovery observations match results, errors, persisted
+bytes, lock order, injected faults and file descriptor release. The
+Coding consumer route has 18 passes and three host-runtime skips.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
