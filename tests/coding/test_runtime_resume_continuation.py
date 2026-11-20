@@ -7,24 +7,24 @@ from datetime import UTC, datetime
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding import bootstrap
-from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.composition import bootstrap
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
 )
-from loushang.coding.resume_activation_plan import build_session_activation_plan
-from loushang.coding.resume_continuation import CodingResumeContinuationCleanupFailure
-from loushang.coding.resume_permission_confirmation import (
+from loushang.coding.resume.activation_plan import build_session_activation_plan
+from loushang.coding.resume.continuation import CodingResumeContinuationCleanupFailure
+from loushang.coding.resume.permission_confirmation import (
     CodingResumePermissionConfirmation,
     coding_resume_permission_request,
 )
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
 from loushang.coding.session.agent_session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.approval import DenyApprovalResolver, InteractiveApprovalResolver
 from loushang.harness.session.lifecycle import PreparedSessionOperationStateError
 from loushang.harness.transcript.jsonl_file import load_agent_transcript_file
@@ -42,7 +42,7 @@ def test_formal_selection_allows_native_reads_and_refuses_nested_writes(tmp_path
 import asyncio, os, sys
 from pathlib import Path
 from loushang.coding.package.product_runtime import CodingFencedProductApplicationSelection
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 
 async def main():
     root, mode = Path(sys.argv[1]), sys.argv[2]
@@ -317,7 +317,7 @@ def test_root_owns_native_resume_preparation_and_delivery(tmp_path, monkeypatch,
 
     async def scenario():
         if mode == "legacy":
-            from loushang.coding._plugin_lifecycle import (
+            from loushang.coding.plugin_manager.lifecycle import (
                 resolve_coding_plugin_lifecycle_state_layout,
             )
 

@@ -145,10 +145,10 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
     expected_consumers = {
         # Existing Product preview/discovery consume immutable Catalog data.
         Path("src/loushang/coding/package/product_preview.py"),
-        Path("src/loushang/coding/plugin_local_discovery.py"),
+        Path("src/loushang/coding/plugin_manager/local_discovery.py"),
         # Original Session fingerprints its selected snapshot for Resume use.
         Path("src/loushang/coding/session/agent_session.py"),
-        Path("src/loushang/coding/_resource_catalog_adapter.py"),
+        Path('src/loushang/coding/resources/catalog.py'),
         # Product-selected Store bytes enter through this explicit Catalog source.
         Path("src/loushang/harness/resource_catalog/product_snapshot_source.py"),
         RESOURCE_ROOT / "_loader_pipeline.py",

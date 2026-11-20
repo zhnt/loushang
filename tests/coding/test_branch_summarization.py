@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 
 
 def test_collect_entries_for_branch_summary_returns_entries_from_old_leaf(

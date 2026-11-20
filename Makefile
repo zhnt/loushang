@@ -42,9 +42,8 @@ HARNESSTUI_CODING_ADAPTERS := \
 HARNESSTUI_TEST_SUPPORT := \
 	tests/coding/tui_support
 CODING_TUI_PRODUCT_SOURCES := \
-	src/loushang/coding/model_selection_tui.py \
-	src/loushang/coding/model_selection.py \
-	src/loushang/coding/prompt_command.py \
+	src/loushang/coding/interaction/model_selection.py \
+	src/loushang/coding/cli/prompt.py \
 	src/loushang/coding/diagnostics/debug_status.py \
 	src/loushang/harness/events/recording_policy.py \
 	src/loushang/coding/interaction/settings_profile.py \
@@ -108,7 +107,7 @@ CODING_TUI_PRODUCT_TEST_PATHS := \
 	tests/coding/test_ui_session_view.py
 HARNESS_SOURCES := src/loushang/harness
 HARNESS_RUNTIME_SUPPORT_SOURCES := \
-	src/loushang/coding/_product_worker_canary.py \
+	src/loushang/coding/hosted/_worker_canary.py \
 	src/loushang/foundation/platform_paths.py \
 	src/loushang/foundation/runtime_scope.py \
 	scripts/dev/run_pytest.py \
@@ -176,24 +175,24 @@ APPHOST_SOURCES := \
 	src/loushang/foundation/observability/identity.py \
 	src/loushang/coding/cli/hosted.py \
 	src/loushang/coding/cli/mux.py \
-	src/loushang/coding/hosted_bootstrap.py \
-	src/loushang/coding/hosted_local.py \
-	src/loushang/coding/hosted_catalog.py \
-	src/loushang/coding/hosted_session.py \
-	src/loushang/coding/hosted_execution.py \
-	src/loushang/coding/_hosted_execution_work.py \
+	src/loushang/coding/hosted/bootstrap.py \
+	src/loushang/coding/hosted/local.py \
+	src/loushang/coding/hosted/catalog.py \
+	src/loushang/coding/hosted/session.py \
+	src/loushang/coding/hosted/execution.py \
+	src/loushang/coding/hosted/_execution_work.py \
 	src/loushang/apphost \
 	src/loushang/appserver \
 	src/loushang/appservice \
-	src/loushang/coding/_apphost_canary_child.py \
-	src/loushang/coding/_apphost_canary_control.py \
-	src/loushang/coding/_product_worker_canary.py \
-	src/loushang/coding/apphost_canary.py \
-	src/loushang/coding/apphost_composition.py \
-	src/loushang/coding/apphost_product.py \
-	src/loushang/coding/appservice_adapter.py \
-	src/loushang/coding/hosted_application.py \
-	src/loushang/coding/hosted_continuity.py \
+	src/loushang/coding/hosted/_canary_child.py \
+	src/loushang/coding/hosted/_canary_control.py \
+	src/loushang/coding/hosted/_worker_canary.py \
+	src/loushang/coding/hosted/canary.py \
+	src/loushang/coding/hosted/composition.py \
+	src/loushang/coding/hosted/product.py \
+	src/loushang/coding/hosted/service_adapter.py \
+	src/loushang/coding/hosted/application.py \
+	src/loushang/coding/hosted/continuity.py \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
@@ -305,16 +304,16 @@ APPSERVICE_SOURCES := \
 	src/loushang/foundation/observability/identity.py \
 	src/loushang/coding/cli/hosted.py \
 	src/loushang/coding/cli/mux.py \
-	src/loushang/coding/hosted_bootstrap.py \
-	src/loushang/coding/hosted_local.py \
+	src/loushang/coding/hosted/bootstrap.py \
+	src/loushang/coding/hosted/local.py \
 	src/loushang/apphost/foreground.py \
 	src/loushang/apphost/launcher.py \
 	src/loushang/apphost/local.py \
 	src/loushang/apphost/continuity.py \
-	src/loushang/coding/hosted_catalog.py \
-	src/loushang/coding/hosted_session.py \
-	src/loushang/coding/hosted_execution.py \
-	src/loushang/coding/_hosted_execution_work.py \
+	src/loushang/coding/hosted/catalog.py \
+	src/loushang/coding/hosted/session.py \
+	src/loushang/coding/hosted/execution.py \
+	src/loushang/coding/hosted/_execution_work.py \
 	src/loushang/harness/transcript/jsonl_file.py \
 	src/loushang/harness/transcript/lifecycle.py \
 	src/loushang/harness/transcript/session_factory.py \
@@ -322,9 +321,9 @@ APPSERVICE_SOURCES := \
 	src/loushang/apphost/application.py \
 	src/loushang/appserver \
 	src/loushang/appservice \
-	src/loushang/coding/appservice_adapter.py \
-	src/loushang/coding/hosted_application.py \
-	src/loushang/coding/hosted_continuity.py \
+	src/loushang/coding/hosted/service_adapter.py \
+	src/loushang/coding/hosted/application.py \
+	src/loushang/coding/hosted/continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
 	tests/dev/test_g18_provenance.py \

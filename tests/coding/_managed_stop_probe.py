@@ -11,13 +11,13 @@ from loushang.apphost.local import HostedLocalRuntimeV1
 from loushang.apphost.runtime import AppHostRuntimeV1
 from loushang.appservice.execution_registry import ExecutionRegistryV1
 from loushang.appservice.runtime import _SessionOwner
-from loushang.coding.hosted_application import (
+from loushang.coding.hosted.application import (
     CodingForegroundProductFactoryV1,
     _LeasedCodingHostedBinding,
 )
-from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
-from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
-from loushang.coding.hosted_session import CodingRealHostedSessionV1
+from loushang.coding.hosted.catalog import CodingHostedSessionCatalogV1
+from loushang.coding.hosted.execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted.session import CodingRealHostedSessionV1
 
 
 def install(root, audit):

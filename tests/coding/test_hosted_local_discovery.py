@@ -18,8 +18,8 @@ from loushang.appserver.protocol import (
     SessionOpenSpecV1,
 )
 from loushang.coding.cli.mux import main
-from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
-from loushang.coding.hosted_local import CodingLocalCommandV1
+from loushang.coding.hosted.catalog import CodingHostedSessionCatalogV1
+from loushang.coding.hosted.local import CodingLocalCommandV1
 from loushang.harnesstui.mux import open_hosted_mux_profile
 from loushang.harnesstui.mux.shell import HostedMuxShellV1
 from loushang.tui.input import InputEvent

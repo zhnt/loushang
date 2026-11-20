@@ -14,7 +14,7 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.hosted_user_choice import (
+from loushang.coding.hosted.user_choice import (
     HostedUserChoice,
     pending_choice_from_transcript,
     recover_pending_choice,

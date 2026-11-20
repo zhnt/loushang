@@ -11,6 +11,11 @@ from dataclasses import dataclass
 from functools import partial
 from hashlib import sha256
 
+from loushang.coding.hosted._worker_canary import (
+    CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID,
+    CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
+    coding_product_worker_session_fingerprint,
+)
 from loushang.harness.package_product._worker_product_authority import (
     _derive_product_selected_worker_policy,
 )
@@ -32,12 +37,6 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
 )
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker.product_activation import ProductWorkerActivationPolicyV1
-
-from .._product_worker_canary import (
-    CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID,
-    CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
-    coding_product_worker_session_fingerprint,
-)
 
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z")
 _OPAQUE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:@+-]*[A-Za-z0-9])?\Z")

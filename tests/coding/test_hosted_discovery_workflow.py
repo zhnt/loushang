@@ -29,9 +29,9 @@ from loushang.appserver.protocol import (
 )
 from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
 from loushang.appservice.execution_contract import ExecutionStatusV1
-from loushang.coding.bootstrap import create_services
-from loushang.coding.hosted_bootstrap import create_coding_hosted_attempt
-from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
+from loushang.coding.composition.bootstrap import create_services
+from loushang.coding.hosted.bootstrap import create_coding_hosted_attempt
+from loushang.coding.hosted.catalog import CodingHostedSessionCatalogV1
 from loushang.harness.config.agent import SettingsManager
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
@@ -48,7 +48,7 @@ def test_hosted_resume_activates_once_from_stable_execution_input(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
     monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(tmp_path / "runtime"))
     monkeypatch.setattr(
-        "loushang.coding.hosted_bootstrap.create_hosted_services",
+        'loushang.coding.hosted.bootstrap.create_hosted_services',
         lambda cwd: create_services(
             settings_manager=SettingsManager(
                 global_settings_path=tmp_path / "settings.json",
@@ -183,7 +183,7 @@ def test_hosted_execution_profile_preserves_cross_platform_legacy_resume(
         await seed_hosted_history(scope, "cross-platform history", session_id=selected.session_id)
 
         monkeypatch.setattr(
-            "loushang.coding.hosted_bootstrap.sys", SimpleNamespace(platform="win32")
+            'loushang.coding.hosted.bootstrap.sys', SimpleNamespace(platform="win32")
         )
         attempt = create_coding_hosted_attempt(
             launch,
@@ -248,7 +248,7 @@ def test_hosted_execution_profile_preserves_cross_platform_legacy_resume(
 def test_G17_PRODUCT_discover_resume_interact_and_recover_without_replay(
     tmp_path, monkeypatch, kind, scoped,
 ):
-    monkeypatch.setattr("loushang.coding.hosted_bootstrap.create_hosted_services", lambda cwd: create_services(
+    monkeypatch.setattr('loushang.coding.hosted.bootstrap.create_hosted_services', lambda cwd: create_services(
         settings_manager=SettingsManager(
             global_settings_path=tmp_path / "settings.json",
             project_settings_path=cwd / ".loushang" / "settings.json",

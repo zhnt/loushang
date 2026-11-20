@@ -168,7 +168,7 @@ worker API 推出所有 child 都已有耐久执行日志或跨进程生命周�
   [Blob transfer](../../../../src/loushang/harness/transcript/session_artifacts.py)。
 - [Hosted client scope](../../../../src/loushang/appservice/client_scope.py)、
   [execution service](../../../../src/loushang/appservice/execution_service.py) 和
-  [Coding hosted binding](../../../../src/loushang/coding/hosted_session.py)。
+  [Coding hosted binding](../../../../src/loushang/coding/hosted/session.py)。
 
 三路独立源码盘点原始记录保存在产品 Git 外；这是环境事实输入，不是本图的
 三视角接受，更不代替用户评审。没有运行时、网络、全部插件或真实部署验证。

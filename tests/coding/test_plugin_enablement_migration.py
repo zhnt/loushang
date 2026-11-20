@@ -6,7 +6,7 @@ from typing import Literal
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
+from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleError,
     build_coding_plugin_lifecycle,
     build_coding_plugin_management_application,

@@ -33,7 +33,7 @@ BOOTSTRAP = Path("src/loushang/harness/session/bootstrap_configuration.py")
 CONSTRUCTION = Path("src/loushang/harness/session/bootstrap_construction.py")
 PRODUCT_SESSION = Path("src/loushang/harness/session/agent_product.py")
 CODING_SESSION = Path("src/loushang/coding/session/agent_session.py")
-CODING_BOOTSTRAP = Path("src/loushang/coding/bootstrap.py")
+CODING_BOOTSTRAP = Path('src/loushang/coding/composition/bootstrap.py')
 AUTHOR_SDK = Path("src/loushang/plugin/__init__.py")
 
 

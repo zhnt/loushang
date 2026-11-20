@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._plugin_owner_generations import (
+from loushang.coding.plugin_manager.owner_generations import (
     CODING_OWNER_GENERATION_EVIDENCE_CODEC,
     CodingOwnerGenerationEvidenceError,
     CodingOwnerGenerationEvidenceEventV1,

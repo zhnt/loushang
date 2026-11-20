@@ -10,8 +10,8 @@ from typing import Any, cast
 
 import pytest
 
-from loushang.coding._apphost_canary_child import main as child_main
-from loushang.coding.apphost_canary import (
+from loushang.coding.hosted._canary_child import main as child_main
+from loushang.coding.hosted.canary import (
     CodingAppHostCanaryReportV1,
     CodingAppHostCanaryRequestV1,
     _child_environment,

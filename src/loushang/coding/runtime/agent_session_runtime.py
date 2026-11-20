@@ -14,11 +14,24 @@ from typing import TYPE_CHECKING, TypeVar, cast
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
+from loushang.coding.resume._cleanup import (
+    CodingResumeContinuationCleanupFailure,
+    retain_resume_cleanup_failure,
+)
+from loushang.coding.resume.history import (
+    MAX_CODING_RESUME_HISTORY_BYTES,
+    CodingResumeHistoryPreview,
+    CodingResumeRecentPage,
+    read_coding_resume_recent_page,
+    read_coding_resume_snapshot,
+)
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import (
-    SessionManager,
-    _bind_owned_session_manager,
-    _create_owned_session_factory,
+from loushang.coding.session.manager import SessionManager
+from loushang.coding.session.manager import (
+    bind_owned_coding_session_manager as _bind_owned_session_manager,
+)
+from loushang.coding.session.manager import (
+    create_owned_coding_session_factory as _create_owned_session_factory,
 )
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
@@ -34,17 +47,6 @@ from loushang.harness.session.multiagent import compose_multiagent_before_releas
 from loushang.harness.session.transcript_lifecycle import ResolvedDiscoveredSessionFile
 from loushang.harness.transcript import AgentTranscriptFileError
 
-from .._resume_cleanup import (
-    CodingResumeContinuationCleanupFailure,
-    retain_resume_cleanup_failure,
-)
-from ..resume_history import (
-    MAX_CODING_RESUME_HISTORY_BYTES,
-    CodingResumeHistoryPreview,
-    CodingResumeRecentPage,
-    read_coding_resume_recent_page,
-    read_coding_resume_snapshot,
-)
 from .resume_planning import ResumePlanningSlot
 
 _ResumePreview = TypeVar("_ResumePreview", CodingResumeHistoryPreview, CodingResumeRecentPage)
@@ -53,21 +55,20 @@ if TYPE_CHECKING:
     from loushang.agent import ThinkingLevel
     from loushang.ai.model import Model, ModelSelection
     from loushang.ai.types import ImagePart
+    from loushang.coding.composition.bootstrap import BootstrapServices, NoToolsMode
+    from loushang.coding.composition.sets import CodingCompositionSetPlan
+    from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
+    from loushang.coding.resume.activation_attempt_v2 import CodingResumeEffectOwnerV1
+    from loushang.coding.resume.activation_plan import (
+        ActivationOwnerInputRefV1,
+        SessionActivationPlanV1,
+    )
+    from loushang.coding.resume.continuation import CodingResumePreparedContinuation
+    from loushang.coding.resume.input_lookup import CodingResumeInputLookupQueryV1
     from loushang.harness.approval import InteractiveApprovalResolver
     from loushang.harness.config.agent import SettingsManager
     from loushang.harness.policy import PolicyEvaluator
     from loushang.harness.resources.loader import ResourceLoader
-
-    from ..bootstrap import BootstrapServices, NoToolsMode
-    from ..composition_sets import CodingCompositionSetPlan
-    from ..resume_activation_attempt import CodingActivationAttemptV1
-    from ..resume_activation_attempt_v2 import CodingResumeEffectOwnerV1
-    from ..resume_activation_plan import (
-        ActivationOwnerInputRefV1,
-        SessionActivationPlanV1,
-    )
-    from ..resume_continuation import CodingResumePreparedContinuation
-    from ..resume_input_lookup import CodingResumeInputLookupQueryV1
 
 SessionFactory = Callable[..., AgentSession]
 _copy_import_file = copy_file_exclusive
@@ -366,8 +367,12 @@ class AgentSessionRuntime(
         This entry neither dispatches a model nor resubmits the committed input.
         """
 
-        from ..resume_activation_attempt import CodingResumeRecoveryRequired
-        from ..resume_continuation import prepare_coding_resume_continuation
+        from loushang.coding.resume.activation_attempt import (
+            CodingResumeRecoveryRequired,
+        )
+        from loushang.coding.resume.continuation import (
+            prepare_coding_resume_continuation,
+        )
 
         if self._resume_history_closed:
             raise RuntimeError("coding_resume_root_closed")
@@ -493,7 +498,9 @@ class AgentSessionRuntime(
         await self.lifecycle.abort_retained_preparation(prepared._operation)
 
     async def _run_resume_first_input(self, prepared: CodingRuntimePreparedResume) -> None:
-        from ..resume_activation_attempt import CodingResumeRecoveryRequired
+        from loushang.coding.resume.activation_attempt import (
+            CodingResumeRecoveryRequired,
+        )
 
         if self._resume_history_closed:
             raise CodingResumeRecoveryRequired("model.root_closed")
@@ -535,7 +542,7 @@ class AgentSessionRuntime(
     ) -> None:
         """Bind data-only planning inputs retained by the existing Root owners."""
 
-        from loushang.coding.composition_sets import CodingCompositionSetPlan
+        from loushang.coding.composition.sets import CodingCompositionSetPlan
         from loushang.harness.resources.loader import ResourceLoader
 
         if (
@@ -592,7 +599,7 @@ class AgentSessionRuntime(
         Matching in-flight Resource work is promoted by its original owner.
         """
 
-        from ..resume_activation_plan import plan_coding_resume_async
+        from loushang.coding.resume.activation_plan import plan_coding_resume_async
 
         configured = self._configured_resume_planning
         if (
@@ -706,7 +713,7 @@ class AgentSessionRuntime(
         *,
         metadata: dict[str, object] | None = None,
     ) -> None:
-        from loushang.coding.continuity import shutdown_coding_continuity
+        from loushang.coding.session.continuity import shutdown_coding_continuity
 
         await self._dispose_session_runtime_dependencies(
             shutdown_coding_continuity, metadata=metadata

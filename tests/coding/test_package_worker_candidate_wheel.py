@@ -53,24 +53,17 @@ from loushang.agent import Agent, synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
-from loushang.coding._base_product_composition import (
+from loushang.coding.cli.package_worker_native import _execute as execute_native_cli
+from loushang.coding.composition.base_product import (
     compile_coding_base_product_selection,
     extend_coding_base_product_data_resources,
 )
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
-from loushang.coding._resource_catalog_shadow import (
-    build_coding_initial_resource_catalog_adapter,
-)
-from loushang.coding.bootstrap import (
+from loushang.coding.composition.bootstrap import (
     create_agent_session,
     create_agent_session_runtime,
     create_services,
 )
-from loushang.coding.cli.package_worker_native import _execute as execute_native_cli
-from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.package.external_worker_wheel import CodingExternalWorkerWheelError
 from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
@@ -248,8 +241,15 @@ from loushang.coding.package.product_worker_turn_tool import (
     CODING_WORKER_QUERY_TOOL_NAME,
     CodingWorkerTurnToolBinding,
 )
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.resources.catalog_compatibility import (
+    build_coding_initial_resource_catalog_adapter,
+)
 from loushang.coding.session.agent_session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
@@ -3995,7 +3995,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         ):
                             from loushang.coding.cli import application
                             from loushang.coding.cli.args import parse_args
-                            from loushang.coding.composition_provenance import (
+                            from loushang.coding.composition.provenance import (
                                 startup_composition_record,
                             )
                             from loushang.harness.tools.workspace.registry import (

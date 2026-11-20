@@ -3,14 +3,14 @@ from datetime import datetime, timezone
 
 import pytest
 
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.resume.activation_attempt import (
     CodingResumeRecoveryRequired,
     prepare_coding_activation_attempt_record,
     project_coding_activation_attempt_path,
     require_no_unsettled_coding_activation,
     validate_coding_activation_attempt_record,
 )
-from loushang.coding.resume_activation_attempt_v2 import (
+from loushang.coding.resume.activation_attempt_v2 import (
     CodingActivationAttemptV2,
     CodingResumeEffectOwnerV1,
     prepare_coding_activation_attempt_v2_record,

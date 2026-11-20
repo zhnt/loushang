@@ -5,11 +5,11 @@ import json
 import sys
 from pathlib import Path
 
-from loushang.coding.lsp import LspServerDefinition, bind_coding_lsp_runtime
-from loushang.coding.sandbox import (
+from loushang.coding.control.sandbox import (
     bind_coding_sandbox_runtime,
     coding_workspace_execution_profile,
 )
+from loushang.coding.lsp import LspServerDefinition, bind_coding_lsp_runtime
 from loushang.harness.sandbox import SandboxSettings
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.exec import ExecService

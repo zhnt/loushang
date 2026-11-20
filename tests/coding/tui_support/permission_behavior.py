@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.tool_pack import register_coding_builtin_tools
+from loushang.coding.resources.tool_pack import register_coding_builtin_tools
 from loushang.harness.approval import (
     ActorBoundApprovalResolver,
     ApprovalDecision,

@@ -6,7 +6,7 @@ import sys
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding import session_manager as managers
+from loushang.coding.session import manager as managers
 from loushang.harness.session import lifecycle as lifecycle_module
 from loushang.harness.transcript import session_factory as factory_module
 from loushang.harness.transcript.export import export_agent_transcript_bundle

@@ -14,7 +14,7 @@ from loushang.ai.types import (
     Usage,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.foundation.observability import log_context
 from loushang.foundation.observability._router import (
     get_problem_store,

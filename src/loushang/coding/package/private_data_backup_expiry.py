@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -17,7 +18,6 @@ from loushang.harness.plugin_management.private_data_backup import (
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_backup import _archive_codec, _backup_parent, _digest, _private_io
 from .private_data_backup_expiry_records import (

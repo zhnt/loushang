@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from loushang.coding.package.epoch_layout import (
     CodingPackageEpochLayoutV1,
     resolve_coding_lifecycle_pre_b_members,
@@ -30,6 +29,7 @@ from loushang.coding.package.source_snapshot import (
     hold_coding_pre_b_source_configuration,
     require_coding_fresh_settings_without_writes,
 )
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,

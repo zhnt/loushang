@@ -16,6 +16,11 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
+from loushang.coding.package.epoch_layout import coding_fenced_product_exists
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -33,10 +38,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from .private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
     CodingArchPrivateDataBackupExpiryPlanV1,
@@ -67,7 +68,6 @@ from .private_data_windows_restore_owner import CodingWindowsArchPrivateDataRest
 from .private_data_windows_restore_preview import (
     CodingWindowsArchPrivateDataRestorePreview,
 )
-from .product_management_cli import coding_fenced_product_exists
 from .product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,

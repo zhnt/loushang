@@ -53,7 +53,7 @@ WATCHED = frozenset(
         "loushang.harnesstui.conversation.theme",
         "loushang.harnesstui.mux.shell",
         "loushang.harnesstui.mux.terminal",
-        "loushang.coding.hosted_bootstrap",
+        'loushang.coding.hosted.bootstrap',
     )
 )
 

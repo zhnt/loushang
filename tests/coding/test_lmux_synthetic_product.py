@@ -130,7 +130,8 @@ def test_synthetic_requests_do_not_execute_authorized_tool():
 
 @pytest.mark.parametrize("failure", [None, RuntimeError("construction"), KeyboardInterrupt()])
 def test_product_composition_preserves_launch_capture_and_restores_name(monkeypatch, failure):
-    from loushang.coding import managed_local, managed_process
+    from loushang.coding.hosted.managed import local as managed_local
+    from loushang.coding.hosted.managed import process as managed_process
 
     launch, capture = object(), object()
     arguments = ["original-invocation", "original-session-root", "original-descriptor"]
@@ -167,7 +168,8 @@ def test_diagnostic_constructor_preserves_launch_capture_and_original_entry(monk
     from dataclasses import dataclass, replace
 
     from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
-    from loushang.coding import managed_local, managed_process
+    from loushang.coding.hosted.managed import local as managed_local
+    from loushang.coding.hosted.managed import process as managed_process
 
     @dataclass(frozen=True)
     class Launch:

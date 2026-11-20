@@ -10,13 +10,10 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import UserMessage
-from loushang.coding._capability_plugin_composition import (
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
+from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginCompositionError,
 )
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
-from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.control import ControlConfig, SettingsManager
 from loushang.coding.lsp import (
     DOCUMENT_OUTLINE_TOOL_NAME,
@@ -27,7 +24,10 @@ from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )

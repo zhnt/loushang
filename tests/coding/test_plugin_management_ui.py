@@ -8,7 +8,7 @@ from loushang.coding.package.product_repair import CodingPackageRepairResultV1
 from loushang.coding.package.product_repair_ui import (
     execute_coding_package_repair_ui_command,
 )
-from loushang.coding.plugin_management_ui import (
+from loushang.coding.plugin_manager.ui import (
     execute_coding_plugin_management_ui_command,
 )
 from loushang.harness.plugin_management.desired_command import (

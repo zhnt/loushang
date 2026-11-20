@@ -16,15 +16,15 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,
     _perform_package_repair,
 )
 
-from .._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from .product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     CodingFencedProductApplicationOwner,

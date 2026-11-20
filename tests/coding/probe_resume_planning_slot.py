@@ -383,13 +383,13 @@ def test_actual_hosted_background_slot_retains_plan_and_closes_waiter(
     tmp_path, monkeypatch
 ):
     from loushang.appserver.protocol import SessionScopeV1
-    from loushang.coding.bootstrap import create_services
+    from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.hosted_catalog import (
+    from loushang.coding.hosted.catalog import (
         CodingHostedScopeV1,
         CodingHostedSessionCatalogV1,
     )
-    from loushang.coding.hosted_resume import CodingDeferredHostedSessionV1
+    from loushang.coding.hosted.resume import CodingDeferredHostedSessionV1
     from tests.coding.test_hosted_catalog import _intent
 
     _guard()

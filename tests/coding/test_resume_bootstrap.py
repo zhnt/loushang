@@ -7,16 +7,16 @@ from datetime import UTC, datetime
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding import bootstrap
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.composition import bootstrap
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
     prepare_coding_activation_attempt_record,
 )
-from loushang.coding.resume_activation_plan import build_session_activation_plan
-from loushang.coding.resume_history import read_coding_resume_snapshot
-from loushang.coding.session_manager import (
+from loushang.coding.resume.activation_plan import build_session_activation_plan
+from loushang.coding.resume.history import read_coding_resume_snapshot
+from loushang.coding.session.manager import (
     SessionManager,
     _bind_owned_session_manager,
     _create_owned_session_factory,

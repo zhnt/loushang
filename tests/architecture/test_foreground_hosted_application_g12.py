@@ -17,7 +17,7 @@ APPHOST_CORE = {
     APPHOST / "router.py",
     APPHOST / "runtime.py",
 }
-CODING_APPLICATION = Path("src/loushang/coding/hosted_application.py")
+CODING_APPLICATION = Path('src/loushang/coding/hosted/application.py')
 HARNESSTUI_MUX = Path("src/loushang/harnesstui/mux")
 INVENTORY = Path(
     "docs/internals/architecture/apphost/"
@@ -113,15 +113,15 @@ def test_G12_FOREGROUND_PRODUCT_has_only_reviewed_dependencies() -> None:
         "loushang.apphost",
         "loushang.apphost.application",
         "loushang.appservice",
-        "loushang.coding.appservice_adapter",
+        'loushang.coding.hosted.service_adapter',
     ):
         assert _imports_prefix(imports, required)
     for forbidden in (
         "loushang.hosting",
         "loushang.harnesstui",
         "loushang.tui",
-        "loushang.coding.apphost_composition",
-        "loushang.coding.apphost_product",
+        'loushang.coding.hosted.composition',
+        'loushang.coding.hosted.product',
     ):
         assert not _imports_prefix(imports, forbidden)
     source = _read(CODING_APPLICATION)
@@ -148,7 +148,7 @@ def test_G12_EXPLICIT_ACTIVATION_preserves_installed_omission_routes() -> None:
     assert scripts["loushang-tui"] == "loushang.coding.ui.cli:main"
     for path in (
         Path("src/loushang/coding/__init__.py"),
-        Path("src/loushang/coding/bootstrap.py"),
+        Path('src/loushang/coding/composition/bootstrap.py'),
         Path("src/loushang/coding/cli/__main__.py"),
         Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),

@@ -11,7 +11,7 @@ from loushang.agent.types import AgentToolResult
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage
-from loushang.coding.managed_local import CodingManagedLocalCommandV1
+from loushang.coding.hosted.managed.local import CodingManagedLocalCommandV1
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.execution import DirectExecution
 
@@ -61,4 +61,4 @@ def initialize(self, launch, **kwargs):
 
 
 CodingManagedLocalCommandV1.__init__ = initialize
-runpy.run_module('loushang.coding.managed_process', run_name='__main__')
+runpy.run_module('loushang.coding.hosted.managed.process', run_name='__main__')

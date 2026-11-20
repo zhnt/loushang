@@ -7,12 +7,12 @@ from contextlib import AsyncExitStack
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.apphost import SessionBindingKeyV1
-from loushang.coding import hosted_bootstrap
-from loushang.coding.hosted_catalog import (
+from loushang.coding.hosted import bootstrap as hosted_bootstrap
+from loushang.coding.hosted.catalog import (
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
+from loushang.coding.hosted.session import CodingRealHostedSessionFactoryV1
 from loushang.harness.tools.core import ToolDefinition
 
 

@@ -132,19 +132,19 @@ CURRENT_SOURCE_SEAMS = (
     APPSERVICE_SOURCE / "client_scope.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
-    Path("src/loushang/coding/_product_worker_canary.py"),
-    Path("src/loushang/coding/apphost_canary.py"),
-    Path("src/loushang/coding/apphost_composition.py"),
-    Path("src/loushang/coding/apphost_product.py"),
-    Path("src/loushang/coding/hosted_application.py"),
-    Path("src/loushang/coding/managed_bootstrap.py"),
-    Path("src/loushang/coding/hosted_catalog.py"),
-    Path("src/loushang/coding/managed_catalog.py"),
-    Path("src/loushang/coding/workspace_catalog.py"),
-    Path("src/loushang/coding/managed_local.py"),
-    Path("src/loushang/coding/managed_process.py"),
-    Path("src/loushang/coding/managed_service.py"),
-    Path("src/loushang/coding/macos_service.py"),
+    Path('src/loushang/coding/hosted/_worker_canary.py'),
+    Path('src/loushang/coding/hosted/canary.py'),
+    Path('src/loushang/coding/hosted/composition.py'),
+    Path('src/loushang/coding/hosted/product.py'),
+    Path('src/loushang/coding/hosted/application.py'),
+    Path('src/loushang/coding/hosted/managed/bootstrap.py'),
+    Path('src/loushang/coding/hosted/catalog.py'),
+    Path('src/loushang/coding/hosted/managed/catalog.py'),
+    Path('src/loushang/coding/hosted/workspace_catalog.py'),
+    Path('src/loushang/coding/hosted/managed/local.py'),
+    Path('src/loushang/coding/hosted/managed/process.py'),
+    Path('src/loushang/coding/hosted/managed/service.py'),
+    Path('src/loushang/coding/hosted/macos_service.py'),
     Path("src/loushang/coding/cli/lmux.py"),
     Path("src/loushang/coding/cli/lmux_command.py"),
     Path("src/loushang/coding/cli/lmux_stop_all.py"),
@@ -691,8 +691,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     optional_execution_consumers = {
         path for path in reverse_apphost_consumers
         if path in {
-            Path("src/loushang/coding/_hosted_execution_work.py"),
-            Path("src/loushang/coding/hosted_resume.py"),
+            Path('src/loushang/coding/hosted/_execution_work.py'),
+            Path('src/loushang/coding/hosted/resume.py'),
         }
         and (
             {
@@ -704,39 +704,39 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                     execution_work + "._DeferredSessionControl",
                     execution_work + "._HostedApprovalPresentation",
                 }
-                if path == Path("src/loushang/coding/hosted_resume.py")
+                if path == Path('src/loushang/coding/hosted/resume.py')
                 else set()
             )
         ) <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
     }
     assert reverse_apphost_consumers - optional_execution_consumers == {
-        Path("src/loushang/coding/client_settings.py"),
+        Path('src/loushang/coding/hosted/client_settings.py'),
         # G1: desktop composition over the existing managed lifecycle owners.
-        Path("src/loushang/coding/managed_service.py"),
-        Path("src/loushang/coding/macos_service.py"),
-        Path("src/loushang/coding/apphost_canary.py"),
-        Path("src/loushang/coding/apphost_composition.py"),
-        Path("src/loushang/coding/apphost_product.py"),
-        Path("src/loushang/coding/appservice_adapter.py"),
-        Path("src/loushang/coding/hosted_application.py"),
+        Path('src/loushang/coding/hosted/managed/service.py'),
+        Path('src/loushang/coding/hosted/macos_service.py'),
+        Path('src/loushang/coding/hosted/canary.py'),
+        Path('src/loushang/coding/hosted/composition.py'),
+        Path('src/loushang/coding/hosted/product.py'),
+        Path('src/loushang/coding/hosted/service_adapter.py'),
+        Path('src/loushang/coding/hosted/application.py'),
         # COD-KD-HMW-001: explicitly selected Method application composition.
-        Path("src/loushang/coding/hosted_method_application.py"),
+        Path('src/loushang/coding/hosted/method_application.py'),
         # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
-        Path("src/loushang/coding/hosted_goal_application.py"),
-        Path("src/loushang/coding/hosted_continuity.py"),
-        Path("src/loushang/coding/hosted_catalog.py"),
-        Path("src/loushang/coding/hosted_session.py"),
+        Path('src/loushang/coding/hosted/goal_application.py'),
+        Path('src/loushang/coding/hosted/continuity.py'),
+        Path('src/loushang/coding/hosted/catalog.py'),
+        Path('src/loushang/coding/hosted/session.py'),
         # Stage 1A: validate the original managed lease binding key.
-        Path("src/loushang/coding/hosted_execution.py"),
+        Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),
         Path("src/loushang/coding/cli/hosted_client.py"),
-        Path("src/loushang/coding/hosted_bootstrap.py"),
-        Path("src/loushang/coding/hosted_local.py"),
-        Path("src/loushang/coding/managed_bootstrap.py"),
-        Path("src/loushang/coding/managed_catalog.py"),
-        Path("src/loushang/coding/workspace_catalog.py"),
-        Path("src/loushang/coding/managed_local.py"),
-        Path("src/loushang/coding/managed_process.py"),
+        Path('src/loushang/coding/hosted/bootstrap.py'),
+        Path('src/loushang/coding/hosted/local.py'),
+        Path('src/loushang/coding/hosted/managed/bootstrap.py'),
+        Path('src/loushang/coding/hosted/managed/catalog.py'),
+        Path('src/loushang/coding/hosted/workspace_catalog.py'),
+        Path('src/loushang/coding/hosted/managed/local.py'),
+        Path('src/loushang/coding/hosted/managed/process.py'),
         Path("src/loushang/coding/cli/lmux.py"),
         Path("src/loushang/coding/cli/lmux_command.py"),
         Path("src/loushang/coding/cli/lmux_stop_all.py"),
@@ -766,7 +766,7 @@ def test_optional_execution_contract_has_bounded_modules_and_no_activation() -> 
     for path in (
         APPSERVICE_SOURCE / "__init__.py",
         APPSERVER_SOURCE / "protocol/__init__.py",
-        Path("src/loushang/coding/appservice_adapter.py"),
+        Path('src/loushang/coding/hosted/service_adapter.py'),
         Path("src/loushang/coding/cli/mux.py"),
     ):
         assert all(name not in _read(path) for name in modules)
@@ -878,7 +878,7 @@ def test_current_worker_route_keeps_explicit_query_separate_and_no_fallback() ->
         if not path.is_relative_to(WORKER_SOURCE)
         and any(name in _read(path) for name in activation_names)
     }
-    required_consumers = {Path("src/loushang/coding/_product_worker_canary.py")}
+    required_consumers = {Path('src/loushang/coding/hosted/_worker_canary.py')}
     assert required_consumers <= consumers <= {
         *required_consumers,
         Path("src/loushang/coding/package/product_worker_operator_query.py"),

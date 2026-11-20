@@ -15,7 +15,7 @@ from loushang.appserver.protocol import (
 )
 from loushang.appservice import AppServiceV1
 from loushang.appservice.client_scope import ScopedAppServiceV1
-from loushang.coding.appservice_adapter import CodingHostedSessionV1
+from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
 from loushang.harness.approval import ApprovalRequest
 
 from .test_hosted_session import _binding

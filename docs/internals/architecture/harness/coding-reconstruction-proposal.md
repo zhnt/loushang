@@ -169,14 +169,14 @@ Harness 核心继续不依赖 Coding、HarnessWork/Method、AppService/AppHost�
 | 候选 | 证据 | 合并边界 |
 | --- | --- | --- |
 | entry existence | [Coding backup](../../../../src/loushang/coding/package/private_data_backup.py#L616)、deletion owner、Harness POSIX snapshot/materialization | 同一 `stat(dir_fd, follow_symlinks=False)`；只共享观察，不授予路径操作权 |
-| link/reparse | [Coding lifecycle](../../../../src/loushang/coding/_plugin_lifecycle.py#L2100)与[Harness Journal](../../../../src/loushang/harness/journal/jsonl.py#L1229) | 共享分类，原错误/准入留原 owner |
+| link/reparse | [Coding lifecycle](../../../../src/loushang/coding/plugin_manager/lifecycle.py#L2100)与[Harness Journal](../../../../src/loushang/harness/journal/jsonl.py#L1229) | 共享分类，原错误/准入留原 owner |
 | deletion receipt / tombstone | [POSIX Journal](../../../../src/loushang/coding/package/private_data_deletion_journal.py#L181)、[Windows transaction](../../../../src/loushang/coding/package/private_data_windows_deletion_journal.py#L139)及两处 tombstone 派生 | 共享纯记录查询/身份；锁、事务活性和持久名称不变 |
-| method descriptor | [Hosted application](../../../../src/loushang/coding/hosted_application.py#L901)、[AppHost composition](../../../../src/loushang/coding/apphost_composition.py#L548) | 共用轻量验证机制；Product 端口要求保留 |
+| method descriptor | [Hosted application](../../../../src/loushang/coding/hosted/application.py#L901)、[AppHost composition](../../../../src/loushang/coding/hosted/composition.py#L548) | 共用轻量验证机制；Product 端口要求保留 |
 | stream TTY probe | [Coding CLI](../../../../src/loushang/coding/cli/__main__.py#L24)与[Harness host](../../../../src/loushang/harness/host/product_host.py#L321) | 复用原机制，同时保留早期启动的轻量导入约束 |
 | Provider exact mapping | [Arch](../../../../src/loushang/coding/arch/_provider_api.py#L571)与[LSP](../../../../src/loushang/coding/lsp/_provider_api.py#L473) | 算法相同，`_reject` 的领域异常不同；通过已有边界校验/错误投影统一 |
 | Windows Worker raw journal read | [native approval](../../../../src/loushang/coding/package/product_worker_windows_native_approval_journal.py#L305)、[opt-in](../../../../src/loushang/coding/package/product_worker_windows_opt_in_journal.py#L315)、receipt 等 | `_NAME`/上限/stream 校验可能不同，参数化原 native IO，不能删除 ACL 检查 |
-| 完整写入循环 | [Coding backup](../../../../src/loushang/coding/package/private_data_backup.py#L593)、[Continuity](../../../../src/loushang/coding/continuity.py#L1240)、Harness rooted/snapshot IO | offset 续写、fsync、错误语义分别保留；复用已有写原语 |
-| 私有目录准备 | [Plugin](../../../../src/loushang/coding/_plugin_lifecycle.py#L2134)与[Continuity](../../../../src/loushang/coding/continuity_bootstrap.py#L1437) | 共同准入算法；现有 `create_private_directory_chain` 不负责修改已有目录，不能直接互换 |
+| 完整写入循环 | [Coding backup](../../../../src/loushang/coding/package/private_data_backup.py#L593)、[Continuity](../../../../src/loushang/coding/session/continuity.py#L1240)、Harness rooted/snapshot IO | offset 续写、fsync、错误语义分别保留；复用已有写原语 |
+| 私有目录准备 | [Plugin](../../../../src/loushang/coding/plugin_manager/lifecycle.py#L2134)与[Continuity](../../../../src/loushang/coding/composition/continuity.py#L1437) | 共同准入算法；现有 `create_private_directory_chain` 不负责修改已有目录，不能直接互换 |
 
 部分 `_bind_source` 方法只是重复的薄委托，已经调用同一 `prepare_session_work_source`；不把它升级成第二套执行机制，也不为十行转发引入 mixin/service。字符串相同的 codec 若构造不同领域记录，也只合并机械骨架，不合并事实。
 
@@ -198,7 +198,7 @@ Harness 核心继续不依赖 Coding、HarnessWork/Method、AppService/AppHost�
 
 ### F08 构造和恢复的共同机制应由原组件承接
 
-[Coding bootstrap](../../../../src/loushang/coding/bootstrap.py#L586)的 `_create_agent_session` 跨 2,196 行；[AgentSession 构造](../../../../src/loushang/coding/session/agent_session.py#L462)跨 668 行，涉及多种 Plugin/资源/Workspace/Resume 绑定。长度只是定位信号，不能据此判定重复。
+[Coding bootstrap](../../../../src/loushang/coding/composition/bootstrap.py#L586)的 `_create_agent_session` 跨 2,196 行；[AgentSession 构造](../../../../src/loushang/coding/session/agent_session.py#L462)跨 668 行，涉及多种 Plugin/资源/Workspace/Resume 绑定。长度只是定位信号，不能据此判定重复。
 
 应沿现有 AgentProductConstructionRuntime、SessionCompositionPolicy、RuntimePlan、Catalog/Graph/Registration 准备链逐项替换中性协调；Coding 只组装声明输入和产品 hooks。不得另建一个 CodingApplicationManager 或第三个 composer。只为保留大回调换一个包装类，也不算减重。
 
@@ -206,13 +206,13 @@ Resume 已有原 Transcript 提交、图片外置、固定身份 commit/lookup�
 
 ### F09 标准托管 Session 桥接应归公共集成层
 
-[CodingHostedSessionV1](../../../../src/loushang/coding/appservice_adapter.py#L124)通过原 `SessionOperationRuntime` 做 prompt/steer/follow-up，另有事件游标/订阅、模型操作和关闭。其公共 Agent Session 到 AppService 的桥接可共享；Coding 留身份校验、快照/事件/交互/恢复查询投影与错误。归属为 AppService 可选集成，复用原端口、Registry 与作用域，不在 Harness 中复制托管服务。
+[CodingHostedSessionV1](../../../../src/loushang/coding/hosted/service_adapter.py#L124)通过原 `SessionOperationRuntime` 做 prompt/steer/follow-up，另有事件游标/订阅、模型操作和关闭。其公共 Agent Session 到 AppService 的桥接可共享；Coding 留身份校验、快照/事件/交互/恢复查询投影与错误。归属为 AppService 可选集成，复用原端口、Registry 与作用域，不在 Harness 中复制托管服务。
 
 本项是通用实现的归位候选，不声称当前已经存在第二份等价 adapter。实际跨 Product 复用合同必须通过现有类型/端口装配验证，再删除 Coding 中对应的机械实现。
 
 ### F10 Continuity 载荷与 provider 机械流程
 
-[Continuity staging](../../../../src/loushang/coding/continuity.py#L1111)持有私有 root/file descriptor，处理落盘和身份检查清理；应先尝试原 IO/Artifact/RunLease 机制，逐项列出不能满足的路径/寿命合同。简单以 `settled_io` 替换会丢失取消成功写入后清理的责任，不能机械操作。
+[Continuity staging](../../../../src/loushang/coding/session/continuity.py#L1111)持有私有 root/file descriptor，处理落盘和身份检查清理；应先尝试原 IO/Artifact/RunLease 机制，逐项列出不能满足的路径/寿命合同。简单以 `settled_io` 替换会丢失取消成功写入后清理的责任，不能机械操作。
 
 目录查询、历史观察和原生命周期激活应复用 Transcript/Continuity 已有 owner；Coding 仍选择来源、scope、fallback cwd 和 Product 上限。基础 Continuity 核心不需要认识具体 Coding Session；Agent Transcript 适配放在已有可选 profile 边界。
 

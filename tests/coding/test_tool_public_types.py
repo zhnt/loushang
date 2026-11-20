@@ -40,7 +40,7 @@ def test_workspace_tool_types_are_owned_by_harness() -> None:
 
 def test_coding_exports_only_its_tool_pack_choices() -> None:
     import loushang.coding as coding
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         CODING_BUILTIN_TOOL_NAMES,
         CODING_BUILTIN_TOOL_PACK,
         CODING_TOOL_NAMES,

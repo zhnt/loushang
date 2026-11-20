@@ -236,7 +236,7 @@ def test_G17_TERMINAL_START_CANCEL_durable_recovery_reclaims_and_can_relaunch(tm
 def _observe_recovery_cancel(root, *, observer=_observe_entry, recovery_cli=None):
     from loushang.appserver.protocol import SessionScopeV1
     from loushang.appservice.continuity import decode_application_continuity_record
-    from loushang.coding.hosted_catalog import CodingHostedScopeV1
+    from loushang.coding.hosted.catalog import CodingHostedScopeV1
 
     recovery_cli = _recovery_cli if recovery_cli is None else recovery_cli
     recovery_cli(root, create=True)

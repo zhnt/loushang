@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def test_plugin_authority_publishes_local_package_roots(tmp_path: Path) -> None:
-    from loushang.coding.resource_runtime import CodingPackageMaterializer
+    from loushang.coding.resources.runtime import CodingPackageMaterializer
     from loushang.harness.resources.plugins import (
         PluginResolutionAuthority,
         PluginSource,
@@ -36,7 +36,7 @@ def test_plugin_authority_publishes_local_package_roots(tmp_path: Path) -> None:
 
 
 def test_published_plugin_roots_feed_coding_resource_loader(tmp_path: Path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer,
         CodingResourceLoader,
     )

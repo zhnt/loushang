@@ -14,10 +14,6 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     admit_coding_external_worker_wheel,
@@ -56,6 +52,10 @@ from loushang.coding.package.product_worker_windows_stage_retirement import (
 from loushang.coding.package.product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewError,
     review_coding_windows_product_worker_complete_stage,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,

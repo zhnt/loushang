@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.package.pre_b_snapshot import reopen_coding_package_cutover
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_runtime import (
     LegacyCutoverBackupReason as CodingCutoverBackupReason,
 )

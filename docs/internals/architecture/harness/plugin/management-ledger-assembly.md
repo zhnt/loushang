@@ -21,7 +21,7 @@
 | `package_product_runtime.py::open_coding_package_product_state` | fenced B 路线有 epoch/parent identity、current admission、backup type 与 before_recovery 检查；service 可选择自己的默认 retirement 路径 | 不接入首切片，不为了更多调用者把该差异塞成 factory 的 mode |
 | Continuity | 通过原 `build_coding_plugin_lifecycle` 传入专用 security journal | 保留原覆盖对象和委托入口，不新建 Continuity 装配路线 |
 
-源码：[Coding lifecycle](../../../../../src/loushang/coding/_plugin_lifecycle.py)、[CLI 路由](../../../../../src/loushang/coding/plugin_management_cli.py)、[fenced Product](../../../../../src/loushang/coding/package/product_runtime.py)、[原应用端口](../../../../../src/loushang/harness/plugin_management/application.py)。函数范围、源码 SHA 与调用信息在产品树外 `architecture-analysis/plugin-harness-audit-20261104/d1-ledger-assembly/source-evidence.json`。
+源码：[Coding lifecycle](../../../../../src/loushang/coding/plugin_manager/lifecycle.py)、[CLI 路由](../../../../../src/loushang/coding/plugin_manager/binding.py)、[fenced Product](../../../../../src/loushang/coding/package/product_runtime.py)、[原应用端口](../../../../../src/loushang/harness/plugin_management/application.py)。函数范围、源码 SHA 与调用信息在产品树外 `architecture-analysis/plugin-harness-audit-20261104/d1-ledger-assembly/source-evidence.json`。
 
 上述位置与顺序对应实施前基线。重复的是依赖图构造，不是出现了两套不同的账本权威。当时两个 builder 均复用原 Harness 类，未定位到可直接替代它们的 Harness 装配函数。构造器含 Path.resolve、路径不同性检查、GC gate 的共享锁状态取得等原行为，不能称为严格无 I/O/无副作用的纯函数。
 

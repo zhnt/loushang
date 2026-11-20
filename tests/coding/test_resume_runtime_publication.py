@@ -14,28 +14,28 @@ from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.types import UserMessage
-from loushang.coding.bootstrap import _create_resume_agent_session
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.composition.bootstrap import _create_resume_agent_session
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
     prepare_coding_activation_attempt_record,
 )
-from loushang.coding.resume_activation_plan import build_session_activation_plan
-from loushang.coding.resume_binding import (
+from loushang.coding.resume.activation_plan import build_session_activation_plan
+from loushang.coding.resume.binding import (
     CodingRuntimeBindingV1,
     coding_user_payload_digest,
 )
-from loushang.coding.resume_history import read_coding_resume_snapshot
-from loushang.coding.resume_input_lookup import (
+from loushang.coding.resume.history import read_coding_resume_snapshot
+from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     coding_resume_input_record_digest,
 )
-from loushang.coding.resume_permission_confirmation import (
+from loushang.coding.resume.permission_confirmation import (
     CodingResumePermissionConfirmation,
     coding_resume_permission_request,
 )
-from loushang.coding.session_manager import (
+from loushang.coding.session.manager import (
     SessionManager,
     _bind_owned_session_manager,
     _create_owned_session_factory,
@@ -549,7 +549,7 @@ def test_resume_publication_requires_exact_commit_current_graph_and_owner_checks
                         snapshots = [r.payload for r in manager.get_entries() if r.kind == "model.input.prepared"]
                         assert len(snapshots) == 1
                         assert snapshots[0].source_leaf_id == "record-1"
-                        from loushang.coding.resume_model_outcome import (
+                        from loushang.coding.resume.model_outcome import (
                             observe_coding_resume_model_outcome,
                         )
 

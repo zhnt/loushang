@@ -251,7 +251,7 @@ R2恢复的lookup屏障保持。末版side-question采用具类型的局部函�
 
 原Loader签发唯一`ResourceCatalogInputReceipt`；原`InitialResourceCatalogProductSelection/Adapter`接收已经匹配好的source specs，再由原Source/Bootstrap参与图准备与发布。原Adapter并未实现receipt的mount/fact与admission/path逐项匹配，因此不能仅删除Code适配，也不应再建Loader。
 
-既有Resource Catalog内的[`_loader_inputs.py`](../../../../../src/loushang/harness/resource_catalog/_loader_inputs.py)只补完整输入交接。它直接复用原Package/Native/Embedded specs、VerifiedRevisionHandle、locator规范、内置capture和Product snapshot类型；不新建DTO、Protocol、注册表或配置语言。源选择、canonical来源开关、clock、作用域/冲突/类型检查、package plan编译及信任/owner政策仍由[原Code入口](../../../../../src/loushang/coding/_resource_catalog_adapter.py)提供。
+既有Resource Catalog内的[`_loader_inputs.py`](../../../../../src/loushang/harness/resource_catalog/_loader_inputs.py)只补完整输入交接。它直接复用原Package/Native/Embedded specs、VerifiedRevisionHandle、locator规范、内置capture和Product snapshot类型；不新建DTO、Protocol、注册表或配置语言。源选择、canonical来源开关、clock、作用域/冲突/类型检查、package plan编译及信任/owner政策仍由[原Code入口](../../../../../src/loushang/coding/resources/catalog.py)提供。
 
 内部函数接收原receipt、product/policy值、已选择的composition/snapshot/admissions、三个来源bool、disabled selectors和错误投影factory，返回原Selection；Code仍构造原Adapter并传原clock。它不是任意Product的缺省信任政策或公开兼容API。原初次/refresh、只读Product preview和local discovery共同调用原公开build入口，六个Code私有转换体退出，无fallback副本。
 

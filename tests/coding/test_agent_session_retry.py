@@ -72,7 +72,7 @@ def test_agent_session_retryable_error_starts_retry_and_removes_error_message(
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -145,7 +145,7 @@ def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -221,7 +221,7 @@ def test_agent_session_retry_preserves_queued_messages_until_retry_continues(
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -296,7 +296,7 @@ def test_agent_session_abort_retry_ends_retry_with_failure(
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -373,7 +373,7 @@ def test_agent_session_retry_max_retries_emits_final_failure(
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
@@ -469,7 +469,7 @@ def test_agent_session_records_non_retryable_assistant_error_as_provider_diagnos
 ) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
@@ -513,7 +513,7 @@ def test_agent_session_overflow_routes_to_compaction_instead_of_retry(
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.session.manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)

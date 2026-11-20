@@ -127,7 +127,7 @@ def run(wrapper: Path, trace: Path, argv: list[str]) -> None:
                 "loushang.agent.agent",
                 "loushang.coding.interaction.resume_history",
                 "loushang.coding.runtime.agent_session_runtime",
-                "loushang.coding.session_manager",
+                'loushang.coding.session.manager',
                 "loushang.coding.session.agent_session",
                 "loushang.harness.session.agent_product",
                 "loushang.harness.transcript.model_input",
@@ -224,7 +224,7 @@ def run(wrapper: Path, trace: Path, argv: list[str]) -> None:
                         runtime.prepare_configured_resume_plan = observed_prepare_plan
                     elif (
                         resume_probe
-                        and fullname == "loushang.coding.session_manager"
+                        and fullname == 'loushang.coding.session.manager'
                     ):
                         manager = module.SessionManager
                         descriptor = manager.__dict__["_load_resume_writer"]

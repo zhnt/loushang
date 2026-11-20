@@ -19,17 +19,16 @@ from loushang.appserver.framing import require_timeout
 from loushang.appserver.protocol import AppServiceError
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
 from loushang.appserver.stdio import InheritedStdioTransportV1
-from loushang.foundation._owned_tasks import (
-    _observe_task_result as _observe,
-)
-from loushang.harness.tools.core import ToolDefinition
-
-from ..hosted_bootstrap import (
+from loushang.coding.hosted.bootstrap import (
     CodingHostedLaunchV1,
     create_coding_hosted_attempt,
     prepare_coding_hosted_session_roots,
 )
-from ..hosted_session import CodingHostedProductRuntimeFactoryForSession
+from loushang.coding.hosted.session import CodingHostedProductRuntimeFactoryForSession
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe,
+)
+from loushang.harness.tools.core import ToolDefinition
 
 
 class CodingHostedCommandV1:

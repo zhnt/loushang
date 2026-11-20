@@ -1,0 +1,1 @@
+"""Coding workspace component."""

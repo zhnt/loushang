@@ -6,6 +6,7 @@ from dataclasses import dataclass, field, fields
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -19,7 +20,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_classification import CodingScopedLegacyDisableV1
 from .legacy_desired_evidence import parse_coding_legacy_desired_evidence
 from .legacy_installation_inventory import (

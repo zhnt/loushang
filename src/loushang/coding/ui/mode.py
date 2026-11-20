@@ -5,7 +5,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, TextIO
 
-from loushang.coding.continuity_bootstrap import (
+from loushang.coding.composition.continuity import (
     bind_coding_configured_continuity,
     get_coding_configured_continuity_composition,
 )

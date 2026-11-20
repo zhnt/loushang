@@ -2231,7 +2231,7 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
     # transport, author SDK, and other runtime layers may not import it.
     assert production_importers
     for path in set(production_importers):
-        if path == Path("src/loushang/coding/plugin_dependency_grants.py"):
+        if path == Path('src/loushang/coding/composition/dependency_grants.py'):
             _require_package_kernel_imports(path, {
                 "loushang.harness.resources.packages.plugin_lifecycle._exact_product_source": {
                     "resolve_installed_product_root",
@@ -2253,6 +2253,9 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             assert (
                 path.parent == Path("src/loushang/coding/package")
                 or path.name.startswith("package_")
+                or path == Path("src/loushang/coding/plugin_manager/lifecycle.py")
+                or path == Path("src/loushang/coding/composition/external_data.py")
+                or path == Path("src/loushang/coding/composition/product_capability_plugins.py")
                 or path.name in {
                     "_plugin_lifecycle.py",
                     "_external_data_product_composition.py",

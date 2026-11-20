@@ -12,27 +12,27 @@ from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.types import UserMessage
-from loushang.coding import bootstrap
-from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.composition import bootstrap
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.control.sandbox import coding_workspace_execution_profile
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
 )
-from loushang.coding.resume_activation_plan import build_session_activation_plan
-from loushang.coding.resume_binding import inspect_coding_runtime_binding
-from loushang.coding.resume_history import read_coding_resume_snapshot
-from loushang.coding.resume_input_lookup import coding_resume_input_record_digest
-from loushang.coding.resume_model_outcome import observe_coding_resume_model_outcome
-from loushang.coding.resume_permission_confirmation import (
+from loushang.coding.resume.activation_plan import build_session_activation_plan
+from loushang.coding.resume.binding import inspect_coding_runtime_binding
+from loushang.coding.resume.history import read_coding_resume_snapshot
+from loushang.coding.resume.input_lookup import coding_resume_input_record_digest
+from loushang.coding.resume.model_outcome import observe_coding_resume_model_outcome
+from loushang.coding.resume.permission_confirmation import (
     CodingResumePermissionConfirmation,
     coding_resume_permission_request,
 )
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
-from loushang.coding.sandbox import coding_workspace_execution_profile
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.approval import DenyApprovalResolver, InteractiveApprovalResolver
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.permissions import PermissionProfilePolicyEvaluator

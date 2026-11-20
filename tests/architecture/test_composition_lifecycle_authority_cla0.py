@@ -79,7 +79,7 @@ EXPECTED_CONSTRUCTION_SITES = {
     },
     "RuntimeProfileBinder": {
         (
-            Path("src/loushang/coding/continuity.py"),
+            Path('src/loushang/coding/session/continuity.py'),
             "_compose_coding_continuity_base",
         ),
         (
@@ -113,7 +113,7 @@ EXPECTED_CONSTRUCTION_SITES = {
 
 EXPECTED_COMPOSITION_BIND_CALLERS = {
     (
-        Path("src/loushang/coding/bootstrap.py"),
+        Path('src/loushang/coding/composition/bootstrap.py'),
         "<lambda>",
     ),
     (
@@ -121,7 +121,7 @@ EXPECTED_COMPOSITION_BIND_CALLERS = {
         "_CodingOperatorQueryPolicy.create_session",
     ),
     (
-        Path("src/loushang/coding/runtime_capability_admission.py"),
+        Path('src/loushang/coding/composition/runtime_admission.py'),
         "CodingCapabilityProfileResolution.bind",
     ),
     (
@@ -660,7 +660,7 @@ def test_cla5_workspace_has_one_product_binding_and_no_direct_session_consumer()
     assert _construction_sites("workspace_capability_provider_binding") == Counter(
         {
             (
-                Path("src/loushang/coding/bootstrap.py"),
+                Path('src/loushang/coding/composition/bootstrap.py'),
                 "_create_agent_session._create_session",
             ): 1
         }
@@ -749,7 +749,7 @@ def test_cla4_session_has_no_peer_resource_profile_owner() -> None:
     ):
         assert "_capability_runtime" not in path.read_text(encoding="utf-8")
 
-    coding_tree = _source_trees()[Path("src/loushang/coding/bootstrap.py")]
+    coding_tree = _source_trees()[Path('src/loushang/coding/composition/bootstrap.py')]
     construction = next(
         node.value
         for node in coding_tree.body

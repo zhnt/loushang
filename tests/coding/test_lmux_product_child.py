@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding import managed_process
+from loushang.coding.hosted.managed import process as managed_process
 
 from . import _lmux_product_child as child
 from .test_managed_process_arguments import invocation

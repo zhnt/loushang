@@ -17,17 +17,17 @@ from loushang.appserver.protocol import (
 )
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
-from loushang.coding.hosted_application import (
+from loushang.coding.hosted.application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     CODING_MANAGED_APPLICATION_PROFILE_ID,
     CodingAppHostHostedSessionResolverV1,
 )
-from loushang.coding.hosted_bootstrap import _create_coding_attempt
-from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
-from loushang.coding.managed_bootstrap import (
+from loushang.coding.hosted.bootstrap import _create_coding_attempt
+from loushang.coding.hosted.managed.bootstrap import (
     CodingManagedApplicationLaunchV1,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.hosted.session import CodingRealHostedSessionFactoryV1
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
@@ -57,7 +57,7 @@ def attempt(root, *, stream_fn=scripted_stream):
 
 
 def test_noncontinuity_managed_request_rejects_before_admission_or_catalog_cleanup(tmp_path, monkeypatch):
-    from loushang.coding import hosted_application as module
+    from loushang.coding.hosted import application as module
 
     async def scenario():
         owner = attempt(tmp_path)
@@ -154,7 +154,7 @@ def test_managed_real_product_scope_projection_reconnect_and_continuity(tmp_path
         # Production freezes static native methods during attempt construction.
         monkeypatch.setattr(CodingRealHostedSessionFactoryV1, "create_session", observe)
         owner = attempt(tmp_path, stream_fn=gated_stream)
-        from loushang.coding.hosted_execution import (
+        from loushang.coding.hosted.execution import (
             CodingHostedExecutionSessionV1,
         )
 
@@ -304,7 +304,7 @@ def test_execution_projection_rejects_substituted_owner_before_claim(tmp_path, m
     from types import SimpleNamespace
 
     from loushang.appserver.protocol import SessionScopeV1
-    from loushang.coding import hosted_execution
+    from loushang.coding.hosted import execution as hosted_execution
 
     async def scenario():
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
@@ -334,7 +334,7 @@ def test_execution_projection_rejects_substituted_owner_before_claim(tmp_path, m
             elif fault == "binding":
                 leased._binding = SimpleNamespace(identity=binding.identity, control=object())
             elif fault in {"copied_owner", "unsealed_owner"}:
-                from loushang.coding.hosted_application import (
+                from loushang.coding.hosted.application import (
                     _LeasedCodingHostedBinding,
                 )
 
@@ -375,8 +375,8 @@ def test_execution_projection_rejects_substituted_owner_before_claim(tmp_path, m
 
 def test_managed_adapter_construction_failure_releases_claim_and_original_lease(tmp_path, monkeypatch):
     from loushang.apphost import AppHostRuntimeV1
-    from loushang.coding import hosted_execution
-    from loushang.coding.appservice_adapter import CodingHostedSessionV1
+    from loushang.coding.hosted import execution as hosted_execution
+    from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
 
     async def scenario():
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))

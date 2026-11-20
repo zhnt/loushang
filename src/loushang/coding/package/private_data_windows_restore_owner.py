@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationV1,

@@ -49,7 +49,7 @@ flowchart TD
 
 ### S1 创建 Session
 
-1. `coding.bootstrap.create_agent_session_runtime` 选择 Product 配置，调用 `build_agent_product_session_runtime`；注入 `AgentSessionRuntime` 和原 `_create_agent_session` 构建回调。[入口](../../../../../src/loushang/coding/bootstrap.py)
+1. `coding.bootstrap.create_agent_session_runtime` 选择 Product 配置，调用 `build_agent_product_session_runtime`；注入 `AgentSessionRuntime` 和原 `_create_agent_session` 构建回调。[入口](../../../../../src/loushang/coding/composition/bootstrap.py)
 2. `AgentProductSessionRuntime.create_session` 委托 `new_session`，经 lifecycle adapter / `new_session_operation` 到 `SessionLifecycleRuntime.new`；生命周期转换和当前 Session 切换由共享协调器负责。[运行时](../../../../../src/loushang/harness/session/product_runtime.py)、[Transcript 生命周期](../../../../../src/loushang/harness/session/transcript_lifecycle.py)、[协调器](../../../../../src/loushang/harness/session/lifecycle.py)
 3. Transcript 工厂建立或打开对话记录，writer 生命周期负责取得写权；Coding 构建回调提供领域 Prompt、工具、LSP/Arch 配置和 Product 存储选择。[工厂](../../../../../src/loushang/harness/transcript/session_factory.py)、[Writer](../../../../../src/loushang/harness/transcript/writer_lifecycle.py)
 4. `bootstrap._create_agent_session` 中 `package_product_runtime_factory` 决定使用 fenced Product 还是兼容 materializer；有 factory 时不会再选择默认旧 materializer。`prepare_package_product_catalog_projection` 还显式拒绝混用 Catalog 路径。
@@ -60,8 +60,8 @@ flowchart TD
 
 ### S2 加载插件并发布能力
 
-1. Coding 选择 base / LSP / Arch、默认启用及领域配置；`prepare_coding_package_plugin_plan_seed` 合并资源选择输入。[bootstrap](../../../../../src/loushang/coding/bootstrap.py)、[Catalog 适配](../../../../../src/loushang/coding/_resource_catalog_shadow.py)
-2. 兼容路线 `prepare_coding_capability_plugin_composition` 和 Product 路线 `prepare_coding_product_capability_plugin_composition` 都调用共享 `prepare_product_plugin_composition`。后者校验 Definition、trust provenance 和 exact owner，再调用既有 assembly/admission。[兼容装配](../../../../../src/loushang/coding/_capability_plugin_composition.py)、[Product 装配](../../../../../src/loushang/coding/_product_capability_plugin_composition.py)、[共享装配](../../../../../src/loushang/harness/session/product_composition_assembly.py)
+1. Coding 选择 base / LSP / Arch、默认启用及领域配置；`prepare_coding_package_plugin_plan_seed` 合并资源选择输入。[bootstrap](../../../../../src/loushang/coding/composition/bootstrap.py)、[Catalog 适配](../../../../../src/loushang/coding/resources/catalog_compatibility.py)
+2. 兼容路线 `prepare_coding_capability_plugin_composition` 和 Product 路线 `prepare_coding_product_capability_plugin_composition` 都调用共享 `prepare_product_plugin_composition`。后者校验 Definition、trust provenance 和 exact owner，再调用既有 assembly/admission。[兼容装配](../../../../../src/loushang/coding/composition/capability_plugins.py)、[Product 装配](../../../../../src/loushang/coding/composition/product_capability_plugins.py)、[共享装配](../../../../../src/loushang/harness/session/product_composition_assembly.py)
 3. Session 装配使用 Graph Binder/Runtime 发布 Mount；注册使用原 registration 生命周期。Plugin descriptor、mount 和 registration 分别表示选择、能力实例和可撤销发布，不是三份相同事实。[Binder](../../../../../src/loushang/harness/capabilities/graph_binding.py)、[Graph 状态](../../../../../src/loushang/harness/capabilities/graph_runtime.py)、[Registration](../../../../../src/loushang/harness/runtime/registration.py)
 4. 平台包物化位于既有 Store/lifecycle 层，不能由 Product 再复制包内容存储。[POSIX](../../../../../src/loushang/harness/resources/packages/plugin_lifecycle/posix_materialization.py)、[Windows](../../../../../src/loushang/harness/resources/packages/plugin_lifecycle/windows_materialization.py)
 
@@ -71,10 +71,10 @@ flowchart TD
 
 ### S3 禁用插件
 
-1. 本地 SDK `CodingPluginManagementCommandClientV1.submit_desired`、Coding RPC adapter 均调用 `submit_plugin_desired_command`；RPC handler 本身只绑定 Product 提供的 client，并不拥有管理状态。[SDK](../../../../../src/loushang/coding/plugin_management_command_sdk.py)、[Coding RPC](../../../../../src/loushang/coding/plugin_management_command_rpc.py)、[Harness RPC](../../../../../src/loushang/harness/host/rpc/commands/plugin_desired.py)
+1. 本地 SDK `CodingPluginManagementCommandClientV1.submit_desired`、Coding RPC adapter 均调用 `submit_plugin_desired_command`；RPC handler 本身只绑定 Product 提供的 client，并不拥有管理状态。[SDK](../../../../../src/loushang/coding/plugin_manager/command_sdk.py)、[Coding RPC](../../../../../src/loushang/coding/plugin_manager/command_rpc.py)、[Harness RPC](../../../../../src/loushang/harness/host/rpc/commands/plugin_desired.py)
 2. 共享函数将 disable 映射为 `installed_disabled`，携带 Product scope、operation identity 和 expected inventory revision，经 command application 进入 `PluginManagementService.submit`。[desired command](../../../../../src/loushang/harness/plugin_management/desired_command.py)、[application](../../../../../src/loushang/harness/plugin_management/application.py)
 3. Service 在原 GC reference guard / journal lock 下重放操作、处理幂等，再写 accepted、提交 desired transition、交接 retirement 并推进结果；各阶段通过既有恢复逻辑衔接，并非多文件原子事务。[Service](../../../../../src/loushang/harness/plugin_management/service.py)、[Desired ledger](../../../../../src/loushang/harness/plugin_management/ledger.py)
-4. 活动 Session 的租约保留原代。Coding `_prepare_resource_refresh` 检查管理变化，遇到 `restart_required` 记录诊断并拒绝该刷新；它不是立即卸载已经运行的 Plugin。[Session](../../../../../src/loushang/coding/session/agent_session.py)、[租约判断](../../../../../src/loushang/coding/_plugin_lifecycle.py)
+4. 活动 Session 的租约保留原代。Coding `_prepare_resource_refresh` 检查管理变化，遇到 `restart_required` 记录诊断并拒绝该刷新；它不是立即卸载已经运行的 Plugin。[Session](../../../../../src/loushang/coding/session/agent_session.py)、[租约判断](../../../../../src/loushang/coding/plugin_manager/lifecycle.py)
 
 **判定：**入口已有共同管理服务，不应再造“统一插件管理器”。desired 与 effective 的短暂差异是代际租约语义，不应简单当成冗余。对用户应分别解释“已禁用、当前 Session 仍固定原代、需要重启”。
 
@@ -85,7 +85,7 @@ flowchart TD
 1. `AgentProductSession.dispose` 先 `prepare_execution_release`，再进入 adapter/operations 的停止资源 watch、关闭 refresh、发送 shutdown 等流程；runtime 关闭执行准入并等待 backend。[Session](../../../../../src/loushang/harness/session/agent_product.py)、[operations](../../../../../src/loushang/harness/session/operations_runtime.py)、[runtime](../../../../../src/loushang/harness/session/runtime.py)
 2. Coding `_dispose_session_runtime_profile` 先关闭借用父依赖的 deferred LSP，再处理 Worker tool lease，调用共享父实现；LSP 关闭抛错时保留原对象与依赖以便重试。[Coding hook](../../../../../src/loushang/coding/session/agent_session.py)
 3. Harness 父实现停止模型调用/输出生产者、结清 output capture，撤销 owner generations，再调用原 Graph Binder dispose。Graph 将可见节点失效并保留待退役节点；`is_closed` 不等于没有 pending retirements。[共享 hook](../../../../../src/loushang/harness/session/agent_product.py)、[Binder](../../../../../src/loushang/harness/capabilities/graph_binding.py)
-4. Coding 获取原 retirement receipts，核验 graph/owner/component 清理状态后 `release_management`、清理 private state；Session lease 的 close 还核对 owner-generation evidence 才释放 family。其后按原职责清理 sandbox / Product runtime 等资源，错误向上返回。[assembly](../../../../../src/loushang/coding/_capability_plugin_composition.py)、[lease](../../../../../src/loushang/coding/_plugin_lifecycle.py)
+4. Coding 获取原 retirement receipts，核验 graph/owner/component 清理状态后 `release_management`、清理 private state；Session lease 的 close 还核对 owner-generation evidence 才释放 family。其后按原职责清理 sandbox / Product runtime 等资源，错误向上返回。[assembly](../../../../../src/loushang/coding/composition/capability_plugins.py)、[lease](../../../../../src/loushang/coding/plugin_manager/lifecycle.py)
 
 **判定：**关停存在多个协作 owner，不是重复关闭同一个对象的充分证据。已证实公共清理模式分散，但本轮没有证明双重释放或死锁。重构必须保留子组件先退役、失败凭据与依赖仍可重试的约束。
 
@@ -113,7 +113,7 @@ flowchart TD
 | LSP、Workspace、sandbox、output captures | 具体 Provider/process/output owner；Session 持清理句柄 | 子组件先关、原依赖后放；失败仍保留重试凭据 | 保留；Product 只注入领域参数与实现 |
 | 兼容输入、migration 与旧格式投影 | 原 migration journal 和 Coding 兼容桥接 | 正式状态驱动兼容投影；按升级/降级契约退出 | 有退出债务，尚不能直接删除 |
 
-主要源码：[_plugin_lifecycle](../../../../../src/loushang/coding/_plugin_lifecycle.py)、[owner evidence](../../../../../src/loushang/coding/_plugin_owner_generations.py)、[instance runtime](../../../../../src/loushang/harness/plugin_management/instance_runtime.py)、[package lifecycle](../../../../../src/loushang/harness/plugin_management/package_lifecycle.py)、[Product runtime](../../../../../src/loushang/coding/package/product_runtime.py)、[资源装载](../../../../../src/loushang/harness/resources/_loader_pipeline.py)。Product layout 决定物理位置不等于 Product 重新实现各账本。
+主要源码：[_plugin_lifecycle](../../../../../src/loushang/coding/plugin_manager/lifecycle.py)、[owner evidence](../../../../../src/loushang/coding/plugin_manager/owner_generations.py)、[instance runtime](../../../../../src/loushang/harness/plugin_management/instance_runtime.py)、[package lifecycle](../../../../../src/loushang/harness/plugin_management/package_lifecycle.py)、[Product runtime](../../../../../src/loushang/coding/package/product_runtime.py)、[资源装载](../../../../../src/loushang/harness/resources/_loader_pipeline.py)。Product layout 决定物理位置不等于 Product 重新实现各账本。
 
 ## 3. 发现与证据等级
 

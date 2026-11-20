@@ -8,11 +8,11 @@ from io import StringIO
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.bootstrap import (
+from loushang.coding.composition.bootstrap import (
     create_agent_session_runtime,
     create_services,
 )
-from loushang.coding.composition_provenance import startup_composition_record
+from loushang.coding.composition.provenance import startup_composition_record
 from loushang.harness.config.agent import ControlConfig, SettingsManager
 from loushang.harness.transcript import load_agent_transcript_file
 

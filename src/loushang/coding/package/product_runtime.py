@@ -15,6 +15,12 @@ from pathlib import Path
 from threading import Lock, RLock
 from typing import cast
 
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.resume.activation_attempt_v2 import CodingResumeEffectOwnerV1
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
     _PluginBootstrapPolicy,
@@ -60,16 +66,10 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from ..control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from ..resume_activation_attempt_v2 import CodingResumeEffectOwnerV1
-from ..session_manager import SessionManager
 from .builtin_wheel import (
     coding_base_product_local_wheel_policy,
     coding_builtin_product_local_wheel_policy,

@@ -113,7 +113,7 @@ def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies
         elif isinstance(node, ast.ImportFrom):
             if node.level:
                 assert node.level == 2 and node.module == "hosted_bootstrap"
-                project_imports.add("loushang.coding.hosted_bootstrap")
+                project_imports.add('loushang.coding.hosted.bootstrap')
             elif node.module.startswith("loushang."):
                 project_imports.add(node.module)
     expected_imports = {
@@ -123,7 +123,7 @@ def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies
         "loushang.harnesstui.mux.shell", "loushang.harnesstui.mux.terminal",
         # Hosted and Embedded clients share the same Markdown presentation.
         "loushang.harnesstui.conversation.theme",
-        "loushang.coding.hosted_bootstrap",
+        'loushang.coding.hosted.bootstrap',
     }
     # A180: accept the migrated exact imports as well as the original source.
     control = "loushang.apphost.integrations._foreground_client_control"

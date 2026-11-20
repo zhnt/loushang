@@ -48,27 +48,27 @@ from loushang.appserver.protocol import (
 )
 from loushang.appservice.continuity_file import JsonFileApplicationContinuityStoreV1
 from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
-from loushang.coding.bootstrap import create_services
+from loushang.coding.composition.bootstrap import create_services
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.hosted_application import (
+from loushang.coding.hosted.application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     CodingForegroundHostedApplicationRequestV1,
 )
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.hosted_catalog import (
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.catalog import (
     CODING_HOSTED_COMPATIBILITY_ID,
     CodingHostedCandidateValidatorV1,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.hosted_continuity import (
+from loushang.coding.hosted.continuity import (
     CodingHostedContinuityRequestV1,
     create_coding_hosted_continuity_attempt,
 )
-from loushang.coding.hosted_execution import create_coding_execution_service_binding
-from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
+from loushang.coding.hosted.execution import create_coding_execution_service_binding
+from loushang.coding.hosted.session import CodingRealHostedSessionFactoryV1
 from loushang.harness.config.agent import SettingsManager
 
 ROOT = Path(__file__).resolve().parents[2]

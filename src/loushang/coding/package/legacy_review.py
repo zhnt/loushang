@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field, fields
 from hashlib import sha256
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
@@ -18,7 +19,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .legacy_classification import (
     CodingScopedLegacyDisableV1,
     classify_coding_legacy_source_configuration,

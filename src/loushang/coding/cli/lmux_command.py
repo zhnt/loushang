@@ -65,8 +65,12 @@ from loushang.apphost.managed.storage_budget import ManagedStorageBudgetV1
 from loushang.appserver.managed_mux_close import (
     ManagedMuxClosePhaseV1,
 )
+from loushang.coding.hosted.managed.process import (
+    APPLICATION_ID,
+    ENDPOINT,
+    coding_managed_process_request,
+)
 
-from ..managed_process import APPLICATION_ID, ENDPOINT, coding_managed_process_request
 from .lmux_stop_all import StopAll
 from .mux import _execute
 

@@ -638,7 +638,7 @@ def _managed_observation(environment, stage, *, name, native_identity=None, veri
     from loushang.apphost.managed.paths import resolve_managed_service_paths
     from loushang.appserver.protocol import MuxReadV1, MuxSelectorV1
     from loushang.coding.cli.mux import _execute
-    from loushang.coding.managed_process import APPLICATION_ID, ENDPOINT
+    from loushang.coding.hosted.managed.process import APPLICATION_ID, ENDPOINT
 
     if stage not in {"first-member", "second-member", "detached", "reattached"}:
         raise ValueError("unknown managed observation stage")
@@ -1352,7 +1352,7 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
     from loushang.ai.types import UserMessage
     from loushang.apphost import SessionCreateRequestV1
     from loushang.appservice.continuity import decode_application_continuity_record
-    from loushang.coding.hosted_catalog import (
+    from loushang.coding.hosted.catalog import (
         CODING_HOSTED_COMPATIBILITY_ID,
         _create_identity,
     )
@@ -1463,7 +1463,7 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
         )
         == identity.session_id
     ), "canonical create identity mismatch"
-    from loushang.coding.composition_provenance import (
+    from loushang.coding.composition.provenance import (
         pinned_composition_plan,
         startup_composition_record,
     )
@@ -1529,7 +1529,9 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
         and (sys.platform != "win32" or parts[4] == "product-private")
         and parts[-1] in {"activation-decisions.jsonl", "definition-decisions.jsonl"}
     }
-    from loushang.coding._capability_plugin_specs import CODING_CAPABILITY_PLUGIN_IDS
+    from loushang.coding.composition.capability_specs import (
+        CODING_CAPABILITY_PLUGIN_IDS,
+    )
 
     capability_selected = any(
         revision["pluginId"] in CODING_CAPABILITY_PLUGIN_IDS

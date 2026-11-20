@@ -4,30 +4,30 @@ from pathlib import Path
 
 G10_PRODUCT_SLICE = frozenset(
     {
-        "_apphost_canary_child.py",
-        "_apphost_canary_control.py",
-        "apphost_canary.py",
+        'hosted/_canary_child.py',
+        'hosted/_canary_control.py',
+        'hosted/canary.py',
         "cli/apphost.py",
     }
 )
-G11_PRODUCT_SLICE = frozenset({"appservice_adapter.py"})
-G12_PRODUCT_SLICE = frozenset({"hosted_application.py"})
-G13_PRODUCT_SLICE = frozenset({"hosted_continuity.py"})
+G11_PRODUCT_SLICE = frozenset({'hosted/service_adapter.py'})
+G12_PRODUCT_SLICE = frozenset({'hosted/application.py'})
+G13_PRODUCT_SLICE = frozenset({'hosted/continuity.py'})
 G14_PRODUCT_SLICE = frozenset(
-    {"cli/hosted.py", "hosted_catalog.py", "hosted_session.py"}
+    {"cli/hosted.py", 'hosted/catalog.py', 'hosted/session.py'}
 )
 GOAL_PRODUCT_LIMITS = {
-    "hosted_session_goal.py": 265, "hosted_goal_commands.py": 195,
-    "hosted_goal_review.py": 60, "hosted_goal_recovery.py": 120,
-    "hosted_execution_goal.py": 125,
+    'hosted/session_goal.py': 265, 'hosted/goal_commands.py': 195,
+    'hosted/goal_review.py': 60, 'hosted/goal_recovery.py': 120,
+    'hosted/execution_goal.py': 125,
 }
-G16_PRODUCT_SLICE = frozenset({"hosted_bootstrap.py", "hosted_local.py", "cli/mux.py"})
+G16_PRODUCT_SLICE = frozenset({'hosted/bootstrap.py', 'hosted/local.py', "cli/mux.py"})
 G17_PRODUCT_SLICE = frozenset({"cli/hosted_client.py"})
 G18_FACADE_SLICE = frozenset({"__init__.py"})
-EXECUTION_PRODUCT_SLICE = frozenset({"hosted_execution.py", "_hosted_execution_work.py"})
+EXECUTION_PRODUCT_SLICE = frozenset({'hosted/execution.py', 'hosted/_execution_work.py'})
 LMUX_PRODUCT_SLICE = frozenset({
-    "managed_process.py", "managed_local.py", "managed_bootstrap.py", "managed_catalog.py",
-    "cli/lmux.py", "cli/lmux_command.py", "cli/lmux_stop_all.py", "workspace_catalog.py",
+    'hosted/managed/process.py', 'hosted/managed/local.py', 'hosted/managed/bootstrap.py', 'hosted/managed/catalog.py',
+    "cli/lmux.py", "cli/lmux_command.py", "cli/lmux_stop_all.py", 'hosted/workspace_catalog.py',
 })
 
 APPROVED_SLICES = {
@@ -104,9 +104,9 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     assert sum(groups["g14"].values()) <= 1_300 + 205 + 8 + 3 + 334 + 195 + 34 + 1 + 29, groups["g14"]
     for path, limit in {
         "cli/hosted.py": 290,
-        "hosted_catalog.py": 1_221,
+        'hosted/catalog.py': 1_221,
         # Main 794156c3b contains 714 lines after GUI model persistence.
-        "hosted_session.py": 714,
+        'hosted/session.py': 714,
     }.items():
         assert groups["g14"][path] <= limit, (path, groups["g14"][path], limit)
     assert sum(groups["goal"].values()) <= 765, groups["goal"]
@@ -120,8 +120,8 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     for path, limit in {
         # Main 794156c3b adds systemd AppHost management to this owner.
         "cli/mux.py": 277,
-        "hosted_bootstrap.py": 288 + 29 + 9,
-        "hosted_local.py": 402,
+        'hosted/bootstrap.py': 288 + 29 + 9,
+        'hosted/local.py': 402,
     }.items():
         assert groups["g16"][path] <= limit, (path, groups["g16"][path], limit)
     assert sum(groups["g17"].values()) <= 450, groups["g17"]
@@ -162,7 +162,7 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
         # One line reports the connection root after confirmed Host startup.
         "cli/lmux_command.py": 811 + 17 + 1,
         # Nine lines admit and pass through the optional AppHost tunnel credential.
-        "managed_local.py": 172 + 1 + 9,
+        'hosted/managed/local.py': 172 + 1 + 9,
     }.items():
         assert groups["lmux"][path] <= limit, (path, groups["lmux"][path], limit)
 

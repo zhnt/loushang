@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.coding.composition_sets import (
+from loushang.coding.composition.sets import (
     CODING_KERNEL_PROMPT_REVISION,
     CodingCompositionPluginRequest,
     CodingCompositionSetPlan,

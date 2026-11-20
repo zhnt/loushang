@@ -97,7 +97,7 @@ def test_receipt_v2_issue_and_retained_read_after_retired_deletion(
         session_id=policy.session_id,
         product_runtime_id=policy.product_runtime_id,
     )
-    from loushang.coding._worker_history_access import _CodingHistoryAccess
+    from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 
     receipt_module._CodingReceiptHistory.__init__(
         owner, tmp_path / (stem + ".jsonl"), access=_CodingHistoryAccess(product)

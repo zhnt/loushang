@@ -17,8 +17,8 @@
 
 | 已核实事实 | 基线源码证据 | 设计含义 |
 | --- | --- | --- |
-| 文件名仍为 shadow，函数已使用正式名称 | [Coding adapter](../../../../../src/loushang/coding/_resource_catalog_shadow.py#L178) 的 prepare/build、策略常量、plan seed/completion；文件末 1085–1093 的三个旧别名 | 命名债务，不是存在两套 Catalog 执行引擎 |
-| 六个生产文件导入旧模块 | [bootstrap](../../../../../src/loushang/coding/bootstrap.py#L63)、[_capability_plugin_composition](../../../../../src/loushang/coding/_capability_plugin_composition.py#L26)、[_product_capability_plugin_composition](../../../../../src/loushang/coding/_product_capability_plugin_composition.py#L79)、[plugin_local_discovery](../../../../../src/loushang/coding/plugin_local_discovery.py#L26)、[_invocation_product_profile](../../../../../src/loushang/coding/_invocation_product_profile.py#L7)、[package_product_preview](../../../../../src/loushang/coding/package/product_preview.py#L75) | 一次切片切换这六处 import，调用及 kwargs 保持 |
+| 文件名仍为 shadow，函数已使用正式名称 | [Coding adapter](../../../../../src/loushang/coding/resources/catalog_compatibility.py#L178) 的 prepare/build、策略常量、plan seed/completion；文件末 1085–1093 的三个旧别名 | 命名债务，不是存在两套 Catalog 执行引擎 |
+| 六个生产文件导入旧模块 | [bootstrap](../../../../../src/loushang/coding/composition/bootstrap.py#L63)、[_capability_plugin_composition](../../../../../src/loushang/coding/composition/capability_plugins.py#L26)、[_product_capability_plugin_composition](../../../../../src/loushang/coding/composition/product_capability_plugins.py#L79)、[plugin_local_discovery](../../../../../src/loushang/coding/plugin_manager/local_discovery.py#L26)、[_invocation_product_profile](../../../../../src/loushang/coding/composition/invocation_profile.py#L7)、[package_product_preview](../../../../../src/loushang/coding/package/product_preview.py#L75) | 一次切片切换这六处 import，调用及 kwargs 保持 |
 | 旧模块不只暴露 `__all__` | `__all__` 为八项；生产还显式导入 build/canonical/prepare seed/finalize seed/complete seed；[旧测试](../../../../../tests/coding/test_resource_catalog_shadow.py#L24)显式导入 `_owner_binding_covers`、旧 Error/build 别名 | 不能仅 `import *` 转发八项；须列出直接导入兼容面 |
 | prepare 先消费 owner receipt，再调用 build；策略是原不可变实例 | adapter 84–158、178–210 | 不增加 wrapper 重算、替代 class 或复制 policy 对象；保留相同异常类型供调用者捕获 |
 | 三处架构测试绑定实现的文件位置 | [type system](../../../../../tests/architecture/test_plugin_contribution_type_system.py#L60)、[RCP1](../../../../../tests/architecture/test_resource_catalog_rcp1_shadow.py#L114)、[RCP2](../../../../../tests/architecture/test_resource_catalog_rcp2_components.py#L29) | 实现搬移须等价迁移原路径库存；旧 shim 不能代替真正实现接受检查 |
@@ -111,4 +111,4 @@ Catalog/Plugin 数据 ID、journal/manifest、policy revision、fingerprint、ad
 
 ## 6. 当前实现导航
 
-用户接受 R1.1 后，唯一实现现位于 [Coding Catalog adapter](../../../../../src/loushang/coding/_resource_catalog_adapter.py)，旧 [shadow 模块](../../../../../src/loushang/coding/_resource_catalog_shadow.py)只保留兼容转发。§1、原审计及 D2 固定切点中的路径/行号是迁移前证据，继续保留；当前实现从本段进入。实施验证与三视角代码评审结果见[同一评审记录](catalog-adapter-module-review.md)。
+用户接受 R1.1 后，唯一实现现位于 [Coding Catalog adapter](../../../../../src/loushang/coding/resources/catalog.py)，旧 [shadow 模块](../../../../../src/loushang/coding/resources/catalog_compatibility.py)只保留兼容转发。§1、原审计及 D2 固定切点中的路径/行号是迁移前证据，继续保留；当前实现从本段进入。实施验证与三视角代码评审结果见[同一评审记录](catalog-adapter-module-review.md)。

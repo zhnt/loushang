@@ -18,13 +18,13 @@ from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.provider.protocol import ProviderRequest
-from loushang.coding.bootstrap import create_agent_session, create_services
+from loushang.coding.authoring.plugin_smoke import _user_message_text
+from loushang.coding.authoring.plugin_smoke import main as smoke_cli_main
 from loushang.coding.cli.application import run_cli
 from loushang.coding.cli.package_cutover import main as cutover_cli_main
 from loushang.coding.cli.package_gc import main as gc_cli_main
-from loushang.coding.plugin_author_smoke import _user_message_text
-from loushang.coding.plugin_author_smoke import main as smoke_cli_main
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateLedger,
@@ -839,7 +839,7 @@ def test_p0_public_update_retirement_interruption_reports_committed_revision(
     assert pending_explain["managementActorId"] == "product:coding"
     assert pending_explain["desiredCommitEvidence"] == "verified_transition"
     assert pending_explain["repairCommand"] == expected_repair
-    from loushang.coding.plugin_management_read_sdk import (
+    from loushang.coding.plugin_manager.read_sdk import (
         open_coding_plugin_management_read_client,
     )
     from loushang.coding.ui.product_binding import build_coding_ui_controller

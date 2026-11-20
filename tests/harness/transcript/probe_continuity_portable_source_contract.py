@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from loushang.coding.continuity import CodingContinuityActivationBridge
+from loushang.coding.session.continuity import CodingContinuityActivationBridge
 from loushang.harness.artifacts.store import ArtifactSourceRejected
 from loushang.harness.continuity import (
     CONTINUITY_BUNDLE_MEDIA_TYPE,

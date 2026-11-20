@@ -192,7 +192,7 @@ def _history_proof_bindings() -> HistoryProofBindings[
         return _snapshot_source()
 
     def access(product):
-        from .._worker_history_access import _CodingHistoryAccess
+        from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 
         return _CodingHistoryAccess(product)
 

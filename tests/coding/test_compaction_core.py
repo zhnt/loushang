@@ -21,7 +21,7 @@ from loushang.coding.compaction.profiles import (
     CODING_BRANCH_SUMMARY_PROFILE,
     CODING_COMPACTION_SUMMARY_PROFILE,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.context import SummaryValidationReport, validate_summary
 from loushang.harness.context.budget import calculate_compaction_budget
 from loushang.harness.transcript import (

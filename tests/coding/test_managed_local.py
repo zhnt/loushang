@@ -14,9 +14,9 @@ from loushang.apphost.managed.contracts import (
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.apphost.managed.paths import resolve_managed_admission_root
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
-from loushang.coding.hosted_local import CodingLocalCommandV1
-from loushang.coding.managed_bootstrap import CodingManagedApplicationLaunchV1
-from loushang.coding.managed_local import (
+from loushang.coding.hosted.local import CodingLocalCommandV1
+from loushang.coding.hosted.managed.bootstrap import CodingManagedApplicationLaunchV1
+from loushang.coding.hosted.managed.local import (
     CodingManagedLocalCommandV1,
     CodingManagedLocalLaunchV1,
     create_coding_managed_local_launch,
@@ -142,7 +142,8 @@ def test_legacy_and_managed_commands_reject_each_others_launch(deployment, tmp_p
     def forbidden(*args, **kwargs):
         raise AssertionError("wrong launch constructed a directory or attempt")
 
-    from loushang.coding import hosted_local, managed_local
+    from loushang.coding.hosted import local as hosted_local
+    from loushang.coding.hosted.managed import local as managed_local
 
     monkeypatch.setattr(hosted_local, "LocalConnectionDirectoryV1", forbidden)
     monkeypatch.setattr(hosted_local, "create_coding_hosted_attempt", forbidden)

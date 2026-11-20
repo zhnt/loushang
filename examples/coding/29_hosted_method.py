@@ -27,9 +27,9 @@ from loushang.appserver.protocol import (
     SessionScopeV1,
     SessionSnapshotRequestV1,
 )
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.hosted_method import CodingHostedMethodV1
-from loushang.coding.hosted_method_application import create_coding_method_application
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.method import CodingHostedMethodV1
+from loushang.coding.hosted.method_application import create_coding_method_application
 from loushang.method.types import MethodDescriptor
 
 

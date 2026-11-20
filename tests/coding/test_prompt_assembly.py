@@ -62,7 +62,7 @@ def test_assemble_prompt_returns_prompt_assembly() -> None:
     from pathlib import Path
 
     from loushang.coding.prompt import assemble_prompt
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.resources.types import ResourceBundle
@@ -232,7 +232,7 @@ def test_assemble_prompt_keeps_legacy_tool_prompt_argument() -> None:
 
 def test_assemble_prompt_prefers_explicit_tool_prompt_over_tools() -> None:
     from loushang.coding.prompt import assemble_prompt
-    from loushang.coding.tool_pack import (
+    from loushang.coding.resources.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.tools.workspace.registry import (

@@ -12,10 +12,6 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -86,6 +82,10 @@ from loushang.coding.package.product_runtime import (
     bootstrap_coding_builtin_product_plugins,
     is_coding_fresh_first_b_snapshot,
     require_fresh_coding_product_inputs_without_writes,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.product_epoch_guard import (

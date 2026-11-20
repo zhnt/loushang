@@ -100,7 +100,7 @@ async def _run_installed_canary(
 ) -> AppHostCanaryCliResult:
     # Importing the root Coding CLI must not construct or even import the G9
     # composition. The exact command is the sole lazy activation edge.
-    from loushang.coding.apphost_canary import (
+    from loushang.coding.hosted.canary import (
         CodingAppHostCanaryRequestV1,
         run_coding_apphost_canary,
     )

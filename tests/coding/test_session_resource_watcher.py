@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 
 from loushang.agent import Agent
-from loushang.coding.resource_runtime import (
+from loushang.coding.resources.runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.resources.watcher import ResourceChangeWatcher
 
 

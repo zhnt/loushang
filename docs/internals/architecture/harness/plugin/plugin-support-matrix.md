@@ -77,7 +77,7 @@ those two plus optional `coding.arch.default`. The sets are Product policy;
 actual admission and new-Session selection still depend on the exact owner,
 Desired State, and Product gate. A new general-purpose profile system is not
 implied by these sets. See the
-[composition-set code](../../../../../src/loushang/coding/composition_sets.py).
+[composition-set code](../../../../../src/loushang/coding/composition/sets.py).
 
 For an ordinary new Coding Session, `loushang --composition-set coding-minimal`
 (or `coding-standard`/`coding-architecture`) selects one of these canonical
@@ -111,9 +111,9 @@ Resource. The version 2 support-status projection joins this receipt with the
 management owner's exact Installation, selected Package and Instance revision,
 then retains `productUse=not_checked`. It marks policy, authority, settings, or
 Desired State drift as stale. See the
-[TUI command adapter](../../../../../src/loushang/coding/plugin_management_ui.py),
+[TUI command adapter](../../../../../src/loushang/coding/plugin_manager/ui.py),
 [preview contract](../../../../../src/loushang/harness/plugin_management/current_preview.py),
-and [read SDK](../../../../../src/loushang/coding/plugin_management_read_sdk.py).
+and [read SDK](../../../../../src/loushang/coding/plugin_manager/read_sdk.py).
 
 The explicit `loushang-worker-windows-candidate` command is gated to Windows
 AMD64; its old `--windows-candidate` switch remains accepted but is optional.

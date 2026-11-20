@@ -9,13 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
 from loushang.harness.transcript._attached_discovery import _AttachedDiscoveryMethods
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
-from ..session_manager import SessionManager
 from .product_worker_policy import CodingWorkerPolicySelectionError
 
 _MAX_ATTACHED_TRANSCRIPT_BYTES = 64 * 1024 * 1024

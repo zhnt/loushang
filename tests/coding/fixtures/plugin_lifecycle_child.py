@@ -8,9 +8,9 @@ import threading
 from pathlib import Path
 
 from loushang.ai.model import Capabilities, Model
-from loushang.coding.bootstrap import create_agent_session, create_services
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
 from loushang.coding.control import ControlConfig, SettingsManager
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 
 
 def _model() -> Model:
@@ -76,12 +76,12 @@ async def _run(args: argparse.Namespace) -> None:
     if args.mode == "product_hold":
         from importlib.metadata import version
 
-        from loushang.coding._plugin_lifecycle import (
-            resolve_coding_plugin_lifecycle_state_layout,
-        )
         from loushang.coding.package.product_runtime import (
             CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             open_coding_fenced_product_application_owner,
+        )
+        from loushang.coding.plugin_manager.lifecycle import (
+            resolve_coding_plugin_lifecycle_state_layout,
         )
 
         await session.prepare_model_call_runtime()

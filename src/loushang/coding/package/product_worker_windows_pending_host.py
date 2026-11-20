@@ -6,6 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 
+from loushang.coding.package.worker_preparation_inputs import (
+    _CodingWorkerProviderPolicy,
+)
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderOwnerAuthority,
 )
@@ -34,7 +37,6 @@ from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
-from .._worker_preparation_inputs import _CodingWorkerProviderPolicy
 from .product_worker_provider import CodingWorkerBaseCompositionPolicyBinding
 from .product_worker_provider_host import CodingPreparedWorkerProvider
 from .product_worker_query_consumer import (

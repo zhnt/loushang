@@ -3,11 +3,11 @@ from dataclasses import replace
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.resume.activation_attempt import (
     CodingResumeRecoveryRequired,
     require_no_unsettled_coding_activation,
 )
-from loushang.coding.resume_binding import (
+from loushang.coding.resume.binding import (
     coding_user_payload_digest,
     inspect_coding_runtime_binding,
     project_coding_runtime_binding_path,

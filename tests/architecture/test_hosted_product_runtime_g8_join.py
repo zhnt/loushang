@@ -8,7 +8,7 @@ G8 = Path("docs/internals/architecture/apphost/product-worker-join-g8.md")
 APPHOST_SCOPE = Path("docs/internals/architecture/apphost/README.md")
 PLAN = Path("docs/internals/architecture/drafts/hosted-product-runtime-v1-plan.md")
 APPHOST = Path("src/loushang/apphost")
-CODING_JOIN = Path("src/loushang/coding/apphost_product.py")
+CODING_JOIN = Path('src/loushang/coding/hosted/product.py')
 EVIDENCE = Path(
     "docs/internals/architecture/apphost/hosted-product-g8-evidence-manifest.json"
 )
@@ -150,7 +150,7 @@ def test_g8_concrete_join_preserves_dependency_and_activation_boundaries() -> No
         assert "loushang.coding" not in imports
         assert not any(name.startswith("loushang.coding.") for name in imports)
     for path in (
-        Path("src/loushang/coding/bootstrap.py"),
+        Path('src/loushang/coding/composition/bootstrap.py'),
         Path("src/loushang/coding/cli/__main__.py"),
         Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),

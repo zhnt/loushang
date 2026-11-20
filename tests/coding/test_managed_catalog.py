@@ -27,15 +27,15 @@ from loushang.appserver.protocol import (
     WorkspaceRequestV1,
 )
 from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
-from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
-from loushang.coding.hosted_catalog import (
+from loushang.coding.composition.plan import CODING_CAPABILITY_PROFILE_METADATA_KEY
+from loushang.coding.composition.provenance import CODING_COMPOSITION_HEADER_KEY
+from loushang.coding.hosted.catalog import (
     CodingHostedCatalogError,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.managed_catalog import CodingManagedSessionCatalogV1
-from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE_METADATA_KEY
-from loushang.coding.session_manager import SessionManager
-from loushang.coding.workspace_catalog import CodingWorkspaceCatalog
+from loushang.coding.hosted.managed.catalog import CodingManagedSessionCatalogV1
+from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.conversation import StoreCommitOutcomeUnknown
 from loushang.harness.conversation.stores import file as file_module
 from loushang.harness.transcript.jsonl_file import (
@@ -387,7 +387,7 @@ def test_unsupported_runtime_is_observed_but_not_bound(tmp_path, monkeypatch):
     async def scenario():
         owner = catalog(tmp_path)
         path = await ordinary(owner)
-        from loushang.coding.product_plan import CODING_TRANSCRIPT_RUNTIME
+        from loushang.coding.composition.plan import CODING_TRANSCRIPT_RUNTIME
 
         header, records = load_agent_transcript_file(path)
         key = CODING_TRANSCRIPT_RUNTIME.spec.metadata_key
@@ -496,7 +496,7 @@ def test_post_restore_rejection_retains_original_session_on_cleanup_failure(tmp_
         scope = owner.scopes[0]
         rows = await owner.list_identities((scope.discovery_scope,), limit=256)
         restore = owner._owned_factory.restore_context
-        from loushang.coding import managed_catalog as module
+        from loushang.coding.hosted.managed import catalog as module
 
         def unsupported(*args):
             raise ValueError("runtime changed after restore")

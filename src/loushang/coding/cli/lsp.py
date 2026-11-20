@@ -9,7 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Never, TextIO
 
-from loushang.coding.capabilities import (
+from loushang.coding.composition.capabilities import (
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
 )

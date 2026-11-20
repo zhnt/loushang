@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product._backup_topology import (
     read_windows_private_backup_retention,
@@ -28,7 +29,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     prepare_windows_product_private_directory_chain,
 )
 
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     coding_arch_installation_private_data_root,

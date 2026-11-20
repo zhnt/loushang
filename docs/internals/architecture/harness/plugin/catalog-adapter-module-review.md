@@ -60,7 +60,7 @@ D-E1-01：旧 exported prepare 虽在兼容面内，当前无生产/测试直接
 
 用户在收到 R1.1 关系图、兼容范围和设计评审结论后，明确“同意，请实施开发”。本次接受限于该窄迁移及验收，不自动接受兼容路径删除、Harness shadow 改名或 D2 余项合并。Design status 为 accepted，Implementation status 为 implemented；远程交付状态以对应 PR 为准。
 
-唯一实现现为 [Coding Catalog adapter](../../../../../src/loushang/coding/_resource_catalog_adapter.py)，原 [shadow 模块](../../../../../src/loushang/coding/_resource_catalog_shadow.py)仅保留兼容转发。新实现逐字等于基线删除尾部三个旧别名及其说明块；类体、函数体、import 顺序、默认值、policy/revision 字符串、八项 `__all__` 保持。六生产文件只改 import 路径；三架构库存文件各只改一次实现路径字面量，原全部断言、扫描和 exact set 比较保持。
+唯一实现现为 [Coding Catalog adapter](../../../../../src/loushang/coding/resources/catalog.py)，原 [shadow 模块](../../../../../src/loushang/coding/resources/catalog_compatibility.py)仅保留兼容转发。新实现逐字等于基线删除尾部三个旧别名及其说明块；类体、函数体、import 顺序、默认值、policy/revision 字符串、八项 `__all__` 保持。六生产文件只改 import 路径；三架构库存文件各只改一次实现路径字面量，原全部断言、扫描和 exact set 比较保持。
 
 ### 三视角独立代码评审
 

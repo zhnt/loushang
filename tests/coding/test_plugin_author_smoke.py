@@ -11,7 +11,7 @@ from struct import pack_into
 
 import pytest
 
-from loushang.coding.plugin_author_smoke import main as smoke_cli_main
+from loushang.coding.authoring.plugin_smoke import main as smoke_cli_main
 from loushang.plugin import (
     write_coding_data_prompt_wheel,
     write_coding_data_skill_wheel,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from loushang.coding.composition_sets import (
+from loushang.coding.composition.sets import (
     CodingCompositionSetId,
     infer_coding_composition_set,
     resolve_coding_composition_set,

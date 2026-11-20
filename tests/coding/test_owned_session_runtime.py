@@ -9,9 +9,12 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding import session_manager as managers
-from loushang.coding.bootstrap import create_agent_session, create_agent_session_runtime
+from loushang.coding.composition.bootstrap import (
+    create_agent_session,
+    create_agent_session_runtime,
+)
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
+from loushang.coding.session import manager as managers
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
 from tests.harness.transcript.test_readonly_store import snapshot
 from tests.harness.transcript.test_writer_images import message
@@ -24,7 +27,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux owned Cod
 
 @pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
 def test_default_bootstrap_selects_owned_store_only_on_supported_platform(tmp_path, monkeypatch, platform):
-    from loushang.coding import bootstrap
+    from loushang.coding.composition import bootstrap
 
     monkeypatch.setattr(bootstrap, "sys", SimpleNamespace(platform=platform))
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))

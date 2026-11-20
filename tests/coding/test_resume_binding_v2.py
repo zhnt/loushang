@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 import pytest
 
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.resume_activation_attempt_v2 import (
+from loushang.coding.resume.activation_attempt_v2 import (
     prepare_coding_activation_attempt_v2_record,
     validate_coding_activation_attempt_v2_record,
 )
-from loushang.coding.resume_binding import coding_user_payload_digest
-from loushang.coding.resume_binding_v2 import (
+from loushang.coding.resume.binding import coding_user_payload_digest
+from loushang.coding.resume.binding_v2 import (
     CODING_RUNTIME_BINDING_V2_METADATA_KEY,
     CodingRuntimeBindingV2,
     decode_coding_runtime_binding_v2,

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 
 
 def test_G14_PRODUCT_header_metadata_is_immutable_and_survives_canonical_reopen(

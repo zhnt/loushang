@@ -11,12 +11,12 @@ import pytest
 import loushang.coding.package.private_data_backup as backup_module
 import loushang.coding.package.private_data_restore as restore_module
 import loushang.harness.plugin_management.private_data_backup as expiry_module
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.installation_private_data import (
     coding_arch_installation_private_data_root,
     prepare_coding_product_arch_private_data_root,
+)
+from loushang.coding.package.management_binding import (
+    build_coding_fenced_product_management_cli_ports,
 )
 from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
@@ -50,14 +50,14 @@ from loushang.coding.package.private_data_restore_confirmation import (
 from loushang.coding.package.private_data_restore_journal import (
     CodingArchPrivateDataRestoreJournal,
 )
-from loushang.coding.package.product_management_cli import (
-    build_coding_fenced_product_management_cli_ports,
-)
 from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
     open_coding_package_product_state,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,

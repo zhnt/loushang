@@ -5,10 +5,10 @@ import asyncio
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.resume_activation_plan import plan_coding_resume_async
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.resume.activation_plan import plan_coding_resume_async
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.resources.loader import ResourceLoader
 
 

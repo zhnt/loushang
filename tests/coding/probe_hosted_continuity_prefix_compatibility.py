@@ -21,8 +21,8 @@ from types import SimpleNamespace as NS
 import pytest
 
 import loushang.apphost.integrations._continuity_preparation as _continuity_owner
-import loushang.coding.hosted_continuity as _coding_owner
-from loushang.coding.workspace_catalog import CodingWorkspaceCatalog
+import loushang.coding.hosted.continuity as _coding_owner
+from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
 from tests.apphost.test_continuity import _attempt, _Lease, _record
 
 CASES = (

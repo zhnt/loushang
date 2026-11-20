@@ -4,7 +4,7 @@ import asyncio
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 
 
 def _model() -> Model:

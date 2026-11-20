@@ -76,6 +76,6 @@ def test_systemd_status_uses_the_published_managed_connection_root(tmp_path, mon
     ))
     assert mux_service._systemd_state()["recordRoot"] == record_root
     endpoint.write_text('{"recordRoot": "relative"}')
-    from loushang.coding.managed_service import ServiceControlError
+    from loushang.coding.hosted.managed.service import ServiceControlError
     with pytest.raises(ServiceControlError, match="management_unavailable"):
         mux_service._systemd_state()

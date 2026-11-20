@@ -14,7 +14,7 @@ from loushang.ai.model import (
 )
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.types import AssistantMessage, TextPart, Usage
-from loushang.coding.bootstrap import BootstrapServices
+from loushang.coding.composition.bootstrap import BootstrapServices
 from loushang.harness.model_catalog import ModelCatalog
 
 SCRIPTED_MODEL = ModelSelection(

@@ -35,19 +35,19 @@ from loushang.appserver.protocol import (
     SessionScopeV1,
 )
 from loushang.appservice.execution_contract import ExecutionRequestV1, ExecutionStatusV1
-from loushang.coding.appservice_adapter import CodingHostedSessionV1
-from loushang.coding.bootstrap import create_services
-from loushang.coding.hosted_catalog import (
+from loushang.coding.composition.bootstrap import create_services
+from loushang.coding.hosted.catalog import (
     CODING_HOSTED_COMPATIBILITY_ID,
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
-from loushang.coding.hosted_session import (
+from loushang.coding.hosted.execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted.service_adapter import CodingHostedSessionV1
+from loushang.coding.hosted.session import (
     CodingHostedHistoryBindingV1,
     CodingRealHostedSessionFactoryV1,
 )
-from loushang.coding.resume_history import read_coding_resume_snapshot
+from loushang.coding.resume.history import read_coding_resume_snapshot
 from loushang.coding.session.agent_session import AgentSession
 from loushang.harness.approval import ApprovalRequest
 from loushang.harness.config.agent import SettingsManager
@@ -391,11 +391,11 @@ def test_hosted_session_sets_only_supported_thinking_levels(tmp_path: Path) -> N
 def test_hosted_history_candidate_transfers_through_original_factory_without_runtime(
     tmp_path: Path, stage: str,
 ) -> None:
-    from loushang.coding.hosted_application import (
+    from loushang.coding.hosted.application import (
         CodingForegroundProductFactoryV1,
         CodingHostedProfileFactoryV1,
     )
-    from loushang.coding.hosted_catalog import (
+    from loushang.coding.hosted.catalog import (
         CodingHostedCandidateValidatorV1,
         CodingHostedCatalogError,
     )
@@ -509,8 +509,8 @@ def test_hosted_history_candidate_transfers_through_original_factory_without_run
 
 def test_hosted_resume_lookup_uses_the_existing_canonical_binding(tmp_path: Path) -> None:
     from loushang.appservice.resume_ports import ResumeInputLookupQueryV1
-    from loushang.coding.hosted_catalog import CodingHostedCatalogError
-    from loushang.coding.resume_input_lookup import CodingResumeInputLookupQueryV1
+    from loushang.coding.hosted.catalog import CodingHostedCatalogError
+    from loushang.coding.resume.input_lookup import CodingResumeInputLookupQueryV1
 
     async def scenario():
         binding = await _binding(tmp_path)
@@ -537,8 +537,8 @@ def test_hosted_resume_lookup_uses_the_existing_canonical_binding(tmp_path: Path
 def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_property,
 ) -> None:
-    import loushang.coding.bootstrap as bootstrap_module
-    import loushang.coding.hosted_session as hosted_module
+    import loushang.coding.composition.bootstrap as bootstrap_module
+    import loushang.coding.hosted.session as hosted_module
     import loushang.coding.package.product_runtime as product_runtime_module
     from loushang.harness.capabilities.component_runtime import (
         CapabilityOwnerComponentBinder,
@@ -710,9 +710,9 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
 def test_windows_hosted_ordinary_session_enters_fresh_b_product(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.composition.bootstrap as coding_bootstrap
     import loushang.coding.package.product_runtime as product_runtime
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
 
@@ -764,7 +764,7 @@ def test_windows_hosted_ordinary_session_enters_fresh_b_product(
 def test_hosted_product_runtime_requires_a_session_factory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.composition.bootstrap as coding_bootstrap
 
     async def scenario() -> None:
         candidate, claimed, identity, _ = await _construction(tmp_path)
@@ -811,12 +811,12 @@ def test_hosted_product_runtime_requires_a_session_factory(
 def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.composition.bootstrap as coding_bootstrap
     import loushang.coding.package.product_runtime as product_runtime
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
     from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
         PackageEpochFenceError,
     )
@@ -895,10 +895,10 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
 def test_hosted_default_preserves_effective_old_settings_without_product_cutover(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.package.epoch_layout import resolve_coding_package_epoch_layout
 
     settings = tmp_path / "settings.json"
     old_bytes = b'{"disabled_plugins":["coding.base"]}'
@@ -929,7 +929,7 @@ def test_hosted_default_preserves_effective_old_settings_without_product_cutover
 def test_hosted_product_runtime_missing_selection_cannot_fall_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.composition.bootstrap as coding_bootstrap
     from loushang.coding.control import ControlConfig
     from loushang.harness.package_product.product_runtime import (
         PackageProductRuntimeActivationError,
@@ -1004,8 +1004,8 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
     monkeypatch: pytest.MonkeyPatch,
     record_property,
 ) -> None:
-    import loushang.coding.bootstrap as bootstrap_module
-    import loushang.coding.hosted_session as module
+    import loushang.coding.composition.bootstrap as bootstrap_module
+    import loushang.coding.hosted.session as module
     import loushang.coding.package.product_runtime as product_runtime_module
 
     began = time.perf_counter()

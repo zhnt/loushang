@@ -12,7 +12,7 @@ from loushang.ai import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.ai.model import Capabilities, Model
 from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.harness.transcript import summarization as summary_module
 from loushang.harnesstui.conversation.agent_binding import (

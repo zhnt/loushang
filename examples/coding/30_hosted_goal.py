@@ -29,8 +29,8 @@ from loushang.appserver.protocol import (
     SessionScopeV1,
     SessionSnapshotRequestV1,
 )
-from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.hosted_goal_application import (
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+from loushang.coding.hosted.goal_application import (
     CodingHostedGoalV1,
     create_coding_goal_application,
 )

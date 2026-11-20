@@ -29,17 +29,17 @@ from loushang.apphost import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
-from loushang.coding._product_worker_canary import (
+from loushang.coding.hosted._worker_canary import (
     CodingProductWorkerCanaryStatusV1,
 )
-from loushang.coding.apphost_composition import (
+from loushang.coding.hosted.composition import (
     CodingAppHostCompositionActivationV1,
     CodingAppHostCompositionError,
     CodingAppHostCompositionRequestV1,
     CodingAppHostRollbackLatchV1,
     create_coding_apphost_composition,
 )
-from loushang.coding.apphost_product import (
+from loushang.coding.hosted.product import (
     CodingAppHostProductBindingV1,
     CodingAppHostWorkerAttemptV1,
 )
@@ -62,9 +62,9 @@ _PROFILE_IDS = ("embedded-tui", "hosted-app")
 _INVENTORY = Path(
     "docs/internals/architecture/apphost/hosted-product-g9-entrypoint-inventory.json"
 )
-_COMPOSITION = Path("src/loushang/coding/apphost_composition.py")
+_COMPOSITION = Path('src/loushang/coding/hosted/composition.py')
 _CURRENT_ROOTS = {
-    "coding.bootstrap": Path("src/loushang/coding/bootstrap.py"),
+    "coding.bootstrap": Path('src/loushang/coding/composition/bootstrap.py'),
     "coding.cli": Path("src/loushang/coding/cli/__main__.py"),
     "coding.sdk": Path("src/loushang/coding/__init__.py"),
     "coding.tui": Path("src/loushang/coding/ui/cli.py"),
@@ -1114,9 +1114,9 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "loushang-package-cutover": "loushang.coding.cli.package_cutover:main",
         "loushang-package-gc": "loushang.coding.cli.package_gc:main",
         "loushang-package-repair": "loushang.coding.cli.package_repair:main",
-        "loushang-coding-plugin-smoke": "loushang.coding.plugin_author_smoke:main",
-        "loushang-coding-extension": "loushang.coding.extension_author:main",
-        "loushang-coding-plugin-status": "loushang.coding.plugin_support_status:main",
+        "loushang-coding-plugin-smoke": "loushang.coding.authoring.plugin_smoke:main",
+        "loushang-coding-extension": "loushang.coding.authoring.extension:main",
+        "loushang-coding-plugin-status": "loushang.coding.plugin_manager.support_status:main",
         "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
         "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
         "loushang-worker-windows-candidate": "loushang.coding.cli.package_worker_windows_candidate:main",
@@ -1174,7 +1174,7 @@ def _imports(path: Path) -> set[str]:
 def test_g9_composition_has_the_only_accepted_dependency_edge(_case: str) -> None:
     imports = _imports(_COMPOSITION)
     assert imports & {"loushang.apphost"} == {"loushang.apphost"}
-    assert "loushang.coding.apphost_product" in imports
+    assert 'loushang.coding.hosted.product' in imports
     forbidden = ("loushang.hosting", "loushang.appserver", "loushang.harnessgui")
     assert not any(
         module == prefix or module.startswith(f"{prefix}.")
@@ -1184,7 +1184,9 @@ def test_g9_composition_has_the_only_accepted_dependency_edge(_case: str) -> Non
     for path in Path("src/loushang").rglob("*.py"):
         if path not in {
             _COMPOSITION,
-            Path("src/loushang/coding/apphost_canary.py"),
+            Path('src/loushang/coding/hosted/canary.py'),
+            # Pure historical route data is not a composition consumer.
+            Path('src/loushang/coding/_compat/root_names.py'),
         }:
             assert "apphost_composition" not in path.read_text(encoding="utf-8")
     for path in Path("src/loushang/apphost").rglob("*.py"):

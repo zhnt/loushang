@@ -8,27 +8,27 @@ from datetime import UTC, datetime
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.product_plan import (
+from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
     CODING_RUNTIME_PROFILE_METADATA_KEY,
 )
-from loushang.coding.resume_binding import (
+from loushang.coding.composition.provenance import CODING_COMPOSITION_HEADER_KEY
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.resume.binding import (
     CODING_RUNTIME_BINDING_METADATA_KEY,
     CodingRuntimeBindingV1,
     coding_user_payload_digest,
     prepare_coding_resume_user_record,
 )
-from loushang.coding.resume_composition_comparison import (
+from loushang.coding.resume.composition_comparison import (
     compare_coding_resume_composition,
 )
-from loushang.coding.resume_history import (
+from loushang.coding.resume.history import (
     inspect_coding_resume_header,
     read_coding_resume_header,
     read_coding_resume_snapshot,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.conversation import ConversationHeader, ConversationRecord
 from loushang.harness.transcript import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.jsonl_file import (
@@ -222,7 +222,7 @@ def test_readonly_snapshot_selects_one_parent_linked_history_path(
         return result
 
     monkeypatch.setattr(
-        "loushang.coding.resume_history.load_agent_transcript_file_with_content_digest",
+        'loushang.coding.resume.history.load_agent_transcript_file_with_content_digest',
         change_after_read,
     )
     with pytest.raises(ValueError, match="source changed"):

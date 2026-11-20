@@ -14,7 +14,7 @@ from loushang.coding.package.product_worker_discovery import (
 from loushang.coding.package.product_worker_policy import (
     CodingWorkerPolicySelectionError,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.conversation.jsonl_codec import ConversationJsonlRecordCodec
 from loushang.harness.plugin_management.package_gc_reservation import (

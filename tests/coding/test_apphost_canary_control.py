@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._apphost_canary_control import (
+from loushang.coding.hosted._canary_control import (
     CodingAppHostCanaryControlError,
     CodingAppHostCanaryControlJournal,
     default_coding_apphost_canary_control_path,

@@ -9,7 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Literal, TextIO
 
-from loushang.coding.worktree import create_coding_git_workspace_manager
+from loushang.coding.workspace.worktree import create_coding_git_workspace_manager
 from loushang.harness.workspace import (
     GitApplyPlan,
     GitWorkspaceError,

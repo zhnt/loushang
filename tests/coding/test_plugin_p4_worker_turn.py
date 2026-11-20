@@ -6,9 +6,9 @@ import sys
 import pytest
 
 from loushang.ai.types import ToolCall
-from loushang.coding.bootstrap import create_services
 from loushang.coding.cli.application import default_runtime_builder
 from loushang.coding.cli.args import parse_args
+from loushang.coding.composition.bootstrap import create_services
 from loushang.coding.package.product_worker_turn_tool import (
     CODING_WORKER_QUERY_TOOL_NAME,
     CodingWorkerTurnToolBinding,

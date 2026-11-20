@@ -8,7 +8,7 @@ from loushang.agent import Agent
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.runtime import (
     SideQuestionAnswer,
     SideQuestionCoordinator,

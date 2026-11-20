@@ -17,8 +17,8 @@ from loushang.apphost.managed.contracts import (
 )
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.apphost.managed.paths import resolve_managed_paths
-from loushang.coding import managed_local
-from loushang.coding import managed_process as module
+from loushang.coding.hosted.managed import local as managed_local
+from loushang.coding.hosted.managed import process as module
 
 
 @pytest.mark.parametrize("frontend", [False, True])
@@ -26,15 +26,15 @@ def test_launch_material_does_not_import_backend(tmp_path, frontend):
     selected = invocation(tmp_path)
     script = """
 import sys
-from loushang.coding.managed_process import coding_managed_process_request
+from loushang.coding.hosted.managed.process import coding_managed_process_request
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
-assert 'loushang.coding.managed_local' not in sys.modules
+assert 'loushang.coding.hosted.managed.local' not in sys.modules
 request = coding_managed_process_request(
     ManagedChildInvocationV1.from_json(sys.argv[1]), 7,
     executable=sys.executable, environment={},
 )
-assert request.argv[2] == 'loushang.coding.managed_process'
-assert 'loushang.coding.managed_local' not in sys.modules
+assert request.argv[2] == 'loushang.coding.hosted.managed.process'
+assert 'loushang.coding.hosted.managed.local' not in sys.modules
 """
     if frontend:
         script = "import loushang.coding.cli.lmux_command\n" + script
@@ -58,7 +58,7 @@ def test_backend_import_failure_closes_adopted_endpoint(tmp_path, monkeypatch, c
     original_import = builtins.__import__
 
     def import_module(name, *args, **kwargs):
-        if name == "managed_local":
+        if name == "loushang.coding.hosted.managed.local":
             raise ImportError("private-backend-failure")
         return original_import(name, *args, **kwargs)
 
@@ -151,7 +151,7 @@ def test_request_is_pure_and_freezes_environment_without_mutating_input(tmp_path
     value = module.coding_managed_process_request(selected, 7, executable=sys.executable, environment=environment)
     assert environment == original
     assert value.argv == (
-        sys.executable, "-m", "loushang.coding.managed_process", selected.to_json(),
+        sys.executable, "-m", 'loushang.coding.hosted.managed.process', selected.to_json(),
         str(tmp_path / "platform/data/sessions"), "7",
     )
     assert dict(value.effective_environment) == {

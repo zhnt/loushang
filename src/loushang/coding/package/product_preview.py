@@ -11,6 +11,24 @@ from hashlib import sha256
 from pathlib import Path
 from types import TracebackType
 
+from loushang.coding.composition.base_plugin import CodingBasePluginAssemblyError
+from loushang.coding.composition.base_product import (
+    CodingBaseProductCompilation,
+    compile_coding_base_product_selection,
+    extend_coding_base_product_data_resources,
+)
+from loushang.coding.composition.external_data import (
+    CodingExternalDataProductCompilation,
+    compile_coding_external_data_product_selection,
+)
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.coding.resources.catalog import (
+    CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
+    CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+    build_coding_initial_resource_catalog_adapter,
+)
+from loushang.coding.resources.runtime import CodingResourceLoader
 from loushang.harness.capabilities.consumer_requirements import ProductCompositionError
 from loushang.harness.environment.probe import LocalHostEnvironmentProbe
 from loushang.harness.journal import JournalLoadPolicy
@@ -56,24 +74,6 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
 )
 
-from .._base_plugin import CodingBasePluginAssemblyError
-from .._base_product_composition import (
-    CodingBaseProductCompilation,
-    compile_coding_base_product_selection,
-    extend_coding_base_product_data_resources,
-)
-from .._external_data_product_composition import (
-    CodingExternalDataProductCompilation,
-    compile_coding_external_data_product_selection,
-)
-from .._plugin_lifecycle import CodingPluginLifecycleStateLayout
-from .._resource_catalog_adapter import (
-    CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
-    CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
-    build_coding_initial_resource_catalog_adapter,
-)
-from ..composition_sets import resolve_coding_composition_set
-from ..resource_runtime import CodingResourceLoader
 from .builtin_wheel import (
     coding_builtin_product_local_wheel_policy,
     inspect_posix_coding_base_product_wheel,

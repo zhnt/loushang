@@ -29,7 +29,7 @@ from loushang.coding import (
     create_agent_session_runtime,
     create_services,
 )
-from loushang.coding.tool_pack import coding_platform_tool_names
+from loushang.coding.resources.tool_pack import coding_platform_tool_names
 from loushang.harness.environment import LocalHostEnvironmentProbe
 
 

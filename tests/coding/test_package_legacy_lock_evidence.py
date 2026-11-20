@@ -8,9 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.package.legacy_local_wheel import (
     reacquire_coding_legacy_local_plugin_wheel,
 )
@@ -28,6 +25,9 @@ from loushang.coding.package.legacy_reacquisition import (
 from loushang.coding.package.pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.materializer import (

@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal, cast
 
+from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
@@ -44,7 +45,6 @@ from loushang.harness.worker.history._start_gate_store import (
     assert_checkpoint_attempt_available,
 )
 
-from .._worker_history_access import _CodingHistoryAccess
 from .product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )

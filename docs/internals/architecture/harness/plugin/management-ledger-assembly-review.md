@@ -48,7 +48,7 @@ R1 独立初评无技术阻断；事实勘误在 R2 修正并由原数据 review
 | 固定输入 | SHA256 |
 | --- | --- |
 | `src/loushang/harness/plugin_management/assembly.py` | `5c41cb4a0b98870391f382a36c06ccaa34e30cec174b55f28dc238e50f648060` |
-| `src/loushang/coding/_plugin_lifecycle.py` | `a0686e4bba99fc4f200421fb8f2d146eaae6b12f37a8bb168d090bbdb5ce4520` |
+| `src/loushang/coding/plugin_manager/lifecycle.py` | `a0686e4bba99fc4f200421fb8f2d146eaae6b12f37a8bb168d090bbdb5ce4520` |
 | `tests/architecture/test_plugin_lifecycle_plc9_baseline.py` | `7194d701cdf1d0c9baad967a36a25a170d9ebebf96643ff1f3f89f6738e5f11e` |
 
 | 视角 | 结论与关键证据 | 树外报告及 SHA256 |

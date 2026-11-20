@@ -231,7 +231,7 @@ def test_valid_wheel_is_fully_verified_before_controlled_extraction(
 def test_checked_in_coding_base_files_can_enter_verified_wheel_tree(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding._base_plugin import coding_base_plugin_root
+    from loushang.coding.composition.base_plugin import coding_base_plugin_root
 
     root = coding_base_plugin_root()
     source_files = {

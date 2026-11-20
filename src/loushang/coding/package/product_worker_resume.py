@@ -4,17 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+from loushang.coding.resume.activation_attempt_v2 import (
+    CodingActivationAttemptV2,
+    CodingResumeEffectOwnerV1,
+)
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
     ProductWorkerActivationReceiptV1,
     _WorkerResumeSettlementMethods,
-)
-
-from ..resume_activation_attempt import CodingResumeRecoveryRequired
-from ..resume_activation_attempt_v2 import (
-    CodingActivationAttemptV2,
-    CodingResumeEffectOwnerV1,
 )
 
 

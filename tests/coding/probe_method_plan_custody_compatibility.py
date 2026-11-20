@@ -17,7 +17,7 @@ import pytest
 
 from loushang.appserver.protocol import AckV1
 from loushang.appservice.execution_guard import ExecutionControlV1
-from loushang.coding import _hosted_method_work as code
+from loushang.coding.hosted import _method_work as code
 from loushang.harnesswork.integrations import session as core
 from loushang.harnesswork.recording import WorkRecording, WorkRecordingUnavailable
 from loushang.harnesswork.types import WorkRun

@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.coding import plugin_dependency_grants as grants
+from loushang.coding.composition import dependency_grants as grants
 from loushang.coding.package import builtin_wheel as wheels
 from loushang.coding.package import product_revisions as revisions
 

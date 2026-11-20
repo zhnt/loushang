@@ -1,5 +1,17 @@
 # Coding package component migration
 
+## Delivery update
+
+[PR #913](https://github.com/zhnt/loushang/pull/913) merged on 2026-11-19 at
+`d066681982c07e2aacdff9de466a1972a35797b6`. The final candidate's existing
+remote checks completed successfully: 39 jobs passed and six remained skipped
+under the existing configuration. Control `main` was synchronized, the accepted
+tree matched the candidate, and the three pre-existing user changes were
+preserved. The clean, accepted task worktree and local task branch were removed
+normally. Only the first 187-file milestone is delivered; the full Coding
+componentization Goal remains active. Pending-delivery statements below describe
+the original pre-merge evidence snapshot.
+
 ## Scope and ownership
 
 The first internal componentization batch relocates all 187 root `package*.py`

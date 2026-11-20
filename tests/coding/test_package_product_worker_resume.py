@@ -11,8 +11,8 @@ from loushang.coding.package.product_worker_resume import (
     prepare_coding_worker_resume_effect_owner,
     seal_coding_worker_resume_parent,
 )
-from loushang.coding.resume_activation_attempt import CodingResumeRecoveryRequired
-from loushang.coding.resume_activation_attempt_v2 import CodingActivationAttemptV2
+from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+from loushang.coding.resume.activation_attempt_v2 import CodingActivationAttemptV2
 from loushang.harness.worker import activation_state_journal as journal_module
 from tests.harness.worker.test_product_activation import _ATTEMPT_A, _coordinator
 from tests.harness.worker.test_resume_parent_context import _fixture, _lease

@@ -18,8 +18,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from loushang.coding import resume_continuation as domain
-from loushang.coding._resume_cleanup import CodingResumeContinuationCleanupFailure
+from loushang.coding.resume import continuation as domain
+from loushang.coding.resume._cleanup import CodingResumeContinuationCleanupFailure
 from loushang.coding.runtime import agent_session_runtime as code
 from loushang.harness.session.lifecycle import (
     SessionLifecycleHooks,

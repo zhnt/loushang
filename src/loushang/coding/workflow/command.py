@@ -6,7 +6,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, TextIO, cast
 
-from loushang.coding.model_selection import ensure_usable_session_model
+from loushang.coding.interaction.model_selection import ensure_usable_session_model
 from loushang.harness.scenario.cli import run_workflow_cli
 from loushang.harness.scenario.protocols import CommandRunResult
 from loushang.harness.workspace.exec import ExecRequest, ExecService

@@ -20,7 +20,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotRequestV1,
     TurnTextV1,
 )
-from loushang.coding.hosted_local import CodingLocalCommandV1
+from loushang.coding.hosted.local import CodingLocalCommandV1
 from tests.apphost.test_managed_child import binding as binding
 from tests.apphost.test_managed_child import until
 

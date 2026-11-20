@@ -6,10 +6,10 @@ from pathlib import Path
 
 from tests.architecture._source_imports import imported_modules, resolved_imports
 
-CANARY = Path("src/loushang/coding/_product_worker_canary.py")
+CANARY = Path('src/loushang/coding/hosted/_worker_canary.py')
 CANARY_LIFECYCLE = Path("src/loushang/harness/worker/_product_attempt_lifecycle.py")
-APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
-APPHOST_CANARY = Path("src/loushang/coding/apphost_canary.py")
+APPHOST_PRODUCT = Path('src/loushang/coding/hosted/product.py')
+APPHOST_CANARY = Path('src/loushang/coding/hosted/canary.py')
 CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
@@ -73,7 +73,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package/product_worker_resume.py": {
         "loushang.harness.worker.product_activation"
     },
-    CODING_ROOT / "resume_continuation.py": {
+    CODING_ROOT / 'resume/continuation.py': {
         "loushang.harness.worker.activation_state_journal"
     },
     CODING_ROOT / "package/product_worker_activation_state_journal.py": {
@@ -295,7 +295,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package/product_worker_start_gate_base_v2.py": {
         "loushang.harness.worker.history._start_gate"
     },
-    CODING_ROOT / '_worker_preparation_inputs.py': {
+    CODING_ROOT / 'package/worker_preparation_inputs.py': {
         'loushang.harness.worker.capability_query',
         'loushang.harness.worker.contracts',
         'loushang.harness.worker.product_activation',

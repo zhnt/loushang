@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.workspace_operations import CodingWorkspaceOperations
+from loushang.coding.workspace.operations import CodingWorkspaceOperations
 from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
 
 
 def test_standard_file_tools_do_not_borrow_linked_git_process_scope(tmp_path: Path) -> None:
-    from loushang.coding.sandbox import CodingExecutionAuthority
+    from loushang.coding.control.sandbox import CodingExecutionAuthority
     from loushang.harness.permissions import permission_profile_snapshot
 
     workspace = tmp_path / "worktree"

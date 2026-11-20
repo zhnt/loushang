@@ -6,14 +6,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from loushang.coding.bootstrap import create_agent_session
-from loushang.coding.resume_activation_attempt import (
+from loushang.coding.composition.bootstrap import create_agent_session
+from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
     prepare_coding_activation_attempt_record,
 )
-from loushang.coding.resume_binding import project_coding_runtime_binding_path
-from loushang.coding.session_manager import (
+from loushang.coding.resume.binding import project_coding_runtime_binding_path
+from loushang.coding.session.manager import (
     _bind_owned_session_manager,
     _create_owned_session_factory,
 )

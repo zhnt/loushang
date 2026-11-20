@@ -15,10 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from loushang.ai.model import Capabilities, Model
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
-from loushang.coding.bootstrap import (
+from loushang.coding.composition.bootstrap import (
     create_agent_session,
     create_agent_session_runtime,
     create_services,
@@ -35,7 +32,10 @@ from loushang.coding.package.product_runtime import (
     bootstrap_coding_builtin_product_plugins,
     open_coding_fenced_product_application_owner,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.cli.package_lifecycle import (
     PackageLifecycleError,
     PackageLifecycleRequest,
@@ -1003,11 +1003,11 @@ def test_fenced_product_routes_package_entrances_and_preserves_operator_disable(
             return_value="2.0.0",
         ),
         patch(
-            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+            'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
             side_effect=AssertionError("legacy base assembly"),
         ),
         patch(
-            "loushang.coding.bootstrap._default_package_materializer",
+            'loushang.coding.composition.bootstrap._default_package_materializer',
             side_effect=AssertionError("legacy package materializer"),
         ),
     ):

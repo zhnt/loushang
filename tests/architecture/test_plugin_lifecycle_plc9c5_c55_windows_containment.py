@@ -24,7 +24,7 @@ HOSTING_ROOT = SOURCE_ROOT / "hosting"
 WORKER_ROOT = SOURCE_ROOT / "harness" / "worker"
 BRIDGE = WORKER_ROOT / "_native_profile_bridge.py"
 PRODUCT_ACTIVATION = WORKER_ROOT / "product_activation.py"
-CODING_CANARY = SOURCE_ROOT / "coding" / "_product_worker_canary.py"
+CODING_CANARY = SOURCE_ROOT / "coding" / 'hosted/_worker_canary.py'
 WINDOWS_PREPARATION = HOSTING_ROOT / "_windows_launch_preparation.py"
 LEGACY_APPCONTAINER = (
     SOURCE_ROOT / "harness" / "sandbox" / "package_windows_legacy_runtime.py"

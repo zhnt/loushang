@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding import continuity as product
+from loushang.coding.session import continuity as product
 from loushang.harness.continuity import (
     CONTINUITY_JSONL_MEDIA_TYPE,
     ContinuityActivationPayload,

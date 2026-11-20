@@ -38,22 +38,11 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage
-from loushang.coding._plugin_lifecycle import (
-    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
-)
-from loushang.coding._product_worker_canary import (
-    CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
-)
 from loushang.coding.arch.cache import (
     ImportFactCache,
     ImportFactCacheNamespace,
     ImportFactCacheSnapshot,
     import_cache_root_id,
-)
-from loushang.coding.bootstrap import (
-    create_agent_session,
-    create_agent_session_runtime,
-    create_services,
 )
 from loushang.coding.cli.package_cutover import main as cutover_cli_main
 from loushang.coding.cli.package_gc import main as gc_cli_main
@@ -64,6 +53,14 @@ from loushang.coding.cli.package_worker_windows_candidate import (
     main as windows_worker_candidate_main,
 )
 from loushang.coding.cli.plugin_private_data import main as private_data_cli_main
+from loushang.coding.composition.bootstrap import (
+    create_agent_session,
+    create_agent_session_runtime,
+    create_services,
+)
+from loushang.coding.hosted._worker_canary import (
+    CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
+)
 from loushang.coding.package.arch_private_cache import (
     write_coding_arch_private_windows_snapshot,
 )
@@ -283,7 +280,10 @@ from loushang.coding.package.product_worker_windows_stage_review import (
 from loushang.coding.package.product_worker_windows_supervisor_journal import (
     open_coding_windows_product_worker_supervisor_journal,
 )
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.session.manager import SessionManager
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_gc_executor import (
@@ -728,11 +728,11 @@ def test_windows_public_ordinary_session_enters_fresh_b_product(
         ),
         patch("loushang.coding.package_product_runtime.version", return_value="2.0.0"),
         patch(
-            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+            'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
             side_effect=AssertionError("legacy base assembly"),
         ),
         patch(
-            "loushang.coding.bootstrap._default_package_materializer",
+            'loushang.coding.composition.bootstrap._default_package_materializer',
             side_effect=AssertionError("legacy package materializer"),
         ),
     ):
@@ -776,11 +776,11 @@ def test_windows_public_runtime_session_enters_fresh_b_product(
         ),
         patch("loushang.coding.package_product_runtime.version", return_value="2.0.0"),
         patch(
-            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+            'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
             side_effect=AssertionError("legacy base assembly"),
         ),
         patch(
-            "loushang.coding.bootstrap._default_package_materializer",
+            'loushang.coding.composition.bootstrap._default_package_materializer',
             side_effect=AssertionError("legacy package materializer"),
         ),
     ):
@@ -927,11 +927,11 @@ def test_windows_candidate_ordinary_session_uses_fresh_b_product(
         ),
         patch("loushang.coding.package_product_runtime.version", return_value="2.0.0"),
         patch(
-            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+            'loushang.coding.composition.bootstrap.prepare_managed_coding_base_plugin_assembly',
             side_effect=AssertionError("legacy base assembly"),
         ),
         patch(
-            "loushang.coding.bootstrap._default_package_materializer",
+            'loushang.coding.composition.bootstrap._default_package_materializer',
             side_effect=AssertionError("legacy package materializer"),
         ),
     ):
@@ -2145,10 +2145,10 @@ import json
 import sys
 from pathlib import Path
 
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.installation_private_data import prepare_coding_product_arch_private_data_root
 from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
 
 workspace = Path(sys.argv[1])
@@ -2508,9 +2508,9 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.product_runtime import CodingFencedProductApplicationSelection
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
 
@@ -2612,9 +2612,9 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.product_runtime import CodingFencedProductApplicationSelection
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_runtime import PackageProductRuntimeRequestV1
 from loushang.harness.plugin_management.service import PluginManagementService
@@ -6426,7 +6426,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.package.product_worker_windows_orphan_review import (
     repair_coding_windows_product_worker_clean_exit_orphan_runtime,
@@ -6544,7 +6544,7 @@ preimport_worker_files = sorted(
     item.name for item in Path(sys.argv[4]).iterdir()
     if item.name.startswith("worker-")
 )
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.package.product_worker_windows_native_approval_owner import CodingWindowsWorkerNativeApprovalOwner
 from loushang.coding.package.product_worker_windows_opt_in_owner import CodingWindowsWorkerProductOptInOwner
@@ -6762,7 +6762,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 from loushang.harness.worker.payload._windows_stage_retirement import WindowsStageRetirement
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.package.product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
 from loushang.coding.package.product_worker_windows_partial_stage_review import review_coding_windows_product_worker_partial_stage
@@ -6920,7 +6920,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.package.product_worker_windows_launch_intent import commit_coding_windows_product_worker_launch_intent
 from loushang.coding.package.product_worker_windows_payload import bind_coding_windows_product_worker_launch_request, materialize_coding_windows_product_worker_payload
@@ -7102,7 +7102,7 @@ def _assert_windows_worker_reserved_settlement(
 import json
 import sys
 from pathlib import Path
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.package.product_worker_windows_launch_intent import commit_coding_windows_product_worker_launch_intent
 from loushang.coding.package.product_worker_windows_payload import bind_coding_windows_product_worker_launch_request, materialize_coding_windows_product_worker_payload
@@ -7188,7 +7188,7 @@ import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
-from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.plugin_manager.lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package.product_runtime import open_coding_fenced_product_application_owner
 import loushang.coding.package.product_worker_windows_payload as payload_module
 from loushang.harness.worker.payload._windows_stage_retirement import WindowsStageRetirement

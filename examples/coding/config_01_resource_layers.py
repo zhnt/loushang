@@ -11,7 +11,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from loushang.coding.resource_runtime import (
+from loushang.coding.resources.runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 

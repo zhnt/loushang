@@ -5,9 +5,9 @@ import threading
 
 import pytest
 
-from loushang.coding.bootstrap import create_agent_session, create_services
-from loushang.coding.resource_runtime import CodingResourceLoader
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.composition.bootstrap import create_agent_session, create_services
+from loushang.coding.resources.runtime import CodingResourceLoader
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.resources.loader import ResourceLoader
 
 

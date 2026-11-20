@@ -10,15 +10,15 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding._plugin_lifecycle import (
-    resolve_coding_plugin_lifecycle_state_layout,
-)
 from loushang.coding.cli.application import run_cli
 from loushang.coding.cli.package_cutover import main as cutover_cli_main
 from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
 )
-from loushang.coding.resource_runtime import CodingResourceLoader
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.resources.runtime import CodingResourceLoader
 from loushang.harness.config.agent import SettingsManager
 from loushang.plugin.__main__ import main as author_cli_main
 
@@ -197,7 +197,7 @@ def test_unavailable_workspace_blocks_versioned_inventory(tmp_path: Path) -> Non
 def test_native_fallback_refuses_root_replacement_before_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from loushang.coding import plugin_local_discovery as discovery
+    from loushang.coding.plugin_manager import local_discovery as discovery
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()

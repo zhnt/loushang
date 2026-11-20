@@ -32,7 +32,7 @@ def _write_python_dist(target: Path, *, name: str, version: str) -> None:
 
 
 def test_package_materializer_records_pending_remote_sources(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
@@ -51,7 +51,7 @@ def test_package_materializer_records_pending_remote_sources(tmp_path) -> None:
 def test_package_resource_root_resolver_covers_local_and_installed_remote_sources(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -85,7 +85,7 @@ def test_package_resource_root_resolver_covers_local_and_installed_remote_source
 def test_package_resource_root_resolver_uses_installed_package_manifest_root(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -123,10 +123,10 @@ def test_package_resource_root_resolver_uses_installed_package_manifest_root(tmp
 
 
 def test_package_lifecycle_types_are_exported_from_package_namespace() -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
     from loushang.harness.resources.packages.materializer import (
         GitPackageMaterializerBackend,
         PackageMaterializationRecord,
@@ -403,7 +403,7 @@ def test_direct_backends_refuse_fenced_legacy_install_root(
 
 
 def test_package_materializer_materializes_python_package_sources_and_persists_lockfile(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -434,7 +434,7 @@ def test_package_materializer_materializes_python_package_sources_and_persists_l
 def test_package_materializer_uses_backend_to_install_remote_sources(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -461,7 +461,7 @@ def test_package_materializer_uses_backend_to_install_remote_sources(tmp_path) -
 def test_package_materializer_refreshes_temporary_remote_source_without_persisting_lockfile(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -492,7 +492,7 @@ def test_package_materializer_refreshes_temporary_remote_source_without_persisti
 
 
 def test_package_materializer_resolves_scope_relative_local_sources(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.roots import resolve_package_resource_roots
@@ -528,7 +528,7 @@ def test_package_materializer_resolves_scope_relative_local_sources(tmp_path) ->
 
 def test_package_projection_resolves_scope_relative_package_sources(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
 
     global_base = tmp_path / "agent"
     project_base = tmp_path / "project" / ".loushang"
@@ -559,7 +559,7 @@ def test_package_projection_resolves_scope_relative_package_sources(tmp_path) ->
 
 
 def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -607,7 +607,7 @@ def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) 
 
 
 def test_package_materializer_updates_existing_git_checkout(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -646,7 +646,7 @@ def test_package_materializer_updates_existing_git_checkout(tmp_path) -> None:
 
 
 def test_git_package_materializer_updates_detached_checkout_without_upstream(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -684,7 +684,7 @@ def test_git_package_materializer_updates_detached_checkout_without_upstream(tmp
 
 
 def test_git_package_materializer_recovers_after_remote_history_rewrite(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -729,7 +729,7 @@ def test_git_package_materializer_recovers_after_remote_history_rewrite(tmp_path
 
 
 def test_git_package_materializer_skips_existing_pinned_checkout_update(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -814,7 +814,7 @@ def test_git_package_materializer_uses_explicit_default_branch_fetch_without_pul
 
 
 def test_package_materializer_refuses_to_update_dirty_git_checkout(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -846,7 +846,7 @@ def test_package_materializer_refuses_to_update_dirty_git_checkout(tmp_path) -> 
 
 
 def test_package_materializer_remove_deletes_checkout_and_keeps_registered_state(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -881,7 +881,7 @@ def test_package_materializer_remove_deletes_checkout_and_keeps_registered_state
 
 
 def test_package_materializer_denies_insecure_remote_sources_by_policy(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
 
@@ -919,7 +919,7 @@ def test_package_materializer_denies_insecure_remote_sources_by_policy(tmp_path)
 
 
 def test_package_materializer_records_pinned_git_ref_and_commit(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -968,7 +968,7 @@ def test_package_source_identity_normalizes_equivalent_git_urls() -> None:
 
 
 def test_package_materializer_persists_and_restores_lockfile_records(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -995,7 +995,7 @@ def test_package_materializer_persists_and_restores_lockfile_records(tmp_path) -
 
 
 def test_package_materializer_keys_records_by_normalized_source_identity(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1024,7 +1024,7 @@ def test_package_materializer_reports_corrupt_lockfile_and_writes_atomically(tmp
 
     import pytest
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.plugins.manifest import PluginManifestError
@@ -1069,7 +1069,7 @@ def test_package_materializer_reports_corrupt_lockfile_and_writes_atomically(tmp
 
 
 def test_package_materializer_skips_ref_pinned_update_checks(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1105,7 +1105,7 @@ def test_package_materializer_skips_ref_pinned_update_checks(tmp_path) -> None:
 def test_package_materializer_reports_update_check_failures(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1157,7 +1157,7 @@ def test_package_materializer_reports_update_check_failures(
 
 
 def test_package_materializer_skips_update_work_in_offline_mode(tmp_path, monkeypatch) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1184,7 +1184,7 @@ def test_package_materializer_skips_update_work_in_offline_mode(tmp_path, monkey
 
 
 def test_package_materializer_updates_remote_sources_with_bounded_concurrency(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1219,7 +1219,7 @@ def test_package_materializer_updates_remote_sources_with_bounded_concurrency(tm
 
 
 def test_package_materializer_check_updates_uses_configured_timeout(tmp_path, monkeypatch) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1257,7 +1257,7 @@ def test_package_materializer_check_updates_uses_configured_timeout(tmp_path, mo
 
 
 def test_package_materializer_check_updates_emits_progress_events(tmp_path, monkeypatch) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1298,7 +1298,7 @@ def test_package_materializer_check_updates_emits_progress_events(tmp_path, monk
 
 
 def test_package_materializer_check_updates_reports_python_package_update(tmp_path, monkeypatch) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1351,7 +1351,7 @@ def test_package_materializer_check_updates_reports_python_package_update(tmp_pa
 
 
 def test_package_materializer_check_updates_skips_pinned_python_packages(tmp_path, monkeypatch) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1389,7 +1389,7 @@ def test_package_materializer_check_updates_skips_pinned_python_packages(tmp_pat
 
 
 def test_package_materializer_persists_trusted_sources(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1422,7 +1422,7 @@ def test_package_materializer_persists_trusted_sources(tmp_path) -> None:
 def test_package_materializer_updates_all_and_checks_available_updates(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
@@ -1534,10 +1534,10 @@ def test_package_security_policy_explains_source_trust_decision() -> None:
 def test_package_projection_applies_package_source_filters(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -1572,10 +1572,10 @@ def test_package_projection_applies_package_source_filters(tmp_path) -> None:
 
 
 def test_package_projection_uses_materializer_lifecycle_records(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
 
     source = "https://packages.example.invalid/review-pack.git"
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
@@ -1599,10 +1599,10 @@ def test_package_projection_uses_materializer_lifecycle_records(tmp_path) -> Non
 def test_package_projection_summarizes_installed_remote_plugin_resources(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -1634,10 +1634,10 @@ def test_package_projection_summarizes_installed_remote_plugin_resources(tmp_pat
 def test_package_projection_reads_installed_remote_manifest_version(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -1665,7 +1665,7 @@ def test_package_projection_reads_installed_remote_manifest_version(tmp_path) ->
 
 
 def test_package_projection_adds_conflict_diagnostics_for_same_name_versions(tmp_path) -> None:
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
 
     first = tmp_path / "plugins" / "debug-pack-a"
     second = tmp_path / "plugins" / "debug-pack-b"
@@ -1694,10 +1694,10 @@ def test_package_projection_adds_conflict_diagnostics_for_same_name_versions(tmp
 
 
 def test_package_projection_summarizes_manifest_package_root(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
     from loushang.harness.resources.packages.source import PackageSourceConfig
 
     source = "https://packages.example.invalid/review-pack.git"
@@ -1734,10 +1734,10 @@ def test_package_projection_summarizes_manifest_package_root(tmp_path) -> None:
 def test_package_projection_reports_invalid_remote_manifest_diagnostics(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
@@ -1772,10 +1772,10 @@ def test_package_projection_reports_invalid_remote_manifest_diagnostics(tmp_path
 
 
 def test_package_projection_reports_denied_materializer_security(tmp_path) -> None:
-    from loushang.coding.resource_runtime import (
+    from loushang.coding.resources.runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.resource_runtime import collect_coding_package_entries
+    from loushang.coding.resources.runtime import collect_coding_package_entries
 
     source = "http://packages.example.invalid/review-pack.git"
     materializer = PackageMaterializer(install_root=tmp_path / "packages")

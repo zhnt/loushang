@@ -16,31 +16,31 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage
-from loushang.coding._base_plugin import prepare_coding_base_plugin_assembly
-from loushang.coding._plugin_lifecycle import (
+from loushang.coding.composition.base_plugin import prepare_coding_base_plugin_assembly
+from loushang.coding.composition.bootstrap import (
+    _create_agent_session,
+    create_agent_session,
+    create_services,
+)
+from loushang.coding.composition.sets import resolve_coding_composition_set
+from loushang.coding.control import SettingsManager
+from loushang.coding.plugin_manager.lifecycle import (
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding._resource_catalog_shadow import (
+from loushang.coding.prompt import (
+    CODING_KERNEL_SYSTEM_PROMPT,
+    CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
+)
+from loushang.coding.resources.catalog_compatibility import (
     CodingResourceCatalogAdmissionError,
     CodingResourceCatalogShadowAdmissionError,
     _owner_binding_covers,
     build_coding_initial_resource_catalog_shadow_adapter,
     complete_coding_package_plugin_selection_seed,
 )
-from loushang.coding.bootstrap import (
-    _create_agent_session,
-    create_agent_session,
-    create_services,
-)
-from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.control import SettingsManager
-from loushang.coding.prompt import (
-    CODING_KERNEL_SYSTEM_PROMPT,
-    CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
-)
-from loushang.coding.resource_runtime import CodingPackageMaterializer
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.resources.runtime import CodingPackageMaterializer
+from loushang.coding.session.manager import SessionManager
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionAuthorityContext,
     ProductCompositionCompilation,
@@ -2230,10 +2230,10 @@ def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding._plugin_lifecycle import (
+    from loushang.coding.plugin_manager.lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
-    from loushang.coding.resource_runtime import CodingPackageMaterializer
+    from loushang.coding.resources.runtime import CodingPackageMaterializer
     from loushang.harness.resources.packages.materializer import (
         GitPackageMaterializerBackend,
     )

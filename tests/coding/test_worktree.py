@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.worktree import (
+from loushang.coding.workspace.worktree import (
     CodingGitWorktreeLeasePort,
     create_coding_git_workspace_manager,
 )
