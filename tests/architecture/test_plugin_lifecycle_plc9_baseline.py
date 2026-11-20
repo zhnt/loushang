@@ -99,7 +99,7 @@ MANIFEST_ENABLED_FILES = {
     Path("src/loushang/coding/composition/capability_plugins.py"),
     Path("src/loushang/coding/composition/product_capability_plugins.py"),
     Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
-    Path("src/loushang/coding/composition/continuity.py"),
+    Path("src/loushang/coding/harness/session/configured_continuity.py"),
     Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
@@ -426,7 +426,7 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
             "_resolve_managed_capability_plugins",
         ): 1,
         (
-            Path("src/loushang/coding/composition/continuity.py"),
+            Path("src/loushang/coding/harness/session/configured_continuity.py"),
             "_reconcile_enabled_instances",
         ): 1,
         (

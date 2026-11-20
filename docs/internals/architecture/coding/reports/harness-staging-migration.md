@@ -1964,6 +1964,33 @@ Binding dependency. The normalized graph retains 1,659 module pairs. All
 121 focused Linux cases and 2,076 controlled comparisons with the prior
 checkpoint pass. Native Windows validation remains open.
 
+## Configured Continuity Plugin Replay And Instance Selection
+
+The staged configured Continuity owner now reads desired state and historical
+Source identities, honors removal tombstones, reopens exact Package revisions,
+inspects new sources and owns the combined runtime publication. It reconciles
+legacy enablement and selected instances through the existing Plugin Management
+owners, then releases excluded revisions before the ready composition takes
+ownership. Product layout, durable identities, approval, and final Hub
+selection remain at the Coding edge.
+
+Continuity and the two managed plugin assembly routes use one Harness factory
+for the published Package revision reference. This replaces six repeated
+projections while retaining the original Source binding and wire record.
+Coding Product removes 320 Python lines, staging adds 344, and formal Harness
+has zero net line change. The staged imports and durable error/identity
+contracts account for the 24-line production increase.
+
+The focused Linux tests pass in 224 cases, including 69 managed plugin
+consumer cases, tombstone restart, and replay after source replacement or
+removal. Another lifecycle case reproduces
+the same prepare failure at the prior checkpoint. On this machine the configured
+test storage has a group-writable workspace ancestor, and the Continuity
+staging guard rejects that path. The 524 controlled comparisons match the
+previous checkpoint's source association, activation, publication and handle
+release traces.
+Architecture checks pass. Native Windows validation remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

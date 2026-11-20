@@ -984,11 +984,13 @@ src/loushang/coding/composition/continuity.py::<module>::GitPackageMaterializerB
 src/loushang/coding/composition/continuity.py::<module>::PackageMaterializer = 1
 src/loushang/coding/composition/continuity.py::_coding_continuity_materializer::CodingPackageMaterializer = 2
 src/loushang/coding/composition/continuity.py::_coding_continuity_materializer::GitPackageMaterializerBackend = 1
-src/loushang/coding/composition/continuity.py::_continuity_runtime_inputs::PackageMaterializer = 1
-src/loushang/coding/composition/continuity.py::_continuity_runtime_inputs::reopen_plugin_package = 1
-src/loushang/coding/composition/continuity.py::_inspect_continuity_source::PackageMaterializer = 1
-src/loushang/coding/composition/continuity.py::_publish_continuity_runtime::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::_continuity_runtime_inputs::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::_continuity_runtime_inputs::reopen_plugin_package = 1
+src/loushang/coding/harness/session/configured_continuity.py::_inspect_continuity_source::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::_publish_continuity_runtime::PackageMaterializer = 1
 src/loushang/coding/composition/continuity.py::bind_coding_configured_continuity::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::<module>::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::bind_configured_continuity::PackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::assemble_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::prepare_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1

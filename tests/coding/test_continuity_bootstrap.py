@@ -1008,6 +1008,7 @@ def test_removed_continuity_tombstone_never_reinspects_configured_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from loushang.coding.composition import continuity as continuity_bootstrap
+    from loushang.coding.harness.session import configured_continuity
 
     async def scenario() -> None:
         marker = tmp_path / "removed-plugin.log"
@@ -1057,7 +1058,7 @@ def test_removed_continuity_tombstone_never_reinspects_configured_source(
             raise AssertionError("removed source was reinspected")
 
         monkeypatch.setattr(
-            continuity_bootstrap,
+            configured_continuity,
             "_inspect_continuity_source",
             reject_inspection,
         )
