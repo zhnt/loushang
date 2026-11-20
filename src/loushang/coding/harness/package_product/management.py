@@ -6,6 +6,7 @@ explicit intermediate Code dependencies; no parallel state or effect owner.
 
 from __future__ import annotations
 
+from types import TracebackType
 from typing import Literal
 
 from loushang.coding.package import management_binding as _binding
@@ -90,6 +91,34 @@ def open_management(
     except BaseException:
         runtime.close()
         raise
+
+
+class ManagementScope:
+    """Hold the original fenced owner through an operation and its success checks."""
+
+    def __init__(self, owner: _binding._ProductCliOwner, *, read_only: bool) -> None:
+        self._owner = owner
+        self._read_only = read_only
+
+    def __enter__(self) -> tuple[
+        _binding.PackageProductPosixFencedRuntimeOwner,
+        _binding.PluginManagementApplicationPorts,
+    ]:
+        self._runtime, ports = self._owner.open(read_only=self._read_only)
+        return self._runtime, ports
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        _exc: BaseException | None,
+        _traceback: TracebackType | None,
+    ) -> None:
+        try:
+            if exc_type is None:
+                self._runtime.assert_current()
+                self._owner.assert_workspace_current()
+        finally:
+            self._runtime.close()
 
 
 def source_snapshot(

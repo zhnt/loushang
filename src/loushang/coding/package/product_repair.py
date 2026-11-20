@@ -27,6 +27,7 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.package_product.product_runtime import (
     _perform_package_repair as _perform_package_repair,
 )
+from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
 from .product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH as CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
@@ -181,17 +182,11 @@ async def _aperform_coding_package_repair(
 
 
 def _require_workspace_identity(client: CodingPackageRepairClientV1) -> None:
-    try:
-        metadata = client.workspace.lstat()
-        current = client.workspace.resolve(strict=True)
-    except OSError as exc:
-        raise CodingPackageRepairError("package_repair_workspace_changed") from exc
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or current != client.workspace
-        or (metadata.st_dev, metadata.st_ino) != client.workspace_identity
-    ):
-        raise CodingPackageRepairError("package_repair_workspace_changed")
+    assert_workspace_directory_identity(
+        client.workspace,
+        client.workspace_identity,
+        changed=lambda: CodingPackageRepairError("package_repair_workspace_changed"),
+    )
 
 
 __all__ = [

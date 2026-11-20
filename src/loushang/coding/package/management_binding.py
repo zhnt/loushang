@@ -122,17 +122,12 @@ def explain_coding_fenced_package_operation(
 ) -> PackageOperationExplanationV1:
     """Read an existing A2 operation without activating or repairing Product."""
 
-    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
-    try:
-        result = PackageOperationExplanationProjector(
+    with _programs.ManagementScope(_ProductCliOwner(layout), read_only=True) as (runtime, _):
+        return PackageOperationExplanationProjector(
             PackageLifecycleJournal(
                 runtime.control_root / "product-state" / "lifecycle.jsonl"
             )
         ).explain_operation(operation_id)
-        runtime.assert_current()
-        return result
-    finally:
-        runtime.close()
 
 
 def explain_coding_fenced_plugin_operation(
@@ -144,20 +139,14 @@ def explain_coding_fenced_plugin_operation(
 ) -> PluginOperationExplanationV1:
     """Observe A2, handoff, and A1 within one inert fenced Product lease."""
 
-    runtime, ports = _ProductCliOwner(layout, workspace_guard).open(read_only=True)
-    try:
+    owner = _ProductCliOwner(layout, workspace_guard)
+    with _programs.ManagementScope(owner, read_only=True) as (runtime, ports):
         state_root = runtime.control_root / "product-state"
-        result = PluginOperationExplanationProjector(
+        return PluginOperationExplanationProjector(
             package_operations=PackageLifecycleJournal(state_root / "lifecycle.jsonl"),
             management_commands=ports.commands,
             handoffs=PackageRetentionHandoffJournal(state_root / "handoff.jsonl"),
         ).explain_operation(operation_id, correlation_id=correlation_id)
-        runtime.assert_current()
-        if workspace_guard is not None:
-            workspace_guard()
-        return result
-    finally:
-        runtime.close()
 
 
 def read_coding_fenced_package_handoff(
@@ -166,15 +155,10 @@ def read_coding_fenced_package_handoff(
 ) -> PackageRetentionHandoffReceiptV1 | None:
     """Observe one exact A2 handoff receipt without repairing its owner."""
 
-    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
-    try:
-        result = PackageRetentionHandoffJournal(
+    with _programs.ManagementScope(_ProductCliOwner(layout), read_only=True) as (runtime, _):
+        return PackageRetentionHandoffJournal(
             runtime.control_root / "product-state" / "handoff.jsonl"
         ).read_operation(operation_id)
-        runtime.assert_current()
-        return result
-    finally:
-        runtime.close()
 
 
 def read_coding_fenced_desired_transition(
@@ -285,15 +269,9 @@ class _ProductCliQueries:
     owner: _ProductCliOwner
 
     def snapshot(self, query: PluginManagementQueryV1) -> PluginManagementProjectionV1:
-        runtime, ports = self.owner.open(read_only=True)
-        try:
+        with _programs.ManagementScope(self.owner, read_only=True) as (_, ports):
             self.owner.assert_workspace_current()
-            result = ports.queries.snapshot(query)
-            runtime.assert_current()
-            self.owner.assert_workspace_current()
-            return result
-        finally:
-            runtime.close()
+            return ports.queries.snapshot(query)
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,30 +281,18 @@ class _ProductCliCommands:
     def submit(
         self, request: PluginManagementApplicationCommandV1
     ) -> PluginManagementApplicationResultV1:
-        runtime, ports = self.owner.open(read_only=False)
-        try:
+        with _programs.ManagementScope(self.owner, read_only=False) as (_, ports):
             self.owner.assert_workspace_current()
-            result = ports.commands.submit(request)
-            runtime.assert_current()
-            self.owner.assert_workspace_current()
-            return result
-        finally:
-            runtime.close()
+            return ports.commands.submit(request)
 
     def operation(
         self, operation_id: str, *, correlation_id: str
     ) -> PluginManagementApplicationResultV1 | None:
-        runtime, ports = self.owner.open(read_only=True)
-        try:
+        with _programs.ManagementScope(self.owner, read_only=True) as (_, ports):
             self.owner.assert_workspace_current()
-            result = ports.commands.operation(
+            return ports.commands.operation(
                 operation_id, correlation_id=correlation_id
             )
-            runtime.assert_current()
-            self.owner.assert_workspace_current()
-            return result
-        finally:
-            runtime.close()
 
 
 def build_coding_fenced_product_management_cli_ports(

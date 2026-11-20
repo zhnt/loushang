@@ -1805,6 +1805,37 @@ Binding. Normalized dependencies remain at 1,659 pairs, with the two
 physical type-only imports recorded separately. Native Windows execution
 remains unverified.
 
+## Fenced Management Operation Custody
+
+The staged Package Product management scope now owns open, success
+revalidation and release for six operations. Snapshot, operation lookup,
+package and Plugin explanations and handoff reads use the existing read-only
+owner path. Desired command submission uses the existing writable path.
+Operations still run at their original workspace guard checkpoints, and
+every acquired runtime closes after success or failure. The exact Desired
+transition reader retains its distinct order between epoch proof and
+ambiguity rejection.
+
+The CLI read and command strategies share one implementation for binding
+fenced ports to an already captured workspace identity. Legacy startup,
+compatibility publication and the read-only fallback remain in their
+separate original paths. POSIX Package repair reuses the existing Harness
+directory identity check both before opening the owner and after
+acquisition, with the same Product error and filesystem cause.
+Windows private-data backup keeps its native exception behavior. The CLI
+Desired repair retains the caller's pre/post guard and its distinct
+ordering between identity comparison and canonical path resolution.
+
+The Product edge removes 48 lines and staging adds 29, for a net
+decrease of 19 production Python lines. No new Coding import edge is
+introduced. Comparisons with the previous checkpoint match 96 owner
+lifetime traces, 12 Package repair identity traces and 88 CLI binding
+outcomes, including failure order, error causes and release. The final
+non-live Linux regression reports 107 passing cases and five Windows
+skips, covering repaired or rejected owner acquisition, private-data
+replay, management commands, and architecture constraints. Native Windows
+execution remains unverified.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

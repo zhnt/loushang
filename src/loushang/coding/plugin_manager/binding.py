@@ -105,15 +105,10 @@ class CodingConfiguredPluginSourceProjection:
 
 
 @dataclass(frozen=True, slots=True)
-class _CodingManagementReadOwner:
+class _FencedManagementOwner:
     layout: CodingPluginLifecycleStateLayout
     source: CodingConfiguredPluginSourceProjection
     workspace_identity: tuple[int, int] | None
-
-    def fenced_product_exists(self) -> bool:
-        if self.workspace_identity is not None:
-            _assert_workspace_identity(self.source.workspace_root, self.workspace_identity)
-        return coding_fenced_product_exists(self.layout)
 
     def open_fenced_ports(self) -> PluginManagementApplicationPorts:
         return build_coding_fenced_product_management_cli_ports(
@@ -123,9 +118,19 @@ class _CodingManagementReadOwner:
             ),
         )
 
-    def legacy_state_exists(self) -> bool:
+
+@dataclass(frozen=True, slots=True)
+class _CodingManagementReadOwner(_FencedManagementOwner):
+    def _check_captured_workspace(self) -> None:
         if self.workspace_identity is not None:
             _assert_workspace_identity(self.source.workspace_root, self.workspace_identity)
+
+    def fenced_product_exists(self) -> bool:
+        self._check_captured_workspace()
+        return coding_fenced_product_exists(self.layout)
+
+    def legacy_state_exists(self) -> bool:
+        self._check_captured_workspace()
         try:
             self.layout.root.lstat()
         except FileNotFoundError:
@@ -133,30 +138,16 @@ class _CodingManagementReadOwner:
         return True
 
     def open_legacy_read_ports(self) -> PluginManagementApplicationPorts:
-        if self.workspace_identity is not None:
-            _assert_workspace_identity(self.source.workspace_root, self.workspace_identity)
+        self._check_captured_workspace()
         return build_coding_plugin_management_application(
             self.layout, source=self.source, read_only=True
         )
 
 
 @dataclass(frozen=True, slots=True)
-class _CodingManagementCommandOwner:
-    layout: CodingPluginLifecycleStateLayout
-    source: CodingConfiguredPluginSourceProjection
-    settings_manager: object | None
-    workspace_identity: tuple[int, int] | None
-
+class _CodingManagementCommandOwner(_FencedManagementOwner):
     def fenced_product_exists(self) -> bool:
         return coding_fenced_product_exists(self.layout)
-
-    def open_fenced_ports(self) -> PluginManagementApplicationPorts:
-        return build_coding_fenced_product_management_cli_ports(
-            self.layout,
-            workspace_guard=lambda: _assert_workspace_identity(
-                self.source.workspace_root, self.workspace_identity
-            ),
-        )
 
     def acquire_legacy_startup(self) -> Callable[[], None] | None:
         if not (sys.platform.startswith("linux") or os.name == "nt"):
@@ -176,7 +167,7 @@ class _CodingManagementCommandOwner:
 
     def bind_legacy_compatibility(self) -> Callable[[], None] | None:
         compatibility = bind_coding_plugin_enablement_compatibility(
-            self.layout, self.settings_manager
+            self.layout, self.source.settings_manager
         )
         return None if compatibility is None else compatibility.reconcile
 
@@ -240,7 +231,7 @@ def build_coding_plugin_management_cli_binding(
     return bind_plugin_management_cli_commands(
         _management_profile(layout),
         _CodingManagementCommandOwner(
-            layout, source, settings_manager, _capture_workspace_identity(workspace_root)
+            layout, source, _capture_workspace_identity(workspace_root)
         ),
     )
 
