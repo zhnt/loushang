@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -52,3 +53,12 @@ class WindowsProductWorkerHistoryAccess:
 
     def borrow_state_root(self) -> AbstractContextManager[int]:
         return self._product.epoch_runtime.borrow_product_state_root_descriptor()
+
+    @contextmanager
+    def decision_root(self, *, require_write: bool = False) -> Iterator[int]:
+        """Hold Product GC admission while reading or settling private decisions."""
+        with self.guard(require_write=require_write):
+            self.assert_current()
+            with self.borrow_state_root() as root:
+                yield root
+            self.assert_current()

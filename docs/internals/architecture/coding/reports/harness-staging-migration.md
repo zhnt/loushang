@@ -2491,6 +2491,29 @@ cutover codec binding. Its former import hook reproduced the same 40
 failures on the parent commit. The original expectations pass with the
 updated hook. Native Windows execution was not run.
 
+## Windows Worker Decision Journals
+
+Harness Worker History owns the three fixed journal profiles for native
+approval, opt-in, and receipts. Their existing commands now carry their
+original filename, admission rules, byte and record limits, and publication
+errors. The Coding adapters supply the Product record families, codecs and
+error types. POSIX and Windows use the same native approval journal name
+and default limits. Opt-in input admission uses the original identifier
+rule and keeps each platform's error.
+
+Windows approval reads and mutations and opt-in reads and revocation use
+the existing History Access owner for the Product GC gate and pinned state
+root. The scope rechecks the Product after closing the descriptor and
+before releasing the gate. Opt-in allow keeps its selection and backend
+proof in its existing position inside the GC writer.
+
+Coding Product removes 89 Python lines and formal Harness adds 30. The
+system removes 59 production lines. All 308 selected journal and decision
+checks pass, and 130 root-custody comparisons match the parent. The 80
+controlled backend consumer observations also match exactly. The wider
+197-case consumer run has 130 passes and the same 67 older frozen-fixture
+assertion failures as its parent. No native Windows execution was run.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
