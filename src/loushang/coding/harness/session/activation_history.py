@@ -6,9 +6,11 @@ explicit intermediate Code dependencies; no parallel state or effect owner.
 
 from __future__ import annotations
 
-from collections.abc import Generator, Iterable
+from collections.abc import Callable, Generator, Iterable, Sequence
+from typing import Literal
 
 from loushang.coding.resume import activation_projection_v2 as _binding
+from loushang.harness.transcript.types import AgentTranscriptRecord
 
 from .resume_records import matches_intent
 from .selected_ancestry import SelectedAncestry
@@ -185,3 +187,78 @@ def find_input_records(
             return None if complete.value.status == "unknown_version" else matches
         if record is not None:
             matches.append(record)
+
+
+def select_input_record(
+    candidates: Sequence[AgentTranscriptRecord],
+    *,
+    expected_digest: str,
+    digest: Callable[[AgentTranscriptRecord], str],
+    duplicate: Literal["unknown", "conflict"] = "conflict",
+) -> AgentTranscriptRecord | Literal["unknown", "conflict"]:
+    """Require one candidate and the exact bytes fixed for that input."""
+    if not candidates:
+        return "unknown"
+    if len(candidates) != 1:
+        return duplicate
+    record = candidates[0]
+    return record if digest(record) == expected_digest else "conflict"
+
+
+def observe_latest_bound_input(
+    records: Sequence[AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+    input_id: str,
+    expected_digest: str,
+    digest: Callable[[AgentTranscriptRecord], str],
+) -> AgentTranscriptRecord | Literal["unknown", "conflict"] | None:
+    """Observe the latest bound input before a live owner is attached.
+
+    None allows the caller to consult its retained request when the projected
+    Binding does not identify this input.
+    """
+    projection = _binding.project_coding_activation_attempt_path_v2(
+        records, current_session_id=current_session_id
+    )
+    binding = projection.binding
+    if (
+        projection.binding_status != "bound"
+        or binding is None
+        or binding.input_id != input_id
+        or projection.binding_record_id is None
+    ):
+        return None
+    return select_input_record(
+        [record for record in records if record.record_id == projection.binding_record_id],
+        expected_digest=expected_digest, digest=digest, duplicate="unknown",
+    )
+
+
+def find_legacy_model_input(
+    records: Iterable[AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+    input_id: str,
+    expected_digest: str,
+    digest: Callable[[AgentTranscriptRecord], str],
+) -> tuple[int, AgentTranscriptRecord] | Literal["unknown", "conflict"]:
+    """Find the exact V1-bound input and its position for model observation."""
+    matches: list[AgentTranscriptRecord] = []
+    first_index = 0
+    try:
+        for index, record in enumerate(records):
+            binding = _binding.inspect_coding_runtime_binding(record.metadata).binding
+            if binding is None or binding.session_id != current_session_id or binding.input_id != input_id:
+                continue
+            _binding._require_decoded_v1_binding(
+                record, binding, payload=_binding._require_v1_user_payload(record),
+                expected_session_id=current_session_id,
+            )
+            if not matches:
+                first_index = index
+            matches.append(record)
+    except ValueError:
+        return "unknown"
+    selected = select_input_record(matches, expected_digest=expected_digest, digest=digest)
+    return selected if isinstance(selected, str) else (first_index, selected)

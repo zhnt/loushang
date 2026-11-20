@@ -420,43 +420,26 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         active = self._active
         if active is not None:
             return await active.lookup_resume_input(query)
-        from loushang.coding.resume.activation_projection_v2 import (
-            project_coding_activation_attempt_path_v2,
+        from loushang.coding.harness.session.activation_history import (
+            observe_latest_bound_input,
         )
         from loushang.coding.resume.input_lookup import (
             coding_resume_input_record_digest,
         )
 
         try:
-            records = self._source.history.selected_records
-            projection = project_coding_activation_attempt_path_v2(
-                records, current_session_id=self.identity.session_id
+            selected = observe_latest_bound_input(
+                self._source.history.selected_records,
+                current_session_id=self.identity.session_id,
+                input_id=query.input_id, expected_digest=query.record_digest,
+                digest=coding_resume_input_record_digest,
             )
-            binding = projection.binding
-            if (
-                projection.binding_status == "bound"
-                and binding is not None
-                and binding.input_id == query.input_id
-                and projection.binding_record_id is not None
-            ):
-                candidates = tuple(
-                    record
-                    for record in records
-                    if record.record_id == projection.binding_record_id
-                )
-                if len(candidates) != 1:
-                    return CodingResumeInputLookupResultV1(
-                        query.input_id, None, "unknown"
-                    )
-                if coding_resume_input_record_digest(candidates[0]) != query.record_digest:
-                    return CodingResumeInputLookupResultV1(
-                        query.input_id, None, "conflict"
-                    )
-                return CodingResumeInputLookupResultV1(
-                    query.input_id, candidates[0].record_id, "committed"
-                )
         except ValueError:
             return CodingResumeInputLookupResultV1(query.input_id, None, "unknown")
+        if isinstance(selected, str):
+            return CodingResumeInputLookupResultV1(query.input_id, None, selected)
+        if selected is not None:
+            return CodingResumeInputLookupResultV1(query.input_id, selected.record_id, "committed")
         retained = self._latest_input_query
         if retained is not None and retained.input_id == query.input_id:
             return CodingResumeInputLookupResultV1(

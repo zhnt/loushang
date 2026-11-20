@@ -25,7 +25,10 @@ from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
     resolve_coding_composition_set,
 )
-from loushang.coding.harness.session.activation_history import find_input_records
+from loushang.coding.harness.session.activation_history import (
+    find_input_records,
+    select_input_record,
+)
 from loushang.coding.harness.session.composition_receipt import (
     composition_identity_fields,
     composition_receipt_matches,
@@ -467,14 +470,12 @@ class SessionManager(
             and pending.prepared_record is not None
         ):
             candidates.append(pending.prepared_record)
-        if not candidates:
-            return unknown
-        if (
-            len(candidates) != 1
-            or coding_resume_input_record_digest(candidates[0]) != query.record_digest
-        ):
-            return CodingResumeInputLookupResultV1(query.input_id, None, "conflict")
-        observed = await self.lookup_prebuilt_user_message(candidates[0])
+        selected = select_input_record(
+            candidates, expected_digest=query.record_digest, digest=coding_resume_input_record_digest
+        )
+        if isinstance(selected, str):
+            return CodingResumeInputLookupResultV1(query.input_id, None, selected)
+        observed = await self.lookup_prebuilt_user_message(selected)
         return CodingResumeInputLookupResultV1(
             query.input_id, observed.record_id, observed.status
         )

@@ -1942,6 +1942,28 @@ comparisons, the Plan results, error precedence and synchronous Resource
 call order match the prior checkpoint. Normalized dependencies remain at
 1,659 pairs. Native Windows execution remains unverified.
 
+## Resume Input And Model Evidence
+
+The staged Session history proof now selects the exact input record for
+unattached Hosted Resume, the live Session manager and the legacy Model
+Outcome observer. The three consumers share record multiplicity and digest
+checks. The legacy observer validates the already decoded V1 Binding once
+per record and still uses the existing initial model invocation projection.
+
+Hosted keeps the retained-request fallback when the latest Binding belongs to
+another input. Ambiguous record identity stays unknown there. The live
+Session manager keeps the exact pending record and delegates settlement to
+the original Transcript owner. The legacy observer keeps whole-scan failure
+precedence, so a malformed later record still makes the observation unknown.
+
+The Product edge removes 19 Python lines and staging adds 77, for 58 net
+production lines. The new history entry points carry distinct lookup rules
+and share their record checks. The Model Outcome observer now reaches the
+original V1 codec through staged activation history, replacing its direct
+Binding dependency. The normalized graph retains 1,659 module pairs. All
+121 focused Linux cases and 2,076 controlled comparisons with the prior
+checkpoint pass. Native Windows validation remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

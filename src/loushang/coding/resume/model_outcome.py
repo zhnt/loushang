@@ -9,11 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
+from loushang.coding.harness.session.activation_history import find_legacy_model_input
 from loushang.coding.harness.session.model_history import find_initial_model_invocation
-from loushang.coding.resume.binding import (
-    inspect_coding_runtime_binding,
-    validate_coding_runtime_binding_record,
-)
 from loushang.coding.resume.history import CodingResumeHistoryPreview
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
@@ -58,21 +55,13 @@ def observe_coding_resume_model_outcome(
         return unknown
     path = history.selected_records
     session_id = history.header_preview.header.conversation_id
-    matches = []
-    try:
-        for index, record in enumerate(path):
-            binding = inspect_coding_runtime_binding(record.metadata).binding
-            if binding is None or binding.session_id != session_id or binding.input_id != query.input_id:
-                continue
-            validate_coding_runtime_binding_record(record, expected_session_id=session_id)
-            matches.append((index, record))
-    except ValueError:
-        return unknown
-    if not matches:
-        return unknown
-    if len(matches) != 1 or coding_resume_input_record_digest(matches[0][1]) != query.record_digest:
-        return CodingResumeModelOutcomeObservationV1(query.input_id, status="conflict")
-    index, input_record = matches[0]
+    selected = find_legacy_model_input(
+        path, current_session_id=session_id, input_id=query.input_id,
+        expected_digest=query.record_digest, digest=coding_resume_input_record_digest,
+    )
+    if isinstance(selected, str):
+        return CodingResumeModelOutcomeObservationV1(query.input_id, status=selected)
+    index, input_record = selected
     unknown = CodingResumeModelOutcomeObservationV1(query.input_id, input_record.record_id)
     invocation = find_initial_model_invocation(
         path, index=index, session_id=session_id, product_id="coding"

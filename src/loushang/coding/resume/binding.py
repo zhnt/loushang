@@ -154,8 +154,7 @@ def project_coding_runtime_binding_path(
         observation = inspect_coding_runtime_binding(record.metadata)
         if observation.status == "absent":
             continue
-        if record.kind != AGENT_MESSAGE_KIND or not isinstance(record.payload, UserMessage):
-            raise ValueError("RuntimeBinding requires an agent UserMessage record")
+        payload = _require_v1_user_payload(record)
         if observation.status == "unknown_version":
             status = "unknown_version"
             selected_binding = None
@@ -165,7 +164,7 @@ def project_coding_runtime_binding_path(
         if binding is None:
             raise ValueError("RuntimeBinding known schema has no binding")
         _require_decoded_v1_binding(
-            record, binding, payload=record.payload, expected_session_id=binding.session_id,
+            record, binding, payload=payload, expected_session_id=binding.session_id,
         )
         if binding.session_id == current_session_id and status != "unknown_version":
             status = "bound"
@@ -299,16 +298,22 @@ def validate_coding_runtime_binding_record(
 ) -> CodingRuntimeBindingV1:
     """Check the historical fact in one stored message, not live authority."""
 
-    if record.kind != AGENT_MESSAGE_KIND or not isinstance(record.payload, UserMessage):
-        raise ValueError("RuntimeBinding requires an agent UserMessage record")
+    payload = _require_v1_user_payload(record)
     observation = inspect_coding_runtime_binding(record.metadata)
     binding = observation.binding
     if observation.status != "known" or binding is None:
         raise ValueError("RuntimeBinding metadata is absent or unsupported")
     _require_decoded_v1_binding(
-        record, binding, payload=record.payload, expected_session_id=expected_session_id,
+        record, binding, payload=payload, expected_session_id=expected_session_id,
     )
     return binding
+
+
+def _require_v1_user_payload(record: AgentTranscriptRecord) -> UserMessage:
+    payload = record.payload
+    if record.kind != AGENT_MESSAGE_KIND or not isinstance(payload, UserMessage):
+        raise ValueError("RuntimeBinding requires an agent UserMessage record")
+    return payload
 
 
 def _require_decoded_v1_binding(
