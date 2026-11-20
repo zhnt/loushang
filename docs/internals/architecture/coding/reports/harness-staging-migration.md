@@ -2056,6 +2056,24 @@ prior checkpoint. Across all eight entry points, 120 controlled
 comparisons match ordering, selected native operation, artifact facts
 and failure precedence. Native Windows verification remains open.
 
+## Legacy Package And Lifecycle Member Observation
+
+The two pre-B member readers share one staged operation for read-only member
+discovery and ordered domain grouping. The existing Harness snapshot reader
+checks the root and members before any projection. The deployed Package lock
+still belongs to both binding and lock history, while each lifecycle journal
+and lock belongs to its declared historical domain. The original consumers
+retain their required read order, including the startup first-result behavior
+and the two-root snapshot preparation.
+
+Coding keeps the canonical paths, allowed names, domain declarations and
+nominal results. The staged program depends only on the existing Harness
+read authority. It removes 22 Python lines from the Product and adds 31 in
+staging, for nine net production lines. The 332 filesystem comparisons
+match the prior checkpoint's membership, errors and read-only behavior.
+All 56 selected Linux tests pass, including offline review, fresh startup
+and POSIX cutover. The two Windows-only cases are skipped on this host.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
