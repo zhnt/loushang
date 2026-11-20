@@ -6,6 +6,7 @@ from typing import Literal
 
 from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
 from loushang.harness.plugin_management.records import (
+    PluginDesiredState,
     PluginDesiredStateMutationV1,
     PluginDesiredStateTransitionV1,
     PluginLifecycleCodecError,
@@ -44,7 +45,13 @@ PluginManagementProgressCode = Literal[
 PluginManagementResultDisposition = Literal["succeeded", "failed"]
 PluginManagementCompensationState = Literal["not_required"]
 
-_ACTIONS = frozenset({"install", "enable", "disable", "remove"})
+_DESIRED_STATE_BY_ACTION: dict[str, PluginDesiredState] = {
+    "enable": "installed_enabled",
+    "disable": "installed_disabled",
+    "remove": "absent",
+}
+PLUGIN_DESIRED_ACTIONS = frozenset(_DESIRED_STATE_BY_ACTION)
+_ACTIONS = PLUGIN_DESIRED_ACTIONS | {"install"}
 _STATUSES = frozenset({"accepted", "running", "terminal"})
 _PROGRESS_CODES = frozenset(
     {
@@ -55,6 +62,11 @@ _PROGRESS_CODES = frozenset(
     }
 )
 _RESULT_DISPOSITIONS = frozenset({"succeeded", "failed"})
+
+
+def desired_state_for_action(action: str) -> PluginDesiredState:
+    """Return the target of a Desired State command on an existing Installation."""
+    return _DESIRED_STATE_BY_ACTION[action]
 
 
 class PluginManagementRecordCodecError(JournalCodecError):
@@ -84,12 +96,7 @@ class PluginManagementCommandV1:
             return
         if package is not None:
             raise ValueError(f"Plugin {self.action} cannot carry a Package Revision")
-        expected_state = {
-            "enable": "installed_enabled",
-            "disable": "installed_disabled",
-            "remove": "absent",
-        }[self.action]
-        if desired_state != expected_state:
+        if desired_state != desired_state_for_action(self.action):
             raise ValueError(
                 f"Plugin {self.action} mutation has the wrong desired state"
             )

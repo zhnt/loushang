@@ -665,6 +665,17 @@ def resolve_coding_plugin_lifecycle_state_layout(
     )
 
 
+def matches_coding_workspace_layout(workspace: object, layout: object) -> bool:
+    """Check the deployed Product layout after canonical workspace admission."""
+    return not (
+        not isinstance(workspace, Path)
+        or not workspace.is_absolute()
+        or workspace != workspace.resolve(strict=True)
+        or not isinstance(layout, CodingPluginLifecycleStateLayout)
+        or layout != resolve_coding_plugin_lifecycle_state_layout(workspace)
+    )
+
+
 def resolve_ephemeral_coding_plugin_lifecycle_state_layout(
     session_dir: str | Path,
     *,

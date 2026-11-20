@@ -21,7 +21,10 @@ from loushang.coding.package.management_binding import (
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
+    matches_coding_workspace_layout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout as resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.plugin_management.application import (
     PluginManagementApplicationPorts,
@@ -34,7 +37,10 @@ from loushang.harness.plugin_management.desired_command import (
     resume_plugin_desired_operation,
     submit_plugin_desired_command,
 )
-from loushang.harness.workspace.paths import assert_workspace_directory_identity
+from loushang.harness.workspace.paths import (
+    assert_workspace_directory_identity,
+    is_workspace_directory_identity,
+)
 
 
 class CodingPluginManagementCommandSdkError(RuntimeError):
@@ -51,22 +57,9 @@ class CodingPluginManagementCommandClientV1:
     owner_profile: Literal["sdk", "tui"] = "sdk"
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.workspace, Path)
-            or not self.workspace.is_absolute()
-            or self.workspace != self.workspace.resolve(strict=True)
-            or not isinstance(self.layout, CodingPluginLifecycleStateLayout)
-            or self.layout
-            != resolve_coding_plugin_lifecycle_state_layout(self.workspace)
-        ):
+        if not matches_coding_workspace_layout(self.workspace, self.layout):
             raise ValueError("Coding management workspace scope is invalid")
-        if (
-            type(self.workspace_identity) is not tuple
-            or len(self.workspace_identity) != 2
-            or any(
-                type(item) is not int or item < 0 for item in self.workspace_identity
-            )
-        ):
+        if not is_workspace_directory_identity(self.workspace_identity):
             raise ValueError("Coding management workspace identity is invalid")
         if not isinstance(self.owner_profile, str) or self.owner_profile not in {
             "sdk",

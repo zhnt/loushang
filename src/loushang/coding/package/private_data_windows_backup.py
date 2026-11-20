@@ -39,6 +39,9 @@ from .installation_private_data import (
     coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
 )
 from .installation_private_data import (
+    coding_arch_workspace_installation_key,
+)
+from .installation_private_data import (
     inspect_coding_windows_arch_installation_root as inspect_coding_windows_arch_installation_root,
 )
 from .private_data_backup_records import (
@@ -101,12 +104,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
             CodingWindowsArchPrivateDataRestoreTransaction,
         )
 
-        key = PluginInstallationKeyV1(
-            product_id="coding",
-            installation_scope="workspace",
-            scope_id=self.layout.scope_id,
-            plugin_id="coding.arch.default",
-        )
+        key = coding_arch_workspace_installation_key(self.layout.scope_id)
         return read_windows_private_backup_retention(
             self,
             key,

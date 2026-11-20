@@ -17,12 +17,7 @@ def read_retention_status(
     """Read the backup owner's typed status without changing retention."""
 
     self._assert_workspace_identity()
-    if (
-        _binding.os.name != "posix"
-        or not _binding.sys.platform.startswith("linux")
-        or not _binding.coding_fenced_product_exists(self.layout)
-    ):
-        raise ValueError(_binding._PRIVATE_DATA_FLOW_VALUES["message_01"])
+    _binding._require_backup_product_route(self.layout)
     layout = _binding.resolve_coding_package_epoch_layout(self.layout)
     epoch = _binding.PackageProductPosixFencedRuntimeOwner.open(
         **layout.fenced_runtime_open_kwargs(), read_only=True
@@ -47,12 +42,7 @@ def read_scope(
     self: _binding.CodingArchPrivateDataBackupClientV1,
 ) -> _binding.Iterator[_binding.CodingArchPrivateDataReadOwner]:
     self._assert_workspace_identity()
-    if (
-        _binding.os.name != "posix"
-        or not _binding.sys.platform.startswith("linux")
-        or not _binding.coding_fenced_product_exists(self.layout)
-    ):
-        raise ValueError(_binding._PRIVATE_DATA_FLOW_VALUES["message_01"])
+    _binding._require_backup_product_route(self.layout)
     reader = _binding.CodingArchPrivateDataReadOwner.open(
         layout=self.layout,
         workspace=self.workspace,

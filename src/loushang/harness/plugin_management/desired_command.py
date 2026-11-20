@@ -10,9 +10,13 @@ from .application import (
     PluginManagementApplicationPorts,
     PluginManagementApplicationResultV1,
 )
-from .operations import PluginManagementCommandV1, PluginManagementOperationEventV1
+from .operations import (
+    PLUGIN_DESIRED_ACTIONS,
+    PluginManagementCommandV1,
+    PluginManagementOperationEventV1,
+    desired_state_for_action,
+)
 from .records import (
-    PluginDesiredState,
     PluginDesiredStateMutationV1,
     PluginInstallationKeyV1,
 )
@@ -65,7 +69,7 @@ class PluginDesiredCommandRequestV1:
             value = getattr(self, name)
             if not isinstance(value, str) or not value or value != value.strip():
                 raise ValueError(f"Plugin desired command {name} is invalid")
-        if self.action not in {"enable", "disable", "remove"}:
+        if self.action not in PLUGIN_DESIRED_ACTIONS:
             raise ValueError("Plugin desired command action is unsupported")
         if (
             type(self.expected_inventory_revision) is not int
@@ -87,12 +91,7 @@ def submit_plugin_desired_command(
         raise TypeError("Plugin desired command Product authority is required")
     if not isinstance(request, PluginDesiredCommandRequestV1):
         raise TypeError("Plugin desired command request is required")
-    target_by_action: dict[PluginDesiredActionV1, PluginDesiredState] = {
-        "enable": "installed_enabled",
-        "disable": "installed_disabled",
-        "remove": "absent",
-    }
-    target = target_by_action[request.action]
+    target = desired_state_for_action(request.action)
     command = PluginManagementCommandV1(
         action=request.action,
         mutation=PluginDesiredStateMutationV1(
@@ -213,7 +212,7 @@ def resume_plugin_desired_operation(
     mutation = command.mutation
     key = mutation.installation_key
     if (
-        command.action not in {"enable", "disable", "remove"}
+        command.action not in PLUGIN_DESIRED_ACTIONS
         or mutation.package_revision is not None
     ):
         raise PluginDesiredCommandRepairError(

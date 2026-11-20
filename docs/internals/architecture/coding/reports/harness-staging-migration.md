@@ -2338,6 +2338,34 @@ identity, error codes and call order across directory, fence, and
 projection faults. Four JSONL scope code paths retain their normalized
 operation bodies. Native Windows validation remains open.
 
+## Shared Command Rules And Private Data Admission
+
+The Harness management record owner now supplies the Desired State action
+domain and target states for TUI preflight, command submission, journal
+validation and repair admission. Install keeps its own package requirement.
+The operation ID, command codec, original actor and compare-and-set
+behavior remain at their existing owners.
+
+Plugin CLI readers, POSIX and Windows backup clients, and the Package
+repair client reuse Harness Workspace directory observation. Each entry
+keeps its original error mapping. The Coding lifecycle owner keeps the
+historical workspace layout rule used by both management clients and the
+POSIX backup client. The original POSIX platform and fence check is shared
+across backup status, reads, and write-owner admission. All nine Arch
+Installation key call sites use the same Product declaration for backup,
+restore, expiry and deletion.
+
+This removes 29 Coding Product lines and 10 staging lines. Formal Harness
+adds 22 lines, so the system removes 17 production lines. The Windows
+deletion, expiry and restore wrappers and the POSIX deletion journal were
+also reviewed against their existing shared owners. Their 14 selected
+record and controlled transaction contract cases passed on Linux.
+Native Windows execution remains open.
+
+Across the related Linux routes, 155 cases passed. The FIFO refusal
+case reached its subprocess timeout during parallel verification and
+passed on its own. Five native Windows cases were skipped on Linux.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

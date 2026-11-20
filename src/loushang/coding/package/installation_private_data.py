@@ -53,6 +53,15 @@ class _WindowsArchRootGeneration:
     identity: tuple[int, int] | None
 
 
+def coding_arch_workspace_installation_key(scope_id: str) -> PluginInstallationKeyV1:
+    return PluginInstallationKeyV1(
+        product_id="coding",
+        installation_scope="workspace",
+        scope_id=scope_id,
+        plugin_id=_ARCH_PLUGIN_ID,
+    )
+
+
 def coding_arch_installation_private_data_root(
     layout: CodingPluginLifecycleStateLayout, key: PluginInstallationKeyV1
 ) -> Path:

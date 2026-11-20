@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import stat
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -43,6 +42,7 @@ from loushang.harness.plugin_management.configured_sources import (
     ConfiguredPluginSourceProfile,
     project_configured_plugin_sources,
 )
+from loushang.harness.workspace.paths import read_workspace_directory_identity
 
 
 class CodingPluginManagementCliError(RuntimeError):
@@ -186,12 +186,9 @@ def _management_profile(
 
 def _capture_workspace_identity(workspace: Path) -> tuple[int, int] | None:
     try:
-        metadata = workspace.lstat()
+        return read_workspace_directory_identity(workspace)
     except OSError:
         return None
-    if not stat.S_ISDIR(metadata.st_mode):
-        return None
-    return metadata.st_dev, metadata.st_ino
 
 
 def _assert_workspace_identity(

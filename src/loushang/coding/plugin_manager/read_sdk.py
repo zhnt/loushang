@@ -23,7 +23,10 @@ from loushang.coding.plugin_manager.explanation import (
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
+    matches_coding_workspace_layout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout as resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.plugin_manager.preview import (
     bind_coding_current_preview_query,
@@ -40,7 +43,10 @@ from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationRequestV1,
     project_plugin_operation_explanation,
 )
-from loushang.harness.workspace.paths import assert_workspace_directory_identity
+from loushang.harness.workspace.paths import (
+    assert_workspace_directory_identity,
+    is_workspace_directory_identity,
+)
 
 _RUNTIME_PROGRAM_VALUES = {
     "value_001": "Plugin support Desired State revision is invalid",
@@ -61,19 +67,9 @@ class CodingPluginManagementReadClientV1:
     workspace_identity: tuple[int, int]
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.workspace, Path)
-            or not self.workspace.is_absolute()
-            or self.workspace != self.workspace.resolve(strict=True)
-            or not isinstance(self.layout, CodingPluginLifecycleStateLayout)
-            or self.layout
-            != resolve_coding_plugin_lifecycle_state_layout(self.workspace)
-            or type(self.workspace_identity) is not tuple
-            or len(self.workspace_identity) != 2
-            or any(
-                type(item) is not int or item < 0 for item in self.workspace_identity
-            )
-        ):
+        if not matches_coding_workspace_layout(
+            self.workspace, self.layout
+        ) or not is_workspace_directory_identity(self.workspace_identity):
             raise ValueError("Coding management read workspace is invalid")
 
     @property

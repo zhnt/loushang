@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.metadata import version
@@ -27,7 +26,10 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.package_product.product_runtime import (
     _perform_package_repair as _perform_package_repair,
 )
-from loushang.harness.workspace.paths import assert_workspace_directory_identity
+from loushang.harness.workspace.paths import (
+    assert_workspace_directory_identity,
+    read_workspace_directory_identity,
+)
 
 from .product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH as CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
@@ -142,13 +144,13 @@ def open_coding_package_repair_client(
     if os.name != "posix":
         raise CodingPackageRepairError("package_repair_posix_only")
     root = Path(workspace).expanduser().resolve(strict=True)
-    metadata = root.lstat()
-    if not stat.S_ISDIR(metadata.st_mode):
+    identity = read_workspace_directory_identity(root)
+    if identity is None:
         raise CodingPackageRepairError("package_repair_workspace_not_directory")
     return CodingPackageRepairClientV1(
         workspace=root,
         layout=resolve_coding_plugin_lifecycle_state_layout(root),
-        workspace_identity=(metadata.st_dev, metadata.st_ino),
+        workspace_identity=identity,
         runtime_version=runtime_version
         if runtime_version is not None
         else version("loushang"),
