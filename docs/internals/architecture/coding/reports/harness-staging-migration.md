@@ -2016,6 +2016,29 @@ excluded from this run. The 288 controlled comparisons preserve plan
 inputs, approval order, error identity and diagnostics, and decision reuse.
 Native Windows verification remains open.
 
+## Continuity Session Index And Listed Target Operations
+
+The staged Session history owner queries the existing Transcript index,
+retains the bounded target cache, handles expired traversals and schedules
+recovery for stale or bounded views. It shares one listed-target proof
+between history resolution, activation preparation and deletion. The live
+Runtime still owns the mutations and the prepared lease. Preparation retains
+its post-acquisition identity check and abort, and deletion retains its
+compatibility and active-Session restrictions.
+
+Coding keeps the entry methods, default query policy, availability messages
+and preview rendering. The staged code uses the original index generation,
+cursor, authority checks and directory normalization. Provider preview uses
+one computed revision for both display and the stale check.
+
+The Product edge removes 166 Python lines and staging adds 194, for a net
+production increase of 28 lines. The separated policy inputs and retained
+entry methods account for the extra connection code. All 109 selected
+Linux tests pass and 1,105 controlled comparisons match page, cache,
+authority and effect traces against the prior checkpoint. The known
+Continuity import test remains excluded under this machine's configured
+test root. Native Windows verification remains open.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,

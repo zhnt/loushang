@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping
@@ -42,7 +41,6 @@ from loushang.harness.continuity import (
     ExperienceComposition,
     ExperienceDescriptor,
     ProviderPage,
-    ProviderPageItem,
     ProviderQuery,
     build_continuity_hub,
     compose_experience_continuity,
@@ -86,7 +84,6 @@ from loushang.harness.runtime import (
     RuntimeProfileLayer,
     RuntimeProfileLayerGrant,
     RuntimeProfileResolver,
-    SessionOperationResult,
 )
 from loushang.harness.transcript import (
     SessionAssetHealthSummary,
@@ -94,7 +91,6 @@ from loushang.harness.transcript import (
     SessionQuery,
     SessionSummary,
     assistant_message_text,
-    same_agent_transcript_session_path,
     session_summary_authority_is_current,
     session_summary_revision,
     user_message_text,
@@ -106,10 +102,31 @@ CODING_CONTINUITY_IMPLEMENTATION_VERSION = 1
 CODING_EXPERIENCE_ID = "coding"
 
 _MAX_PREVIEW_CACHE = 256
+_INDEX_REQUIRES_MESSAGES = True
 _STALE_SUMMARY_MESSAGE = "The selected Coding session summary is stale."
 _CHANGED_SINCE_LISTING_MESSAGE = (
     "The selected Coding session changed after it was listed."
 )
+_UNLISTED_SUMMARY_MESSAGE = (
+    "The selected Coding session is no longer in this query snapshot."
+)
+_CHANGED_DURING_PREPARATION_MESSAGE = (
+    "The selected Coding session changed while it was being prepared."
+)
+_INDEX_STATUS_DIAGNOSTICS = {
+    "expired": (
+        "coding_continuity_snapshot_expired",
+        "The Coding session index traversal expired; restart search.",
+    ),
+    "bounded": (
+        "coding_continuity_bounded_catalog",
+        "Showing recent Coding sessions from bounded transcript previews.",
+    ),
+    "unavailable": (
+        "coding_continuity_index_not_ready",
+        "Coding session history is being indexed.",
+    ),
+}
 _MAX_CODING_CONTINUITY_IMPORT_BYTES = 64 * 1024 * 1024
 _RUNTIME_BINDING_ATTRIBUTE = "_loushang_coding_continuity"
 
@@ -234,11 +251,7 @@ class CodingContinuityProvider:
         all_sessions: bool = False,
     ) -> None:
         self._runtime = runtime
-        self._cwd = (
-            str(Path(cwd).expanduser().resolve(strict=False))
-            if cwd is not None
-            else None
-        )
+        self._cwd = continuity_history.canonical_directory(cwd)
         self._all_sessions = all_sessions
         self._index_refresh_requested = False
         self._preview_items: OrderedDict[str, IndexedProjection[SessionSummary]] = (
@@ -261,98 +274,10 @@ class CodingContinuityProvider:
         )
 
     async def query(self, request: ProviderQuery) -> ProviderPage:
-        current_reference = self._runtime.get_current_session_ref()
-        page = await asyncio.to_thread(
-            self._runtime.try_query_session_index_page,
-            SessionQuery(
-                cwd=None if self._all_sessions else self._query_cwd(),
-                text=request.text or None,
-                sort_by="created" if request.sort_id == "created" else "recent",
-                has_messages=True,
-                source_mode=(
-                    "canonical" if "delete" in request.required_actions else None
-                ),
-                exclude_session_file=current_reference,
-            ),
-            cursor=request.cursor,
-            limit=request.limit,
-            ignore_authority=current_reference,
-        )
-        items: list[ProviderPageItem] = []
-        for page_item in page.items:
-            indexed = page_item.item
-            self._remember(indexed)
-            items.append(
-                ProviderPageItem(
-                    summary=_continuity_summary(indexed),
-                    after_cursor=page_item.after_cursor,
-                )
-            )
-        diagnostics = [
-            ContinuityDiagnostic(
-                code=f"coding_session_discovery_{issue.code}",
-                message=(f"Ignored Session source {issue.source_id}: {issue.detail}."),
-                provider_id=CODING_CONTINUITY_PROVIDER_ID,
-            )
-            for issue in page.discovery_issues
-        ]
-        if page.restart_required:
-            diagnostics.append(
-                ContinuityDiagnostic(
-                    code="coding_continuity_snapshot_expired",
-                    message="The Coding session index traversal expired; restart search.",
-                    provider_id=CODING_CONTINUITY_PROVIDER_ID,
-                )
-            )
-        elif page.index_state != "fresh":
-            if not self._index_refresh_requested:
-                if page.bounded_fallback:
-                    self._runtime.request_bounded_session_index_refresh()
-                else:
-                    self._runtime.request_session_index_repair()
-                self._index_refresh_requested = True
-            diagnostics.append(
-                ContinuityDiagnostic(
-                    code=(
-                        "coding_continuity_bounded_catalog"
-                        if page.bounded_fallback
-                        else "coding_continuity_index_not_ready"
-                    ),
-                    message=(
-                        "Showing recent Coding sessions from bounded transcript "
-                        "previews."
-                        if page.bounded_fallback
-                        else "Coding session history is being indexed."
-                    ),
-                    provider_id=CODING_CONTINUITY_PROVIDER_ID,
-                )
-            )
-        else:
-            self._index_refresh_requested = False
-        return ProviderPage(
-            items=tuple(items),
-            has_more=page.has_more,
-            index_state=(
-                "rebuilding" if page.index_state == "unavailable" else page.index_state
-            ),
-            index_generation=page.index_generation,
-            query_snapshot=page.query_snapshot,
-            diagnostics=tuple(diagnostics),
-        )
-
-    def _query_cwd(self) -> str | None:
-        if self._cwd is not None:
-            return self._cwd
-        try:
-            value = getattr(self._runtime, "cwd", None)
-        except Exception:
-            return None
-        if not isinstance(value, str) or not value:
-            return None
-        return str(Path(value).expanduser().resolve(strict=False))
+        return await continuity_history.query_index(self, request)
 
     async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
-        indexed = self._cached_target(target)
+        indexed = continuity_history.cached_target(self, target)
         summary = indexed.projection
         history_changed = False
         history_text: str | None = None
@@ -474,9 +399,10 @@ class CodingContinuityProvider:
             if summary.session_file is not None
             else ()
         )
+        revision = session_summary_revision(summary, indexed.source_revision)
         return ContinuityPreview(
             target=target,
-            revision=session_summary_revision(summary, indexed.source_revision),
+            revision=revision,
             heading=_summary_title(summary),
             sections=(
                 ContinuityPreviewSection(
@@ -499,11 +425,7 @@ class CodingContinuityProvider:
                     artifacts=artifacts,
                 ),
             ),
-            stale=(
-                session_summary_revision(summary, indexed.source_revision)
-                != target.revision
-            )
-            or history_changed,
+            stale=revision != target.revision or history_changed,
         )
 
     async def resolve_history_source(
@@ -512,118 +434,16 @@ class CodingContinuityProvider:
     ) -> str | Path:
         """Resolve one current native transcript without preparing a Session."""
 
-        indexed = self._cached_target(target)
-        summary = indexed.projection
-        _require_unconflicted_summary(summary)
-        reference = continuity_history.require_listed_reference(
-            indexed,
-            target_revision=target.revision,
-            stale_message=_STALE_SUMMARY_MESSAGE,
-        )
-        await continuity_history.require_current_source(
-            self._runtime, indexed, changed_message=_CHANGED_SINCE_LISTING_MESSAGE
-        )
-        return reference
+        return await continuity_history.resolve_listed_history(self, target)
 
     async def prepare(
         self,
         target: ContinuityTarget,
     ) -> CallbackPreparedActivationLease:
-        reference = await self.resolve_history_source(target)
-        indexed = self._cached_target(target)
-        summary = indexed.projection
-        current = self._runtime.get_current_session()
-        if current is not None and _same_session_reference(
-            self._runtime.get_current_session_ref(),
-            reference,
-        ):
-            return CallbackPreparedActivationLease(
-                target=target,
-                disposition="in_place",
-                consume=lambda: SessionOperationResult(
-                    previous=current,
-                    current=current,
-                    payload=None,
-                    cancelled=False,
-                ),
-            )
-        candidate = await self._runtime.prepare_restore_session_operation(reference)
-        if (
-            summary.authority_fingerprint is not None
-            and not session_summary_authority_is_current(summary)
-        ):
-            await candidate.abort()
-            raise StaleContinuityTargetError(
-                "The selected Coding session changed while it was being prepared."
-            )
-        return CallbackPreparedActivationLease(
-            target=target,
-            disposition="in_place",
-            consume=candidate.consume,
-            abort=candidate.abort,
-        )
+        return await continuity_history.prepare_listed_session(self, target)
 
     async def delete(self, target: ContinuityTarget) -> bool:
-        indexed = self._cached_target(target)
-        summary = indexed.projection
-        _require_unconflicted_summary(summary)
-        if summary.discovery is not None and summary.discovery.mode != "canonical":
-            raise RuntimeError(
-                "Compatibility Sessions are read-only; resume them before deletion."
-            )
-        reference = continuity_history.require_listed_reference(
-            indexed,
-            target_revision=target.revision,
-            stale_message=_STALE_SUMMARY_MESSAGE,
-        )
-        if _same_session_reference(
-            self._runtime.get_current_session_ref(),
-            reference,
-        ):
-            raise ValueError("Cannot delete the currently active session")
-        await continuity_history.require_current_source(
-            self._runtime, indexed, changed_message=_CHANGED_SINCE_LISTING_MESSAGE
-        )
-        deleted = await self._runtime.delete_session(reference)
-        if deleted:
-            self._preview_items.pop(target.opaque_id, None)
-        return deleted
-
-    def _cached_target(
-        self,
-        target: ContinuityTarget,
-    ) -> IndexedProjection[SessionSummary]:
-        if target.provider_id != CODING_CONTINUITY_PROVIDER_ID:
-            raise ValueError("continuity target belongs to another Provider")
-        try:
-            item = self._preview_items[target.opaque_id]
-        except KeyError as exc:
-            raise StaleContinuityTargetError(
-                "The selected Coding session is no longer in this query snapshot."
-            ) from exc
-        self._preview_items.move_to_end(target.opaque_id)
-        return item
-
-    def _remember(self, item: IndexedProjection[SessionSummary]) -> None:
-        self._preview_items[item.projection.session_id] = item
-        self._preview_items.move_to_end(item.projection.session_id)
-        while len(self._preview_items) > _MAX_PREVIEW_CACHE:
-            self._preview_items.popitem(last=False)
-
-
-def _same_session_reference(
-    current: str | None,
-    target: str | Path,
-) -> bool:
-    if current is None:
-        return False
-    target_text = str(target)
-    if current == target_text:
-        return True
-    return same_agent_transcript_session_path(
-        Path(current).expanduser(),
-        Path(target_text).expanduser(),
-    )
+        return await continuity_history.delete_listed_session(self, target)
 
 
 @dataclass
@@ -714,7 +534,7 @@ def bind_coding_continuity(
         binding=binding,
         binder=binder,
         hub=build_continuity_hub(composition),
-        binding_cwd=_canonical_continuity_cwd(cwd),
+        binding_cwd=continuity_history.canonical_directory(cwd),
         all_sessions=all_sessions,
     )
     _retain_coding_continuity(runtime, result)
@@ -826,7 +646,7 @@ async def bind_coding_plugin_continuity(
         hub=publication.hub,
         plugin_publication=publication,
         owned_cleanup=owned_cleanup,
-        binding_cwd=_canonical_continuity_cwd(cwd),
+        binding_cwd=continuity_history.canonical_directory(cwd),
         all_sessions=all_sessions,
     )
     if getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None) is not reservation:
@@ -911,12 +731,6 @@ def _retain_coding_continuity(
         result.runtime_owned = True
 
 
-def _canonical_continuity_cwd(cwd: str | Path | None) -> str | None:
-    return (
-        str(Path(cwd).expanduser().resolve(strict=False)) if cwd is not None else None
-    )
-
-
 _CONTINUITY_PAYLOAD_STAGING = _ContinuityPayloadStaging(label="Coding continuity")
 _write_private_continuity_payload = _CONTINUITY_PAYLOAD_STAGING.write
 _remove_private_continuity_payload = _CONTINUITY_PAYLOAD_STAGING.remove
@@ -974,6 +788,19 @@ def _require_runtime(value: object | None) -> CodingContinuityRuntimePort:
     return value  # type: ignore[return-value]
 
 
+def _session_index_discovery_diagnostics(
+    page: SessionIndexPage,
+) -> list[ContinuityDiagnostic]:
+    return [
+        ContinuityDiagnostic(
+            code=f"coding_session_discovery_{issue.code}",
+            message=f"Ignored Session source {issue.source_id}: {issue.detail}.",
+            provider_id=CODING_CONTINUITY_PROVIDER_ID,
+        )
+        for issue in page.discovery_issues
+    ]
+
+
 def _continuity_summary(
     indexed: IndexedProjection[SessionSummary],
 ) -> ContinuitySummary:
@@ -1029,12 +856,19 @@ def _readonly_history_text(records: Iterable[object]) -> str | None:
     return "\n".join(reversed(recent)) if recent else None
 
 
-def _require_unconflicted_summary(summary: SessionSummary) -> None:
+def _require_unconflicted_summary(
+    summary: SessionSummary, *, deleting: bool = False
+) -> None:
     discovery = summary.discovery
     if discovery is not None and not discovery.resumable:
         raise ConflictedContinuityTargetError(
             "This Session ID has different transcripts in multiple discovery "
             "sources. Select an exact path or resolve the conflict before resume."
+        )
+
+    if deleting and summary.discovery is not None and summary.discovery.mode != "canonical":
+        raise RuntimeError(
+            "Compatibility Sessions are read-only; resume them before deletion."
         )
 
 
