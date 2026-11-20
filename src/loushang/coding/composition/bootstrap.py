@@ -43,7 +43,9 @@ from loushang.coding.composition.capability_plugins import (
     CodingResumePluginParents,
     coding_capability_plugin_failure_custodian,
     create_coding_capability_plugin_composition_request,
-    prepare_coding_capability_plugin_composition,
+)
+from loushang.coding.composition.capability_plugins import (
+    prepare_coding_capability_plugin_composition as prepare_coding_capability_plugin_composition,
 )
 from loushang.coding.composition.invocation_profile import (
     CODING_READ_ONLY_AGENT_INVOCATION_PRODUCT_PROFILE,
@@ -56,7 +58,9 @@ from loushang.coding.composition.plan import (
 )
 from loushang.coding.composition.product_capability_plugins import (
     CodingBuiltinProductCompositionPreparation,
-    prepare_coding_product_capability_plugin_composition,
+)
+from loushang.coding.composition.product_capability_plugins import (
+    prepare_coding_product_capability_plugin_composition as prepare_coding_product_capability_plugin_composition,
 )
 from loushang.coding.composition.provenance import (
     composition_header_metadata,
@@ -84,6 +88,7 @@ from loushang.coding.harness.session.catalog_preparation import (
     require_catalog_receipt,
 )
 from loushang.coding.harness.session.managed_plugin_preparation import (
+    bind_deferred_plugin,
     prepare_managed_plugins,
 )
 from loushang.coding.harness.session.package_catalog import (
@@ -1157,19 +1162,17 @@ def _create_agent_session(
         )
         assert managed is not None
         try:
-            return prepare_coding_capability_plugin_composition(
+            return managed.prepare_capabilities(
                 request,
+                configurations,
+                session_manager=session_manager,
                 session_id=session_id,
-                configurations=configurations,
-                package_materializer=managed.materializer,
-                lifecycle=managed.lifecycle,
-                legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
-                session_owner_id=_session_manager_plugin_owner_id(session_manager),
-                management_state_cleanup=capability_management_state_cleanup,
                 state_root=state_root,
                 clock=coding_plugin_clock,
-                coding_base_plugin_assembly=coding_base_plugin_assembly,
-                coding_product_plan_seed=plan_seed,
+                legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
+                management_cleanup=capability_management_state_cleanup,
+                base=coding_base_plugin_assembly,
+                plan_seed=plan_seed,
                 state_cleanup=(
                     preparation_custody.state_root.cleanup
                     if preparation_custody.state_root is not None
@@ -1792,121 +1795,45 @@ def _create_agent_session(
                 )
                 if product_lsp_available:
 
-                    def build_deferred_lsp_assembly() -> tuple[
-                        CodingCapabilityPluginCompositionAssembly,
-                        Callable[[], None] | None,
-                    ]:
-                        temporary_state = (
-                            _ExplicitTemporaryDirectory(
-                                prefix="loushang-coding-deferred-lsp-"
-                            )
-                            if not session_manager.persist
-                            else None
+                    def build_deferred_lsp_config() -> CodingLspPluginConfigV1:
+                        global_config, project_config = coding_lsp_config_paths(
+                            services.settings_manager,
+                            workspace_root=session_manager.get_cwd(),
                         )
-                        state_root = (
-                            Path(temporary_state.name)
-                            if temporary_state is not None
-                            else _coding_capability_plugin_state_root(
-                                session_manager, session_id=session_id
-                            )
-                            / "deferred-lsp"
+                        definitions = discover_lsp_catalog(
+                            workspace_root=session_manager.get_cwd(),
+                            baseline_environment=resolved_lsp_environment,
+                            explicit_definitions=explicit_lsp_definitions,
+                            global_config_path=global_config,
+                            project_config_path=project_config,
+                        ).definitions
+                        return CodingLspPluginConfigV1.from_runtime_inputs(
+                            workspace_root=session_manager.get_cwd(),
+                            definitions=definitions,
+                            baseline_environment=resolved_lsp_environment,
                         )
-                        preparation = None
-                        current_selection_check: Callable[[], None] | None = None
-                        try:
-                            global_config, project_config = coding_lsp_config_paths(
-                                services.settings_manager,
-                                workspace_root=session_manager.get_cwd(),
-                            )
-                            definitions = discover_lsp_catalog(
-                                workspace_root=session_manager.get_cwd(),
-                                baseline_environment=resolved_lsp_environment,
-                                explicit_definitions=explicit_lsp_definitions,
-                                global_config_path=global_config,
-                                project_config_path=project_config,
-                            ).definitions
-                            config = CodingLspPluginConfigV1.from_runtime_inputs(
-                                workspace_root=session_manager.get_cwd(),
-                                definitions=definitions,
-                                baseline_environment=resolved_lsp_environment,
-                            )
-                            if product_base_runtime is not None:
-                                selection = (
-                                    product_base_runtime.capture_plugin_desired_selection_for(
-                                        "coding.lsp.default"
-                                    )
-                                )
-                                if selection.desired_state != "installed_enabled":
-                                    raise CodingResourceCatalogAdmissionError(
-                                        ("product_requested_capability_not_installed",)
-                                    )
-                                selected_manifest = (
-                                    product_base_runtime.capture_selected_plugin_manifest_for(
-                                        "coding.lsp.default",
-                                        max_files=_CATALOG_MANIFEST_MAX_FILES,
-                                        max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
-                                    )
-                                )
 
-                                def check_product_lsp_selection() -> None:
-                                    product_base_runtime.assert_plugin_desired_selection_current(
-                                        selection
-                                    )
-                                    product_base_runtime.assert_selected_plugin_manifest_current(
-                                        selected_manifest
-                                    )
-
-                                current_selection_check = check_product_lsp_selection
-                                preparation = (
-                                    prepare_coding_product_capability_plugin_composition(
-                                        product_base_runtime,
-                                        session_id=session_id,
-                                        configurations={"coding.lsp.default": config},
-                                        state_root=state_root,
-                                        clock=coding_plugin_clock,
-                                    )
-                                )
-                                if temporary_state is not None:
-                                    preparation.state_cleanup = temporary_state.cleanup
-                            else:
-                                assert managed is not None
-                                preparation = prepare_coding_capability_plugin_composition(
-                                    create_coding_capability_plugin_composition_request(
-                                        clock=coding_plugin_clock,
-                                        plugin_ids=frozenset({"coding.lsp.default"}),
-                                    ),
-                                    session_id=session_id,
-                                    configurations={"coding.lsp.default": config},
-                                    package_materializer=managed.materializer,
-                                    lifecycle=managed.lifecycle,
-                                    legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
-                                    session_owner_id=_session_manager_plugin_owner_id(
-                                        session_manager
-                                    ),
-                                    management_state_cleanup=(
-                                        deferred_lsp_management_state_cleanup
-                                    ),
-                                    state_root=state_root,
-                                    clock=coding_plugin_clock,
-                                    state_cleanup=(
-                                        temporary_state.cleanup
-                                        if temporary_state is not None
-                                        else None
-                                    ),
-                                )
-                            assembly = preparation.bind_workspace(
-                                workspace_binding,
-                                host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
-                                tool_modes={CODING_LSP_CAPABILITY: "on_demand"},
-                                clock=coding_plugin_clock,
-                            )
-                            return assembly, current_selection_check
-                        except BaseException:
-                            if preparation is not None:
-                                preparation.close()
-                            if temporary_state is not None:
-                                temporary_state.cleanup()
-                            raise
+                    build_deferred_lsp_assembly = partial(
+                        bind_deferred_plugin,
+                        workspace_binding,
+                        session_manager=session_manager,
+                        session_id=session_id,
+                        plugin_id="coding.lsp.default",
+                        managed=managed,
+                        runtime=product_base_runtime,
+                        build_config=build_deferred_lsp_config,
+                        temporary_prefix="loushang-coding-deferred-lsp-",
+                        persistent_root=lambda: _coding_capability_plugin_state_root(
+                            session_manager, session_id=session_id
+                        ) / "deferred-lsp",
+                        legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
+                        clock=coding_plugin_clock,
+                        host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
+                        tool_modes={CODING_LSP_CAPABILITY: "on_demand"},
+                        max_manifest_files=_CATALOG_MANIFEST_MAX_FILES,
+                        max_manifest_bytes=_CATALOG_MANIFEST_MAX_BYTES,
+                        admission_failure=CodingResourceCatalogAdmissionError,
+                    )
 
                     def create_deferred_lsp_generation() -> CodingDeferredLspGeneration:
                         async def assemble_deferred_lsp(

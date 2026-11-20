@@ -1329,6 +1329,35 @@ and the ancestor `AGENTS.md` included in an exact prompt expectation. The
 comparison uses the same managed runtime and retains the failures in the
 reported result. Native Windows startup was not exercised.
 
+## Deferred Plugin Preparation And Binding
+
+The managed plugin preparation owner now supplies the original materializer,
+lifecycle and Session owner to both eager and deferred preparation. The same
+staged module opens the deferred state directory, builds the chosen configuration,
+captures fenced Desired selection and its manifest, binds the workspace and
+hands the recheck to the published generation. Fenced activation still requires
+an enabled selection. If preparation or binding fails, the original sequential
+preparation and temporary-root cleanup retains its failure precedence.
+
+Coding supplies LSP discovery, the selected plugin and tool mode, persistent
+and temporary path policy, the admission error and the existing generation
+factory. The generation still starts preparation off the event loop and
+retains the original cancellation-aware join. The staged module keeps the
+existing Product preparation imports as fault-injection seams.
+
+This batch removes 73 Product lines and adds 132 staging lines, for a net
+increase of 59 Python lines. The typed preparation interface and the bound
+Product inputs account for the extra declarations. The existing Harness
+owners continue to hold the runtime and plugin lifecycle. The normalized
+dependency graph retains the same 1,661 module pairs. The comparison against
+the preceding checkpoint matches 480 selection, workspace binding and
+cleanup traces, including faults in directory allocation, evidence capture,
+revalidation and resource release. All 17 Linux runtime cases pass, including
+managed and fenced activation, revoked selection, retirement retry, dormant
+resume, eager startup, shared LSP and Arch composition and interactive input
+during preparation. The existing neutral-composer architecture check passes.
+Native Windows activation was not exercised.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
