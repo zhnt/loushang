@@ -765,6 +765,7 @@ _WORKSPACE_FIELDS = {
     "preview-workspace": ({"workspace_id"}, set()),
     "rename-workspace": ({"workspace_id", "name"}, set()),
     "delete-workspace": ({"workspace_id"}, set()),
+    "delete-workspace-with-history": ({"workspace_id"}, set()),
     "add-path": ({"workspace_id", "path", "alias"}, set()),
     "update-path": ({"workspace_id", "path_id", "path", "alias"}, set()),
     "remove-path": ({"workspace_id", "path_id"}, set()),

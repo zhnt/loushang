@@ -37,9 +37,12 @@ export function WorkspaceEditor({ project, save, onClose }: WorkspaceEditorProps
       accepted?.();
     } catch (failure) {
       const code = failure instanceof Error ? failure.message : String(failure);
-      const errorKey = code === "not_found" ? "missing" : code === "permission_denied" ? "permission_denied"
-        : code === "operation_unavailable" && edit.action === "delete-workspace" ? "deleteBlocked" : "saveFailed";
-      setError(t(errorKey));
+      if (edit.action === "delete-workspace-with-history") {
+        setConfirmDelete(false);
+        setError(t(code === "cleanup_incomplete" ? "deleteIncomplete" : "deleteBlocked"));
+      } else {
+        setError(t(code === "not_found" ? "missing" : code === "permission_denied" ? "permission_denied" : "saveFailed"));
+      }
     } finally {
       setBusy(false);
       inFlight.current = false;
@@ -127,11 +130,15 @@ export function WorkspaceEditor({ project, save, onClose }: WorkspaceEditorProps
             </div>
           </form> : null}
         </section>
+        {confirmDelete ? <p id="workspace-delete-impact" role="status">{t("deleteImpact", { name: project.name ?? workspaceId })}</p> : null}
         <div className="local-host-actions">
           {confirmDelete ? <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>{t("cancel")}</button> : null}
-          <button type="button" className="host-danger" disabled={busy} onClick={() => {
-            if (confirmDelete) void submit({ action: "delete-workspace", workspaceId }, close);
-            else setConfirmDelete(true);
+          <button type="button" className="host-danger" disabled={busy} aria-describedby={confirmDelete ? "workspace-delete-impact" : undefined} onClick={() => {
+            if (confirmDelete) void submit({ action: "delete-workspace-with-history", workspaceId }, close);
+            else {
+              setError("");
+              setConfirmDelete(true);
+            }
           }}>{t(confirmDelete ? "confirmDelete" : "delete")}</button>
         </div>
       </> : null}

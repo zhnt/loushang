@@ -37,7 +37,7 @@ export function projectKey(project: ProjectEntry): string {
 export type WorkspaceEdit =
   | { action: "create-workspace"; name: string }
   | { action: "rename-workspace"; workspaceId: string; name: string }
-  | { action: "delete-workspace"; workspaceId: string }
+  | { action: "delete-workspace-with-history"; workspaceId: string }
   | { action: "add-path" | "update-path"; workspaceId: string; pathId?: string; alias: string; path: string }
   | { action: "remove-path" | "set-default-path"; workspaceId: string; pathId?: string };
 

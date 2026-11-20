@@ -329,8 +329,14 @@ impl Backend {
                 return Ok(json!({ "path": workspace.path }));
             }
             "open" => return self.open(target, field(request, "path")?),
-            "create-workspace" | "rename-workspace" | "delete-workspace" | "add-path"
-            | "update-path" | "remove-path" | "set-default-path" => WorkspaceRequest::Logical {
+            "create-workspace"
+            | "rename-workspace"
+            | "delete-workspace"
+            | "delete-workspace-with-history"
+            | "add-path"
+            | "update-path"
+            | "remove-path"
+            | "set-default-path" => WorkspaceRequest::Logical {
                 action,
                 path: optional_workspace_path(request)?,
                 fields: json!({

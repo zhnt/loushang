@@ -51,6 +51,7 @@ from loushang.appserver.protocol import (
     WorkspaceResultV1,
 )
 from loushang.appserver.protocol.model import MAX_TITLE_CHARS
+from loushang.foundation._owned_tasks import _join_failure_first
 from loushang.foundation._owned_tasks import (
     _observe_task_result as _observe_managed_close,
 )
@@ -90,6 +91,7 @@ from .ports import (
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
     HostedSessionResolverV1,
+    HostedWorkspaceHistoryDeletionPort,
     HostedWorkspaceModelsPort,
     HostedWorkspacePort,
 )
@@ -629,6 +631,11 @@ class AppServiceV1:
         self._require_open()
         if type(request) is not WorkspaceRequestV1 or self._workspaces is None:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        if request.action == "delete-workspace-with-history":
+            await _join_failure_first(
+                _start_continuity_io(lambda: self._delete_workspace_with_history(request))
+            )
+            return WorkspaceResultV1(())
         if request.action == "delete-workspace":
             selected = await self._workspaces.workspace(WorkspaceRequestV1("open-workspace", workspace_id=request.workspace_id))
             fingerprints = {item.scope_fingerprint for item in selected.workspaces}
@@ -663,6 +670,42 @@ class AppServiceV1:
             except Exception:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
         return result
+
+    async def _delete_workspace_with_history(self, request: WorkspaceRequestV1) -> None:
+        owner = self._workspaces
+        if not isinstance(owner, HostedWorkspaceHistoryDeletionPort):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        assert request.workspace_id is not None
+        try:
+            fingerprints = await owner.workspace_deletion_scopes(request.workspace_id)
+        except AppServiceError as error:
+            if error.code is AppErrorCodeV1.NOT_FOUND:
+                return
+            raise
+        if fingerprints.intersection(self._workspace_pending):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        # The workspace lock prevents new opens while the original Mux
+        # continuity path removes these members and settles their writers.
+        async with self._state_lock:
+            members = tuple(
+                MuxMemberCloseV1(MuxSelectorV1(mux_space_id=mux.mux_space_id), member.member_id)
+                for mux in self._mux_by_id.values()
+                for member in mux.members
+                if member.session.identity.scope_fingerprint in fingerprints
+            )
+        for member in members:
+            try:
+                await self._close_member(member)
+            except AppServiceError as error:
+                if error.code is not AppErrorCodeV1.NOT_FOUND:
+                    raise
+        async with self._state_lock:
+            unsettled = tuple(
+                session for session in {*self._sessions.values(), *self._cleanup_debt}
+                if session.identity.scope_fingerprint in fingerprints
+            )
+        await self._close_sessions(unsettled)
+        await owner.workspace(request)
 
     @property
     def continuity_enabled(self) -> bool:

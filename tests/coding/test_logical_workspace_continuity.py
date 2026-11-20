@@ -1,17 +1,28 @@
 """Exercise logical Workspace membership through real Coding and AppService owners."""
 
 import asyncio
+import json
 import shutil
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from hashlib import sha256
+from secrets import token_hex
+
+import pytest
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.types import ToolCall, ToolResultMessage
+from loushang.appserver.local import LocalAppClientConnectionV1
+from loushang.appserver.local_record import LocalConnectionDirectoryV1
+from loushang.appserver.managed_mux import ManagedMuxCreateV1
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
     InteractionOutcomeV1,
     InteractionRespondV1,
     MuxAttachV1,
     MuxCreateV1,
+    MuxMemberCloseV1,
     MuxMemberOpenV1,
     MuxReadV1,
     MuxSelectorV1,
@@ -21,10 +32,16 @@ from loushang.appserver.protocol import (
     WorkspaceRequestV1,
 )
 from loushang.appservice.execution_contract import ExecutionStatusV1
+from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.coding.managed_bootstrap import (
     CodingManagedApplicationLaunchV1,
     create_coding_managed_attempt,
 )
+from loushang.coding.managed_local import (
+    CodingManagedLocalCommandV1,
+    CodingManagedLocalLaunchV1,
+)
+from loushang.harness.transcript import lifecycle
 
 from .test_hosted_session import _model, _stream, synthetic_model_transport
 
@@ -235,5 +252,162 @@ def test_workspace_continuity_survives_directory_loss_and_rebinding(tmp_path, mo
             snapshot = await talk(client, mux, original, "lost-while-open")
             assert "lost-while-open" in {item.text for item in snapshot.records}
 
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_delete_workspace_removes_attached_and_detached_history_only(tmp_path, monkeypatch, legacy):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    launch = CodingManagedApplicationLaunchV1(
+        tmp_path, tmp_path / "application", "coding.delete-workspace", tmp_path / "sessions",
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    source = project / "keep.txt"
+    source.write_bytes(b"project data")
+    missing = tmp_path / "missing"
+    missing.mkdir()
+    if legacy:
+        registry = tmp_path / "workspaces"
+        registry.mkdir(mode=0o700)
+        record = registry / "workspaces.json"
+        record.write_text(json.dumps(sorted((str(project), str(missing)))), encoding="utf-8")
+        record.chmod(0o600)
+
+    @asynccontextmanager
+    async def host():
+        class Admission:
+            async def acquire(self):
+                pass
+
+            def check_creation(self, previous):
+                pass
+
+            async def close(self):
+                pass
+
+        instance = token_hex(16)
+        service = "a" * 64
+
+        async def ensure_named(name, commit):
+            await commit(ManagedMuxCreateV1(service, instance, sha256(name.encode()).hexdigest()[:32], name, "test"))
+
+        binding = ManagedMuxServiceBindingV1(
+            launch.application_id, service, instance, lambda _: Admission(), ensure_named=ensure_named,
+        )
+        local = CodingManagedLocalLaunchV1(
+            launch, tmp_path / "connection", "workspace", instance_id=instance, managed_mux=binding,
+        )
+        command = CodingManagedLocalCommandV1(local, model=_model(), stream_fn=_stream)
+        connection = LocalAppClientConnectionV1(
+            LocalConnectionDirectoryV1(local.connection_root), local.endpoint,
+        )
+        try:
+            await command.start()
+            await connection.start()
+            yield connection.client
+        finally:
+            await connection.close()
+            await command.close()
+
+    async def opened(client, info, mux, title):
+        selector = MuxSelectorV1(name=mux)
+        await client.attach_mux(MuxAttachV1(selector))
+        space = await client.open_member(MuxMemberOpenV1(
+            selector, SessionOpenSpecV1("coding", title, info.scope, info.scope_fingerprint, title),
+        ))
+        member = space.members[-1]
+        attachment = await client.attach_mux(MuxAttachV1(selector))
+        request = SessionSnapshotRequestV1(
+            attachment.attachment_id, attachment.controller_generation, member.member_id,
+        )
+        execution = client.execution_client
+        record = await execution.submit_execution(request, execution.service_instance_id, title, title)
+        async with asyncio.timeout(10):
+            while not record.state.status.terminal:
+                await asyncio.sleep(0.01)
+                record = await execution.get_execution(request, execution.service_instance_id, record.state.execution_id)
+        assert record.state.status is ExecutionStatusV1.SUCCEEDED
+        return member
+
+    async def scenario():
+        async with host() as client:
+            if legacy:
+                by_name = {
+                    row.workspace["name"]: row
+                    for row in (await client.workspace(WorkspaceRequestV1("workspaces"))).workspaces
+                }
+                workspace = by_name["project"]
+                original, = (await client.workspace(WorkspaceRequestV1("open", str(project)))).workspaces
+            else:
+                workspace, = (await client.workspace(WorkspaceRequestV1(
+                    "create-workspace", name="Project", path=str(project), alias="main",
+                ))).workspaces
+                original = workspace
+            workspace_id = workspace.workspace["id"]
+            mux = workspace.workspace["muxName"]
+            await client.workspace(WorkspaceRequestV1(
+                "add-path", path=str(missing), workspace_id=workspace_id, alias="missing",
+            ))
+            missing.rmdir()
+            if legacy:
+                await client.workspace(WorkspaceRequestV1(
+                    "delete-workspace-with-history", workspace_id=by_name["missing"].workspace["id"],
+                ))
+            await client.workspace(WorkspaceRequestV1("open-workspace", workspace_id=workspace_id))
+            detached = await opened(client, original, mux, "detached")
+            await client.close_member(MuxMemberCloseV1(MuxSelectorV1(name=mux), detached.member_id))
+            attached = await opened(client, workspace, mux, "attached")
+            default, = (await client.workspace(WorkspaceRequestV1("allocate-temporary"))).workspaces
+            other = await opened(client, default, "gui-temporary", "keep-other-chat")
+
+            def history(member):
+                path, = launch.session_root.rglob(f"hosted-{member.session.session_id}.jsonl")
+                return path
+
+            removed = (history(detached), history(attached))
+            retained = history(other)
+            with pytest.raises(AppServiceError) as old_client:
+                await client.workspace(WorkspaceRequestV1("delete-workspace", workspace_id=workspace_id))
+            assert old_client.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+
+            deletion = WorkspaceRequestV1("delete-workspace-with-history", workspace_id=workspace_id)
+            if legacy:
+                delete_transcript = lifecycle.delete_agent_transcript_jsonl
+
+                async def fail_on_detached(path, **options):
+                    if path == removed[0]:
+                        raise OSError("injected transcript deletion failure")
+                    return await delete_transcript(path, **options)
+
+                with monkeypatch.context() as fail:
+                    fail.setattr(lifecycle, "delete_agent_transcript_jsonl", fail_on_detached)
+                    with pytest.raises(AppServiceError) as incomplete:
+                        await client.workspace(deletion)
+                assert incomplete.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
+                assert not removed[1].exists()
+                assert removed[0].is_file()
+                assert source.read_bytes() == b"project data"
+
+            await client.workspace(deletion)
+            assert (await client.workspace(deletion)).workspaces == ()
+            assert all(not path.exists() for path in removed)
+            assert retained.is_file()
+            assert source.read_bytes() == b"project data"
+            assert not missing.exists()
+
+        async with host() as client:
+            remaining, = (await client.workspace(WorkspaceRequestV1("workspaces"))).workspaces
+            assert remaining.workspace["default"]
+            muxes = await client.list_muxes()
+            assert [member.session for space in muxes.mux_spaces for member in space.members] == [other.session]
+            assert all(not path.exists() for path in removed)
+            assert source.read_bytes() == b"project data"
 
     asyncio.run(scenario())

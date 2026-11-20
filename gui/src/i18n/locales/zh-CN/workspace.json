@@ -20,13 +20,15 @@
     "close": "关闭",
     "confirmDelete": "确认删除工作空间",
     "delete": "删除工作空间",
+    "deleteImpact": "永久删除「{{name}}」及其全部会话？关联目录及其中的文件会保留。",
     "saveFailed": "无法更新工作空间。",
     "available": "可用",
     "missing": "找不到目录",
     "unsafe": "目录或上级目录已被链接替换",
     "not_directory": "路径指向的对象不是目录",
     "permission_denied": "权限不足",
-    "deleteBlocked": "此工作空间仍保留会话历史。"
+    "deleteBlocked": "当前无法删除此工作空间。",
+    "deleteIncomplete": "删除尚未完成。请重新确认，以继续删除工作空间和会话。"
   },
   "sidebar": {
     "pin": "置顶",

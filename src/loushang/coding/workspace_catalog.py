@@ -162,6 +162,23 @@ class CodingWorkspaceCatalog(
             "defaultPathId": item.default_path_id, "muxName": mux,
         })
 
+    async def _workspace_by_id(self, workspace_id: str) -> Workspace:
+        try:
+            return await settled_io(self.registry.workspace, workspace_id)
+        except ValueError:
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+
+    async def _owned_workspace_catalogs(self, item: Workspace) -> tuple[CodingHostedSessionCatalogV1, ...]:
+        if self._closed or item.default:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        logical = await self._logical_catalog(item)
+        return (logical, *(self._add(origin) for origin in item.legacy_origins))
+
+    async def workspace_deletion_scopes(self, workspace_id: str) -> frozenset[str]:
+        item = await self._workspace_by_id(workspace_id)
+        catalogs = await self._owned_workspace_catalogs(item)
+        return frozenset(scope.fingerprint for catalog in catalogs for scope in catalog.scopes)
+
     async def _logical_workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         action = request.action
         if action == "workspaces":
@@ -178,10 +195,7 @@ class CodingWorkspaceCatalog(
             return WorkspaceResultV1((await self._logical_info(created),))
         workspace_id = request.workspace_id
         assert workspace_id is not None
-        try:
-            item = await settled_io(self.registry.workspace, workspace_id)
-        except ValueError:
-            raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+        item = await self._workspace_by_id(workspace_id)
         if action in {"inspect-workspace", "preview-workspace"}:
             link = item.default_path
             if link is None or await settled_io(self.registry.path_status, link) != "available":
@@ -189,10 +203,11 @@ class CodingWorkspaceCatalog(
             fingerprint = request.preview.scope_fingerprint if request.preview is not None else request.scope_fingerprint
             catalog = await self._logical_catalog(item)
             if fingerprint is not None and catalog.scopes[0].fingerprint != fingerprint:
-                catalog = next((self._catalogs[origin] for origin in item.legacy_origins
-                                if self._catalogs[origin].scopes[0].fingerprint == fingerprint), None)
-                if catalog is None:
+                legacy = next((self._catalogs[origin] for origin in item.legacy_origins
+                               if self._catalogs[origin].scopes[0].fingerprint == fingerprint), None)
+                if legacy is None:
                     raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
+                catalog = legacy
             if action == "inspect-workspace":
                 return await self._inspect_workspace(link.path, catalog, request.session_id)
             assert request.preview is not None
@@ -208,6 +223,18 @@ class CodingWorkspaceCatalog(
             await catalog.close()
             path = self._logical_catalogs.pop(workspace_id)
             self._catalogs.pop(path)
+            return WorkspaceResultV1(())
+        if action == "delete-workspace-with-history":
+            catalogs = await self._owned_workspace_catalogs(item)
+            try:
+                for catalog in catalogs:
+                    await catalog.delete_workspace_history()
+                await settled_io(self.registry.delete_workspace, workspace_id, history_deleted=True)
+            except Exception as error:
+                raise AppServiceError(AppErrorCodeV1.CLEANUP_INCOMPLETE) from error
+            self._catalogs.pop(self._logical_catalogs.pop(workspace_id))
+            for origin in item.legacy_origins:
+                self._catalogs.pop(origin)
             return WorkspaceResultV1(())
         try:
             if action == "rename-workspace":
@@ -355,7 +382,8 @@ class CodingWorkspaceCatalog(
             return WorkspaceResultV1((WorkspaceInfoV1(str(scope.cwd), scope.scope, scope.fingerprint),))
         if request.action in {"workspaces", "create-workspace", "open-workspace", "rename-workspace",
                               "inspect-workspace", "preview-workspace",
-                              "delete-workspace", "add-path", "update-path", "remove-path", "set-default-path"}:
+                              "delete-workspace", "delete-workspace-with-history",
+                              "add-path", "update-path", "remove-path", "set-default-path"}:
             if self._closed:
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             return await self._logical_workspace(request)

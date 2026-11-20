@@ -204,11 +204,11 @@ class WorkspaceRegistry:
     def rename_workspace(self, workspace_id: str, name: str) -> None:
         self._edit_workspace(workspace_id, lambda item: replace(item, name=_title(name)))
 
-    def delete_workspace(self, workspace_id: str) -> None:
+    def delete_workspace(self, workspace_id: str, *, history_deleted: bool = False) -> None:
         def remove(item: Workspace) -> None:
             if item.default:
                 raise ValueError("default_workspace_reserved")
-            if item.legacy_origins:
+            if item.legacy_origins and not history_deleted:
                 # Its sources can hold detached history as well as Mux members.
                 raise ValueError("workspace_has_history")
 
