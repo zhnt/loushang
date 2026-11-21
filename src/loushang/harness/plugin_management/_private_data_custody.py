@@ -14,6 +14,7 @@ from loushang.harness.workspace.paths import assert_workspace_directory_identity
 if TYPE_CHECKING:
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PosixLocalWheelProductSessionOwner,
+        WindowsLocalWheelProductSessionOwner,
     )
     from loushang.harness.resources.packages.product_epoch_guard import (
         PackageProductPosixFencedRuntimeOwner,
@@ -25,7 +26,10 @@ if TYPE_CHECKING:
 
 @contextmanager
 def private_data_mutation_fence(
-    product: PosixLocalWheelProductSessionOwner, *, label: str
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    *,
+    active_message: str,
+    require_write: bool,
 ) -> Iterator[None]:
     """Hold quiescence and the exclusive GC gate through a Product operation."""
     registry = product.epoch_runtime.registry
@@ -33,11 +37,28 @@ def private_data_mutation_fence(
         store_id=registry.store_id
     ) as quiescence:
         if quiescence.active_runtime_lease_ids:
-            raise ValueError(f"{label} private-data Product runtime is active")
+            raise ValueError(active_message)
         product.assert_root_gc_authority_current()
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=require_write):
             yield
         product.assert_root_gc_authority_current()
+
+
+@contextmanager
+def windows_private_data_read_fence(
+    product: WindowsLocalWheelProductSessionOwner, *, label: str
+) -> Iterator[None]:
+    """Observe the native Product through its existing non-repairing GC gate."""
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as quiescence:
+        if quiescence.active_runtime_lease_ids:
+            raise ValueError(f"{label} private-data Product runtime is active")
+        product.assert_private_data_read_authority_current()
+        with product.gc_gate.read_guard():
+            yield
+        product.assert_private_data_read_authority_current()
 
 
 def private_read_state_identity(state_root: Path, *, message: str) -> tuple[int, int]:

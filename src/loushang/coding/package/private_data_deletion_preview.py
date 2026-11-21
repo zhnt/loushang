@@ -115,7 +115,11 @@ class CodingArchPrivateDataDeletionPreview:
             )
 
     def _offline(self) -> AbstractContextManager[None]:
-        return private_data_mutation_fence(self.product, label="Coding Arch")
+        return private_data_mutation_fence(
+            self.product,
+            active_message="Coding Arch private-data Product runtime is active",
+            require_write=False,
+        )
 
 
 def _capture_target_snapshot(

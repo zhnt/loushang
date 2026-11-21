@@ -6,40 +6,7 @@ binding dependencies. Resource and transaction instances stay single-owned.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 from loushang.coding.package import private_data_windows_deletion_journal as _binding
-
-
-@contextmanager
-def transaction(
-    self: _binding.CodingWindowsArchPrivateDataDeletionJournal,
-) -> _binding.Iterator[_binding.CodingWindowsArchPrivateDataDeletionTransaction]:
-    """Hold one offline Product gate from start through physical effects."""
-
-    registry = self.product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError(_binding._PRIVATE_DATA_CUSTODY_VALUES["message_01"])
-        self.product.assert_root_gc_authority_current()
-        with self.product.gc_gate.guard(require_write=True):
-            with (
-                self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd
-            ):
-                transaction = _binding.CodingWindowsArchPrivateDataDeletionTransaction(
-                    self.product.state_root,
-                    fd,
-                    _binding.CodingWindowsArchPrivateDataConfirmationOwner(
-                        self.layout, self.product
-                    ),
-                )
-                try:
-                    yield transaction
-                finally:
-                    transaction._close()
-        self.product.assert_root_gc_authority_current()
 
 
 def capture_current_target(

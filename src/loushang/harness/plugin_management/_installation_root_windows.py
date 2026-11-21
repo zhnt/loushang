@@ -155,6 +155,29 @@ class _WindowsInstallationRootLineage(Generic[G]):
             self._write_or_match_receipt(generation.receipt_path, receipt)
         return identity
 
+    def prepare_child(
+        self,
+        key: PluginInstallationKeyV1,
+        installation_root: Path,
+        child_root: Path,
+        *,
+        state_root: Path,
+        package_root: Path,
+    ) -> None:
+        """Create a private child and recheck its original Installation root."""
+        identity = self.bind(
+            key, installation_root, state_root=state_root, package_root=package_root
+        )
+        prepare_windows_product_private_directory_chain(
+            installation_root,
+            *child_root.relative_to(installation_root).parts,
+            inherit_leaf=True,
+        )
+        if self.bind(
+            key, installation_root, state_root=state_root, package_root=package_root
+        ) != identity:
+            raise ValueError(f"{self.label} private-data Installation root changed")
+
     def inspect(
         self,
         key: PluginInstallationKeyV1,

@@ -6,34 +6,7 @@ binding dependencies. Resource and transaction instances stay single-owned.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 from loushang.coding.package import private_data_windows_restore_journal as _binding
-
-
-@contextmanager
-def transaction(
-    self: _binding.CodingWindowsArchPrivateDataRestoreJournal,
-) -> _binding.Iterator[_binding.CodingWindowsArchPrivateDataRestoreTransaction]:
-    registry = self.product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError(_binding._PRIVATE_DATA_CUSTODY_VALUES["message_01"])
-        self.product.assert_root_gc_authority_current()
-        with self.product.gc_gate.guard(require_write=True):
-            with (
-                self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd
-            ):
-                transaction = _binding.CodingWindowsArchPrivateDataRestoreTransaction(
-                    self.layout, self.product, fd
-                )
-                try:
-                    yield transaction
-                finally:
-                    transaction._close()
-        self.product.assert_root_gc_authority_current()
 
 
 def validate_publication(self: _binding.CodingWindowsArchRestorePublicationV1) -> None:

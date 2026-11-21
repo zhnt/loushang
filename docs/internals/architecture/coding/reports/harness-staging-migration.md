@@ -227,6 +227,29 @@ The existing Linux private-data suite and the Desired-state ownership check
 pass all 86 selected cases, including CLI and SDK lifecycle operations,
 deletion recovery, and refusal of missing locks or partial state on reads.
 
+### Formal Windows Fencing And Installation Lineage
+
+Windows deletion and restore now share the Harness mutation fence. The
+existing native Product writer supplies the state descriptor. Coding binds
+the nominal transactions and closes them before releasing the descriptor.
+Expiry borrows the same fence through the restore transaction. Native
+observation uses the Harness Windows read fence and its existing GC read
+guard. The Product SDK owns candidate selection and workspace admission.
+
+Coding chooses the exact Installation and Session path and proves the
+selected manifest. The Harness Windows lineage owner binds the Installation
+root, prepares the native child directory and rechecks the root identity.
+The temporary Installation preparation and Windows SDK scope modules have
+been removed. The read preview, confirmation and receipt proofs continue
+through their remaining lifecycle migration batches.
+
+This batch removes 215 temporary Python lines, adds 76 Coding Product lines
+and adds 44 formal Harness lines. Production Python decreases by 95 lines.
+The Windows candidate contracts and POSIX installation and deletion checks
+pass all 49 selected cases on Linux. A mock-backed probe also verifies
+the bind, prepare, rebind order and rejection of a changed identity.
+Native Windows ACL and filesystem behavior require separate platform evidence.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

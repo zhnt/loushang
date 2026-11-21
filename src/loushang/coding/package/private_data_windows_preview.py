@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -24,6 +23,9 @@ from loushang.coding.harness.plugin_management import (
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management._private_data_custody import (
+    windows_private_data_read_fence,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_tree_windows import (
@@ -70,7 +72,6 @@ _native_io = PrivateWindowsTreeIO(
 
 _PRIVATE_DATA_FLOW_VALUES = {
     "message_01": "Windows Coding Arch private-data root changed",
-    "message_02": "Windows Coding Arch private-data Product runtime is active",
 }
 
 
@@ -105,10 +106,8 @@ class CodingWindowsArchPrivateDataReadPreview:
     ) -> CodingArchPrivateDataTargetSnapshotV1:
         return _programs.snapshot_for(self, key)
 
-    @contextmanager
-    def _offline(self) -> Iterator[None]:
-        with _programs.offline(self) as borrowed:
-            yield borrowed
+    def _offline(self) -> AbstractContextManager[None]:
+        return windows_private_data_read_fence(self.product, label="Windows Coding Arch")
 
 
 def _capture_windows_target_snapshot(

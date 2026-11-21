@@ -23,6 +23,9 @@ from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateL
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management._private_data_custody import (
+    private_data_mutation_fence,
+)
 from loushang.harness.plugin_management._private_data_deletion_windows import (
     WindowsPrivateDeletionTransaction,
 )
@@ -72,11 +75,6 @@ _MAX_EVENTS = 4096
 _OWNER_ID = "coding.arch.private-data:windows-v1"
 
 
-_PRIVATE_DATA_CUSTODY_VALUES = {
-    "message_01": "Windows Coding Arch deletion runtime is active"
-}
-
-
 _PRIVATE_DATA_FLOW_VALUES = {
     "message_01": "Windows Coding Arch deletion root changed",
     "message_02": "Windows Coding Arch absent target changed",
@@ -104,8 +102,23 @@ class CodingWindowsArchPrivateDataDeletionJournal:
     def transaction(self) -> Iterator[CodingWindowsArchPrivateDataDeletionTransaction]:
         """Hold one offline Product gate from start through physical effects."""
 
-        with _programs.transaction(self) as borrowed:
-            yield borrowed
+        with (
+            private_data_mutation_fence(
+                self.product,
+                active_message="Windows Coding Arch deletion runtime is active",
+                require_write=True,
+            ),
+            self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd,
+        ):
+            transaction = CodingWindowsArchPrivateDataDeletionTransaction(
+                self.product.state_root,
+                fd,
+                CodingWindowsArchPrivateDataConfirmationOwner(self.layout, self.product),
+            )
+            try:
+                yield transaction
+            finally:
+                transaction._close()
 
 
 @dataclass(frozen=True, slots=True)

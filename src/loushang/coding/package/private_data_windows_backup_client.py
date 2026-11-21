@@ -16,18 +16,15 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
-from loushang.coding.harness.plugin_management import (
-    private_data_clients_windows as _programs,
-)
 from loushang.coding.package.epoch_layout import (
-    coding_fenced_product_exists as coding_fenced_product_exists,
+    coding_fenced_product_exists,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
-    WindowsLocalWheelProductSessionOwner as WindowsLocalWheelProductSessionOwner,
+    WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.application import PluginBackupRetentionRecordV1
 from loushang.harness.plugin_management.private_data_confirmation import (
@@ -40,7 +37,7 @@ from loushang.harness.plugin_management.private_data_deletion import (
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    PackageProductWindowsFencedRuntimeOwner as PackageProductWindowsFencedRuntimeOwner,
+    PackageProductWindowsFencedRuntimeOwner,
 )
 from loushang.harness.workspace.paths import capture_workspace_directory_identity
 
@@ -77,18 +74,10 @@ from .private_data_windows_restore_preview import (
 )
 from .product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-)
-from .product_runtime import (
-    open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
+    open_coding_fenced_product_application_owner,
 )
 
 _DELETION_OWNER_ID = "coding.arch.private-data:windows-v1"
-
-
-_PRIVATE_DATA_FLOW_VALUES = {
-    "message_01": "Windows Coding Arch backup Product fence is absent",
-    "message_02": "Windows Coding Arch backup Product owner changed",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,8 +281,28 @@ class CodingWindowsArchBackupCandidateClientV1:
 
     @contextmanager
     def _owner(self) -> Iterator[CodingWindowsArchPrivateDataBackupOwner]:
-        with _programs.backup_scope(self) as borrowed:
-            yield borrowed
+        self._assert_workspace_identity()
+        if not coding_fenced_product_exists(self.layout):
+            raise ValueError("Windows Coding Arch backup Product fence is absent")
+        application = open_coding_fenced_product_application_owner(
+            self.layout,
+            workspace=self.workspace,
+            runtime_version=self.runtime_version,
+            runtime_protocol_epoch=self.runtime_protocol_epoch,
+            windows_candidate=True,
+        )
+        try:
+            product = application.runtime_owner.product_owner
+            if not isinstance(
+                product, WindowsLocalWheelProductSessionOwner
+            ) or not isinstance(
+                application.epoch_runtime, PackageProductWindowsFencedRuntimeOwner
+            ):
+                raise ValueError("Windows Coding Arch backup Product owner changed")
+            yield CodingWindowsArchPrivateDataBackupOwner(self.layout, product)
+            self._assert_workspace_identity()
+        finally:
+            application.close()
 
     def _assert_workspace_identity(self) -> None:
         metadata = self.workspace.lstat()

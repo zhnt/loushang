@@ -14,14 +14,14 @@ from pathlib import Path
 from typing import ClassVar
 
 from loushang.coding.harness.plugin_management import (
-    private_data_windows_restore as _programs,
-)
-from loushang.coding.harness.plugin_management import (
     private_data_windows_restore as _record_programs,
 )
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management._private_data_custody import (
+    private_data_mutation_fence,
 )
 from loushang.harness.plugin_management._private_data_restore_windows import (
     WindowsPrivateRestoreTransaction,
@@ -72,11 +72,6 @@ _PUBLICATION_MAX_BYTES = 4096
 _CONFIRM_PREFIX = "arch-restore-confirmation-"
 _CONFIRM_NAME = re.compile(r"arch-restore-confirmation-([0-9]{8})\.json(\.stage)?\Z")
 _CONFIRM_MAX_BYTES = 16 * 1024
-
-
-_PRIVATE_DATA_CUSTODY_VALUES = {
-    "message_01": "Windows Coding Arch restore runtime is active"
-}
 
 
 _PRIVATE_DATA_RECORD_VALUES = {
@@ -139,8 +134,21 @@ class CodingWindowsArchPrivateDataRestoreJournal:
 
     @contextmanager
     def transaction(self) -> Iterator[CodingWindowsArchPrivateDataRestoreTransaction]:
-        with _programs.transaction(self) as borrowed:
-            yield borrowed
+        with (
+            private_data_mutation_fence(
+                self.product,
+                active_message="Windows Coding Arch restore runtime is active",
+                require_write=True,
+            ),
+            self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd,
+        ):
+            transaction = CodingWindowsArchPrivateDataRestoreTransaction(
+                self.layout, self.product, fd
+            )
+            try:
+                yield transaction
+            finally:
+                transaction._close()
 
 
 @dataclass(frozen=True, slots=True)
