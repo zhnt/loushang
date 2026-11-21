@@ -193,6 +193,40 @@ mechanisms remain in their later frozen package/lifecycle batches; this first
 batch does not claim those whole components accepted. The existing final
 `loushang.harness` does not import the new staging namespace.
 
+### Formal POSIX Deletion And Custody
+
+The formal private-data migration starts at `588b473bb`. The staged
+private-data inventory has 25 Python files and 2,591 physical lines.
+
+The POSIX operator CLI and SDK compose an admitted Product scope in Coding.
+The narrow CLI deletion preview and the confirmed deletion owner now both
+call Harness `PrivateDataDeletionJournal.preview_plan`. It reads pending
+history through the existing non-repairing Journal path and observes a new
+target only when no deletion is pending. The existing Journal still owns
+the execution checkpoints, recovery and replay. Coding supplies its
+Installation layout, confirmation admission, desired-state decision and
+historical receipt identity.
+
+Harness owns the offline scopes and private state identity checks used by
+those Product entry points. The narrow read scope acquires quiescence in
+read-only mode, takes the existing GC read guard and reads Desired state
+without creating or repairing lock or journal state. The confirmed delete
+scope retains the original exclusive GC gate and checks its Product root
+authority before and after the normal operation. Coding owns SDK application
+selection and the closure sequence for its bound reader and Product.
+
+The replaced staging programs for POSIX client scopes, deletion admission
+and deletion fencing are removed. Backup verification, restore and expiry
+queries still have their own staged operations and are covered in later
+formal migration batches.
+
+This batch removes 280 temporary Python lines. Coding Product adds 82 lines
+of entry binding and compatibility, and formal Harness adds 130 lines of
+shared plan and custody code. Production Python decreases by 68 lines.
+The existing Linux private-data suite and the Desired-state ownership check
+pass all 86 selected cases, including CLI and SDK lifecycle operations,
+deletion recovery, and refusal of missing locks or partial state on reads.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

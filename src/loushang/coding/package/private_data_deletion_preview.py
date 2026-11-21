@@ -7,22 +7,21 @@ recapture the target under the same Product fence before a confirmed mutation.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar, Literal
 
-from loushang.coding.harness.plugin_management import (
-    private_data_deletion_preview as _programs,
-)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management._private_data_custody import (
+    private_data_mutation_fence,
 )
 from loushang.harness.plugin_management._private_data_records import (
     PrivateDataMemberV1,
@@ -51,11 +50,6 @@ _MAX_ENTRIES = 4096
 _MAX_FILE_BYTES = 16 * 1024 * 1024
 _MAX_TOTAL_BYTES = 64 * 1024 * 1024
 _identity = metadata_identity
-
-
-_PRIVATE_DATA_FLOW_VALUES = {
-    "message_01": "Coding Arch private-data Product runtime is active"
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,10 +114,8 @@ class CodingArchPrivateDataDeletionPreview:
                 root, private_base=self.layout.private_data_base
             )
 
-    @contextmanager
-    def _offline(self) -> Iterator[None]:
-        with _programs.offline(self) as borrowed:
-            yield borrowed
+    def _offline(self) -> AbstractContextManager[None]:
+        return private_data_mutation_fence(self.product, label="Coding Arch")
 
 
 def _capture_target_snapshot(

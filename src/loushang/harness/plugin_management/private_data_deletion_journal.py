@@ -35,6 +35,7 @@ from .private_data_deletion import (
     PrivateDataDeletionDisposition,
     PrivateDataDeletionTarget,
 )
+from .records import PluginInstallationKeyV1
 
 _TargetT = TypeVar("_TargetT", bound=PrivateDataDeletionTarget)
 _EventT = TypeVar(
@@ -87,6 +88,23 @@ class PrivateDataDeletionJournal(Generic[_TargetT, _EventT]):
 
     def current_start(self) -> _EventT | None:
         return _open_start(self.events())
+
+    def preview_plan(
+        self,
+        key: PluginInstallationKeyV1,
+        *,
+        owner_id: str,
+        capture_target: Callable[[], _TargetT],
+    ) -> PluginPrivateDataDeletionPlanV1:
+        """Return pending work or observe a new target with the caller's fence held."""
+        pending = self.current_start()
+        if pending is not None:
+            if pending.plan.installation_key != key:
+                raise ValueError("Another private-data deletion is unfinished")
+            return pending.plan
+        return PluginPrivateDataDeletionPlanV1(
+            installation_key=key, owner_id=owner_id, target_id=capture_target().target_id
+        )
 
     def receipt_for(
         self,
