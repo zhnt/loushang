@@ -6,6 +6,7 @@ import ntpath
 import os
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from loushang.tui.cell_width import strip_control_sequences
@@ -105,7 +106,7 @@ def test_G17_TERMINAL_LEGACY_installed_profiles_and_embedded_startup(
 ):
     record_testsuite_property("terminal_backend", selected_backend_name())
     record_testsuite_property("native_platform", sys.platform)
-    roots = {name: tmp_path / name for name in ("local", "g14", "embedded")}
+    roots = {name: tmp_path / name for name in ("local", "g14")}
     for root in roots.values():
         root.mkdir(mode=0o700)
     with patch.dict(os.environ, _private_environment(roots["local"]), clear=True):
@@ -116,7 +117,11 @@ def test_G17_TERMINAL_LEGACY_installed_profiles_and_embedded_startup(
         scope.chdir(roots["g14"])
         with patch.dict(os.environ, _private_environment(roots["g14"]), clear=True):
             _g14(roots["g14"])
-    _embedded(roots["embedded"])
+    # The native Embedded writer admits only private ancestor paths.
+    with TemporaryDirectory(prefix=".loushang-g17-embedded-", dir=Path.home()) as directory:
+        embedded = Path(directory).resolve() / "embedded"
+        embedded.mkdir(mode=0o700)
+        _embedded(embedded)
 
 
 def test_legacy_environment_excludes_ambient_source_and_credentials(
