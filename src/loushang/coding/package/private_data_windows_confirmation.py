@@ -6,24 +6,22 @@ deletion receipt and grants no filesystem deletion authority by itself.
 
 from __future__ import annotations
 
-import os as os
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from loushang.coding.harness.plugin_management import (
-    private_data_windows_confirmation as _programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal.codec import decode_json_record
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.plugin_management.private_data_confirmation import (
-    PluginPrivateDataConfirmationRecordV1,
+from loushang.harness.plugin_management._installation_root_windows import (
+    read_windows_private_target,
 )
 from loushang.harness.plugin_management.private_data_confirmation import (
-    accept_windows_private_confirmation as accept_windows_private_confirmation,
+    PluginPrivateDataConfirmationRecordV1,
+    accept_windows_private_confirmation,
+    verify_windows_private_confirmation,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
@@ -50,26 +48,14 @@ from .legacy_windows_receipt import (
 from .legacy_windows_receipt import (
     read_windows_private_receipt as read_windows_private_receipt,
 )
-from .private_data_deletion_preview import (
-    CodingArchPrivateDataTargetSnapshotV1 as CodingArchPrivateDataTargetSnapshotV1,
-)
 from .private_data_windows_preview import (
     CodingWindowsArchPrivateDataReadPreview,
-)
-from .private_data_windows_preview import (
-    _capture_windows_target_snapshot as _capture_windows_target_snapshot,
+    _absent_windows_target_snapshot,
+    _capture_windows_target_snapshot,
 )
 
 _OWNER_ID = "coding.arch.private-data:windows-v1"
 _MAX_CONFIRMATION_BYTES = 16 * 1024
-
-
-_PRIVATE_DATA_FLOW_VALUES = {
-    "message_01": "Windows Coding Arch Installation has no Product history",
-    "message_02": "Windows Coding Arch confirmation plan is stale",
-    "message_03": "Windows Coding Arch confirmation is too large",
-    "message_04": "Windows Coding Arch",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,9 +90,46 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
     ) -> PluginPrivateDataConfirmationRecordV1:
         """Accept one unchanged preview under the offline Product fence."""
 
-        return _programs.record_confirmation(
-            self, plan, confirmation, actor_id=actor_id, policy_revision=policy_revision
-        )
+        self._require_plan(plan, confirmation)
+        preview = CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
+        with preview._offline():
+            key = plan.installation_key
+            state = self.product.desired_state.snapshot().installation(key)
+            if state.latest_instance_revision_ref is None:
+                raise ValueError("Windows Coding Arch Installation has no Product history")
+            root = coding_arch_installation_private_data_root(self.layout, key)
+            read_windows_private_target(
+                root,
+                observe_root=lambda: inspect_coding_windows_arch_installation_root(
+                    self.layout, key, state_root=self.product.state_root
+                ),
+                capture=_capture_windows_target_snapshot,
+                absent=_absent_windows_target_snapshot,
+                expected_target_id=plan.target_id,
+                changed="Windows Coding Arch confirmation plan is stale",
+            )
+            record = PluginPrivateDataConfirmationRecordV1(
+                record_revision=1,
+                plan=plan,
+                confirmation=confirmation,
+                actor_id=actor_id,
+                policy_revision=policy_revision,
+            )
+            payload = canonical_json_bytes(record.to_dict()) + b"\n"
+            if len(payload) > _MAX_CONFIRMATION_BYTES:
+                raise ValueError("Windows Coding Arch confirmation is too large")
+            path = self._record_path(confirmation)
+            with self.product.epoch_runtime.borrow_product_state_root_descriptor():
+                return accept_windows_private_confirmation(
+                    path,
+                    payload,
+                    record,
+                    io=_receipt_io,
+                    maximum_bytes=_MAX_CONFIRMATION_BYTES,
+                    write_maximum_bytes=_MAX_RECEIPT_BYTES,
+                    decode=self._decode,
+                    label="Windows Coding Arch",
+                )
 
     def is_confirmed(
         self,
@@ -115,7 +138,14 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
     ) -> bool:
         """Read one exact private receipt through the current Product root."""
 
-        return _programs.is_confirmed(self, plan, confirmation)
+        self._require_plan(plan, confirmation)
+        return verify_windows_private_confirmation(
+            self.product, plan, confirmation,
+            read_record=lambda: read_windows_private_receipt(
+                self._record_path(confirmation), maximum_bytes=_MAX_CONFIRMATION_BYTES
+            ),
+            decode=self._decode,
+        )
 
     def _record_path(
         self, confirmation: PluginPrivateDataDeletionConfirmationV1

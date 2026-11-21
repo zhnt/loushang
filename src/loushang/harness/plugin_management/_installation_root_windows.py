@@ -82,6 +82,79 @@ class _DeletionRecords(Protocol):
 
 
 G = TypeVar("G", bound=_Generation)
+_TargetT = TypeVar("_TargetT", bound=_RootDeletionTarget)
+_CaptureResultT = TypeVar("_CaptureResultT", bound=_RootDeletionTarget, covariant=True)
+
+
+class _CaptureTarget(Protocol[_CaptureResultT]):
+    def __call__(self, root: Path, *, expected_root: tuple[int, int]) -> _CaptureResultT: ...
+
+
+def read_windows_private_target(
+    root: Path,
+    *,
+    observe_root: Callable[[], tuple[int, int] | None],
+    capture: _CaptureTarget[_TargetT],
+    absent: Callable[[Path], _TargetT],
+    changed: str,
+    expected_target_id: str | None = None,
+) -> _TargetT:
+    """Observe a bound target and recheck the lineage before returning it."""
+    expected = observe_root()
+    target = absent(root) if expected is None else capture(root, expected_root=expected)
+    if expected_target_id is not None and target.target_id != expected_target_id:
+        raise ValueError(changed)
+    if (expected is not None or expected_target_id is not None) and observe_root() != expected:
+        raise ValueError(changed)
+    return target
+
+
+def read_windows_deletion_target(
+    root: Path,
+    *,
+    observe_root: Callable[[], tuple[int, int] | None],
+    capture: _CaptureTarget[_TargetT],
+    absent: Callable[[Path], _TargetT],
+    recheck_absent: bool,
+    changed: str,
+    absent_changed: str,
+) -> _TargetT:
+    """Recheck the native deletion target, including a pending generation."""
+    expected = observe_root()
+    if expected is None:
+        try:
+            root.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError(absent_changed)
+        if recheck_absent and observe_root() is not None:
+            raise ValueError(absent_changed)
+        return absent(root)
+    target = capture(root, expected_root=expected)
+    if observe_root() != expected:
+        raise ValueError(changed)
+    return target
+
+
+def require_unchanged_windows_target(
+    root: Path,
+    target: _RootDeletionTarget,
+    *,
+    capture: _CaptureTarget[_RootDeletionTarget],
+    changed: str,
+) -> None:
+    """Recheck a staged start without consulting its own unpublished journal."""
+    if target.root_path_digest != sha256(os.fsencode(str(root))).hexdigest():
+        raise ValueError(changed)
+    if target.root_identity is None:
+        try:
+            root.lstat()
+        except FileNotFoundError:
+            return
+        raise ValueError(changed)
+    if capture(root, expected_root=target.root_identity[:2]) != target:
+        raise ValueError(changed)
 
 
 @dataclass(frozen=True, slots=True)

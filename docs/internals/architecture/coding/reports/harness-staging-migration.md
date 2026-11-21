@@ -272,6 +272,24 @@ archive operation and snapshot probes pass 62 cases using inert native ports
 on Linux. The snapshot probe now reads canonical JSON from its existing
 codec module after the same stale import was reproduced on the prior commit.
 
+### Formal Windows Preview, Confirmation And Deletion Evidence
+
+Coding preview and confirmation now share the Windows Installation lineage
+owner's bound target observation. The confirmation journal checks the exact
+immutable record while holding the existing state descriptor. The deletion
+consumer uses the lineage owner's native target recheck and the tree I/O
+owner's tombstone verification. Deletion keeps the native path check for
+an absent target and the separate pending-generation recheck. Coding still
+chooses the applicable lineage, binds Product authority and constructs the
+compatibility records and tombstone name.
+
+This batch removes 298 temporary Python lines, adds 83 Coding Product lines
+and adds 97 formal Harness lines. Production Python decreases by 118 lines.
+The selected Windows lifecycle, original fault and lineage observations, and
+Harness deletion checks pass all 230 cases on Linux. The lineage probe now
+recognizes the current lazy journal import and retains its original trace,
+error and wire assertions. Native Windows filesystem checks remain separate.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected
