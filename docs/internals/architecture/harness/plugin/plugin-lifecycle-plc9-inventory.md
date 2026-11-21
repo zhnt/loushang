@@ -792,8 +792,8 @@ materializes packages.
 
 PLC9B.0 began with the pre-runtime-migration snapshot at parent `4bd71d63`; A2
 revised the original snapshot. The current accepted source-wide inventories have
-119 ingress/declaration rows with 174 occurrences and 146 effect/capability rows
-with 163 occurrences. The executable
+119 ingress/declaration rows with 174 occurrences and 153 effect/capability rows
+with 169 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -828,7 +828,7 @@ forwarding calls, module-level transport specifications, and dynamic strings.
 src/loushang/coding/cli/application.py::_run_coding_pre_runtime_operation::update_packages = 2
 src/loushang/coding/cli/application.py::_run_list_packages::get_packages = 5
 src/loushang/coding/cli/application.py::run_cli::update_packages = 1
-src/loushang/coding/package/product_cli.py::uninstall_coding_fenced_data_wheels::uninstall_package = 1
+src/loushang/coding/package/product_cli.py::_write_uninstall_success::uninstall_package = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::check_package_updates = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::update_packages = 1
 src/loushang/harness/cli/agent_args.py::agent_cli_argument_values::check_package_updates = 2
@@ -955,8 +955,9 @@ store access. It counts renamed imports as their original sensitive symbol.
 Delivery reconciliation retains the same scanner and assertions: the two managed
 reopen sites now belong to Plugin Management assembly, and legacy RevisionStore
 recapture belongs to Product-facing Resources Packages outside the dark kernel.
-The four added occurrences are the existing factory reference and three
-materializer import/type references; they are not four new publication effects.
+Session preparation references the existing materializer factory from its
+staged implementation. Its boundary annotations account for the additional
+occurrences from this relocation. Coding still supplies the package authority.
 The A204 Worker Product authority is also an accepted consumer of the existing
 Worker primitives, without enabling a new execution path.
 
@@ -971,8 +972,8 @@ src/loushang/coding/composition/capability_plugins.py::_validate_preparation_inp
 src/loushang/coding/composition/capability_plugins.py::prepare_coding_capability_plugin_composition::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::<module>::GitPackageMaterializerBackend = 1
-src/loushang/coding/composition/bootstrap.py::_create_agent_session::CodingPackageMaterializer = 4
-src/loushang/coding/composition/bootstrap.py::_create_agent_session::GitPackageMaterializerBackend = 1
+src/loushang/coding/composition/bootstrap.py::_create_agent_session::CodingPackageMaterializer = 1
+src/loushang/coding/composition/bootstrap.py::_create_agent_session.prepare_primary::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::_create_agent_session_with_model_policy::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::_default_package_materializer::CodingPackageMaterializer = 2
 src/loushang/coding/composition/bootstrap.py::_default_package_materializer::GitPackageMaterializerBackend = 1
@@ -984,6 +985,7 @@ src/loushang/coding/composition/continuity.py::<module>::GitPackageMaterializerB
 src/loushang/coding/composition/continuity.py::<module>::PackageMaterializer = 1
 src/loushang/coding/composition/continuity.py::_coding_continuity_materializer::CodingPackageMaterializer = 2
 src/loushang/coding/composition/continuity.py::_coding_continuity_materializer::GitPackageMaterializerBackend = 1
+src/loushang/coding/composition/continuity.py::_require_continuity_package_authority::PackageMaterializer = 1
 src/loushang/coding/harness/session/configured_continuity.py::_continuity_runtime_inputs::PackageMaterializer = 1
 src/loushang/coding/harness/session/configured_continuity.py::_continuity_runtime_inputs::reopen_plugin_package = 1
 src/loushang/coding/harness/session/configured_continuity.py::_inspect_continuity_source::PackageMaterializer = 1
@@ -991,6 +993,10 @@ src/loushang/coding/harness/session/configured_continuity.py::_publish_continuit
 src/loushang/coding/composition/continuity.py::bind_coding_configured_continuity::PackageMaterializer = 1
 src/loushang/coding/harness/session/configured_continuity.py::<module>::PackageMaterializer = 1
 src/loushang/coding/harness/session/configured_continuity.py::bind_configured_continuity::PackageMaterializer = 1
+src/loushang/coding/harness/session/managed_plugin_preparation.py::ManagedPluginPreparation::PackageMaterializer = 1
+src/loushang/coding/harness/session/managed_plugin_preparation.py::prepare_managed_plugins::GitPackageMaterializerBackend = 1
+src/loushang/coding/harness/session/managed_plugin_preparation.py::prepare_managed_plugins::PackageMaterializer = 3
+src/loushang/coding/harness/session/plugin_preparation.py::prepare_capability_plugins::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::assemble_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::prepare_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1

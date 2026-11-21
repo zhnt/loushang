@@ -7,9 +7,9 @@ from loushang.harness.resources._loader_discovery_context import (
 )
 
 
-def test_context_discovery_stacks_user_and_ancestor_descriptors(tmp_path: Path) -> None:
-    user_root = tmp_path / "user"
-    workspace_root = tmp_path / "workspace"
+def test_context_discovery_stacks_user_and_ancestor_descriptors(standalone_workspace: Path) -> None:
+    user_root = standalone_workspace / "user"
+    workspace_root = standalone_workspace / "workspace"
     project_root = workspace_root / "project"
     nested = project_root / "src" / "feature"
     user_root.mkdir()
@@ -66,8 +66,8 @@ def test_context_discovery_stacks_user_and_ancestor_descriptors(tmp_path: Path) 
     assert nearest is descriptors[-1]
 
 
-def test_context_discovery_uses_configured_filename_precedence(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
+def test_context_discovery_uses_configured_filename_precedence(standalone_workspace: Path) -> None:
+    project_root = standalone_workspace / "project"
     nested_file = project_root / "src" / "module.py"
     nested_file.parent.mkdir(parents=True)
     nested_file.touch()
@@ -89,10 +89,10 @@ def test_context_discovery_uses_configured_filename_precedence(tmp_path: Path) -
     assert nearest is descriptors[0]
 
 
-def test_context_discovery_falls_back_to_last_user_root(tmp_path: Path) -> None:
-    first_root = tmp_path / "first"
-    second_root = tmp_path / "second"
-    project_root = tmp_path / "project"
+def test_context_discovery_falls_back_to_last_user_root(standalone_workspace: Path) -> None:
+    first_root = standalone_workspace / "first"
+    second_root = standalone_workspace / "second"
+    project_root = standalone_workspace / "project"
     first_root.mkdir()
     second_root.mkdir()
     project_root.mkdir()
@@ -116,10 +116,10 @@ def test_context_discovery_falls_back_to_last_user_root(tmp_path: Path) -> None:
 
 
 def test_context_discovery_reports_unreadable_context_file(
-    tmp_path: Path,
+    standalone_workspace: Path,
     monkeypatch,
 ) -> None:
-    project_root = tmp_path / "project"
+    project_root = standalone_workspace / "project"
     project_root.mkdir()
     context_path = project_root / "AGENTS.md"
     context_path.write_text("Unreadable", encoding="utf-8")
