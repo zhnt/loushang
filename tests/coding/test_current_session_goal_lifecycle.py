@@ -19,8 +19,8 @@ from .test_work_shell import _goal_project
 
 
 @pytest.mark.parametrize("conflict", ["ordinary_call", "memory_backend"])
-def test_failed_attach_keeps_original_session_execution_and_backend(tmp_path, monkeypatch, conflict):
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+def test_failed_attach_keeps_original_session_execution_and_backend(standalone_workspace, monkeypatch, conflict):
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
 
     async def scenario():
         entered, release = asyncio.Event(), asyncio.Event()
@@ -38,12 +38,12 @@ def test_failed_attach_keeps_original_session_execution_and_backend(tmp_path, mo
         registry = get_default_api_registry()
         registry.register_api_adapter(adapter, source_id=adapter.api)
         sdk = create_agent_session_runtime(
-            session_dir=tmp_path / "data/sessions", model=_model(), enable_multiagent=False,
+            session_dir=standalone_workspace / "data/sessions", model=_model(), enable_multiagent=False,
             active_tool_names=["read", "edit", "write"],
         )
         prompt = None
         try:
-            session = await sdk.create_session(cwd=str(_goal_project(tmp_path)))
+            session = await sdk.create_session(cwd=str(_goal_project(standalone_workspace)))
             backend = None
             if conflict == "ordinary_call":
                 prompt = asyncio.create_task(session.prompt("ordinary in flight"))

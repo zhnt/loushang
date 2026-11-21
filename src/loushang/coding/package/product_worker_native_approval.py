@@ -23,14 +23,15 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.worker.history._native_approval import (
+    NATIVE_APPROVAL_JOURNAL_NAME,
+    NATIVE_APPROVAL_MAX_EVENTS,
     _NativeApprovalMethods,
     _NativeDecisionMethods,
     _NativeReviewMethods,
     decode_native_approval_history,
 )
 
-_MAX_EVENTS = 256
-_JOURNAL_NAME = "worker-native-release-approvals.jsonl"
+_MAX_EVENTS = NATIVE_APPROVAL_MAX_EVENTS
 
 
 class CodingWorkerNativeApprovalError(RuntimeError):
@@ -141,7 +142,7 @@ class CodingWorkerNativeApprovalJournal(
         ):
             raise ValueError("Coding Product Worker candidate owner is required")
         self._product_owner = product_owner
-        self._path = product_owner.state_root / _JOURNAL_NAME
+        self._path = product_owner.state_root / NATIVE_APPROVAL_JOURNAL_NAME
         self._scope_id = product_owner.policy.project_scope_id
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
 

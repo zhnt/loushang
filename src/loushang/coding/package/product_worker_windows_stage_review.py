@@ -8,9 +8,12 @@ occurred, and it grants no filesystem mutation authority by itself.
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 
+from loushang.coding.harness.worker.windows_admission import (
+    is_attempt_id,
+    is_windows_product,
+)
 from loushang.foundation.windows_private_acl import (
     WindowsPrivateDirectoryAcl as WindowsPrivateDirectoryAcl,
 )
@@ -40,11 +43,9 @@ from .product_worker_windows_recovery_inventory import (
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
 )
 
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _MARKER = "worker-payload.json"
 _MAX_MARKER_BYTES = 1024
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
-_MAX_REVIEW_BYTES = 32768
 _READ_CHUNK = 1024 * 1024
 _DIRECTORY_ATTRIBUTES = 0x00000010 | 0x00000020 | 0x00002000
 _FILE_ATTRIBUTES = 0x00000020 | 0x00000080 | 0x00002000
@@ -64,10 +65,6 @@ class CodingWindowsWorkerStageReviewV1(_WindowsCompleteStageReviewMethods):
     _record_kind = "full"
     _record_error = CodingWindowsWorkerStageReviewError
     _record_error_code = "coding_worker_stage_review_record_invalid"
-
-    @classmethod
-    def _record_maximum(cls) -> int:
-        return _MAX_REVIEW_BYTES
 
     attempt_id: str
     intent_fingerprint: str
@@ -91,12 +88,8 @@ def review_coding_windows_product_worker_complete_stage(
 ) -> CodingWindowsWorkerStageReviewV1:
     """Review one retained, cleanly stopped stage under offline Product locks."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or _ATTEMPT.fullmatch(attempt_id) is None
+    if not is_windows_product(product, "coding", os.name) or not is_attempt_id(
+        attempt_id
     ):
         raise OSError("Windows Worker stage review requires a Product owner")
     return review_windows_product_worker_offline(

@@ -122,18 +122,15 @@ def variants(raw):
 def observe(role, raw, case, patch):
     cls = TYPES[role]
     candidate = variants(raw)[case]
-    module = MODULES[ROLES.index(role)]
     with patch.context() as bound:
         try:
             if case == "write-cap":
                 value = cls.from_bytes(raw)
-                bound.setattr(module, "_MAX_BASE_BYTES", len(raw) - 1)
+                bound.setattr(cls, "_wire_max_bytes", len(raw) - 1)
                 value.to_bytes()
                 raise AssertionError("output capacity must reject")
             if case in {"read-cap", "exact-cap"}:
-                bound.setattr(
-                    module, "_MAX_BASE_BYTES", len(raw) - (case == "read-cap")
-                )
+                bound.setattr(cls, "_wire_max_bytes", len(raw) - (case == "read-cap"))
             if case.startswith("injected:"):
                 error = {
                     "KeyError": KeyError("codec key"),

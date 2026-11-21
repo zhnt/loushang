@@ -22,6 +22,7 @@ from loushang.coding.cli import lmux
 from loushang.coding.cli import lmux_stop_all as module
 
 from .test_lmux_command import managed_cli as managed_cli
+from .test_lmux_command import mux_workspace as mux_workspace
 from .test_lmux_status import namespace as namespace
 from .test_lmux_status import pytestmark as pytestmark
 

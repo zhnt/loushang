@@ -28,9 +28,6 @@ from loushang.harness.worker.history._snapshot_io import (
 
 from .product_worker_history_segments import CodingWorkerSegmentedHistoryV1
 
-_MAX_SEGMENT_BYTES = 32 * 1024 * 1024
-_MAX_MANIFEST_BYTES = 1024 * 1024
-
 
 @dataclass(frozen=True, slots=True)
 class CodingWorkerHistoryStreamSnapshotV1(_SnapshotMethods):
@@ -107,8 +104,6 @@ def _snapshot_source() -> SnapshotHistory:
     return SnapshotHistory(
         CodingWorkerHistoryStreamSnapshotV1,
         _retained_snapshot_reader,
-        _MAX_SEGMENT_BYTES,
-        _MAX_MANIFEST_BYTES,
     )
 
 

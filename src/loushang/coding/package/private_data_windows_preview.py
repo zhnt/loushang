@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.harness.package_product.epoch_identity import matches_epoch_layout
+from loushang.coding.harness.plugin_management import (
+    private_data_windows_preview as _programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -32,8 +36,10 @@ from loushang.harness.resources.packages._private_tree_windows_observation impor
 
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
-    coding_arch_installation_private_data_root,
-    inspect_coding_windows_arch_installation_root,
+    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+)
+from .installation_private_data import (
+    inspect_coding_windows_arch_installation_root as inspect_coding_windows_arch_installation_root,
 )
 from .private_data_deletion_preview import (
     _MAX_ENTRIES,
@@ -62,6 +68,12 @@ _native_io = PrivateWindowsTreeIO(
 )
 
 
+_PRIVATE_DATA_FLOW_VALUES = {
+    "message_01": "Windows Coding Arch private-data root changed",
+    "message_02": "Windows Coding Arch private-data Product runtime is active",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class CodingWindowsArchPrivateDataReadPreview:
     """Observe one exact Installation without creating or deleting its data."""
@@ -80,8 +92,7 @@ class CodingWindowsArchPrivateDataReadPreview:
         if (
             self.product.policy.product_id != "coding"
             or self.product.policy.project_scope_id != self.layout.scope_id
-            or self.product.epoch_runtime.registry.store_id != epoch.store_id
-            or self.product.epoch_runtime.control_root != epoch.control_root
+            or not matches_epoch_layout(self.product.epoch_runtime, epoch)
             or self.product.epoch_runtime.selected_store_root().parent
             != epoch.epochs_root
         ):
@@ -92,45 +103,12 @@ class CodingWindowsArchPrivateDataReadPreview:
     def snapshot_for(
         self, key: PluginInstallationKeyV1
     ) -> CodingArchPrivateDataTargetSnapshotV1:
-        root = coding_arch_installation_private_data_root(self.layout, key)
-        state_root = (
-            resolve_coding_package_epoch_layout(self.layout).control_root
-            / "product-state"
-        )
-        with self._offline():
-            expected = inspect_coding_windows_arch_installation_root(
-                self.layout, key, state_root=state_root
-            )
-            if expected is None:
-                return CodingArchPrivateDataTargetSnapshotV1(
-                    root_path_digest=sha256(os.fsencode(str(root))).hexdigest(),
-                    root_identity=None,
-                    members=(),
-                )
-            snapshot = _capture_windows_target_snapshot(root, expected_root=expected)
-            if (
-                inspect_coding_windows_arch_installation_root(
-                    self.layout, key, state_root=state_root
-                )
-                != expected
-            ):
-                raise ValueError("Windows Coding Arch private-data root changed")
-            return snapshot
+        return _programs.snapshot_for(self, key)
 
     @contextmanager
     def _offline(self) -> Iterator[None]:
-        registry = self.product.epoch_runtime.registry
-        with registry.exclusive_runtime_quiescence(
-            store_id=registry.store_id
-        ) as quiescence:
-            if quiescence.active_runtime_lease_ids:
-                raise ValueError(
-                    "Windows Coding Arch private-data Product runtime is active"
-                )
-            self.product.assert_private_data_read_authority_current()
-            with self.product.gc_gate.read_guard():
-                yield
-            self.product.assert_private_data_read_authority_current()
+        with _programs.offline(self) as borrowed:
+            yield borrowed
 
 
 def _capture_windows_target_snapshot(

@@ -27,15 +27,31 @@ from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
-from ._native_approval import _A, _N, _NativeFactory, _next_native_approval_decision
+from ._native_approval import (
+    _A,
+    _N,
+    NATIVE_APPROVAL_JOURNAL_NAME,
+    NATIVE_APPROVAL_MAX_BYTES,
+    NATIVE_APPROVAL_MAX_EVENTS,
+    _NativeFactory,
+    _next_native_approval_decision,
+)
 from ._opt_in import (
+    _MAX_EVENTS,
+    _MAX_SEGMENT_BYTES,
     _OPAQUE,
     _OptInDecisionMethods,
     _OptInMutation,
     _OptInValue,
     latest_opt_in_decision,
+    require_opt_in_plugin_id,
 )
-from ._receipts import _ReceiptRecordMethods, latest_receipt_record
+from ._receipts import (
+    _MAX_RECEIPT_SEGMENT_BYTES,
+    _MAX_RECEIPTS,
+    _ReceiptRecordMethods,
+    latest_receipt_record,
+)
 
 
 class _RecordValue(Protocol):
@@ -173,15 +189,29 @@ _T = TypeVar("_T", bound=_ReceiptRecordMethods)
 
 
 class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
+    _name = "worker-opt-in.jsonl"
+    _label = "Windows Worker opt-in"
+    _scope_pattern = _OPAQUE
+    _max_bytes = staticmethod(lambda: _MAX_SEGMENT_BYTES)
+    _max_events = staticmethod(lambda: _MAX_EVENTS)
+    _append_error = "Windows Worker opt-in append made no progress"
+    _root_error = "Windows Worker opt-in requires a pinned Product root"
+
     _record_type: type[_D]
     _opt_in_type: type[_P]
     _latest = staticmethod(latest_opt_in_decision)
 
+    @property
+    def path(self) -> Path:
+        return self._path
+
     @staticmethod
     def _require_plugin_id(plugin_id: str) -> None:
-        raise NotImplementedError("the original input admission is required")
+        require_opt_in_plugin_id(
+            plugin_id, message="Windows Worker opt-in Plugin id is invalid"
+        )
 
-    def _change(
+    def change(
         self,
         *,
         directory_fd: int,
@@ -234,30 +264,19 @@ class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
     def history_read_only(self, *, directory_fd: int) -> tuple[_D, ...]:
         return self._read_records(directory_fd=directory_fd)
 
-    def change(
-        self,
-        *,
-        directory_fd: int,
-        plugin_id: str,
-        operation_id: str,
-        expected_generation: int,
-        action: Literal["allow", "revoke"],
-        opt_in: _P | None,
-    ) -> _D:
-        return self._change(
-            directory_fd=directory_fd,
-            plugin_id=plugin_id,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-            action=action,
-            opt_in=opt_in,
-        )
-
 
 class WindowsReceiptRecords(_WindowsRecords[_T], Generic[_T]):
+    _name = "worker-activation-receipts.jsonl"
+    _label = "Windows Worker receipt"
+    _scope_pattern = None
+    _max_bytes = staticmethod(lambda: _MAX_RECEIPT_SEGMENT_BYTES)
+    _max_events = staticmethod(lambda: _MAX_RECEIPTS)
+    _append_error = "Windows Worker receipt append made no progress"
+    _root_error = "Windows Worker receipt requires a pinned Product root"
+
     _record_type: type[_T]
 
-    def _issue(
+    def issue(
         self,
         *,
         directory_fd: int,
@@ -302,25 +321,32 @@ class WindowsReceiptRecords(_WindowsRecords[_T], Generic[_T]):
     def records(self, *, directory_fd: int) -> tuple[_T, ...]:
         return self._read_records(directory_fd=directory_fd)
 
-    def issue(
-        self,
-        *,
-        directory_fd: int,
-        policy: ProductWorkerActivationPolicyV1,
-        opt_in_decision_digest: str,
-    ) -> ProductWorkerActivationReceiptV1:
-        return self._issue(
-            directory_fd=directory_fd,
-            policy=policy,
-            opt_in_decision_digest=opt_in_decision_digest,
-        )
-
 
 class WindowsNativeApprovalRecords(_WindowsRecords[_N], Generic[_A, _N]):
+    _name = NATIVE_APPROVAL_JOURNAL_NAME
+    _label = "Windows Worker native approval"
+    _scope_pattern = _OPAQUE
+    _max_bytes = staticmethod(lambda: NATIVE_APPROVAL_MAX_BYTES)
+    _max_events = staticmethod(lambda: NATIVE_APPROVAL_MAX_EVENTS)
+    _append_error = "Windows Worker native approval append stalled"
+    _root_error = "Windows Worker approval requires a pinned Product root"
+
     _approval_type: type[_A]
     _create_decision: _NativeFactory[_A, _N]
 
-    def _change(
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def current(self, *, directory_fd: int) -> _N | None:
+        events = self.history_read_only(directory_fd=directory_fd)
+        return events[-1] if events else None
+
+    def history_read_only(self, *, directory_fd: int) -> tuple[_N, ...]:
+        """Replay the exact approval history with its original read-only custody."""
+        return self._read_records(directory_fd=directory_fd)
+
+    def change(
         self,
         *,
         directory_fd: int,

@@ -313,10 +313,9 @@ class StartGateHistory(Generic[_RecordT]):
     def _checkpoint_writer_fence(
         self, rooted: RootedFile
     ) -> tuple[_CheckpointMethods, ...]:
-        with self._history_reader.checkpoints.translated_errors(self._error_type):
-            return self._history_reader.checkpoints.read_writer_fence(
-                rooted, scope_id=self._access.scope_id, store_id=self._access.store_id
-            )
+        return self._history_reader.checkpoints.read_bound_writer_fence(
+            rooted, self._access, error_type=self._error_type
+        )
 
     @contextmanager
     def _bound_journal(self, *, create_lock: bool = True) -> Iterator[RootedFile]:

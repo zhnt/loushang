@@ -8,6 +8,7 @@ import json
 import os
 import sys
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -74,6 +75,7 @@ def observe(spec, tmp_path, monkeypatch):
     original_json = json.loads
     original_consume = consumption.consume_file
     old_reader = not hasattr(core, "_read_stable_json_patch")
+    initial_cap = spec.get("cap", 4 * 1024 * 1024)
     consume_calls = 0
     trace = Trace(spec.get("faults", ()))
     owned, counts = {}, Counter()
@@ -82,6 +84,18 @@ def observe(spec, tmp_path, monkeypatch):
 
     def event(*row):
         trace.append(list(row))
+
+    def settings_cap():
+        if old_reader:
+            return code._MAX_SETTINGS_BYTES
+        return code._source_projection.maximum_bytes
+
+    def set_settings_cap(value):
+        if old_reader:
+            code._MAX_SETTINGS_BYTES = value
+        else:
+            # Only the isolated projection installed below is used by this read.
+            object.__setattr__(code._source_projection, "maximum_bytes", value)
 
     def role(value):
         if value == str(path):
@@ -124,7 +138,7 @@ def observe(spec, tmp_path, monkeypatch):
         if spec.get("unsafe") == "owner" and phase == "before":
             values["st_uid"] += 1
         if spec.get("unsafe") == "size" and phase == "before":
-            values["st_size"] = code._MAX_SETTINGS_BYTES + 1
+            values["st_size"] = settings_cap() + 1
         # Every field is retained; volatile physical identity/time/UID uses a verified prior-input offset.
         projected = {
             f: values[f] - getattr(anchor, f)
@@ -166,9 +180,9 @@ def observe(spec, tmp_path, monkeypatch):
         raw = native_read(fd, min(requested, 3) if spec.get("short") else requested)
         event("read-return", owned[fd], len(raw), hashlib.sha256(raw).hexdigest())
         if spec.get("late_cap") == "shrink" and raw:
-            code._MAX_SETTINGS_BYTES = 1
+            set_settings_cap(1)
         if spec.get("late_cap") == "empty" and not raw:
-            code._MAX_SETTINGS_BYTES = 0
+            set_settings_cap(0)
         return raw
 
     def close(fd):
@@ -241,7 +255,14 @@ def observe(spec, tmp_path, monkeypatch):
 
     result, failure = None, None
     with monkeypatch.context() as patch:
-        patch.setattr(code, "_MAX_SETTINGS_BYTES", spec.get("cap", 4 * 1024 * 1024))
+        if old_reader:
+            patch.setattr(code, "_MAX_SETTINGS_BYTES", initial_cap)
+        else:
+            patch.setattr(
+                code,
+                "_source_projection",
+                replace(code._source_projection, maximum_bytes=initial_cap),
+            )
         for module in (code, core, consumption):
             if hasattr(module, "os"):
                 patch.setattr(module, "os", Port())
@@ -253,8 +274,9 @@ def observe(spec, tmp_path, monkeypatch):
                 patch.setattr(module, "windows_stat_at", win_stat)
             if hasattr(module, "open_windows_regular_file_at"):
                 patch.setattr(module, "open_windows_regular_file_at", win_open)
-        for module in (code, core):
-            patch.setattr(module, "json", SimpleNamespace(loads=parse))
+        patch.setattr(
+            code if old_reader else core, "json", SimpleNamespace(loads=parse)
+        )
         try:
             result = code.read_coding_settings_patch_without_writes(
                 Path("relative") if spec.get("relative") else path
@@ -262,7 +284,7 @@ def observe(spec, tmp_path, monkeypatch):
         except BaseException as caught:
             failure = error_data(caught)
         pending = {name: native_seek(fd, 0, os.SEEK_CUR) for fd, name in owned.items()}
-        cap = code._MAX_SETTINGS_BYTES
+        cap = settings_cap()
     assert consume_calls == (
         0 if old_reader else int(any(row[0] == "read" for row in trace))
     ), (spec, consume_calls, trace)

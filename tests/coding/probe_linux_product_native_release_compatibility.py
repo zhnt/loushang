@@ -416,7 +416,10 @@ def observe(name, base, patch):
         if case != "no-stage":
             stage.mkdir(mode=0o700)
             if case not in ("partial-stage", "stage-symlink"):
-                install._write_stage(stage, files, wheel, approved, product)
+                custody = install._product_native_release_custody(
+                    wheel_version=lambda: install.version("loushang")
+                )
+                custody._write_stage(stage, files, wheel, approved, product)
         if case == "multi-stage":
             (state / ".worker-native-release-stage-other").mkdir(mode=0o700)
         if case == "stage-symlink":

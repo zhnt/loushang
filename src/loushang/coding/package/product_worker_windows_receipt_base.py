@@ -12,13 +12,6 @@ from typing import cast
 from loushang.coding.hosted._worker_canary import (
     CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
 )
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
-)
-from loushang.harness.worker.history._base_codec import (
-    _unchanged,
-)
 from loushang.harness.worker.history._windows_receipt_base import (
     _WindowsReceiptBaseMethods,
 )
@@ -32,8 +25,6 @@ from .product_worker_windows_history_preparation import (
 from .product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
-
-_MAX_BASE_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,14 +51,6 @@ class CodingWindowsWorkerReceiptSemanticBaseV1(_WindowsReceiptBaseMethods):
     ) -> CodingWindowsWorkerReceiptReplayV1:
         return cast(CodingWindowsWorkerReceiptReplayV1, self._replay_retained(records))
 
-    _wire_label = "Windows Worker receipt semantic base"
-    _wire_lists = ("retiredReceiptFingerprints",)
-    _wire_errors = (TypeError, UnicodeError, ValueError)
-
-    @classmethod
-    def _wire_maximum(cls) -> int:
-        return _MAX_BASE_BYTES
-
 
 __all__ = [
     "CodingWindowsWorkerReceiptReplayV1",
@@ -75,10 +58,4 @@ __all__ = [
 ]
 
 
-CodingWindowsWorkerReceiptSemanticBaseV1._bind_wire_schema(
-    RecordSchema.for_dataclass(
-        CodingWindowsWorkerReceiptSemanticBaseV1,
-        _unchanged,
-        RecordField("retired_receipt_fingerprints", decoder=tuple, encoder=list),
-    )
-)
+CodingWindowsWorkerReceiptSemanticBaseV1._bind_record_schema()

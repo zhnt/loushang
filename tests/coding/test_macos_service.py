@@ -34,8 +34,8 @@ def test_launchd_status_rejects_stale_pid_without_probing(tmp_path, monkeypatch)
     assert macos_service._status(tmp_path, "user/501/test") == {"state": "starting"}
 
 
-def test_launchd_stale_instance_cannot_stop_new_service(tmp_path, monkeypatch):
-    monkeypatch.setattr(macos_service, "resolve_platform_home", lambda: tmp_path)
+def test_launchd_stale_instance_cannot_stop_new_service(standalone_workspace, monkeypatch):
+    monkeypatch.setattr(macos_service, "resolve_platform_home", lambda: standalone_workspace)
     monkeypatch.setattr(macos_service, "_status", lambda *_: {"state": "running", "instanceId": "new"})
     monkeypatch.setattr(macos_service, "_launchctl", lambda *_: pytest.fail("must not signal service"))
     with pytest.raises(ServiceControlError, match="instance_changed"):

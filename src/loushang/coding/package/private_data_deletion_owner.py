@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.harness.plugin_management import (
+    private_data_deletion_owner as _programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -43,6 +46,14 @@ from .private_data_deletion_preview import (
 _OWNER_ID = "coding.arch.private-data:posix-v1"
 
 
+_PRIVATE_DATA_PROGRAM_VALUES = {
+    "value_01": "Coding Arch private-data deletion command is invalid",
+    "value_02": "Coding Arch private-data confirmation is missing",
+    "value_03": "Coding Arch Installation must be removed first",
+    "value_04": "Coding Arch private-data deletion plan is stale",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class CodingArchPrivateDataDeletionOwner:
     layout: CodingPluginLifecycleStateLayout
@@ -65,19 +76,7 @@ class CodingArchPrivateDataDeletionOwner:
             raise ValueError("Coding Arch private-data owners are not bound")
 
     def plan_for(self, key: PluginInstallationKeyV1) -> PluginPrivateDataDeletionPlanV1:
-        root = coding_arch_installation_private_data_root(self.layout, key)
-        with self._preview._offline():
-            pending = self.journal.current_start()
-            if pending is not None:
-                if pending.plan.installation_key != key:
-                    raise ValueError("Another private-data deletion is unfinished")
-                return pending.plan
-            target = _capture_target_snapshot(
-                root, private_base=self.layout.private_data_base
-            )
-            return PluginPrivateDataDeletionPlanV1(
-                installation_key=key, owner_id=_OWNER_ID, target_id=target.target_id
-            )
+        return _programs.plan_for(self, key)
 
     def receipt_for(
         self,
@@ -93,39 +92,7 @@ class CodingArchPrivateDataDeletionOwner:
         plan: PluginPrivateDataDeletionPlanV1,
         confirmation: PluginPrivateDataDeletionConfirmationV1,
     ) -> PluginPrivateDataDeletionReceiptV1:
-        if (
-            not isinstance(plan, PluginPrivateDataDeletionPlanV1)
-            or not isinstance(confirmation, PluginPrivateDataDeletionConfirmationV1)
-            or plan.owner_id != _OWNER_ID
-            or confirmation.plan_fingerprint != plan.fingerprint
-        ):
-            raise ValueError("Coding Arch private-data deletion command is invalid")
-        root = coding_arch_installation_private_data_root(
-            self.layout, plan.installation_key
-        )
-        with self._preview._offline():
-            if not self.confirmations.is_confirmed(plan, confirmation):
-                raise ValueError("Coding Arch private-data confirmation is missing")
-            if (
-                self.product.desired_state.snapshot()
-                .installation(plan.installation_key)
-                .selection.desired_state
-                != "absent"
-            ):
-                raise ValueError("Coding Arch Installation must be removed first")
-            return self.journal.execute_deletion(
-                plan,
-                confirmation,
-                capture_target=lambda: _capture_target_snapshot(
-                    root, private_base=self.layout.private_data_base
-                ),
-                remove_started=lambda started: _delete_started(
-                    root, started, self.layout.private_data_base, self.journal
-                ),
-                receipt_id=lambda: _receipt_id(plan, confirmation),
-                stale_message="Coding Arch private-data deletion plan is stale",
-                unfinished_message="Another private-data deletion is unfinished",
-            )
+        return _programs.delete_confirmed(self, plan, confirmation)
 
     @property
     def _preview(self) -> CodingArchPrivateDataDeletionPreview:

@@ -198,7 +198,7 @@ class HistoryPublication:
         *,
         empty_supervisor_checkpointed: bool,
         error_type: type[RuntimeError],
-        max_segment_bytes: int,
+        max_segment_bytes: int = _MAX_SEGMENT_BYTES,
     ) -> tuple[int, ...]:
         """Borrow the original pinned root; caller retains runtime/GC custody."""
         with access.pin_state_read() as root_fd:

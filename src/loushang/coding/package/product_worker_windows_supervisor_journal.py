@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.coding.package.worker_history_access import _CodingWindowsHistoryAccess
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -25,10 +26,8 @@ class CodingWindowsProductWorkerSupervisorJournal(WindowsSupervisorJournal):
     _max_records = staticmethod(lambda: _MAX_RECORDS)
 
     def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
-        if (
-            os.name != "nt"
-            or type(product) is not WindowsLocalWheelProductSessionOwner
-            or product.policy.product_id != "coding"
+        if not is_windows_product(
+            product, "coding", os.name, WindowsLocalWheelProductSessionOwner
         ):
             raise ValueError("Windows Worker Supervisor Product owner is invalid")
         product.assert_root_gc_authority_current()

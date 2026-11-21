@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -27,6 +27,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationSnapshotV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeQuiescenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -118,7 +121,6 @@ class HistoryProofBindings(Generic[ReviewT]):
     access: Callable[[PosixLocalWheelProductSessionOwner], CheckpointCommandAccess]
     reader: Callable[[], RetainedHistoryReader]
     preparation: Callable[[], PreparationHistory]
-    preparation_limits: Callable[[], Mapping[str, int]]
     checkpoints: Callable[[], CheckpointCommands]
     registered: Callable[[], RepairJournal]
     payload: Callable[[], PayloadStorage]
@@ -925,10 +927,20 @@ def _read_checkpoints(
 def _read_preparation(
     bindings: HistoryProofBindings[ReviewT], rooted: RootedFile
 ) -> _PreparedMethods | None:
-    return bindings.preparation().read(rooted, **bindings.preparation_limits())
+    return bindings.preparation().read(rooted)
 
 
 _PreparedT = TypeVar("_PreparedT", bound=_PreparedMethods)
+
+
+def valid_history_cutoffs(cutoffs: object) -> bool:
+    return (
+        type(cutoffs) is tuple
+        and len(cutoffs) == len(CODING_WORKER_HISTORY_STREAM_STEMS)
+        and all(type(item) is int and item >= 1 for item in cutoffs[:4])
+        and type(cutoffs[4]) is int
+        and cutoffs[4] >= 0
+    )
 
 
 def prepare_history_cutover_under_guard(
@@ -945,13 +957,7 @@ def prepare_history_cutover_under_guard(
     if (
         type(product) is not PosixLocalWheelProductSessionOwner
         or product.policy.product_id != bindings.product_id
-        or type(first_retained_generations) is not tuple
-        or len(first_retained_generations) != 5
-        or any(
-            type(item) is not int or item < 1 for item in first_retained_generations[:4]
-        )
-        or type(first_retained_generations[4]) is not int
-        or first_retained_generations[4] < 0
+        or not valid_history_cutoffs(first_retained_generations)
     ):
         raise ValueError(
             f"{bindings.product_label} Worker V2 preflight requires its Product and cutoffs"
@@ -1077,13 +1083,29 @@ def prepare_history_cutover_under_guard(
 
 
 @contextmanager
-def _bound_product_history_file(
+def _product_history_write_guard(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    offline_error: type[RuntimeError] | None = None,
+) -> Iterator[PackageEpochRuntimeQuiescenceV1]:
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
+        if offline_error is not None and quiet.active_runtime_lease_ids:
+            raise offline_error("coding_worker_v2_runtime_active")
+        with product.gc_gate.guard(require_write=True):
+            yield quiet
+
+
+@contextmanager
+def _bound_product_history_write(
     product: PosixLocalWheelProductSessionOwner, name: str
 ) -> Iterator[RootedFile]:
+    product.assert_root_gc_authority_current()
     with product.pinned_state_root_gc_read() as root_fd:
         with RootedFileIO(product.state_root, root_fd) as file_io:
             with file_io.bind(product.state_root / name, durable=True) as rooted:
                 yield rooted
+    product.assert_root_gc_authority_current()
 
 
 def prepare_product_history_cutover(
@@ -1094,18 +1116,16 @@ def prepare_product_history_cutover(
     error_type: type[Exception],
     first_retained_generations: tuple[int, ...],
 ) -> _PreparedT:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
-        with product.gc_gate.guard(require_write=True):
-            return prepare_history_cutover_under_guard(
-                bindings,
-                product,
-                prepared_type=prepared_type,
-                error_type=error_type,
-                first_retained_generations=first_retained_generations,
-                active_runtime_lease_ids=quiet.active_runtime_lease_ids,
-                gc_snapshot=product.gc_gate.snapshot(),
-            )
+    with _product_history_write_guard(product) as quiet:
+        return prepare_history_cutover_under_guard(
+            bindings,
+            product,
+            prepared_type=prepared_type,
+            error_type=error_type,
+            first_retained_generations=first_retained_generations,
+            active_runtime_lease_ids=quiet.active_runtime_lease_ids,
+            gc_snapshot=product.gc_gate.snapshot(),
+        )
 
 
 def stage_product_history_preparation(
@@ -1116,45 +1136,27 @@ def stage_product_history_preparation(
     error_type: type[Exception],
     first_retained_generations: tuple[int, ...],
 ) -> _PreparationIntentMethods:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
-        with product.gc_gate.guard(require_write=True):
-            prepared = prepare_history_cutover_under_guard(
-                bindings,
-                product,
-                prepared_type=prepared_type,
-                error_type=error_type,
-                first_retained_generations=first_retained_generations,
-                active_runtime_lease_ids=quiet.active_runtime_lease_ids,
-                gc_snapshot=product.gc_gate.snapshot(),
-            )
-            product.assert_root_gc_authority_current()
-            with _bound_product_history_file(
-                product, PREPARATION_INTENT_NAME
-            ) as rooted:
-                result = bindings.preparation().stage(
-                    rooted, prepared=prepared, **bindings.preparation_limits()
-                )
-            product.assert_root_gc_authority_current()
-            return result
+    with _product_history_write_guard(product) as quiet:
+        prepared = prepare_history_cutover_under_guard(
+            bindings,
+            product,
+            prepared_type=prepared_type,
+            error_type=error_type,
+            first_retained_generations=first_retained_generations,
+            active_runtime_lease_ids=quiet.active_runtime_lease_ids,
+            gc_snapshot=product.gc_gate.snapshot(),
+        )
+        with _bound_product_history_write(product, PREPARATION_INTENT_NAME) as rooted:
+            return bindings.preparation().stage(rooted, prepared=prepared)
 
 
 def rollback_product_history_preparation(
     bindings: HistoryProofBindings[ReviewT],
     product: PosixLocalWheelProductSessionOwner,
 ) -> bool:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id):
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with _bound_product_history_file(
-                product, PREPARATION_INTENT_NAME
-            ) as rooted:
-                result = bindings.preparation().rollback(
-                    rooted, **bindings.preparation_limits()
-                )
-            product.assert_root_gc_authority_current()
-            return result
+    with _product_history_write_guard(product):
+        with _bound_product_history_write(product, PREPARATION_INTENT_NAME) as rooted:
+            return bindings.preparation().rollback(rooted)
 
 
 def commit_product_history_owner(
@@ -1166,46 +1168,34 @@ def commit_product_history_owner(
     preflight_error_type: type[Exception],
     commit_error_type: type[RuntimeError],
     first_retained_generations: tuple[int, ...],
-    index_limit: Callable[[], int],
 ) -> _IndexMethods:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with _bound_product_history_file(
-                product, PREPARATION_INTENT_NAME
-            ) as rooted:
-                prepared = _read_preparation(bindings, rooted)
-                if prepared is None:
-                    raise commit_error_type("coding_worker_v2_preparation_absent")
-                cutoffs = tuple(
-                    stream.first_retained_generation for stream in prepared.streams
+    with _product_history_write_guard(product) as quiet:
+        with _bound_product_history_write(product, PREPARATION_INTENT_NAME) as rooted:
+            prepared = _read_preparation(bindings, rooted)
+            if prepared is None:
+                raise commit_error_type("coding_worker_v2_preparation_absent")
+            cutoffs = tuple(
+                stream.first_retained_generation for stream in prepared.streams
+            )
+            if cutoffs != first_retained_generations:
+                raise commit_error_type("coding_worker_v2_cutoffs_changed")
+            if publication.owner_bytes(rooted) is None:
+                current = prepare_history_cutover_under_guard(
+                    bindings,
+                    product,
+                    prepared_type=prepared_type,
+                    error_type=preflight_error_type,
+                    first_retained_generations=first_retained_generations,
+                    active_runtime_lease_ids=quiet.active_runtime_lease_ids,
+                    gc_snapshot=product.gc_gate.snapshot(),
                 )
-                if cutoffs != first_retained_generations:
-                    raise commit_error_type("coding_worker_v2_cutoffs_changed")
-                if (
-                    publication.owner_bytes(rooted, max_index_bytes=index_limit())
-                    is None
-                ):
-                    current = prepare_history_cutover_under_guard(
-                        bindings,
-                        product,
-                        prepared_type=prepared_type,
-                        error_type=preflight_error_type,
-                        first_retained_generations=first_retained_generations,
-                        active_runtime_lease_ids=quiet.active_runtime_lease_ids,
-                        gc_snapshot=product.gc_gate.snapshot(),
-                    )
-                    if current != prepared:
-                        raise commit_error_type("coding_worker_v2_preparation_stale")
-                result = publication.commit_under_guard(
-                    rooted,
-                    prepared=prepared,
-                    error_type=commit_error_type,
-                    max_index_bytes=index_limit(),
-                )
-            product.assert_root_gc_authority_current()
-            return result
+                if current != prepared:
+                    raise commit_error_type("coding_worker_v2_preparation_stale")
+            return publication.commit_under_guard(
+                rooted,
+                prepared=prepared,
+                error_type=commit_error_type,
+            )
 
 
 def retire_product_history(
@@ -1213,20 +1203,10 @@ def retire_product_history(
     *,
     publication: HistoryPublication,
     error_type: type[RuntimeError],
-    limits: Callable[[], Mapping[str, int]],
 ) -> bool:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
-        if quiet.active_runtime_lease_ids:
-            raise error_type("coding_worker_v2_runtime_active")
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with _bound_product_history_file(product, DELETION_LEDGER_NAME) as rooted:
-                result = publication.retire_under_guard(
-                    rooted, error_type=error_type, **limits()
-                )
-            product.assert_root_gc_authority_current()
-            return result
+    with _product_history_write_guard(product, offline_error=error_type):
+        with _bound_product_history_write(product, DELETION_LEDGER_NAME) as rooted:
+            return publication.retire_under_guard(rooted, error_type=error_type)
 
 
 def seal_product_history_v1(
@@ -1234,30 +1214,24 @@ def seal_product_history_v1(
     product: PosixLocalWheelProductSessionOwner,
     *,
     error_type: type[RuntimeError],
-    segment_limit: Callable[[], int],
 ) -> tuple[int, ...]:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
-        if quiet.active_runtime_lease_ids:
-            raise error_type("coding_worker_v2_runtime_active")
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            checkpoints = _read_checkpoints(bindings, product)
-            snapshot = None if not checkpoints else checkpoints[-1].stream_snapshots[4]
-            empty = bool(
-                snapshot is not None
-                and snapshot.stem == "worker-supervisor"
-                and snapshot.total_revision == 0
-                and snapshot.active_generation == 0
-                and snapshot.segment_byte_counts == (0,)
-                and snapshot.segment_digests == (sha256(b"").hexdigest(),)
-            )
-            return HistoryPublication.seal_v1(
-                bindings.access(product),
-                empty_supervisor_checkpointed=empty,
-                error_type=error_type,
-                max_segment_bytes=segment_limit(),
-            )
+    with _product_history_write_guard(product, offline_error=error_type):
+        product.assert_root_gc_authority_current()
+        checkpoints = _read_checkpoints(bindings, product)
+        snapshot = None if not checkpoints else checkpoints[-1].stream_snapshots[4]
+        empty = bool(
+            snapshot is not None
+            and snapshot.stem == "worker-supervisor"
+            and snapshot.total_revision == 0
+            and snapshot.active_generation == 0
+            and snapshot.segment_byte_counts == (0,)
+            and snapshot.segment_digests == (sha256(b"").hexdigest(),)
+        )
+        return HistoryPublication.seal_v1(
+            bindings.access(product),
+            empty_supervisor_checkpointed=empty,
+            error_type=error_type,
+        )
 
 
 @contextmanager

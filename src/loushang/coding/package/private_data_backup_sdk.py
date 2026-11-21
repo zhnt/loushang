@@ -8,7 +8,6 @@ use it as an RPC command.
 from __future__ import annotations
 
 import os
-import stat
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -16,14 +15,24 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
+from loushang.coding.harness.plugin_management import (
+    private_data_clients_posix as _programs,
+)
 from loushang.coding.package.epoch_layout import (
     coding_fenced_product_exists,
-    resolve_coding_package_epoch_layout,
+)
+from loushang.coding.package.epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+)
+from loushang.coding.package.installation_private_data import (
+    coding_arch_workspace_installation_key,
 )
 from loushang.coding.package.private_data_backup import (
     CodingArchPrivateDataBackupOwner,
-    CodingArchPrivateDataBackupReadSource,
     CodingArchPrivateDataBackupReceiptV1,
+)
+from loushang.coding.package.private_data_backup import (
+    CodingArchPrivateDataBackupReadSource as CodingArchPrivateDataBackupReadSource,
 )
 from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryOwner,
@@ -51,6 +60,7 @@ from loushang.coding.package.product_runtime import (
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
+    matches_coding_workspace_layout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -61,12 +71,22 @@ from loushang.harness.plugin_management.application import (
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
+    PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
-from loushang.harness.workspace.paths import assert_workspace_directory_identity
+from loushang.harness.workspace.paths import (
+    assert_workspace_directory_identity,
+    capture_workspace_directory_identity,
+    is_workspace_directory_identity,
+)
 
-_PLUGIN_ID = "coding.arch.default"
 _EXPIRY_POLICY_REVISION = "coding-arch-backup-expiry-sdk:1"
+
+
+_PRIVATE_DATA_FLOW_VALUES = {
+    "message_01": "Coding Arch backup Product route is unavailable",
+    "message_02": "Coding Arch backup status changed Installation",
+    "message_03": "Coding Arch backup Product owner is unsupported",
+}
 
 
 class CodingArchPrivateDataBackupSdkError(RuntimeError):
@@ -82,37 +102,22 @@ class CodingArchPrivateDataBackupClientV1:
     workspace_identity: tuple[int, int]
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.workspace, Path)
-            or not self.workspace.is_absolute()
-            or self.workspace != self.workspace.resolve(strict=True)
-            or not isinstance(self.layout, CodingPluginLifecycleStateLayout)
-            or self.layout
-            != resolve_coding_plugin_lifecycle_state_layout(self.workspace)
-            or type(self.workspace_identity) is not tuple
-            or len(self.workspace_identity) != 2
-            or any(
-                type(item) is not int or item < 0 for item in self.workspace_identity
-            )
-        ):
+        if not matches_coding_workspace_layout(
+            self.workspace, self.layout
+        ) or not is_workspace_directory_identity(self.workspace_identity):
             raise ValueError("Coding Arch backup workspace is invalid")
 
     @property
     def installation_key(self) -> PluginInstallationKeyV1:
-        return PluginInstallationKeyV1(
-            product_id="coding",
-            installation_scope="workspace",
-            scope_id=self.layout.scope_id,
-            plugin_id=_PLUGIN_ID,
-        )
+        return coding_arch_workspace_installation_key(self.layout.scope_id)
 
     def retain(self) -> CodingArchPrivateDataBackupReceiptV1:
         """Retain or replay the archive for the current exact source snapshot."""
 
         with self._product() as product:
-            return CodingArchPrivateDataBackupOwner(
-                self.layout, product
-            ).retain(self.installation_key)
+            return CodingArchPrivateDataBackupOwner(self.layout, product).retain(
+                self.installation_key
+            )
 
     def verify(self, backup_id: str) -> CodingArchPrivateDataBackupReceiptV1:
         """Reopen and verify one retained archive by its exact digest."""
@@ -208,39 +213,11 @@ class CodingArchPrivateDataBackupClientV1:
     def status(self) -> PluginBackupRetentionRecordV1:
         """Read the backup owner's typed status without changing retention."""
 
-        self._assert_workspace_identity()
-        if (
-            os.name != "posix"
-            or not sys.platform.startswith("linux")
-            or not coding_fenced_product_exists(self.layout)
-        ):
-            raise ValueError("Coding Arch backup Product route is unavailable")
-        layout = resolve_coding_package_epoch_layout(self.layout)
-        epoch = PackageProductPosixFencedRuntimeOwner.open(
-            **layout.fenced_runtime_open_kwargs(), read_only=True
-        )
-        try:
-            self._assert_workspace_identity()
-            [record] = (
-                CodingArchPrivateDataBackupReadSource(self.layout, epoch)
-                .snapshot()
-                .records
-            )
-            if record.installation_key != self.installation_key:
-                raise ValueError("Coding Arch backup status changed Installation")
-            self._assert_workspace_identity()
-            return record
-        finally:
-            epoch.close()
+        return _programs.read_retention_status(self)
 
     def _open_application(self) -> CodingFencedProductApplicationOwner:
         self._assert_workspace_identity()
-        if (
-            os.name != "posix"
-            or not sys.platform.startswith("linux")
-            or not coding_fenced_product_exists(self.layout)
-        ):
-            raise ValueError("Coding Arch backup Product route is unavailable")
+        _require_backup_product_route(self.layout)
         application = open_coding_fenced_product_application_owner(
             self.layout,
             workspace=self.workspace,
@@ -269,53 +246,35 @@ class CodingArchPrivateDataBackupClientV1:
 
     @contextmanager
     def _reader(self) -> Iterator[CodingArchPrivateDataReadOwner]:
-        self._assert_workspace_identity()
-        if (
-            os.name != "posix"
-            or not sys.platform.startswith("linux")
-            or not coding_fenced_product_exists(self.layout)
-        ):
-            raise ValueError("Coding Arch backup Product route is unavailable")
-        reader = CodingArchPrivateDataReadOwner.open(
-            layout=self.layout,
-            workspace=self.workspace,
-            workspace_identity=self.workspace_identity,
-        )
-        try:
-            yield reader
-        finally:
-            try:
-                self._assert_workspace_identity()
-            finally:
-                reader.close()
+        with _programs.read_scope(self) as borrowed:
+            yield borrowed
 
     @contextmanager
     def _product(self) -> Iterator[PosixLocalWheelProductSessionOwner]:
-        application = self._open_application()
-        try:
-            product = application.runtime_owner.product_owner
-            if not isinstance(
-                product, PosixLocalWheelProductSessionOwner
-            ) or not isinstance(
-                application.epoch_runtime, PackageProductPosixFencedRuntimeOwner
-            ):
-                raise ValueError("Coding Arch backup Product owner is unsupported")
-            yield product
-        finally:
-            application.close()
+        with _programs.product_scope(self) as borrowed:
+            yield borrowed
+
+
+def _require_backup_product_route(layout: CodingPluginLifecycleStateLayout) -> None:
+    if (
+        os.name != "posix"
+        or not sys.platform.startswith("linux")
+        or not coding_fenced_product_exists(layout)
+    ):
+        raise ValueError(_PRIVATE_DATA_FLOW_VALUES["message_01"])
 
 
 def open_coding_arch_private_data_backup_client(
     workspace: str | Path,
 ) -> CodingArchPrivateDataBackupClientV1:
     root = Path(workspace).expanduser().resolve(strict=True)
-    metadata = root.lstat()
-    if not stat.S_ISDIR(metadata.st_mode):
-        raise ValueError("Coding Arch backup workspace is unavailable")
+    identity = capture_workspace_directory_identity(
+        root, unavailable="Coding Arch backup workspace is unavailable"
+    )
     return CodingArchPrivateDataBackupClientV1(
         workspace=root,
         layout=resolve_coding_plugin_lifecycle_state_layout(root),
-        workspace_identity=(metadata.st_dev, metadata.st_ino),
+        workspace_identity=identity,
     )
 
 

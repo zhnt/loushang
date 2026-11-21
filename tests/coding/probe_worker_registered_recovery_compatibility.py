@@ -927,13 +927,13 @@ def observe(name, base, patch):
                     store_id=registry.store_id
                 ) as quiet:
                     with gate.guard(require_write=True):
-                        evidence = (
-                            registered_c5._UnderGuardRegisteredCleanupEvidenceAuthority(
-                                product,
-                                review=review,
-                                active_runtime_lease_ids=quiet.active_runtime_lease_ids,
-                                gc_snapshot=gate.snapshot(),
-                            )
+                        bindings = registered._recovery_bindings()
+                        evidence = bindings.registered_cleanup_type(
+                            product,
+                            bindings=bindings,
+                            review=review,
+                            active_runtime_lease_ids=quiet.active_runtime_lease_ids,
+                            gc_snapshot=gate.snapshot(),
                         )
                         witness = evidence.current_tree_witness(attempt_id=ATTEMPT)
                         fault_scope_ready = True

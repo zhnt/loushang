@@ -18,8 +18,14 @@ CLI_TOGGLES = Path("src/loushang/harness/cli/resource_toggles.py")
 CLI_PROFILE = Path("src/loushang/harness/cli/profile.py")
 CODING_BINDING = Path("src/loushang/coding/plugin_manager/binding.py")
 CODING_COMPATIBILITY = Path("src/loushang/coding/plugin_manager/enablement_compatibility.py")
+CODING_ENABLEMENT_PROJECTION = Path(
+    "src/loushang/coding/harness/plugin_management/enablement_projection.py"
+)
 CODING_BOOTSTRAP = Path('src/loushang/coding/composition/bootstrap.py')
 CODING_CONTINUITY = Path('src/loushang/coding/composition/continuity.py')
+CONFIGURED_CONTINUITY = Path(
+    "src/loushang/coding/harness/session/configured_continuity.py"
+)
 SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
 CONFIG_ENGINE = Path("src/loushang/harness/config/engine.py")
 CONFIG_RUNTIME = Path("src/loushang/harness/config/runtime.py")
@@ -206,7 +212,9 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "build_coding_plugin_management_application(" in adapter
     assert "bind_coding_plugin_enablement_compatibility(" in adapter
     assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
-    assert "with _capture_existing_plugin_enablement_state(" in compatibility
+    projection = _source(CODING_ENABLEMENT_PROJECTION)
+    assert "_lifecycle_programs.reconcile(" in compatibility
+    assert "with _binding._capture_existing_plugin_enablement_state(" in projection
     assert "journal_file_lock_at(" in capture
     assert "_read_private_state_file(" in capture
     assert "_capture_existing_plugin_enablement_state_portable(" in capture
@@ -231,16 +239,17 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "share_read_write" in journal
     assert 'JournalLoadPolicy(partial_tail="skip")' in desired_ledger
     assert 'JournalLoadPolicy(partial_tail="skip")' in enablement_migration
-    assert "bind_plugin_enablement_legacy_mutation_guard" in compatibility
-    assert "bind(self, self._assert_legacy_mutation_allowed)" in compatibility
+    registry = _source(SETTINGS_MANAGER.with_name("_legacy_compatibility.py"))
+    assert "bind_plugin_enablement_legacy_mutation_guard" in registry
+    assert "bind(self, self._assert_legacy_mutation_allowed)" in registry
     assert "authority_id" not in compatibility
-    assert "LegacyPluginCompatibilityProjectionV1(" in compatibility
+    assert "LegacyPluginCompatibilityProjectionV1(" in projection
     assert "self._legacy_plugin_guard_authority" in settings
     assert "if self._legacy_plugin_guard_authority is not authority" in settings
     assert "_CodingPluginEnablementCompatibilityRegistry" in compatibility
     assert (
         old_projection_site in compatibility
-        or "self.projections[self._writer_layout(writer)] = projection" in compatibility
+        or "self.projections[self._writer_layout(writer)] = projection" in registry
     )
     assert "with self._config.transaction():" in settings
     assert "config_file_transaction_lock(path)" in config_engine
@@ -274,17 +283,19 @@ def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
     binding = _source(CODING_BINDING)
     bootstrap = _source(CODING_BOOTSTRAP)
     continuity = _source(CODING_CONTINUITY)
+    configured_continuity = _source(CONFIGURED_CONTINUITY)
 
     assert "bind_coding_plugin_enablement_compatibility(" in binding
     assert "resolve_coding_plugin_lifecycle_state_layout(" in bootstrap
     assert "bind_coding_plugin_enablement_compatibility(" in bootstrap
-    assert continuity.count("bind_coding_plugin_enablement_compatibility(") == 1
-    assert continuity.count("compatibility.reconcile()") == 3
+    assert "configured_continuity.bind_configured_continuity(" in continuity
+    assert configured_continuity.count("bind_coding_plugin_enablement_compatibility(") == 1
+    assert configured_continuity.count("compatibility.reconcile()") == 3
     # PLC9B reads an existing composition early to hold the startup lease;
     # compatibility still reconciles before any cached composition can return.
-    assert continuity.index("compatibility.reconcile()") < continuity.index(
-        "if existing is not None:"
-    )
+    assert configured_continuity.index(
+        "compatibility.reconcile()"
+    ) < configured_continuity.index("if existing is not None:")
     compatibility = _source(CODING_COMPATIBILITY)
     registry = SETTINGS_MANAGER.with_name("_legacy_compatibility.py")
     assert "coding_plugin_compatibility_fence_unavailable" in compatibility or (
@@ -293,7 +304,7 @@ def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
         and 'f"{error_prefix}_fence_unavailable"' in _source(registry)
     )
     assert "_LAST_READY_STATUS_ATTRIBUTE" in continuity
-    assert "_restore_ready_status(runtime, diagnostics_service)" in continuity
+    assert "_restore_ready_status(runtime, diagnostics_service)" in configured_continuity
 
 
 def test_plc9a1_preserves_source_aliases_and_package_command_boundary() -> None:

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from tempfile import TemporaryDirectory
+from pathlib import Path as Path
+from tempfile import TemporaryDirectory as TemporaryDirectory
 
+from loushang.coding.harness.package_product import legacy_reacquisition as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -13,14 +14,27 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 
 from .legacy_installation_inventory import (
     CodingLegacyInstallationInventoryEvidenceV1,
-    CodingLegacyInventoryError,
     CodingLegacyLocalInstallationV1,
-    read_coding_legacy_installation_inventory,
+)
+from .legacy_installation_inventory import (
+    CodingLegacyInventoryError as CodingLegacyInventoryError,
+)
+from .legacy_installation_inventory import (
+    read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
 )
 from .legacy_local_wheel import (
     CodingLegacyLocalWheelCandidateV1,
-    reacquire_coding_legacy_local_plugin_wheel,
 )
+from .legacy_local_wheel import (
+    reacquire_coding_legacy_local_plugin_wheel as reacquire_coding_legacy_local_plugin_wheel,
+)
+
+_LEGACY_ADOPTION_VALUES = {
+    "value_001": "Coding legacy Plugin identity is required",
+    "value_002": "Coding legacy Plugin is not an installed local candidate",
+    "value_003": "Coding legacy local Source changed",
+    "value_004": "Coding legacy Installation snapshot changed during Source reacquisition",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,44 +58,9 @@ def reacquire_coding_legacy_installed_local_source(
     the Wheel. An operator approval and Product transaction remain separate.
     """
 
-    if not isinstance(plugin_id, str) or not plugin_id:
-        raise ValueError("Coding legacy Plugin identity is required")
-    inventory = read_coding_legacy_installation_inventory(lifecycle, epoch_runtime)
-    installation = next(
-        (
-            item
-            for item in inventory.inventory.active_local
-            if item.binding.plugin_id == plugin_id
-        ),
-        None,
+    return _programs.reacquire_installed_source(
+        lifecycle, epoch_runtime, plugin_id=plugin_id
     )
-    if installation is None:
-        raise CodingLegacyInventoryError(
-            "Coding legacy Plugin is not an installed local candidate"
-        )
-    binding = installation.binding
-    if not binding.source_identity.startswith("local:/"):
-        raise CodingLegacyInventoryError("Coding legacy local Source changed")
-    # Review can run under a read-only Product epoch. The verified revision is
-    # built in a disposable private directory; it never becomes Product Source
-    # authorization until a separate admission owner accepts it.
-    with TemporaryDirectory(prefix="loushang-legacy-review-") as staging:
-        wheel = reacquire_coding_legacy_local_plugin_wheel(
-            Path(binding.source_identity.removeprefix("local:")),
-            legacy_package_root=lifecycle.package_root,
-            staging_parent=Path(staging),
-            plugin_id=binding.plugin_id,
-            expected_source_identity=binding.source_identity,
-            expected_content_digest=binding.content_digest,
-            expected_manifest_digest=binding.manifest_digest,
-            expected_dependency_lock=binding.dependency_lock,
-        )
-    if read_coding_legacy_installation_inventory(lifecycle, epoch_runtime) != inventory:
-        raise CodingLegacyInventoryError(
-            "Coding legacy Installation snapshot changed during Source reacquisition"
-        )
-    epoch_runtime.assert_current()
-    return CodingLegacyReacquiredInstallationV1(inventory, installation, wheel)
 
 
 __all__ = [

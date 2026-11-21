@@ -16,13 +16,18 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
-from loushang.coding.package.epoch_layout import coding_fenced_product_exists
+from loushang.coding.harness.plugin_management import (
+    private_data_clients_windows as _programs,
+)
+from loushang.coding.package.epoch_layout import (
+    coding_fenced_product_exists as coding_fenced_product_exists,
+)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
-    WindowsLocalWheelProductSessionOwner,
+    WindowsLocalWheelProductSessionOwner as WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.application import PluginBackupRetentionRecordV1
 from loushang.harness.plugin_management.private_data_confirmation import (
@@ -35,9 +40,11 @@ from loushang.harness.plugin_management.private_data_deletion import (
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    PackageProductWindowsFencedRuntimeOwner,
+    PackageProductWindowsFencedRuntimeOwner as PackageProductWindowsFencedRuntimeOwner,
 )
+from loushang.harness.workspace.paths import capture_workspace_directory_identity
 
+from .installation_private_data import coding_arch_workspace_installation_key
 from .private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
     CodingArchPrivateDataBackupExpiryPlanV1,
@@ -70,10 +77,18 @@ from .private_data_windows_restore_preview import (
 )
 from .product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-    open_coding_fenced_product_application_owner,
+)
+from .product_runtime import (
+    open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
 
 _DELETION_OWNER_ID = "coding.arch.private-data:windows-v1"
+
+
+_PRIVATE_DATA_FLOW_VALUES = {
+    "message_01": "Windows Coding Arch backup Product fence is absent",
+    "message_02": "Windows Coding Arch backup Product owner changed",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,12 +117,7 @@ class CodingWindowsArchBackupCandidateClientV1:
 
     @property
     def installation_key(self) -> PluginInstallationKeyV1:
-        return PluginInstallationKeyV1(
-            product_id="coding",
-            installation_scope="workspace",
-            scope_id=self.layout.scope_id,
-            plugin_id="coding.arch.default",
-        )
+        return coding_arch_workspace_installation_key(self.layout.scope_id)
 
     def retain(self) -> CodingArchPrivateDataBackupReceiptV1:
         """Retain the current exact source under the Product offline gate."""
@@ -282,29 +292,8 @@ class CodingWindowsArchBackupCandidateClientV1:
 
     @contextmanager
     def _owner(self) -> Iterator[CodingWindowsArchPrivateDataBackupOwner]:
-        self._assert_workspace_identity()
-        if not coding_fenced_product_exists(self.layout):
-            raise ValueError("Windows Coding Arch backup Product fence is absent")
-        application = open_coding_fenced_product_application_owner(
-            self.layout,
-            workspace=self.workspace,
-            runtime_version=self.runtime_version,
-            runtime_protocol_epoch=self.runtime_protocol_epoch,
-            windows_candidate=True,
-        )
-        try:
-            product = application.runtime_owner.product_owner
-            if not isinstance(
-                product, WindowsLocalWheelProductSessionOwner
-            ) or not isinstance(
-                application.epoch_runtime, PackageProductWindowsFencedRuntimeOwner
-            ):
-                raise ValueError("Windows Coding Arch backup Product owner changed")
-            owner = CodingWindowsArchPrivateDataBackupOwner(self.layout, product)
-            yield owner
-            self._assert_workspace_identity()
-        finally:
-            application.close()
+        with _programs.backup_scope(self) as borrowed:
+            yield borrowed
 
     def _assert_workspace_identity(self) -> None:
         metadata = self.workspace.lstat()
@@ -324,13 +313,13 @@ def open_coding_windows_arch_backup_candidate_client(
     runtime_protocol_epoch: int = CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
 ) -> CodingWindowsArchBackupCandidateClientV1:
     root = Path(workspace).expanduser().resolve(strict=True)
-    metadata = root.lstat()
-    if not stat.S_ISDIR(metadata.st_mode):
-        raise ValueError("Windows Coding Arch backup workspace is unavailable")
+    identity = capture_workspace_directory_identity(
+        root, unavailable="Windows Coding Arch backup workspace is unavailable"
+    )
     return CodingWindowsArchBackupCandidateClientV1(
         workspace=root,
         layout=layout or resolve_coding_plugin_lifecycle_state_layout(root),
-        workspace_identity=(metadata.st_dev, metadata.st_ino),
+        workspace_identity=identity,
         runtime_version=runtime_version or version("loushang"),
         runtime_protocol_epoch=runtime_protocol_epoch,
     )

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from loushang.ai.types import UserMessage
+from loushang.coding.harness.session import resume_records as _records
 from loushang.coding.resume.activation_attempt_v2 import CodingActivationAttemptV2
 from loushang.coding.resume.binding import (
     _FIELDS,
@@ -23,7 +24,6 @@ from loushang.coding.resume.binding import (
 from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord
-from loushang.harness.transcript.writer import AgentTranscriptRecordFactory
 
 CODING_RUNTIME_BINDING_V2_METADATA_KEY = "coding.runtimeBindingV2"
 CODING_RUNTIME_BINDING_V2_MAX_BYTES = 8192
@@ -128,16 +128,8 @@ def _require_intent(
         or type(intent) is not CodingActivationAttemptV2
     ):
         raise TypeError("RuntimeBinding v2 requires exact v2 Binding and intent values")
-    if (
-        binding.intent_digest != intent.digest
-        or binding.attempt_id != intent.attempt_id
-        or binding.input_id != intent.request_id
-        or binding.session_id != intent.session_id
-        or binding.original_leaf_id != intent.original_leaf_id
-        or binding.ancestry_digest != intent.ancestry_digest
-        or binding.planned_fingerprint != intent.plan_fingerprint
-        or binding.actual_fingerprint != intent.epoch_fingerprint
-        or binding.subject_digest != intent.subject_digest
+    if binding.intent_digest != intent.digest or not _records.matches_intent(
+        binding, intent, check_session=True
     ):
         raise ValueError("RuntimeBinding v2 does not match the exact frozen intent")
     if binding.record_id == intent.attempt_id:
@@ -166,12 +158,12 @@ def prepare_coding_resume_v2_user_record(
     )
     if any(key.startswith("coding.runtimeBinding") for key in evidence):
         raise ValueError("Resume resource metadata conflicts with Binding version")
-    record = AgentTranscriptRecordFactory(
-        clock=lambda: created_at, id_factory=lambda: binding.record_id
-    ).create(
+    record = _records.make_resume_record(
         AGENT_MESSAGE_KIND,
         frozen_message,
+        record_id=binding.record_id,
         parent_id=intent.attempt_id,
+        created_at=created_at,
         metadata={**evidence, **binding.to_message_metadata()},
     )
     validate_coding_resume_v2_user_record(record, intent=intent)
@@ -183,12 +175,27 @@ def validate_coding_resume_v2_user_record(
     *,
     intent: CodingActivationAttemptV2,
 ) -> CodingRuntimeBindingV2:
+    payload = _require_v2_user_payload(record)
+    binding = decode_coding_runtime_binding_v2(record.metadata)
+    _require_decoded_v2_binding(record, binding, payload=payload, intent=intent)
+    return binding
+
+
+def _require_v2_user_payload(record: AgentTranscriptRecord) -> UserMessage:
     if record.kind != AGENT_MESSAGE_KIND or type(record.payload) is not UserMessage:
         raise ValueError("RuntimeBinding v2 requires one ordinary UserMessage record")
-    binding = decode_coding_runtime_binding_v2(record.metadata)
+    return record.payload
+
+
+def _require_decoded_v2_binding(
+    record: AgentTranscriptRecord,
+    binding: CodingRuntimeBindingV2,
+    *,
+    payload: UserMessage,
+    intent: CodingActivationAttemptV2,
+) -> None:
     _require_intent(binding, intent)
     if record.record_id != binding.record_id or record.parent_id != intent.attempt_id:
         raise ValueError("RuntimeBinding v2 stored record identity or parent differs")
-    if coding_user_payload_digest(record.payload) != binding.payload_digest:
+    if coding_user_payload_digest(payload) != binding.payload_digest:
         raise ValueError("RuntimeBinding v2 stored user payload differs")
-    return binding

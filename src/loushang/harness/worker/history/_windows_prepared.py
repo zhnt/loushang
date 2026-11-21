@@ -6,14 +6,32 @@ ledger retains its own existing fold and exact nominal preparation binding.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar, Self
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
+
+from ._base_codec import _SourceBoundBaseWireMethods, _unchanged
 from ._windows_semantic_contracts import (
     _RecoveryFacts,
     _SourceFacts,
     _WindowsHistorySemanticFacts,
     _WindowsPreparationFacts,
 )
+from ._windows_sources import WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES
+
+
+def _record_tuple_field(
+    attribute: str, decode_item: Callable[[object], object]
+) -> RecordField:
+    return RecordField(
+        attribute,
+        decoder=lambda items: tuple(decode_item(item) for item in items),
+        encoder=lambda values: [value.to_dict() for value in values],
+    )
 
 
 class _WindowsPreparationBinding:
@@ -21,9 +39,16 @@ class _WindowsPreparationBinding:
     _preparation_type: ClassVar[type[_WindowsPreparationFacts]]
 
 
-class _WindowsPreparedSourceMethods(_WindowsPreparationBinding):
+class _WindowsPreparedSourceMethods(
+    _WindowsPreparationBinding, _SourceBoundBaseWireMethods
+):
     __slots__ = ()
     _preparation_label: ClassVar[str]
+    _wire_max_bytes = WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES
+
+    @classmethod
+    def _bind_windows_wire_schema(cls, *overrides: RecordField) -> None:
+        cls._bind_wire_schema(RecordSchema.for_dataclass(cls, _unchanged, *overrides))
 
     @classmethod
     def from_semantic_read(

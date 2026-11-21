@@ -39,6 +39,7 @@ from loushang.hosting.windows_backend_material import (
     verify_windows_backend_material_expectation,
 )
 
+from ._worker_history_access import WindowsProductWorkerHistoryAccess
 from .product_worker_candidate import ProductWorkerNativeClosureFacts
 
 _N = TypeVar("_N", bound=_NativeDecision)
@@ -84,12 +85,8 @@ def current_windows_backend_approval(
     product: WindowsLocalWheelProductSessionOwner,
     journal: _CurrentJournal[_N],
 ) -> _N | None:
-    with product.gc_gate.guard():
-        product.assert_root_gc_authority_current()
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            decision = journal.current(directory_fd=root)
-        product.assert_root_gc_authority_current()
-        return decision
+    with WindowsProductWorkerHistoryAccess(product).decision_root() as root:
+        return journal.current(directory_fd=root)
 
 
 def change_windows_backend_approval(
@@ -101,20 +98,16 @@ def change_windows_backend_approval(
     review: _BackendReview | None,
 ) -> _N:
     """Use the same owner fields at their original guarded mutation points."""
-    with owner._product.gc_gate.guard(require_write=True):
-        owner._product.assert_root_gc_authority_current()
-        with (
-            owner._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-        ):
-            decision = owner._journal.change(
-                directory_fd=root,
-                operation_id=operation_id,
-                expected_generation=expected_generation,
-                action=action,
-                approval=None if review is None else review.approval,
-            )
-        owner._product.assert_root_gc_authority_current()
-        return decision
+    with WindowsProductWorkerHistoryAccess(owner._product).decision_root(
+        require_write=True
+    ) as root:
+        return owner._journal.change(
+            directory_fd=root,
+            operation_id=operation_id,
+            expected_generation=expected_generation,
+            action=action,
+            approval=None if review is None else review.approval,
+        )
 
 
 class _WindowsBackendCandidateMethods:

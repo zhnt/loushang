@@ -6,7 +6,6 @@ current authority nor evidence that an effect or user input completed.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -14,14 +13,16 @@ from datetime import datetime
 from typing import Literal, cast
 
 from loushang.ai.types import UserMessage
+from loushang.coding.harness.session import resume_records as _records
+from loushang.coding.harness.session.selected_ancestry import SelectedAncestry
 from loushang.coding.resume.binding import (
+    _ANCESTRY_DOMAIN,
     inspect_coding_runtime_binding,
     validate_coding_runtime_binding_record,
 )
 from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND, EXTENSION_DATA_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord, ExtensionData
-from loushang.harness.transcript.writer import AgentTranscriptRecordFactory
 
 CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE = "coding.activation-attempt/v1"
 CODING_ACTIVATION_ATTEMPT_MAX_BYTES = 4096
@@ -137,16 +138,14 @@ def project_coding_activation_attempt_path(
 
     if type(current_session_id) is not str or _IDENTIFIER.fullmatch(current_session_id) is None:
         raise ValueError("activation attempt current Session id is invalid")
-    ancestry = hashlib.sha256(b"loushang.coding.resume-ancestry/v1\0")
-    previous_id: str | None = None
-    seen: set[str] = set()
+    ancestry = SelectedAncestry(_ANCESTRY_DOMAIN)
     pending: CodingActivationAttemptV1 | None = None
     pending_record_id: str | None = None
     unknown_version = False
     for record in records:
-        if record.parent_id != previous_id or record.record_id in seen:
-            raise ValueError("activation attempt projection requires a complete path")
-        seen.add(record.record_id)
+        ancestry.require_next(
+            record, error="activation attempt projection requires a complete path"
+        )
         prefix_digest = ancestry.hexdigest()
         payload = record.payload
         if isinstance(payload, ExtensionData) and payload.extension_type.startswith(
@@ -181,23 +180,12 @@ def project_coding_activation_attempt_path(
                 if binding.session_id == current_session_id and pending is not None:
                     if (
                         record.parent_id != pending_record_id
-                        or binding.attempt_id != pending.attempt_id
-                        or binding.input_id != pending.request_id
-                        or binding.original_leaf_id != pending.original_leaf_id
-                        or binding.ancestry_digest != pending.ancestry_digest
-                        or binding.planned_fingerprint != pending.plan_fingerprint
-                        or binding.actual_fingerprint != pending.epoch_fingerprint
-                        or binding.subject_digest != pending.subject_digest
+                        or not _records.matches_intent(binding, pending, check_session=False)
                     ):
                         raise ValueError("activation Binding does not match intent")
                     pending = None
                     pending_record_id = None
-        identity = _encoded({
-            "recordId": record.record_id, "parentId": record.parent_id,
-        })
-        ancestry.update(len(identity).to_bytes(4, "big"))
-        ancestry.update(identity)
-        previous_id = record.record_id
+        ancestry.advance(record, _encoded)
     if unknown_version:
         return CodingActivationAttemptPathProjection("unknown_version")
     if pending is not None:
@@ -214,13 +202,12 @@ def prepare_coding_activation_attempt_record(
 
     if not isinstance(attempt, CodingActivationAttemptV1):
         raise TypeError("activation attempt record requires a Coding attempt")
-    record = AgentTranscriptRecordFactory(
-        clock=lambda: created_at,
-        id_factory=lambda: attempt.attempt_id,
-    ).create(
+    record = _records.make_resume_record(
         EXTENSION_DATA_KIND,
         ExtensionData(CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE, attempt.to_data()),
+        record_id=attempt.attempt_id,
         parent_id=attempt.original_leaf_id,
+        created_at=created_at,
     )
     validate_coding_activation_attempt_record(record)
     return record

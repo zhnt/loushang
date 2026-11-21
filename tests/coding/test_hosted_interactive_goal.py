@@ -6,6 +6,7 @@ import json
 import sys
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -40,6 +41,11 @@ from .test_current_session_goal import _model
 from .test_hosted_execution import _binding
 from .test_hosted_execution import _private_home as _private_home
 from .test_interactive_goal import TaskAdapter
+
+
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    return standalone_workspace
 
 
 class _HostedTaskAdapter(TaskAdapter):

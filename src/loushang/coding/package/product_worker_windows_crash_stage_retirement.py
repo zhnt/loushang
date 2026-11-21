@@ -29,9 +29,6 @@ from .product_worker_windows_stage_retirement import (
 )
 from .product_worker_windows_stage_review import _inspection
 
-_MAX_REVIEW_BYTES = 32768
-_MAX_RECEIPT_BYTES = 1024
-
 
 def retire_coding_windows_product_worker_crash_stage(
     product: WindowsLocalWheelProductSessionOwner,
@@ -51,8 +48,6 @@ _records = WindowsWorkerRetirementRecords(
     stem="worker-crash-stage",
     review_type=CodingWindowsWorkerCrashStageReviewV1,
     receipt_type=CodingWindowsWorkerStageRetirementReceiptV1,
-    review_maximum_bytes=_MAX_REVIEW_BYTES,
-    receipt_maximum_bytes=_MAX_RECEIPT_BYTES,
     read_bytes=_read_retirement_bytes,
     error_type=ValueError,
     start_invalid="Windows Worker crash stage start changed",
@@ -74,7 +69,6 @@ _operations = WindowsProductWorkerCrashStageRetirement(
     records=_records,
     io=_receipt_io,
     inspection=_inspection,
-    review_maximum=lambda: _MAX_REVIEW_BYTES,
     review_stage=_review_crash_stage_under_gc_guard,
     review_runtime=_review_under_gc_guard,
     inspect_native=inspect_coding_windows_product_worker_provisioning_attempts,
@@ -83,4 +77,3 @@ _operations = WindowsProductWorkerCrashStageRetirement(
 )
 _require_crash_history = _operations.require_history
 _require_completed_crash_retirement_under_gc_guard = _operations.require_completed
-_require_no_other_retirement = _operations.require_no_other

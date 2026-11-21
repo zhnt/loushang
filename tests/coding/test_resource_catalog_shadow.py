@@ -39,7 +39,10 @@ from loushang.coding.resources.catalog_compatibility import (
     build_coding_initial_resource_catalog_shadow_adapter,
     complete_coding_package_plugin_selection_seed,
 )
-from loushang.coding.resources.runtime import CodingPackageMaterializer
+from loushang.coding.resources.runtime import (
+    CodingPackageMaterializer,
+    CodingResourceLoader,
+)
 from loushang.coding.session.manager import SessionManager
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionAuthorityContext,
@@ -833,15 +836,19 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
 ) -> None:
     async def scenario() -> None:
         project_root = tmp_path / "project"
-        skill_root = project_root / "skills" / "review"
+        skill_root = project_root / ".loushang" / "skills" / "review"
         skill_root.mkdir(parents=True)
-        (project_root / "AGENTS.md").write_text("Project guidance", encoding="utf-8")
+        (project_root / "PROJECT_GUIDANCE.md").write_text("Project guidance", encoding="utf-8")
         (skill_root / "SKILL.md").write_text(
             "---\nname: review\ndescription: Review code\n---\nReview carefully.\n",
             encoding="utf-8",
         )
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
         services = create_services(
+            resource_loader=CodingResourceLoader(
+                project_resource_mode="standard",
+                context_file_names=("PROJECT_GUIDANCE.md",),
+            ),
             settings_manager=SettingsManager(
                 global_settings_path=tmp_path / "global-settings.json",
                 project_settings_path=tmp_path / "project-settings.json",
@@ -972,9 +979,10 @@ def test_coding_catalog_bootstrap_fails_closed_when_extension_source_drifts(
 ) -> None:
     async def scenario() -> None:
         project_root = tmp_path / "project-extension-drift"
-        project_root.mkdir()
+        (project_root / ".loushang").mkdir(parents=True)
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
         services = create_services(
+            resource_loader=CodingResourceLoader(project_resource_mode="standard"),
             settings_manager=SettingsManager(
                 global_settings_path=tmp_path / "global-settings.json",
                 project_settings_path=tmp_path / "project-settings.json",
@@ -990,8 +998,8 @@ def test_coding_catalog_bootstrap_fails_closed_when_extension_source_drifts(
             services=services,
             model=_model(),
         )
-        extension = project_root / "extensions" / "late.py"
-        extension.parent.mkdir()
+        extension = project_root / ".loushang" / "extensions" / "late.py"
+        extension.parent.mkdir(parents=True)
         extension.write_text("def register(api):\n    del api\n", encoding="utf-8")
         try:
             with pytest.raises(
@@ -1150,7 +1158,7 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
 ) -> None:
     async def scenario() -> None:
         project_root = tmp_path / "project"
-        skill_root = project_root / "skills" / "review"
+        skill_root = project_root / ".loushang" / "skills" / "review"
         skill_root.mkdir(parents=True)
         (skill_root / "SKILL.md").write_text(
             "---\nname: review\ndescription: Review code\n---\nReview carefully.\n",
@@ -1162,7 +1170,10 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             project_settings_path=tmp_path / "project-settings.json",
         )
         settings.update_settings(scope="project", disabled_skills=("review",))
-        services = create_services(settings_manager=settings)
+        services = create_services(
+            resource_loader=CodingResourceLoader(project_resource_mode="standard"),
+            settings_manager=settings,
+        )
         manager = await SessionManager.new(
             session_dir=tmp_path / "sessions",
             cwd=str(project_root),
@@ -1216,7 +1227,7 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
 ) -> None:
     async def scenario() -> None:
         project_root = tmp_path / "project-refresh"
-        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file = project_root / ".loushang" / "skills" / "review" / "SKILL.md"
         skill_file.parent.mkdir(parents=True)
         skill_file.write_text(
             "---\nname: review\ndescription: Review v1\n---\nReview v1 body.\n",
@@ -1240,6 +1251,7 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
         )
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
         services = create_services(
+            resource_loader=CodingResourceLoader(project_resource_mode="standard"),
             settings_manager=SettingsManager(
                 global_settings_path=tmp_path / "global-settings.json",
                 project_settings_path=tmp_path / "project-settings.json",
@@ -1489,11 +1501,12 @@ def test_coding_catalog_extension_refresh_pins_real_load_and_serves_g2_bytes(
 ) -> None:
     async def scenario() -> None:
         project_root = tmp_path / "project-extension-refresh"
-        extension_file = project_root / "extensions" / "dynamic_review.py"
+        extension_file = project_root / ".loushang" / "extensions" / "dynamic_review.py"
         extension_file.parent.mkdir(parents=True)
         _write_dynamic_prompt_extension(extension_file, text="extension body v1")
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
         services = create_services(
+            resource_loader=CodingResourceLoader(project_resource_mode="standard"),
             settings_manager=SettingsManager(
                 global_settings_path=tmp_path / "global-settings.json",
                 project_settings_path=tmp_path / "project-settings.json",
@@ -1830,7 +1843,7 @@ def test_coding_catalog_refresh_reloads_disabled_skill_policy(
 ) -> None:
     async def scenario() -> None:
         project_root = tmp_path / "project-disabled-refresh"
-        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file = project_root / ".loushang" / "skills" / "review" / "SKILL.md"
         skill_file.parent.mkdir(parents=True)
         skill_file.write_text(
             "---\nname: review\ndescription: Review\n---\nReview body.\n",
@@ -1841,7 +1854,10 @@ def test_coding_catalog_refresh_reloads_disabled_skill_policy(
             global_settings_path=tmp_path / "global-settings.json",
             project_settings_path=tmp_path / "project-settings.json",
         )
-        services = create_services(settings_manager=settings)
+        services = create_services(
+            resource_loader=CodingResourceLoader(project_resource_mode="standard"),
+            settings_manager=settings,
+        )
         manager = await SessionManager.new(
             session_dir=tmp_path / "sessions-disabled",
             cwd=str(project_root),

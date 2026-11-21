@@ -27,6 +27,10 @@ from loushang.harness.plugin_management.package_gc_reservation import (
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeLeaseV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseRegistry,
+    PackageEpochRuntimeQuiescenceV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -167,8 +171,8 @@ class RecoveryBindings(Generic[HistoryT]):
     registered_c5_error: type[Exception]
     crash_c5_error: type[Exception]
     cleanup_type: Callable[..., CleanupEvidenceAuthority[HistoryT]]
-    under_guard_type: Callable[..., UnderGuardCleanupEvidenceAuthority[HistoryT]]
-    registered_cleanup_type: Callable[..., RegisteredCleanupEvidenceAuthority[HistoryT]]
+    under_guard_type: type[UnderGuardCleanupEvidenceAuthority[HistoryT]]
+    registered_cleanup_type: type[RegisteredCleanupEvidenceAuthority[HistoryT]]
     state_store_type: Callable[..., ProductActivationStateStore]
     host_domain: str
     cleanup_owner_message: str
@@ -996,6 +1000,27 @@ def _require_registered_witness(
             )
 
 
+@contextmanager
+def _registered_c5_write_guard(
+    bindings: RecoveryBindings[HistoryT],
+    product: PosixLocalWheelProductSessionOwner,
+    registry: PackageEpochRuntimeLeaseRegistry,
+    review: RegisteredReview,
+) -> Iterator[PackageEpochRuntimeQuiescenceV1]:
+    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
+        if (
+            quiet.active_runtime_lease_ids
+            or quiet.owner_revision != review.repaired_owner_revision
+        ):
+            raise bindings.registered_c5_error(
+                f"{bindings.history.product_id}_worker_registered_c5_runtime_changed"
+            )
+        with product.gc_gate.guard(require_write=True):
+            product.assert_root_gc_authority_current()
+            yield quiet
+            product.assert_root_gc_authority_current()
+
+
 def _reopen_settled_registered_c5(
     bindings: RecoveryBindings[HistoryT],
     product: PosixLocalWheelProductSessionOwner,
@@ -1029,58 +1054,48 @@ def _reopen_settled_registered_c5(
         raise bindings.registered_c5_error(
             f"{bindings.history.product_id}_worker_registered_c5_recovery_incomplete"
         )
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
-        if (
-            quiet.active_runtime_lease_ids
-            or quiet.owner_revision != review.repaired_owner_revision
-        ):
-            raise bindings.registered_c5_error(
-                f"{bindings.history.product_id}_worker_registered_c5_runtime_changed"
-            )
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            with product.pinned_state_root_gc_read() as root_fd:
-                intent = _registered_journal(bindings).read(root_fd, review.attempt_id)
-                names = tuple(os.listdir(root_fd))
-                if (
-                    intent is None
-                    or bindings.history.payload()._stage_exists(
-                        root_fd, review.attempt_id
-                    )
-                    or (
-                        not registered_repair_matches_no_effect_closure(
-                            intent,
-                            gate=gate,
-                            receipt=receipt,
-                            activation=c5,
-                            supervisor=None,
-                            product_id=bindings.history.product_id,
-                        )
-                    )
-                    or (intent.lease_id != review.repaired_orphan_lease.lease_id)
-                ):
-                    raise bindings.registered_c5_error(
-                        f"{bindings.history.product_id}_worker_registered_c5_settlement_unverified"
-                    )
-            require_settled_history(bindings.history, product, observed_names=names)
-            journal = _activation_journal(
-                bindings,
-                product.state_root / "worker-activation-state.jsonl",
-                scope_id=product.policy.project_scope_id,
-                store_id=registry.store_id,
-            )
-            if tuple(
-                (
-                    item
-                    for item in journal.retained_attempts_read_only()
-                    if item.attempt_id == review.attempt_id
+    with _registered_c5_write_guard(bindings, product, registry, review):
+        with product.pinned_state_root_gc_read() as root_fd:
+            intent = _registered_journal(bindings).read(root_fd, review.attempt_id)
+            names = tuple(os.listdir(root_fd))
+            if (
+                intent is None
+                or bindings.history.payload()._stage_exists(
+                    root_fd, review.attempt_id
                 )
-            ) != (c5,):
+                or (
+                    not registered_repair_matches_no_effect_closure(
+                        intent,
+                        gate=gate,
+                        receipt=receipt,
+                        activation=c5,
+                        supervisor=None,
+                        product_id=bindings.history.product_id,
+                    )
+                )
+                or (intent.lease_id != review.repaired_orphan_lease.lease_id)
+            ):
                 raise bindings.registered_c5_error(
-                    f"{bindings.history.product_id}_worker_registered_c5_settlement_changed"
+                    f"{bindings.history.product_id}_worker_registered_c5_settlement_unverified"
                 )
-            product.assert_root_gc_authority_current()
-            return c5
+        require_settled_history(bindings.history, product, observed_names=names)
+        journal = _activation_journal(
+            bindings,
+            product.state_root / "worker-activation-state.jsonl",
+            scope_id=product.policy.project_scope_id,
+            store_id=registry.store_id,
+        )
+        if tuple(
+            (
+                item
+                for item in journal.retained_attempts_read_only()
+                if item.attempt_id == review.attempt_id
+            )
+        ) != (c5,):
+            raise bindings.registered_c5_error(
+                f"{bindings.history.product_id}_worker_registered_c5_settlement_changed"
+            )
+        return c5
 
 
 def settle_registered_c5(
@@ -1109,89 +1124,80 @@ def settle_registered_c5(
             f"{bindings.history.product_id}_worker_registered_c5_recovery_incomplete"
         )
     registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
+    with _registered_c5_write_guard(bindings, product, registry, review) as quiet:
+        evidence = bindings.registered_cleanup_type(
+            product,
+            bindings=bindings,
+            review=review,
+            active_runtime_lease_ids=quiet.active_runtime_lease_ids,
+            gc_snapshot=product.gc_gate.snapshot(),
+        )
+        witness = evidence.current_tree_witness(attempt_id=attempt_id)
+        _require_registered_witness(
+            bindings, product, review=review, witness=witness
+        )
+        journal = _activation_journal(
+            bindings,
+            product.state_root / "worker-activation-state.jsonl",
+            scope_id=product.policy.project_scope_id,
+            store_id=registry.store_id,
+        )
+        state = journal.load()
+        attempts = None if state is None else state.get("attempts")
+        if not isinstance(attempts, Mapping):
+            raise bindings.registered_c5_error(
+                f"{bindings.history.product_id}_worker_registered_c5_state_unavailable"
+            )
+        exact = tuple(
+            (
+                item
+                for item in attempts.values()
+                if isinstance(item, Mapping) and item.get("attemptId") == attempt_id
+            )
+        )
         if (
-            quiet.active_runtime_lease_ids
-            or quiet.owner_revision != review.repaired_owner_revision
+            len(exact) != 1
+            or exact[0].get("phase") != "registered"
+            or exact[0].get("evidenceAuthorityId") != evidence.authority_id
+            or (
+                exact[0].get("evidenceAuthorityFingerprint")
+                != evidence.authority_fingerprint
+            )
         ):
             raise bindings.registered_c5_error(
-                f"{bindings.history.product_id}_worker_registered_c5_runtime_changed"
+                f"{bindings.history.product_id}_worker_registered_c5_attempt_changed"
             )
-        with product.gc_gate.guard(require_write=True):
-            product.assert_root_gc_authority_current()
-            evidence = bindings.registered_cleanup_type(
-                product,
-                review=review,
-                active_runtime_lease_ids=quiet.active_runtime_lease_ids,
-                gc_snapshot=product.gc_gate.snapshot(),
+        coordinator = ProductWorkerActivationCoordinator(
+            authority=ClosedLinuxCrashRecoveryAuthority(product),
+            evidence_authority=evidence,
+            trusted_evidence_authority_id=evidence.authority_id,
+            trusted_evidence_authority_fingerprint=evidence.authority_fingerprint,
+            state_store=bindings.state_store_type(product),
+        )
+        receipt = review.receipt_record.receipt
+        coordinator.recover_registered_no_effect(
+            receipt=receipt,
+            attempt_id=attempt_id,
+            owner_generation=receipt.policy.owner_selection_generation,
+            current_boot_identity=evidence.boot_identity,
+            witness=witness,
+        )
+        retained = tuple(
+            (
+                item
+                for item in journal.retained_attempts_read_only()
+                if item.attempt_id == attempt_id
             )
-            witness = evidence.current_tree_witness(attempt_id=attempt_id)
-            _require_registered_witness(
-                bindings, product, review=review, witness=witness
+        )
+        if (
+            len(retained) != 1
+            or retained[0].phase != "settled"
+            or (not retained[0].no_effect)
+        ):
+            raise bindings.registered_c5_error(
+                f"{bindings.history.product_id}_worker_registered_c5_settlement_unverified"
             )
-            journal = _activation_journal(
-                bindings,
-                product.state_root / "worker-activation-state.jsonl",
-                scope_id=product.policy.project_scope_id,
-                store_id=registry.store_id,
-            )
-            state = journal.load()
-            attempts = None if state is None else state.get("attempts")
-            if not isinstance(attempts, Mapping):
-                raise bindings.registered_c5_error(
-                    f"{bindings.history.product_id}_worker_registered_c5_state_unavailable"
-                )
-            exact = tuple(
-                (
-                    item
-                    for item in attempts.values()
-                    if isinstance(item, Mapping) and item.get("attemptId") == attempt_id
-                )
-            )
-            if (
-                len(exact) != 1
-                or exact[0].get("phase") != "registered"
-                or exact[0].get("evidenceAuthorityId") != evidence.authority_id
-                or (
-                    exact[0].get("evidenceAuthorityFingerprint")
-                    != evidence.authority_fingerprint
-                )
-            ):
-                raise bindings.registered_c5_error(
-                    f"{bindings.history.product_id}_worker_registered_c5_attempt_changed"
-                )
-            coordinator = ProductWorkerActivationCoordinator(
-                authority=ClosedLinuxCrashRecoveryAuthority(product),
-                evidence_authority=evidence,
-                trusted_evidence_authority_id=evidence.authority_id,
-                trusted_evidence_authority_fingerprint=evidence.authority_fingerprint,
-                state_store=bindings.state_store_type(product),
-            )
-            receipt = review.receipt_record.receipt
-            coordinator.recover_registered_no_effect(
-                receipt=receipt,
-                attempt_id=attempt_id,
-                owner_generation=receipt.policy.owner_selection_generation,
-                current_boot_identity=evidence.boot_identity,
-                witness=witness,
-            )
-            retained = tuple(
-                (
-                    item
-                    for item in journal.retained_attempts_read_only()
-                    if item.attempt_id == attempt_id
-                )
-            )
-            if (
-                len(retained) != 1
-                or retained[0].phase != "settled"
-                or (not retained[0].no_effect)
-            ):
-                raise bindings.registered_c5_error(
-                    f"{bindings.history.product_id}_worker_registered_c5_settlement_unverified"
-                )
-            product.assert_root_gc_authority_current()
-            return retained[0]
+        return retained[0]
 
 
 def settle_crash_c5(
@@ -1301,6 +1307,7 @@ def _settle_crash_c5_under_guard(
     receipt = record.receipt
     evidence = bindings.under_guard_type(
         product,
+        bindings=bindings,
         active_runtime_lease_ids=active_runtime_lease_ids,
         gc_snapshot=gc_snapshot,
     )

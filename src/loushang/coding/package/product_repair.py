@@ -8,25 +8,33 @@ from __future__ import annotations
 
 import asyncio
 import os
-import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
-from uuid import uuid4
+from uuid import uuid4 as uuid4
 
+from loushang.coding.harness.package_product import repair as _programs
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeRequestV1,
-    _perform_package_repair,
+    PackageProductRuntimeRequestV1 as PackageProductRuntimeRequestV1,
+)
+from loushang.harness.package_product.product_runtime import (
+    _perform_package_repair as _perform_package_repair,
+)
+from loushang.harness.workspace.paths import (
+    assert_workspace_directory_identity,
+    read_workspace_directory_identity,
 )
 
 from .product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH as CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+)
+from .product_runtime import (
     CodingFencedProductApplicationOwner,
     open_coding_fenced_product_application_owner,
 )
@@ -63,6 +71,14 @@ CODING_PACKAGE_REPAIR_INSPECTIONS_V1 = frozenset(
 _ACTIONS = frozenset(CODING_PACKAGE_REPAIR_ACTIONS_V1)
 _MAX_SOURCE_BYTES = 2 * 1024 * 1024
 _OwnerFactory = Callable[..., CodingFencedProductApplicationOwner]
+
+
+_RUNTIME_PROGRAM_VALUES = {
+    "value_001": "Coding Package repair client is required",
+    "value_002": "package_repair_unsupported_action",
+    "value_003": "package_repair_invalid_operation_id",
+    "value_004": "coding",
+}
 
 
 class CodingPackageRepairError(RuntimeError):
@@ -128,13 +144,13 @@ def open_coding_package_repair_client(
     if os.name != "posix":
         raise CodingPackageRepairError("package_repair_posix_only")
     root = Path(workspace).expanduser().resolve(strict=True)
-    metadata = root.lstat()
-    if not stat.S_ISDIR(metadata.st_mode):
+    identity = read_workspace_directory_identity(root)
+    if identity is None:
         raise CodingPackageRepairError("package_repair_workspace_not_directory")
     return CodingPackageRepairClientV1(
         workspace=root,
         layout=resolve_coding_plugin_lifecycle_state_layout(root),
-        workspace_identity=(metadata.st_dev, metadata.st_ino),
+        workspace_identity=identity,
         runtime_version=runtime_version
         if runtime_version is not None
         else version("loushang"),
@@ -162,59 +178,17 @@ async def _aperform_coding_package_repair(
     *,
     owner_factory: _OwnerFactory = open_coding_fenced_product_application_owner,
 ) -> CodingPackageRepairResultV1:
-    if not isinstance(client, CodingPackageRepairClientV1):
-        raise TypeError("Coding Package repair client is required")
-    if action not in _ACTIONS:
-        raise CodingPackageRepairError("package_repair_unsupported_action")
-    if (
-        not isinstance(operation_id, str)
-        or not operation_id
-        or operation_id != operation_id.strip()
-    ):
-        raise CodingPackageRepairError("package_repair_invalid_operation_id")
-    _require_workspace_identity(client)
-    owner = owner_factory(
-        client.layout,
-        workspace=client.workspace,
-        runtime_version=client.runtime_version,
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    return await _programs.perform_repair(
+        client, action, operation_id, owner_factory=owner_factory
     )
-    try:
-        _require_workspace_identity(client)
-        product = owner.runtime_owner.product_owner
-        session_id = f"package-repair:{uuid4().hex}"
-        runtime = product.factory_for_session(
-            session_id=session_id,
-            cwd=client.workspace,
-            runtime_id=session_id,
-        ).create(
-            PackageProductRuntimeRequestV1(
-                product_id="coding", session_id=session_id, cwd=str(client.workspace)
-            )
-        )
-        return await _perform_package_repair(
-            runtime,
-            action,
-            operation_id,
-            max_bytes=_MAX_SOURCE_BYTES,
-            result_factory=lambda **fields: CodingPackageRepairResultV1(**fields),
-        )
-    finally:
-        owner.close()
 
 
 def _require_workspace_identity(client: CodingPackageRepairClientV1) -> None:
-    try:
-        metadata = client.workspace.lstat()
-        current = client.workspace.resolve(strict=True)
-    except OSError as exc:
-        raise CodingPackageRepairError("package_repair_workspace_changed") from exc
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or current != client.workspace
-        or (metadata.st_dev, metadata.st_ino) != client.workspace_identity
-    ):
-        raise CodingPackageRepairError("package_repair_workspace_changed")
+    assert_workspace_directory_identity(
+        client.workspace,
+        client.workspace_identity,
+        changed=lambda: CodingPackageRepairError("package_repair_workspace_changed"),
+    )
 
 
 __all__ = [

@@ -11,9 +11,9 @@ from loushang.coding.composition.capabilities import (
     coding_lsp_should_defer,
 )
 from loushang.coding.composition.capability_specs import CODING_CAPABILITY_PLUGIN_IDS
+from loushang.coding.harness.session.plugin_resume import require_no_plugin_effects
 from loushang.harness.session.bootstrap_utils import NoToolsMode, normalize_no_tools
 
-from .activation_attempt import CodingResumeRecoveryRequired
 from .activation_attempt_v2 import CodingActivationAttemptV2
 from .history import CodingResumeHistoryPreview
 
@@ -56,20 +56,14 @@ def _require_no_capability_plugin_effects(
     expected_set_id: str,
     allowed_owner_ids: frozenset[str] = frozenset(),
 ) -> None:
-    if (
-        {owner.owner_id for owner in attempt.effect_owners} != allowed_owner_ids
-        or attempt.effect_classes
-        or any(owner.effect_classes for owner in attempt.effect_owners)
-    ):
-        raise CodingResumeRecoveryRequired("input.effect_owner_set_unsupported")
-    revisions = receipt.get("selectedRevisions")
-    if receipt.get("setId") != expected_set_id or not isinstance(revisions, list):
-        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
-    for raw in revisions:
-        if not isinstance(raw, Mapping):
-            raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
-        if raw.get("pluginId") in CODING_CAPABILITY_PLUGIN_IDS:
-            raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
+    require_no_plugin_effects(
+        attempt,
+        receipt,
+        expected_set_id=expected_set_id,
+        allowed_owner_ids=allowed_owner_ids,
+        capability_plugin_ids=CODING_CAPABILITY_PLUGIN_IDS,
+    )
+
 
 # Existing private lookup routes retain callable identity at their old module.
 _resume_capability_plugins_required.__module__ = "loushang.coding.embedded_resume"

@@ -18,6 +18,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Generic, Literal, Protocol, TypeVar
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.config.store import _read_stable_json_patch
@@ -470,11 +471,6 @@ class _FrozenSources:
     raw_digests: dict[str, str]
 
 
-_SOURCE_KEYS = frozenset(
-    {"package_roots", "package_sources", "packages", "plugin_sources", "resource_roots"}
-)
-
-
 class _SourceConsumptionSettings(Protocol):
     @property
     def global_settings_path(self) -> Path | None: ...
@@ -505,9 +501,8 @@ class _SourceConsumptionProtocol:
     settings: _SourceConsumptionSettings
     frozen: _FrozenSources
     reopen_acceptance: Callable[[str], _AcceptedSource | None]
-    verify_loaded_settings: Callable[
-        [Path, Mapping[str, object]], tuple[bool, str | None]
-    ]
+    projection: _LegacySourceProjection
+    other_source_keys: frozenset[str]
     receipt_bytes: Callable[[dict[str, object], str], bytes]
     error_type: type[Exception]
     max_receipt_bytes: int
@@ -655,7 +650,7 @@ class _SourceConsumptionProtocol:
         }
         state: Literal["original", "cleared"] = "cleared"
         for scope, patch in scoped.items():
-            if any(patch.get(key) for key in _SOURCE_KEYS - {"plugin_sources"}):
+            if any(patch.get(key) for key in self.other_source_keys):
                 raise self.error_type(
                     "Another configured Source appeared during consumption"
                 )
@@ -686,7 +681,7 @@ class _SourceConsumptionProtocol:
                     if scope == "global"
                     else self._settings_paths(settings, self.error_type)[1]
                 )
-                _present, observed = self.verify_loaded_settings(path, patch)
+                _present, observed = self.projection.verify_loaded_settings(path, patch)
                 if observed != frozen.raw_digests[scope]:
                     raise self.error_type(
                         "Configured Source settings changed since first fence"
@@ -1094,6 +1089,66 @@ class _LegacySourceProjection:
             maximum_bytes=lambda: self.maximum_bytes,
             label=f"{self.label} Source settings",
         )
+
+    def has_pre_fence_inputs(self, *paths: Path) -> bool:
+        """Read settings in order and short-circuit on the first legacy input."""
+        for path in paths:
+            _, _, patch = self.read_patch(path)
+            for key in self.source_keys & patch.keys():
+                value = patch[key]
+                if not isinstance(value, list) or value:
+                    return True
+        return False
+
+    def verify_snapshot(
+        self,
+        raw: bytes,
+        *,
+        global_settings_path: Path,
+        project_settings_path: Path,
+        classify: Callable[[object], RecordT],
+        maximum_bytes: int,
+        error_type: type[ValueError],
+    ) -> tuple[RecordT, str]:
+        """Verify the captured projection using the same encoder as its writer."""
+        label = f"{self.label} Source projection"
+        legacy_label = f"{self.label} legacy Source settings"
+        if not isinstance(raw, bytes) or not raw or len(raw) > maximum_bytes:
+            raise error_type(f"{legacy_label} projection exceeds budget")
+        for path in (global_settings_path, project_settings_path):
+            if (
+                not isinstance(path, Path)
+                or not path.is_absolute()
+                or ".." in path.parts
+            ):
+                raise error_type(f"{legacy_label} path is invalid")
+        if global_settings_path == project_settings_path:
+            raise error_type(f"{legacy_label} scopes overlap")
+
+        def reject_constant(value: str) -> object:
+            raise ValueError(f"{label} has invalid constant: {value}")
+
+        try:
+            projection = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_unique_json_object_hook(
+                    lambda: f"{label} has duplicate JSON keys"
+                ),
+                parse_constant=reject_constant,
+            )
+            classification = classify(projection)
+            if type(projection) is not dict:
+                raise ValueError(f"{label} is not an object")
+            scopes = projection["scopes"]
+            if scopes["global"]["settingsPath"] != str(global_settings_path) or scopes[
+                "project"
+            ]["settingsPath"] != str(project_settings_path):
+                raise ValueError(f"{self.label} Source settings path changed")
+            if raw != self.projection_bytes(projection):
+                raise ValueError(f"{label} bytes changed")
+        except (UnicodeError, ValueError, KeyError, TypeError) as exc:
+            raise error_type(f"{legacy_label} projection is invalid") from exc
+        return classification, sha256(raw).hexdigest()
 
     def looks_like_source_key(self, key: str) -> bool:
         return key in self.source_keys or any(

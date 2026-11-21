@@ -17,7 +17,12 @@ from .._segmented_history import (
     _segment_name,
     read_coding_worker_segmented_history,
 )
-from ._read_v2 import RetainedHistoryReader, _RetainedHistoryFields
+from ._read_v2 import (
+    _MAX_MANIFEST_BYTES,
+    _MAX_SEGMENT_BYTES,
+    RetainedHistoryReader,
+    _RetainedHistoryFields,
+)
 from ._snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     _is_v2_authenticated_prefix,
@@ -42,8 +47,8 @@ class RetainedSnapshotReader(Protocol):
 class SnapshotHistory:
     snapshot_type: type[_SnapshotMethods]
     reader: Callable[[], RetainedSnapshotReader]
-    max_segment_bytes: int
-    max_manifest_bytes: int
+    max_segment_bytes: int = _MAX_SEGMENT_BYTES
+    max_manifest_bytes: int = _MAX_MANIFEST_BYTES
 
     def read_histories(
         self, access: HistorySnapshotAccess

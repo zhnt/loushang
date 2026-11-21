@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.harness.package_product import (
+    legacy_operation_evidence as _programs,
+)
 from loushang.harness.plugin_management.retirement_sets import (
     RetirementCaptureFields,
 )
@@ -44,6 +47,13 @@ _LOCK_HISTORY_MEMBERS = {
 }
 
 
+_LEGACY_EVIDENCE_VALUES = {
+    "value_001": "Coding old management journal shape is unsupported",
+    "value_002": "Coding old Package binding shape is invalid",
+    "value_003": "Coding old Package lock shape is unsupported",
+}
+
+
 class CodingLegacyOperationEvidenceError(ValueError):
     """The old operation journal cannot prove settled Desired history."""
 
@@ -59,35 +69,13 @@ def classify_coding_legacy_management_members(
 ) -> bool:
     """Identify only the simple or exact Service shape without retirement rows."""
 
-    if (
-        type(has_binding) is not bool
-        or type(allow_retirement) is not bool
-        or type(allow_retired_runtime) is not bool
-    ):
-        raise CodingLegacyOperationEvidenceError(
-            "Coding old Package binding shape is invalid"
-        )
-    valid_locks = (
-        lock_members in _LOCK_HISTORY_MEMBERS if has_binding else lock_members == ()
-    )
-    if not valid_locks:
-        raise CodingLegacyOperationEvidenceError(
-            "Coding old Package lock shape is unsupported"
-        )
-    if desired_members == _SIMPLE_DESIRED_MEMBERS and instance_members == ():
-        return False
-    if desired_members == _SERVICE_DESIRED_MEMBERS and (
-        instance_members == _SERVICE_INSTANCE_MEMBERS
-        or (allow_retirement and instance_members == _SERVICE_RETIRED_INSTANCE_MEMBERS)
-        or (
-            allow_retirement
-            and allow_retired_runtime
-            and instance_members == _SERVICE_RETIRED_RUNTIME_INSTANCE_MEMBERS
-        )
-    ):
-        return True
-    raise CodingLegacyOperationEvidenceError(
-        "Coding old management journal shape is unsupported"
+    return _programs.classify_management_members(
+        desired_members=desired_members,
+        instance_members=instance_members,
+        lock_members=lock_members,
+        has_binding=has_binding,
+        allow_retirement=allow_retirement,
+        allow_retired_runtime=allow_retired_runtime,
     )
 
 

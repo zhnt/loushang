@@ -26,6 +26,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 
 from ._opt_in import _DIGEST, _OPAQUE
 
+NATIVE_APPROVAL_JOURNAL_NAME = "worker-native-release-approvals.jsonl"
+NATIVE_APPROVAL_MAX_EVENTS = 256
+NATIVE_APPROVAL_MAX_BYTES = 4 * 1024 * 1024
+
 
 def _valid_opaque(value: object) -> bool:
     return (
@@ -334,7 +338,7 @@ def decode_native_approval_history(
 ) -> tuple[_N, ...]:
     """Replay one exact Product scope's native-release approval decisions."""
 
-    if len(raw) > 4 * 1024 * 1024:
+    if len(raw) > NATIVE_APPROVAL_MAX_BYTES:
         raise failure("capacity")
     events: tuple[_N, ...] = decode_jsonl(
         raw.decode("utf-8"),
@@ -388,7 +392,7 @@ class RootedNativeApprovalRecords(Generic[_A, _N]):
 
     def _load(self, rooted: RootedFile) -> tuple[_N, ...]:
         try:
-            raw = rooted.read_bytes(max_bytes=4 * 1024 * 1024)
+            raw = rooted.read_bytes(max_bytes=NATIVE_APPROVAL_MAX_BYTES)
         except FileNotFoundError:
             return ()
         return decode_native_approval_history(

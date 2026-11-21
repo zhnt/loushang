@@ -38,9 +38,6 @@ from .product_worker_windows_stage_review import (
     _review_complete_stage_under_gc_guard,
 )
 
-_MAX_REVIEW_BYTES = 32768
-_MAX_RECEIPT_BYTES = 1024
-
 
 class CodingWindowsWorkerStageRetirementError(RuntimeError):
     def __init__(self, code: str) -> None:
@@ -57,10 +54,6 @@ class CodingWindowsWorkerStageRetirementReceiptV1(
     _wire_error_type = CodingWindowsWorkerStageRetirementError
     _wire_error_code = "coding_worker_stage_retirement_receipt_invalid"
     _wire_invalid_encoding = "bytes changed"
-
-    @classmethod
-    def _wire_maximum(cls) -> int:
-        return _MAX_RECEIPT_BYTES
 
     attempt_id: str
     review_fingerprint: str
@@ -85,8 +78,6 @@ _records = WindowsWorkerRetirementRecords(
     stem="worker-stage",
     review_type=CodingWindowsWorkerStageReviewV1,
     receipt_type=CodingWindowsWorkerStageRetirementReceiptV1,
-    review_maximum_bytes=_MAX_REVIEW_BYTES,
-    receipt_maximum_bytes=_MAX_RECEIPT_BYTES,
     read_bytes=_read_retirement_bytes,
     error_type=CodingWindowsWorkerStageRetirementError,
     start_invalid="coding_worker_stage_retirement_start_invalid",
@@ -95,9 +86,7 @@ _records = WindowsWorkerRetirementRecords(
 )
 _start_path = _records.start_path
 _read_review = _records.read_start
-_root_delete_intent_path = _records.root_intent_path
 _read_receipt = _records.read_receipt
-_read_root_delete_intent = _records.read_root_intent
 
 
 __all__ = [
@@ -107,10 +96,6 @@ __all__ = [
 ]
 
 
-def _review_maximum() -> int:
-    return _MAX_REVIEW_BYTES
-
-
 _operations = WindowsProductWorkerCompleteStageRetirement(
     records=_records,
     io=_receipt_io,
@@ -118,14 +103,12 @@ _operations = WindowsProductWorkerCompleteStageRetirement(
     read_intent=_read_intent_under_gc_guard,
     review_stage=_review_complete_stage_under_gc_guard,
     inspection=_inspection,
-    review_maximum=_review_maximum,
     error_prefix="coding_worker_stage_retirement",
     entry_product_id="coding",
     entry_required_message="Windows Worker stage retirement requires a Product review",
 )
 
 
-_require_retirement_history = _operations.require_history
 _require_completed_retirement_under_gc_guard = _operations.require_completed
 _remove_remaining_stage = _operations.remove_remaining
 _retirement = _operations.physical

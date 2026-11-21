@@ -2,32 +2,41 @@
 
 from __future__ import annotations
 
-import json
+import json as json
 import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.harness.package_product import legacy_snapshot_scope as _programs
 from loushang.coding.package.epoch_layout import (
     CodingPackageEpochLayoutV1,
-    resolve_coding_lifecycle_pre_b_members,
-    resolve_coding_package_epoch_layout,
-    resolve_coding_package_pre_b_store_members,
+    resolve_coding_package_epoch_layout,  # noqa: F401 - also called by the staged program
+)
+from loushang.coding.package.epoch_layout import (
+    resolve_coding_lifecycle_pre_b_members as resolve_coding_lifecycle_pre_b_members,
+)
+from loushang.coding.package.epoch_layout import (
+    resolve_coding_package_pre_b_store_members as resolve_coding_package_pre_b_store_members,
 )
 from loushang.coding.package.legacy_classification import (
     CodingLegacyWorkspaceClassificationV1,
-    classify_coding_legacy_workspace,
+)
+from loushang.coding.package.legacy_classification import (
+    classify_coding_legacy_workspace as classify_coding_legacy_workspace,
 )
 from loushang.coding.package.product_runtime import (
     _require_current_coding_product_admission,
     bootstrap_coding_builtin_product_plugins,
-    require_fresh_coding_product_inputs,
+    require_fresh_coding_product_inputs,  # noqa: F401 - also called by the staged program
 )
 from loushang.coding.package.source_snapshot import (
     _PROJECTION_NAME,
-    hold_coding_pre_b_source_configuration,
-    require_coding_fresh_settings_without_writes,
+    require_coding_fresh_settings_without_writes,  # noqa: F401 - also called by the staged program
+)
+from loushang.coding.package.source_snapshot import (
+    hold_coding_pre_b_source_configuration as hold_coding_pre_b_source_configuration,
 )
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
@@ -38,17 +47,32 @@ from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackagePosixEpochCutoverResultV1,
     PackageProductPosixCutoverAttemptV1,
     PackageProductPreBSnapshotOwner,
-    PackageProductPreBSnapshotSharedMemberV1,
     hold_legacy_product_projection_root,
-    prepare_legacy_product_cutover_root,
-    read_legacy_product_projection,
-    reopen_posix_product_cutover,
+    prepare_legacy_product_cutover_root,  # noqa: F401 - also called by the staged program
+    reopen_posix_product_cutover,  # noqa: F401 - also called by the staged program
+)
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    PackageProductPreBSnapshotSharedMemberV1 as PackageProductPreBSnapshotSharedMemberV1,
+)
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    read_legacy_product_projection as read_legacy_product_projection,
 )
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
     PackageProductWindowsCutoverAttemptV1,
     PackageProductWindowsPreBSnapshotOwner,
-    reopen_windows_product_cutover,
+    reopen_windows_product_cutover,  # noqa: F401 - also called by the staged program
 )
+
+_FRESH_SETTINGS_PATHS_REQUIRED = "Coding fresh Product settings paths are required"
+
+_LEGACY_ADOPTION_VALUES = {
+    "value_001": "Coding Plugin lifecycle layout is required",
+    "value_002": "Coding settings manager is required",
+    "value_003": "Coding pre-B Source settings paths are required",
+    "value_004": "coding-pre-b-legacy-pointer-",
+    "value_005": "Coding Source projection",
+    "value_006": "package-lock.json",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,33 +100,7 @@ def prepare_coding_package_cutover_roots(
 ) -> CodingPackageEpochLayoutV1:
     """Prepare only missing private roots for an offline first B cutover."""
 
-    if os.name not in {"posix", "nt"}:
-        raise RuntimeError("Native Package cutover preparation is required")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if os.name == "nt":
-        for root, private_base in (
-            (lifecycle.root, lifecycle.private_state_base),
-            (epoch.control_root, lifecycle.private_state_base),
-            (epoch.snapshot_root, lifecycle.private_state_base),
-            (_windows_projection_root(lifecycle), lifecycle.private_state_base),
-            (lifecycle.package_root, lifecycle.private_data_base),
-            (epoch.epochs_root, lifecycle.private_data_base),
-        ):
-            prepare_legacy_product_cutover_root(
-                root, private_base=private_base, windows=True, label="Coding Package"
-            )
-        return epoch
-    for root, private_base in (
-        (lifecycle.root, lifecycle.private_state_base),
-        (epoch.control_root, lifecycle.private_state_base),
-        (epoch.snapshot_root, lifecycle.private_state_base),
-        (lifecycle.package_root, lifecycle.private_data_base),
-        (epoch.epochs_root, lifecycle.private_data_base),
-    ):
-        prepare_legacy_product_cutover_root(
-            root, private_base=private_base, windows=False, label="Coding Package"
-        )
-    return epoch
+    return _programs.prepare_cutover_roots(lifecycle, label="Coding Package")
 
 
 def prepare_and_cutover_coding_package_store_from_legacy(
@@ -120,32 +118,15 @@ def prepare_and_cutover_coding_package_store_from_legacy(
     if type(fresh_only) is not bool:
         raise TypeError("Coding fresh Product cutover policy is invalid")
     require_fresh = fresh_only or (os.name == "nt" and snapshot_admission is None)
-    if require_fresh:
-        if (
-            settings_manager.global_settings_path is None
-            or settings_manager.project_settings_path is None
-        ):
-            raise RuntimeError("Coding fresh Product settings paths are required")
-        require_coding_fresh_settings_without_writes(
-            settings_manager.global_settings_path,
-            settings_manager.project_settings_path,
-        )
-        require_fresh_coding_product_inputs(
-            lifecycle, settings_manager, roots_may_be_absent=True
-        )
-    prepare_coding_package_cutover_roots(lifecycle)
-    if require_fresh:
-        require_fresh_coding_product_inputs(lifecycle, settings_manager)
-    with _hold_projection_parent(lifecycle) as projection_parent:
-        return cutover_coding_package_store_from_legacy(
-            lifecycle,
-            settings_manager,
-            projection_parent=projection_parent,
-            namespace_id=namespace_id,
-            minimum_runtime_version=minimum_runtime_version,
-            minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
-            snapshot_admission=snapshot_admission,
-        )
+    return _programs.prepare_and_cutover(
+        lifecycle,
+        settings_manager,
+        namespace_id=namespace_id,
+        minimum_runtime_version=minimum_runtime_version,
+        minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+        snapshot_admission=snapshot_admission,
+        require_fresh=require_fresh,
+    )
 
 
 def _windows_projection_root(
@@ -227,22 +208,7 @@ def reopen_coding_package_cutover(
 ) -> PackagePosixEpochCutoverResultV1:
     """Reopen the current B root without reading legacy Coding Source state."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if os.name == "nt":
-        return reopen_windows_product_cutover(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
-            read_only=read_only,
-        )
-    return reopen_posix_product_cutover(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
-        read_only=read_only,
-    )
+    return _programs.reopen_cutover(lifecycle, read_only=read_only)
 
 
 def cutover_coding_package_store_from_legacy(
@@ -257,28 +223,15 @@ def cutover_coding_package_store_from_legacy(
 ) -> CodingPackagePreBCutover:
     """Hold real Coding Source state until Product finishes the first B fence."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    with hold_coding_pre_b_snapshot_owner(
-        lifecycle, settings_manager, projection_parent=projection_parent
-    ) as prepared:
-        attempt = prepared.owner.cutover_from_legacy(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            legacy_root_name=epoch.legacy_root_name,
-            epochs_root_name=epoch.epochs_root_name,
-            namespace_id=namespace_id,
-            minimum_runtime_version=minimum_runtime_version,
-            minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
-            snapshot_admission=(
-                None
-                if snapshot_admission is None
-                else lambda snapshot: snapshot_admission(prepared, snapshot)
-            ),
-        )
-        return CodingPackagePreBCutover(
-            attempt=attempt,
-            snapshots=prepared.owner,
-        )
+    return _programs.cutover_store(
+        lifecycle,
+        settings_manager,
+        projection_parent=projection_parent,
+        namespace_id=namespace_id,
+        minimum_runtime_version=minimum_runtime_version,
+        minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+        snapshot_admission=snapshot_admission,
+    )
 
 
 @contextmanager
@@ -290,82 +243,10 @@ def hold_coding_pre_b_snapshot_owner(
 ) -> Iterator[CodingPreBSnapshotPreparation]:
     """Pin real settings and map every deployed Coding pre-B state member."""
 
-    if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
-        raise TypeError("Coding Plugin lifecycle layout is required")
-    if not isinstance(settings_manager, SettingsManager):
-        raise TypeError("Coding settings manager is required")
-    global_path = settings_manager.global_settings_path
-    project_path = settings_manager.project_settings_path
-    if not isinstance(global_path, Path) or not isinstance(project_path, Path):
-        raise ValueError("Coding pre-B Source settings paths are required")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    with hold_coding_pre_b_source_configuration(
-        settings_manager,
-        global_settings_path=global_path,
-        project_settings_path=project_path,
-        projection_parent=projection_parent,
-    ) as source_root:
-        with hold_legacy_product_projection_root(
-            projection_parent,
-            prefix="coding-pre-b-legacy-pointer-",
-            projection_name=_PROJECTION_NAME,
-            projection_label="Coding Source projection",
-        ) as pointer_root:
-            package = resolve_coding_package_pre_b_store_members(lifecycle)
-            state = resolve_coding_lifecycle_pre_b_members(lifecycle)
-            source_projection = json.loads(
-                read_legacy_product_projection(source_root, name=_PROJECTION_NAME)
-            )
-            legacy_classification = classify_coding_legacy_workspace(
-                source_projection,
-                lifecycle=state,
-                package=package,
-            )
-            domain_roots = {
-                "store_bytes": package.source_root,
-                "binding_history": package.source_root,
-                "lock_history": package.source_root,
-                "desired_state": state.source_root,
-                "enablement_state": state.source_root,
-                "instance_state": state.source_root,
-                "fence_record": epoch.control_root,
-                "source_configuration": source_root,
-                "legacy_root_pointer": pointer_root,
-            }
-            domain_members: dict[str, tuple[str, ...] | None] = {
-                domain: None for domain in domain_roots
-            }
-            domain_members.update(package.domain_members())
-            domain_members.update(state.domain_members())
-            shared_members = (
-                (
-                    PackageProductPreBSnapshotSharedMemberV1(
-                        source_root=package.source_root,
-                        member_name="package-lock.json",
-                        domains=("binding_history", "lock_history"),
-                    ),
-                )
-                if package.binding_history
-                else ()
-            )
-            owner_type = (
-                PackageProductWindowsPreBSnapshotOwner
-                if os.name == "nt"
-                else PackageProductPreBSnapshotOwner
-            )
-            owner = owner_type(
-                epoch.snapshot_root,
-                store_id=epoch.store_id,
-                domain_roots=domain_roots,
-                domain_members=domain_members,
-                legacy_root_pointer_name=epoch.legacy_root_name,
-                shared_members=shared_members,
-            )
-            yield CodingPreBSnapshotPreparation(
-                owner=owner,
-                source_configuration_root=source_root,
-                legacy_classification=legacy_classification,
-            )
+    with _programs.pre_snapshot_scope(
+        lifecycle, settings_manager, projection_parent=projection_parent
+    ) as borrowed:
+        yield borrowed
 
 
 __all__ = [

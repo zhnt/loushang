@@ -155,9 +155,9 @@ def test_resource_loader_discovers_registered_builtin_package(
 
 
 def test_resource_loader_requires_explicit_compatibility_context_convention(
-    tmp_path,
+    standalone_workspace: Path,
 ) -> None:
-    workspace = tmp_path / "workspace"
+    workspace = standalone_workspace / "workspace"
     workspace.mkdir()
     (workspace / "CLAUDE.md").write_text("Compatibility guidance", encoding="utf-8")
 

@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.coding.harness.package_product import (
+    first_snapshot_acceptance,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
@@ -21,7 +24,9 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout,
+)
 from .legacy_builtin_review import (
     CodingLegacyBuiltinOnlyReviewV1,
     review_coding_first_b_builtin_only,
@@ -104,15 +109,14 @@ def accept_coding_first_b_builtin_only(
     review = review_coding_first_b_builtin_only(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
-    if accepted_review_id != review.review_id:
-        raise CodingLegacyBuiltinOnlyAcceptanceError("Builtin-only review ID changed")
-    proposed = CodingLegacyBuiltinOnlyAcceptanceV1.create(review)
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if epoch_runtime.registry.store_id != epoch.store_id:
-        raise CodingLegacyBuiltinOnlyAcceptanceError("Product Store changed")
-    return _acceptance_journal.accept(
+    return first_snapshot_acceptance.accept_review(
         epoch_runtime,
-        proposed,
+        _acceptance_journal,
+        accepted_review_id=accepted_review_id,
+        current_review_id=review.review_id,
+        create=lambda: CodingLegacyBuiltinOnlyAcceptanceV1.create(review),
+        expected_store_id=lambda: resolve_coding_package_epoch_layout(lifecycle).store_id,
+        changed_review="Builtin-only review ID changed",
         conflict_message="Builtin-only acceptance conflicts with prior review",
     )
 
@@ -127,31 +131,17 @@ def read_coding_first_b_builtin_only_acceptance(
 ) -> CodingLegacyBuiltinOnlyAcceptanceV1 | None:
     """Reopen the accepted review without creating Product state."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if epoch_runtime.registry.store_id != epoch.store_id:
-        raise CodingLegacyBuiltinOnlyAcceptanceError("Product Store changed")
-    epoch_runtime.assert_current()
-    path = (
-        epoch_runtime.control_root / "product-state" / "legacy-builtin-acceptance.jsonl"
+    return first_snapshot_acceptance.read_acceptance(
+        epoch_runtime,
+        _acceptance_journal,
+        expected_store_id=resolve_coding_package_epoch_layout(lifecycle).store_id,
+        review=lambda: review_coding_first_b_builtin_only(
+            lifecycle, epoch_runtime, settings_manager=settings_manager
+        ),
+        create=CodingLegacyBuiltinOnlyAcceptanceV1.create,
+        conflict_message="Builtin-only acceptance conflicts with first-B review",
+        check_epoch_before_read=True,
     )
-    records = _acceptance_journal.records(
-        path,
-        windows=isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner),
-    )
-    if not records:
-        epoch_runtime.assert_current()
-        return None
-    review = review_coding_first_b_builtin_only(
-        lifecycle, epoch_runtime, settings_manager=settings_manager
-    )
-    if len(records) != 1 or records[0] != CodingLegacyBuiltinOnlyAcceptanceV1.create(
-        review
-    ):
-        raise CodingLegacyBuiltinOnlyAcceptanceError(
-            "Builtin-only acceptance conflicts with first-B review"
-        )
-    epoch_runtime.assert_current()
-    return records[0]
 
 
 def _write_windows_builtin_acceptance(

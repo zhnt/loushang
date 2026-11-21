@@ -34,9 +34,9 @@ def test_resource_change_watcher_establishes_baseline_then_reports_changes(
 
 
 def test_agent_session_resource_watch_poll_uses_resource_refresh_pipeline(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
-    project = tmp_path / "project"
+    project = standalone_workspace / "project"
     prompts = project / "prompts"
     prompts.mkdir(parents=True)
     (prompts / "review.md").write_text("Initial prompt.", encoding="utf-8")
@@ -47,7 +47,9 @@ def test_agent_session_resource_watch_poll_uses_resource_refresh_pipeline(
         agent=Agent(initial_state={"system_prompt": "Base"}),
         session_manager=asyncio.run(
             SessionManager.new(
-                session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+                session_dir=standalone_workspace / "sessions",
+                cwd=str(project),
+                persist=False,
             )
         ),
         resource_loader=loader,

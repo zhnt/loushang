@@ -18,18 +18,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.worker.history._preparation import (
-    _MAX_BASE_BYTES as _MAX_BASE_BYTES,
-)
-from loushang.harness.worker.history._preparation import (
-    _MAX_INDEX_BYTES as _MAX_INDEX_BYTES,
-)
-from loushang.harness.worker.history._preparation import (
-    _MAX_INTENT_BYTES as _MAX_INTENT_BYTES,
-)
-from loushang.harness.worker.history._preparation import (
-    _MAX_STREAM_BYTES as _MAX_STREAM_BYTES,
-)
-from loushang.harness.worker.history._preparation import (
     PreparationHistory,
     _PreparationIntentMethods,
 )
@@ -72,38 +60,19 @@ def stage_coding_worker_v2_preparation(
     rooted: RootedFile, *, prepared: CodingWorkerPreparedProductCutoverV2
 ) -> CodingWorkerV2PreparationIntent:
     """Durably stage exact bytes; retries complete only the same intent."""
-    return _PREPARATION_HISTORY.stage(
-        rooted,
-        prepared=prepared,
-        max_intent_bytes=_MAX_INTENT_BYTES,
-        max_base_bytes=_MAX_BASE_BYTES,
-        max_stream_bytes=_MAX_STREAM_BYTES,
-        max_index_bytes=_MAX_INDEX_BYTES,
-    )
+    return _PREPARATION_HISTORY.stage(rooted, prepared=prepared)
 
 
 def read_coding_worker_v2_preparation(
     rooted: RootedFile,
 ) -> CodingWorkerPreparedProductCutoverV2 | None:
     """Verify all staged bytes; this never selects V2 as Product authority."""
-    return _PREPARATION_HISTORY.read(
-        rooted,
-        max_intent_bytes=_MAX_INTENT_BYTES,
-        max_base_bytes=_MAX_BASE_BYTES,
-        max_stream_bytes=_MAX_STREAM_BYTES,
-        max_index_bytes=_MAX_INDEX_BYTES,
-    )
+    return _PREPARATION_HISTORY.read(rooted)
 
 
 def rollback_coding_worker_v2_preparation(rooted: RootedFile) -> bool:
     """Remove only intent-owned bytes while no Product owner index exists."""
-    return _PREPARATION_HISTORY.rollback(
-        rooted,
-        max_intent_bytes=_MAX_INTENT_BYTES,
-        max_base_bytes=_MAX_BASE_BYTES,
-        max_stream_bytes=_MAX_STREAM_BYTES,
-        max_index_bytes=_MAX_INDEX_BYTES,
-    )
+    return _PREPARATION_HISTORY.rollback(rooted)
 
 
 def stage_coding_product_worker_v2_preparation(

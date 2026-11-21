@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
 
+from loushang.coding.harness.session import resume_records as _records
 from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
 from loushang.foundation.json import JSONValue, dump_json_value
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.transcript.kinds import EXTENSION_DATA_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord, ExtensionData
-from loushang.harness.transcript.writer import AgentTranscriptRecordFactory
 
 CODING_ACTIVATION_ATTEMPT_V2_EXTENSION_TYPE = "coding.activation-attempt/v2"
 CODING_ACTIVATION_ATTEMPT_V2_MAX_BYTES = 8192
@@ -176,12 +176,12 @@ def prepare_coding_activation_attempt_v2_record(
 ) -> AgentTranscriptRecord:
     if type(attempt) is not CodingActivationAttemptV2:
         raise TypeError("Coding Resume v2 record requires an exact v2 intent")
-    return AgentTranscriptRecordFactory(
-        clock=lambda: created_at, id_factory=lambda: attempt.attempt_id
-    ).create(
+    return _records.make_resume_record(
         EXTENSION_DATA_KIND,
         ExtensionData(CODING_ACTIVATION_ATTEMPT_V2_EXTENSION_TYPE, attempt.to_data()),
+        record_id=attempt.attempt_id,
         parent_id=attempt.original_leaf_id,
+        created_at=created_at,
     )
 
 

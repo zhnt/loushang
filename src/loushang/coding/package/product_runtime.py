@@ -3,21 +3,28 @@
 from __future__ import annotations
 
 import inspect
-import json
-import os
-import sys
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+import json as json
+import os as os
+import sys as sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
-from importlib.metadata import version
+from importlib.metadata import version as version
 from pathlib import Path
 from threading import Lock, RLock
 from typing import cast
 
+from loushang.coding.harness.package_product import application_runtime as _programs
+from loushang.coding.harness.package_product import source_admission as _source_programs
+from loushang.coding.harness.package_product import startup as _lifecycle_programs
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    _workspace_scope_id as _workspace_scope_id,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout as resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.resume.activation_attempt_v2 import CodingResumeEffectOwnerV1
 from loushang.coding.session.manager import SessionManager
@@ -28,7 +35,9 @@ from loushang.harness.package_product._plugin_bootstrap import (
     product_bootstrap_completed,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
-    PosixLocalWheelProductHostInputs,
+    PosixLocalWheelProductHostInputs as PosixLocalWheelProductHostInputs,
+)
+from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductRuntimeFactory,
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductRuntimeFactory,
@@ -51,7 +60,7 @@ from loushang.harness.plugin_management.private_data_confirmation import (
 )
 from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
-    PackageEpochFenceJournal,
+    PackageEpochFenceJournal as PackageEpochFenceJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistryError,
@@ -71,45 +80,79 @@ from ..control.settings_store import (
     default_project_settings_path,
 )
 from .builtin_wheel import (
-    coding_base_product_local_wheel_policy,
-    coding_builtin_product_local_wheel_policy,
-    prepare_posix_coding_base_product_wheel,
-    prepare_posix_coding_capability_product_wheels,
-    prepare_windows_coding_base_product_wheel,
-    prepare_windows_coding_capability_product_wheels,
+    coding_base_product_local_wheel_policy as coding_base_product_local_wheel_policy,
+)
+from .builtin_wheel import (
+    coding_builtin_product_local_wheel_policy as coding_builtin_product_local_wheel_policy,
+)
+from .builtin_wheel import (
+    prepare_posix_coding_base_product_wheel as prepare_posix_coding_base_product_wheel,
+)
+from .builtin_wheel import (
+    prepare_posix_coding_capability_product_wheels as prepare_posix_coding_capability_product_wheels,
+)
+from .builtin_wheel import (
+    prepare_windows_coding_base_product_wheel as prepare_windows_coding_base_product_wheel,
+)
+from .builtin_wheel import (
+    prepare_windows_coding_capability_product_wheels as prepare_windows_coding_capability_product_wheels,
 )
 from .epoch_layout import (
-    resolve_coding_lifecycle_pre_b_members,
-    resolve_coding_package_epoch_layout,
-    resolve_coding_package_pre_b_store_members,
+    resolve_coding_lifecycle_pre_b_members,  # noqa: F401 - also called by the staged program
+    resolve_coding_package_pre_b_store_members,  # noqa: F401 - also called by the staged program
+)
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
 from .external_data_wheel import (
     CodingExternalDataWheelBindingV1,
-    CodingExternalDataWheelCatalog,
+)
+from .external_data_wheel import (
+    CodingExternalDataWheelCatalog as CodingExternalDataWheelCatalog,
 )
 from .external_dependency_wheel import (
     CodingExternalDependencyWheelBindingV1,
-    CodingExternalDependencyWheelCatalog,
+)
+from .external_dependency_wheel import (
+    CodingExternalDependencyWheelCatalog as CodingExternalDependencyWheelCatalog,
 )
 from .external_worker_wheel import (
     CodingExternalWorkerWheelBindingV1,
-    CodingExternalWorkerWheelCatalog,
-    CodingWindowsExternalWorkerWheelCatalog,
 )
-from .legacy_binding_catalog import CodingLegacyLocalBindingCatalog
-from .legacy_classification import classify_coding_legacy_source_configuration
-from .legacy_data_trust import LEGACY_LOCAL_DATA_TRUST_CLASSES
+from .external_worker_wheel import (
+    CodingExternalWorkerWheelCatalog as CodingExternalWorkerWheelCatalog,
+)
+from .external_worker_wheel import (
+    CodingWindowsExternalWorkerWheelCatalog as CodingWindowsExternalWorkerWheelCatalog,
+)
+from .legacy_binding_catalog import (
+    CodingLegacyLocalBindingCatalog as CodingLegacyLocalBindingCatalog,
+)
+from .legacy_classification import (
+    classify_coding_legacy_source_configuration as classify_coding_legacy_source_configuration,
+)
+from .legacy_data_trust import (
+    LEGACY_LOCAL_DATA_TRUST_CLASSES as LEGACY_LOCAL_DATA_TRUST_CLASSES,
+)
 from .legacy_disabled_acceptance import (
     CodingLegacyDisabledOnlyAcceptanceV1,
-    accept_coding_first_b_disabled_only,
 )
-from .legacy_local_acceptance import reopen_coding_legacy_installed_local_acceptance
+from .legacy_disabled_acceptance import (
+    accept_coding_first_b_disabled_only as accept_coding_first_b_disabled_only,
+)
+from .legacy_local_acceptance import (
+    reopen_coding_legacy_installed_local_acceptance as reopen_coding_legacy_installed_local_acceptance,
+)
 from .legacy_snapshot_member import (
-    list_coding_first_b_snapshot_domain_members,
-    read_coding_first_b_snapshot_member,
+    list_coding_first_b_snapshot_domain_members as list_coding_first_b_snapshot_domain_members,
+)
+from .legacy_snapshot_member import (
+    read_coding_first_b_snapshot_member as read_coding_first_b_snapshot_member,
 )
 from .private_data_deletion_journal import CodingArchPrivateDataDeletionJournal
-from .product_backup_types import ensure_coding_product_backup_types
+from .product_backup_types import (
+    ensure_coding_product_backup_types as ensure_coding_product_backup_types,
+)
 from .product_worker_opt_in import CodingWorkerOptInJournal
 from .source_snapshot import coding_settings_have_pre_b_inputs_without_writes
 
@@ -124,6 +167,88 @@ _CODING_BUILTIN_BOOTSTRAP_POLICY = _PluginBootstrapPolicy(
 )
 
 
+_RUNTIME_PROGRAM_VALUES = {
+    "value_001": "Coding Package lifecycle layout is required",
+    "value_002": "Coding Package Product epoch owner is required",
+    "value_003": "Coding Package Product workspace authority changed",
+    "value_004": "gc-reservations.jsonl",
+    "value_005": "desired-state.jsonl",
+    "value_006": "gc-bindings.jsonl",
+    "value_007": "worker-opt-in.jsonl",
+    "value_008": "private-data-confirmations.jsonl",
+    "value_009": "management-operations.jsonl",
+    "value_010": "Coding Worker candidate selection must be explicit",
+    "value_011": "Coding Windows Product candidate selection must be explicit",
+    "value_012": "Coding Windows Product Session route is not yet admitted",
+    "value_013": "Coding Product epoch cleanup also failed",
+    "value_014": "coding-product-root-store:",
+    "value_015": "coding-product-dependency-store:",
+    "value_016": "coding-product-recovery:",
+    "value_017": "Coding Package Product state owners are required",
+    "value_018": "Coding Product workspace is not canonical",
+    "value_019": "Coding Product workspace scope changed",
+    "value_020": "Coding Product runtime version is required",
+    "value_021": "Coding Product runtime protocol epoch is invalid",
+    "value_022": "Coding Package Product state authority changed",
+    "value_023": "Coding Package Product root is not fenced",
+    "value_024": "coding-product-package-quota:1",
+    "value_025": "coding-product-local-source",
+    "value_026": "management-operations.jsonl.retirement-intents",
+    "value_027": "management-operations.jsonl.retirement-sets",
+    "value_028": "private-data-deletions.jsonl",
+    "value_029": "product:coding",
+    "value_030": "coding-product-desired-policy:1",
+    "value_031": "legacy-local-bindings.jsonl",
+    "value_032": "external-data-wheel-bindings.jsonl",
+    "value_033": "external-dependency-wheel-bindings.jsonl",
+    "value_034": "external-worker-wheel-bindings.jsonl",
+    "value_035": "Coding Product workspace selection is in progress",
+    "value_036": "Coding Product application is closing",
+    "value_037": "Coding Resume requires a canonical absolute workspace",
+    "value_038": "Coding Resume requires a synchronous current owner check",
+    "value_039": "Coding Resume owner check must return None",
+    "value_040": "Coding native B Session route is not yet admitted",
+    "value_041": "epoch.jsonl",
+    "value_042": "Coding Resume epoch workspace must be canonical",
+    "value_043": "Coding Resume epoch is unavailable",
+    "value_044": "Coding Resume epoch dependency exceeds its byte budget",
+    "value_045": "Coding Resume epoch changed",
+    "value_046": "Coding Resume storage epoch changed",
+    "value_047": "Coding Worker requires a Product Session factory",
+    "value_048": "Coding Worker Product selection is unavailable",
+    "value_049": "Coding Worker Product Session owner changed",
+    "distribution_name": "loushang",
+}
+
+_RESUME_EPOCH_DOMAIN = b"loushang.coding.resume-epoch/v1\0"
+
+
+_LIFECYCLE_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
+
+
+_LIFECYCLE_PROGRAM_VALUES = {
+    "value_001": "coding.base",
+    "value_002": "coding.lsp.default",
+    "value_003": "coding.arch.default",
+    "value_004": "Coding native automatic B Session route is not yet admitted",
+    "value_005": "Coding Product workspace must be an existing directory",
+    "value_006": "Coding fresh Product snapshot owner is invalid",
+    "value_007": "Coding Package Product workspace authority changed",
+    "value_008": "coding-source-configuration.json",
+    "value_009": "Coding fresh Product snapshot is incomplete",
+    "value_010": "Coding fresh Product snapshot is unavailable",
+    "distribution_name": "loushang",
+}
+
+
+_SOURCE_ADMISSION_PROGRAM_VALUES = {
+    "value_001": "Coding Package Product root is not fenced",
+    "value_002": "external-data-wheel-bindings.jsonl",
+    "value_003": "external-dependency-wheel-bindings.jsonl",
+    "value_004": "external-worker-wheel-bindings.jsonl",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class CodingPackageProductStateOwners:
     """Fresh B-only management journals, separate from pre-B replay state."""
@@ -136,7 +261,6 @@ class CodingPackageProductStateOwners:
     worker_opt_in: CodingWorkerOptInJournal
     private_data_confirmation: PluginPrivateDataConfirmationJournal
     private_data_deletion: CodingArchPrivateDataDeletionJournal
-
 
 
 def _require_current_coding_product_admission(check: Callable[[], None] | None) -> None:
@@ -164,73 +288,11 @@ def open_coding_package_product_state(
 ) -> CodingPackageProductStateOwners:
     """Open durable Product owners only for this workspace's fenced Store."""
 
-    if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
-        raise TypeError("Coding Package lifecycle layout is required")
-    if not isinstance(
+    return _programs.open_product_state(
+        lifecycle,
         epoch_runtime,
-        (
-            PackageProductPosixFencedRuntimeOwner,
-            PackageProductWindowsFencedRuntimeOwner,
-        ),
-    ):
-        raise TypeError("Coding Package Product epoch owner is required")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
-        raise ValueError("Coding Package Product workspace authority changed")
-    _require_current_coding_product_admission(require_current_admission)
-    if before_recovery is not None:
-        before_recovery()
-    state_root = epoch_runtime.prepare_product_state_root()
-    _require_current_coding_product_admission(require_current_admission)
-    if before_recovery is not None:
-        before_recovery()
-    state_metadata = state_root.lstat()
-    epoch_runtime.assert_current()
-    gate = PluginPackageGcReservationJournal(
-        state_root / "gc-reservations.jsonl",
-        parent_identity=(state_metadata.st_dev, state_metadata.st_ino),
-    )
-    _require_current_coding_product_admission(require_current_admission)
-    ensure_coding_product_backup_types(
-        state_root=state_root,
-        scope_id=lifecycle.scope_id,
-        epoch_runtime=epoch_runtime,
-        gc_gate=gate,
-        before_load=before_recovery,
+        before_recovery=before_recovery,
         require_current_admission=require_current_admission,
-    )
-    desired = PluginDesiredStateLedger(state_root / "desired-state.jsonl", gc_gate=gate)
-    management = PluginManagementService(
-        desired_state=desired,
-        operation_journal_path=state_root / "management-operations.jsonl",
-    )
-    management.recover(
-        before_replay=before_recovery, require_current_admission=require_current_admission,
-    )
-    bindings = PluginPackageGcBindingJournal(state_root / "gc-bindings.jsonl")
-    worker_opt_in = CodingWorkerOptInJournal(
-        state_root / "worker-opt-in.jsonl",
-        scope_id=lifecycle.scope_id,
-        gc_gate=gate,
-        store_id=epoch_runtime.registry.store_id,
-    )
-    private_data_confirmation = PluginPrivateDataConfirmationJournal(
-        state_root / "private-data-confirmations.jsonl"
-    )
-    private_data_deletion = CodingArchPrivateDataDeletionJournal(state_root)
-    epoch_runtime.assert_current()
-    return CodingPackageProductStateOwners(
-        state_root=state_root,
-        gc_gate=gate,
-        desired_state=desired,
-        management=management,
-        gc_bindings=bindings,
-        worker_opt_in=worker_opt_in,
-        private_data_confirmation=private_data_confirmation,
-        private_data_deletion=private_data_deletion,
     )
 
 
@@ -340,7 +402,9 @@ class CodingFencedProductApplicationSelection:
         worker_candidates: bool = False,
     ) -> None:
         if type(windows_candidate) is not bool:
-            raise TypeError("Coding Windows Product candidate selection must be explicit")
+            raise TypeError(
+                "Coding Windows Product candidate selection must be explicit"
+            )
         if type(worker_candidates) is not bool:
             raise TypeError("Coding Worker candidate selection must be explicit")
         self._windows_candidate = windows_candidate
@@ -352,22 +416,6 @@ class CodingFencedProductApplicationSelection:
         self._selection_in_progress = False
         self._fenced = False
 
-    @contextmanager
-    def _workspace_selection_scope(self) -> Iterator[None]:
-        # Admission callbacks may observe this original owner while selecting.
-        # Reentrant reads are safe; nested selection or disposal would change
-        # the owner underneath the admitted operation.
-        with self._lock:
-            if self._selection_in_progress:
-                raise RuntimeError("Coding Product workspace selection is in progress")
-            if self._fenced:
-                raise RuntimeError("Coding Product application is closing")
-            self._selection_in_progress = True
-            try:
-                yield
-            finally:
-                self._selection_in_progress = False
-
     def factory_for_session(
         self,
         manager: SessionManager,
@@ -378,18 +426,15 @@ class CodingFencedProductApplicationSelection:
         | WindowsLocalWheelProductRuntimeFactory
         | None
     ):
-        if not isinstance(manager, SessionManager):
-            raise TypeError("Coding Product Session manager is required")
-        # The legacy Session API permits a not-yet-created cwd. Use the same
-        # canonical workspace identity as its lifecycle layout; a present B
-        # fence still requires the Product owner to validate the real root.
-        workspace = Path(manager.get_cwd()).resolve(strict=False)
-        with self._workspace_selection_scope():
-            owner = self._select_workspace_unlocked(workspace, settings_manager=settings_manager)
-            return owner.factory_for_session(manager) if owner is not None else None
+        return _programs.factory_for_session(
+            self, manager, settings_manager=settings_manager
+        )
 
     def prepare_resume_epoch(
-        self, workspace: Path, *, require_current_admission: Callable[[], None],
+        self,
+        workspace: Path,
+        *,
+        require_current_admission: Callable[[], None],
         settings_manager: SettingsManager | None = None,
     ) -> str:
         """Select original workspace storage without creating a Session lease.
@@ -400,115 +445,12 @@ class CodingFencedProductApplicationSelection:
         Caller authority and effect settlement remain original-owner inputs.
         """
 
-        if not isinstance(workspace, Path) or not workspace.is_absolute():
-            raise ValueError("Coding Resume requires a canonical absolute workspace")
-        if workspace != workspace.resolve(strict=True):
-            raise ValueError("Coding Resume requires a canonical absolute workspace")
-        if not callable(require_current_admission) or inspect.iscoroutinefunction(require_current_admission):
-            raise TypeError("Coding Resume requires a synchronous current owner check")
-
-        def current() -> None:
-            result = cast(Callable[[], object], require_current_admission)()
-            if result is not None:
-                if inspect.iscoroutine(result):
-                    result.close()
-                raise TypeError("Coding Resume owner check must return None")
-            if self._fenced:
-                raise RuntimeError("Coding Product application is closing")
-
-        with self._workspace_selection_scope():
-            current()
-            self._select_workspace_unlocked(
-                workspace, settings_manager=settings_manager, require_current_admission=current,
-            )
-            current()
-            return self.resume_epoch_fingerprint(workspace)
-
-    def _select_workspace_unlocked(
-        self, workspace: Path, *, settings_manager: SettingsManager | None,
-        require_current_admission: Callable[[], None] | None = None,
-    ) -> CodingFencedProductApplicationOwner | None:
-        """Use the original selection/recovery path while its lock is held."""
-
-        if self._fenced:
-            raise RuntimeError("Coding Product application is closing")
-        owner = self._owners.get(workspace)
-        if owner is None:
-            lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-            epoch = resolve_coding_package_epoch_layout(lifecycle)
-            unadmitted_platform = (
-                os.name == "posix" and not sys.platform.startswith("linux")
-            ) or (os.name == "nt" and not self._windows_candidate)
-            try:
-                (epoch.control_root / "epoch.jsonl").lstat()
-            except FileNotFoundError:
-                # Ordinary upgrades retain the existing, fence-aware legacy
-                # owner. Never reinterpret existing installations/settings as
-                # empty Product input or require users to replace a workspace.
-                if unadmitted_platform or coding_product_inputs_need_compatibility(
-                    lifecycle, workspace=workspace, settings_manager=settings_manager,
-                ):
-                    _require_current_coding_product_admission(require_current_admission)
-                    self._legacy_workspaces[workspace] = lifecycle
-                    return None
-                # A Linux fresh workspace enters B before any ordinary
-                # Session can prepare a legacy Plugin writer. Native
-                # cutover owns the cross-process fence.
-                require_fresh_coding_product_inputs_without_writes(
-                    lifecycle,
-                    workspace=workspace,
-                    settings_manager=settings_manager,
-                )
-                _initialize_fresh_coding_product_for_session(
-                    lifecycle,
-                    workspace=workspace,
-                    settings_manager=settings_manager,
-                    windows_candidate=self._windows_candidate,
-                    require_current_admission=require_current_admission,
-                )
-            else:
-                if unadmitted_platform:
-                    PackageEpochFenceJournal(
-                        epoch.control_root / "epoch.jsonl", read_only=True
-                    ).current(epoch.store_id)
-                    raise RuntimeError(
-                        "Coding native B Session route is not yet admitted"
-                    )
-                _retry_fresh_coding_product_bootstrap_for_session(
-                    lifecycle,
-                    workspace=workspace,
-                    settings_manager=settings_manager,
-                    windows_candidate=self._windows_candidate,
-                    require_current_admission=require_current_admission,
-                )
-            owner = open_coding_fenced_product_application_owner(
-                lifecycle,
-                workspace=workspace,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                worker_candidates=self._worker_candidates,
-                windows_candidate=self._windows_candidate,
-                require_current_admission=require_current_admission,
-            )
-            self._owners[workspace] = owner
-            self._legacy_workspaces.pop(workspace, None)
-        elif not self._external_bindings_current(
-            owner, lifecycle=resolve_coding_plugin_lifecycle_state_layout(workspace)
-        ):
-            lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-            replacement = open_coding_fenced_product_application_owner(
-                lifecycle,
-                workspace=workspace,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                worker_candidates=self._worker_candidates,
-                windows_candidate=self._windows_candidate,
-                require_current_admission=require_current_admission,
-            )
-            self._retained_owners.append(owner)
-            owner = replacement
-            self._owners[workspace] = owner
-        return owner
+        return _programs.prepare_resume_epoch(
+            self,
+            workspace,
+            require_current_admission=require_current_admission,
+            settings_manager=settings_manager,
+        )
 
     def resume_epoch_fingerprint(self, workspace: Path) -> str:
         """Observe selected native or compatible storage without activating it.
@@ -517,50 +459,9 @@ class CodingFencedProductApplicationSelection:
         unselected workspace remains unavailable rather than opening a factory.
         """
 
-        if not isinstance(workspace, Path) or not workspace.is_absolute():
-            raise ValueError("Coding Resume epoch workspace must be canonical")
-        if workspace != workspace.resolve(strict=True):
-            raise ValueError("Coding Resume epoch workspace must be canonical")
-        with self._lock:
-            owner = self._owners.get(workspace)
-            if self._fenced:
-                raise RuntimeError("Coding Resume epoch is unavailable")
-            if owner is None:
-                lifecycle = self._legacy_workspaces.get(workspace)
-                if lifecycle is None:
-                    raise RuntimeError("Coding Resume epoch is unavailable")
-                epoch = resolve_coding_package_epoch_layout(lifecycle)
-                try:
-                    (epoch.control_root / "epoch.jsonl").lstat()
-                except FileNotFoundError:
-                    pass
-                else:
-                    raise RuntimeError("Coding Resume storage epoch changed")
-                identity = workspace.stat()
-                encoded = json.dumps({
-                    "workspace": str(workspace),
-                    "workspaceIdentity": [identity.st_dev, identity.st_ino],
-                    "storage": "legacy",
-                    "stateRoot": str(lifecycle.root),
-                    "packageRoot": str(lifecycle.package_root),
-                }, sort_keys=True, separators=(",", ":")).encode()
-                if len(encoded) > 8192:
-                    raise ValueError("Coding Resume epoch dependency exceeds its byte budget")
-                return sha256(b"loushang.coding.resume-epoch/v1\0" + encoded).hexdigest()
-            fence = owner.epoch_runtime.observe_current_epoch_fence()
-            encoded = json.dumps({
-                "workspace": str(workspace),
-                "fence": fence.to_dict(),
-            }, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()
-            if len(encoded) > 8192:
-                raise ValueError("Coding Resume epoch dependency exceeds its byte budget")
-            if owner.epoch_runtime.observe_current_epoch_fence() != fence:
-                raise RuntimeError("Coding Resume epoch changed")
-            return sha256(b"loushang.coding.resume-epoch/v1\0" + encoded).hexdigest()
+        return _programs.resume_epoch_fingerprint(self, workspace)
 
-    def resume_worker_effect_owner(
-        self, workspace: Path
-    ) -> CodingResumeEffectOwnerV1:
+    def resume_worker_effect_owner(self, workspace: Path) -> CodingResumeEffectOwnerV1:
         """Freeze the selected Product's original Worker C5 obligation."""
 
         from .product_worker_resume import prepare_coding_worker_resume_effect_owner
@@ -589,50 +490,7 @@ class CodingFencedProductApplicationSelection:
     ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner:
         """Recover only the Product owner that issued this exact Session factory."""
 
-        if not isinstance(
-            factory,
-            (
-                PosixLocalWheelProductRuntimeFactory,
-                WindowsLocalWheelProductRuntimeFactory,
-            ),
-        ):
-            raise TypeError("Coding Worker requires a Product Session factory")
-        with self._lock:
-            if self._fenced or not self._worker_candidates:
-                raise RuntimeError("Coding Worker Product selection is unavailable")
-            matching: list[
-                PosixLocalWheelProductSessionOwner
-                | WindowsLocalWheelProductSessionOwner
-            ] = []
-            for application in (*self._owners.values(), *self._retained_owners):
-                product = application.runtime_owner.product_owner
-                if isinstance(factory, PosixLocalWheelProductRuntimeFactory):
-                    if (
-                        not isinstance(product, PosixLocalWheelProductSessionOwner)
-                        or factory.state_root != product.state_root
-                    ):
-                        continue
-                elif (
-                    not isinstance(product, WindowsLocalWheelProductSessionOwner)
-                    or factory.epoch_runtime is not product.epoch_runtime
-                    or factory.policy is not product.policy
-                    or factory.expected_cwd != product.workspace
-                ):
-                    continue
-                if (
-                    factory.management is product.management
-                    and factory.desired_state is product.desired_state
-                    and factory.gc_bindings is product.gc_bindings
-                    and factory.gc_gate is product.gc_gate
-                    and factory.runtime_lease.registry
-                    is application.epoch_runtime.registry
-                ):
-                    matching.append(product)
-            if len(matching) != 1:
-                raise RuntimeError("Coding Worker Product Session owner changed")
-            factory.assert_workspace_current()
-            matching[0].assert_root_gc_authority_current()
-            return matching[0]
+        return _programs.product_owner_for_factory(self, factory)
 
     @staticmethod
     def _external_bindings_current(
@@ -640,82 +498,14 @@ class CodingFencedProductApplicationSelection:
         *,
         lifecycle: CodingPluginLifecycleStateLayout,
     ) -> bool:
-        product = owner.runtime_owner.product_owner
-        switch = owner.epoch_runtime.cutover_result.switch_receipt
-        if switch is None:
-            return False
-        catalog = CodingExternalDataWheelCatalog(
-            product.state_root / "external-data-wheel-bindings.jsonl",
-            source_root=product.policy.source_root,
-            store_id=owner.epoch_runtime.registry.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=lifecycle.scope_id,
-        )
-        expected_data = tuple(
-            sorted(
-                (
-                    record.policy_binding(catalog.source_root)
-                    for record in catalog.records()
-                ),
-                key=lambda item: item.source_identity,
-            )
-        )
-        observed_data = tuple(
-            item
-            for item in product.policy.bindings
-            if item.source_trust_class == "local-data-only"
-        )
-        legacy_catalog = CodingLegacyLocalBindingCatalog(
-            product.state_root / "legacy-local-bindings.jsonl",
-            source_root=product.policy.source_root,
-            store_id=owner.epoch_runtime.registry.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=lifecycle.scope_id,
-            policy_revision=product.policy.policy_revision,
-        )
-        expected_legacy = tuple(
-            sorted(
-                (
-                    record.to_policy_binding(legacy_catalog.source_root)
-                    for record in legacy_catalog.read_records()
-                ),
-                key=lambda item: item.source_identity,
-            )
-        )
-        observed_legacy = tuple(
-            item
-            for item in product.policy.bindings
-            if item.source_trust_class in LEGACY_LOCAL_DATA_TRUST_CLASSES
-        )
-        return expected_data == observed_data and expected_legacy == observed_legacy
+        return _programs.external_bindings_current(owner, lifecycle=lifecycle)
 
     def fence(self) -> None:
         with self._lock:
             self._fenced = True
 
     def close(self) -> None:
-        with self._lock:
-            if self._selection_in_progress:
-                raise RuntimeError("Coding Product workspace selection is in progress")
-            self._fenced = True
-            self._legacy_workspaces.clear()
-            failures: list[BaseException] = []
-            for workspace, owner in tuple(self._owners.items()):
-                try:
-                    owner.close()
-                except BaseException as error:
-                    failures.append(error)
-                else:
-                    del self._owners[workspace]
-            for owner in tuple(self._retained_owners):
-                try:
-                    owner.close()
-                except BaseException as error:
-                    failures.append(error)
-                else:
-                    self._retained_owners.remove(owner)
-            if failures:
-                raise failures[0]
+        return _programs.close_selection(self)
 
 
 @dataclass(slots=True)
@@ -815,41 +605,15 @@ def open_coding_fenced_product_application_owner(
 ) -> CodingFencedProductApplicationOwner:
     """Reopen the exact B fence and bind all first-party Coding Packages."""
 
-    if type(worker_candidates) is not bool:
-        raise TypeError("Coding Worker candidate selection must be explicit")
-    if type(windows_candidate) is not bool:
-        raise TypeError("Coding Windows Product candidate selection must be explicit")
-    if os.name == "nt" and not windows_candidate:
-        raise RuntimeError("Coding Windows Product Session route is not yet admitted")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_owner_type = (
-        PackageProductWindowsFencedRuntimeOwner
-        if os.name == "nt"
-        else PackageProductPosixFencedRuntimeOwner
+    return _programs.open_application(
+        lifecycle,
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+        worker_candidates=worker_candidates,
+        windows_candidate=windows_candidate,
+        require_current_admission=require_current_admission,
     )
-    _require_current_coding_product_admission(require_current_admission)
-    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
-    try:
-        state = open_coding_package_product_state(
-            lifecycle, epoch_runtime, require_current_admission=require_current_admission,
-        )
-        _require_current_coding_product_admission(require_current_admission)
-        runtime_owner = open_coding_builtin_product_runtime_owner(
-            lifecycle,
-            epoch_runtime,
-            state,
-            workspace=workspace,
-            runtime_version=runtime_version,
-            runtime_protocol_epoch=runtime_protocol_epoch,
-            worker_candidates=worker_candidates,
-        )
-        return CodingFencedProductApplicationOwner(epoch_runtime, runtime_owner)
-    except BaseException as error:
-        try:
-            epoch_runtime.close()
-        except BaseException:
-            error.add_note("Coding Product epoch cleanup also failed")
-        raise
 
 
 def admit_coding_external_data_wheel(
@@ -859,24 +623,10 @@ def admit_coding_external_data_wheel(
 ) -> CodingExternalDataWheelBindingV1:
     """Capture one local data Wheel under the current fenced Product Source root."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
+    return cast(
+        "CodingExternalDataWheelBindingV1",
+        _source_programs.capture_inert_source(lifecycle, source=source, kind="data"),
     )
-    try:
-        switch = epoch_runtime.cutover_result.switch_receipt
-        if switch is None:
-            raise ValueError("Coding Package Product root is not fenced")
-        return CodingExternalDataWheelCatalog(
-            epoch_runtime.prepare_product_state_root()
-            / "external-data-wheel-bindings.jsonl",
-            source_root=epoch_runtime.prepare_product_source_root(),
-            store_id=epoch.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=lifecycle.scope_id,
-        ).capture(source, epoch_runtime=epoch_runtime)
-    finally:
-        epoch_runtime.close()
 
 
 def admit_coding_external_dependency_wheel(
@@ -886,24 +636,12 @@ def admit_coding_external_dependency_wheel(
 ) -> CodingExternalDependencyWheelBindingV1:
     """Pin inert dependency bytes; no Coding Plugin profile may use them yet."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
+    return cast(
+        "CodingExternalDependencyWheelBindingV1",
+        _source_programs.capture_inert_source(
+            lifecycle, source=source, kind="dependency"
+        ),
     )
-    try:
-        switch = epoch_runtime.cutover_result.switch_receipt
-        if switch is None:
-            raise ValueError("Coding Package Product root is not fenced")
-        return CodingExternalDependencyWheelCatalog(
-            epoch_runtime.prepare_product_state_root()
-            / "external-dependency-wheel-bindings.jsonl",
-            source_root=epoch_runtime.prepare_product_source_root(),
-            store_id=epoch.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=lifecycle.scope_id,
-        ).capture(source, epoch_runtime=epoch_runtime)
-    finally:
-        epoch_runtime.close()
 
 
 def admit_coding_external_worker_wheel(
@@ -914,36 +652,9 @@ def admit_coding_external_worker_wheel(
 ) -> CodingExternalWorkerWheelBindingV1:
     """Capture one inert Worker candidate; the normal Session route stays dark."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_owner_type = (
-        PackageProductWindowsFencedRuntimeOwner
-        if os.name == "nt"
-        else PackageProductPosixFencedRuntimeOwner
+    return _source_programs.capture_worker_source(
+        lifecycle, source=source, admission=admission
     )
-    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
-    try:
-        switch = epoch_runtime.cutover_result.switch_receipt
-        if switch is None:
-            raise ValueError("Coding Package Product root is not fenced")
-        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
-            return CodingWindowsExternalWorkerWheelCatalog(
-                epoch_runtime=epoch_runtime,
-                state_root=epoch_runtime.prepare_product_state_root(),
-                source_root=epoch_runtime.prepare_product_source_root(),
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=lifecycle.scope_id,
-            ).capture(source, admission=admission)
-        return CodingExternalWorkerWheelCatalog(
-            epoch_runtime.prepare_product_state_root()
-            / "external-worker-wheel-bindings.jsonl",
-            source_root=epoch_runtime.prepare_product_source_root(),
-            store_id=epoch.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=lifecycle.scope_id,
-        ).capture(source, admission=admission, epoch_runtime=epoch_runtime)
-    finally:
-        epoch_runtime.close()
 
 
 def bootstrap_coding_builtin_product_plugins(
@@ -963,27 +674,15 @@ def bootstrap_coding_builtin_product_plugins(
     never converted back into a default install.
     """
 
-    require_fresh_coding_product_inputs(lifecycle, settings_manager)
-    owner = open_coding_fenced_product_application_owner(
+    return _lifecycle_programs.bootstrap_builtin_plugins(
         lifecycle,
+        settings_manager,
         workspace=workspace,
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
         windows_candidate=windows_candidate,
         require_current_admission=require_current_admission,
     )
-    try:
-        changed = False
-        for plugin_id in (
-            "coding.base",
-            "coding.lsp.default",
-            "coding.arch.default",
-        ):
-            _require_current_coding_product_admission(require_current_admission)
-            changed = _bootstrap_coding_builtin_plugin(owner, plugin_id) or changed
-        return changed
-    finally:
-        owner.close()
 
 
 def bootstrap_coding_accepted_disabled_only_product_plugins(
@@ -997,38 +696,14 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
 ) -> CodingLegacyDisabledOnlyAcceptanceV1:
     """Install builtins from an explicitly accepted, fenced Source snapshot."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
-    )
-    try:
-        receipt = accept_coding_first_b_disabled_only(
-            lifecycle,
-            epoch_runtime,
-            settings_manager=settings_manager,
-            accepted_review_id=accepted_review_id,
-        )
-    finally:
-        epoch_runtime.close()
-    disabled = {item.plugin_id for item in receipt.review.disabled_plugins}
-    owner = open_coding_fenced_product_application_owner(
+    return _lifecycle_programs.bootstrap_accepted_disabled_plugins(
         lifecycle,
+        settings_manager,
         workspace=workspace,
+        accepted_review_id=accepted_review_id,
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
-    try:
-        for plugin_id in (
-            "coding.base",
-            "coding.lsp.default",
-            "coding.arch.default",
-        ):
-            _bootstrap_coding_builtin_plugin(
-                owner, plugin_id, enable=plugin_id not in disabled
-            )
-        return receipt
-    finally:
-        owner.close()
 
 
 def require_fresh_coding_product_inputs(
@@ -1054,20 +729,12 @@ def require_fresh_coding_product_inputs(
         )
     if type(roots_may_be_absent) is not bool:
         raise TypeError("Coding fresh Product root policy is invalid")
-    for root, resolver in (
-        (lifecycle.root, resolve_coding_lifecycle_pre_b_members),
-        (lifecycle.package_root, resolve_coding_package_pre_b_store_members),
+    if _lifecycle_programs.legacy_state_requires_migration(
+        lifecycle, skip_missing=roots_may_be_absent
     ):
-        if roots_may_be_absent:
-            try:
-                root.lstat()
-            except FileNotFoundError:
-                continue
-        members = resolver(lifecycle)
-        if any(members.domain_members().values()):
-            raise RuntimeError(
-                "Coding pre-B workspace is unsupported; use a fresh workspace"
-            )
+        raise RuntimeError(
+            "Coding pre-B workspace is unsupported; use a fresh workspace"
+        )
 
 
 def require_fresh_coding_product_inputs_without_writes(
@@ -1079,7 +746,9 @@ def require_fresh_coding_product_inputs_without_writes(
     """Require empty input for an explicit fresh-only Product cutover."""
 
     if coding_product_inputs_need_compatibility(
-        lifecycle, workspace=workspace, settings_manager=settings_manager,
+        lifecycle,
+        workspace=workspace,
+        settings_manager=settings_manager,
     ):
         raise RuntimeError(
             "Coding pre-B workspace is unsupported; use a fresh workspace"
@@ -1102,17 +771,9 @@ def coding_product_inputs_need_compatibility(
         workspace=workspace, settings_manager=settings_manager
     ):
         return True
-    for root, resolver in (
-        (lifecycle.root, resolve_coding_lifecycle_pre_b_members),
-        (lifecycle.package_root, resolve_coding_package_pre_b_store_members),
-    ):
-        try:
-            root.lstat()
-        except FileNotFoundError:
-            continue
-        if any(resolver(lifecycle).domain_members().values()):
-            return True
-    return False
+    return _lifecycle_programs.legacy_state_requires_migration(
+        lifecycle, skip_missing=True
+    )
 
 
 def require_fresh_coding_product_settings_without_writes(
@@ -1121,7 +782,8 @@ def require_fresh_coding_product_settings_without_writes(
     """Require fresh settings for an explicit fresh-only Product cutover."""
 
     if _coding_product_settings_need_compatibility(
-        workspace=workspace, settings_manager=settings_manager,
+        workspace=workspace,
+        settings_manager=settings_manager,
     ):
         raise RuntimeError(
             "Coding pre-B workspace is unsupported; use a fresh workspace"
@@ -1129,7 +791,9 @@ def require_fresh_coding_product_settings_without_writes(
 
 
 def _coding_product_settings_need_compatibility(
-    *, workspace: Path, settings_manager: SettingsManager | None,
+    *,
+    workspace: Path,
+    settings_manager: SettingsManager | None,
 ) -> bool:
     if not isinstance(workspace, Path) or not workspace.is_absolute():
         raise ValueError("Coding workspace must be absolute")
@@ -1141,11 +805,15 @@ def _coding_product_settings_need_compatibility(
         if not isinstance(settings_manager, SettingsManager):
             raise TypeError("Coding Product settings manager is invalid")
         effective = settings_manager.get_settings()
-        if any((
-            effective.disabled_plugins, effective.plugin_sources,
-            effective.resource_roots, effective.package_roots,
-            effective.package_sources,
-        )):
+        if any(
+            (
+                effective.disabled_plugins,
+                effective.plugin_sources,
+                effective.resource_roots,
+                effective.package_roots,
+                effective.package_sources,
+            )
+        ):
             return True
         settings_paths.extend(
             path
@@ -1155,7 +823,9 @@ def _coding_product_settings_need_compatibility(
             )
             if path is not None
         )
-    return coding_settings_have_pre_b_inputs_without_writes(*dict.fromkeys(settings_paths))
+    return coding_settings_have_pre_b_inputs_without_writes(
+        *dict.fromkeys(settings_paths)
+    )
 
 
 def _initialize_fresh_coding_product_for_session(
@@ -1168,40 +838,10 @@ def _initialize_fresh_coding_product_for_session(
 ) -> None:
     """Use the Product's offline fresh cutover before ordinary Session writes."""
 
-    if not (
-        (os.name == "posix" and sys.platform.startswith("linux"))
-        or (os.name == "nt" and windows_candidate)
-    ):
-        raise RuntimeError(
-            "Coding native automatic B Session route is not yet admitted"
-        )
-    if not workspace.is_dir():
-        raise ValueError("Coding Product workspace must be an existing directory")
-    global_path = default_global_settings_path()
-    project_path = default_project_settings_path(workspace)
-    if settings_manager is not None:
-        require_fresh_coding_product_inputs(
-            lifecycle, settings_manager, roots_may_be_absent=True
-        )
-        global_path = settings_manager.global_settings_path or global_path
-        project_path = settings_manager.project_settings_path or project_path
-    _require_current_coding_product_admission(require_current_admission)
-    cutover_settings = SettingsManager(
-        global_settings_path=global_path,
-        project_settings_path=project_path,
-    )
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-    # Import here because the cutover owner uses this module's Product bootstrap.
-    from .pre_b_snapshot import cutover_and_bootstrap_coding_package_product
-
-    cutover_and_bootstrap_coding_package_product(
+    return _lifecycle_programs.initialize_fresh_product(
         lifecycle,
-        cutover_settings,
         workspace=workspace,
-        namespace_id=namespace_id,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        settings_manager=settings_manager,
         windows_candidate=windows_candidate,
         require_current_admission=require_current_admission,
     )
@@ -1232,128 +872,7 @@ def is_coding_fresh_first_b_snapshot(
 ) -> bool:
     """Read the fenced first-B snapshot before retrying fresh builtin defaults."""
 
-    if not isinstance(lifecycle, CodingPluginLifecycleStateLayout) or not isinstance(
-        runtime,
-        (
-            PackageProductPosixFencedRuntimeOwner,
-            PackageProductWindowsFencedRuntimeOwner,
-        ),
-    ):
-        raise TypeError("Coding fresh Product snapshot owner is invalid")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        runtime.registry.store_id != epoch.store_id
-        or runtime.control_root != epoch.control_root
-    ):
-        raise ValueError("Coding Package Product workspace authority changed")
-    fence = runtime.cutover_result.fence
-    if (
-        fence is None
-        or fence.request.namespace_id
-        != _fresh_coding_product_namespace_id(epoch.store_id)
-    ):
-        return False
-    for domain in (
-        "binding_history",
-        "desired_state",
-        "enablement_state",
-        "instance_state",
-        "lock_history",
-        "store_bytes",
-    ):
-        if list_coding_first_b_snapshot_domain_members(
-            lifecycle, runtime, domain=domain
-        ):
-            return False
-    if list_coding_first_b_snapshot_domain_members(
-        lifecycle, runtime, domain="source_configuration"
-    ) != ("coding-source-configuration.json",):
-        raise RuntimeError("Coding fresh Product snapshot is incomplete")
-    raw = read_coding_first_b_snapshot_member(
-        lifecycle,
-        runtime,
-        domain="source_configuration",
-        member_name="coding-source-configuration.json",
-        maximum_bytes=4 * 1024 * 1024,
-    )
-    if raw is None:
-        raise RuntimeError("Coding fresh Product snapshot is unavailable")
-    source = json.loads(raw)
-    classification = classify_coding_legacy_source_configuration(source)
-    if classification.disabled_plugins or classification.configured_source_keys:
-        return False
-    scopes = source["scopes"]
-    return not any(
-        any(patch.values())
-        for patch in (
-            scopes["global"]["sourcePatch"],
-            scopes["project"]["sourcePatch"],
-        )
-    )
-
-
-def _retry_fresh_coding_product_bootstrap_for_session(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    *,
-    workspace: Path,
-    settings_manager: SettingsManager | None,
-    windows_candidate: bool = False,
-    require_current_admission: Callable[[], None] | None = None,
-) -> None:
-    """Resume only a proven fresh first-B cutover; preserve adopted B state."""
-
-    if not (
-        (os.name == "posix" and sys.platform.startswith("linux"))
-        or (os.name == "nt" and windows_candidate)
-    ):
-        return
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    _require_current_coding_product_admission(require_current_admission)
-    runtime = (
-        PackageProductWindowsFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs()
-        )
-        if os.name == "nt"
-        else PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs(), read_only=True
-        )
-    )
-    try:
-        if not is_coding_fresh_first_b_snapshot(lifecycle, runtime):
-            return
-    finally:
-        runtime.close()
-    owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-        windows_candidate=windows_candidate,
-        require_current_admission=require_current_admission,
-    )
-    try:
-        if _fresh_coding_builtin_bootstrap_completed(owner):
-            return
-    finally:
-        owner.close()
-    global_path = default_global_settings_path()
-    project_path = default_project_settings_path(workspace)
-    if settings_manager is not None:
-        global_path = settings_manager.global_settings_path or global_path
-        project_path = settings_manager.project_settings_path or project_path
-    _require_current_coding_product_admission(require_current_admission)
-    bootstrap_coding_builtin_product_plugins(
-        lifecycle,
-        SettingsManager(
-            global_settings_path=global_path,
-            project_settings_path=project_path,
-        ),
-        workspace=workspace,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-        windows_candidate=windows_candidate,
-        require_current_admission=require_current_admission,
-    )
+    return _lifecycle_programs.is_fresh_snapshot(lifecycle, runtime)
 
 
 def _bootstrap_coding_builtin_plugin(
@@ -1363,9 +882,11 @@ def _bootstrap_coding_builtin_plugin(
     enable: bool = True,
 ) -> bool:
     return bootstrap_product_plugin(
-        owner.runtime_owner.product_owner, plugin_id,
+        owner.runtime_owner.product_owner,
+        plugin_id,
         store_id=owner.epoch_runtime.registry.store_id,
-        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY, enable=enable,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+        enable=enable,
     )
 
 
@@ -1382,7 +903,7 @@ def open_coding_base_product_runtime_owner(
 ) -> CodingPosixLocalWheelProductRuntimeOwner:
     """Compose the installed base Plugin from one fenced Product authority."""
 
-    return _open_coding_product_runtime_owner(
+    return _programs.open_runtime(
         lifecycle,
         epoch_runtime,
         state,
@@ -1390,6 +911,7 @@ def open_coding_base_product_runtime_owner(
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
         include_capabilities=False,
+        include_worker_candidates=False,
     )
 
 
@@ -1407,7 +929,7 @@ def open_coding_builtin_product_runtime_owner(
 ) -> CodingPosixLocalWheelProductRuntimeOwner:
     """Compose all three first-party Packages without granting execution."""
 
-    return _open_coding_product_runtime_owner(
+    return _programs.open_runtime(
         lifecycle,
         epoch_runtime,
         state,
@@ -1417,206 +939,6 @@ def open_coding_builtin_product_runtime_owner(
         include_capabilities=True,
         include_worker_candidates=worker_candidates,
     )
-
-
-def _open_coding_product_runtime_owner(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: (
-        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
-    ),
-    state: CodingPackageProductStateOwners,
-    *,
-    workspace: Path,
-    runtime_version: str,
-    runtime_protocol_epoch: int,
-    include_capabilities: bool,
-    include_worker_candidates: bool = False,
-) -> CodingPosixLocalWheelProductRuntimeOwner:
-    if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
-        raise TypeError("Coding Package lifecycle layout is required")
-    if not isinstance(
-        epoch_runtime,
-        (
-            PackageProductPosixFencedRuntimeOwner,
-            PackageProductWindowsFencedRuntimeOwner,
-        ),
-    ):
-        raise TypeError("Coding Package Product epoch owner is required")
-    if not isinstance(state, CodingPackageProductStateOwners):
-        raise TypeError("Coding Package Product state owners are required")
-    if (
-        not isinstance(workspace, Path)
-        or not workspace.is_absolute()
-        or ".." in workspace.parts
-        or workspace != workspace.resolve(strict=True)
-    ):
-        raise ValueError("Coding Product workspace is not canonical")
-    scope_id = (
-        "workspace:"
-        + sha256(
-            b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
-        ).hexdigest()
-    )
-    if lifecycle.scope_id != scope_id:
-        raise ValueError("Coding Product workspace scope changed")
-    if not isinstance(runtime_version, str) or not runtime_version:
-        raise ValueError("Coding Product runtime version is required")
-    if type(runtime_protocol_epoch) is not int or runtime_protocol_epoch < 1:
-        raise ValueError("Coding Product runtime protocol epoch is invalid")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-    ):
-        raise ValueError("Coding Package Product workspace authority changed")
-    state_root = epoch_runtime.prepare_product_state_root()
-    if (
-        state.state_root != state_root
-        or state.gc_gate.path != state_root / "gc-reservations.jsonl"
-        or state.desired_state.path != state_root / "desired-state.jsonl"
-        or state.management.operation_journal_path
-        != state_root / "management-operations.jsonl"
-        or state.management.retirement_intent_journal_path
-        != state_root / "management-operations.jsonl.retirement-intents"
-        or state.management.retirement_set_journal_path
-        != state_root / "management-operations.jsonl.retirement-sets"
-        or state.gc_bindings.path != state_root / "gc-bindings.jsonl"
-        or state.worker_opt_in.path != state_root / "worker-opt-in.jsonl"
-        or state.private_data_confirmation.path
-        != state_root / "private-data-confirmations.jsonl"
-        or state.private_data_deletion.path
-        != state_root / "private-data-deletions.jsonl"
-    ):
-        raise ValueError("Coding Package Product state authority changed")
-    switch = epoch_runtime.cutover_result.switch_receipt
-    if switch is None:
-        raise ValueError("Coding Package Product root is not fenced")
-    source_root = epoch_runtime.prepare_product_source_root()
-    artifact = (
-        prepare_windows_coding_base_product_wheel(source_root)
-        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-        else prepare_posix_coding_base_product_wheel(source_root)
-    )
-    host_inputs = PosixLocalWheelProductHostInputs.current_host(
-        max_transport_bytes=2 * 1024 * 1024
-    )
-    policy_arguments = dict(
-        project_scope_id=scope_id,
-        resolution_environment_fingerprint=host_inputs.environment.fingerprint,
-        policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-        quota_profile_revision="coding-product-package-quota:1",
-        authority_id="coding-product-local-source",
-    )
-    policy = (
-        coding_builtin_product_local_wheel_policy(
-            artifact,
-            (
-                prepare_windows_coding_capability_product_wheels(source_root)
-                if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-                else prepare_posix_coding_capability_product_wheels(source_root)
-            ),
-            **policy_arguments,
-        )
-        if include_capabilities
-        else coding_base_product_local_wheel_policy(artifact, **policy_arguments)
-    )
-
-    def read_legacy_acceptance(plugin_id: str):
-        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
-            return None
-        return reopen_coding_legacy_installed_local_acceptance(
-            lifecycle,
-            epoch_runtime,
-            plugin_id=plugin_id,
-            policy_revision=policy.policy_revision,
-        )
-
-    policy = CodingLegacyLocalBindingCatalog(
-        state_root / "legacy-local-bindings.jsonl",
-        source_root=source_root,
-        store_id=epoch.store_id,
-        namespace_id=switch.namespace_id,
-        scope_id=scope_id,
-        policy_revision=policy.policy_revision,
-        acceptance_reader=read_legacy_acceptance,
-    ).extend_policy(policy)
-    policy = CodingExternalDataWheelCatalog(
-        state_root / "external-data-wheel-bindings.jsonl",
-        source_root=source_root,
-        store_id=epoch.store_id,
-        namespace_id=switch.namespace_id,
-        scope_id=scope_id,
-    ).extend_policy(policy)
-    if isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
-        policy = CodingExternalDependencyWheelCatalog(
-            state_root / "external-dependency-wheel-bindings.jsonl",
-            source_root=source_root,
-            store_id=epoch.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=scope_id,
-        ).extend_policy(policy)
-    if include_worker_candidates:
-        policy = (
-            CodingWindowsExternalWorkerWheelCatalog(
-                epoch_runtime=epoch_runtime,
-                state_root=state_root,
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=scope_id,
-            ).extend_policy(policy)
-            if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-            else CodingExternalWorkerWheelCatalog(
-                state_root / "external-worker-wheel-bindings.jsonl",
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=scope_id,
-            ).extend_policy(policy)
-        )
-    session_owner = (
-        WindowsLocalWheelProductSessionOwner(
-            workspace=workspace,
-            policy=policy,
-            host_inputs=host_inputs,
-            root_store_identity=f"coding-product-root-store:{epoch.store_id}",
-            dependency_store_identity=f"coding-product-dependency-store:{epoch.store_id}",
-            epoch_runtime=epoch_runtime,
-            management=state.management,
-            desired_state=state.desired_state,
-            gc_bindings=state.gc_bindings,
-            gc_gate=state.gc_gate,
-            actor_id="product:coding",
-            desired_policy_revision="coding-product-desired-policy:1",
-            recovery_identity=f"coding-product-recovery:{epoch.store_id}",
-            runtime_version=runtime_version,
-            runtime_protocol_epoch=runtime_protocol_epoch,
-        )
-        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-        else PosixLocalWheelProductSessionOwner(
-            workspace=workspace,
-            state_root=state.state_root,
-            plugin_store_root=epoch.epoch_root(switch.namespace_id),
-            policy=policy,
-            environment=host_inputs.environment,
-            acquisition_budgets=host_inputs.acquisition_budgets,
-            inspection_budgets=host_inputs.inspection_budgets,
-            closure_budgets=host_inputs.closure_budgets,
-            root_store_identity=f"coding-product-root-store:{epoch.store_id}",
-            dependency_store_identity=f"coding-product-dependency-store:{epoch.store_id}",
-            epoch_runtime=epoch_runtime,
-            management=state.management,
-            desired_state=state.desired_state,
-            gc_bindings=state.gc_bindings,
-            gc_gate=state.gc_gate,
-            actor_id="product:coding",
-            desired_policy_revision="coding-product-desired-policy:1",
-            recovery_identity=f"coding-product-recovery:{epoch.store_id}",
-            runtime_version=runtime_version,
-            runtime_protocol_epoch=runtime_protocol_epoch,
-        )
-    )
-    return CodingPosixLocalWheelProductRuntimeOwner(product_owner=session_owner)
 
 
 __all__ = [

@@ -26,6 +26,7 @@ from tests.apphost.test_managed_bootstrap import deployment as deployment
 from .test_hosted_local import _local_launch
 from .test_managed_catalog import tree
 from .test_managed_launch import invocation
+from .test_managed_launch import managed_workspace as managed_workspace
 
 
 def test_invocation_has_no_workspace_or_side_effects_before_start(deployment, tmp_path):

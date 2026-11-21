@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from loushang.harness.journal import JournalFormatProfile, JournalRecordCodec
-from loushang.harness.worker._segmented_history import CodingWorkerSegmentedHistoryV1
 from loushang.harness.worker.activation_state_journal import (
     _CODEC,
     _FORMAT,
-    WorkerActivationStateJournalError,
     _StateRecord,
 )
 from loushang.harness.worker.activation_state_journal import (
@@ -22,9 +20,6 @@ from loushang.harness.worker.activation_state_journal import (
 from loushang.harness.worker.history._activation_store import SegmentedActivationJournal
 
 from .product_worker_activation_history import CodingProductWorkerRetainedAttemptV1
-
-if TYPE_CHECKING:
-    from .product_worker_history_checkpoint import CodingWorkerHistoryCheckpointV1
 
 _MAX_BYTES = _DEFAULT_MAX_BYTES
 _MAX_REVISIONS = _DEFAULT_MAX_REVISIONS
@@ -61,21 +56,6 @@ class CodingProductWorkerActivationStateJournal(SegmentedActivationJournal):
 
     def _max_history_records(self) -> int:
         return _MAX_REVISIONS
-
-    @staticmethod
-    def _assert_checkpoint_source(
-        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
-        history: CodingWorkerSegmentedHistoryV1,
-    ) -> int:
-        from .product_worker_history_checkpoint import _CHECKPOINT_HISTORY
-
-        return _CHECKPOINT_HISTORY.verify_source_revision(
-            checkpoints,
-            history,
-            stream_index=2,
-            error_type=WorkerActivationStateJournalError,
-            code="worker_activation_state_checkpoint_source_changed",
-        )
 
 
 __all__ = [

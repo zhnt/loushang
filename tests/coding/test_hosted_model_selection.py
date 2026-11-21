@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import pytest
 
@@ -49,6 +50,11 @@ from .test_hosted_bootstrap import _launch
 from .test_hosted_session import _stream
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="owned hosted transcript Writer")
+
+
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    return standalone_workspace
 
 
 @pytest.mark.parametrize("managed", [True, False], ids=["managed", "deferred"])
