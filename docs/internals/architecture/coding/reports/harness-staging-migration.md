@@ -2633,6 +2633,10 @@ watching, foreground restart and the simulated launchd adapter. The fixtures
 place test Product state outside the developer checkout. The pytest wrapper
 still manages the invocation's scratch directory.
 
+Standalone fixture workspaces also pass the 79 Repository and interactive
+Goal cases and the 15 hosted interactive Goal cases. These cover planning,
+original Work and Session ownership, verification, review and cancellation.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, formal Harness, Hosting,
