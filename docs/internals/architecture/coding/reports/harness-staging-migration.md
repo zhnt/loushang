@@ -250,6 +250,28 @@ pass all 49 selected cases on Linux. A mock-backed probe also verifies
 the bind, prepare, rebind order and rejection of a changed identity.
 Native Windows ACL and filesystem behavior require separate platform evidence.
 
+### Formal Backup Archive And Retention
+
+The CLI, SDK and Product backup reads use the existing Harness archive
+owners. POSIX verification and archive inventory share the same
+rooted archive identity and byte checks. Windows retains its native
+archive and ACL checks. The Harness backup topology projects retention
+on both platforms. POSIX still distinguishes completed expiry from
+an interrupted rename. Windows retains its additional Desired-state,
+descriptor, and unpublished-event checks before projecting a status.
+
+Coding binds the Installation, path, source schema, historical receipt
+identity and backup manifest codec. The POSIX and Windows archive programs
+and the staging record adapter have been removed. The private read owner
+verifies retained backups through the same Harness archive path.
+
+This batch removes 347 temporary Python lines, adds 141 Coding Product lines
+and adds 108 formal Harness lines. Production Python decreases by 98 lines.
+The Linux lifecycle and historical-record checks pass 97 cases. The Windows
+archive operation and snapshot probes pass 62 cases using inert native ports
+on Linux. The snapshot probe now reads canonical JSON from its existing
+codec module after the same stale import was reproduced on the prior commit.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

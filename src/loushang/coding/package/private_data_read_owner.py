@@ -44,6 +44,7 @@ from .installation_private_data import (
 )
 from .private_data_backup import (
     CodingArchPrivateDataBackupReceiptV1,
+    _verify_retained_archive,
 )
 from .private_data_backup import (
     _backup_parent as _backup_parent,
@@ -69,7 +70,6 @@ _READ_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 
 _PRIVATE_DATA_QUERY_VALUES = {
-    "message_01": "Coding Arch backup ID is invalid",
     "message_03": "Coding Arch restore confirmation is stale",
     "invalid_restore_backup": "Coding Arch restore backup ID is invalid",
     "invalid_expiry_backup": "Coding Arch backup expiry ID is invalid",
@@ -139,7 +139,16 @@ class CodingArchPrivateDataReadOwner:
     def verify_backup(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> CodingArchPrivateDataBackupReceiptV1:
-        return _programs.verify_backup(self, key, backup_id)
+        coding_arch_installation_private_data_root(self.layout, key)
+        if not _digest(backup_id):
+            raise ValueError("Coding Arch backup ID is invalid")
+        with self.offline():
+            return _verify_retained_archive(
+                self.layout.private_data_base,
+                _backup_parent(self.layout, key),
+                key,
+                backup_id,
+            )
 
     def deletion_preview(
         self, key: PluginInstallationKeyV1

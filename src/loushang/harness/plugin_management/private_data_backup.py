@@ -120,6 +120,44 @@ def verify_private_archive(
             )
 
 
+def _verify_retained_private_archive_at(
+    parent_fd: int,
+    name: str,
+    key: PluginInstallationKeyV1,
+    *,
+    io: PrivatePosixTreeIO,
+    codec: PrivateArchiveCodec[S, R],
+    installation_error: str,
+) -> R:
+    receipt, source = read_private_archive(parent_fd, name, io=io, codec=codec)
+    if receipt.installation_key != key or receipt.backup_id != name:
+        raise ValueError(installation_error)
+    verify_private_archive(parent_fd, name, key, source, receipt, io=io, codec=codec)
+    return receipt
+
+
+def verify_retained_private_archive(
+    private_base: Path,
+    parent: Path,
+    name: str,
+    key: PluginInstallationKeyV1,
+    *,
+    io: PrivatePosixTreeIO,
+    codec: PrivateArchiveCodec[S, R],
+    installation_error: str,
+) -> R:
+    """Open one exact retained archive through the configured rooted I/O."""
+    with closing_descriptor(io.open_path(private_base, parent)) as parent_fd:
+        return _verify_retained_private_archive_at(
+            parent_fd,
+            name,
+            key,
+            io=io,
+            codec=codec,
+            installation_error=installation_error,
+        )
+
+
 class _DeletedBackupReceipt(PrivateBackupReceipt, Protocol):
     @property
     def source_target_id(self) -> str: ...
@@ -482,11 +520,13 @@ def enumerate_private_archives(
                 continue
             if not is_archive_name(name):
                 raise ValueError(f"{io.label} backup member is unexpected")
-            receipt, source = read_private_archive(parent_fd, name, io=io, codec=codec)
-            if receipt.installation_key != key or receipt.backup_id != name:
-                raise ValueError(f"{io.label} backup identity changed")
-            verify_private_archive(
-                parent_fd, name, key, source, receipt, io=io, codec=codec
+            receipt = _verify_retained_private_archive_at(
+                parent_fd,
+                name,
+                key,
+                io=io,
+                codec=codec,
+                installation_error=f"{io.label} backup identity changed",
             )
             receipts.append(receipt)
         return tuple(receipts)

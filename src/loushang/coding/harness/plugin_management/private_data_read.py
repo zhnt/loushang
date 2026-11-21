@@ -9,28 +9,10 @@ from __future__ import annotations
 from loushang.coding.package import private_data_read_owner as _binding
 
 from . import (
-    private_data_backup,
     private_data_backup_expiry,
     private_data_restore,
     private_data_restore_confirmation,
 )
-
-
-def verify_backup(
-    self: _binding.CodingArchPrivateDataReadOwner,
-    key: _binding.PluginInstallationKeyV1,
-    backup_id: str,
-) -> _binding.CodingArchPrivateDataBackupReceiptV1:
-    _binding.coding_arch_installation_private_data_root(self.layout, key)
-    if not _binding._digest(backup_id):
-        raise ValueError(_binding._PRIVATE_DATA_QUERY_VALUES["message_01"])
-    with self.offline():
-        return private_data_backup.verify_retained_archive(
-            self.layout.private_data_base,
-            _binding._backup_parent(self.layout, key),
-            key,
-            backup_id,
-        )
 
 
 def verify_restore_confirmation(

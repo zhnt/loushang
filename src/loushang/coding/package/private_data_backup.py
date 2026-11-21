@@ -9,14 +9,17 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from loushang.coding.harness.package_product.epoch_identity import matches_epoch_layout
-from loushang.coding.harness.plugin_management import private_data_backup as _programs
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
 )
 from loushang.coding.plugin_manager.lifecycle import (
-    prepare_coding_plugin_private_tree as _prepare_private_tree,  # noqa: F401
+    prepare_coding_plugin_private_tree as _prepare_private_tree,
+)
+from loushang.harness.package_product._backup_topology import (
+    read_posix_private_backup_retention,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -36,10 +39,9 @@ from loushang.harness.plugin_management.application import (
 from loushang.harness.plugin_management.private_data_backup import (
     enumerate_private_archives,
     read_private_archive,
+    retain_private_archive,
     verify_private_archive,
-)
-from loushang.harness.plugin_management.private_data_backup import (
-    retain_private_archive as retain_private_archive,
+    verify_retained_private_archive,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._file_consumption import (
@@ -55,11 +57,13 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
-    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+    coding_arch_installation_private_data_root,
+    coding_arch_workspace_installation_key,
 )
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
     _ArchBackupCodec,
+    make_backup_receipt,
 )
 from .private_data_backup_records import (
     _backup_retention_revision as _backup_retention_revision,
@@ -69,13 +73,10 @@ from .private_data_deletion_preview import _MAX_TOTAL_BYTES as _MAX_READ_BYTES
 from .private_data_deletion_preview import (
     CodingArchPrivateDataDeletionPreview,
     CodingArchPrivateDataTargetSnapshotV1,
-)
-from .private_data_deletion_preview import (
-    _capture_target_snapshot as _capture_target_snapshot,
+    _capture_target_snapshot,
 )
 from .product_backup_types import require_coding_arch_backup_writer
 
-_PLUGIN_ID = "coding.arch.default"
 _private_io = PrivatePosixTreeIO("Coding Arch", _MAX_READ_BYTES)
 _open_chain = _private_io.open_chain
 _mkdir_at = _private_io.mkdir
@@ -85,18 +86,6 @@ _write_or_verify_file = _private_io.write_file
 
 
 _archive_codec = _ArchBackupCodec()
-
-
-_PRIVATE_DATA_PROGRAM_VALUES = {
-    "value_01": "Coding Arch backup Installation has no Product history",
-    "value_02": "Coding Arch private-data source is absent",
-    "value_03": "Coding Arch backup ID is invalid",
-    "value_04": "Coding Arch backup Installation changed",
-    "value_05": "coding",
-    "value_06": "Coding Arch expired backup reappeared",
-    "value_07": "coding-arch-backup:",
-    "value_08": "Coding Arch backup expiry receipt changed",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +102,32 @@ class CodingArchPrivateDataBackupOwner:
     def retain(
         self, key: PluginInstallationKeyV1
     ) -> CodingArchPrivateDataBackupReceiptV1:
-        return _programs.retain(self, key)
+        source_root = coding_arch_installation_private_data_root(self.layout, key)
+        preview = CodingArchPrivateDataDeletionPreview(self.layout, self.product)
+        with preview._offline():
+            state = self.product.desired_state.snapshot().installation(key)
+            if state.latest_instance_revision_ref is None:
+                raise ValueError("Coding Arch backup Installation has no Product history")
+            source = _capture_target_snapshot(
+                source_root, private_base=self.layout.private_data_base
+            )
+            if source.root_identity is None:
+                raise ValueError("Coding Arch private-data source is absent")
+            return retain_private_archive(
+                source_root,
+                source,
+                make_backup_receipt(key, source),
+                key,
+                private_base=self.layout.private_data_base,
+                backup_parent=_backup_parent(self.layout, key),
+                io=_private_io,
+                codec=_archive_codec,
+                recapture=lambda: _capture_target_snapshot(
+                    source_root, private_base=self.layout.private_data_base
+                ),
+                prepare=_prepare_private_tree,
+                write_file=_write_or_verify_file,
+            )
 
     def snapshot(self) -> PluginBackupRetentionSnapshotV1:
         preview = CodingArchPrivateDataDeletionPreview(self.layout, self.product)
@@ -127,7 +141,14 @@ class CodingArchPrivateDataBackupOwner:
     ) -> CodingArchPrivateDataBackupReceiptV1:
         """Reopen one exact archive without requiring its source to survive."""
 
-        return _programs.verify(self, key, backup_id)
+        if not _digest(backup_id):
+            raise ValueError("Coding Arch backup ID is invalid")
+        parent = _backup_parent(self.layout, key)
+        preview = CodingArchPrivateDataDeletionPreview(self.layout, self.product)
+        with preview._offline():
+            return _verify_retained_archive(
+                self.layout.private_data_base, parent, key, backup_id
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,7 +168,41 @@ class CodingArchPrivateDataBackupReadSource:
             raise ValueError("Coding Arch backup Product authority changed")
 
     def snapshot(self) -> PluginBackupRetentionSnapshotV1:
-        return _programs.retention_snapshot(self)
+        from .private_data_backup_expiry_journal import (
+            CodingArchPrivateDataBackupExpiryJournal,
+        )
+        from .private_data_backup_expiry_records import _tombstone_name
+
+        self.epoch_runtime.assert_current()
+        key = coding_arch_workspace_installation_key(self.layout.scope_id)
+        return read_posix_private_backup_retention(
+            self.epoch_runtime,
+            key,
+            read_expiry=lambda: CodingArchPrivateDataBackupExpiryJournal(
+                self.epoch_runtime.control_root / "product-state"
+            ).events(),
+            retained_receipts=lambda tombstone: _retained_receipts(
+                self.layout, key, allowed_tombstone=tombstone
+            ),
+            tombstone_name=lambda item: _tombstone_name(item.plan, item.confirmation),
+            revision_for=_backup_retention_revision,
+            revision_prefix="coding-arch-backup:",
+            label="Coding Arch",
+        )
+
+
+def _verify_retained_archive(
+    private_base: Path, parent: Path, key: PluginInstallationKeyV1, backup_id: str
+) -> CodingArchPrivateDataBackupReceiptV1:
+    return verify_retained_private_archive(
+        private_base,
+        parent,
+        backup_id,
+        key,
+        io=_private_io,
+        codec=_archive_codec,
+        installation_error="Coding Arch backup Installation changed",
+    )
 
 
 def _retained_receipts(
