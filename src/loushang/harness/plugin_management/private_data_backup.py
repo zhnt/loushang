@@ -46,6 +46,9 @@ class PrivateBackupReceipt(Protocol):
     @property
     def installation_key(self) -> PluginInstallationKeyV1: ...
 
+    @property
+    def source_target_id(self) -> str: ...
+
 
 S = TypeVar("S", bound=PrivateBackupSource)
 R = TypeVar("R", bound=PrivateBackupReceipt)
@@ -158,16 +161,8 @@ def verify_retained_private_archive(
         )
 
 
-class _DeletedBackupReceipt(PrivateBackupReceipt, Protocol):
-    @property
-    def source_target_id(self) -> str: ...
-
-
-_DeletedReceiptT = TypeVar("_DeletedReceiptT", bound=_DeletedBackupReceipt)
-
-
 def require_deleted_archive_receipt(
-    receipt: _DeletedBackupReceipt,
+    receipt: PrivateBackupReceipt,
     name: str,
     key: PluginInstallationKeyV1,
     *,
@@ -194,7 +189,7 @@ def read_deleted_restore_source(
     key: PluginInstallationKeyV1,
     *,
     io: PrivatePosixTreeIO,
-    codec: PrivateArchiveCodec[S, _DeletedReceiptT],
+    codec: PrivateArchiveCodec[S, R],
     deletion_events: Callable[
         [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
     ],

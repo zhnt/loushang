@@ -420,3 +420,22 @@ def decode_windows_deletion_event(
     if raw != canonical_json_bytes(event.to_dict()) + b"\n":
         raise ValueError(f"{label} deletion event is noncanonical")
     return event
+
+
+def read_windows_deletion_history(
+    transaction: WindowsPrivateDeletionTransaction[_TargetT, _EventT],
+) -> tuple[_EventT, ...]:
+    """Read a temporary history view and close it before releasing its caller's fence."""
+    try:
+        return transaction.events()
+    finally:
+        transaction._close()
+
+
+def require_finished_windows_deletion(
+    events: tuple[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget], ...],
+    *,
+    label: str,
+) -> None:
+    if events and events[-1].phase != "completed":
+        raise ValueError(f"{label} deletion is unfinished")

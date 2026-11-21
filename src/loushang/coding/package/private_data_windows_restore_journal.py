@@ -13,9 +13,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
-from loushang.coding.harness.plugin_management import (
-    private_data_windows_restore as _record_programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -23,8 +20,13 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management._private_data_custody import (
     private_data_mutation_fence,
 )
+from loushang.harness.plugin_management._private_data_deletion_windows import (
+    read_windows_deletion_history,
+    require_finished_windows_deletion,
+)
 from loushang.harness.plugin_management._private_data_restore_windows import (
     WindowsPrivateRestoreTransaction,
+    require_windows_restore_product_state,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
     latest_deleted_target_receipt,
@@ -74,17 +76,6 @@ _CONFIRM_NAME = re.compile(r"arch-restore-confirmation-([0-9]{8})\.json(\.stage)
 _CONFIRM_MAX_BYTES = 16 * 1024
 
 
-_PRIVATE_DATA_RECORD_VALUES = {
-    "value_01": "Windows Coding Arch restore publication is invalid",
-    "value_02": "arch-restore:[0-9a-f]{64}",
-    "value_03": "Windows Coding Arch restore publication fields changed",
-    "value_04": "Windows Coding Arch restore publication identity changed",
-    "value_05": "Windows Coding Arch restore Product state changed",
-    "value_06": "Windows Coding Arch deletion is unfinished",
-    "value_07": "Windows Coding Arch restore deletion changed",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class CodingWindowsArchRestorePublicationV1:
     restore_id: str
@@ -96,7 +87,27 @@ class CodingWindowsArchRestorePublicationV1:
     parent_identity: tuple[int, int]
 
     def __post_init__(self) -> None:
-        return _record_programs.validate_publication(self)
+        if (
+            not isinstance(self.restore_id, str)
+            or not re.fullmatch(r"arch-restore:[0-9a-f]{64}", self.restore_id)
+            or not isinstance(self.started_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", self.started_digest)
+            or not isinstance(self.plan_fingerprint, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", self.plan_fingerprint)
+            or type(self.desired_inventory_revision) is not int
+            or self.desired_inventory_revision < 0
+            or type(self.generation_number) is not int
+            or not 2 <= self.generation_number <= 4097
+            or type(self.stage_identity) is not tuple
+            or len(self.stage_identity) != 5
+            or any(type(value) is not int or value < 0 for value in self.stage_identity)
+            or type(self.parent_identity) is not tuple
+            or len(self.parent_identity) != 2
+            or any(
+                type(value) is not int or value < 0 for value in self.parent_identity
+            )
+        ):
+            raise ValueError("Windows Coding Arch restore publication is invalid")
 
     @property
     def stage_name(self) -> str:
@@ -115,7 +126,29 @@ class CodingWindowsArchRestorePublicationV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingWindowsArchRestorePublicationV1:
-        return _record_programs.decode_publication(cls, value)
+        if type(value) is not dict or set(value) != {
+            "desiredInventoryRevision",
+            "generationNumber",
+            "parentIdentity",
+            "planFingerprint",
+            "restoreId",
+            "stageIdentity",
+            "startedDigest",
+        }:
+            raise ValueError("Windows Coding Arch restore publication fields changed")
+        parent = value["parentIdentity"]
+        stage = value["stageIdentity"]
+        if type(parent) is not list or type(stage) is not list:
+            raise ValueError("Windows Coding Arch restore publication identity changed")
+        return cls(
+            restore_id=value["restoreId"],
+            started_digest=value["startedDigest"],
+            plan_fingerprint=value["planFingerprint"],
+            desired_inventory_revision=value["desiredInventoryRevision"],
+            generation_number=value["generationNumber"],
+            stage_identity=tuple(stage),
+            parent_identity=tuple(parent),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,7 +257,23 @@ class CodingWindowsArchPrivateDataRestoreTransaction(
     def _require_plan_current(
         self, plan: CodingArchPrivateDataRestorePlanV1
     ) -> CodingArchPrivateDataTargetSnapshotV1:
-        return _record_programs.require_plan_current(self, plan)
+        desired, transitions = self.product.desired_state.capture()
+        require_windows_restore_product_state(
+            desired,
+            plan.installation_key,
+            expected_revision=plan.desired_inventory_revision,
+            transitions=transitions,
+            error=f"{self._label} restore Product state changed",
+        )
+        events = read_windows_deletion_history(
+            CodingWindowsArchPrivateDataDeletionTransaction(
+                self.product.state_root, self.state_fd
+            )
+        )
+        require_finished_windows_deletion(events, label=self._label)
+        if _latest_deletion_receipt(events, plan) != plan.deletion_receipt_id:
+            raise ValueError(f"{self._label} restore deletion changed")
+        return self._verify_plan_archive(plan)
 
     def _verify_plan_archive(
         self, plan: CodingArchPrivateDataRestorePlanV1

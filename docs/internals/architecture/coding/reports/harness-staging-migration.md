@@ -329,6 +329,22 @@ and adds 101 formal Harness lines. Production Python decreases by 143 lines.
 All 99 selected journal, wire, expiry, failure and replay cases pass on Linux,
 including portable Windows native-port probes.
 
+### Formal Windows Restore And Preview
+
+The native restore preview reads the deleted archive through the same
+Harness parent scope used by retained verification and the restore writer.
+The archive owner binds the completed deletion before verifying bytes and
+releases the descriptor before the preview inspects the destination. Both
+restore routes share the completed-deletion check and the scoped removal
+proof. The writer also checks the exact Installation's transition history.
+
+Coding retains the historical publication codec, target and stage naming,
+Product scope and plan construction. Both temporary Windows restore modules
+have been removed. Production Python decreases by 18 lines, with 178 removed
+from staging, 74 added to Coding Product and 86 added to formal Harness.
+All 293 selected Windows contracts pass with inert native ports on Linux,
+including the full original preview parent failure and descriptor traces.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

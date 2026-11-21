@@ -39,6 +39,8 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
 
+from .journal_codecs import PluginDesiredStateJournalTransition
+from .ledger import PluginDesiredStateSnapshotV1
 from .private_data_deletion import PrivateDataDeletionTarget
 from .private_data_restore_journal import (
     PrivateDataRestoreConfirmation,
@@ -46,6 +48,33 @@ from .private_data_restore_journal import (
     validate_restore_history,
 )
 from .records import PluginInstallationKeyV1
+
+
+def require_windows_restore_product_state(
+    desired: PluginDesiredStateSnapshotV1,
+    key: PluginInstallationKeyV1,
+    *,
+    error: str,
+    expected_revision: int | None = None,
+    transitions: tuple[PluginDesiredStateJournalTransition, ...] = (),
+) -> None:
+    state = desired.installation(key)
+    if (
+        state.latest_instance_revision_ref is None
+        or state.selection.desired_state != "absent"
+        or (
+            expected_revision is not None
+            and (
+                desired.inventory_revision < expected_revision
+                or any(
+                    item.inventory_revision > expected_revision
+                    and item.mutation.installation_key == key
+                    for item in transitions
+                )
+            )
+        )
+    ):
+        raise ValueError(error)
 
 
 class _RestorePlan(Protocol):
