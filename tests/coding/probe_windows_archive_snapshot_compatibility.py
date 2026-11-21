@@ -12,6 +12,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
+
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="real POSIX descriptor ports"
 )
@@ -344,7 +348,7 @@ def _observe(case, base, monkeypatch):
             == "present:"
             + sha256(
                 b"loushang.coding-arch-windows-backup-archive/v1\0"
-                + backup.canonical_json_bytes(result.to_dict())
+                + canonical_json_bytes(result.to_dict())
             ).hexdigest()
         )
         outcome = {"result": "exact_snapshot", "manifest_bytes": len(manifest_raw)}

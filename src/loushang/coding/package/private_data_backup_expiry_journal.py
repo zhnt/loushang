@@ -11,12 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding.harness.plugin_management import (
-    private_data_expiry_events as _record_programs,
-)
 from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
 from loushang.harness.plugin_management._private_data_expiry import (
     PrivateDataExpiryJournal,
+    validate_expiry_event,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -35,13 +33,6 @@ _MAX_RECORDS = 4096
 _MAX_BYTES = 64 * 1024 * 1024
 
 
-_PRIVATE_DATA_RECORD_VALUES = {
-    "value_01": "Coding Arch backup expiry event is invalid",
-    "value_02": "Coding Arch backup expiry archive changed",
-    "value_03": "Coding Arch backup expiry receipt changed",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class CodingArchPrivateDataBackupExpiryEventV1:
     revision: int
@@ -53,7 +44,17 @@ class CodingArchPrivateDataBackupExpiryEventV1:
     record_version: int = 1
 
     def __post_init__(self) -> None:
-        return _record_programs.validate_event(self)
+        validate_expiry_event(
+            self,
+            plan_type=CodingArchPrivateDataBackupExpiryPlanV1,
+            confirmation_type=CodingArchPrivateDataBackupExpiryConfirmationV1,
+            archive_type=CodingArchPrivateDataTargetSnapshotV1,
+            receipt_for=CodingArchPrivateDataBackupExpiryReceiptV1.create,
+            receipt_type=CodingArchPrivateDataBackupExpiryReceiptV1,
+            label="Coding Arch",
+            unstarted_effects_error="Unstarted backup expiry has effects",
+            unfinished_receipt_error="Unfinished backup expiry cannot claim a receipt",
+        )
 
     def to_dict(self) -> dict[str, object]:
         return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.encode(self, sort_keys=True)

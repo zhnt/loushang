@@ -603,7 +603,10 @@ def observe(name, base, patch):
     original_import = builtins.__import__
 
     def resolve(name, *args, **kwargs):
-        if name.endswith("package_private_data_windows_deletion_journal"):
+        if name.rsplit(".", 1)[-1] in {
+            "package_private_data_windows_deletion_journal",
+            "private_data_windows_deletion_journal",
+        }:
             trace.append(["class-resolve"])
             if case == "getter-error":
                 raise ImportError("injected class resolution")

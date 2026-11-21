@@ -11,19 +11,21 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
 from loushang.coding.harness.package_product.epoch_identity import matches_epoch_layout
-from loushang.coding.harness.plugin_management import (
-    private_data_windows_preview as _programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._private_data_custody import (
+    windows_private_data_read_fence,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management._installation_root_windows import (
+    read_windows_private_target,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_tree_windows import (
@@ -68,12 +70,6 @@ _native_io = PrivateWindowsTreeIO(
 )
 
 
-_PRIVATE_DATA_FLOW_VALUES = {
-    "message_01": "Windows Coding Arch private-data root changed",
-    "message_02": "Windows Coding Arch private-data Product runtime is active",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class CodingWindowsArchPrivateDataReadPreview:
     """Observe one exact Installation without creating or deleting its data."""
@@ -103,12 +99,31 @@ class CodingWindowsArchPrivateDataReadPreview:
     def snapshot_for(
         self, key: PluginInstallationKeyV1
     ) -> CodingArchPrivateDataTargetSnapshotV1:
-        return _programs.snapshot_for(self, key)
+        root = coding_arch_installation_private_data_root(self.layout, key)
+        state_root = (
+            resolve_coding_package_epoch_layout(self.layout).control_root / "product-state"
+        )
+        with self._offline():
+            return read_windows_private_target(
+                root,
+                observe_root=lambda: inspect_coding_windows_arch_installation_root(
+                    self.layout, key, state_root=state_root
+                ),
+                capture=_capture_windows_target_snapshot,
+                absent=_absent_windows_target_snapshot,
+                changed="Windows Coding Arch private-data root changed",
+            )
 
-    @contextmanager
-    def _offline(self) -> Iterator[None]:
-        with _programs.offline(self) as borrowed:
-            yield borrowed
+    def _offline(self) -> AbstractContextManager[None]:
+        return windows_private_data_read_fence(self.product, label="Windows Coding Arch")
+
+
+def _absent_windows_target_snapshot(root: Path) -> CodingArchPrivateDataTargetSnapshotV1:
+    return CodingArchPrivateDataTargetSnapshotV1(
+        root_path_digest=sha256(os.fsencode(str(root))).hexdigest(),
+        root_identity=None,
+        members=(),
+    )
 
 
 def _capture_windows_target_snapshot(

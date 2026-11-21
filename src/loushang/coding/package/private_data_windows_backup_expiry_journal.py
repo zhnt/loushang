@@ -13,12 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Literal
 
-from loushang.coding.harness.plugin_management import (
-    private_data_windows_expiry_journal as _programs,
-)
-from loushang.coding.harness.plugin_management import (
-    private_data_windows_expiry_journal as _record_programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal.codec import decode_json_record
@@ -27,6 +21,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 from loushang.harness.plugin_management._private_data_backup_windows import (
     WindowsArchiveExpiryIO,
+)
+from loushang.harness.plugin_management._private_data_expiry import (
+    validate_expiry_event,
 )
 from loushang.harness.plugin_management._private_data_expiry_windows import (
     WindowsPrivateExpiryTransaction,
@@ -74,19 +71,6 @@ _MAX_EVENTS = 4096
 _MAX_EVENT_BYTES = 16 * 1024 * 1024
 
 
-_PRIVATE_DATA_FLOW_VALUES = {"message_01": "Windows Coding Arch backup archive changed"}
-
-
-_PRIVATE_DATA_RECORD_VALUES = {
-    "value_01": "Windows Coding Arch backup expiry event is invalid",
-    "value_02": "Windows Coding Arch backup expiry archive changed",
-    "value_03": "Unstarted Windows Coding Arch backup expiry has effects",
-    "value_04": "Windows Coding Arch backup expiry receipt changed",
-    "value_05": "Unfinished Windows Coding Arch backup expiry has receipt",
-    "value_06": "Windows Coding Arch backup expiry event fields changed",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class CodingWindowsArchBackupExpiryEventV1:
     revision: int
@@ -98,7 +82,16 @@ class CodingWindowsArchBackupExpiryEventV1:
     record_version: int = 1
 
     def __post_init__(self) -> None:
-        return _record_programs.validate_event(self)
+        validate_expiry_event(
+            self,
+            plan_type=CodingArchPrivateDataBackupExpiryPlanV1,
+            confirmation_type=CodingArchPrivateDataBackupExpiryConfirmationV1,
+            archive_type=CodingWindowsArchBackupArchiveSnapshotV1,
+            receipt_for=CodingArchPrivateDataBackupExpiryReceiptV1.create,
+            label="Windows Coding Arch",
+            unstarted_effects_error="Unstarted Windows Coding Arch backup expiry has effects",
+            unfinished_receipt_error="Unfinished Windows Coding Arch backup expiry has receipt",
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -113,7 +106,37 @@ class CodingWindowsArchBackupExpiryEventV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingWindowsArchBackupExpiryEventV1:
-        return _record_programs.decode_event(cls, value)
+        if type(value) is not dict or set(value) != {
+            "archive",
+            "confirmation",
+            "phase",
+            "plan",
+            "receipt",
+            "recordVersion",
+            "revision",
+        }:
+            raise ValueError("Windows Coding Arch backup expiry event fields changed")
+        archive = value["archive"]
+        receipt = value["receipt"]
+        return cls(
+            revision=value["revision"],
+            phase=value["phase"],
+            plan=CodingArchPrivateDataBackupExpiryPlanV1.from_dict(value["plan"]),
+            confirmation=CodingArchPrivateDataBackupExpiryConfirmationV1.from_dict(
+                value["confirmation"]
+            ),
+            archive=(
+                None
+                if archive is None
+                else CodingWindowsArchBackupArchiveSnapshotV1.from_dict(archive)
+            ),
+            receipt=(
+                None
+                if receipt is None
+                else CodingArchPrivateDataBackupExpiryReceiptV1.from_dict(receipt)
+            ),
+            record_version=value["recordVersion"],
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +238,14 @@ class CodingWindowsArchBackupExpiryTransaction(
         parent_fd: int,
         acl: WindowsPrivateDirectoryAcl,
     ) -> CodingWindowsArchBackupArchiveSnapshotV1:
-        return _programs.require_pre_effect_archive(self, plan, parent_fd, acl)
+        self._require_current_plan(plan)
+        receipt, source = _read_archive_manifest(parent_fd, plan.backup_id, acl)
+        archive = capture_windows_arch_backup_archive(
+            self.layout, plan.installation_key, plan.backup_id, source, receipt
+        )
+        if archive.target_id != plan.archive_target_id:
+            raise ValueError("Windows Coding Arch backup archive changed")
+        return archive
 
     def _require_recovery_authority(
         self, plan: CodingArchPrivateDataBackupExpiryPlanV1
