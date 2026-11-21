@@ -553,6 +553,7 @@ def _run_independent_product_worker_crash(
 def _run_independent_ordinary_worker_turn_crash(
     workspace_path: str,
     transcript_dir_path: str,
+    platform_home_path: str | None = None,
 ) -> None:
     """Crash a real Coding turn after its Product Worker Tool has answered."""
 
@@ -564,7 +565,12 @@ def _run_independent_ordinary_worker_turn_crash(
     report_stage("imports-ready")
     workspace = Path(workspace_path)
     package_product_runtime.version = lambda _distribution: "2.0.0"
-    os.environ["LOUSHANG_HOME"] = str(workspace.parent / "private-home")
+    platform_home = (
+        workspace.parent / "private-home"
+        if platform_home_path is None
+        else Path(platform_home_path)
+    )
+    os.environ["LOUSHANG_HOME"] = str(platform_home)
     settings = SettingsManager(
         global_settings_path=workspace.parent / "global-settings.json",
         project_settings_path=workspace / ".loushang" / "settings.json",
@@ -717,6 +723,7 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
                     ),
                     str(workspace),
                     str(transcript_dir),
+                    os.environ["LOUSHANG_HOME"],
                 ),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
@@ -1081,6 +1088,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
     update_while_direct_session_open: bool = False,
     author_with_public_cli: bool = False,
     retain_shared_session_history: bool = False,
+    persistent_session_root: Path | None = None,
 ) -> None:
     assert not disable_while_direct_session_open or direct_entry_only
     assert not update_while_direct_session_open or direct_entry_only
@@ -1107,8 +1115,10 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
     }
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
+    # Native store admission may create both the state and transcript roots.
+    session_root = tmp_path if persistent_session_root is None else persistent_session_root
     if native_mode == "repaired-release" or direct_entry_only or hosted_entry_only:
-        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "private-home"))
+        monkeypatch.setenv("LOUSHANG_HOME", str(session_root / "private-home"))
         if direct_entry_only or hosted_entry_only:
             monkeypatch.setattr(
                 "loushang.coding.package_product_runtime.version",
@@ -4001,7 +4011,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                 WorkspaceToolRegistry,
                             )
 
-                            cli_parent = tmp_path / "cli-session-store"
+                            cli_parent = session_root / "cli-session-store"
                             cli_parent.mkdir(mode=0o700)
                             cli_dir = cli_parent / "transcripts"
                             cli_dir.mkdir(mode=0o700)
@@ -4546,7 +4556,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             open_coding_product_worker_supervisor_journal(product)
                         )
                         incomplete_before_hosted = supervisor_journal.incomplete()
-                        hosted_sessions_parent = tmp_path / "hosted-session-files"
+                        hosted_sessions_parent = session_root / "hosted-session-files"
                         hosted_sessions_parent.mkdir(mode=0o700)
                         hosted_runtime = create_agent_session_runtime(
                             session_dir=hosted_sessions_parent / "sessions",
@@ -6135,7 +6145,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
 @pytest.mark.requires_host_runtime
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux H6 release")
 def test_explicit_worker_public_coding_session_reaches_installed_product(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, standalone_workspace: Path
 ) -> None:
     test_worker_source_catalog_pins_explicit_product_candidate(
         tmp_path,
@@ -6144,6 +6154,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         direct_entry_only=True,
         author_with_public_cli=True,
         retain_shared_session_history=True,
+        persistent_session_root=standalone_workspace,
     )
     workspace = tmp_path / "workspace"
     lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
@@ -7545,13 +7556,14 @@ def test_explicit_worker_public_coding_session_update_fences_pinned_product(
 @pytest.mark.requires_host_runtime
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux H6 release")
 def test_explicit_worker_hosted_first_session_reaches_installed_product(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, standalone_workspace: Path
 ) -> None:
     test_worker_source_catalog_pins_explicit_product_candidate(
         tmp_path,
         "installed-protocol",
         monkeypatch,
         hosted_entry_only=True,
+        persistent_session_root=standalone_workspace,
     )
 
 

@@ -7,9 +7,9 @@
 - Implementation/review: Codex `/root`, within the authorized Goal.
 - Design scope: the user-authorized intermediate `coding.harness` boundary;
   this report does not accept a final public Harness API or claim final extraction.
-- Implementation status: primary extraction scope frozen and local checkpoints
-  verified through Resume failure cleanup. Cumulative operation review,
-  validation and delivery remain open.
+- Implementation status: the intermediate operations and their existing
+  callers are recorded below. Cumulative local validation is complete for
+  production candidate `4255d9bbc` with the final test-fixture corrections.
 - Accepted starting source: `df0dca779aaf4211a673dc77ae87470b6c579087`.
 - Method: clean local `archmethod/master` at
   `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`, consulted locally, not vendored.
@@ -2610,8 +2610,10 @@ staging modules, and round-trips five historical Source snapshot pickles.
 The affected-path runs pass 92 private-data cases, 154 Resume cases, 125
 Worker receipt and payload cases, and the native Linux cross-process Worker
 operator case. The Linux PLC9C5 contract, native profile and Product canary
-reports satisfy their existing manifests. Existing Windows CI provides the
-native Windows verification.
+reports satisfy their existing manifests. The existing Actions plan selects
+native Windows AppHost checks, ConPTY and terminal contracts, and
+three-platform Resume smoke. Dedicated Worker coverage remains subject to the
+existing Harness, Windows Shell, and Worker Reboot workflow pauses.
 
 Resource loader and Continuity tests create independent fixture workspaces
 while pytest storage stays in the managed runtime. This exercises actual
@@ -2645,6 +2647,21 @@ on both the baseline and candidate.
 The final fixture recheck passes 13 Work Shell cases and the Workspace
 Preview scope-admission case. Each of the 251 failures or setup errors
 from the first 4,345-case Coding run has a passing focused recheck.
+
+The cumulative local runs passed 4,321 Coding, 6,359 Harness, 519 Hosting,
+3,246 AppHost, and 2,652 AppService cases. AppHost also passed its G8, G9,
+and G10 evidence checks and the installed Linux CLI canary. The remaining
+selected local checks and two end-to-end smoke cases passed.
+
+The existing five-file integration plan covered 247 tests. Of these, 245
+passed on the initial run with inputs unaffected by the fixture corrections.
+The two native Worker cases failed store admission under the workspace's
+group-writable ancestor. Both passed in isolated reruns using the existing
+standalone-workspace fixture. The CLI case exercised native Worker use,
+same-boot crash recovery, and prior-boot crash recovery with the same
+platform state directory in parent and child. The Hosted case exercised
+first-session persistence, Worker access, and revocation. The managed pytest
+runtime and the production storage checks remained in use.
 
 ## Cost And Final Acceptance
 
