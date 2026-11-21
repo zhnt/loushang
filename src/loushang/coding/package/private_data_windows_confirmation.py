@@ -12,6 +12,9 @@ from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal.codec import decode_json_record
+from loushang.harness.package_product._private_data_custody import (
+    windows_private_data_read_descriptor,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -139,13 +142,13 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
         """Read one exact private receipt through the current Product root."""
 
         self._require_plan(plan, confirmation)
-        return verify_windows_private_confirmation(
-            self.product, plan, confirmation,
-            read_record=lambda: read_windows_private_receipt(
+        with windows_private_data_read_descriptor(self.product):
+            raw = read_windows_private_receipt(
                 self._record_path(confirmation), maximum_bytes=_MAX_CONFIRMATION_BYTES
-            ),
-            decode=self._decode,
-        )
+            )
+            return verify_windows_private_confirmation(
+                raw, plan, confirmation, decode=self._decode
+            )
 
     def _record_path(
         self, confirmation: PluginPrivateDataDeletionConfirmationV1

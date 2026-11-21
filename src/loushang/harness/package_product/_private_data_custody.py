@@ -12,16 +12,18 @@ from typing import TYPE_CHECKING
 from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
 if TYPE_CHECKING:
-    from loushang.harness.package_product.product_local_wheel_runtime import (
-        PosixLocalWheelProductSessionOwner,
-        WindowsLocalWheelProductSessionOwner,
+    from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+    from loushang.harness.plugin_management.package_gc_reservation import (
+        PluginPackageGcReservationJournal,
     )
     from loushang.harness.resources.packages.product_epoch_guard import (
         PackageProductPosixFencedRuntimeOwner,
     )
 
-    from .ledger import PluginDesiredStateLedger
-    from .package_gc_reservation import PluginPackageGcReservationJournal
+    from .product_local_wheel_runtime import (
+        PosixLocalWheelProductSessionOwner,
+        WindowsLocalWheelProductSessionOwner,
+    )
 
 
 @contextmanager
@@ -59,6 +61,17 @@ def windows_private_data_read_fence(
         with product.gc_gate.read_guard():
             yield
         product.assert_private_data_read_authority_current()
+
+
+@contextmanager
+def windows_private_data_read_descriptor(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> Iterator[None]:
+    """Pin existing state for one exact read and recheck Product authority."""
+    product.assert_private_data_read_authority_current()
+    with product.epoch_runtime.borrow_product_state_root_descriptor():
+        yield
+    product.assert_private_data_read_authority_current()
 
 
 def private_read_state_identity(state_root: Path, *, message: str) -> tuple[int, int]:

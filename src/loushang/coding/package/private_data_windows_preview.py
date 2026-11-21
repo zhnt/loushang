@@ -18,14 +18,14 @@ from pathlib import Path
 
 from loushang.coding.harness.package_product.epoch_identity import matches_epoch_layout
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._private_data_custody import (
+    windows_private_data_read_fence,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management._installation_root_windows import (
     read_windows_private_target,
-)
-from loushang.harness.plugin_management._private_data_custody import (
-    windows_private_data_read_fence,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_tree_windows import (

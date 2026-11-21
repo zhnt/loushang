@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -34,11 +33,6 @@ from loushang.harness.plugin_management.private_data_deletion import (
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
 )
-
-if TYPE_CHECKING:
-    from loushang.harness.package_product.product_local_wheel_runtime import (
-        WindowsLocalWheelProductSessionOwner,
-    )
 
 PRIVATE_DATA_CONFIRMATION_RECORD_VERSION = 1
 
@@ -278,18 +272,12 @@ def accept_windows_private_confirmation(
 
 
 def verify_windows_private_confirmation(
-    product: WindowsLocalWheelProductSessionOwner,
+    raw: bytes | None,
     plan: PluginPrivateDataDeletionPlanV1,
     confirmation: PluginPrivateDataDeletionConfirmationV1,
     *,
-    read_record: Callable[[], bytes | None],
     decode: Callable[[bytes], PluginPrivateDataConfirmationRecordV1],
 ) -> bool:
-    """Read one exact immutable confirmation with its Product authority pinned."""
-    product.assert_private_data_read_authority_current()
-    with product.epoch_runtime.borrow_product_state_root_descriptor():
-        raw = read_record()
-        record = None if raw is None else decode(raw)
-        result = record is not None and record.plan == plan and record.confirmation == confirmation
-    product.assert_private_data_read_authority_current()
-    return result
+    """Compare the exact immutable confirmation read under the caller's authority."""
+    record = None if raw is None else decode(raw)
+    return record is not None and record.plan == plan and record.confirmation == confirmation

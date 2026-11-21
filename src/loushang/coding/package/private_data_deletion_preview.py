@@ -17,11 +17,11 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.package_product._private_data_custody import (
+    private_data_mutation_fence,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
-)
-from loushang.harness.plugin_management._private_data_custody import (
-    private_data_mutation_fence,
 )
 from loushang.harness.plugin_management._private_data_records import (
     PrivateDataMemberV1,

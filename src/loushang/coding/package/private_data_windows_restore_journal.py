@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import ClassVar
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._private_data_custody import (
+    private_data_mutation_fence,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
-)
-from loushang.harness.plugin_management._private_data_custody import (
-    private_data_mutation_fence,
 )
 from loushang.harness.plugin_management._private_data_deletion_windows import (
     read_windows_deletion_history,

@@ -371,7 +371,7 @@ Windows chains use these owners through the existing CLI and SDK entrypoints.
 
 | Chain | Formal implementation owner | Coding boundary |
 | --- | --- | --- |
-| Scope, target observation and root lineage | `_private_data_custody`, `_installation_root_windows`, and Resources private tree I/O | Product and workspace admission, Installation and Session path identity |
+| Scope, target observation and root lineage | Package Product `_private_data_custody`, Plugin Management `_installation_root_windows`, and Resources private tree I/O | Product and workspace admission, Installation and Session path identity |
 | Deletion plan, confirmation, execution and recovery | `private_data_deletion`, `private_data_confirmation`, and `_private_data_deletion_windows` | Operator approval, nominal record and tombstone name |
 | Retain, verify, inventory and status | `private_data_backup`, `_private_data_backup_windows`, and Package Product `_backup_topology` | Supported backup kind, root selection, historical manifest and receipt identity |
 | Restore, result confirmation and replay | `private_data_backup`, `private_data_restore_journal`, `_private_data_restore_windows`, and Resources tree I/O | Product removal admission, stage path, historical nominal types and codecs |
@@ -382,17 +382,24 @@ observation, retained-archive byte verification, the retention projection,
 archive-to-deletion proof, restore confirmation history lookup, canonical
 restore record field construction, the Windows archive parent read, and the
 expiry record validator. The 2,591 staging lines measure physical retirement.
-The 754-line system reduction includes deduplication and removed staging
+The 750-line system reduction includes deduplication and removed staging
 bindings, with Product and Harness additions included in the accounting.
+
+The cumulative architecture check caught two reverse type references from
+Plugin Management to Package Product. The existing custody module is now with
+its Product fence owner. Plugin Management compares the exact confirmation
+record under that custody. This correction adds three Coding Product lines
+and one formal Harness line. The existing acyclic dependency test and
+15 original confirmation storage cases pass after the correction.
 
 | Tracked production Python under `src/loushang` | Baseline `588b473bb` | Delivery | Delta |
 | --- | ---: | ---: | ---: |
-| Coding Product | 87,707 | 88,727 | +1,020 |
+| Coding Product | 87,707 | 88,730 | +1,023 |
 | `coding.harness` | 19,816 | 17,225 | −2,591 |
-| Formal Harness | 380,398 | 381,215 | +817 |
+| Formal Harness | 380,398 | 381,216 | +818 |
 | Hosting | 14,235 | 14,235 | 0 |
 | Other production Python | 154,018 | 154,018 | 0 |
-| Total | 656,174 | 655,420 | −754 |
+| Total | 656,174 | 655,424 | −750 |
 
 The import audit traversed 491 local modules from 14 shared owners and found
 no import edge or literal module destination in Coding. A declaration

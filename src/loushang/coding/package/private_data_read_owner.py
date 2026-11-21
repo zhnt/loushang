@@ -14,7 +14,7 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout as resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.journal import JournalLoadPolicy
-from loushang.harness.plugin_management._private_data_custody import (
+from loushang.harness.package_product._private_data_custody import (
     assert_private_read_current,
     private_data_read_fence,
     private_read_state_identity,
