@@ -2637,6 +2637,15 @@ Standalone fixture workspaces also pass the 79 Repository and interactive
 Goal cases and the 15 hosted interactive Goal cases. These cover planning,
 original Work and Session ownership, verification, review and cancellation.
 
+Managed model restore and hosted review cancellation pass when run serially
+after the other suites have exited. They exercise the original 60-second
+and 20-second deadlines. Earlier concurrent runs reached those deadlines
+on both the baseline and candidate.
+
+The final fixture recheck passes 13 Work Shell cases and the Workspace
+Preview scope-admission case. Each of the 251 failures or setup errors
+from the first 4,345-case Coding run has a passing focused recheck.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, formal Harness, Hosting,

@@ -2437,11 +2437,11 @@ def test_goal_planning_tool_scope_uses_resolved_effects_and_preserves_caller_den
 
 
 def test_goal_model_planning_sdk_bounds_failed_calls_without_implementation(
-    tmp_path, monkeypatch
+    standalone_workspace, monkeypatch
 ):
     from loushang.coding.adapters import _goal_planning_limits as limits
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
     calls = []
 
     async def fail_model(model, context, options):
@@ -2452,8 +2452,8 @@ def test_goal_model_planning_sdk_bounds_failed_calls_without_implementation(
 
     async def scenario():
         owner = await CodingGoal.open(
-            workspace=_goal_project(tmp_path),
-            data_root=tmp_path / "data",
+            workspace=_goal_project(standalone_workspace),
+            data_root=standalone_workspace / "data",
             model=_goal_offline_model(),
             model_planning=True,
         )
@@ -2541,14 +2541,14 @@ def test_goal_planning_fixed_verifier_scope_executes_without_model_authority(
 @pytest.mark.parametrize("pause_while_planning", [False, True])
 @pytest.mark.parametrize("source_binding", [False, True])
 def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
-    tmp_path, monkeypatch, pause_while_planning, source_binding
+    standalone_workspace, monkeypatch, pause_while_planning, source_binding
 ):
     from loushang.ai.api_registry import get_default_api_registry
     from loushang.ai.json_codec import serialize_message
     from loushang.ai.model import Auth
     from loushang.ai.prepared_request import PreparedModelRequest
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
 
     async def scenario():
         entered, release = asyncio.Event(), asyncio.Event()
@@ -2621,8 +2621,8 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
                 ),
             )
             owner = await CodingGoal.open(
-                workspace=_goal_project(tmp_path),
-                data_root=tmp_path / "data",
+                workspace=_goal_project(standalone_workspace),
+                data_root=standalone_workspace / "data",
                 model=model,
                 model_planning=True,
                 transcript_retained_until=(
@@ -2692,8 +2692,8 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
             registry.unregister_api_adapters(adapter.api)
         assert owner is not None
         before = {
-            str(p.relative_to(tmp_path)): driver.digest(p.read_bytes())
-            for p in tmp_path.rglob("*")
+            str(p.relative_to(standalone_workspace)): driver.digest(p.read_bytes())
+            for p in standalone_workspace.rglob("*")
             if p.is_file()
         }
         cold = inspect_goal(
@@ -2710,8 +2710,8 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
             ]
             assert cold.planning["batches"][-1]["admission"] == "admitted"
         after = {
-            str(p.relative_to(tmp_path)): driver.digest(p.read_bytes())
-            for p in tmp_path.rglob("*")
+            str(p.relative_to(standalone_workspace)): driver.digest(p.read_bytes())
+            for p in standalone_workspace.rglob("*")
             if p.is_file()
         }
         assert before == after
@@ -2723,7 +2723,7 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
                 p for p in (owner.data_root / "sessions").glob("20*.jsonl")
             ),
             conversation_id=owner.session_id,
-            store_state_root=tmp_path / "platform/state/session-stores",
+            store_state_root=standalone_workspace / "platform/state/session-stores",
         )
         try:
             sources = await read_goal_work_sources(
@@ -2802,14 +2802,14 @@ def _goal_offline_model():
 
 
 @pytest.mark.parametrize("close_during_cancel", [False, True])
-def test_goal_verification_cancel_waits_for_original_command_owner_before_close(tmp_path, monkeypatch, close_during_cancel):
+def test_goal_verification_cancel_waits_for_original_command_owner_before_close(standalone_workspace, monkeypatch, close_during_cancel):
     from loushang.agent.types import AgentToolResult
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
 
     async def scenario():
         owner = await CodingGoal.open(
-            workspace=_goal_project(tmp_path), data_root=tmp_path / "data",
+            workspace=_goal_project(standalone_workspace), data_root=standalone_workspace / "data",
             model=_goal_offline_model(), stream_fn=_goal_text_transport(),
         )
         entered, drained, aborted = asyncio.Event(), asyncio.Event(), asyncio.Event()
@@ -2920,13 +2920,13 @@ def _goal_text_transport():
 
 @pytest.mark.parametrize("arrival", ["steer_in_prompt", "follow_in_prompt", "handoff"])
 def test_goal_repair_input_preserves_original_source_groups(
-    tmp_path, monkeypatch, arrival
+    standalone_workspace, monkeypatch, arrival
 ):
     from loushang.agent import synthetic_model_transport
     from loushang.harnesswork.goal import GoalBasis, PolicyStop
     from loushang.harnesswork.integrations.transcript import resolve_work_transcript
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
 
     async def scenario():
         transport = _goal_text_transport()
@@ -2943,8 +2943,8 @@ def test_goal_repair_input_preserves_original_source_groups(
             return await transport(model, context, options)
 
         owner = await CodingGoal.open(
-            workspace=_goal_project(tmp_path),
-            data_root=tmp_path / "data",
+            workspace=_goal_project(standalone_workspace),
+            data_root=standalone_workspace / "data",
             model=_goal_offline_model(),
             stream_fn=stream,
             transcript_retained_until=datetime.now(UTC) + timedelta(days=1),
@@ -3016,7 +3016,7 @@ def test_goal_repair_input_preserves_original_source_groups(
 
 
 def test_goal_method_batches_record_original_sources_and_cold_read_in_new_process(
-    tmp_path, monkeypatch
+    standalone_workspace, monkeypatch
 ):
     import subprocess
 
@@ -3024,13 +3024,13 @@ def test_goal_method_batches_record_original_sources_and_cold_read_in_new_proces
     from loushang.harness.transcript.source_reader import TranscriptSourceReader
     from loushang.harnesswork.integrations.transcript import WorkTranscriptExpired
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
 
     async def scenario():
         deadline = datetime.now(UTC) + timedelta(days=1)
         owner = await CodingGoal.open(
-            workspace=_goal_project(tmp_path),
-            data_root=tmp_path / "data",
+            workspace=_goal_project(standalone_workspace),
+            data_root=standalone_workspace / "data",
             model=_goal_offline_model(),
             stream_fn=_goal_text_transport(),
             transcript_retained_until=deadline,
@@ -3060,7 +3060,7 @@ def test_goal_method_batches_record_original_sources_and_cold_read_in_new_proces
         reader = TranscriptSourceReader(
             session_file=session_file,
             conversation_id=owner.session_id,
-            store_state_root=tmp_path / "platform/state/session-stores",
+            store_state_root=standalone_workspace / "platform/state/session-stores",
         )
 
         async def read_sources():
@@ -3185,7 +3185,7 @@ asyncio.run(main())
             reader = TranscriptSourceReader(
                 session_file=session_file,
                 conversation_id=owner.session_id,
-                store_state_root=tmp_path / "platform/state/session-stores",
+                store_state_root=standalone_workspace / "platform/state/session-stores",
             )
 
             content = session_file.read_bytes()
@@ -3210,19 +3210,19 @@ asyncio.run(main())
 
 @pytest.mark.parametrize("stage", ["before_intent", "after_intent"])
 def test_goal_bound_candidate_expiry_preserves_original_dispatch_outcome(
-    tmp_path, monkeypatch, stage
+    standalone_workspace, monkeypatch, stage
 ):
     from loushang.harnesswork.integrations.transcript import (
         WorkTranscriptExpired,
         WorkTranscriptSource,
     )
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
 
     async def scenario():
         owner = await CodingGoal.open(
-            workspace=_goal_project(tmp_path),
-            data_root=tmp_path / "data",
+            workspace=_goal_project(standalone_workspace),
+            data_root=standalone_workspace / "data",
             model=_goal_offline_model(),
             stream_fn=_goal_text_transport(),
             transcript_retained_until=datetime.now(UTC) + timedelta(days=1),
