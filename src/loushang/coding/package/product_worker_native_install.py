@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from importlib.metadata import version
-from pathlib import Path
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -54,21 +53,3 @@ def repair_coding_product_worker_native_release(
     return _product_native_release_custody(
         wheel_version=lambda: version("loushang")
     ).repair(product_owner, approval_owner=approval_owner, approved=approved)
-
-
-def _verified_wheel_members(wheel: bytes) -> dict[str, bytes]:
-    return _product_native_release_custody(
-        wheel_version=lambda: version("loushang")
-    )._verified_wheel_members(wheel)
-
-
-def _write_stage(
-    stage: Path,
-    files: dict[str, bytes],
-    wheel: bytes,
-    approved: CodingWorkerNativeReleaseApprovalV1,
-    product_owner: PosixLocalWheelProductSessionOwner,
-) -> None:
-    return _product_native_release_custody(
-        wheel_version=lambda: version("loushang")
-    )._write_stage(stage, files, wheel, approved, product_owner)

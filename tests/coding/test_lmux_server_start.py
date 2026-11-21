@@ -9,6 +9,7 @@ from loushang.apphost.managed.contracts import ManagedServiceKeyV1
 from loushang.coding.cli import lmux
 
 from .test_lmux_command import managed_cli as managed_cli
+from .test_lmux_command import mux_workspace as mux_workspace
 
 CLI_MAIN = lmux.main
 

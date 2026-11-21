@@ -51,6 +51,9 @@ LEGACY_SKILL_BODY_PATH = Path(
 METHOD_LOADER_PATH = Path("src/loushang/method/loader.py")
 CODING_CLI_PATH = Path("src/loushang/coding/cli/application.py")
 CODING_BOOTSTRAP_PATH = Path('src/loushang/coding/composition/bootstrap.py')
+CODING_CATALOG_PREPARATION_PATH = Path(
+    "src/loushang/coding/harness/session/catalog_preparation.py"
+)
 RESOURCE_REFRESH_PATH = Path("src/loushang/harness/session/resource_refresh.py")
 RESOURCE_OWNER_AUTHORITY_PATH = Path(
     "src/loushang/harness/resource_catalog/_owner_authority.py"
@@ -324,7 +327,9 @@ def test_rcp54_refresh_has_one_async_catalog_publication_authority() -> None:
     assert "request_resource_refresh=self.request_resource_refresh" in product_source
     assert "prepare_resource_catalog_refresh" in coding_source
     assert "build_coding_initial_resource_catalog_adapter" in coding_source
-    assert "prepare_catalog_input_receipt" in coding_source
+    preparation_source = CODING_CATALOG_PREPARATION_PATH.read_text(encoding="utf-8")
+    assert "require_catalog_receipt(" in coding_source
+    assert "loader.prepare_catalog_input_receipt(cwd)" in preparation_source
     assert "catalog_generation=catalog_generation" in coding_source
 
 
@@ -355,7 +360,9 @@ def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
     assert "class SkillLoader" not in skill_source
     assert "CodingSkillLoader" not in coding_runtime
     assert '"SkillLoader"' not in coding_init
-    assert "prepare_catalog_input_receipt" in coding_source
+    preparation_source = CODING_CATALOG_PREPARATION_PATH.read_text(encoding="utf-8")
+    assert "require_catalog_receipt(" in coding_source
+    assert "loader.prepare_catalog_input_receipt(cwd)" in preparation_source
     assert "prepare_bootstrap_projection" in coding_source
     assert "reload_resources(" not in coding_source
     assert "_discover_snapshot" not in input_source

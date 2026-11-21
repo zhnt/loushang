@@ -7,6 +7,7 @@ import json
 import shlex
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +17,11 @@ from loushang.coding.ui.product_binding import build_coding_ui_controller
 from loushang.harnesstui.conversation.intents import PromptIntent
 
 from .test_current_session_goal import _model, _PreparedAdapter
+
+
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    return standalone_workspace
 
 
 class TaskAdapter(_PreparedAdapter):

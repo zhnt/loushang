@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import cast
 
@@ -26,8 +25,6 @@ from .product_worker_history_retention import CodingWorkerHistoryRetentionReview
 from .product_worker_payload import CodingWorkerPayloadDebtPlanV1
 from .product_worker_receipt import CodingWorkerReceiptRecordV1
 from .product_worker_start_gate_journal import CodingWorkerStartGateRecordV1
-
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 
 
 class CodingWorkerRegisteredRecoveryError(ValueError):
@@ -103,15 +100,15 @@ def _recovery_bindings() -> RecoveryBindings[CodingWorkerHistoryRetentionReviewV
     from .product_worker_cleanup_evidence import (
         _HOST_DOMAIN,
         CodingPosixWorkerCleanupEvidenceAuthority,
+        _UnderGuardCleanupEvidenceAuthority,
+        _UnderGuardRegisteredCleanupEvidenceAuthority,
     )
     from .product_worker_crash_c5_settlement import (
         CodingWorkerCrashC5SettlementError,
-        _UnderGuardCleanupEvidenceAuthority,
     )
     from .product_worker_history_retention import _history_proof_bindings
     from .product_worker_registered_c5_settlement import (
         CodingWorkerRegisteredC5SettlementError,
-        _UnderGuardRegisteredCleanupEvidenceAuthority,
     )
     from .product_worker_registered_payload_repair import (
         CodingWorkerRegisteredPayloadRepairError,

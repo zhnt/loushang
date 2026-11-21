@@ -8,9 +8,12 @@ cleanup authority by itself.
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 
+from loushang.coding.harness.worker.windows_admission import (
+    is_attempt_id,
+    is_windows_product,
+)
 from loushang.harness.package_product._windows_worker_recovery import (
     review_windows_product_worker_no_effect_under_guard,
 )
@@ -38,9 +41,7 @@ from .product_worker_windows_stage_retirement import (
 )
 from .product_worker_windows_stage_review import FileIdentity, _inspection
 
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
-_MAX_REVIEW_BYTES = 32768
 
 _RESERVED_HISTORY_ERROR = "coding_worker_reserved_history_unverified"
 _UNLAUNCHED_HISTORY_ERROR = "coding_worker_unlaunched_history_unverified"
@@ -60,10 +61,6 @@ class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsReservedStageReviewMet
     _record_kind = "reserved"
     _record_error = CodingWindowsWorkerReservedReviewError
     _record_error_code = "coding_worker_reserved_review_invalid"
-
-    @classmethod
-    def _record_maximum(cls) -> int:
-        return _MAX_REVIEW_BYTES
 
     attempt_id: str
     intent_fingerprint: str
@@ -100,12 +97,8 @@ def review_coding_windows_product_worker_settled_unlaunched(
 def _review_no_effect(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str, settled: bool
 ) -> CodingWindowsWorkerReservedNoEffectReviewV1:
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or _ATTEMPT.fullmatch(attempt_id) is None
+    if not is_windows_product(product, "coding", os.name) or not is_attempt_id(
+        attempt_id
     ):
         role = "unlaunched" if settled else "reserved"
         raise OSError(f"Windows Worker {role} review requires a Product owner")

@@ -8,7 +8,8 @@ custody through replay, proof, exact member deletion and receipt publication.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, Protocol, TypeVar, cast
@@ -65,6 +66,7 @@ from ._windows_worker_recovery import (
 )
 from ._worker_windows_attempt import (
     WindowsWorkerRetirementRecords,
+    _IntentRecord,
     _RuntimeReview,
     _StageCaptureIntent,
     inspect_windows_product_worker_retirement_ids,
@@ -108,6 +110,7 @@ _ReviewCo = TypeVar(
 )
 _ReceiptT = TypeVar("_ReceiptT", bound=_WindowsStageRetirementReceiptMethods)
 _IntentT = TypeVar("_IntentT", bound=_RetirementLaunchIntent)
+_ReviewRecordT = TypeVar("_ReviewRecordT", bound=_IntentRecord)
 
 
 class _ReviewCompleteStage(Protocol[_ReviewCo]):
@@ -143,6 +146,66 @@ def has_other_windows_worker_retirement_artifact(
     )
 
 
+@contextmanager
+def _bound_retirement_root(
+    product: WindowsLocalWheelProductSessionOwner,
+    inspection: Callable[[], WindowsStageInspection],
+    *,
+    error_type: type[Exception],
+    active_message: str,
+    root_changed: str,
+) -> Iterator[tuple[PackageWindowsRuntimeQuiescenceV1, int]]:
+    with windows_product_worker_offline_write(
+        product, active_error=error_type, active_message=active_message
+    ) as quiescence:
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            require_windows_worker_retirement_root(
+                product, root, inspection, error_type, root_changed
+            )
+            yield quiescence, root
+
+
+def _receipt_for_review(
+    receipt_type: type[_ReceiptT],
+    review: (
+        _WindowsCompleteStageReviewMethods
+        | _WindowsPartialStageReviewMethods
+        | _WindowsReservedStageReviewMethods
+        | _WindowsCrashStageReviewMethods
+    ),
+) -> _ReceiptT:
+    return cast(Callable[..., _ReceiptT], receipt_type)(
+        attempt_id=review.attempt_id,
+        review_fingerprint=review.fingerprint,
+        stage_identity=review.stage_identity[:2],
+    )
+
+
+def _publish_retirement_completion(
+    records: WindowsWorkerRetirementRecords[_ReviewRecordT, _ReceiptT],
+    io: WindowsPrivateReceiptIO,
+    product: WindowsLocalWheelProductSessionOwner,
+    root: int,
+    start: _ReviewRecordT,
+    receipt: _ReceiptT,
+    *,
+    stage_error: type[Exception],
+    stage_retained: str,
+    publication_changed: str,
+) -> _ReceiptT:
+    if windows_worker_stage_exists(root, start.attempt_id):
+        raise stage_error(stage_retained)
+    records.publish_receipt(
+        product,
+        start,
+        receipt,
+        write=io.write_private_receipt,
+        read=records.read_receipt,
+        changed_message=publication_changed,
+    )
+    return receipt
+
+
 @dataclass(frozen=True, slots=True)
 class WindowsProductWorkerCompleteStageRetirement(
     Generic[_ReviewT, _ReceiptT, _IntentT]
@@ -155,7 +218,6 @@ class WindowsProductWorkerCompleteStageRetirement(
     read_intent: Callable[[WindowsLocalWheelProductSessionOwner, str], _IntentT | None]
     review_stage: _ReviewCompleteStage[_ReviewT]
     inspection: Callable[[], WindowsStageInspection]
-    review_maximum: Callable[[], int]
     error_prefix: str
 
     entry_product_id: str | None = None
@@ -180,90 +242,80 @@ class WindowsProductWorkerCompleteStageRetirement(
             review_type=self.records.review_type,
             message=self.entry_required_message,
         )
-        with windows_product_worker_offline_write(
+        with _bound_retirement_root(
             product,
-            active_error=self.records.error_type,
+            self.inspection,
+            error_type=self.records.error_type,
             active_message=self.error_prefix + "_runtime_active",
-        ) as quiescence:
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                require_windows_worker_retirement_root(
+            root_changed=self.error_prefix + "_root_changed",
+        ) as (quiescence, root):
+            start = self.records.read_start(product, expected_review.attempt_id)
+            completed = self.records.read_receipt(
+                product, expected_review.attempt_id
+            )
+            if start is None:
+                if completed is not None:
+                    raise self.records.error_type(
+                        self.error_prefix + "_start_missing"
+                    )
+                current = self.review_stage(
                     product,
-                    root,
-                    self.inspection,
-                    self.records.error_type,
-                    self.error_prefix + "_root_changed",
+                    attempt_id=expected_review.attempt_id,
+                    lease_owner_revision=quiescence.owner_revision,
+                )
+                if current != expected_review:
+                    raise self.records.error_type(
+                        self.error_prefix + "_review_stale"
+                    )
+                self.records.publish_start(
+                    self.records.start_path(product, expected_review.attempt_id),
+                    expected_review,
+                    write=self.io.write_private_receipt,
                 )
                 start = self.records.read_start(product, expected_review.attempt_id)
-                completed = self.records.read_receipt(
-                    product, expected_review.attempt_id
+            if start != expected_review:
+                raise self.records.error_type(self.error_prefix + "_review_stale")
+            self.require_history(product, start)
+            receipt = _receipt_for_review(self.records.receipt_type, start)
+            root_delete_intent = self.records.read_root_intent(
+                product, start.attempt_id
+            )
+            if root_delete_intent is not None and root_delete_intent != receipt:
+                raise self.records.error_type(
+                    self.error_prefix + "_root_intent_changed"
                 )
-                if start is None:
-                    if completed is not None:
-                        raise self.records.error_type(
-                            self.error_prefix + "_start_missing"
-                        )
-                    current = self.review_stage(
-                        product,
-                        attempt_id=expected_review.attempt_id,
-                        lease_owner_revision=quiescence.owner_revision,
-                    )
-                    if current != expected_review:
-                        raise self.records.error_type(
-                            self.error_prefix + "_review_stale"
-                        )
-                    self.io.write_private_receipt(
-                        self.records.start_path(product, expected_review.attempt_id),
-                        expected_review.to_bytes(),
-                        maximum_bytes=self.review_maximum(),
-                    )
-                    start = self.records.read_start(product, expected_review.attempt_id)
-                if start != expected_review:
-                    raise self.records.error_type(self.error_prefix + "_review_stale")
-                self.require_history(product, start)
-                receipt = cast(Callable[..., _ReceiptT], self.records.receipt_type)(
-                    attempt_id=start.attempt_id,
-                    review_fingerprint=start.fingerprint,
-                    stage_identity=start.stage_identity[:2],
-                )
-                root_delete_intent = self.records.read_root_intent(
-                    product, start.attempt_id
-                )
-                if root_delete_intent is not None and root_delete_intent != receipt:
-                    raise self.records.error_type(
-                        self.error_prefix + "_root_intent_changed"
-                    )
-                if completed is not None:
-                    if (
-                        completed != receipt
-                        or root_delete_intent != receipt
-                        or windows_worker_stage_exists(root, start.attempt_id)
-                    ):
-                        raise self.records.error_type(
-                            self.error_prefix + "_completed_changed"
-                        )
-                    return completed
+            if completed is not None:
                 if (
-                    not windows_worker_stage_exists(root, start.attempt_id)
-                    and root_delete_intent is None
+                    completed != receipt
+                    or root_delete_intent != receipt
+                    or windows_worker_stage_exists(root, start.attempt_id)
                 ):
                     raise self.records.error_type(
-                        self.error_prefix + "_stage_disappeared"
+                        self.error_prefix + "_completed_changed"
                     )
-                intent = self.read_intent(product, start.attempt_id)
-                if intent is None:
-                    raise self.records.error_type(self.error_prefix + "_intent_missing")
-                self.remove_remaining(product, root, start, intent, receipt)
-                if windows_worker_stage_exists(root, start.attempt_id):
-                    raise self.records.error_type(self.error_prefix + "_stage_retained")
-                self.records.publish_receipt(
-                    product,
-                    start,
-                    receipt,
-                    write=self.io.write_private_receipt,
-                    read=self.records.read_receipt,
-                    changed_message=self.error_prefix + "_publication_changed",
+                return completed
+            if (
+                not windows_worker_stage_exists(root, start.attempt_id)
+                and root_delete_intent is None
+            ):
+                raise self.records.error_type(
+                    self.error_prefix + "_stage_disappeared"
                 )
-                return receipt
+            intent = self.read_intent(product, start.attempt_id)
+            if intent is None:
+                raise self.records.error_type(self.error_prefix + "_intent_missing")
+            self.remove_remaining(product, root, start, intent, receipt)
+            return _publish_retirement_completion(
+                self.records,
+                self.io,
+                product,
+                root,
+                start,
+                receipt,
+                stage_error=self.records.error_type,
+                stage_retained=self.error_prefix + "_stage_retained",
+                publication_changed=self.error_prefix + "_publication_changed",
+            )
 
     def require_history(
         self, product: WindowsLocalWheelProductSessionOwner, review: _ReviewT
@@ -453,7 +505,6 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
     capture_partial: _CapturePartialReview[_PartialT]
     physical: Callable[[], WindowsStageRetirement]
     inspection: Callable[[], WindowsStageInspection]
-    review_maximum: Callable[[], int]
     error_prefix: str
 
     entry_product_id: str | None = None
@@ -473,81 +524,71 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
             review_type=self.records.review_type,
             message=self.entry_required_message,
         )
-        with windows_product_worker_offline_write(
+        with _bound_retirement_root(
             product,
-            active_error=self.records.error_type,
+            self.inspection,
+            error_type=self.records.error_type,
             active_message=self.error_prefix + "_runtime_active",
-        ) as quiescence:
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                require_windows_worker_retirement_root(
+            root_changed=self.error_prefix + "_root_changed",
+        ) as (quiescence, root):
+            start = self.records.read_start(product, expected_review.attempt_id)
+            completed = self.records.read_receipt(
+                product, expected_review.attempt_id
+            )
+            if start is None:
+                if completed is not None:
+                    raise self.records.error_type(
+                        self.error_prefix + "_start_missing"
+                    )
+                self.require_history(product, expected_review, stage_present=True)
+                current = self.capture_partial(
                     product,
-                    root,
-                    self.inspection,
-                    self.records.error_type,
-                    self.error_prefix + "_root_changed",
+                    attempt_id=expected_review.attempt_id,
+                    expected_stage=expected_review.stage_identity[:2],
+                    lease_owner_revision=quiescence.owner_revision,
+                )
+                if current != expected_review:
+                    raise self.records.error_type(
+                        self.error_prefix + "_review_stale"
+                    )
+                self.records.publish_start(
+                    self.records.start_path(product, expected_review.attempt_id),
+                    expected_review,
+                    write=self.io.write_private_receipt,
                 )
                 start = self.records.read_start(product, expected_review.attempt_id)
-                completed = self.records.read_receipt(
-                    product, expected_review.attempt_id
+            if start != expected_review:
+                raise self.records.error_type(self.error_prefix + "_review_stale")
+            receipt = _receipt_for_review(self.records.receipt_type, start)
+            root_intent = self.records.read_root_intent(product, start.attempt_id)
+            if root_intent is not None and root_intent != receipt:
+                raise self.records.error_type(
+                    self.error_prefix + "_root_intent_changed"
                 )
-                if start is None:
-                    if completed is not None:
-                        raise self.records.error_type(
-                            self.error_prefix + "_start_missing"
-                        )
-                    self.require_history(product, expected_review, stage_present=True)
-                    current = self.capture_partial(
-                        product,
-                        attempt_id=expected_review.attempt_id,
-                        expected_stage=expected_review.stage_identity[:2],
-                        lease_owner_revision=quiescence.owner_revision,
-                    )
-                    if current != expected_review:
-                        raise self.records.error_type(
-                            self.error_prefix + "_review_stale"
-                        )
-                    self.io.write_private_receipt(
-                        self.records.start_path(product, expected_review.attempt_id),
-                        expected_review.to_bytes(),
-                        maximum_bytes=self.review_maximum(),
-                    )
-                    start = self.records.read_start(product, expected_review.attempt_id)
-                if start != expected_review:
-                    raise self.records.error_type(self.error_prefix + "_review_stale")
-                receipt = cast(Callable[..., _ReceiptT], self.records.receipt_type)(
-                    attempt_id=start.attempt_id,
-                    review_fingerprint=start.fingerprint,
-                    stage_identity=start.stage_identity[:2],
-                )
-                root_intent = self.records.read_root_intent(product, start.attempt_id)
-                if root_intent is not None and root_intent != receipt:
+            stage_present = windows_worker_stage_exists(root, start.attempt_id)
+            self.require_history(product, start, stage_present=stage_present)
+            if completed is not None:
+                if completed != receipt or root_intent != receipt or stage_present:
                     raise self.records.error_type(
-                        self.error_prefix + "_root_intent_changed"
+                        self.error_prefix + "_completed_changed"
                     )
-                stage_present = windows_worker_stage_exists(root, start.attempt_id)
-                self.require_history(product, start, stage_present=stage_present)
-                if completed is not None:
-                    if completed != receipt or root_intent != receipt or stage_present:
-                        raise self.records.error_type(
-                            self.error_prefix + "_completed_changed"
-                        )
-                    return completed
-                if not stage_present and root_intent is None:
-                    raise self.records.error_type(
-                        self.error_prefix + "_stage_disappeared"
-                    )
-                self.remove_remaining(product, root, start, receipt)
-                if windows_worker_stage_exists(root, start.attempt_id):
-                    raise self.records.error_type(self.error_prefix + "_stage_retained")
-                self.records.publish_receipt(
-                    product,
-                    start,
-                    receipt,
-                    write=self.io.write_private_receipt,
-                    read=self.records.read_receipt,
-                    changed_message=self.error_prefix + "_publication_changed",
+                return completed
+            if not stage_present and root_intent is None:
+                raise self.records.error_type(
+                    self.error_prefix + "_stage_disappeared"
                 )
-                return receipt
+            self.remove_remaining(product, root, start, receipt)
+            return _publish_retirement_completion(
+                self.records,
+                self.io,
+                product,
+                root,
+                start,
+                receipt,
+                stage_error=self.records.error_type,
+                stage_retained=self.error_prefix + "_stage_retained",
+                publication_changed=self.error_prefix + "_publication_changed",
+            )
 
     def require_history(
         self,
@@ -633,7 +674,6 @@ class WindowsProductWorkerUnlaunchedStageRetirement(
     capture_reserved: _CaptureReservedReview[_IntentT, _ReservedT]
     physical: Callable[[], WindowsStageRetirement]
     inspection: Callable[[], WindowsStageInspection]
-    review_maximum: Callable[[], int]
     error_prefix: str
 
     entry_product_id: str | None = None
@@ -654,89 +694,79 @@ class WindowsProductWorkerUnlaunchedStageRetirement(
             message=self.entry_required_message,
             required_native_revision=2,
         )
-        with windows_product_worker_offline_write(
+        with _bound_retirement_root(
             product,
-            active_error=self.records.error_type,
+            self.inspection,
+            error_type=self.records.error_type,
             active_message=self.error_prefix + "_runtime_active",
-        ) as quiescence:
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                require_windows_worker_retirement_root(
+            root_changed=self.error_prefix + "_root_changed",
+        ) as (quiescence, root):
+            start = self.read_start(product, expected_review.attempt_id)
+            completed = self.records.read_receipt(
+                product, expected_review.attempt_id
+            )
+            if start is None:
+                if (
+                    completed is not None
+                    or self.records.read_root_intent(
+                        product, expected_review.attempt_id
+                    )
+                    is not None
+                ):
+                    raise self.records.error_type(
+                        self.error_prefix + "_start_missing"
+                    )
+                self.require_history(product, expected_review, stage_present=True)
+                intent = self.require_intent(product, expected_review)
+                current = self.capture_reserved(
                     product,
-                    root,
-                    self.inspection,
-                    self.records.error_type,
-                    self.error_prefix + "_root_changed",
+                    intent=intent,
+                    native_revision=2,
+                    lease_owner_revision=quiescence.owner_revision,
+                )
+                if current != expected_review:
+                    raise self.records.error_type(
+                        self.error_prefix + "_review_stale"
+                    )
+                self.records.publish_start(
+                    self.start_path(product, start_id=expected_review.attempt_id),
+                    expected_review,
+                    write=self.io.write_private_receipt,
                 )
                 start = self.read_start(product, expected_review.attempt_id)
-                completed = self.records.read_receipt(
-                    product, expected_review.attempt_id
+            if start != expected_review:
+                raise self.records.error_type(self.error_prefix + "_review_stale")
+            receipt = _receipt_for_review(self.records.receipt_type, start)
+            root_intent = self.records.read_root_intent(product, start.attempt_id)
+            if root_intent is not None and root_intent != receipt:
+                raise self.records.error_type(
+                    self.error_prefix + "_root_intent_changed"
                 )
-                if start is None:
-                    if (
-                        completed is not None
-                        or self.records.read_root_intent(
-                            product, expected_review.attempt_id
-                        )
-                        is not None
-                    ):
-                        raise self.records.error_type(
-                            self.error_prefix + "_start_missing"
-                        )
-                    self.require_history(product, expected_review, stage_present=True)
-                    intent = self.require_intent(product, expected_review)
-                    current = self.capture_reserved(
-                        product,
-                        intent=intent,
-                        native_revision=2,
-                        lease_owner_revision=quiescence.owner_revision,
-                    )
-                    if current != expected_review:
-                        raise self.records.error_type(
-                            self.error_prefix + "_review_stale"
-                        )
-                    self.io.write_private_receipt(
-                        self.start_path(product, start_id=expected_review.attempt_id),
-                        expected_review.to_bytes(),
-                        maximum_bytes=self.review_maximum(),
-                    )
-                    start = self.read_start(product, expected_review.attempt_id)
-                if start != expected_review:
-                    raise self.records.error_type(self.error_prefix + "_review_stale")
-                receipt = cast(Callable[..., _ReceiptT], self.records.receipt_type)(
-                    attempt_id=start.attempt_id,
-                    review_fingerprint=start.fingerprint,
-                    stage_identity=start.stage_identity[:2],
-                )
-                root_intent = self.records.read_root_intent(product, start.attempt_id)
-                if root_intent is not None and root_intent != receipt:
+            stage_present = windows_worker_stage_exists(root, start.attempt_id)
+            self.require_history(product, start, stage_present=stage_present)
+            intent = self.require_intent(product, start)
+            if completed is not None:
+                if completed != receipt or root_intent != receipt or stage_present:
                     raise self.records.error_type(
-                        self.error_prefix + "_root_intent_changed"
+                        self.error_prefix + "_completed_changed"
                     )
-                stage_present = windows_worker_stage_exists(root, start.attempt_id)
-                self.require_history(product, start, stage_present=stage_present)
-                intent = self.require_intent(product, start)
-                if completed is not None:
-                    if completed != receipt or root_intent != receipt or stage_present:
-                        raise self.records.error_type(
-                            self.error_prefix + "_completed_changed"
-                        )
-                    return completed
-                if not stage_present and root_intent is None:
-                    raise self.records.error_type(
-                        self.error_prefix + "_stage_disappeared"
-                    )
-                self.remove_remaining(product, root, start, intent, receipt)
-                if windows_worker_stage_exists(root, start.attempt_id):
-                    raise self.records.error_type(self.error_prefix + "_stage_retained")
-                self.records.publish_receipt(
-                    product,
-                    start,
-                    receipt,
-                    write=self.io.write_private_receipt,
-                    read=self.records.read_receipt,
-                    changed_message=self.error_prefix + "_publication_changed",
+                return completed
+            if not stage_present and root_intent is None:
+                raise self.records.error_type(
+                    self.error_prefix + "_stage_disappeared"
                 )
-                return receipt
+            self.remove_remaining(product, root, start, intent, receipt)
+            return _publish_retirement_completion(
+                self.records,
+                self.io,
+                product,
+                root,
+                start,
+                receipt,
+                stage_error=self.records.error_type,
+                stage_retained=self.error_prefix + "_stage_retained",
+                publication_changed=self.error_prefix + "_publication_changed",
+            )
 
     def require_history(
         self,
@@ -866,97 +896,86 @@ class WindowsProductWorkerCrashStageRetirement(Generic[_CrashT, _ReceiptT, _Inte
     read_intent: Callable[[WindowsLocalWheelProductSessionOwner, str], _IntentT | None]
     remove_complete: _RemoveCompleteStage[_IntentT, _ReceiptT]
     inspection: Callable[[], WindowsStageInspection]
-    review_maximum: Callable[[], int]
 
     def retire(
         self, product: WindowsLocalWheelProductSessionOwner, *, expected_review: _CrashT
     ) -> _ReceiptT:
-        with windows_product_worker_offline_write(
+        with _bound_retirement_root(
             product,
-            active_error=ValueError,
+            self.inspection,
+            error_type=ValueError,
             active_message="Windows Worker crash stage has active leases",
-        ) as quiescence:
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                require_windows_worker_retirement_root(
+            root_changed="Windows Worker crash stage root changed",
+        ) as (quiescence, root):
+            self.require_no_other(product, expected_review.attempt_id)
+            start = self.records.read_start(product, expected_review.attempt_id)
+            completed = self.records.read_receipt(
+                product, expected_review.attempt_id
+            )
+            root_intent = self.records.read_root_intent(
+                product, expected_review.attempt_id
+            )
+            if start is None:
+                if completed is not None or root_intent is not None:
+                    raise ValueError("Windows Worker crash stage start is missing")
+                current = self.review_stage(
                     product,
-                    root,
-                    self.inspection,
-                    ValueError,
-                    "Windows Worker crash stage root changed",
+                    attempt_id=expected_review.attempt_id,
+                    quiescence=quiescence,
                 )
-                self.require_no_other(product, expected_review.attempt_id)
-                start = self.records.read_start(product, expected_review.attempt_id)
-                completed = self.records.read_receipt(
-                    product, expected_review.attempt_id
-                )
-                root_intent = self.records.read_root_intent(
-                    product, expected_review.attempt_id
-                )
-                if start is None:
-                    if completed is not None or root_intent is not None:
-                        raise ValueError("Windows Worker crash stage start is missing")
-                    current = self.review_stage(
-                        product,
-                        attempt_id=expected_review.attempt_id,
-                        quiescence=quiescence,
-                    )
-                    if current != expected_review:
-                        raise ValueError("Windows Worker crash stage review is stale")
-                    self.io.write_private_receipt(
-                        self.records.start_path(product, expected_review.attempt_id),
-                        expected_review.to_bytes(),
-                        maximum_bytes=self.review_maximum(),
-                    )
-                    start = self.records.read_start(product, expected_review.attempt_id)
-                if start != expected_review:
-                    raise ValueError("Windows Worker crash stage review changed")
-                assert start is not None
-                receipt = cast(Callable[..., _ReceiptT], self.records.receipt_type)(
-                    attempt_id=start.attempt_id,
-                    review_fingerprint=start.fingerprint,
-                    stage_identity=start.stage_identity[:2],
-                )
-                if root_intent is not None and root_intent != receipt:
-                    raise ValueError("Windows Worker crash stage root intent changed")
-                present = windows_worker_stage_exists(root, start.attempt_id)
-                self.require_history(
-                    product, start, stage_present=present, quiescence=quiescence
-                )
-                if completed is not None:
-                    if completed != receipt or root_intent != receipt or present:
-                        raise ValueError("Windows Worker crash stage receipt changed")
-                    return completed
-                if not present and root_intent is None:
-                    raise ValueError("Windows Worker crash stage disappeared")
-                intent = self.read_intent(product, start.attempt_id)
-                if intent is None:
-                    raise ValueError(
-                        "Windows Worker crash stage launch intent is missing"
-                    )
-                self.remove_complete(
-                    product,
-                    root,
-                    start,
-                    intent,
-                    receipt,
-                    root_delete_intent_path=self.records.root_intent_path(
-                        product, start.attempt_id
-                    ),
-                    read_root_delete_intent=lambda: self.records.read_root_intent(
-                        product, start.attempt_id
-                    ),
-                )
-                if windows_worker_stage_exists(root, start.attempt_id):
-                    raise ValueError("Windows Worker crash stage remains")
-                self.records.publish_receipt(
-                    product,
-                    start,
-                    receipt,
+                if current != expected_review:
+                    raise ValueError("Windows Worker crash stage review is stale")
+                self.records.publish_start(
+                    self.records.start_path(product, expected_review.attempt_id),
+                    expected_review,
                     write=self.io.write_private_receipt,
-                    read=self.records.read_receipt,
-                    changed_message="Windows Worker crash stage receipt changed",
                 )
-                return receipt
+                start = self.records.read_start(product, expected_review.attempt_id)
+            if start != expected_review:
+                raise ValueError("Windows Worker crash stage review changed")
+            assert start is not None
+            receipt = _receipt_for_review(self.records.receipt_type, start)
+            if root_intent is not None and root_intent != receipt:
+                raise ValueError("Windows Worker crash stage root intent changed")
+            present = windows_worker_stage_exists(root, start.attempt_id)
+            self.require_history(
+                product, start, stage_present=present, quiescence=quiescence
+            )
+            if completed is not None:
+                if completed != receipt or root_intent != receipt or present:
+                    raise ValueError("Windows Worker crash stage receipt changed")
+                return completed
+            if not present and root_intent is None:
+                raise ValueError("Windows Worker crash stage disappeared")
+            intent = self.read_intent(product, start.attempt_id)
+            if intent is None:
+                raise ValueError(
+                    "Windows Worker crash stage launch intent is missing"
+                )
+            self.remove_complete(
+                product,
+                root,
+                start,
+                intent,
+                receipt,
+                root_delete_intent_path=self.records.root_intent_path(
+                    product, start.attempt_id
+                ),
+                read_root_delete_intent=lambda: self.records.read_root_intent(
+                    product, start.attempt_id
+                ),
+            )
+            return _publish_retirement_completion(
+                self.records,
+                self.io,
+                product,
+                root,
+                start,
+                receipt,
+                stage_error=ValueError,
+                stage_retained="Windows Worker crash stage remains",
+                publication_changed="Windows Worker crash stage receipt changed",
+            )
 
     def require_history(
         self,

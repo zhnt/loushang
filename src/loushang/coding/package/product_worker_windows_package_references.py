@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_history import (
     capture_windows_product_worker_reference_inputs_under_guard,
     review_windows_product_worker_package_references,
@@ -84,11 +85,7 @@ def review_coding_windows_worker_package_references(
 ) -> CodingWindowsWorkerPackageReferenceReviewV1:
     """Capture all preflight inputs while Package and Product guards stay held."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker Package references require their Product")
     return review_windows_product_worker_package_references(
         product,

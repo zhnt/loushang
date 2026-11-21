@@ -30,6 +30,11 @@ from loushang.coding.adapters._goal_repository_task import (
 from loushang.harnesswork.goal import GoalError
 
 
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    return standalone_workspace
+
+
 def task_package(tmp_path, *, initial="VALUE = 1\n"):
     root = tmp_path / "project"
     root.mkdir()

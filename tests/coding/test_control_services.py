@@ -130,7 +130,7 @@ def test_settings_manager_apply_overrides_is_session_only_and_flush_is_awaitable
 
 
 def test_create_services_provides_settings_and_model_resolution_for_sessions(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.composition.bootstrap import (
@@ -152,7 +152,7 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     )
 
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+        SessionManager.new(session_dir=standalone_workspace, cwd=str(standalone_workspace), persist=False)
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -162,7 +162,7 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     assert (
         session.agent.system_prompt
         == f"Be precise.\n\n{CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()}\n\n"
-        f"{_runtime_footer(str(tmp_path.resolve()))}"
+        f"{_runtime_footer(str(standalone_workspace.resolve()))}"
     )
     assert session.agent.thinking_level == "high"
 
@@ -302,7 +302,7 @@ def test_runtime_uses_latest_settings_for_new_sessions(tmp_path) -> None:
 
 
 def test_create_services_can_use_preloaded_persistent_settings_manager(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     import json
 
@@ -315,9 +315,9 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(
     from loushang.coding.session import ModelSelection
     from loushang.coding.session.manager import SessionManager
 
-    global_settings_path = tmp_path / "global-settings.json"
-    project_settings_path = tmp_path / "project-settings.json"
-    project_root = tmp_path / "project"
+    global_settings_path = standalone_workspace / "global-settings.json"
+    project_settings_path = standalone_workspace / "project-settings.json"
+    project_root = standalone_workspace / "project"
     project_root.mkdir()
 
     global_settings_path.write_text(
@@ -354,7 +354,7 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(
 
     manager = asyncio.run(
         SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+            session_dir=standalone_workspace / "sessions", cwd=str(project_root), persist=False
         )
     )
     session = create_agent_session(session_manager=manager, services=services)

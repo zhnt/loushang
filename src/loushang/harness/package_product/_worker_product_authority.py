@@ -124,6 +124,7 @@ from loushang.hosting.windows_backend_material import (
 )
 
 from ._windows_worker_backend_release import _WindowsBackendInstalledMethods
+from ._worker_history_access import WindowsProductWorkerHistoryAccess
 
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 R = TypeVar("R", bound=_ReceiptRecordMethods)
@@ -1935,14 +1936,8 @@ class _WindowsWorkerProductOptInAuthority(
         raise NotImplementedError
 
     def current(self, plugin_id: str) -> D | None:
-        with self._product.gc_gate.guard():
-            self._product.assert_root_gc_authority_current()
-            with (
-                self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-            ):
-                decision = self._journal.current(plugin_id, directory_fd=root)
-            self._product.assert_root_gc_authority_current()
-            return decision
+        with WindowsProductWorkerHistoryAccess(self._product).decision_root() as root:
+            return self._journal.current(plugin_id, directory_fd=root)
 
     def allow(
         self,
@@ -2000,21 +1995,17 @@ class _WindowsWorkerProductOptInAuthority(
     ) -> D:
         """Persist a kill generation even if the release has disappeared."""
 
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            with (
-                self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-            ):
-                decision = self._journal.change(
-                    directory_fd=root,
-                    plugin_id=plugin_id,
-                    operation_id=operation_id,
-                    expected_generation=expected_generation,
-                    action="revoke",
-                    opt_in=None,
-                )
-            self._product.assert_root_gc_authority_current()
-            return decision
+        with WindowsProductWorkerHistoryAccess(self._product).decision_root(
+            require_write=True
+        ) as root:
+            return self._journal.change(
+                directory_fd=root,
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                expected_generation=expected_generation,
+                action="revoke",
+                opt_in=None,
+            )
 
 
 _CrashProductT = TypeVar(

@@ -4,6 +4,7 @@ import json
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -32,6 +33,13 @@ from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     PublishedPluginPackage,
 )
+
+
+@pytest.fixture
+def standalone_workspace() -> Iterator[Path]:
+    """Isolate workspace discovery and private payload paths from the checkout."""
+    with TemporaryDirectory(prefix="loushang-harness-test-") as directory:
+        yield Path(directory).resolve()
 
 
 @dataclass(frozen=True, slots=True)

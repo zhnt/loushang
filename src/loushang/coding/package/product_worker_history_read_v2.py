@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import TypeAlias
 
 from loushang.harness.journal._rooted_io import RootedFile as RootedFile
+from loushang.harness.worker.history._publication import HistoryPublication
 from loushang.harness.worker.history._read_v2 import (
     RetainedHistoryReader,
     _RetainedHistoryFields,
@@ -60,6 +61,9 @@ _HISTORY_READER = RetainedHistoryReader(
     history_type=CodingWorkerV2RetainedHistory,
     error_type=CodingWorkerV2ReadError,
 )
+
+
+_HISTORY_PUBLICATION = HistoryPublication(_HISTORY_READER)
 
 
 read_coding_worker_v2_retained_history = _HISTORY_READER.read

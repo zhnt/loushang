@@ -717,7 +717,7 @@ compatibility rather than silently widening the v1 wire union.
 | Config persistence and fence | `src/loushang/harness/config/engine.py::LayeredConfig.transaction`, `src/loushang/harness/config/runtime.py::ScopedConfigRuntime.transaction`, `src/loushang/harness/config/_file_transaction.py`, `src/loushang/harness/config/agent/types.py`, `src/loushang/harness/config/agent/_settings_patch.py`, `src/loushang/harness/config/agent/_settings_codec.py`, and `src/loushang/harness/config/agent/manager.py::SettingsManager.bind_plugin_enablement_legacy_mutation_guard` | `LayeredConfig` locks all path-backed reads/writes in normalized order, rechecks exact runtime authority in the final engine-locked critical section, fences direct publication, queues captured commit snapshots before unlock, and does not decrement an active outer transaction when a nested authority check rejects entry; a bound `ScopedConfigRuntime` is the exclusive mutation/projection owner, follows `path -> engine -> runtime`, and exposes only the final transaction change. The settings schema defines/decodes the legacy `disabled_plugins` field, accepts one Coding registry authority, atomically publishes its conservative workspace aggregate, and rejects fenced peer writes after any receipt | Retain the generic config transaction and exclusive runtime binding; retain the legacy field/fence only through the minimum-version downgrade gate, then PLC9E deletes the field and mutators after evidence |
 | Session activation dependency | `src/loushang/harness/session/bootstrap_activation.py::standard_agent_session_activation_plan` | Treats `disabled_plugins` as a Resource-root and Extension activation input | Delete this dependency after those consumers read the desired-state projection |
 | Package/Resource projection chain | `src/loushang/harness/resources/packages/roots.py`, `src/loushang/harness/resources/packages/catalog.py`, `src/loushang/harness/resources/packages/projection.py`, and `src/loushang/harness/resources/packages/session.py` | Threads `disabled_plugins` through package catalog/root resolution and derives enabled mounts/entries | PLC9A migrates selection to exact desired revisions; retain Package/Resource projection while deleting the legacy veto input |
-| Coding Continuity compatibility caller | `src/loushang/coding/composition/continuity.py::bind_coding_configured_continuity` | A1-3 reads legacy `disabled_plugins` only as one-time migration input, resolves tombstones by canonical Source identity even without a live binding, reconciles before fingerprint/empty-source/idempotent returns, maps early compatibility failures into the stable bootstrap error/status contract, restores the last ready status when a same-fingerprint retry reuses a healthy composition, and reconciles again after new migration or desired-state changes | Retain the migration input through the compatibility window; never reinspect an absent tombstone and delete the field only at PLC9E after finalization evidence |
+| Coding Continuity compatibility caller | `src/loushang/coding/composition/continuity.py::bind_coding_configured_continuity`, `src/loushang/coding/harness/session/configured_continuity.py::bind_configured_continuity` | A1-3 reads legacy `disabled_plugins` only as one-time migration input, resolves tombstones by canonical Source identity even without a live binding, reconciles before fingerprint/empty-source/idempotent returns, maps early compatibility failures into the stable bootstrap error/status contract, restores the last ready status when a same-fingerprint retry reuses a healthy composition, and reconciles again after new migration or desired-state changes | Retain the migration input through the compatibility window; never reinspect an absent tombstone and delete the field only at PLC9E after finalization evidence |
 | Coding package-list fallback | `src/loushang/coding/cli/application.py::_run_list_packages` | Passes settings `disabled_plugins` into legacy catalog projection when the session query is unavailable | Delete the fallback after the common query port is mandatory and covered by startup diagnostics |
 | Settings disable list | `src/loushang/harness/resources/plugins/authority.py::PluginResolutionAuthority.project_package` | Combines `source.enabled` with settings `disabled_plugins` | One-time migration to desired state; delete as runtime-selection input only after replay-safe migration proves explicit disabled/removed state is preserved |
 | Resolver projection veto | `src/loushang/harness/resources/plugins/resolver.py::PluginResolver.project_package` | Computes effective enabled from source and manifest flags | Retain inert descriptor projection only after it stops deciding runtime selection |
@@ -792,8 +792,8 @@ materializes packages.
 
 PLC9B.0 began with the pre-runtime-migration snapshot at parent `4bd71d63`; A2
 revised the original snapshot. The current accepted source-wide inventories have
-119 ingress/declaration rows with 174 occurrences and 146 effect/capability rows
-with 163 occurrences. The executable
+119 ingress/declaration rows with 174 occurrences and 153 effect/capability rows
+with 169 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -828,7 +828,7 @@ forwarding calls, module-level transport specifications, and dynamic strings.
 src/loushang/coding/cli/application.py::_run_coding_pre_runtime_operation::update_packages = 2
 src/loushang/coding/cli/application.py::_run_list_packages::get_packages = 5
 src/loushang/coding/cli/application.py::run_cli::update_packages = 1
-src/loushang/coding/package/product_cli.py::uninstall_coding_fenced_data_wheels::uninstall_package = 1
+src/loushang/coding/package/product_cli.py::_write_uninstall_success::uninstall_package = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::check_package_updates = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::update_packages = 1
 src/loushang/harness/cli/agent_args.py::agent_cli_argument_values::check_package_updates = 2
@@ -955,8 +955,9 @@ store access. It counts renamed imports as their original sensitive symbol.
 Delivery reconciliation retains the same scanner and assertions: the two managed
 reopen sites now belong to Plugin Management assembly, and legacy RevisionStore
 recapture belongs to Product-facing Resources Packages outside the dark kernel.
-The four added occurrences are the existing factory reference and three
-materializer import/type references; they are not four new publication effects.
+Session preparation references the existing materializer factory from its
+staged implementation. Its boundary annotations account for the additional
+occurrences from this relocation. Coding still supplies the package authority.
 The A204 Worker Product authority is also an accepted consumer of the existing
 Worker primitives, without enabling a new execution path.
 
@@ -971,8 +972,8 @@ src/loushang/coding/composition/capability_plugins.py::_validate_preparation_inp
 src/loushang/coding/composition/capability_plugins.py::prepare_coding_capability_plugin_composition::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::<module>::GitPackageMaterializerBackend = 1
-src/loushang/coding/composition/bootstrap.py::_create_agent_session::CodingPackageMaterializer = 4
-src/loushang/coding/composition/bootstrap.py::_create_agent_session::GitPackageMaterializerBackend = 1
+src/loushang/coding/composition/bootstrap.py::_create_agent_session::CodingPackageMaterializer = 1
+src/loushang/coding/composition/bootstrap.py::_create_agent_session.prepare_primary::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::_create_agent_session_with_model_policy::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::_default_package_materializer::CodingPackageMaterializer = 2
 src/loushang/coding/composition/bootstrap.py::_default_package_materializer::GitPackageMaterializerBackend = 1
@@ -984,11 +985,18 @@ src/loushang/coding/composition/continuity.py::<module>::GitPackageMaterializerB
 src/loushang/coding/composition/continuity.py::<module>::PackageMaterializer = 1
 src/loushang/coding/composition/continuity.py::_coding_continuity_materializer::CodingPackageMaterializer = 2
 src/loushang/coding/composition/continuity.py::_coding_continuity_materializer::GitPackageMaterializerBackend = 1
-src/loushang/coding/composition/continuity.py::_continuity_runtime_inputs::PackageMaterializer = 1
-src/loushang/coding/composition/continuity.py::_continuity_runtime_inputs::reopen_plugin_package = 1
-src/loushang/coding/composition/continuity.py::_inspect_continuity_source::PackageMaterializer = 1
-src/loushang/coding/composition/continuity.py::_publish_continuity_runtime::PackageMaterializer = 1
+src/loushang/coding/composition/continuity.py::_require_continuity_package_authority::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::_continuity_runtime_inputs::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::_continuity_runtime_inputs::reopen_plugin_package = 1
+src/loushang/coding/harness/session/configured_continuity.py::_inspect_continuity_source::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::_publish_continuity_runtime::PackageMaterializer = 1
 src/loushang/coding/composition/continuity.py::bind_coding_configured_continuity::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::<module>::PackageMaterializer = 1
+src/loushang/coding/harness/session/configured_continuity.py::bind_configured_continuity::PackageMaterializer = 1
+src/loushang/coding/harness/session/managed_plugin_preparation.py::ManagedPluginPreparation::PackageMaterializer = 1
+src/loushang/coding/harness/session/managed_plugin_preparation.py::prepare_managed_plugins::GitPackageMaterializerBackend = 1
+src/loushang/coding/harness/session/managed_plugin_preparation.py::prepare_managed_plugins::PackageMaterializer = 3
+src/loushang/coding/harness/session/plugin_preparation.py::prepare_capability_plugins::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::assemble_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::prepare_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
@@ -1364,3 +1372,42 @@ updates.
 The builtin, removed and general legacy-review modules use shared `RecordSchema`.
 Their module-level `disabled_plugins` strings exclude a field handled by each
 original explicit codec; this metadata adds no enablement reader or writer.
+
+## Coding Harness Staging Owner Locations
+
+Four adoption and observation readers share one reviewed `disabled_plugins`
+projection. The inventory records the shared reader and its original consumers.
+These reviewed operation locations replace the corresponding mechanism scopes;
+nominal fields and actual Product policy remain at their original Code edges.
+This updates the existing inventory without new assertions, gates or coverage.
+
+| Original operation | Current implementation owner | Existing facts |
+| --- | --- | ---: |
+| `src/loushang/coding/package/legacy_removed_review.py::admit_coding_removed_local_snapshot` | `src/loushang/coding/harness/package_product/legacy_removed_review.py::admit_removed_snapshot` | 1 |
+| `src/loushang/coding/package/legacy_removed_review.py::review_coding_first_b_removed_local` | `src/loushang/coding/harness/package_product/legacy_removed_review.py::review_removed_snapshot` | 3 |
+| `src/loushang/coding/package/legacy_builtin_review.py::admit_coding_builtin_only_snapshot` | `src/loushang/coding/harness/package_product/legacy_builtin_review.py::admit_builtin_snapshot` | 1 |
+| `src/loushang/coding/package/legacy_builtin_review.py::review_coding_first_b_builtin_only` | `src/loushang/coding/harness/package_product/legacy_builtin_review.py::review_builtin_snapshot` | 2 |
+| `src/loushang/coding/package/legacy_review.py::review_coding_legacy_installed_local_source` | `src/loushang/coding/harness/package_product/legacy_local_review.py::review_local_source` | 2 |
+| `src/loushang/coding/package/legacy_disabled_review.py::review_coding_first_b_disabled_only` | `src/loushang/coding/harness/package_product/legacy_disabled_review.py::review_disabled_snapshot` | 3 |
+| Retired private forwarding function `_require_frozen_review` in `src/loushang/coding/package/legacy_local_acceptance.py` | `src/loushang/coding/harness/package_product/legacy_local_acceptance.py::require_frozen_review` | 2 |
+| `src/loushang/coding/package/legacy_local_adoption_read.py::coding_legacy_local_data_adoption_settled` | `src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py::reviewed_disabled_ids` via `src/loushang/coding/harness/package_product/legacy_adoption_observation.py::adoption_settled` | 1 shared |
+| `src/loushang/coding/package/legacy_local_adoption.py::adopt_coding_legacy_local_data_review` | `src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py::reviewed_disabled_ids` via `src/loushang/coding/harness/package_product/legacy_adoption.py::adopt_local_review` | 1 shared |
+| `src/loushang/coding/package/legacy_builtin_adoption.py::adopt_coding_first_b_builtin_only` | `src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py::reviewed_disabled_ids` via `src/loushang/coding/harness/package_product/legacy_builtin_adoption.py::adopt_builtin_snapshot` | 1 shared |
+| `src/loushang/coding/package/legacy_removed_adoption.py::adopt_coding_first_b_removed_local` | `src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py::reviewed_disabled_ids` via `src/loushang/coding/harness/package_product/legacy_removed_adoption.py::adopt_removed_snapshot` | 1 shared |
+| `src/loushang/coding/package/legacy_classification.py::classify_coding_legacy_workspace` | `src/loushang/coding/harness/package_product/legacy_classification.py::classify_workspace_evidence` | 3 |
+| `src/loushang/coding/package/legacy_classification.py::classify_coding_legacy_source_configuration` | `src/loushang/coding/harness/package_product/legacy_classification.py::classify_source_projection` | 2 |
+| `src/loushang/coding/package/legacy_configured_source.py::match_coding_legacy_local_skill_configured_source` | `src/loushang/coding/harness/package_product/legacy_source_matching.py::match_configured_source` | 2 |
+| `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.__post_init__` | `src/loushang/coding/harness/package_product/legacy_builtin_review.py::validate_review` | 4 |
+| `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.from_dict` | `src/loushang/coding/harness/package_product/legacy_builtin_review.py::decode_review` | 1 |
+| `src/loushang/coding/package/legacy_disabled_review.py::CodingLegacyDisabledOnlyReviewV1.from_dict` | `src/loushang/coding/harness/package_product/legacy_disabled_review.py::decode_review` | 1 |
+| `src/loushang/coding/package/legacy_local_acceptance.py::CodingLegacyLocalAcceptanceV1.create` | `src/loushang/coding/harness/package_product/legacy_local_acceptance.py::create_acceptance` | 1 |
+| `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.__post_init__` | `src/loushang/coding/harness/package_product/legacy_removed_review.py::validate_review` | 4 |
+| `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.from_dict` | `src/loushang/coding/harness/package_product/legacy_removed_review.py::decode_review` | 1 |
+| `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | `src/loushang/coding/harness/package_product/legacy_local_review.py::validate_review` | 3 |
+| `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.from_dict` | `src/loushang/coding/harness/package_product/legacy_local_review.py::decode_review` | 1 |
+| `src/loushang/coding/package/product_runtime.py::bootstrap_coding_accepted_disabled_only_product_plugins` | `src/loushang/coding/harness/package_product/startup.py::bootstrap_accepted_disabled_plugins` | 1 |
+| `src/loushang/coding/package/product_runtime.py::is_coding_fresh_first_b_snapshot` | `src/loushang/coding/harness/package_product/startup.py::is_fresh_snapshot` | 1 |
+
+Fresh-state ledger construction is now held by
+`src/loushang/coding/harness/package_product/application_runtime.py::open_product_state`.
+The management service remains the sole Desired State writer.

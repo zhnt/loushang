@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import builtins
 import dataclasses
 import gzip
 import hashlib
@@ -46,7 +45,12 @@ from loushang.harness.resources.packages._private_receipts_windows import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
-from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_BASE_FILES,
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+    WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+    WindowsHistoryNames,
+)
 from tests.coding.probe_windows_live_stage_verification_compatibility import (
     Trace,
     error_data,
@@ -110,8 +114,8 @@ def seed():
         )
     )
     files = {
-        code._CHECKPOINT_NAME: checkpoint.to_bytes(),
-        code.WINDOWS_WORKER_HISTORY_CUTOVER_NAME: cutover.to_bytes(),
+        WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME: checkpoint.to_bytes(),
+        WINDOWS_WORKER_HISTORY_CUTOVER_NAME: cutover.to_bytes(),
     }
     fields = (
         "opt_in",
@@ -124,7 +128,7 @@ def seed():
     files.update(
         {
             name: getattr(result, field).to_bytes()
-            for (_, name), field in zip(code.WINDOWS_WORKER_BASE_FILES, fields)
+            for (_, name), field in zip(WINDOWS_WORKER_BASE_FILES, fields)
         }
     )
     return result, files
@@ -155,15 +159,15 @@ def observe(spec, monkeypatch):
     root = 55
     require_cutover = spec.get("cutover", False)
     names = [
-        code._CHECKPOINT_NAME,
-        *(name for _, name in code.WINDOWS_WORKER_BASE_FILES),
+        WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+        *(name for _, name in WINDOWS_WORKER_BASE_FILES),
     ]
     if require_cutover or spec.get("marker_present"):
-        names.append(code.WINDOWS_WORKER_HISTORY_CUTOVER_NAME)
+        names.append(WINDOWS_WORKER_HISTORY_CUTOVER_NAME)
     if spec.get("no_marker"):
-        names.remove(code.WINDOWS_WORKER_HISTORY_CUTOVER_NAME)
+        names.remove(WINDOWS_WORKER_HISTORY_CUTOVER_NAME)
     if spec.get("duplicate_marker"):
-        names.append(code.WINDOWS_WORKER_HISTORY_CUTOVER_NAME)
+        names.append(WINDOWS_WORKER_HISTORY_CUTOVER_NAME)
     if spec.get("extra"):
         names.append(spec["extra"])
     missing = spec.get("missing")
@@ -172,7 +176,7 @@ def observe(spec, monkeypatch):
     if spec.get("corrupt"):
         files[spec["corrupt"]] = b"{}"
     original_lstat = Path.lstat
-    original_import = builtins.__import__
+    original_cutover_codec = code._persisted_cutover_codec
     original_names = WindowsHistoryNames.require_known
     original_ctor = code.CodingWindowsWorkerPersistedBasesV1.__init__
     classes = [
@@ -336,10 +340,9 @@ def observe(spec, monkeypatch):
         event("cutover-validate")
         return original_validate(self, result)
 
-    def importing(name, globals=None, locals=None, fromlist=(), level=0):
-        if name.endswith("package_product_worker_windows_history_cutover_record"):
-            event("cutover-binding")
-        return original_import(name, globals, locals, fromlist, level)
+    def bind_cutover_codec():
+        event("cutover-binding")
+        return original_cutover_codec()
 
     outcome, error = None, None
     with monkeypatch.context() as patch:
@@ -396,7 +399,7 @@ def observe(spec, monkeypatch):
             "require_persisted_bases",
             validate,
         )
-        patch.setattr(builtins, "__import__", importing)
+        patch.setattr(code, "_persisted_cutover_codec", bind_cutover_codec)
         try:
             if spec.get("under"):
                 outcome = (

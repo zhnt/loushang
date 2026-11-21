@@ -7,6 +7,9 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.harness.plugin_management import (
+    private_data_restore_events as _record_programs,
+)
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
     JournalCodecError,
@@ -31,6 +34,12 @@ _MAX_EVENTS = 4096
 _MAX_JOURNAL_BYTES = 32 * 1024 * 1024
 
 
+_PRIVATE_DATA_RECORD_VALUES = {
+    "value_01": "coding.arch.default",
+    "value_02": "Coding Arch restore event is invalid",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class CodingArchPrivateDataRestoreEventV1:
     revision: int
@@ -43,24 +52,7 @@ class CodingArchPrivateDataRestoreEventV1:
     record_version: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            type(self.revision) is not int
-            or self.revision < 1
-            or self.phase not in {"started", "completed"}
-            or not isinstance(self.installation_key, PluginInstallationKeyV1)
-            or self.installation_key.plugin_id != "coding.arch.default"
-            or not _digest(self.backup_id)
-            or not isinstance(self.deletion_receipt_id, str)
-            or not self.deletion_receipt_id
-            or self.restore_id
-            != restore_id_for(
-                self.installation_key, self.backup_id, self.deletion_receipt_id
-            )
-            or self.record_version != 1
-            or self.record_digest
-            != sha256(canonical_json_bytes(self._unsigned())).hexdigest()
-        ):
-            raise ValueError("Coding Arch restore event is invalid")
+        return _record_programs.validate_event(self)
 
     @classmethod
     def create(
@@ -72,24 +64,13 @@ class CodingArchPrivateDataRestoreEventV1:
         backup_id: str,
         deletion_receipt_id: str,
     ) -> CodingArchPrivateDataRestoreEventV1:
-        restore_id = restore_id_for(installation_key, backup_id, deletion_receipt_id)
-        unsigned = {
-            "backupId": backup_id,
-            "deletionReceiptId": deletion_receipt_id,
-            "installationKey": installation_key.to_dict(),
-            "phase": phase,
-            "recordVersion": 1,
-            "restoreId": restore_id,
-            "revision": revision,
-        }
-        return cls(
+        return _record_programs.create_event(
+            cls,
             revision=revision,
             phase=phase,
             installation_key=installation_key,
             backup_id=backup_id,
             deletion_receipt_id=deletion_receipt_id,
-            restore_id=restore_id,
-            record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
         )
 
     def _unsigned(self) -> dict[str, object]:

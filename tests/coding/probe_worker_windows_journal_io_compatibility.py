@@ -76,7 +76,9 @@ def observe(kind, case, root, monkeypatch):
     )
     operation, fault = case.split(":")
     root.mkdir(mode=0o700)
-    name, lock_name = module._NAME, module._NAME + ".lock"
+    cls = getattr(module, CLASSES[KINDS.index(kind)])
+    name = module._NAME if kind in {"supervisor", "activation_state"} else cls._name
+    lock_name = name + ".lock"
     path, lock_path = root / name, root / lock_name
     if operation == "read" and fault != "missing":
         path.write_bytes(b"0123456789" if fault == "oversize" else b"prior")
@@ -260,12 +262,12 @@ def observe(kind, case, root, monkeypatch):
             for target in targets:
                 if hasattr(target, "windows_listdir_at"):
                     patch.setattr(target, "windows_listdir_at", listdir)
-            patch.setattr(module, "_MAX_BYTES", 8)
-            cls = getattr(module, CLASSES[KINDS.index(kind)])
             if kind in {"supervisor", "activation_state"}:
+                patch.setattr(module, "_MAX_BYTES", 8)
                 patch.setattr(module, "WindowsLocalWheelProductSessionOwner", Product)
                 owner = cls(Product())
             else:
+                patch.setattr(cls, "_max_bytes", staticmethod(lambda: 8))
                 owner = cls(path, scope_id="scope-a")
             io = getattr(owner, "_file_io", owner)
             acl = ACL()

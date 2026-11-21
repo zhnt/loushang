@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
+from loushang.coding.harness.session.tool_selection import peer_tool_names
 from loushang.coding.lsp.tools import (
     DOCUMENT_OUTLINE_TOOL_NAME,
     INSPECT_SYMBOL_TOOL_NAME,
@@ -30,8 +31,7 @@ CODING_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
 def coding_peer_tool_names(tool_names: tuple[str, ...]) -> tuple[str, ...]:
     """Keep only Tool identities that are not published by exact owners."""
 
-    exact_names = frozenset(CODING_EXACT_OWNER_TOOL_NAMES)
-    return tuple(name for name in tool_names if name not in exact_names)
+    return peer_tool_names(tool_names, CODING_EXACT_OWNER_TOOL_NAMES)
 
 
 __all__ = [

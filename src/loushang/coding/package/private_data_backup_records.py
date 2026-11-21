@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-import json
+import json as json
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loushang.coding.harness.plugin_management import (
+    private_data_backup_records as _record_programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.plugin_management._private_data_records import (
-    _valid_digest as _digest,
+    _valid_digest as _digest,  # noqa: F401
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
@@ -33,6 +36,16 @@ if TYPE_CHECKING:
 _PLUGIN_ID = "coding.arch.default"
 
 
+_PRIVATE_DATA_RECORD_VALUES = {
+    "value_01": "Coding Arch backup receipt is invalid",
+    "value_02": "arch-backup:",
+    "value_03": "Coding Arch backup manifest fields are invalid",
+    "value_04": "Coding Arch backup manifest target changed",
+    "value_05": "Coding Arch backup manifest identity changed",
+    "value_06": "Coding Arch backup manifest is invalid",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class CodingArchPrivateDataBackupReceiptV1:
     installation_key: PluginInstallationKeyV1
@@ -44,20 +57,7 @@ class CodingArchPrivateDataBackupReceiptV1:
     receipt_version: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.installation_key, PluginInstallationKeyV1)
-            or self.installation_key.plugin_id != _PLUGIN_ID
-            or not isinstance(self.source_target_id, str)
-            or not self.source_target_id.startswith("present:")
-            or not _digest(self.backup_id)
-            or type(self.file_count) is not int
-            or self.file_count < 0
-            or type(self.byte_count) is not int
-            or self.byte_count < 0
-            or self.receipt_id != "arch-backup:" + self.backup_id
-            or self.receipt_version != 1
-        ):
-            raise ValueError("Coding Arch backup receipt is invalid")
+        return _record_programs.validate_receipt(self)
 
     def to_dict(self) -> dict[str, object]:
         return _SCHEMA_BACKUP_RECEIPT_V1.encode(self, sort_keys=True)
@@ -87,22 +87,6 @@ def backup_id(
     ).hexdigest()
 
 
-def _backup_receipt(
-    key: PluginInstallationKeyV1, source: CodingArchPrivateDataTargetSnapshotV1
-) -> CodingArchPrivateDataBackupReceiptV1:
-    identity = backup_id(key, source)
-    return CodingArchPrivateDataBackupReceiptV1(
-        installation_key=key,
-        source_target_id=source.target_id,
-        backup_id=identity,
-        file_count=sum(item.kind == "file" for item in source.members),
-        byte_count=sum(
-            item.identity[3] for item in source.members if item.kind == "file"
-        ),
-        receipt_id="arch-backup:" + identity,
-    )
-
-
 class _BackupManifestCodec:
     max_manifest_bytes = 4 * 1024 * 1024
     files_name = "files"
@@ -123,16 +107,9 @@ class _BackupManifestCodec:
     ) -> tuple[
         CodingArchPrivateDataBackupReceiptV1, CodingArchPrivateDataTargetSnapshotV1
     ]:
-        if type(document) is not dict or set(document) != {"receipt", "source"}:
-            raise ValueError("Coding Arch backup manifest fields are invalid")
-        source = CodingArchPrivateDataTargetSnapshotV1.from_dict(document["source"])
-        receipt = CodingArchPrivateDataBackupReceiptV1.from_dict(document["receipt"])
-        if (
-            receipt.source_target_id != source.target_id
-            or receipt.backup_id != backup_id(receipt.installation_key, source)
-        ):
-            raise ValueError(identity_error)
-        return receipt, source
+        return _record_programs.decode_manifest(
+            self, document, identity_error=identity_error
+        )
 
 
 class _ArchBackupCodec(_BackupManifestCodec):
@@ -151,12 +128,7 @@ class _ArchBackupCodec(_BackupManifestCodec):
     ) -> tuple[
         CodingArchPrivateDataBackupReceiptV1, CodingArchPrivateDataTargetSnapshotV1
     ]:
-        document = json.loads(
-            raw.decode("utf-8"), object_pairs_hook=_posix_unique_object
-        )
-        return self._decode_backup_manifest(
-            document, identity_error="Coding Arch backup manifest target changed"
-        )
+        return _record_programs.decode_posix_archive(self, raw)
 
 
 class _WindowsArchBackupCodec(_BackupManifestCodec):
@@ -165,18 +137,7 @@ class _WindowsArchBackupCodec(_BackupManifestCodec):
     ) -> tuple[
         CodingArchPrivateDataBackupReceiptV1, CodingArchPrivateDataTargetSnapshotV1
     ]:
-        try:
-            document = json.loads(
-                bytes(raw).decode("utf-8"), object_pairs_hook=_windows_unique_object
-            )
-        except (UnicodeError, json.JSONDecodeError) as exc:
-            raise ValueError("Coding Arch backup manifest is invalid") from exc
-        receipt, source = self._decode_backup_manifest(
-            document, identity_error="Coding Arch backup manifest identity changed"
-        )
-        if bytes(raw) != canonical_json_bytes(document) + b"\n":
-            raise ValueError("Coding Arch backup manifest identity changed")
-        return receipt, source
+        return _record_programs.decode_windows_archive(self, raw)
 
 
 _posix_unique_object = _unique_json_object_hook(

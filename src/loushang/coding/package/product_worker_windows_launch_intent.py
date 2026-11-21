@@ -14,6 +14,10 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loushang.coding.harness.worker.windows_admission import (
+    is_attempt_id,
+    is_windows_product,
+)
 from loushang.harness.package_product._worker_windows_attempt import (
     WindowsProductWorkerIntentRecords,
     inspect_windows_product_worker_launch_intents,
@@ -41,7 +45,6 @@ from .product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwn
 if TYPE_CHECKING:
     from .product_worker_windows_payload import CodingWindowsWorkerPayloadLeaseV1
 
-_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _NAME = re.compile(r"worker-launch-intent-([0-9a-f]{32})\.json\Z")
 _PREFIX = "worker-launch-intent-"
@@ -168,16 +171,12 @@ def _path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str) -> Pat
 
 
 def _require_product(product: WindowsLocalWheelProductSessionOwner) -> None:
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise OSError("Windows Worker launch intent requires a Product owner")
 
 
 def _require_attempt(attempt_id: str) -> None:
-    if type(attempt_id) is not str or _ATTEMPT.fullmatch(attempt_id) is None:
+    if not is_attempt_id(attempt_id):
         raise ValueError("Windows Worker launch intent attempt ID is invalid")
 
 

@@ -17,6 +17,7 @@ from tests.harness.transcript.test_writer_io import wait_until
 
 from .test_hosted_catalog import _intent
 from .test_managed_catalog import discovery, ordinary, tree
+from .test_managed_launch import managed_workspace as managed_workspace
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux shared store discovery")
 

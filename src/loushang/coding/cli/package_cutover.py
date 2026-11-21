@@ -6,8 +6,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Sequence
-from hashlib import sha256
+from collections.abc import Callable, Sequence
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Literal
@@ -78,6 +77,7 @@ from loushang.coding.package.pre_b_snapshot import (
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_POLICY_REVISION,
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    _fresh_coding_product_namespace_id,
     bootstrap_coding_accepted_disabled_only_product_plugins,
     bootstrap_coding_builtin_product_plugins,
     is_coding_fresh_first_b_snapshot,
@@ -88,6 +88,9 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackagePosixEpochCutoverResultV1,
+)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -253,9 +256,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 global_settings_path=default_global_settings_path(),
                 project_settings_path=default_project_settings_path(workspace),
             )
-            namespace_id = sha256(
-                b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
-            ).hexdigest()
+            namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
             if args.prepare_legacy_removed_review:
                 _prepare_review_cutover(
                     lifecycle,
@@ -286,9 +287,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 global_settings_path=default_global_settings_path(),
                 project_settings_path=default_project_settings_path(workspace),
             )
-            namespace_id = sha256(
-                b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
-            ).hexdigest()
+            namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
             if args.prepare_legacy_builtin_review:
                 _prepare_review_cutover(
                     lifecycle,
@@ -350,9 +349,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 global_settings_path=default_global_settings_path(),
                 project_settings_path=default_project_settings_path(workspace),
             )
-            namespace_id = sha256(
-                b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
-            ).hexdigest()
+            namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
             _prepare_review_cutover(
                 lifecycle,
                 settings,
@@ -396,34 +393,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 project_settings_path=default_project_settings_path(workspace),
             )
             if args.prepare_legacy_disabled_review:
-                namespace_id = sha256(
-                    b"loushang.coding-fresh-product-epoch/v1\0"
-                    + epoch.store_id.encode()
-                ).hexdigest()
-                try:
-                    (epoch.control_root / "epoch.jsonl").lstat()
-                except FileNotFoundError:
-                    _require_disabled_only_preflight(lifecycle, settings)
-                    prepared = prepare_and_cutover_coding_package_store_from_legacy(
-                        lifecycle,
-                        settings,
-                        namespace_id=namespace_id,
-                        minimum_runtime_version=version("loushang"),
-                        minimum_runtime_protocol_epoch=(
-                            CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH
-                        ),
-                    )
-                    if prepared.attempt.result.disposition != "fenced":
-                        raise RuntimeError("Coding Product fence was not committed")
-                else:
-                    reopened = reopen_coding_package_cutover(lifecycle)
-                    if (
-                        reopened.switch_receipt is None
-                        or reopened.switch_receipt.namespace_id != namespace_id
-                    ):
-                        raise RuntimeError(
-                            "Coding Product fence belongs to another cutover"
-                        )
+                namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
+                _prepare_review_cutover(
+                    lifecycle,
+                    settings,
+                    epoch,
+                    namespace_id,
+                    before_prepare=lambda: _require_disabled_only_preflight(
+                        lifecycle, settings
+                    ),
+                )
             owner = PackageProductPosixFencedRuntimeOwner.open(
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
@@ -554,9 +533,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + "\n"
             )
             return 0
-        namespace_id = sha256(
-            b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
-        ).hexdigest()
+        namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
         try:
             (epoch.control_root / "epoch.jsonl").lstat()
         except FileNotFoundError:
@@ -574,11 +551,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runtime_version = version("loushang")
         if has_fence:
             result = reopen_coding_package_cutover(lifecycle)
-            if (
-                result.switch_receipt is None
-                or result.switch_receipt.namespace_id != namespace_id
-            ):
-                raise RuntimeError("Coding Product fence belongs to another cutover")
+            _require_cutover_namespace(result, namespace_id)
             read_owner = PackageProductPosixFencedRuntimeOwner.open(
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
@@ -727,7 +700,8 @@ def _prepare_review_cutover(
     epoch: CodingPackageEpochLayoutV1,
     namespace_id: str,
     *,
-    snapshot_admission: CodingCutoverSnapshotAdmission,
+    snapshot_admission: CodingCutoverSnapshotAdmission | None = None,
+    before_prepare: Callable[[], None] | None = None,
 ) -> None:
     """Prepare a missing review fence or verify its existing namespace.
 
@@ -737,6 +711,8 @@ def _prepare_review_cutover(
     try:
         (epoch.control_root / "epoch.jsonl").lstat()
     except FileNotFoundError:
+        if before_prepare is not None:
+            before_prepare()
         prepared = prepare_and_cutover_coding_package_store_from_legacy(
             lifecycle,
             settings,
@@ -749,11 +725,17 @@ def _prepare_review_cutover(
             raise RuntimeError("Coding Product fence was not committed")
     else:
         reopened = reopen_coding_package_cutover(lifecycle)
-        if (
-            reopened.switch_receipt is None
-            or reopened.switch_receipt.namespace_id != namespace_id
-        ):
-            raise RuntimeError("Coding Product fence belongs to another cutover")
+        _require_cutover_namespace(reopened, namespace_id)
+
+
+def _require_cutover_namespace(
+    result: PackagePosixEpochCutoverResultV1, namespace_id: str
+) -> None:
+    if (
+        result.switch_receipt is None
+        or result.switch_receipt.namespace_id != namespace_id
+    ):
+        raise RuntimeError("Coding Product fence belongs to another cutover")
 
 
 def _require_disabled_only_preflight(
@@ -819,9 +801,7 @@ def _run_windows_builtin_candidate(
             "reviewId": receipt.review.review_id,
         }
     if prepare_review:
-        namespace_id = sha256(
-            b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
-        ).hexdigest()
+        namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
         _prepare_review_cutover(
             lifecycle,
             settings,
@@ -849,9 +829,7 @@ def _run_windows_fresh_candidate(
     """Retry the exact fresh first-B Product route under explicit selection."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    namespace_id = sha256(
-        b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
-    ).hexdigest()
+    namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
     try:
         (epoch.control_root / "epoch.jsonl").lstat()
     except FileNotFoundError:
@@ -880,11 +858,7 @@ def _run_windows_fresh_candidate(
             project_settings_path=default_project_settings_path(workspace),
         )
         result = reopen_coding_package_cutover(lifecycle)
-        if (
-            result.switch_receipt is None
-            or result.switch_receipt.namespace_id != namespace_id
-        ):
-            raise RuntimeError("Coding Product fence belongs to another cutover")
+        _require_cutover_namespace(result, namespace_id)
         first_b = PackageProductWindowsFencedRuntimeOwner.open(
             **epoch.fenced_runtime_open_kwargs()
         )

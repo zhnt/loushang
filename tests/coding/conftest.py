@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
 _HELPER_DIR = Path(__file__).resolve().parent
 if str(_HELPER_DIR) not in sys.path:
     sys.path.insert(0, str(_HELPER_DIR))
+
+
+@pytest.fixture
+def standalone_workspace() -> Iterator[Path]:
+    """Give filesystem fixtures a workspace outside the developer checkout."""
+    with TemporaryDirectory(prefix="loushang-coding-test-") as directory:
+        yield Path(directory).resolve()
 
 
 @pytest.fixture(autouse=True)

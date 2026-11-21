@@ -5,17 +5,22 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, fields, replace
-from hashlib import sha256
+from hashlib import sha256 as sha256
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
+from loushang.coding.harness.package_product import (
+    legacy_binding_records as _record_programs,
+)
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     FunctionalJournalRecordCodec,
-    JournalCodecError,
     JournalLoadPolicy,
     JournalRecordCodec,
+)
+from loushang.harness.journal import (
+    JournalCodecError as JournalCodecError,
 )
 from loushang.harness.package_product._local_source_catalog import (
     _LegacyLocalSourceCatalog,
@@ -25,7 +30,7 @@ from loushang.harness.resources.packages.plugin_lifecycle._record_schema import 
     RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -46,6 +51,16 @@ _MAX_WHEEL_BYTES = 2 * 1024 * 1024
 _BUILTIN_PLUGIN_IDS = frozenset(
     {"coding.base", "coding.lsp.default", "coding.arch.default"}
 )
+
+
+_LEGACY_RECORD_VALUES = {
+    "value_001": "Invalid Coding legacy binding record",
+    "value_002": "coding_legacy_binding_invalid",
+}
+
+_LEGACY_RECORD_PROMPT: Final[Literal["prompt"]] = "prompt"
+_LEGACY_RECORD_SKILL: Final[Literal["skill"]] = "skill"
+_LEGACY_RECORD_THEME: Final[Literal["theme"]] = "theme"
 
 
 class CodingLegacyBindingError(RuntimeError):
@@ -75,51 +90,7 @@ class CodingLegacyLocalBindingV1:
     resource_kind: Literal["skill", "prompt", "theme"] = "skill"
 
     def __post_init__(self) -> None:
-        if type(self.record_revision) is not int or self.record_revision < 1:
-            raise ValueError("Legacy Product binding revision is invalid")
-        for value, name in (
-            (self.store_id, "Store"),
-            (self.scope_id, "scope"),
-            (self.plugin_id, "Plugin"),
-            (self.policy_revision, "policy"),
-            (self.approval_id, "approval"),
-        ):
-            if not isinstance(value, str) or _SAFE_ID.fullmatch(value) is None:
-                raise ValueError(f"Legacy Product {name} identity is invalid")
-        if self.plugin_id in _BUILTIN_PLUGIN_IDS:
-            raise ValueError("Legacy Product binding cannot replace a builtin Plugin")
-        for value, name in (
-            (self.namespace_id, "namespace"),
-            (self.legacy_binding_digest, "old binding"),
-            (self.source_content_digest, "Source content"),
-            (self.manifest_digest, "manifest"),
-            (self.dependency_lock_digest, "dependency lock"),
-            (self.artifact_digest, "Wheel artifact"),
-            (self.record_id, "record"),
-        ):
-            if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
-                raise ValueError(f"Legacy Product {name} digest is invalid")
-        if (
-            not isinstance(self.legacy_source_identity, str)
-            or not self.legacy_source_identity.startswith("local:")
-            or len(self.legacy_source_identity) > 4096
-            or _WHEEL_FILENAME.fullmatch(self.wheel_filename) is None
-            or type(self.record_version) is not int
-            or (self.record_version, self.resource_kind)
-            not in {(1, "skill"), (2, "prompt"), (3, "theme")}
-        ):
-            raise ValueError("Legacy Product binding Source shape is invalid")
-        prefix = self.wheel_filename.removesuffix("-1-py3-none-any.whl")
-        if (
-            self.requested_package != f"{prefix.replace('_', '-')}==1"
-            or self.plugin_manifest_path != f"{prefix}/plugin.json"
-        ):
-            raise ValueError("Legacy Product binding Wheel identity is inconsistent")
-        binding = self.to_policy_binding(Path("/"))
-        if binding.requested_package != self.requested_package:
-            raise ValueError("Legacy Product binding package is invalid")
-        if self.record_id != sha256(canonical_json_bytes(self._identity())).hexdigest():
-            raise ValueError("Legacy Product binding record identity is invalid")
+        return _record_programs.validate_binding(self)
 
     @classmethod
     def create(
@@ -137,53 +108,18 @@ class CodingLegacyLocalBindingV1:
         candidate: CodingLegacyLocalWheelCandidateV1,
         resource_kind: Literal["skill", "prompt", "theme"] = "skill",
     ) -> CodingLegacyLocalBindingV1:
-        if not isinstance(candidate, CodingLegacyLocalWheelCandidateV1):
-            raise TypeError("Reacquired legacy Wheel candidate is required")
-        if legacy_source_identity != candidate.original_source_identity:
-            raise ValueError("Legacy Product original Source identity changed")
-        if resource_kind not in {"skill", "prompt", "theme"}:
-            raise ValueError("Unsupported legacy Product Resource type")
-        record_version = {"skill": 1, "prompt": 2, "theme": 3}[resource_kind]
-        values = {
-            "recordRevision": record_revision,
-            "storeId": store_id,
-            "namespaceId": namespace_id,
-            "scopeId": scope_id,
-            "pluginId": candidate.plugin_id,
-            "legacySourceIdentity": legacy_source_identity,
-            "legacyBindingDigest": legacy_binding_digest,
-            "sourceContentDigest": candidate.source_content_digest,
-            "manifestDigest": candidate.manifest_digest,
-            "dependencyLockDigest": dependency_lock_digest,
-            "wheelFilename": candidate.filename,
-            "artifactDigest": candidate.artifact_digest,
-            "requestedPackage": candidate.requested_package,
-            "pluginManifestPath": candidate.plugin_manifest_path,
-            "policyRevision": policy_revision,
-            "approvalId": approval_id,
-            "recordVersion": record_version,
-        }
-        if record_version >= 2:
-            values["resourceKind"] = resource_kind
-        return cls(
+        return _record_programs.create_binding(
+            cls,
             record_revision=record_revision,
             store_id=store_id,
             namespace_id=namespace_id,
             scope_id=scope_id,
-            plugin_id=candidate.plugin_id,
             legacy_source_identity=legacy_source_identity,
             legacy_binding_digest=legacy_binding_digest,
-            source_content_digest=candidate.source_content_digest,
-            manifest_digest=candidate.manifest_digest,
             dependency_lock_digest=dependency_lock_digest,
-            wheel_filename=candidate.filename,
-            artifact_digest=candidate.artifact_digest,
-            requested_package=candidate.requested_package,
-            plugin_manifest_path=candidate.plugin_manifest_path,
             policy_revision=policy_revision,
             approval_id=approval_id,
-            record_id=sha256(canonical_json_bytes(values)).hexdigest(),
-            record_version=record_version,
+            candidate=candidate,
             resource_kind=resource_kind,
         )
 
@@ -200,34 +136,7 @@ class CodingLegacyLocalBindingV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyLocalBindingV1:
-        expected = _BINDING_SCHEMA.keys
-        if type(value) is not dict or set(value) not in (
-            expected,
-            expected | {"resourceKind"},
-        ):
-            raise JournalCodecError(
-                "Invalid Coding legacy binding record",
-                code="coding_legacy_binding_invalid",
-            )
-        try:
-            if type(value["recordVersion"]) is not int:
-                raise ValueError("Unsupported legacy Product binding version")
-            if value["recordVersion"] == 1 and "resourceKind" not in value:
-                resource_kind: Literal["skill", "prompt", "theme"] = "skill"
-            elif value["recordVersion"] == 2 and value.get("resourceKind") == "prompt":
-                resource_kind = "prompt"
-            elif value["recordVersion"] == 3 and value.get("resourceKind") == "theme":
-                resource_kind = "theme"
-            else:
-                raise ValueError("Unsupported legacy Product binding type")
-            return cls(
-                **_BINDING_SCHEMA.decode(dict, value), resource_kind=resource_kind
-            )
-        except (TypeError, ValueError) as exc:
-            raise JournalCodecError(
-                "Invalid Coding legacy binding record",
-                code="coding_legacy_binding_invalid",
-            ) from exc
+        return _record_programs.decode_binding(cls, value)
 
     def to_policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
         return PackageProductLocalWheelBindingV1(
@@ -347,38 +256,7 @@ class CodingLegacyLocalBindingCatalog(
         return super().read_extend_policy(base)
 
     def _require_accepted_binding(self, record: CodingLegacyLocalBindingV1) -> None:
-        if self._acceptance_reader is None:
-            raise CodingLegacyBindingError(
-                "Legacy Product binding has no acceptance owner"
-            )
-        accepted = self._acceptance_reader(record.plugin_id)
-        if not isinstance(accepted, CodingLegacyLocalAcceptanceV1):
-            raise CodingLegacyBindingError(
-                "Legacy Product binding has no accepted review"
-            )
-        review = accepted.review
-        prefix = record.wheel_filename.removesuffix("-1-py3-none-any.whl")
-        if (
-            record.approval_id != accepted.acceptance_id
-            or record.resource_kind != accepted.resource_kind
-            or record.store_id != review.store_id
-            or record.namespace_id != review.namespace_id
-            or record.scope_id != review.scope_id
-            or record.plugin_id != review.plugin_id
-            or record.legacy_source_identity != review.legacy_source_identity
-            or record.legacy_binding_digest != review.legacy_binding_digest
-            or record.source_content_digest != review.source_content_digest
-            or record.manifest_digest != review.manifest_digest
-            or record.dependency_lock_digest != review.dependency_lock_digest
-            or record.wheel_filename != review.wheel_filename
-            or record.artifact_digest != review.wheel_artifact_digest
-            or record.requested_package != f"{prefix.replace('_', '-')}==1"
-            or record.plugin_manifest_path != f"{prefix}/plugin.json"
-            or record.policy_revision != review.policy_revision
-        ):
-            raise CodingLegacyBindingError(
-                "Legacy Product binding differs from accepted review"
-            )
+        return _record_programs.require_accepted_binding(self, record)
 
     def _record_codec(self) -> JournalRecordCodec[CodingLegacyLocalBindingV1]:
         return _CODEC

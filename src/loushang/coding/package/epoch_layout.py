@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.resources.packages.product_pre_b_snapshot import (
-    inspect_legacy_product_member_names,
+from loushang.coding.harness.package_product.legacy_members import (
+    inspect_domain_members,
 )
+from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _LIFECYCLE_JOURNAL_DOMAINS = {
@@ -26,14 +26,21 @@ _LIFECYCLE_JOURNAL_DOMAINS = {
     "retirement-sets.jsonl": "instance_state",
 }
 _LIFECYCLE_MEMBER_DOMAINS = {
-    **_LIFECYCLE_JOURNAL_DOMAINS,
-    **{f"{name}.lock": domain for name, domain in _LIFECYCLE_JOURNAL_DOMAINS.items()},
-    "enablement-migration.jsonl.migration.lock": "enablement_state",
-    "lifecycle-coordination.lock": "desired_state",
-    "process-startups": "instance_state",
-    "session-owners": "instance_state",
+    **{name: (domain,) for name, domain in _LIFECYCLE_JOURNAL_DOMAINS.items()},
+    **{f"{name}.lock": (domain,) for name, domain in _LIFECYCLE_JOURNAL_DOMAINS.items()},
+    "enablement-migration.jsonl.migration.lock": ("enablement_state",),
+    "lifecycle-coordination.lock": ("desired_state",),
+    "process-startups": ("instance_state",),
+    "session-owners": ("instance_state",),
 }
 _LIFECYCLE_DIRECTORY_MEMBERS = frozenset({"process-startups", "session-owners"})
+
+_PACKAGE_DIRECTORY_MEMBERS = frozenset({"installed", "plugin-revisions"})
+_PACKAGE_MEMBER_DOMAINS = {
+    **dict.fromkeys(_PACKAGE_DIRECTORY_MEMBERS, ("store_bytes",)),
+    "package-lock.json": ("binding_history", "lock_history"),
+    "package-lock.json.lock": ("lock_history",),
+}
 
 
 class _FencedRuntimeOpenKwargs(TypedDict):
@@ -135,7 +142,7 @@ class CodingPackagePreBStoreMembersV1:
             raise ValueError("Coding Package lock history mapping is invalid")
         if self.store_bytes != tuple(sorted(set(self.store_bytes))) or not set(
             self.store_bytes
-        ) <= {"installed", "plugin-revisions"}:
+        ) <= _PACKAGE_DIRECTORY_MEMBERS:
             raise ValueError("Coding Package Store member mapping is invalid")
 
     def domain_members(self) -> dict[str, tuple[str, ...]]:
@@ -167,7 +174,7 @@ class CodingLifecyclePreBMembersV1:
         domains = self.domain_members()
         if any(
             members != tuple(sorted(set(members)))
-            or any(_LIFECYCLE_MEMBER_DOMAINS.get(name) != domain for name in members)
+            or any(_LIFECYCLE_MEMBER_DOMAINS.get(name) != (domain,) for name in members)
             for domain, members in domains.items()
         ):
             raise ValueError("Coding pre-B lifecycle member mapping is invalid")
@@ -200,35 +207,17 @@ def resolve_coding_lifecycle_pre_b_members(
     )
     if any(path != root / name for path, name in expected_journals):
         raise ValueError("Coding pre-B lifecycle paths are not canonical")
-    names = inspect_legacy_product_member_names(
+    members = inspect_domain_members(
         root,
-        allowed_members=_LIFECYCLE_MEMBER_DOMAINS,
+        domains_by_member=_LIFECYCLE_MEMBER_DOMAINS,
         directory_members=_LIFECYCLE_DIRECTORY_MEMBERS,
         label="Coding pre-B lifecycle",
     )
     return CodingLifecyclePreBMembersV1(
         source_root=root,
-        desired_state=tuple(
-            sorted(
-                name
-                for name in names
-                if _LIFECYCLE_MEMBER_DOMAINS[name] == "desired_state"
-            )
-        ),
-        enablement_state=tuple(
-            sorted(
-                name
-                for name in names
-                if _LIFECYCLE_MEMBER_DOMAINS[name] == "enablement_state"
-            )
-        ),
-        instance_state=tuple(
-            sorted(
-                name
-                for name in names
-                if _LIFECYCLE_MEMBER_DOMAINS[name] == "instance_state"
-            )
-        ),
+        desired_state=members.get("desired_state", ()),
+        enablement_state=members.get("enablement_state", ()),
+        instance_state=members.get("instance_state", ()),
     )
 
 
@@ -239,28 +228,17 @@ def resolve_coding_package_pre_b_store_members(
 
     resolve_coding_package_epoch_layout(lifecycle)
     root = lifecycle.package_root
-    names = inspect_legacy_product_member_names(
+    members = inspect_domain_members(
         root,
-        allowed_members={
-            "installed",
-            "plugin-revisions",
-            "package-lock.json",
-            "package-lock.json.lock",
-        },
-        directory_members={"installed", "plugin-revisions"},
+        domains_by_member=_PACKAGE_MEMBER_DOMAINS,
+        directory_members=_PACKAGE_DIRECTORY_MEMBERS,
         label="Coding pre-B Package",
     )
     return CodingPackagePreBStoreMembersV1(
         source_root=root,
-        store_bytes=tuple(sorted(names & {"installed", "plugin-revisions"})),
-        binding_history=(
-            ("package-lock.json",) if "package-lock.json" in names else ()
-        ),
-        lock_history=tuple(
-            name
-            for name in ("package-lock.json", "package-lock.json.lock")
-            if name in names
-        ),
+        store_bytes=members.get("store_bytes", ()),
+        binding_history=members.get("binding_history", ()),
+        lock_history=members.get("lock_history", ()),
     )
 
 

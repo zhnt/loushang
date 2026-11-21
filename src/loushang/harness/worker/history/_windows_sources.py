@@ -143,7 +143,11 @@ class WindowsHistorySourceCapture(Generic[_SourceT]):
             raise ValueError("Windows Worker history inventory changed")
 
 
+WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME = "worker-history-checkpoint-v1.json"
+WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES = 8 * 1024 * 1024
+WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES = 32 * 1024 * 1024
 WINDOWS_WORKER_HISTORY_CUTOVER_NAME = "worker-history-cutover-v1.json"
+WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES = 4096
 
 WINDOWS_WORKER_BASE_FILES = (
     ("optIn", "worker-history-base-opt-in-v1.json"),

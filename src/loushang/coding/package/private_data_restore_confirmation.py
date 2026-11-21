@@ -6,12 +6,15 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.coding.harness.plugin_management import (
+    private_data_restore_confirmation as _record_programs,
+)
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
     JournalCodecError,
 )
 from loushang.harness.plugin_management._private_data_records import (
-    _valid_digest as _digest,
+    _valid_digest as _digest,  # noqa: F401
 )
 from loushang.harness.plugin_management.private_data_restore_journal import (
     PrivateDataRestoreConfirmationJournal,
@@ -26,13 +29,23 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .private_data_restore_journal import (
-    CodingArchPrivateDataRestoreEventV1,
-    restore_id_for,
+    restore_id_for as restore_id_for,
 )
 
 _JOURNAL_NAME = "private-data-restore-confirmations.jsonl"
 _MAX_RECORDS = 4096
 _MAX_BYTES = 32 * 1024 * 1024
+
+
+_PRIVATE_DATA_RECORD_VALUES = {
+    "value_01": "coding.arch.default",
+    "value_02": "Coding Arch restore confirmation is invalid",
+    "value_03": "arch-restore-confirm:",
+}
+
+_PRIVATE_DATA_RECORD_BYTES = {
+    "value_04": b"loushang.coding-arch-restore-confirmation/v1\x00"
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,28 +62,7 @@ class CodingArchPrivateDataRestoreConfirmationV1:
     record_version: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            type(self.revision) is not int
-            or self.revision < 1
-            or not isinstance(self.installation_key, PluginInstallationKeyV1)
-            or self.installation_key.plugin_id != "coding.arch.default"
-            or not _digest(self.backup_id)
-            or not isinstance(self.deletion_receipt_id, str)
-            or not self.deletion_receipt_id
-            or not isinstance(self.restore_id, str)
-            or self.restore_id
-            != restore_id_for(
-                self.installation_key, self.backup_id, self.deletion_receipt_id
-            )
-            or not _digest(self.restore_completion_digest)
-            or not isinstance(self.restored_target_id, str)
-            or not self.restored_target_id.startswith("present:")
-            or self.record_version != 1
-            or self.confirmation_id != self._expected_id()
-            or self.record_digest
-            != sha256(canonical_json_bytes(self._unsigned())).hexdigest()
-        ):
-            raise ValueError("Coding Arch restore confirmation is invalid")
+        return _record_programs.validate_confirmation(self)
 
     @classmethod
     def create(
@@ -84,28 +76,8 @@ class CodingArchPrivateDataRestoreConfirmationV1:
         restore_completion_digest: str,
         restored_target_id: str,
     ) -> CodingArchPrivateDataRestoreConfirmationV1:
-        facts = {
-            "backupId": backup_id,
-            "deletionReceiptId": deletion_receipt_id,
-            "installationKey": installation_key.to_dict(),
-            "restoreCompletionDigest": restore_completion_digest,
-            "restoredTargetId": restored_target_id,
-            "restoreId": restore_id,
-        }
-        confirmation_id = (
-            "arch-restore-confirm:"
-            + sha256(
-                b"loushang.coding-arch-restore-confirmation/v1\0"
-                + canonical_json_bytes(facts)
-            ).hexdigest()
-        )
-        unsigned = {
-            **facts,
-            "confirmationId": confirmation_id,
-            "recordVersion": 1,
-            "revision": revision,
-        }
-        return cls(
+        return _record_programs.create_confirmation(
+            cls,
             revision=revision,
             installation_key=installation_key,
             backup_id=backup_id,
@@ -113,8 +85,6 @@ class CodingArchPrivateDataRestoreConfirmationV1:
             restore_id=restore_id,
             restore_completion_digest=restore_completion_digest,
             restored_target_id=restored_target_id,
-            confirmation_id=confirmation_id,
-            record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
         )
 
     def _facts(self) -> dict[str, object]:
@@ -150,15 +120,7 @@ class CodingArchPrivateDataRestoreConfirmationV1:
     def matches_restore_result(
         self, other: CodingArchPrivateDataRestoreConfirmationV1
     ) -> bool:
-        return (
-            self.to_dict()
-            == {
-                **other.to_dict(),
-                "revision": self.revision,
-                "recordDigest": self.record_digest,
-            }
-            and self.confirmation_id == other.confirmation_id
-        )
+        return _record_programs.matches_restore_result(self, other)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingArchPrivateDataRestoreConfirmationV1:
@@ -204,33 +166,6 @@ class CodingArchPrivateDataRestoreConfirmationJournal(
             max_records=_MAX_RECORDS,
             max_bytes=_MAX_BYTES,
         )
-
-
-def _require_restore_confirmation(
-    records: tuple[CodingArchPrivateDataRestoreConfirmationV1, ...],
-    confirmation_id: str,
-    key: PluginInstallationKeyV1,
-    backup_id: str,
-    completion: CodingArchPrivateDataRestoreEventV1,
-    target_id: str,
-    *,
-    message: str,
-) -> CodingArchPrivateDataRestoreConfirmationV1:
-    matched = next(
-        (item for item in reversed(records) if item.confirmation_id == confirmation_id),
-        None,
-    )
-    if (
-        matched is None
-        or matched.installation_key != key
-        or matched.backup_id != backup_id
-        or matched.restore_id != completion.restore_id
-        or matched.deletion_receipt_id != completion.deletion_receipt_id
-        or matched.restore_completion_digest != completion.record_digest
-        or matched.restored_target_id != target_id
-    ):
-        raise ValueError(message)
-    return matched
 
 
 _SCHEMA_RESTORE_CONFIRMATION_V1 = RecordSchema.for_dataclass(

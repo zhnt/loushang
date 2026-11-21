@@ -42,19 +42,19 @@ def test_foreground_provisioner_rejects_unissued_permits_and_fences_stop(tmp_pat
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="foreground Unix service owner")
-def test_foreground_workspace_and_named_mux_survive_restart(tmp_path):
+def test_foreground_workspace_and_named_mux_survive_restart(standalone_workspace):
     from loushang.appserver.local import LocalAppClientConnectionV1
     from loushang.appserver.local_record import LocalConnectionDirectoryV1
     from loushang.appserver.protocol import WorkspaceModelsRequestV1, WorkspaceRequestV1
 
-    home = tmp_path / "home"
+    home = standalone_workspace / "home"
     home.mkdir(mode=0o700)
-    workspace = tmp_path / "workspace"
+    workspace = standalone_workspace / "workspace"
     workspace.mkdir()
     instances = []
     muxes = []
     for _ in range(2):
-        with (tmp_path / "host.log").open("w") as log:
+        with (standalone_workspace / "host.log").open("w") as log:
             process = subprocess.Popen(
                 [sys.executable, "-m", 'loushang.coding.hosted.foreground'],
                 cwd=Path(__file__).resolve().parents[2],
@@ -69,7 +69,7 @@ def test_foreground_workspace_and_named_mux_survive_restart(tmp_path):
                         break
                     time.sleep(0.05)
                 else:
-                    pytest.fail((tmp_path / "host.log").read_text())
+                    pytest.fail((standalone_workspace / "host.log").read_text())
 
                 async def check():
                     directory = LocalConnectionDirectoryV1(home / "state/macos-host/connections")
@@ -89,7 +89,7 @@ def test_foreground_workspace_and_named_mux_survive_restart(tmp_path):
                 asyncio.run(check())
             finally:
                 process.terminate()
-                assert process.wait(timeout=20) == 0, (tmp_path / "host.log").read_text()
+                assert process.wait(timeout=20) == 0, (standalone_workspace / "host.log").read_text()
     assert instances[0] != instances[1]
     assert muxes[0] == muxes[1]
 

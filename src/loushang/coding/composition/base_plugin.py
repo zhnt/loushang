@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,6 +13,12 @@ from loushang.coding.composition.base_owners import (
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.sets import CodingCompositionSetPlan
+from loushang.coding.harness.session.catalog_preparation import (
+    select_resource_plan,
+)
+from loushang.coding.harness.session.registration_authority import (
+    bind_compiled_registration_authority,
+)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
@@ -31,7 +37,6 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionKind,
     OwnerContributionPolicy,
-    OwnerContributionSnapshot,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -65,7 +70,6 @@ from loushang.harness.resources.plugins.types import (
 )
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
-    SessionCapabilityOwnerAuthorityGate,
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
@@ -428,23 +432,11 @@ def prepare_coding_base_resource_plan_seed(
     if not isinstance(assembly, CodingBasePluginAssembly):
         raise TypeError("Coding base Resource plan requires base assembly")
     seed = assembly.plan_seed
-    resource_ids = {
-        item.contribution_id
-        for item in assembly.package.contribution_index.items
-        if item.kind == "resource_item"
-    }
-    selected_resources = tuple(
-        item
-        for item in seed.plan.selected_contributions
-        if item.plugin_id == _PLUGIN_ID and item.contribution_id in resource_ids
-    )
-    if not selected_resources:
+    plan = select_resource_plan(seed.plan, assembly.package, plugin_id=_PLUGIN_ID)
+    if plan is None:
         return None
     return ProductPluginPlanSeed(
-        plan=replace(
-            seed.plan,
-            selected_contributions=selected_resources,
-        ),
+        plan=plan,
         packages=seed.packages,
         bindings=seed.bindings,
         owner_bindings=tuple(
@@ -526,48 +518,8 @@ def _build_coding_base_owners_from_admissions(
         or (tool_contribution_id is not None and tool_admission is None)
     ):
         raise ValueError("Coding base requires exact Tool and Command admissions")
-    authorities = {item.owner_key: item.authority for item in owner_bindings}
-    context = product_composition.authority_context
-    if tuple(item.authority.snapshot() for item in owner_bindings) != (
-        context.owner_snapshots
-    ):
-        raise ValueError("Coding base owner authority changed Product compilation")
-
-    def read_owner(
-        owner_id: str,
-        contribution_kind: str,
-        product_id: str,
-    ) -> OwnerContributionSnapshot:
-        authority = authorities.get((owner_id, contribution_kind, product_id))
-        if authority is None:
-            raise ValueError("Coding base owner reader received another owner")
-        return authority.snapshot()
-
-    def read_trust(
-        plugin_id: str,
-        source_identity: str,
-    ) -> PluginSourceTrustSnapshotV1:
-        matches = tuple(
-            item
-            for item in context.trust_snapshots
-            if item.plugin_id == plugin_id
-            and item.package_source_identity == source_identity
-        )
-        if len(matches) != 1:
-            raise ValueError("Coding base owner requires one trust snapshot")
-        return matches[0]
-
-    def read_product_policy(product_id: str, scope_id: str) -> str:
-        if product_id != context.product_id or scope_id != context.scope_id:
-            raise ValueError("Coding base owner received another Product scope")
-        return context.product_policy_revision
-
-    gate = SessionCapabilityOwnerAuthorityGate(
-        authority_context=context,
-        owner_snapshot_reader=read_owner,
-        trust_snapshot_reader=read_trust,
-        product_policy_revision_reader=read_product_policy,
-        clock=clock,
+    gate = bind_compiled_registration_authority(
+        product_composition, owner_bindings, clock=clock, label="Coding base owner"
     )
     return CodingBasePluginOwners(
         tool=(

@@ -822,12 +822,19 @@ def require_windows_worker_repair_record(
     return record
 
 
+WINDOWS_STAGE_RETIREMENT_RECEIPT_MAX_BYTES = 1024
+
+
 class _WindowsStageRetirementReceiptMethods(_BaseWireMethods):
     __slots__ = ()
     attempt_id: str
     review_fingerprint: str
     stage_identity: tuple[int, int]
     receipt_version: int
+
+    @classmethod
+    def _wire_maximum(cls) -> int:
+        return WINDOWS_STAGE_RETIREMENT_RECEIPT_MAX_BYTES
 
     def __post_init__(self) -> None:
         if (

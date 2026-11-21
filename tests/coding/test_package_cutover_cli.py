@@ -21,7 +21,7 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.package import legacy_removed_adoption as removed_adoption_module
+from loushang.coding.harness.package_product import reviewed_plugin_adoption
 from loushang.coding.package import legacy_source_consumption as source_consumption
 from loushang.coding.package.epoch_layout import (
     resolve_coding_lifecycle_pre_b_members,
@@ -2343,8 +2343,9 @@ def test_removed_old_local_cli_requires_reviewed_adoption(
         == 1
     )
     assert capsys.readouterr().out == ""
-    with patch(
-        "loushang.coding.package_legacy_removed_adoption._preserve_removed",
+    with patch.object(
+        reviewed_plugin_adoption,
+        "preserve_removed_product_plugin",
         side_effect=RuntimeError("interrupted after acceptance"),
     ):
         assert (
@@ -2609,7 +2610,7 @@ def test_two_removed_old_locals_replay_after_first_tombstone(
             "update",
         ]
         assert review["removedLocal"][1]["headOperationId"] == "old-update-head"
-    original = removed_adoption_module._preserve_removed
+    original = reviewed_plugin_adoption.preserve_removed_product_plugin
     calls = 0
 
     def interrupt_second(*args: Any, **kwargs: Any) -> None:
@@ -2620,7 +2621,9 @@ def test_two_removed_old_locals_replay_after_first_tombstone(
         original(*args, **kwargs)
 
     with patch.object(
-        removed_adoption_module, "_preserve_removed", side_effect=interrupt_second
+        reviewed_plugin_adoption,
+        "preserve_removed_product_plugin",
+        side_effect=interrupt_second,
     ):
         assert (
             cutover_main(
@@ -2772,8 +2775,9 @@ def test_mixed_active_and_removed_old_locals_require_removed_first(
         removed_review["reviewId"],
     )
     if configured_source:
-        with patch(
-            "loushang.coding.package_legacy_removed_adoption._preserve_removed",
+        with patch.object(
+            reviewed_plugin_adoption,
+            "preserve_removed_product_plugin",
             side_effect=RuntimeError("interrupted after acceptance"),
         ):
             assert cutover_main(removed_adopt) == 1

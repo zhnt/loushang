@@ -13,6 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Literal
 
+from loushang.coding.harness.plugin_management import (
+    private_data_windows_expiry_journal as _programs,
+)
+from loushang.coding.harness.plugin_management import (
+    private_data_windows_expiry_journal as _record_programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal.codec import decode_json_record
@@ -42,9 +48,14 @@ from .private_data_backup_expiry_records import (
 from .private_data_backup_records import backup_parent
 from .private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
-    capture_windows_arch_backup_archive,
 )
-from .private_data_windows_backup import _archive_io, _read_archive_manifest
+from .private_data_windows_archive_snapshot import (
+    capture_windows_arch_backup_archive as capture_windows_arch_backup_archive,
+)
+from .private_data_windows_backup import _archive_io
+from .private_data_windows_backup import (
+    _read_archive_manifest as _read_archive_manifest,
+)
 from .private_data_windows_backup_expiry_preview import (
     CodingWindowsArchPrivateDataBackupExpiryPreview,
 )
@@ -63,6 +74,19 @@ _MAX_EVENTS = 4096
 _MAX_EVENT_BYTES = 16 * 1024 * 1024
 
 
+_PRIVATE_DATA_FLOW_VALUES = {"message_01": "Windows Coding Arch backup archive changed"}
+
+
+_PRIVATE_DATA_RECORD_VALUES = {
+    "value_01": "Windows Coding Arch backup expiry event is invalid",
+    "value_02": "Windows Coding Arch backup expiry archive changed",
+    "value_03": "Unstarted Windows Coding Arch backup expiry has effects",
+    "value_04": "Windows Coding Arch backup expiry receipt changed",
+    "value_05": "Unfinished Windows Coding Arch backup expiry has receipt",
+    "value_06": "Windows Coding Arch backup expiry event fields changed",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class CodingWindowsArchBackupExpiryEventV1:
     revision: int
@@ -74,37 +98,7 @@ class CodingWindowsArchBackupExpiryEventV1:
     record_version: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            type(self.revision) is not int
-            or self.revision < 1
-            or self.phase not in {"confirmed", "started", "renamed", "completed"}
-            or not isinstance(self.plan, CodingArchPrivateDataBackupExpiryPlanV1)
-            or not isinstance(
-                self.confirmation, CodingArchPrivateDataBackupExpiryConfirmationV1
-            )
-            or self.confirmation.plan_fingerprint != self.plan.fingerprint
-            or self.record_version != 1
-        ):
-            raise ValueError("Windows Coding Arch backup expiry event is invalid")
-        if self.phase == "confirmed":
-            if self.archive is not None or self.receipt is not None:
-                raise ValueError(
-                    "Unstarted Windows Coding Arch backup expiry has effects"
-                )
-            return
-        if (
-            not isinstance(self.archive, CodingWindowsArchBackupArchiveSnapshotV1)
-            or self.archive.root_identity != self.plan.archive_root_identity
-            or self.archive.target_id != self.plan.archive_target_id
-        ):
-            raise ValueError("Windows Coding Arch backup expiry archive changed")
-        if self.phase == "completed":
-            if self.receipt != CodingArchPrivateDataBackupExpiryReceiptV1.create(
-                self.plan, self.confirmation
-            ):
-                raise ValueError("Windows Coding Arch backup expiry receipt changed")
-        elif self.receipt is not None:
-            raise ValueError("Unfinished Windows Coding Arch backup expiry has receipt")
+        return _record_programs.validate_event(self)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -119,37 +113,7 @@ class CodingWindowsArchBackupExpiryEventV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingWindowsArchBackupExpiryEventV1:
-        if type(value) is not dict or set(value) != {
-            "archive",
-            "confirmation",
-            "phase",
-            "plan",
-            "receipt",
-            "recordVersion",
-            "revision",
-        }:
-            raise ValueError("Windows Coding Arch backup expiry event fields changed")
-        archive = value["archive"]
-        receipt = value["receipt"]
-        return cls(
-            revision=value["revision"],
-            phase=value["phase"],
-            plan=CodingArchPrivateDataBackupExpiryPlanV1.from_dict(value["plan"]),
-            confirmation=CodingArchPrivateDataBackupExpiryConfirmationV1.from_dict(
-                value["confirmation"]
-            ),
-            archive=(
-                None
-                if archive is None
-                else CodingWindowsArchBackupArchiveSnapshotV1.from_dict(archive)
-            ),
-            receipt=(
-                None
-                if receipt is None
-                else CodingArchPrivateDataBackupExpiryReceiptV1.from_dict(receipt)
-            ),
-            record_version=value["recordVersion"],
-        )
+        return _record_programs.decode_event(cls, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,14 +215,7 @@ class CodingWindowsArchBackupExpiryTransaction(
         parent_fd: int,
         acl: WindowsPrivateDirectoryAcl,
     ) -> CodingWindowsArchBackupArchiveSnapshotV1:
-        self._require_current_plan(plan)
-        receipt, source = _read_archive_manifest(parent_fd, plan.backup_id, acl)
-        archive = capture_windows_arch_backup_archive(
-            self.layout, plan.installation_key, plan.backup_id, source, receipt
-        )
-        if archive.target_id != plan.archive_target_id:
-            raise ValueError("Windows Coding Arch backup archive changed")
-        return archive
+        return _programs.require_pre_effect_archive(self, plan, parent_fd, acl)
 
     def _require_recovery_authority(
         self, plan: CodingArchPrivateDataBackupExpiryPlanV1

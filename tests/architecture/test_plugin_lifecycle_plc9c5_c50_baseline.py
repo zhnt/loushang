@@ -979,8 +979,8 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,
+        CODING_ROOT / "harness/worker/pending_session.py",
         CODING_ROOT / "package/product_worker_capability.py",
-        CODING_ROOT / "package/product_worker_crash_c5_settlement.py",
         CODING_ROOT / "package/product_worker_activation_state_journal.py",
         CODING_ROOT / "package/product_worker_activation_history.py",
         CODING_ROOT / "package/product_worker_activation_base_v2.py",
@@ -1041,8 +1041,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package/product_worker_history_read_v2.py",
         CODING_ROOT / "package/product_worker_history_retirement_preview.py",
         CODING_ROOT / "package/product_worker_history_stage_v2.py",
-        CODING_ROOT / "package/product_worker_history_commit_v2.py",
-        CODING_ROOT / "package/product_worker_history_retire_v2.py",
         CODING_ROOT / "package/product_worker_history_stream_snapshot.py",
         CODING_ROOT / "package/product_worker_history_v2_names.py",
         CODING_ROOT / "package/product_worker_no_effect_archive_v2.py",
@@ -1060,6 +1058,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         Path('src/loushang/coding/package/worker_preparation_inputs.py'),
         Path("src/loushang/coding/package/product_worker_gc_references.py"),
         Path("src/loushang/coding/package/product_worker_native_approval.py"),
+        Path("src/loushang/coding/package/product_worker_windows_native_approval_owner.py"),
         Path("src/loushang/coding/package/product_worker_windows_payload_inventory.py"),
     }
     hosting_consumers = {

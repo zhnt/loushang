@@ -10,6 +10,7 @@ import os
 from dataclasses import dataclass
 from typing import cast
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_recovery import (
     repair_windows_product_worker_clean_exit_orphan,
 )
@@ -68,9 +69,7 @@ def repair_coding_windows_product_worker_clean_exit_orphan_runtime(
     """Repair only a fully settled Worker whose Product runtime died later."""
 
     if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+        not is_windows_product(product, "coding", os.name)
         or type(expected_review) is not CodingWindowsWorkerOrphanRuntimeReviewV1
     ):
         raise ValueError(

@@ -576,12 +576,8 @@ def _prepare_managed_plugin_runtime(
             )
             [package] = runtime.packages
             [binding] = runtime.bindings
-            revision = PluginPackageRevisionRefV1(
-                plugin_id=package.manifest.name,
-                plugin_version=package.manifest.version,
-                package_content_digest=package.content_digest,
-                dependency_lock_digest=package.dependency_lock.digest,
-                package_source_identity=binding.source_identity,
+            revision = PluginPackageRevisionRefV1.from_published_package(
+                package, source_identity=binding.source_identity
             )
             manifest_default = package.manifest.enabled
             lifecycle.migrate_legacy_enablement(
@@ -635,12 +631,8 @@ def _prepare_managed_plugin_runtime(
             )
         [package] = runtime.packages
         [binding] = runtime.bindings
-        actual_revision = PluginPackageRevisionRefV1(
-            plugin_id=package.manifest.name,
-            plugin_version=package.manifest.version,
-            package_content_digest=package.content_digest,
-            dependency_lock_digest=package.dependency_lock.digest,
-            package_source_identity=binding.source_identity,
+        actual_revision = PluginPackageRevisionRefV1.from_published_package(
+            package, source_identity=binding.source_identity
         )
         if actual_revision != selected_revision:
             raise errors.make("selected_revision_mismatch")
@@ -757,12 +749,8 @@ def _resolve_managed_plugin_runtimes(
                 [package] = published.packages
                 [binding] = published.bindings
                 current_package = package
-                revision = PluginPackageRevisionRefV1(
-                    plugin_id=package.manifest.name,
-                    plugin_version=package.manifest.version,
-                    package_content_digest=package.content_digest,
-                    dependency_lock_digest=package.dependency_lock.digest,
-                    package_source_identity=binding.source_identity,
+                revision = PluginPackageRevisionRefV1.from_published_package(
+                    package, source_identity=binding.source_identity
                 )
                 manifest_default = package.manifest.enabled
                 lifecycle.migrate_legacy_enablement(
@@ -803,12 +791,8 @@ def _resolve_managed_plugin_runtimes(
                     current_package = package
                 except PluginRevisionError as exc:
                     raise errors.make("revision_replay_failed", spec.plugin_id) from exc
-            actual_revision = PluginPackageRevisionRefV1(
-                plugin_id=package.manifest.name,
-                plugin_version=package.manifest.version,
-                package_content_digest=package.content_digest,
-                dependency_lock_digest=package.dependency_lock.digest,
-                package_source_identity=binding.source_identity,
+            actual_revision = PluginPackageRevisionRefV1.from_published_package(
+                package, source_identity=binding.source_identity
             )
             if actual_revision != selected_revision:
                 raise errors.make("selected_revision_mismatch", spec.plugin_id)

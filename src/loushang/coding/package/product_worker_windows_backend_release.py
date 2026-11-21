@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendCandidateMethods,
     _WindowsBackendMaterialMethods,
@@ -100,14 +101,9 @@ __all__ = [
 
 
 def _require_candidate_product(product: WindowsLocalWheelProductSessionOwner) -> None:
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or not any(
-            binding.source_trust_class == "local-worker-candidate"
-            for binding in product.policy.bindings
-        )
+    if not is_windows_product(product, "coding", os.name) or not any(
+        binding.source_trust_class == "local-worker-candidate"
+        for binding in product.policy.bindings
     ):
         raise ValueError("Windows Worker candidate Product owner is required")
 

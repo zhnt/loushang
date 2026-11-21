@@ -7,18 +7,16 @@ Current read authorization remains with the calling Hosted service owner.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.foundation.json import dump_json_value
-from loushang.harness.conversation.jsonl_codec import ConversationJsonlRecordCodec
-from loushang.harness.transcript.codecs import create_agent_transcript_payload_registry
+from loushang.coding.harness.session.resume_records import input_record_digest
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_INPUT_RECORD_DIGEST_DOMAIN = b"loushang.coding.resume-input-record/v1\0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,10 +41,4 @@ class CodingResumeInputLookupResultV1:
 def coding_resume_input_record_digest(record: AgentTranscriptRecord) -> str:
     """Identify exact persisted payload, metadata, timestamp and branch parent."""
 
-    encoded = ConversationJsonlRecordCodec(
-        create_agent_transcript_payload_registry(),
-    ).encode_record(record)
-    value = dump_json_value(
-        encoded, name="Resume input lookup record", ensure_ascii=True, sort_keys=True,
-    ).encode("utf-8")
-    return hashlib.sha256(b"loushang.coding.resume-input-record/v1\0" + value).hexdigest()
+    return input_record_digest(record, digest_domain=_INPUT_RECORD_DIGEST_DOMAIN)

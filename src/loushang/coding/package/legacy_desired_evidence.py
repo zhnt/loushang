@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
+import json as json
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import sha256 as sha256
 
+from loushang.coding.harness.package_product import legacy_desired_evidence as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.plugin_management.journal_codecs import (
@@ -13,8 +14,12 @@ from loushang.harness.plugin_management.journal_codecs import (
 )
 from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateSnapshotV1,
-    PluginLifecycleError,
-    decode_plugin_desired_state_capture,
+)
+from loushang.harness.plugin_management.ledger import (
+    PluginLifecycleError as PluginLifecycleError,
+)
+from loushang.harness.plugin_management.ledger import (
+    decode_plugin_desired_state_capture as decode_plugin_desired_state_capture,
 )
 
 from .legacy_snapshot_member import (
@@ -23,6 +28,15 @@ from .legacy_snapshot_member import (
 )
 
 _MAX_DESIRED_BYTES = 2 * 1024 * 1024
+
+
+_LEGACY_EVIDENCE_VALUES = {
+    "value_001": "Coding legacy desired journal exceeds budget",
+    "value_002": "Coding legacy desired state has a foreign Installation",
+    "value_003": "Old desired journal has an incomplete final record",
+    "value_004": "Coding legacy desired state is invalid",
+    "value_005": "coding",
+}
 
 
 class CodingLegacyDesiredError(ValueError):
@@ -59,41 +73,11 @@ def parse_coding_legacy_desired_evidence(
 ) -> CodingLegacyDesiredEvidenceV1:
     """Decode only a complete committed journal under the old Coding scope."""
 
-    if not isinstance(raw, bytes) or len(raw) > _MAX_DESIRED_BYTES:
-        raise CodingLegacyDesiredError("Coding legacy desired journal exceeds budget")
-    try:
-        text = raw.decode("utf-8")
-        if text and not text.endswith("\n"):
-            raise ValueError("Old desired journal has an incomplete final record")
-        for line in text.splitlines():
-            if line.strip():
-                json.loads(line, object_pairs_hook=_unique_object)
-        snapshot, transitions = decode_plugin_desired_state_capture(
-            text,
-            path=lifecycle.desired_state,
-        )
-    except (UnicodeError, ValueError, PluginLifecycleError) as exc:
-        raise CodingLegacyDesiredError(
-            "Coding legacy desired state is invalid"
-        ) from exc
-    if any(
-        state.installation_key.product_id != "coding"
-        or state.installation_key.installation_scope != "workspace"
-        or state.installation_key.scope_id != lifecycle.scope_id
-        for state in snapshot.installations
-    ):
-        raise CodingLegacyDesiredError(
-            "Coding legacy desired state has a foreign Installation"
-        )
-    return CodingLegacyDesiredEvidenceV1(
-        snapshot=snapshot,
-        journal_digest=sha256(raw).hexdigest(),
-        transitions=transitions,
-    )
+    return _programs.parse_desired_evidence(raw, lifecycle=lifecycle)
 
 
 _unique_object = _unique_json_object_hook(
-    lambda: 'Coding legacy desired state has duplicate JSON keys',
+    lambda: "Coding legacy desired state has duplicate JSON keys",
 )
 
 

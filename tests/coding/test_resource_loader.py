@@ -3,6 +3,14 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+import pytest
+
+
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    """Limit discovered context files to the fixture's actual ancestry."""
+    return standalone_workspace
+
 
 def _runtime_footer(cwd: Path) -> str:
     return f"Current date: {date.today().isoformat()}\nCurrent working directory: {cwd.as_posix()}"

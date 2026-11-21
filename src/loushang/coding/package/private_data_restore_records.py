@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Literal
 
+from loushang.coding.harness.plugin_management import (
+    private_data_restore_records as _record_programs,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -15,7 +18,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from .private_data_backup_records import _digest
+from .private_data_backup_records import _digest as _digest
+
+_PRIVATE_DATA_RECORD_VALUES = {
+    "value_01": "coding.arch.default",
+    "value_02": "Coding Arch restore plan is invalid",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,20 +37,7 @@ class CodingArchPrivateDataRestorePlanV1:
     plan_version: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.installation_key, PluginInstallationKeyV1)
-            or self.installation_key.plugin_id != "coding.arch.default"
-            or not _digest(self.backup_id)
-            or not isinstance(self.deletion_receipt_id, str)
-            or not self.deletion_receipt_id
-            or not isinstance(self.source_target_id, str)
-            or not self.source_target_id.startswith("present:")
-            or type(self.desired_inventory_revision) is not int
-            or self.desired_inventory_revision < 0
-            or self.target_state not in {"absent", "same_bytes"}
-            or self.plan_version != 1
-        ):
-            raise ValueError("Coding Arch restore plan is invalid")
+        return _record_programs.validate_plan(self)
 
     @property
     def fingerprint(self) -> str:

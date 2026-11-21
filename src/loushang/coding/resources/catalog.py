@@ -7,11 +7,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from loushang.coding.harness.session import catalog_adapter
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.contribution_admission import (
-    OwnerContributionAdmissionRecord,
     OwnerContributionAuthority,
     OwnerContributionKind,
     OwnerContributionPolicy,
@@ -21,9 +21,6 @@ from loushang.harness.capabilities.model_input_contracts import (
 )
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION,
-)
-from loushang.harness.resource_catalog._loader_inputs import (
-    _select_loader_catalog_inputs,
 )
 from loushang.harness.resource_catalog.product_inputs import (
     InitialResourceCatalogProductAdapter,
@@ -38,16 +35,21 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelection,
 )
 from loushang.harness.session.product_composition_assembly import (
-    ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
     _complete_catalog_plugin_selection_seed,
     _finalize_catalog_plugin_plan_seed,
     _prepare_catalog_plugin_plan_seed,
-    assemble_product_composition,
 )
 
+_CATALOG_PRODUCT_ID = "coding"
+_CATALOG_PRODUCT_LABEL = "Coding"
+_PACKAGE_CATALOG_REQUIRED_ROOTS = (MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,)
+_PACKAGE_CATALOG_DEFINITIONS = (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
+    WORKSPACE_CAPABILITY_DEFINITION,
+)
 _CODING_RESOURCE_CATALOG_POLICY_REVISION = "coding-resource-catalog-v3"
 _CODING_PACKAGE_TRUST_CLASS = "coding-configured-published"
 _CODING_PACKAGE_TRUST_POLICY_REVISION = "coding-resource-package-trust-v1"
@@ -163,12 +165,7 @@ def prepare_coding_initial_resource_catalog_adapter(
 ) -> InitialResourceCatalogProductAdapter:
     """Consume exactly one owner-issued receipt for a Catalog-owned Session."""
 
-    try:
-        receipt = resource_loader._take_initial_resource_catalog_input_receipt()
-    except (AttributeError, RuntimeError) as exc:
-        raise CodingResourceCatalogAdmissionError(
-            ("catalog_receipt_unavailable",)
-        ) from exc
+    receipt = catalog_adapter.take_initial_receipt(resource_loader)
     return build_coding_initial_resource_catalog_adapter(
         receipt,
         disabled_skills=disabled_skills,
@@ -199,92 +196,16 @@ def build_coding_initial_resource_catalog_adapter(
 ) -> InitialResourceCatalogProductAdapter:
     """Map one exact loader receipt without reparsing its selected Bundle."""
 
-    if not isinstance(receipt, ResourceCatalogInputReceipt):
-        raise TypeError("Coding Resource Catalog requires an input receipt")
-    resolved_source_policy = canonical_coding_resource_catalog_source_policy(
-        source_policy
-    )
-    if product_scope_id is not None and (
-        not isinstance(product_scope_id, str) or not product_scope_id.strip()
-    ):
-        raise ValueError("Coding Resource Catalog Product scope is invalid")
-    resolved_clock = clock or (lambda: int(time.time()))
-    if not callable(resolved_clock):
-        raise TypeError("Coding Resource Catalog clock is invalid")
-    resolved_admission_now = (
-        resolved_clock() if package_admission_now is None else package_admission_now
-    )
-    if product_composition is not None and not isinstance(
-        product_composition,
-        ProductCompositionCompilation,
-    ):
-        raise TypeError("Coding Resource Catalog Product composition is invalid")
-    if product_selection is not None and not isinstance(
-        product_selection,
-        PluginSelection,
-    ):
-        raise TypeError("Coding Resource Catalog Product selection is invalid")
-    if product_composition is not None and product_selection is not None:
-        raise ValueError(
-            "Coding Resource Catalog cannot receive both a composition and selection"
-        )
-    if product_snapshot_resources is not None and product_selection is not None:
-        raise ValueError(
-            "Coding Resource Catalog cannot mix Product snapshot and legacy selection"
-        )
-    if product_snapshot_resources is not None and product_composition is None:
-        raise ValueError(
-            "Coding Resource Catalog Product snapshot requires a composition"
-        )
-    if (
-        product_selection is not None
-        and not resolved_source_policy.include_package_resources
-    ):
-        raise ValueError(
-            "Coding Resource Catalog source policy excludes Product package selection"
-        )
-    if product_composition is None and resolved_source_policy.include_package_resources:
-        product_composition = _compile_coding_package_product_composition(
-            receipt,
-            product_scope_id=product_scope_id,
-            evaluated_at=resolved_admission_now,
-            product_selection=product_selection,
-        )
-    admissions = (
-        tuple(product_composition.resource_admissions)
-        if product_composition is not None
-        else ()
-    )
-    if any(
-        not isinstance(item, OwnerContributionAdmissionRecord) for item in admissions
-    ):
-        raise TypeError("Coding Product composition Resource admissions are invalid")
-    product_policy_revision = (
-        product_composition.authority_context.product_policy_revision
-        if product_composition is not None
-        else resolved_source_policy.product_policy_revision
-    )
-    if admissions and (
-        isinstance(resolved_admission_now, bool)
-        or not isinstance(resolved_admission_now, int)
-    ):
-        raise TypeError("Coding package Resource admissions require an integer time")
-    return InitialResourceCatalogProductAdapter(
-        _select_loader_catalog_inputs(
-            receipt,
-            product_id="coding",
-            product_policy_revision=product_policy_revision,
-            product_composition=product_composition,
-            product_snapshot_resources=product_snapshot_resources,
-            admissions=admissions,
-            resolved_admission_now=resolved_admission_now,
-            include_native_resources=resolved_source_policy.include_native_resources,
-            include_package_resources=resolved_source_policy.include_package_resources,
-            include_embedded_resources=resolved_source_policy.include_embedded_resources,
-            disabled_skills=disabled_skills,
-            reject=CodingResourceCatalogAdmissionError,
-        ),
-        clock=resolved_clock,
+    return catalog_adapter.build_catalog_adapter(
+        receipt,
+        product_scope_id=product_scope_id,
+        disabled_skills=disabled_skills,
+        product_composition=product_composition,
+        product_snapshot_resources=product_snapshot_resources,
+        product_selection=product_selection,
+        package_admission_now=package_admission_now,
+        clock=clock,
+        source_policy=source_policy,
     )
 
 
@@ -305,12 +226,12 @@ def prepare_coding_package_plugin_plan_seed(
         product_selection=product_selection,
         plan_seed=plan_seed,
         include_configured_resource_plugins=include_configured_resource_plugins,
-        product_id="coding",
+        product_id=_CATALOG_PRODUCT_ID,
         product_policy_revision=_CODING_RESOURCE_CATALOG_POLICY_REVISION,
         configured_trust_class=_CODING_PACKAGE_TRUST_CLASS,
         configured_trust_policy_revision=_CODING_PACKAGE_TRUST_POLICY_REVISION,
         reject=CodingResourceCatalogAdmissionError,
-        product_label="Coding",
+        product_label=_CATALOG_PRODUCT_LABEL,
     )
 
 
@@ -325,7 +246,7 @@ def finalize_coding_package_plugin_plan_seed(
         resolve=resolve,
         resolve_owner=_resolve_coding_contribution_owner,
         reject=CodingResourceCatalogAdmissionError,
-        product_label="Coding",
+        product_label=_CATALOG_PRODUCT_LABEL,
     )
 
 
@@ -338,7 +259,7 @@ def complete_coding_package_plugin_selection_seed(
         selection=selection,
         resolve_owner=_resolve_coding_contribution_owner,
         reject=CodingResourceCatalogAdmissionError,
-        product_label="Coding",
+        product_label=_CATALOG_PRODUCT_LABEL,
     )
 
 
@@ -371,7 +292,7 @@ def _resolve_coding_contribution_owner(
             OwnerContributionPolicy(
                 owner_id=owner_id,
                 contribution_kind=contribution_kind,
-                product_id="coding",
+                product_id=_CATALOG_PRODUCT_ID,
                 policy_revision=f"{owner_id}-{contribution_kind}-coding-ingress-v1",
                 revocation_epoch=0,
                 allowed_source_trust_classes=tuple(sorted(trust_classes)),
@@ -396,41 +317,13 @@ def _owner_binding_covers(
     return (
         policy.owner_id == owner_id
         and policy.contribution_kind == contribution_kind
-        and policy.product_id == "coding"
+        and policy.product_id == _CATALOG_PRODUCT_ID
         and set(policy.allowed_source_trust_classes) == trust_classes
         and set(policy.allowed_collection_ids) == collection_ids
         and policy.allowed_requirement_bindings == ("direct",)
         and policy.consumer_scope == "session"
         and policy.consumer_refresh_boundary == "sealed"
     )
-
-
-def _compile_coding_package_product_composition(
-    receipt: ResourceCatalogInputReceipt,
-    *,
-    product_scope_id: str | None,
-    evaluated_at: int,
-    product_selection: PluginSelection | None = None,
-) -> ProductCompositionCompilation | None:
-    plan_seed = prepare_coding_package_plugin_plan_seed(
-        receipt,
-        product_scope_id=product_scope_id,
-        evaluated_at=evaluated_at,
-        product_selection=product_selection,
-    )
-    if plan_seed is None:
-        return None
-    seed = finalize_coding_package_plugin_plan_seed(plan_seed)
-    request = ProductCompositionAssemblyRequest(
-        selection=seed.selection,
-        owner_bindings=seed.owner_bindings,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-        ),
-    )
-    return assemble_product_composition(request, evaluated_at=evaluated_at)
 
 
 __all__ = [

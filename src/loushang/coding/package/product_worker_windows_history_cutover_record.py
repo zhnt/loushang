@@ -9,11 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
-)
-from loushang.harness.worker.history._base_codec import _unchanged
 from loushang.harness.worker.history._windows_persisted import (
     _WindowsHistoryCutoverMethods,
 )
@@ -24,22 +19,10 @@ from .product_worker_windows_base_files import (
 from .product_worker_windows_base_files import WINDOWS_WORKER_HISTORY_CUTOVER_NAME
 from .product_worker_windows_persisted_bases import CodingWindowsWorkerPersistedBasesV1
 
-_MAX_BYTES = 4096
-
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerHistoryCutoverRecordV1(_WindowsHistoryCutoverMethods):
     _persisted_type = CodingWindowsWorkerPersistedBasesV1
-    _wire_label = "Windows Worker history cutover record"
-    _wire_lists = ("baseDigests",)
-    _wire_invalid_bytes = _wire_invalid_fields = _wire_invalid_encoding = "is invalid"
-    _wire_errors = (KeyError, RecursionError, TypeError, UnicodeError, ValueError)
-    _wire_nested_lists = ("baseDigests",)
-
-    @classmethod
-    def _wire_maximum(cls) -> int:
-        return _MAX_BYTES
-
     scope_id: str
     store_id: str
     checkpoint_digest: str
@@ -61,13 +44,7 @@ class CodingWindowsWorkerHistoryCutoverRecordV1(_WindowsHistoryCutoverMethods):
             raise ValueError("Windows Worker history cutover bases changed")
 
 
-CodingWindowsWorkerHistoryCutoverRecordV1._wire_schema = RecordSchema.for_dataclass(
-    CodingWindowsWorkerHistoryCutoverRecordV1,
-    _unchanged,
-    RecordField(
-        "base_digests", decoder=lambda value: tuple(tuple(item) for item in value)
-    ),
-)
+CodingWindowsWorkerHistoryCutoverRecordV1._bind_record_schema()
 
 
 __all__ = [

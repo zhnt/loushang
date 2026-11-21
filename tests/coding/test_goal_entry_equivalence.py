@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,11 @@ from loushang.harnesswork.plan_projection import project_work_plan_runs
 from .test_hosted_execution import _private_home as _private_home
 from .test_hosted_goal import CalculatorAdapter, application, task
 from .test_work_shell import _goal_project
+
+
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    return standalone_workspace
 
 
 def _business_snapshot(owner, advances):

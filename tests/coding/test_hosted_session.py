@@ -538,6 +538,7 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_property,
 ) -> None:
     import loushang.coding.composition.bootstrap as bootstrap_module
+    import loushang.coding.harness.session.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as hosted_module
     import loushang.coding.package.product_runtime as product_runtime_module
     from loushang.harness.capabilities.component_runtime import (
@@ -618,11 +619,11 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
         ),
     )
     monkeypatch.setattr(
-        bootstrap_module,
+        package_catalog_module,
         "prepare_coding_builtin_product_composition",
         timed_sync(
             "product-catalog-composition",
-            bootstrap_module.prepare_coding_builtin_product_composition,
+            package_catalog_module.prepare_coding_builtin_product_composition,
         ),
     )
     monkeypatch.setattr(
@@ -1004,7 +1005,7 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
     monkeypatch: pytest.MonkeyPatch,
     record_property,
 ) -> None:
-    import loushang.coding.composition.bootstrap as bootstrap_module
+    import loushang.coding.harness.session.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as module
     import loushang.coding.package.product_runtime as product_runtime_module
 
@@ -1061,11 +1062,11 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
         timed_sync("agent-session-construction", module.create_agent_session),
     )
     monkeypatch.setattr(
-        bootstrap_module,
+        package_catalog_module,
         "prepare_coding_builtin_product_composition",
         timed_sync(
             "product-catalog-composition",
-            bootstrap_module.prepare_coding_builtin_product_composition,
+            package_catalog_module.prepare_coding_builtin_product_composition,
         ),
     )
 

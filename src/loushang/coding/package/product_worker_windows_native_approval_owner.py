@@ -13,6 +13,9 @@ from loushang.harness.package_product._windows_worker_backend_release import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.worker.history._native_approval import (
+    NATIVE_APPROVAL_JOURNAL_NAME,
+)
 
 from .product_worker_native_approval import CodingWorkerNativeApprovalDecisionV1
 from .product_worker_windows_backend_release import (
@@ -32,7 +35,7 @@ class CodingWindowsWorkerNativeApprovalOwner:
         product.assert_root_gc_authority_current()
         self._product = product
         self._journal = CodingWindowsWorkerNativeApprovalJournal(
-            product.state_root / "worker-native-release-approvals.jsonl",
+            product.state_root / NATIVE_APPROVAL_JOURNAL_NAME,
             scope_id=product.policy.project_scope_id,
         )
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendInstalledMethods,
 )
@@ -36,14 +37,9 @@ class CodingWindowsWorkerProductOptInOwner(
     _selection_error_prefix = "coding_worker"
 
     def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
-        if (
-            os.name != "nt"
-            or type(product) is not WindowsLocalWheelProductSessionOwner
-            or product.policy.product_id != "coding"
-            or not any(
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product.policy.bindings
-            )
+        if not is_windows_product(product, "coding", os.name) or not any(
+            binding.source_trust_class == "local-worker-candidate"
+            for binding in product.policy.bindings
         ):
             raise ValueError("Windows Worker candidate Product owner is required")
         product.assert_root_gc_authority_current()

@@ -31,7 +31,6 @@ from .._segmented_history import (
 from ._checkpoint import _CheckpointMethods
 from ._checkpoint_history import _CodedFailure
 from ._opt_in import (
-    _IDENTIFIER,
     _MAX_EVENTS,
     _MAX_SEGMENT_BYTES,
     _OPAQUE,
@@ -43,6 +42,7 @@ from ._opt_in import (
     latest_opt_in_decision,
     opt_in_line,
     parse_opt_in_segment,
+    require_opt_in_plugin_id,
 )
 from ._read_v2 import RetainedHistoryReader
 from ._v2_names import PRODUCT_OWNER_INDEX_NAME
@@ -527,12 +527,9 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
 
     @staticmethod
     def _require_plugin_id(plugin_id: str) -> None:
-        if (
-            not isinstance(plugin_id, str)
-            or len(plugin_id) > 128
-            or _IDENTIFIER.fullmatch(plugin_id) is None
-        ):
-            raise ValueError("Coding Worker opt-in Plugin id is invalid")
+        require_opt_in_plugin_id(
+            plugin_id, message="Coding Worker opt-in Plugin id is invalid"
+        )
 
     @property
     def _decision_type(self) -> type[_DecisionT]:

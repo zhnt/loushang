@@ -12,6 +12,8 @@ from hashlib import sha256
 
 from loushang.harness.package_product._linux_worker_recovery import (
     CleanupEvidenceAuthority,
+    RegisteredCleanupEvidenceAuthority,
+    UnderGuardCleanupEvidenceAuthority,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -37,6 +39,20 @@ class CodingPosixWorkerCleanupEvidenceAuthority(
 
     def __init__(self, product: PosixLocalWheelProductSessionOwner) -> None:
         super().__init__(product, _recovery_bindings())
+
+
+class _UnderGuardCleanupEvidenceAuthority(
+    UnderGuardCleanupEvidenceAuthority[CodingWorkerHistoryRetentionReviewV1],
+    CodingPosixWorkerCleanupEvidenceAuthority,
+):
+    """Keep the Product's static evidence identity under Harness custody."""
+
+
+class _UnderGuardRegisteredCleanupEvidenceAuthority(
+    RegisteredCleanupEvidenceAuthority[CodingWorkerHistoryRetentionReviewV1],
+    _UnderGuardCleanupEvidenceAuthority,
+):
+    """Keep the same evidence identity for registered-lease settlement."""
 
 
 __all__ = ["CodingPosixWorkerCleanupEvidenceAuthority"]

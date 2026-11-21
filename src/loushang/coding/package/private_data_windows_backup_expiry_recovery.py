@@ -2,30 +2,54 @@
 
 from __future__ import annotations
 
+from loushang.coding.harness.plugin_management import (
+    private_data_windows_expiry_recovery as _programs,
+)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
-    latest_deleted_target_receipt,
+    latest_deleted_target_receipt as latest_deleted_target_receipt,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    inspect_windows_product_private_directory_identity,
+    inspect_windows_product_private_directory_identity as inspect_windows_product_private_directory_identity,
 )
 
 from .installation_private_data import (
-    coding_arch_installation_private_data_root,
-    inspect_coding_windows_arch_installation_root,
+    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+)
+from .installation_private_data import (
+    inspect_coding_windows_arch_installation_root as inspect_coding_windows_arch_installation_root,
 )
 from .private_data_backup_expiry_records import CodingArchPrivateDataBackupExpiryPlanV1
-from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
-from .private_data_windows_deletion_journal import (
-    CodingWindowsArchPrivateDataDeletionTransaction,
+from .private_data_restore_records import (
+    CodingArchPrivateDataRestorePlanV1 as CodingArchPrivateDataRestorePlanV1,
 )
-from .private_data_windows_preview import _capture_windows_target_snapshot, _native_io
+from .private_data_windows_deletion_journal import (
+    CodingWindowsArchPrivateDataDeletionTransaction as CodingWindowsArchPrivateDataDeletionTransaction,
+)
+from .private_data_windows_preview import (
+    _capture_windows_target_snapshot as _capture_windows_target_snapshot,
+)
+from .private_data_windows_preview import _native_io as _native_io
 from .private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreTransaction,
 )
+
+_PRIVATE_DATA_FLOW_VALUES = {
+    "message_01": "Windows Coding Arch backup expiry plan is invalid",
+    "message_02": "Windows Coding Arch backup expiry Desired State changed",
+    "message_03": "Windows Coding Arch backup expiry deletion changed",
+    "message_04": "Windows Coding Arch backup expiry confirmation changed",
+    "message_05": "Windows Coding Arch backup expiry restore changed",
+    "message_06": "Windows Coding Arch backup expiry publication is missing",
+    "message_07": "Windows Coding Arch backup expiry restore parent changed",
+    "message_08": ".arch-restore-",
+    "message_09": "Windows Coding Arch backup expiry restore has debt",
+    "message_10": "Windows Coding Arch backup expiry root binding changed",
+    "message_11": "Windows Coding Arch backup expiry restored bytes changed",
+}
 
 
 def require_windows_arch_backup_expiry_recovery_authority(
@@ -36,100 +60,7 @@ def require_windows_arch_backup_expiry_recovery_authority(
 ) -> None:
     """Verify immutable history and current restored bytes after archive rename."""
 
-    if not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1):
-        raise ValueError("Windows Coding Arch backup expiry plan is invalid")
-    root = coding_arch_installation_private_data_root(layout, plan.installation_key)
-    restore._require_active()
-    desired = product.desired_state.snapshot()
-    installation = desired.installation(plan.installation_key)
-    if (
-        desired.inventory_revision != plan.desired_inventory_revision
-        or installation.latest_instance_revision_ref is None
-        or installation.selection.desired_state != "absent"
-    ):
-        raise ValueError("Windows Coding Arch backup expiry Desired State changed")
-
-    deletion = CodingWindowsArchPrivateDataDeletionTransaction(
-        product.state_root, restore.state_fd
-    )
-    try:
-        deletion_events = deletion.events()
-    finally:
-        deletion._close()
-    deletion_receipt = latest_deleted_target_receipt(
-        deletion_events, plan.installation_key, plan.source_target_id
-    )
-    if deletion_receipt is None:
-        raise ValueError("Windows Coding Arch backup expiry deletion changed")
-
-    confirmations, staged = restore._scan_confirmations()
-    confirmation = next(
-        (
-            item
-            for item in reversed(confirmations)
-            if item.confirmation_id == plan.confirmation_id
-        ),
-        None,
-    )
-    if (
-        staged is not None
-        or confirmation is None
-        or confirmation.installation_key != plan.installation_key
-        or confirmation.backup_id != plan.backup_id
-        or confirmation.deletion_receipt_id != deletion_receipt.receipt_id
-        or confirmation.restore_completion_digest != plan.restore_completion_digest
-        or confirmation.restored_target_id != plan.restored_target_id
-    ):
-        raise ValueError("Windows Coding Arch backup expiry confirmation changed")
-
-    restore_plan = CodingArchPrivateDataRestorePlanV1(
-        installation_key=plan.installation_key,
-        backup_id=plan.backup_id,
-        deletion_receipt_id=confirmation.deletion_receipt_id,
-        source_target_id=plan.source_target_id,
-        desired_inventory_revision=plan.desired_inventory_revision,
-        target_state="absent",
-    )
-    restore_events = restore.events()
-    completion = restore_events[-1] if restore_events else None
-    started = restore_events[-2] if len(restore_events) >= 2 else None
-    if (
-        completion is None
-        or completion.phase != "completed"
-        or completion.installation_key != plan.installation_key
-        or completion.backup_id != plan.backup_id
-        or completion.deletion_receipt_id != confirmation.deletion_receipt_id
-        or completion.restore_id != confirmation.restore_id
-        or completion.record_digest != plan.restore_completion_digest
-        or started is None
-        or started.phase != "started"
-        or started.restore_id != completion.restore_id
-    ):
-        raise ValueError("Windows Coding Arch backup expiry restore changed")
-    publication = restore.publication_for(started, restore_plan)
-    if publication is None:
-        raise ValueError("Windows Coding Arch backup expiry publication is missing")
-
-    parent_identity = inspect_windows_product_private_directory_identity(root.parent)
-    if parent_identity != publication.parent_identity:
-        raise ValueError("Windows Coding Arch backup expiry restore parent changed")
-    _native_io.require_recovery_parent_view(
-        root,
-        parent_identity,
-        stage_prefix=".arch-restore-",
-        changed="Windows Coding Arch backup expiry restore has debt",
-    )
-    bound_root = inspect_coding_windows_arch_installation_root(
-        layout, plan.installation_key, state_root=product.state_root
-    )
-    if bound_root != publication.stage_identity[:2]:
-        raise ValueError("Windows Coding Arch backup expiry root binding changed")
-    restored = _capture_windows_target_snapshot(root, expected_root=bound_root)
-    if (
-        restored.root_identity != publication.stage_identity
-        or restored.target_id != plan.restored_target_id
-    ):
-        raise ValueError("Windows Coding Arch backup expiry restored bytes changed")
+    return _programs.require_expiry_recovery_authority(layout, product, restore, plan)
 
 
 __all__ = ["require_windows_arch_backup_expiry_recovery_authority"]

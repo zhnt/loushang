@@ -25,6 +25,15 @@ from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
     resolve_coding_composition_set,
 )
+from loushang.coding.harness.session.activation_history import (
+    find_input_records,
+    select_input_record,
+)
+from loushang.coding.harness.session.composition_receipt import (
+    composition_identity_fields,
+    composition_receipt_matches,
+)
+from loushang.coding.harness.session.writer_acquisition import acquire_writer
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
@@ -39,11 +48,7 @@ from loushang.coding.resume.activation_attempt_v2 import (
 )
 from loushang.coding.resume.activation_plan import (
     ActivationOwnerInputRefV1,
-    ResumePlanStaleError,
     SessionActivationPlanV1,
-    build_session_activation_plan,
-    require_current_resume_plan_inputs,
-    require_current_resume_plan_source,
 )
 from loushang.coding.resume.activation_projection_v2 import (
     project_coding_activation_attempt_path_v2,
@@ -53,20 +58,11 @@ from loushang.coding.resume.binding import (
     CodingRuntimeBindingV1,
     coding_user_input_digest,
     freeze_coding_user_input,
-    inspect_coding_runtime_binding,
     prepare_coding_resume_user_record,
-    validate_coding_runtime_binding_record,
 )
 from loushang.coding.resume.binding_v2 import (
-    CODING_RUNTIME_BINDING_V2_METADATA_KEY,
     CodingRuntimeBindingV2,
-    decode_coding_runtime_binding_v2,
     prepare_coding_resume_v2_user_record,
-    validate_coding_resume_v2_user_record,
-)
-from loushang.coding.resume.history import (
-    MAX_CODING_RESUME_HISTORY_BYTES,
-    read_coding_resume_snapshot,
 )
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
@@ -78,7 +74,6 @@ from loushang.harness.conversation import (
     ConversationHeader,
     ConversationRecord,
 )
-from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import (
     SIDE_QUESTION_PROVIDER_SLOT,
     ResolvedRuntimeProfile,
@@ -87,7 +82,6 @@ from loushang.harness.runtime import (
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
-    AgentTranscriptLifecycleSession,
     AgentTranscriptRecord,
     AgentTranscriptSessionFactory,
 )
@@ -130,6 +124,7 @@ class _PendingResumeFirstInput:
     outcome_unknown: bool = False
 
 
+_RESUME_WRITER_LABEL = "Coding Resume Writer"
 _RESUME_WRITER_CAPABILITIES = frozenset({"coding.resume-continuation/v2"})
 
 
@@ -373,82 +368,13 @@ class SessionManager(
         """
 
         cls._require_resume_writer_capabilities(required_writer_capabilities)
-        factory = cls._factory_for_persistence(True) if _factory is None else _factory
-        if not isinstance(factory, AgentTranscriptSessionFactory):
-            raise TypeError("Coding Resume Writer factory is invalid")
-        if not factory.owns_persistent_sessions:
-            raise ValueError(
-                "Coding Resume Writer requires its application-owned factory"
-            )
-        if (
-            not isinstance(plan, SessionActivationPlanV1)
-            or plan.status != "needs_final_validation"
-        ):
-            raise ValueError(
-                "Coding Resume Writer requires an available activation Plan"
-            )
-        require_current_resume_plan_inputs(plan, current_owner_inputs)
-        context = factory._discover_owned_context(session_file)
-        history = await settled_io(
-            read_coding_resume_snapshot,
-            context.session_file,
-            max_bytes=MAX_CODING_RESUME_HISTORY_BYTES,
-            selected_leaf_id=plan.selected_leaf_id,
-            expected_source_fingerprint=plan.source_fingerprint,
+        return await acquire_writer(
+            cls,
+            session_file,
+            plan=plan,
+            current_owner_inputs=current_owner_inputs,
+            factory=_factory,
         )
-        require_current_resume_plan_source(plan, history)
-        if (
-            context.header != history.header_preview.header
-            or context.cwd != plan.workspace_root
-            or build_session_activation_plan(
-                history,
-                resolve_coding_composition_set(
-                    plan.composition_comparison.candidate_set_id
-                ),
-                workspace_root=Path(plan.workspace_root),
-                owner_inputs=plan.owner_inputs,
-                owner_selections=plan.owner_selections,
-            )
-            != plan
-        ):
-            raise ResumePlanStaleError(
-                "Coding Resume Writer Plan differs from current history"
-            )
-        binding = factory._resolve_binding_input(True)
-        # Historical schemas and Product identity must remain valid. Current
-        # equality belongs to the new epoch, not this immutable original Header.
-        _validate_coding_restored_header(context.header, binding, False)
-        result: list[Self] = []
-
-        def project(
-            session: AgentTranscriptLifecycleSession[RuntimeProfileBinding],
-        ) -> None:
-            manager = cls(lifecycle_session=session)
-            manager._resume_runtime_publication_pending = True
-            if tuple(manager.get_entries()) != history.records:
-                raise ResumePlanStaleError(
-                    "Coding Resume Writer history changed during acquisition"
-                )
-            if history.selected_leaf_id is not None:
-                # Original Transcript branch selection is local read state.
-                # Store restore's default last-record leaf is not the user's
-                # verified selection and must not replace it during admission.
-                manager.branch(history.selected_leaf_id)
-            if (
-                manager.leaf_id != history.selected_leaf_id
-                or tuple(manager.get_active_entries()) != history.selected_records
-            ):
-                raise ResumePlanStaleError(
-                    "Coding Resume Writer history changed during acquisition"
-                )
-            manager._resume_writer_plan = plan
-            manager._creation_factory = factory
-            result.append(manager)
-
-        await factory._construct_owned(
-            context, binding, restore=True, _projection=project
-        )
-        return result[0]
 
     def _require_resume_bootstrap_composition(
         self,
@@ -526,53 +452,15 @@ class SessionManager(
         if not self.persist or len(self._transcript.records) > 65536:
             return unknown
         session_id = self.get_header().conversation_id
-        candidates: list[AgentTranscriptRecord] = []
         try:
-            path = tuple(self._transcript.active_path())
-            projection = project_coding_activation_attempt_path_v2(
-                path, current_session_id=session_id
+            candidates = find_input_records(
+                self._transcript.active_path(),
+                current_session_id=session_id,
+                input_id=query.input_id,
             )
-            if projection.status == "unknown_version":
-                return unknown
-            for record in path:
-                reserved = {
-                    key
-                    for key in record.metadata
-                    if key.startswith("coding.runtimeBinding")
-                }
-                if reserved == {CODING_RUNTIME_BINDING_V2_METADATA_KEY}:
-                    binding_v2 = decode_coding_runtime_binding_v2(record.metadata)
-                    observed_binding: (
-                        CodingRuntimeBindingV1 | CodingRuntimeBindingV2 | None
-                    ) = binding_v2
-                    if binding_v2.session_id == session_id:
-                        intent = next(
-                            (
-                                _validate_resume_attempt_record(item)
-                                for item in path
-                                if item.record_id == binding_v2.attempt_id
-                            ),
-                            None,
-                        )
-                        if type(intent) is not CodingActivationAttemptV2:
-                            raise ValueError("RuntimeBinding v2 intent is unavailable")
-                        validate_coding_resume_v2_user_record(record, intent=intent)
-                else:
-                    observed_binding = inspect_coding_runtime_binding(
-                        record.metadata
-                    ).binding
-                if (
-                    observed_binding is None
-                    or observed_binding.session_id != session_id
-                    or observed_binding.input_id != query.input_id
-                ):
-                    continue
-                if type(observed_binding) is CodingRuntimeBindingV1:
-                    validate_coding_runtime_binding_record(
-                        record, expected_session_id=session_id
-                    )
-                candidates.append(record)
         except ValueError:
+            return unknown
+        if candidates is None:
             return unknown
         pending = self._resume_first_input
         if (
@@ -582,14 +470,12 @@ class SessionManager(
             and pending.prepared_record is not None
         ):
             candidates.append(pending.prepared_record)
-        if not candidates:
-            return unknown
-        if (
-            len(candidates) != 1
-            or coding_resume_input_record_digest(candidates[0]) != query.record_digest
-        ):
-            return CodingResumeInputLookupResultV1(query.input_id, None, "conflict")
-        observed = await self.lookup_prebuilt_user_message(candidates[0])
+        selected = select_input_record(
+            candidates, expected_digest=query.record_digest, digest=coding_resume_input_record_digest
+        )
+        if isinstance(selected, str):
+            return CodingResumeInputLookupResultV1(query.input_id, None, selected)
+        observed = await self.lookup_prebuilt_user_message(selected)
         return CodingResumeInputLookupResultV1(
             query.input_id, observed.record_id, observed.status
         )
@@ -618,11 +504,9 @@ class SessionManager(
             # composition until a new Session is created with a sealed choice.
             return None
         return {
-            CODING_COMPOSITION_HEADER_KEY: {
-                "version": 1,
-                "setId": provenance.set_id,
-                "planFingerprint": provenance.plan_fingerprint,
-            }
+            CODING_COMPOSITION_HEADER_KEY: composition_identity_fields(
+                provenance.set_id, provenance.plan_fingerprint
+            )
         }
 
     def get_runtime_capability(self, slot: str) -> object | tuple[object, ...]:
@@ -665,9 +549,8 @@ class SessionManager(
         startup = historical_startup_composition_record(self.get_entries())
         if startup is None:
             raise ValueError("Coding Session has no startup composition receipt")
-        if (
-            startup["setId"] != provenance.set_id
-            or startup["planFingerprint"] != provenance.plan_fingerprint
+        if not composition_receipt_matches(
+            startup, provenance.set_id, provenance.plan_fingerprint
         ):
             raise ValueError("Coding Session startup receipt differs from its header")
         self._coding_composition_ready = True

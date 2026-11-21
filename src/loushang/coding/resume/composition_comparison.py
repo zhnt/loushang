@@ -9,11 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
 from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
     resolve_coding_composition_set,
 )
+from loushang.coding.harness.session.composition_history import compare_history
 from loushang.coding.resume.history import CodingResumeHistoryPreview
 
 
@@ -45,30 +47,9 @@ def compare_coding_resume_composition(
         or resolve_coding_composition_set(current.set_id) != current
     ):
         raise ValueError("Coding Resume comparison requires a canonical current set")
-    origin = history.header_preview.composition
-    status: Literal["same", "changed", "legacy_unknown", "unavailable"]
-    difference_codes: tuple[str, ...] = ()
-    reason_codes: tuple[str, ...] = ()
-    if history.header_preview.product_identity != "coding":
-        status, reason_codes = "unavailable", ("history.identity_unverified",)
-    elif history.provenance_conflict:
-        status, reason_codes = "unavailable", ("history.provenance_conflict",)
-    elif history.selected_ancestry_digest is None:
-        status, reason_codes = "unavailable", ("history.ancestry_invalid",)
-    elif history.binding_status in {"unknown_version", "invalid"}:
-        status = "unavailable"
-        reason_codes = (f"history.binding_{history.binding_status}",)
-    elif history.activation_status != "none":
-        status = "unavailable"
-        reason_codes = (f"history.activation_{history.activation_status}",)
-    elif origin is None:
-        status, difference_codes = "legacy_unknown", ("composition.origin_unknown",)
-    elif origin.set_id != current.set_id:
-        status, difference_codes = "changed", ("composition.set_changed",)
-    elif origin.plan_fingerprint != current.fingerprint:
-        status, difference_codes = "changed", ("composition.definition_changed",)
-    else:
-        status = "same"
+    status, origin, difference_codes, reason_codes = compare_history(
+        history, current, product_id=CODING_PRODUCT_ID
+    )
     return CodingResumeCompositionComparisonV1(
         status=status,
         origin=origin,

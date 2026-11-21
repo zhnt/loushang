@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from loushang.coding.package.product_worker_history_checkpoint import (
+    _CHECKPOINT_HISTORY,
     CodingWorkerHistoryCheckpointV1,
 )
 from loushang.coding.package.product_worker_history_segments import (
@@ -15,8 +16,10 @@ from loushang.coding.package.product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
 )
 from loushang.coding.package.product_worker_start_gate_journal import (
-    CodingWorkerStartGateJournal,
     CodingWorkerStartGateJournalError,
+)
+from loushang.harness.worker.history._start_gate_store import (
+    assert_checkpoint_attempt_available,
 )
 
 
@@ -51,21 +54,32 @@ def test_start_gate_checkpoint_refuses_rewritten_source_and_retired_attempt() ->
     history = CodingWorkerSegmentedHistoryV1(
         manifest=None, segments=(original + appended,)
     )
-    assert CodingWorkerStartGateJournal._assert_checkpoint_source(
-        (checkpoint,), history
-    ) == 1
+    assert (
+        _CHECKPOINT_HISTORY.verify_source_revision(
+            (checkpoint,),
+            history,
+            stream_index=3,
+            error_type=CodingWorkerStartGateJournalError,
+            code="coding_worker_start_gate_checkpoint_source_changed",
+        )
+        == 1
+    )
 
     rewritten = CodingWorkerSegmentedHistoryV1(
         manifest=None, segments=(b'{"journalRevision":9}\n' + appended,)
     )
     with pytest.raises(CodingWorkerStartGateJournalError) as changed:
-        CodingWorkerStartGateJournal._assert_checkpoint_source(
-            (checkpoint,), rewritten
+        _CHECKPOINT_HISTORY.verify_source_revision(
+            (checkpoint,),
+            rewritten,
+            stream_index=3,
+            error_type=CodingWorkerStartGateJournalError,
+            code="coding_worker_start_gate_checkpoint_source_changed",
         )
     assert changed.value.code == "coding_worker_start_gate_checkpoint_source_changed"
 
     with pytest.raises(CodingWorkerStartGateJournalError) as retired:
-        CodingWorkerStartGateJournal._assert_checkpoint_attempt_available(
-            (checkpoint,), "a" * 32
+        assert_checkpoint_attempt_available(
+            (checkpoint,), "a" * 32, error_type=CodingWorkerStartGateJournalError
         )
     assert retired.value.code == "coding_worker_start_gate_attempt_retired"

@@ -28,8 +28,6 @@ from .product_worker_windows_provisioning import (
 )
 from .product_worker_windows_stage_review import FileIdentity, _capture_stage_bytes
 
-_MAX_REVIEW_BYTES = 32768
-
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerCrashStageReviewV1(_WindowsCrashStageReviewMethods):
@@ -37,10 +35,6 @@ class CodingWindowsWorkerCrashStageReviewV1(_WindowsCrashStageReviewMethods):
     _record_kind = "crash"
     _record_error = ValueError
     _record_error_code = "Windows Worker crash stage review bytes are invalid"
-
-    @classmethod
-    def _record_maximum(cls) -> int:
-        return _MAX_REVIEW_BYTES
 
     attempt_id: str
     intent_fingerprint: str

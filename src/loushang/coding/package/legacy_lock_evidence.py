@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
-import json
+import json as json
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import sha256 as sha256
 
+from loushang.coding.harness.package_product import legacy_binding_evidence as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.resources.packages.materializer import (
-    _plugin_binding_from_json,
-    _plugin_binding_history_key,
+    _plugin_binding_from_json as _plugin_binding_from_json,
+)
+from loushang.harness.resources.packages.materializer import (
+    _plugin_binding_history_key as _plugin_binding_history_key,
 )
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
 )
-from loushang.harness.resources.plugins.types import PluginSourceBinding
+from loushang.harness.resources.plugins.types import (
+    PluginSourceBinding as PluginSourceBinding,
+)
 
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
@@ -38,6 +43,22 @@ _BINDING_KEYS = frozenset(
         "revisionKind",
     }
 )
+
+
+_LEGACY_EVIDENCE_VALUES = {
+    "value_001": "Coding legacy Package lock exceeds budget",
+    "value_002": "Coding legacy Package lock version is unsupported",
+    "value_003": "Coding legacy Plugin history lacks a head",
+    "value_004": "Coding legacy Package lock is invalid JSON",
+    "value_005": "Coding legacy Plugin binding is malformed",
+    "value_006": "Coding legacy Plugin binding is invalid",
+    "value_007": "Coding legacy Plugin binding is duplicated",
+    "value_008": "Coding legacy Plugin head is malformed",
+    "value_009": "Coding legacy Plugin head is invalid",
+    "value_010": "Coding legacy Plugin head is ambiguous",
+    "value_011": "Coding legacy Plugin Source kind or dependency closure is unsupported",
+    "value_012": "Coding legacy Plugin identity is ambiguous",
+}
 
 
 class CodingLegacyLockError(ValueError):
@@ -83,95 +104,11 @@ def parse_coding_legacy_local_binding_heads(
     operator decision, and Product transaction before adoption.
     """
 
-    if not isinstance(raw, bytes) or not raw or len(raw) > _MAX_LOCK_BYTES:
-        raise CodingLegacyLockError("Coding legacy Package lock exceeds budget")
-    try:
-        document = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object)
-    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise CodingLegacyLockError(
-            "Coding legacy Package lock is invalid JSON"
-        ) from exc
-    if (
-        type(document) is not dict
-        or set(document) != _TOP_LEVEL_KEYS
-        or type(document["version"]) is not int
-        or document["version"] != 4
-        or not isinstance(document["trustedSources"], list)
-        or any(type(value) is not str for value in document["trustedSources"])
-        or not isinstance(document["packages"], list)
-        or not isinstance(document["pluginBindings"], list)
-        or not isinstance(document["pluginBindingHeads"], list)
-    ):
-        raise CodingLegacyLockError("Coding legacy Package lock version is unsupported")
-    bindings: dict[str, PluginSourceBinding] = {}
-    for value in document["pluginBindings"]:
-        if type(value) is not dict or frozenset(value) not in {
-            _BINDING_KEYS,
-            _BINDING_KEYS | {"dependencyLock", "dependencyLockDigest"},
-        }:
-            raise CodingLegacyLockError("Coding legacy Plugin binding is malformed")
-        binding = _plugin_binding_from_json(value)
-        if binding is None:
-            raise CodingLegacyLockError("Coding legacy Plugin binding is invalid")
-        key = _plugin_binding_history_key(binding)
-        if key in bindings:
-            raise CodingLegacyLockError("Coding legacy Plugin binding is duplicated")
-        bindings[key] = binding
-    heads: dict[str, PluginSourceBinding] = {}
-    for value in document["pluginBindingHeads"]:
-        if type(value) is not dict or set(value) != {
-            "sourceIdentity",
-            "historyKey",
-        }:
-            raise CodingLegacyLockError("Coding legacy Plugin head is malformed")
-        source = value["sourceIdentity"]
-        key = value["historyKey"]
-        if type(source) is not str or type(key) is not str:
-            raise CodingLegacyLockError("Coding legacy Plugin head is invalid")
-        binding = bindings.get(key)
-        if binding is None or binding.source_identity != source or source in heads:
-            raise CodingLegacyLockError("Coding legacy Plugin head is ambiguous")
-        heads[source] = binding
-    if {binding.source_identity for binding in bindings.values()} != set(heads):
-        raise CodingLegacyLockError("Coding legacy Plugin history lacks a head")
-
-    selected: list[CodingLegacyLocalBindingEvidenceV1] = []
-    plugin_ids: set[str] = set()
-    lockfile_digest = sha256(raw).hexdigest()
-    for source, binding in sorted(heads.items()):
-        lock = binding.dependency_lock
-        if (
-            binding.source_kind != "local"
-            or binding.source_identity != f"local:{binding.source}"
-            or binding.content_digest is None
-            or binding.manifest_digest is None
-            or not isinstance(lock, PluginDependencyClosureLock)
-            or lock.python_distributions
-            or binding.revision_kind != "content_sha256"
-            or binding.revision != binding.content_digest
-        ):
-            raise CodingLegacyLockError(
-                "Coding legacy Plugin Source kind or dependency closure is unsupported"
-            )
-        if binding.plugin_id in plugin_ids:
-            raise CodingLegacyLockError("Coding legacy Plugin identity is ambiguous")
-        plugin_ids.add(binding.plugin_id)
-        selected.append(
-            CodingLegacyLocalBindingEvidenceV1(
-                source_identity=source,
-                plugin_id=binding.plugin_id,
-                content_digest=binding.content_digest,
-                manifest_digest=binding.manifest_digest,
-                dependency_lock=lock,
-                binding_digest=_plugin_binding_history_key(binding),
-                lockfile_digest=lockfile_digest,
-            )
-        )
-    return tuple(selected)
+    return _programs.parse_binding_heads(raw)
 
 
 _unique_object = _unique_json_object_hook(
-    lambda: 'Coding legacy Package lock has duplicate JSON keys',
+    lambda: "Coding legacy Package lock has duplicate JSON keys",
 )
 
 

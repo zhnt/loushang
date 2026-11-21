@@ -33,6 +33,15 @@ _MAX_EVENTS = 4096
 _MAX_SEGMENT_BYTES = 32 * 1024 * 1024
 
 
+def require_opt_in_plugin_id(plugin_id: str, *, message: str) -> None:
+    if (
+        not isinstance(plugin_id, str)
+        or len(plugin_id) > 128
+        or _IDENTIFIER.fullmatch(plugin_id) is None
+    ):
+        raise ValueError(message)
+
+
 class _OptInValue(Protocol):
     @property
     def plugin_id(self) -> str: ...
