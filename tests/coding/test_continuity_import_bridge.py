@@ -31,6 +31,12 @@ requires_secure_staging = pytest.mark.skipif(
 )
 
 
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    """Use real private ancestry for the POSIX staging checks."""
+    return standalone_workspace
+
+
 @dataclass
 class _PreparedOperation:
     result: object = "canonical-session"

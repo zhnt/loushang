@@ -2598,6 +2598,29 @@ The original inventory assertion passes with one enablement-key declaration.
 Eight consumption, refusal and replay cases pass. This follow-up removes
 another three production lines.
 
+### Cumulative candidate verification
+
+The frozen inventory contains 459 Python files and 260 extraction candidates.
+Each candidate has operation-level evidence for its current owner and callers.
+The dependency audit accounts for 177 temporary imports from staging into
+Coding and finds zero explicit reverse imports from formal Harness.
+
+The installed wheel resolves 300 historical module aliases, contains all 121
+staging modules, and round-trips five historical Source snapshot pickles.
+The affected-path runs pass 92 private-data cases, 154 Resume cases, 125
+Worker receipt and payload cases, and the native Linux cross-process Worker
+operator case. The Linux PLC9C5 contract, native profile and Product canary
+reports satisfy their existing manifests. Existing Windows CI provides the
+native Windows verification.
+
+Resource loader and Continuity tests create independent fixture workspaces
+while pytest storage stays in the managed runtime. This exercises actual
+ancestor discovery and filesystem permission checks in both suites. The
+candidate runs 125 cases successfully with one existing platform skip. The
+same two fixtures give 52 passes and one skip against the parent source,
+resolving the 33 failures reproduced in both revisions under the previous
+fixture placement.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
