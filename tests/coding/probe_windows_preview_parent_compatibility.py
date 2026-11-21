@@ -200,25 +200,27 @@ def observe(kind, case, patch):
     patch.setattr(code, "coding_arch_installation_private_data_root", lambda *a: root)
     patch.setattr(code, "backup_parent", lambda *a: parent)
     patch.setattr(code, "CodingWindowsArchPrivateDataDeletionTransaction", Deletion)
-    shared_restore = kind == "restore" and hasattr(
-        code._archive_io, "read_deleted_restore_source"
-    )
+    shared_archive = not hasattr(code, "_read_archive_manifest")
+    shared_restore = kind == "restore" and shared_archive
     if shared_restore:
         history = importlib.import_module(
             "loushang.harness.plugin_management.private_data_backup"
         )
         patch.setattr(history, "latest_deleted_target_receipt", latest)
         patch.setattr(
-            type(code._archive_io), "read_manifest", lambda self, *args: manifest(*args)
-        )
-        patch.setattr(
             type(code._archive_io), "verify_archive", lambda self, *args: verify(*args)
         )
     else:
         patch.setattr(code, "latest_deleted_target_receipt", latest)
+    if shared_archive:
+        patch.setattr(
+            type(code._archive_io), "read_manifest", lambda self, *args: manifest(*args)
+        )
+    else:
         patch.setattr(code, "_read_archive_manifest", manifest)
     for module in (code, core):
-        patch.setattr(module, "WindowsPrivateDirectoryAcl", ACL)
+        if hasattr(module, "WindowsPrivateDirectoryAcl"):
+            patch.setattr(module, "WindowsPrivateDirectoryAcl", ACL)
         if hasattr(module, "open_windows_directory"):
             patch.setattr(module, "open_windows_directory", open_directory)
         if hasattr(module, "inspect_windows_product_private_directory_identity"):
@@ -227,7 +229,7 @@ def observe(kind, case, patch):
             )
         if hasattr(module, "os"):
             patch.setattr(module, "os", NS(close=close))
-    patch.setattr(core if shared_restore else code, "windows_listdir_at", names)
+    patch.setattr(core if shared_archive else code, "windows_listdir_at", names)
     if hasattr(code, "_directory_identity"):
         patch.setattr(code, "_directory_identity", identity)
     patch.setattr(

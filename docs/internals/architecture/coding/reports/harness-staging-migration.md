@@ -115,14 +115,13 @@ claim. Documentation is accounted separately.
 ### File And Operation Disposition
 
 All original paths below are beneath `coding.package`; staged paths are beneath
-`coding.harness.plugin_management`. Historical public/nominal entries continue
-to dispatch to the single staged body; the original coordinating body exits.
-Future owners are the existing Harness Plugin Management private-data family,
-using its existing Package Product, Journal and Resources owners. Necessary
-nominal type and Product policy projections remain at Coding's boundary.
+`coding.harness.plugin_management`. This inventory records the original
+staging checkpoint. The formal delivery below records the current owners and
+the disposition of all 25 staged bodies.
 
 | Original module | Staged module | Moved operations |
 | --- | --- | --- |
+| `installation_private_data` | `installation_private_data` | Windows Installation root and private child preparation |
 | `private_data_backup` | `private_data_backup` | `retain`, `verify`, `retention_snapshot` |
 | `private_data_backup_expiry` | `private_data_backup_expiry` | `preview`, `expire`, `require_pre_effect_plan`, `require_recovery_authority`, `_expiry_preview`, `confirm` |
 | `private_data_backup_expiry_journal` | `private_data_expiry_events` | `validate_event` |
@@ -344,6 +343,63 @@ have been removed. Production Python decreases by 18 lines, with 178 removed
 from staging, 74 added to Coding Product and 86 added to formal Harness.
 All 293 selected Windows contracts pass with inert native ports on Linux,
 including the full original preview parent failure and descriptor traces.
+
+### Formal Windows Expiry And Recovery
+
+The Windows SDK and CLI candidate expiry routes read the retained manifest
+through the Harness archive parent scope. The restore owner coordinates the
+confirmation and completion proofs and rechecks them after archive capture.
+The recovery route uses the completed deletion, immutable confirmation,
+restore start and completion, publication, parent view and bound live tree.
+It can verify the exact restored bytes after the archive has been renamed.
+The existing expiry transaction remains the single rename, replay, removal and
+completion owner. Coding supplies the Product admission, paths and exact
+nominal plan, record and legacy codec. The recovery root observation uses
+the layout and Product authority supplied by its caller.
+
+This batch removes the final 263 temporary Python lines, adds 69 Coding Product
+lines and adds 138 formal Harness lines. Production Python decreases by 56
+lines. All 385 selected cases pass on Linux, including original Windows
+native-port fault, cleanup, wire and descriptor observations. Native Windows
+execution is outside this local evidence.
+
+### Private-Data Lifecycle Delivery
+
+All 25 private-data staging modules are retired. The remaining staging
+directory holds unrelated plugin management work. The complete POSIX and
+Windows chains use these owners through the existing CLI and SDK entrypoints.
+
+| Chain | Formal implementation owner | Coding boundary |
+| --- | --- | --- |
+| Scope, target observation and root lineage | `_private_data_custody`, `_installation_root_windows`, and Resources private tree I/O | Product and workspace admission, Installation and Session path identity |
+| Deletion plan, confirmation, execution and recovery | `private_data_deletion`, `private_data_confirmation`, and `_private_data_deletion_windows` | Operator approval, nominal record and tombstone name |
+| Retain, verify, inventory and status | `private_data_backup`, `_private_data_backup_windows`, and Package Product `_backup_topology` | Supported backup kind, root selection, historical manifest and receipt identity |
+| Restore, result confirmation and replay | `private_data_backup`, `private_data_restore_journal`, `_private_data_restore_windows`, and Resources tree I/O | Product removal admission, stage path, historical nominal types and codecs |
+| Expiry, checkpoints and cleanup | `private_data_backup`, `_private_data_expiry`, `_private_data_expiry_windows`, and the native restore proof | Independent approval, current Product selection, exact plan and receipt projection |
+
+Shared units include the POSIX deletion plan and custody, Windows target
+observation, retained-archive byte verification, the retention projection,
+archive-to-deletion proof, restore confirmation history lookup, canonical
+restore record field construction, the Windows archive parent read, and the
+expiry record validator. The 2,591 staging lines measure physical retirement.
+The 754-line system reduction includes deduplication and removed staging
+bindings, with Product and Harness additions included in the accounting.
+
+| Tracked production Python under `src/loushang` | Baseline `588b473bb` | Delivery | Delta |
+| --- | ---: | ---: | ---: |
+| Coding Product | 87,707 | 88,727 | +1,020 |
+| `coding.harness` | 19,816 | 17,225 | −2,591 |
+| Formal Harness | 380,398 | 381,215 | +817 |
+| Hosting | 14,235 | 14,235 | 0 |
+| Other production Python | 154,018 | 154,018 | 0 |
+| Total | 656,174 | 655,420 | −754 |
+
+The import audit traversed 491 local modules from 14 shared owners and found
+no import edge or literal module destination in Coding. A declaration
+comparison against the baseline covered 148 Product declarations across 25
+modules and found the same signatures, class bases and annotated fields.
+Compatibility probes retain their original expectations and inject faults at
+the current call sites. Tests and documentation are accounted separately.
 
 ## Validation And Commit Rhythm
 

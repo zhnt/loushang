@@ -31,10 +31,10 @@ CASES = (
 
 def observe(case, patch):
     journal = importlib.import_module(
-        'loushang.coding.package.private_data_windows_restore_journal'
+        "loushang.coding.package.private_data_windows_restore_journal"
     )
     code = importlib.import_module(
-        'loushang.coding.package.private_data_windows_backup_expiry_recovery'
+        "loushang.coding.package.private_data_windows_backup_expiry_recovery"
     )
     key = PluginInstallationKeyV1("coding", "workspace", "scope", "coding.arch.default")
     foreign = PluginInstallationKeyV1(
@@ -180,8 +180,17 @@ def observe(case, patch):
         "loushang.harness.resources.packages._private_tree_windows"
     )
     patch.setattr(native, "WindowsPrivateDirectoryAcl", ACL)
+    parent_owner = (
+        importlib.import_module(
+            "loushang.harness.plugin_management._private_data_restore_windows"
+        )
+        if hasattr(code, "require_windows_expiry_restored_target")
+        else code
+    )
     patch.setattr(
-        code, "inspect_windows_product_private_directory_identity", lambda path: (1, 2)
+        parent_owner,
+        "inspect_windows_product_private_directory_identity",
+        lambda path: (1, 2),
     )
     patch.setattr(native, "open_windows_directory", open_directory)
     patch.setattr(native, "closing_descriptor", closing)

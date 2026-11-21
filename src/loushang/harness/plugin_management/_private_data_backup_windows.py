@@ -277,15 +277,47 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
         with self._parent_scope(
             parent_path, parent_identity, acl, changed=f"{label} backup parent changed"
         ) as parent_fd:
-            if any(
-                name.endswith(self.codec.stage_suffix)
-                for name in windows_listdir_at(parent_fd)
-            ):
-                raise ValueError(stage_error)
-            receipt, source = self.read_manifest(parent_fd, name, acl)
+            receipt, source = self._read_unstaged_manifest(
+                parent_fd, name, acl, stage_error
+            )
             binding = require_binding(receipt, source)
             self.verify_archive(parent_fd, parent_path, name, key, source, receipt, acl)
             return receipt, source, binding
+
+    def read_expiry_manifest(
+        self, parent_path: Path, name: str, key: PluginInstallationKeyV1, *, label: str
+    ) -> tuple[R, S]:
+        """Bind the retained manifest before checking its independent restore evidence."""
+        parent_identity = inspect_windows_product_private_directory_identity(
+            parent_path
+        )
+        changed = f"{label} backup parent changed"
+        with (
+            WindowsPrivateDirectoryAcl() as acl,
+            self._parent_scope(
+                parent_path, parent_identity, acl, changed=changed
+            ) as parent_fd,
+        ):
+            receipt, source = self._read_unstaged_manifest(
+                parent_fd, name, acl, changed
+            )
+            if receipt.installation_key != key or receipt.backup_id != name:
+                raise ValueError(f"{label} backup Installation changed")
+            return receipt, source
+
+    def _read_unstaged_manifest(
+        self,
+        parent_fd: int,
+        name: str,
+        acl: WindowsPrivateDirectoryAcl,
+        stage_error: str,
+    ) -> tuple[R, S]:
+        if any(
+            entry.endswith(self.codec.stage_suffix)
+            for entry in windows_listdir_at(parent_fd)
+        ):
+            raise ValueError(stage_error)
+        return self.read_manifest(parent_fd, name, acl)
 
     def retain(
         self,

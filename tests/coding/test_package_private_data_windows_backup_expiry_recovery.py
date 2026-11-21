@@ -11,6 +11,7 @@ from typing import cast
 import pytest
 
 import loushang.coding.package.private_data_windows_backup_expiry_recovery as recovery
+import loushang.harness.plugin_management._private_data_restore_windows as restore_proofs
 import loushang.harness.resources.packages._private_tree_windows as native_tree
 from loushang.coding.package.private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
@@ -123,7 +124,7 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
         ),
     )
     monkeypatch.setattr(
-        recovery,
+        restore_proofs,
         "inspect_windows_product_private_directory_identity",
         lambda path: (1, 4),
     )
@@ -137,7 +138,11 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
             else os.open(path, os.O_RDONLY)
         ),
     )
-    monkeypatch.setattr(native_tree.PrivateWindowsTreeIO, "directory_identity", lambda self, descriptor: (1, 4))
+    monkeypatch.setattr(
+        native_tree.PrivateWindowsTreeIO,
+        "directory_identity",
+        lambda self, descriptor: (1, 4),
+    )
     monkeypatch.setattr(
         native_tree, "windows_listdir_at", lambda descriptor: ("restored",)
     )
