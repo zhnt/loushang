@@ -1272,7 +1272,7 @@ def test_default_runtime_builder_projects_internal_delegate_resource_profile(
 
 
 def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
-    tmp_path,
+    standalone_workspace,
     monkeypatch,
 ) -> None:
     from loushang.ai.types import UserMessage
@@ -1287,9 +1287,9 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
     from loushang.harness.transcript import SessionQuery
 
-    home = tmp_path / "user-home"
-    project = tmp_path / "project"
-    global_project = tmp_path / "global-project"
+    home = standalone_workspace / "user-home"
+    project = standalone_workspace / "project"
+    global_project = standalone_workspace / "global-project"
     project.mkdir()
     global_project.mkdir()
     monkeypatch.setenv("LOUSHANG_HOME", str(home))
@@ -1789,7 +1789,7 @@ def test_run_cli_sets_offline_environment_before_building_runtime(
 
 @pytest.mark.usefixtures("legacy_coding_route")
 def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
-    tmp_path: Path,
+    standalone_workspace: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from loushang.coding.adapters.agent_invocation import (
@@ -1803,7 +1803,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     from loushang.coding.control import SettingsManager
     from loushang.harness.tools.agent_delegate import AgentInvocationRequest
 
-    workspace = tmp_path / "workspace"
+    workspace = standalone_workspace / "workspace"
     workspace.mkdir()
     project_settings = workspace / ".loushang" / "settings.json"
     project_settings.parent.mkdir()
@@ -1811,7 +1811,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
         '{"capabilities": {"coding.lsp": "always"}}',
         encoding="utf-8",
     )
-    extension_import_marker = tmp_path / "extension-imported"
+    extension_import_marker = standalone_workspace / "extension-imported"
     # Coding's current production profile intentionally retains its legacy
     # workspace Resource root until the later layout migration.
     extension_dir = workspace / "extensions"
@@ -1827,7 +1827,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
         ),
         encoding="utf-8",
     )
-    executable = tmp_path / "loushang"
+    executable = standalone_workspace / "loushang"
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o755)
     prepared = CodingCliAgentInvocationAdapter(
@@ -1842,7 +1842,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
         default_cwd=str(workspace),
         model=None,
     )
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "user-home"))
     captured_args = []
     captured_sessions = []
 
@@ -1884,7 +1884,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
             cwd=workspace,
             services=create_services(
                 settings_manager=SettingsManager(
-                    global_settings_path=tmp_path / "global" / "settings.json",
+                    global_settings_path=standalone_workspace / "global" / "settings.json",
                     project_settings_path=project_settings,
                 )
             ),
@@ -1905,7 +1905,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
 
     standard_services = create_agent_session_services(
         cwd=workspace,
-        global_settings_path=tmp_path / "global" / "settings.json",
+        global_settings_path=standalone_workspace / "global" / "settings.json",
         project_settings_path=project_settings,
     )
     assert [flag.name for flag in standard_services.extension_runner.get_flags()] == [
@@ -8408,20 +8408,20 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     assert stderr.getvalue() == ""
 
 
-def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
+def test_run_cli_lists_project_skill_provenance_as_json(standalone_workspace) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.resources.runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
 
-    skill_dir = tmp_path / "skills" / "debug"
+    skill_dir = standalone_workspace / "skills" / "debug"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
         "---\nname: debug\ndescription: Debug failures.\n---\n\nDebug body.",
         encoding="utf-8",
     )
     loader = DefaultResourceLoader()
-    bundle = loader.discover_resources(tmp_path)
+    bundle = loader.discover_resources(standalone_workspace)
     session = FakeSession("session-1")
     skill = bundle.skills[0]
     session.skill_statuses_payload = (
@@ -8446,7 +8446,7 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,
-            cwd=tmp_path,
+            cwd=standalone_workspace,
             services=_fake_services(),
             runtime_builder=lambda **kwargs: runtime,
         )
@@ -8464,7 +8464,7 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
             "source_kind": "project_local",
             "source_scope": "project",
             "source": "filesystem",
-            "source_root": str(tmp_path / "skills"),
+            "source_root": str(standalone_workspace / "skills"),
             "disable_model_invocation": False,
             "enabled": True,
             "declared_enabled": True,
@@ -8481,7 +8481,7 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
 
 
 def test_run_cli_lists_skills_from_real_catalog_session(
-    tmp_path,
+    standalone_workspace,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from loushang.ai.model import Endpoint, Model, ModelSelection, Provider
@@ -8490,7 +8490,7 @@ def test_run_cli_lists_skills_from_real_catalog_session(
     from loushang.coding.composition.bootstrap import create_services
     from loushang.coding.control import ControlConfig, SettingsManager
 
-    skill_dir = tmp_path / "skills" / "review"
+    skill_dir = standalone_workspace / "skills" / "review"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
         "---\nname: review\ndescription: Review through the real Catalog.\n---\n"
@@ -8528,7 +8528,7 @@ def test_run_cli_lists_skills_from_real_catalog_session(
             )
         ),
     )
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "missing-home"))
     stdout = StringIO()
     stderr = StringIO()
 
@@ -8543,7 +8543,7 @@ def test_run_cli_lists_skills_from_real_catalog_session(
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,
-            cwd=tmp_path,
+            cwd=standalone_workspace,
             services=services,
         )
         assert exit_code == 0, stderr.getvalue()

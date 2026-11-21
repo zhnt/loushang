@@ -2627,6 +2627,12 @@ stop recheck passes 24 cases. A wider Mux run passes 121 cases and reports
 one initial session-creation failure. The exact failing case passes when
 rerun with the same workspace fixture and the existing redacted diagnostics.
 
+Another 38 focused cases pass with independent fixture workspaces across
+Bootstrap, CLI, Continuity, settings and Session persistence, resource
+watching, foreground restart and the simulated launchd adapter. The fixtures
+place test Product state outside the developer checkout. The pytest wrapper
+still manages the invocation's scratch directory.
+
 ## Cost And Final Acceptance
 
 Count the Product edge, `coding.harness`, all Coding, formal Harness, Hosting,

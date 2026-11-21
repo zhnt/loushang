@@ -2220,11 +2220,11 @@ def test_create_agent_session_from_services_uses_cwd_bound_services(
 
 
 def test_create_agent_session_services_loads_extension_flags_and_values(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     from loushang.coding import create_agent_session_services
 
-    project_root = tmp_path / "project"
+    project_root = standalone_workspace / "project"
     extensions_dir = project_root / "extensions"
     extensions_dir.mkdir(parents=True)
     (extensions_dir / "flags.py").write_text(
@@ -2240,7 +2240,7 @@ def test_create_agent_session_services_loads_extension_flags_and_values(
 
     agent_services = create_agent_session_services(
         cwd=project_root,
-        global_settings_path=tmp_path / "global" / "settings.json",
+        global_settings_path=standalone_workspace / "global" / "settings.json",
         extension_flag_values={"plan": True, "request-id": "req-123"},
     )
 
@@ -2257,7 +2257,7 @@ def test_create_agent_session_services_loads_extension_flags_and_values(
 
 
 def test_create_agent_session_from_services_applies_extension_flag_values(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    standalone_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from loushang.coding import (
         create_agent_session_from_services,
@@ -2265,8 +2265,8 @@ def test_create_agent_session_from_services_applies_extension_flag_values(
     )
     from loushang.coding.session.manager import SessionManager
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
-    project_root = tmp_path / "project"
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "home"))
+    project_root = standalone_workspace / "project"
     extensions_dir = project_root / "extensions"
     extensions_dir.mkdir(parents=True)
     (extensions_dir / "flags.py").write_text(
@@ -2281,12 +2281,14 @@ def test_create_agent_session_from_services_applies_extension_flag_values(
     )
     agent_services = create_agent_session_services(
         cwd=project_root,
-        global_settings_path=tmp_path / "global" / "settings.json",
+        global_settings_path=standalone_workspace / "global" / "settings.json",
         extension_flag_values={"plan": True, "request-id": "req-123"},
     )
     manager = asyncio.run(
         SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+            session_dir=standalone_workspace / "sessions",
+            cwd=str(project_root),
+            persist=False,
         )
     )
 
@@ -2303,11 +2305,11 @@ def test_create_agent_session_from_services_applies_extension_flag_values(
 
 
 def test_create_agent_session_services_reports_extension_flag_value_errors(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     from loushang.coding import create_agent_session_services
 
-    project_root = tmp_path / "project"
+    project_root = standalone_workspace / "project"
     extensions_dir = project_root / "extensions"
     extensions_dir.mkdir(parents=True)
     (extensions_dir / "flags.py").write_text(
@@ -2322,7 +2324,7 @@ def test_create_agent_session_services_reports_extension_flag_value_errors(
 
     agent_services = create_agent_session_services(
         cwd=project_root,
-        global_settings_path=tmp_path / "global" / "settings.json",
+        global_settings_path=standalone_workspace / "global" / "settings.json",
         extension_flag_values={"unknown": True, "request-id": True},
     )
 
@@ -2836,7 +2838,7 @@ def test_catalog_owned_child_bash_uses_actor_bound_approval(
 
 
 def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     from loushang.coding.composition.bootstrap import (
         create_agent_session,
@@ -2848,7 +2850,7 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         WorkspaceToolRegistry as ToolRegistry,
     )
 
-    project_root = tmp_path / "project"
+    project_root = standalone_workspace / "project"
     nested = project_root / "work" / "deep"
     nested.mkdir(parents=True)
     (project_root / "AGENTS.md").write_text("Use repo conventions.", encoding="utf-8")
@@ -2856,7 +2858,9 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     services = create_services(system_prompt="Base system prompt.")
     manager = asyncio.run(
         SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(nested), persist=False
+            session_dir=standalone_workspace / "sessions",
+            cwd=str(nested),
+            persist=False,
         )
     )
     registry = ToolRegistry()
@@ -2937,7 +2941,7 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
 
 
 def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     import asyncio
 
@@ -2957,7 +2961,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
         WorkspaceToolRegistry as ToolRegistry,
     )
 
-    extension_file = tmp_path / "extensions" / "dynamic.py"
+    extension_file = standalone_workspace / "extensions" / "dynamic.py"
     extension_file.parent.mkdir(parents=True)
     extension_file.write_text(
         "\n".join(
@@ -2991,7 +2995,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
     class _Loader(DefaultResourceLoader):
         def discover_resources(self, cwd):
             bundle = ResourceBundle(
-                cwd=tmp_path,
+                cwd=standalone_workspace,
                 extensions=[
                     ExtensionDescriptor(
                         name="dynamic",
@@ -3007,7 +3011,9 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
     session = create_agent_session(
         session_manager=asyncio.run(
             SessionManager.new(
-                session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+                session_dir=standalone_workspace / "sessions",
+                cwd=str(standalone_workspace),
+                persist=False,
             )
         ),
         services=create_services(
@@ -3657,7 +3663,7 @@ def test_create_agent_session_applies_disabled_plugin_sources(tmp_path) -> None:
     assert "Plugin debug prompt" not in session.agent.system_prompt
 
 
-def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
+def test_create_agent_session_marks_disabled_skills(standalone_workspace) -> None:
     import json
 
     from loushang.coding.composition.bootstrap import (
@@ -3667,13 +3673,13 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
     from loushang.coding.session.manager import SessionManager
 
-    project_root = tmp_path / "project"
+    project_root = standalone_workspace / "project"
     skill_dir = project_root / "skills" / "debug"
     project_root.mkdir()
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text("Debug skill", encoding="utf-8")
 
-    settings_path = tmp_path / "settings.json"
+    settings_path = standalone_workspace / "settings.json"
     settings_path.write_text(
         json.dumps({"disabled_skills": ["debug"]}), encoding="utf-8"
     )
@@ -3683,7 +3689,9 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     )
     manager = asyncio.run(
         SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+            session_dir=standalone_workspace / "sessions",
+            cwd=str(project_root),
+            persist=False,
         )
     )
 
@@ -4376,7 +4384,7 @@ def test_create_agent_session_never_calls_legacy_loader_discovery(tmp_path) -> N
 
 
 def test_create_agent_session_wires_extension_tool_interception_into_agent(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     import asyncio
 
@@ -4394,7 +4402,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
     )
     from loushang.harness.tools.workspace import ToolDefinition
 
-    extension_file = tmp_path / "extensions" / "guard.py"
+    extension_file = standalone_workspace / "extensions" / "guard.py"
     extension_file.parent.mkdir(parents=True)
     extension_file.write_text(
         "\n".join(
@@ -4458,7 +4466,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
     class _Loader(DefaultResourceLoader):
         def discover_resources(self, cwd):
             bundle = ResourceBundle(
-                cwd=tmp_path,
+                cwd=standalone_workspace,
                 extensions=[
                     ExtensionDescriptor(
                         name="guard",
@@ -4480,7 +4488,9 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
 
     manager = asyncio.run(
         SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+            session_dir=standalone_workspace / "sessions",
+            cwd=str(standalone_workspace),
+            persist=False,
         )
     )
     services = create_services(
@@ -4525,7 +4535,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
 
 
 def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     from loushang.coding.composition.bootstrap import (
         create_agent_session,
@@ -4541,7 +4551,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
     )
     from loushang.harness.tools.workspace import ToolDefinition
 
-    extension_file = tmp_path / "extensions" / "conflict.py"
+    extension_file = standalone_workspace / "extensions" / "conflict.py"
     extension_file.parent.mkdir(parents=True)
     extension_file.write_text(
         "\n".join(
@@ -4591,7 +4601,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
     class _Loader(DefaultResourceLoader):
         def discover_resources(self, cwd):
             bundle = ResourceBundle(
-                cwd=tmp_path,
+                cwd=standalone_workspace,
                 extensions=[
                     ExtensionDescriptor(
                         name="conflict",
@@ -4605,7 +4615,9 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
 
     manager = asyncio.run(
         SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+            session_dir=standalone_workspace / "sessions",
+            cwd=str(standalone_workspace),
+            persist=False,
         )
     )
     services = create_services(
@@ -5197,7 +5209,7 @@ def test_create_agent_session_fails_closed_and_records_lockfile_diagnostics(
 
 @pytest.mark.usefixtures("legacy_coding_route")
 def test_create_agent_session_records_invalid_plugin_source_and_continues(
-    tmp_path,
+    standalone_workspace,
 ) -> None:
     from loushang.coding.composition.bootstrap import (
         create_agent_session,
@@ -5206,13 +5218,13 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
     from loushang.coding.control import SettingsManager
     from loushang.coding.session.manager import SessionManager
 
-    project_root = tmp_path / "project"
-    invalid_plugin = tmp_path / "invalid-plugin"
+    project_root = standalone_workspace / "project"
+    invalid_plugin = standalone_workspace / "invalid-plugin"
     prompts_dir = project_root / "prompts"
     prompts_dir.mkdir(parents=True)
     (prompts_dir / "valid.md").write_text("Valid project prompt", encoding="utf-8")
 
-    settings_path = tmp_path / "settings.json"
+    settings_path = standalone_workspace / "settings.json"
     settings_path.write_text(
         (f'{{"plugin_sources": ["{invalid_plugin}"]}}'),
         encoding="utf-8",
@@ -5222,7 +5234,9 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
     )
     manager = asyncio.run(
         SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+            session_dir=standalone_workspace / "sessions",
+            cwd=str(project_root),
+            persist=False,
         )
     )
 

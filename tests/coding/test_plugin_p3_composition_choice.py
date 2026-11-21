@@ -272,12 +272,12 @@ def test_fork_preserves_historical_composition_without_current_registry(
 
 
 def test_new_session_persists_choice_and_resume_refuses_an_explicit_switch(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
+    standalone_workspace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
-    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "home"))
+    workspace = standalone_workspace / "workspace"
     workspace.mkdir()
-    session_dir = tmp_path / "home" / "data" / "sessions"
+    session_dir = standalone_workspace / "home" / "data" / "sessions"
 
     async def journey() -> None:
         created_runtime = create_agent_session_runtime(
@@ -363,10 +363,12 @@ def test_new_session_persists_choice_and_resume_refuses_an_explicit_switch(
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="fenced Product route")
 def test_resume_uses_current_model_permissions_and_resources_after_workspace_change(
-    tmp_path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    standalone_workspace,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
-    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "home"))
+    workspace = standalone_workspace / "workspace"
     workspace.mkdir()
     agents = workspace / "AGENTS.md"
     agents.write_text("Initial workspace instructions.\n", encoding="utf-8")
@@ -378,7 +380,7 @@ def test_resume_uses_current_model_permissions_and_resources_after_workspace_cha
     )
     assert cutover_cli_main(["--workspace", str(workspace)]) == 0
     capsys.readouterr()
-    session_dir = tmp_path / "session-domain" / "sessions"
+    session_dir = standalone_workspace / "session-domain" / "sessions"
 
     def model(model_id: str) -> Model:
         return Model(
@@ -862,12 +864,12 @@ def test_fenced_product_startup_records_effective_selection(
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="fenced Product route")
 def test_cli_builder_starts_explicit_minimal_and_inferred_architecture(
-    tmp_path,
+    standalone_workspace,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
-    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "home"))
+    workspace = standalone_workspace / "workspace"
     workspace.mkdir()
     assert cutover_cli_main(["--workspace", str(workspace)]) == 0
     capsys.readouterr()
@@ -882,11 +884,11 @@ def test_cli_builder_starts_explicit_minimal_and_inferred_architecture(
             (["--composition-set", "coding-minimal"], "coding-minimal"),
             ([], "coding-architecture"),
         ):
-            session_parent = tmp_path / "home" / "data" / expected
+            session_parent = standalone_workspace / "home" / "data" / expected
             session_dir = session_parent / "sessions"
             for directory in (
-                tmp_path / "home",
-                tmp_path / "home" / "data",
+                standalone_workspace / "home",
+                standalone_workspace / "home" / "data",
                 session_parent,
                 session_dir,
             ):
@@ -912,7 +914,7 @@ def test_cli_builder_starts_explicit_minimal_and_inferred_architecture(
             finally:
                 await runtime.dispose_session_runtime()
 
-        drift_parent = tmp_path / "home" / "data" / "drift"
+        drift_parent = standalone_workspace / "home" / "data" / "drift"
         drift_dir = drift_parent / "sessions"
         drift_parent.mkdir(mode=0o700)
         drift_dir.mkdir(mode=0o700)

@@ -997,10 +997,10 @@ def test_ready_and_failed_diagnostics_are_best_effort(
 
 
 def test_real_configured_continuity_plugin_lifecycle_and_restart(
-    tmp_path: Path,
+    standalone_workspace: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    asyncio.run(_real_configured_lifecycle(tmp_path, monkeypatch))
+    asyncio.run(_real_configured_lifecycle(standalone_workspace, monkeypatch))
 
 
 def test_removed_continuity_tombstone_never_reinspects_configured_source(
