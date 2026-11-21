@@ -290,6 +290,26 @@ Harness deletion checks pass all 230 cases on Linux. The lineage probe now
 recognizes the current lazy journal import and retains its original trace,
 error and wire assertions. Native Windows filesystem checks remain separate.
 
+### Formal POSIX Restore And Confirmation
+
+The POSIX CLI and SDK read and writer owners share the Harness deleted-archive
+proof, retained-byte and restored-target verification, and exact confirmation
+journal. The writer continues to use Harness archive publication, verified tree
+copy and restore checkpoints. The read-only preview verifies any existing
+target before checking stage debt. The writer keeps its original pre-effect
+check order and the read-only path holds its existing non-repairing fence.
+
+Coding retains the Product removal decision, storage names, restoration
+admission and historical wire and type bindings. The named restore records now
+reuse their own canonical field construction when creating and verifying
+digests. Five restore and read staging modules have been removed.
+
+This batch removes 577 temporary Python lines, adds 306 Coding Product lines
+and adds 113 formal Harness lines. Production Python decreases by 158 lines.
+All 132 selected Linux tests pass, covering POSIX CLI and SDK, restore and
+expiry behavior, original fault observations and history, and the portable
+Windows restore journal and preview contracts.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

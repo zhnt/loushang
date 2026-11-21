@@ -166,6 +166,27 @@ class _DeletedBackupReceipt(PrivateBackupReceipt, Protocol):
 _DeletedReceiptT = TypeVar("_DeletedReceiptT", bound=_DeletedBackupReceipt)
 
 
+def require_deleted_archive_receipt(
+    receipt: _DeletedBackupReceipt,
+    name: str,
+    key: PluginInstallationKeyV1,
+    *,
+    deletion_events: Callable[
+        [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
+    ],
+    installation_error: str,
+    deletion_error: str,
+) -> PluginPrivateDataDeletionReceiptV1:
+    if receipt.installation_key != key or receipt.backup_id != name:
+        raise ValueError(installation_error)
+    deletion = latest_deleted_target_receipt(
+        deletion_events(), key, receipt.source_target_id
+    )
+    if deletion is None:
+        raise ValueError(deletion_error)
+    return deletion
+
+
 def read_deleted_restore_source(
     private_base: Path,
     parent: Path,
@@ -183,17 +204,55 @@ def read_deleted_restore_source(
     """Bind and verify retained bytes before releasing their parent descriptor."""
     with closing_descriptor(io.open_path(private_base, parent)) as parent_fd:
         receipt, source = read_private_archive(parent_fd, name, io=io, codec=codec)
-        if receipt.installation_key != key or receipt.backup_id != name:
-            raise ValueError(installation_error)
-        deletion = latest_deleted_target_receipt(
-            deletion_events(), key, receipt.source_target_id
+        deletion = require_deleted_archive_receipt(
+            receipt,
+            name,
+            key,
+            deletion_events=deletion_events,
+            installation_error=installation_error,
+            deletion_error=deletion_error,
         )
-        if deletion is None:
-            raise ValueError(deletion_error)
         verify_private_archive(
             parent_fd, name, key, source, receipt, io=io, codec=codec
         )
     return source, deletion
+
+
+def verify_posix_restored_target(
+    private_base: Path,
+    target: Path,
+    source: PrivateBackupSource,
+    *,
+    io: PrivatePosixTreeIO,
+) -> None:
+    with closing_descriptor(io.open_path(private_base, target)) as target_fd:
+        verify_private_tree(
+            target_fd, source.members, label=io.label, max_read_bytes=io.max_read_bytes
+        )
+
+
+def preview_posix_restore_target(
+    private_base: Path,
+    target: Path,
+    source: PrivateBackupSource,
+    *,
+    io: PrivatePosixTreeIO,
+    target_present: bool,
+    stage_name: str,
+    stage_prefix: str,
+    stage_suffix: str,
+) -> Literal["absent", "same_bytes"]:
+    if target_present:
+        verify_posix_restored_target(private_base, target, source, io=io)
+    io.require_no_foreign_restore_stage(
+        private_base,
+        target,
+        stage_name=stage_name,
+        stage_prefix=stage_prefix,
+        stage_suffix=stage_suffix,
+        target_present=target_present,
+    )
+    return "same_bytes" if target_present else "absent"
 
 
 def inspect_private_expiry_archive(

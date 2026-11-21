@@ -7,7 +7,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.plugin_management import private_data_read as _programs
+from loushang.coding.harness.plugin_management.private_data_backup_expiry import (
+    preview_expiry,
+)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
 )
@@ -60,20 +62,15 @@ from .private_data_deletion_preview import _OWNER_ID as _OWNER_ID
 from .private_data_deletion_preview import (
     _capture_target_snapshot as _capture_target_snapshot,
 )
+from .private_data_restore import _current_completed_restore, _preview_restore
 from .private_data_restore_confirmation import (
+    CodingArchPrivateDataRestoreConfirmationJournal,
     CodingArchPrivateDataRestoreConfirmationV1,
 )
 from .private_data_restore_journal import CodingArchPrivateDataRestoreEventV1
 from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
 
 _READ_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
-
-
-_PRIVATE_DATA_QUERY_VALUES = {
-    "message_03": "Coding Arch restore confirmation is stale",
-    "invalid_restore_backup": "Coding Arch restore backup ID is invalid",
-    "invalid_expiry_backup": "Coding Arch backup expiry ID is invalid",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,24 +163,63 @@ class CodingArchPrivateDataReadOwner:
     def restore_preview(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> CodingArchPrivateDataRestorePlanV1:
-        return _programs.restore_preview(self, key, backup_id)
+        root = coding_arch_installation_private_data_root(self.layout, key)
+        if not _digest(backup_id):
+            raise ValueError("Coding Arch restore backup ID is invalid")
+        with self.offline():
+            return _preview_restore(
+                self.layout,
+                self.state_root,
+                root,
+                key,
+                backup_id,
+                desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
+            )
 
     def verify_restore_confirmation(
         self, key: PluginInstallationKeyV1, backup_id: str, confirmation_id: str
     ) -> CodingArchPrivateDataRestoreConfirmationV1:
-        return _programs.verify_restore_confirmation(
-            self, key, backup_id, confirmation_id
-        )
+        with self.offline():
+            completion, target_id = self._current_completed_restore(key, backup_id)
+            return CodingArchPrivateDataRestoreConfirmationJournal(
+                self.state_root
+            ).require_current(
+                confirmation_id,
+                key,
+                backup_id,
+                completion,
+                target_id,
+                message="Coding Arch restore confirmation is stale",
+            )
 
     def expiry_preview(
         self, key: PluginInstallationKeyV1, backup_id: str, confirmation_id: str
     ) -> CodingArchPrivateDataBackupExpiryPlanV1:
-        return _programs.expiry_preview(self, key, backup_id, confirmation_id)
+        if not _digest(backup_id):
+            raise ValueError("Coding Arch backup expiry ID is invalid")
+        with self.offline():
+            return preview_expiry(
+                self.layout,
+                self.state_root,
+                key,
+                backup_id,
+                confirmation_id,
+                completed_restore=lambda: self._current_completed_restore(
+                    key, backup_id
+                ),
+                desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
+            )
 
     def _current_completed_restore(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return _programs.current_completed_restore(self, key, backup_id)
+        return _current_completed_restore(
+            self.layout,
+            self.state_root,
+            key,
+            backup_id,
+            desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
+        )
 
     def assert_current(self) -> None:
         assert_private_read_current(

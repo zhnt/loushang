@@ -16,8 +16,6 @@ from loushang.coding.package.private_data_restore_journal import (
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 
-from . import private_data_restore_confirmation
-
 
 def preview(
     self: _binding.CodingArchPrivateDataBackupExpiryOwner,
@@ -167,8 +165,9 @@ def preview_expiry(
     desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
 ) -> _binding.CodingArchPrivateDataBackupExpiryPlanV1:
     completion, target_id = completed_restore()
-    confirmation = private_data_restore_confirmation.require_current_confirmation(
-        state_root,
+    confirmation = _binding.CodingArchPrivateDataRestoreConfirmationJournal(
+        state_root
+    ).require_current(
         confirmation_id,
         key,
         backup_id,
