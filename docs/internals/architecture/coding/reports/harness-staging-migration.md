@@ -310,6 +310,25 @@ All 132 selected Linux tests pass, covering POSIX CLI and SDK, restore and
 expiry behavior, original fault observations and history, and the portable
 Windows restore journal and preview contracts.
 
+### Formal POSIX Expiry And Shared Expiry Records
+
+POSIX preview, confirmation and expiry use the existing offline custody,
+restore confirmation journal and Harness expiry transaction. The formal history
+owner verifies the prior restore and exact archive evidence before a rename
+or a recovery. Coding binds the Product Desired-state check, backup and
+tombstone paths, operator acceptance and the nominal records. The read owner
+continues to use the read-only Desired-state snapshot for preview.
+
+Both platform expiry journals now validate phase, original archive and
+completion receipts through the same Harness record validator. The bindings
+preserve the historical errors and the POSIX-specific receipt type requirement.
+The four temporary expiry program and record modules have been removed.
+
+This batch removes 433 temporary Python lines, adds 189 Coding Product lines
+and adds 101 formal Harness lines. Production Python decreases by 143 lines.
+All 99 selected journal, wire, expiry, failure and replay cases pass on Linux,
+including portable Windows native-port probes.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

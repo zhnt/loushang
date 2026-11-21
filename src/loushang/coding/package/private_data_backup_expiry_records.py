@@ -5,9 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 
-from loushang.coding.harness.plugin_management import (
-    private_data_expiry_records as _record_programs,
-)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -18,16 +15,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .private_data_backup_records import _digest as _digest
-
-_PRIVATE_DATA_RECORD_VALUES = {
-    "value_01": "coding.arch.default",
-    "value_02": "Coding Arch backup expiry plan is invalid",
-    "value_03": "arch-backup:",
-    "value_04": "arch-restore-confirm:",
-    "value_05": "Coding Arch backup expiry confirmation is invalid",
-    "value_06": "Coding Arch backup expiry receipt is invalid",
-    "value_07": "arch-backup-expiry-confirm:",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +32,30 @@ class CodingArchPrivateDataBackupExpiryPlanV1:
     plan_version: int = 1
 
     def __post_init__(self) -> None:
-        return _record_programs.validate_plan(self)
+        if (
+            not isinstance(self.installation_key, PluginInstallationKeyV1)
+            or self.installation_key.plugin_id != "coding.arch.default"
+            or not _digest(self.backup_id)
+            or self.backup_receipt_id != "arch-backup:" + self.backup_id
+            or not isinstance(self.source_target_id, str)
+            or not self.source_target_id.startswith("present:")
+            or not isinstance(self.confirmation_id, str)
+            or not self.confirmation_id.startswith("arch-restore-confirm:")
+            or not _digest(self.restore_completion_digest)
+            or not isinstance(self.restored_target_id, str)
+            or not self.restored_target_id.startswith("present:")
+            or type(self.desired_inventory_revision) is not int
+            or self.desired_inventory_revision < 0
+            or type(self.archive_root_identity) is not tuple
+            or len(self.archive_root_identity) != 5
+            or any(
+                type(item) is not int or item < 0 for item in self.archive_root_identity
+            )
+            or not isinstance(self.archive_target_id, str)
+            or not self.archive_target_id.startswith("present:")
+            or self.plan_version != 1
+        ):
+            raise ValueError("Coding Arch backup expiry plan is invalid")
 
     @property
     def fingerprint(self) -> str:
@@ -76,7 +86,17 @@ class CodingArchPrivateDataBackupExpiryConfirmationV1:
     confirmation_version: int = 1
 
     def __post_init__(self) -> None:
-        return _record_programs.validate_confirmation(self)
+        if (
+            not _digest(self.plan_fingerprint)
+            or not _label(self.actor_id)
+            or not _label(self.policy_revision)
+            or self.confirmation_id
+            != _confirmation_id(
+                self.plan_fingerprint, self.actor_id, self.policy_revision
+            )
+            or self.confirmation_version != 1
+        ):
+            raise ValueError("Coding Arch backup expiry confirmation is invalid")
 
     @classmethod
     def create(
@@ -122,7 +142,18 @@ class CodingArchPrivateDataBackupExpiryReceiptV1:
     receipt_version: int = 1
 
     def __post_init__(self) -> None:
-        return _record_programs.validate_receipt(self)
+        if (
+            not isinstance(self.installation_key, PluginInstallationKeyV1)
+            or self.installation_key.plugin_id != "coding.arch.default"
+            or not _digest(self.backup_id)
+            or not _digest(self.plan_fingerprint)
+            or not isinstance(self.confirmation_id, str)
+            or not self.confirmation_id.startswith("arch-backup-expiry-confirm:")
+            or self.receipt_id
+            != _receipt_id(self.plan_fingerprint, self.confirmation_id)
+            or self.receipt_version != 1
+        ):
+            raise ValueError("Coding Arch backup expiry receipt is invalid")
 
     @classmethod
     def create(

@@ -7,9 +7,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.plugin_management.private_data_backup_expiry import (
-    preview_expiry,
-)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
 )
@@ -54,6 +51,7 @@ from .private_data_backup import (
 from .private_data_backup import (
     _digest as _digest,
 )
+from .private_data_backup_expiry import _preview_expiry
 from .private_data_backup_expiry_records import CodingArchPrivateDataBackupExpiryPlanV1
 from .private_data_deletion_journal import (
     CodingArchPrivateDataDeletionJournal as CodingArchPrivateDataDeletionJournal,
@@ -198,7 +196,7 @@ class CodingArchPrivateDataReadOwner:
         if not _digest(backup_id):
             raise ValueError("Coding Arch backup expiry ID is invalid")
         with self.offline():
-            return preview_expiry(
+            return _preview_expiry(
                 self.layout,
                 self.state_root,
                 key,

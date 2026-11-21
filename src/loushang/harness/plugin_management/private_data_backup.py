@@ -349,21 +349,12 @@ def retain_private_archive(
         return receipt
 
 
-class _Plan(ExpiryPlan, Protocol):
-    @property
-    def archive_root_identity(self) -> tuple[int, int, int, int, int]: ...
-
-
 class _Event(ExpiryHistoryEvent, Protocol):
     @property
-    def plan(self) -> _Plan: ...
-    @property
     def archive(self) -> PrivateBackupSource | None: ...
-    @property
-    def receipt(self) -> object | None: ...
 
 
-_PlanT = TypeVar("_PlanT", bound=_Plan)
+_PlanT = TypeVar("_PlanT", bound=ExpiryPlan)
 _ConfirmationT = TypeVar("_ConfirmationT")
 _EventT = TypeVar("_EventT", bound=_Event)
 _P_contra = TypeVar("_P_contra", contravariant=True)
