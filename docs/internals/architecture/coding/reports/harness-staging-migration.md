@@ -2621,17 +2621,39 @@ same two fixtures give 52 passes and one skip against the parent source,
 resolving the 33 failures reproduced in both revisions under the previous
 fixture placement.
 
+Managed launch, local commands, catalogs, store discovery and output capture
+pass 112 cases using isolated fixture workspaces. The Mux read, start and
+stop recheck passes 24 cases. A wider Mux run passes 121 cases and reports
+one initial session-creation failure. The exact failing case passes when
+rerun with the same workspace fixture and the existing redacted diagnostics.
+
 ## Cost And Final Acceptance
 
-Count the Product edge, `coding.harness`, all Coding, actual Harness, Hosting,
-other production code and the whole system separately; tests, development
-scripts and docs are separate costs. Staging remains inside Coding and is not
-system deletion. Report actual duplicate removal separately from ownership
-movement; explain any necessary generic/compatibility growth.
+Count the Product edge, `coding.harness`, all Coding, formal Harness, Hosting,
+other production code and the whole system separately. Tests, development
+scripts and docs have separate counts. The Coding total includes staging.
+Track duplicate removal and ownership changes with their own evidence, along
+with the cost of generalization and compatibility.
 
-At `9f336e480`, the four earliest batch commits account for 6,042 of the 6,587
-net production lines added against the Goal baseline. The largest is Legacy
-package migration at 2,059 lines. An AST count of the changed Product modules
+The production Python counts use Goal baseline `df0dca779` and the last
+implementation commit `4255d9bbc`.
+
+| Scope | Baseline | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Coding Product | 100,715 | 87,707 | −13,008 |
+| `coding.harness` staging | 0 | 19,816 | +19,816 |
+| All Coding | 100,715 | 107,523 | +6,808 |
+| Formal Harness | 380,073 | 380,398 | +325 |
+| Hosting | 14,235 | 14,235 | 0 |
+| Other production Python | 154,018 | 154,018 | 0 |
+| System production Python | 649,041 | 656,174 | +7,133 |
+
+The four earliest implementation batches account for 6,042 of the 7,133
+added lines. Legacy package migration added 2,059, fenced package and plugin
+lifecycle added 1,575, private-data lifecycle added 1,351, and Worker startup
+and Resume added 1,057.
+
+At `9f336e480`, an AST count of the changed Product modules
 finds 206 entries with a single call to staging, occupying 2,108 physical
 lines, and 75 newly introduced numbered value maps occupying 695 lines. These
 are structural footprints. The original signatures, diagnostics and stored

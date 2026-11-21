@@ -19,6 +19,7 @@ from tests.apphost.test_managed_storage_budget import registry as registry
 from tests.apphost.test_native_output_capture import capture
 
 from .test_agent_session_runtime import _model
+from .test_managed_launch import managed_workspace as managed_workspace
 
 
 @pytest.mark.parametrize("scenario", ["text", "binary", "capacity_refused", "overflow"])

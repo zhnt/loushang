@@ -16,6 +16,7 @@ from loushang.apphost.managed.registry import (
 from loushang.coding.cli import lmux
 from tests.apphost.test_managed_namespace_admission import tree
 
+from .test_lmux_command import mux_workspace as mux_workspace
 from .test_lmux_status import namespace as namespace
 
 

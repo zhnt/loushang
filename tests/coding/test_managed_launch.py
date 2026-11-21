@@ -16,6 +16,11 @@ from loushang.coding.hosted.managed.bootstrap import create_coding_managed_launc
 from tests.apphost.test_managed_bootstrap import deployment as deployment
 
 
+@pytest.fixture(name="tmp_path")
+def managed_workspace(standalone_workspace: Path) -> Path:
+    return standalone_workspace
+
+
 def invocation(deployment, tmp_path):
     namespace, service, _, state, _ = deployment
     return ManagedChildInvocationV1(namespace, service, state.handoff.instance,

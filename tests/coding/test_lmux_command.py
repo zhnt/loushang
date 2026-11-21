@@ -11,6 +11,11 @@ import pytest
 from loushang.coding.cli import lmux
 
 
+@pytest.fixture(name="tmp_path")
+def mux_workspace(standalone_workspace: Path) -> Path:
+    return standalone_workspace
+
+
 def _failure_diagnostic(command):
     """Original failure locations only; never stringify exceptions or locals."""
     from loushang.apphost.managed._files import ManagedStorageError
