@@ -239,7 +239,8 @@ def observe(case, patch):
         "CodingArchPrivateDataDeletionJournal",
         lambda *a: NS(current_start=lambda: None, events=lambda: ()),
     )
-    patch.setattr(code, "latest_deleted_target_receipt", lambda *a: deletion)
+    history = archive if hasattr(archive, "require_deleted_archive_receipt") else code
+    patch.setattr(history, "latest_deleted_target_receipt", lambda *a: deletion)
     patch.setattr(code, "_backup_parent", lambda *a: base / "backups")
     patch.setattr(code, "_read_manifest", lambda *a: (receipt, source))
     patch.setattr(code, "_private_io", io)

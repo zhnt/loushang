@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-from typing import cast as cast
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
-from loushang.coding.harness.plugin_management import (
-    private_data_backup_expiry as _programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management._private_data_expiry import (
+    matches_expiry_archive,
+    require_expiry_restore_history,
+)
+from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.private_data_backup import (
     execute_posix_expiry as execute_posix_expiry,
 )
@@ -48,7 +51,8 @@ from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal as CodingArchPrivateDataRestoreConfirmationJournal,
 )
 from .private_data_restore_journal import (
-    CodingArchPrivateDataRestoreJournal as CodingArchPrivateDataRestoreJournal,
+    CodingArchPrivateDataRestoreEventV1,
+    CodingArchPrivateDataRestoreJournal,
 )
 
 if TYPE_CHECKING:
@@ -56,27 +60,6 @@ if TYPE_CHECKING:
         CodingArchPrivateDataBackupExpiryConfirmationV1,
         CodingArchPrivateDataBackupExpiryReceiptV1,
     )
-
-
-_PRIVATE_DATA_PROGRAM_VALUES = {
-    "value_01": "Coding Arch backup expiry ID is invalid",
-    "value_02": "Coding Arch backup expiry acceptance is invalid",
-    "value_03": "Coding Arch backup expiry restore changed",
-    "value_04": "Coding Arch backup expiry archive changed",
-    "value_05": "Coding Arch backup expiry Desired State changed",
-    "value_06": "Coding Arch backup expiry confirmation changed",
-    "value_07": "Coding Arch backup expiry restore history changed",
-    "value_08": "Coding Arch backup expiry restored data changed",
-    "value_09": "Coding Arch backup expiry confirmation is stale",
-    "value_10": "Coding Arch backup expiry requires removal",
-    "value_11": "Coding Arch backup expiry Installation changed",
-}
-
-
-_PRIVATE_DATA_ATTESTATION_VALUES = {
-    "message_01": "Coding Arch backup expiry plan is required",
-    "message_02": "Coding Arch backup expiry plan changed",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +78,21 @@ class CodingArchPrivateDataBackupExpiryOwner:
     ) -> CodingArchPrivateDataBackupExpiryPlanV1:
         """Read the exact restore and archive evidence under offline quiescence."""
 
-        return _programs.preview(self, key, backup_id, confirmation_id)
+        if not _digest(backup_id):
+            raise ValueError("Coding Arch backup expiry ID is invalid")
+        with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
+            restore = CodingArchPrivateDataRestoreOwner(self.layout, self.product)
+            return _preview_expiry(
+                self.layout,
+                self.product.state_root,
+                key,
+                backup_id,
+                confirmation_id,
+                completed_restore=lambda: restore._current_completed_restore(
+                    key, backup_id
+                ),
+                desired_snapshot=self.product.desired_state.snapshot,
+            )
 
     def confirm(
         self,
@@ -106,9 +103,20 @@ class CodingArchPrivateDataBackupExpiryOwner:
     ) -> CodingArchPrivateDataBackupExpiryConfirmationV1:
         """Record independent operator acceptance of one current exact plan."""
 
-        return _programs.confirm(
-            self, plan, actor_id=actor_id, policy_revision=policy_revision
+        from loushang.coding.package.private_data_backup_expiry_journal import (
+            CodingArchPrivateDataBackupExpiryJournal,
         )
+
+        if not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1):
+            raise TypeError("Coding Arch backup expiry plan is required")
+        current = self.preview(
+            plan.installation_key, plan.backup_id, plan.confirmation_id
+        )
+        if current != plan:
+            raise ValueError("Coding Arch backup expiry plan changed")
+        return CodingArchPrivateDataBackupExpiryJournal(
+            self.product.state_root
+        ).confirm(plan, actor_id=actor_id, policy_revision=policy_revision)
 
     def expire(
         self,
@@ -117,19 +125,140 @@ class CodingArchPrivateDataBackupExpiryOwner:
     ) -> CodingArchPrivateDataBackupExpiryReceiptV1:
         """Delete one reviewed archive through durable, offline checkpoints."""
 
-        return _programs.expire(self, plan, confirmation)
+        from loushang.coding.package.private_data_backup_expiry_journal import (
+            CodingArchPrivateDataBackupExpiryConfirmationV1,
+            CodingArchPrivateDataBackupExpiryJournal,
+        )
+
+        if (
+            not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1)
+            or not isinstance(
+                confirmation, CodingArchPrivateDataBackupExpiryConfirmationV1
+            )
+            or confirmation.plan_fingerprint != plan.fingerprint
+        ):
+            raise ValueError("Coding Arch backup expiry acceptance is invalid")
+        with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
+            journal = CodingArchPrivateDataBackupExpiryJournal(self.product.state_root)
+            return cast(
+                "CodingArchPrivateDataBackupExpiryReceiptV1",
+                execute_posix_expiry(
+                    plan,
+                    confirmation,
+                    journal,
+                    authority=self,
+                    io=_private_io,
+                    private_base=lambda: self.layout.private_data_base,
+                    backup_parent=lambda key: _backup_parent(self.layout, key),
+                    tombstone_name=lambda: _tombstone_name(plan, confirmation),
+                    capture=lambda key, name: _capture_target_snapshot(
+                        _backup_parent(self.layout, key) / name,
+                        private_base=self.layout.private_data_base,
+                    ),
+                ),
+            )
 
     def _require_pre_effect_plan(
         self, plan: CodingArchPrivateDataBackupExpiryPlanV1
     ) -> CodingArchPrivateDataTargetSnapshotV1:
         """Recheck every preview authority while the offline fence is held."""
 
-        return _programs.require_pre_effect_plan(self, plan)
+        key = plan.installation_key
+        completion, target_id = CodingArchPrivateDataRestoreOwner(
+            self.layout, self.product
+        )._current_completed_restore(key, plan.backup_id)
+        if (
+            completion.record_digest != plan.restore_completion_digest
+            or target_id != plan.restored_target_id
+        ):
+            raise ValueError("Coding Arch backup expiry restore changed")
+        self._require_recovery_authority(plan)
+        path = _backup_parent(self.layout, key) / plan.backup_id
+        snapshot = _capture_target_snapshot(
+            path, private_base=self.layout.private_data_base
+        )
+        if not matches_expiry_archive(snapshot, plan):
+            raise ValueError("Coding Arch backup expiry archive changed")
+        return snapshot
 
     def _require_recovery_authority(
         self, plan: CodingArchPrivateDataBackupExpiryPlanV1
     ) -> None:
-        return _programs.require_recovery_authority(self, plan)
+        key = plan.installation_key
+        desired = self.product.desired_state.snapshot()
+        if (
+            desired.inventory_revision != plan.desired_inventory_revision
+            or desired.installation(key).selection.desired_state != "absent"
+        ):
+            raise ValueError("Coding Arch backup expiry Desired State changed")
+        require_expiry_restore_history(
+            plan,
+            confirmations=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
+                self.product.state_root
+            ).records(),
+            restores=lambda: CodingArchPrivateDataRestoreJournal(
+                self.product.state_root
+            ).events(),
+            label="Coding Arch",
+        )
+        restored = _capture_target_snapshot(
+            coding_arch_installation_private_data_root(self.layout, key),
+            private_base=self.layout.private_data_base,
+        )
+        if restored.target_id != plan.restored_target_id:
+            raise ValueError("Coding Arch backup expiry restored data changed")
+
+
+def _preview_expiry(
+    layout: CodingPluginLifecycleStateLayout,
+    state_root: Path,
+    key: PluginInstallationKeyV1,
+    backup_id: str,
+    confirmation_id: str,
+    *,
+    completed_restore: Callable[[], tuple[CodingArchPrivateDataRestoreEventV1, str]],
+    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
+) -> CodingArchPrivateDataBackupExpiryPlanV1:
+    completion, target_id = completed_restore()
+    confirmation = CodingArchPrivateDataRestoreConfirmationJournal(
+        state_root
+    ).require_current(
+        confirmation_id,
+        key,
+        backup_id,
+        completion,
+        target_id,
+        message="Coding Arch backup expiry confirmation is stale",
+    )
+    desired = desired_snapshot()
+    if desired.installation(key).selection.desired_state != "absent":
+        raise ValueError("Coding Arch backup expiry requires removal")
+    receipt, source, identity, archive_snapshot = inspect_private_expiry_archive(
+        layout.private_data_base,
+        _backup_parent(layout, key),
+        backup_id,
+        key,
+        io=_private_io,
+        codec=_archive_codec,
+        recapture=lambda: _capture_target_snapshot(
+            _backup_parent(layout, key) / backup_id,
+            private_base=layout.private_data_base,
+        ),
+        installation_error="Coding Arch backup expiry Installation changed",
+        changed_error="Coding Arch backup expiry archive changed",
+    )
+    return CodingArchPrivateDataBackupExpiryPlanV1(
+        installation_key=key,
+        backup_id=backup_id,
+        backup_receipt_id=receipt.receipt_id,
+        source_target_id=source.target_id,
+        confirmation_id=confirmation.confirmation_id,
+        restore_completion_digest=completion.record_digest,
+        restored_target_id=target_id,
+        desired_inventory_revision=desired.inventory_revision,
+        archive_root_identity=identity,
+        archive_target_id=archive_snapshot.target_id,
+    )
 
 
 __all__ = [

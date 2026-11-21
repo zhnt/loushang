@@ -7,9 +7,6 @@ import stat as stat
 from dataclasses import dataclass
 from hashlib import sha256
 
-from loushang.coding.harness.plugin_management import (
-    private_data_windows_archive_records as _record_programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -32,12 +29,6 @@ from .private_data_deletion_preview import (
 )
 from .private_data_windows_backup import _archive_io
 
-_PRIVATE_DATA_RECORD_VALUES = {
-    "value_01": "Windows Coding Arch archive snapshot is invalid",
-    "value_02": "Windows Coding Arch archive snapshot fields changed",
-    "value_03": "Windows Coding Arch archive identity changed",
-}
-
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsArchBackupArchiveSnapshotV1:
@@ -49,7 +40,17 @@ class CodingWindowsArchBackupArchiveSnapshotV1:
     manifest: CodingArchPrivateDataMemberV1
 
     def __post_init__(self) -> None:
-        return _record_programs.validate_archive(self)
+        if (
+            not _digest(self.root_path_digest)
+            or not _valid_identity(self.root_identity)
+            or not stat.S_ISDIR(self.root_identity[2])
+            or not isinstance(self.files, CodingArchPrivateDataTargetSnapshotV1)
+            or self.files.root_identity is None
+            or not isinstance(self.manifest, CodingArchPrivateDataMemberV1)
+            or self.manifest.relative_path != "manifest.json"
+            or self.manifest.kind != "file"
+        ):
+            raise ValueError("Windows Coding Arch archive snapshot is invalid")
 
     @property
     def target_id(self) -> str:
@@ -71,7 +72,22 @@ class CodingWindowsArchBackupArchiveSnapshotV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingWindowsArchBackupArchiveSnapshotV1:
-        return _record_programs.decode_archive(cls, value)
+        if type(value) is not dict or set(value) != {
+            "files",
+            "manifest",
+            "rootIdentity",
+            "rootPathDigest",
+        }:
+            raise ValueError("Windows Coding Arch archive snapshot fields changed")
+        identity = value["rootIdentity"]
+        if type(identity) is not list or len(identity) != 5:
+            raise ValueError("Windows Coding Arch archive identity changed")
+        return cls(
+            root_path_digest=value["rootPathDigest"],
+            root_identity=tuple(identity),
+            files=CodingArchPrivateDataTargetSnapshotV1.from_dict(value["files"]),
+            manifest=CodingArchPrivateDataMemberV1.from_dict(value["manifest"]),
+        )
 
 
 def capture_windows_arch_backup_archive(

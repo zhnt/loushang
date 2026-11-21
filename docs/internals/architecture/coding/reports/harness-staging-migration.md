@@ -115,14 +115,13 @@ claim. Documentation is accounted separately.
 ### File And Operation Disposition
 
 All original paths below are beneath `coding.package`; staged paths are beneath
-`coding.harness.plugin_management`. Historical public/nominal entries continue
-to dispatch to the single staged body; the original coordinating body exits.
-Future owners are the existing Harness Plugin Management private-data family,
-using its existing Package Product, Journal and Resources owners. Necessary
-nominal type and Product policy projections remain at Coding's boundary.
+`coding.harness.plugin_management`. This inventory records the original
+staging checkpoint. The formal delivery below records the current owners and
+the disposition of all 25 staged bodies.
 
 | Original module | Staged module | Moved operations |
 | --- | --- | --- |
+| `installation_private_data` | `installation_private_data` | Windows Installation root and private child preparation |
 | `private_data_backup` | `private_data_backup` | `retain`, `verify`, `retention_snapshot` |
 | `private_data_backup_expiry` | `private_data_backup_expiry` | `preview`, `expire`, `require_pre_effect_plan`, `require_recovery_authority`, `_expiry_preview`, `confirm` |
 | `private_data_backup_expiry_journal` | `private_data_expiry_events` | `validate_event` |
@@ -192,6 +191,222 @@ nominal errors and shared receipt/tree bindings. Their unrelated generic
 mechanisms remain in their later frozen package/lifecycle batches; this first
 batch does not claim those whole components accepted. The existing final
 `loushang.harness` does not import the new staging namespace.
+
+### Formal POSIX Deletion And Custody
+
+The formal private-data migration starts at `588b473bb`. The staged
+private-data inventory has 25 Python files and 2,591 physical lines.
+
+The POSIX operator CLI and SDK compose an admitted Product scope in Coding.
+The narrow CLI deletion preview and the confirmed deletion owner now both
+call Harness `PrivateDataDeletionJournal.preview_plan`. It reads pending
+history through the existing non-repairing Journal path and observes a new
+target only when no deletion is pending. The existing Journal still owns
+the execution checkpoints, recovery and replay. Coding supplies its
+Installation layout, confirmation admission, desired-state decision and
+historical receipt identity.
+
+Harness owns the offline scopes and private state identity checks used by
+those Product entry points. The narrow read scope acquires quiescence in
+read-only mode, takes the existing GC read guard and reads Desired state
+without creating or repairing lock or journal state. The confirmed delete
+scope retains the original exclusive GC gate and checks its Product root
+authority before and after the normal operation. Coding owns SDK application
+selection and the closure sequence for its bound reader and Product.
+
+The replaced staging programs for POSIX client scopes, deletion admission
+and deletion fencing are removed. Backup verification, restore and expiry
+queries still have their own staged operations and are covered in later
+formal migration batches.
+
+This batch removes 280 temporary Python lines. Coding Product adds 82 lines
+of entry binding and compatibility, and formal Harness adds 130 lines of
+shared plan and custody code. Production Python decreases by 68 lines.
+The existing Linux private-data suite and the Desired-state ownership check
+pass all 86 selected cases, including CLI and SDK lifecycle operations,
+deletion recovery, and refusal of missing locks or partial state on reads.
+
+### Formal Windows Fencing And Installation Lineage
+
+Windows deletion and restore now share the Harness mutation fence. The
+existing native Product writer supplies the state descriptor. Coding binds
+the nominal transactions and closes them before releasing the descriptor.
+Expiry borrows the same fence through the restore transaction. Native
+observation uses the Harness Windows read fence and its existing GC read
+guard. The Product SDK owns candidate selection and workspace admission.
+
+Coding chooses the exact Installation and Session path and proves the
+selected manifest. The Harness Windows lineage owner binds the Installation
+root, prepares the native child directory and rechecks the root identity.
+The temporary Installation preparation and Windows SDK scope modules have
+been removed. The read preview, confirmation and receipt proofs continue
+through their remaining lifecycle migration batches.
+
+This batch removes 215 temporary Python lines, adds 76 Coding Product lines
+and adds 44 formal Harness lines. Production Python decreases by 95 lines.
+The Windows candidate contracts and POSIX installation and deletion checks
+pass all 49 selected cases on Linux. A mock-backed probe also verifies
+the bind, prepare, rebind order and rejection of a changed identity.
+Native Windows ACL and filesystem behavior require separate platform evidence.
+
+### Formal Backup Archive And Retention
+
+The CLI, SDK and Product backup reads use the existing Harness archive
+owners. POSIX verification and archive inventory share the same
+rooted archive identity and byte checks. Windows retains its native
+archive and ACL checks. The Harness backup topology projects retention
+on both platforms. POSIX still distinguishes completed expiry from
+an interrupted rename. Windows retains its additional Desired-state,
+descriptor, and unpublished-event checks before projecting a status.
+
+Coding binds the Installation, path, source schema, historical receipt
+identity and backup manifest codec. The POSIX and Windows archive programs
+and the staging record adapter have been removed. The private read owner
+verifies retained backups through the same Harness archive path.
+
+This batch removes 347 temporary Python lines, adds 141 Coding Product lines
+and adds 108 formal Harness lines. Production Python decreases by 98 lines.
+The Linux lifecycle and historical-record checks pass 97 cases. The Windows
+archive operation and snapshot probes pass 62 cases using inert native ports
+on Linux. The snapshot probe now reads canonical JSON from its existing
+codec module after the same stale import was reproduced on the prior commit.
+
+### Formal Windows Preview, Confirmation And Deletion Evidence
+
+Coding preview and confirmation now share the Windows Installation lineage
+owner's bound target observation. The confirmation journal checks the exact
+immutable record while holding the existing state descriptor. The deletion
+consumer uses the lineage owner's native target recheck and the tree I/O
+owner's tombstone verification. Deletion keeps the native path check for
+an absent target and the separate pending-generation recheck. Coding still
+chooses the applicable lineage, binds Product authority and constructs the
+compatibility records and tombstone name.
+
+This batch removes 298 temporary Python lines, adds 83 Coding Product lines
+and adds 97 formal Harness lines. Production Python decreases by 118 lines.
+The selected Windows lifecycle, original fault and lineage observations, and
+Harness deletion checks pass all 230 cases on Linux. The lineage probe now
+recognizes the current lazy journal import and retains its original trace,
+error and wire assertions. Native Windows filesystem checks remain separate.
+
+### Formal POSIX Restore And Confirmation
+
+The POSIX CLI and SDK read and writer owners share the Harness deleted-archive
+proof, retained-byte and restored-target verification, and exact confirmation
+journal. The writer continues to use Harness archive publication, verified tree
+copy and restore checkpoints. The read-only preview verifies any existing
+target before checking stage debt. The writer keeps its original pre-effect
+check order and the read-only path holds its existing non-repairing fence.
+
+Coding retains the Product removal decision, storage names, restoration
+admission and historical wire and type bindings. The named restore records now
+reuse their own canonical field construction when creating and verifying
+digests. Five restore and read staging modules have been removed.
+
+This batch removes 577 temporary Python lines, adds 306 Coding Product lines
+and adds 113 formal Harness lines. Production Python decreases by 158 lines.
+All 132 selected Linux tests pass, covering POSIX CLI and SDK, restore and
+expiry behavior, original fault observations and history, and the portable
+Windows restore journal and preview contracts.
+
+### Formal POSIX Expiry And Shared Expiry Records
+
+POSIX preview, confirmation and expiry use the existing offline custody,
+restore confirmation journal and Harness expiry transaction. The formal history
+owner verifies the prior restore and exact archive evidence before a rename
+or a recovery. Coding binds the Product Desired-state check, backup and
+tombstone paths, operator acceptance and the nominal records. The read owner
+continues to use the read-only Desired-state snapshot for preview.
+
+Both platform expiry journals now validate phase, original archive and
+completion receipts through the same Harness record validator. The bindings
+preserve the historical errors and the POSIX-specific receipt type requirement.
+The four temporary expiry program and record modules have been removed.
+
+This batch removes 433 temporary Python lines, adds 189 Coding Product lines
+and adds 101 formal Harness lines. Production Python decreases by 143 lines.
+All 99 selected journal, wire, expiry, failure and replay cases pass on Linux,
+including portable Windows native-port probes.
+
+### Formal Windows Restore And Preview
+
+The native restore preview reads the deleted archive through the same
+Harness parent scope used by retained verification and the restore writer.
+The archive owner binds the completed deletion before verifying bytes and
+releases the descriptor before the preview inspects the destination. Both
+restore routes share the completed-deletion check and the scoped removal
+proof. The writer also checks the exact Installation's transition history.
+
+Coding retains the historical publication codec, target and stage naming,
+Product scope and plan construction. Both temporary Windows restore modules
+have been removed. Production Python decreases by 18 lines, with 178 removed
+from staging, 74 added to Coding Product and 86 added to formal Harness.
+All 293 selected Windows contracts pass with inert native ports on Linux,
+including the full original preview parent failure and descriptor traces.
+
+### Formal Windows Expiry And Recovery
+
+The Windows SDK and CLI candidate expiry routes read the retained manifest
+through the Harness archive parent scope. The restore owner coordinates the
+confirmation and completion proofs and rechecks them after archive capture.
+The recovery route uses the completed deletion, immutable confirmation,
+restore start and completion, publication, parent view and bound live tree.
+It can verify the exact restored bytes after the archive has been renamed.
+The existing expiry transaction remains the single rename, replay, removal and
+completion owner. Coding supplies the Product admission, paths and exact
+nominal plan, record and legacy codec. The recovery root observation uses
+the layout and Product authority supplied by its caller.
+
+This batch removes the final 263 temporary Python lines, adds 69 Coding Product
+lines and adds 138 formal Harness lines. Production Python decreases by 56
+lines. All 385 selected cases pass on Linux, including original Windows
+native-port fault, cleanup, wire and descriptor observations. Native Windows
+execution is outside this local evidence.
+
+### Private-Data Lifecycle Delivery
+
+All 25 private-data staging modules are retired. The remaining staging
+directory holds unrelated plugin management work. The complete POSIX and
+Windows chains use these owners through the existing CLI and SDK entrypoints.
+
+| Chain | Formal implementation owner | Coding boundary |
+| --- | --- | --- |
+| Scope, target observation and root lineage | Package Product `_private_data_custody`, Plugin Management `_installation_root_windows`, and Resources private tree I/O | Product and workspace admission, Installation and Session path identity |
+| Deletion plan, confirmation, execution and recovery | `private_data_deletion`, `private_data_confirmation`, and `_private_data_deletion_windows` | Operator approval, nominal record and tombstone name |
+| Retain, verify, inventory and status | `private_data_backup`, `_private_data_backup_windows`, and Package Product `_backup_topology` | Supported backup kind, root selection, historical manifest and receipt identity |
+| Restore, result confirmation and replay | `private_data_backup`, `private_data_restore_journal`, `_private_data_restore_windows`, and Resources tree I/O | Product removal admission, stage path, historical nominal types and codecs |
+| Expiry, checkpoints and cleanup | `private_data_backup`, `_private_data_expiry`, `_private_data_expiry_windows`, and the native restore proof | Independent approval, current Product selection, exact plan and receipt projection |
+
+Shared units include the POSIX deletion plan and custody, Windows target
+observation, retained-archive byte verification, the retention projection,
+archive-to-deletion proof, restore confirmation history lookup, canonical
+restore record field construction, the Windows archive parent read, and the
+expiry record validator. The 2,591 staging lines measure physical retirement.
+The 750-line system reduction includes deduplication and removed staging
+bindings, with Product and Harness additions included in the accounting.
+
+The cumulative architecture check caught two reverse type references from
+Plugin Management to Package Product. The existing custody module is now with
+its Product fence owner. Plugin Management compares the exact confirmation
+record under that custody. This correction adds three Coding Product lines
+and one formal Harness line. The existing acyclic dependency test and
+15 original confirmation storage cases pass after the correction.
+
+| Tracked production Python under `src/loushang` | Baseline `588b473bb` | Delivery | Delta |
+| --- | ---: | ---: | ---: |
+| Coding Product | 87,707 | 88,730 | +1,023 |
+| `coding.harness` | 19,816 | 17,225 | −2,591 |
+| Formal Harness | 380,398 | 381,216 | +818 |
+| Hosting | 14,235 | 14,235 | 0 |
+| Other production Python | 154,018 | 154,018 | 0 |
+| Total | 656,174 | 655,424 | −750 |
+
+The import audit traversed 491 local modules from 14 shared owners and found
+no import edge or literal module destination in Coding. A declaration
+comparison against the baseline covered 148 Product declarations across 25
+modules and found the same signatures, class bases and annotated fields.
+Compatibility probes retain their original expectations and inject faults at
+the current call sites. Tests and documentation are accounted separately.
 
 ## Validation And Commit Rhythm
 

@@ -9,9 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.plugin_management import (
-    private_data_windows_backup as _programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product._backup_topology import (
@@ -29,26 +26,21 @@ from loushang.harness.plugin_management.application import (
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._tree_observation import logical_tree_members
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    prepare_windows_product_private_directory_chain as prepare_windows_product_private_directory_chain,
+    prepare_windows_product_private_directory_chain,
 )
 
-from .epoch_layout import (
-    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
-)
+from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
-    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
-)
-from .installation_private_data import (
+    coding_arch_installation_private_data_root,
     coding_arch_workspace_installation_key,
-)
-from .installation_private_data import (
-    inspect_coding_windows_arch_installation_root as inspect_coding_windows_arch_installation_root,
+    inspect_coding_windows_arch_installation_root,
 )
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
     _backup_retention_revision,
     _WindowsArchBackupCodec,
     backup_parent,
+    make_backup_receipt,
 )
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .private_data_windows_preview import (
@@ -67,13 +59,6 @@ _archive_io = WindowsPrivateArchiveIO(
 )
 
 
-_PRIVATE_DATA_FLOW_VALUES = {
-    "message_01": "Coding Arch backup Installation has no Product history",
-    "message_02": "Coding Arch private-data source is absent",
-    "message_03": "Coding Arch backup ID is invalid",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class CodingWindowsArchPrivateDataBackupOwner:
     layout: CodingPluginLifecycleStateLayout
@@ -86,12 +71,63 @@ class CodingWindowsArchPrivateDataBackupOwner:
     def retain(
         self, key: PluginInstallationKeyV1
     ) -> CodingArchPrivateDataBackupReceiptV1:
-        return _programs.retain(self, key)
+        preview = CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
+        source_root = coding_arch_installation_private_data_root(self.layout, key)
+        state_root = (
+            resolve_coding_package_epoch_layout(self.layout).control_root
+            / "product-state"
+        )
+        with preview._offline():
+            state = self.product.desired_state.snapshot().installation(key)
+            if state.latest_instance_revision_ref is None:
+                raise ValueError("Coding Arch backup Installation has no Product history")
+            expected_root = inspect_coding_windows_arch_installation_root(
+                self.layout, key, state_root=state_root
+            )
+            if expected_root is None:
+                raise ValueError("Coding Arch private-data source is absent")
+            source = _capture_windows_target_snapshot(
+                source_root, expected_root=expected_root
+            )
+            receipt = make_backup_receipt(key, source)
+            parent_path = backup_parent(self.layout, key)
+            prepare_windows_product_private_directory_chain(
+                self.layout.package_root, "installation-backups", parent_path.name
+            )
+            return _archive_io.retain(
+                source_root,
+                source,
+                receipt,
+                key,
+                parent_path,
+                source_is_current=lambda: (
+                    _capture_windows_target_snapshot(
+                        source_root, expected_root=expected_root
+                    )
+                    == source
+                    and inspect_coding_windows_arch_installation_root(
+                        self.layout, key, state_root=state_root
+                    )
+                    == expected_root
+                ),
+            )
 
     def verify(
         self, key: PluginInstallationKeyV1, backup_id_value: str
     ) -> CodingArchPrivateDataBackupReceiptV1:
-        return _programs.verify(self, key, backup_id_value)
+        preview = CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
+        coding_arch_installation_private_data_root(self.layout, key)
+        if len(backup_id_value) != 64 or any(
+            character not in "0123456789abcdef" for character in backup_id_value
+        ):
+            raise ValueError("Coding Arch backup ID is invalid")
+        with preview._offline(), WindowsPrivateDirectoryAcl() as acl:
+            state = self.product.desired_state.snapshot().installation(key)
+            if state.latest_instance_revision_ref is None:
+                raise ValueError("Coding Arch backup Installation has no Product history")
+            return _archive_io.verify_retained(
+                backup_parent(self.layout, key), backup_id_value, key, acl
+            )
 
     def snapshot(self) -> PluginBackupRetentionSnapshotV1:
         """Project verified archives and receipt-backed expiry conservatively."""

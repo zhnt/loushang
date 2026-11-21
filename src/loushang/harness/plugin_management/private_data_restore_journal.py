@@ -49,6 +49,9 @@ class PrivateDataRestoreEvent(Protocol):
     @property
     def restore_id(self) -> str: ...
 
+    @property
+    def record_digest(self) -> str: ...
+
     @classmethod
     def create(
         cls,
@@ -67,6 +70,24 @@ class PrivateDataRestoreConfirmation(Protocol):
 
     @property
     def restore_id(self) -> str: ...
+
+    @property
+    def confirmation_id(self) -> str: ...
+
+    @property
+    def installation_key(self) -> PluginInstallationKeyV1: ...
+
+    @property
+    def backup_id(self) -> str: ...
+
+    @property
+    def deletion_receipt_id(self) -> str: ...
+
+    @property
+    def restore_completion_digest(self) -> str: ...
+
+    @property
+    def restored_target_id(self) -> str: ...
 
     def matches_restore_result(self, other: Self) -> bool: ...
 
@@ -311,20 +332,48 @@ class PrivateDataRestoreConfirmationJournal(Generic[_ConfirmationT]):
         with journal_file_read_lock(self._path, "shared", create_lock=False):
             return self._load_unlocked()
 
+    def revision_for(self, restore_id: str) -> int:
+        records = self.records()
+        previous = self._result_for(records, restore_id)
+        return len(records) + 1 if previous is None else previous.revision
+
+    def require_current(
+        self,
+        confirmation_id: str,
+        key: PluginInstallationKeyV1,
+        backup_id: str,
+        completion: PrivateDataRestoreEvent,
+        target_id: str,
+        *,
+        message: str,
+    ) -> _ConfirmationT:
+        matched = next(
+            (
+                item
+                for item in reversed(self.records())
+                if item.confirmation_id == confirmation_id
+            ),
+            None,
+        )
+        if (
+            matched is None
+            or matched.installation_key != key
+            or matched.backup_id != backup_id
+            or matched.restore_id != completion.restore_id
+            or matched.deletion_receipt_id != completion.deletion_receipt_id
+            or matched.restore_completion_digest != completion.record_digest
+            or matched.restored_target_id != target_id
+        ):
+            raise ValueError(message)
+        return matched
+
     def record(self, confirmation: _ConfirmationT) -> _ConfirmationT:
         if not isinstance(confirmation, self._record_type):
             raise TypeError(f"{self._label} restore confirmation is required")
         self._require_private_parent()
         with journal_file_lock(self._path, "exclusive"):
             records = self._load_unlocked()
-            previous = next(
-                (
-                    item
-                    for item in reversed(records)
-                    if item.restore_id == confirmation.restore_id
-                ),
-                None,
-            )
+            previous = self._result_for(records, confirmation.restore_id)
             if previous is not None:
                 if not previous.matches_restore_result(confirmation):
                     raise ValueError(f"{self._label} restore confirmation changed")
@@ -336,6 +385,15 @@ class PrivateDataRestoreConfirmationJournal(Generic[_ConfirmationT]):
                 raise ValueError(f"{self._label} restore confirmation revision changed")
             self._journal.append(confirmation)
             return confirmation
+
+    @staticmethod
+    def _result_for(
+        records: tuple[_ConfirmationT, ...], restore_id: str
+    ) -> _ConfirmationT | None:
+        return next(
+            (item for item in reversed(records) if item.restore_id == restore_id),
+            None,
+        )
 
     def _load_unlocked(self) -> tuple[_ConfirmationT, ...]:
         if not private_journal_exists(

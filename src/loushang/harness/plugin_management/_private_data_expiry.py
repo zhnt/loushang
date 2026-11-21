@@ -22,6 +22,10 @@ from loushang.harness.journal._path_admission import (
     require_private_journal_parent,
 )
 
+from .private_data_restore_journal import (
+    PrivateDataRestoreConfirmation,
+    PrivateDataRestoreEvent,
+)
 from .records import PluginInstallationKeyV1
 
 
@@ -30,6 +34,18 @@ class ExpiryPlan(Protocol):
     def installation_key(self) -> PluginInstallationKeyV1: ...
     @property
     def backup_id(self) -> str: ...
+    @property
+    def fingerprint(self) -> str: ...
+    @property
+    def confirmation_id(self) -> str: ...
+    @property
+    def restore_completion_digest(self) -> str: ...
+    @property
+    def restored_target_id(self) -> str: ...
+    @property
+    def archive_root_identity(self) -> tuple[int, int, int, int, int]: ...
+    @property
+    def archive_target_id(self) -> str: ...
 
 
 class ExpiryHistoryEvent(Protocol):
@@ -43,6 +59,103 @@ class ExpiryHistoryEvent(Protocol):
     def confirmation(self) -> object: ...
     @property
     def archive(self) -> object: ...
+    @property
+    def record_version(self) -> int: ...
+    @property
+    def receipt(self) -> object | None: ...
+
+
+class _ExpiryConfirmation(Protocol):
+    @property
+    def plan_fingerprint(self) -> str: ...
+
+
+class _ArchiveReference(Protocol):
+    @property
+    def root_identity(self) -> tuple[int, int, int, int, int] | None: ...
+    @property
+    def target_id(self) -> str: ...
+
+
+_PlanT = TypeVar("_PlanT", bound=ExpiryPlan)
+_RecordConfirmationT = TypeVar("_RecordConfirmationT", bound=_ExpiryConfirmation)
+
+
+def matches_expiry_archive(archive: _ArchiveReference, plan: ExpiryPlan) -> bool:
+    return (
+        archive.root_identity == plan.archive_root_identity
+        and archive.target_id == plan.archive_target_id
+    )
+
+
+def validate_expiry_event(
+    event: ExpiryHistoryEvent,
+    *,
+    plan_type: type[_PlanT],
+    confirmation_type: type[_RecordConfirmationT],
+    archive_type: type[_ArchiveReference],
+    receipt_for: Callable[[_PlanT, _RecordConfirmationT], object],
+    label: str,
+    unstarted_effects_error: str,
+    unfinished_receipt_error: str,
+    receipt_type: type | None = None,
+) -> None:
+    if (
+        type(event.revision) is not int
+        or event.revision < 1
+        or event.phase not in {"confirmed", "started", "renamed", "completed"}
+    ):
+        raise ValueError(f"{label} backup expiry event is invalid")
+    plan, confirmation = event.plan, event.confirmation
+    if (
+        not isinstance(plan, plan_type)
+        or not isinstance(confirmation, confirmation_type)
+        or confirmation.plan_fingerprint != plan.fingerprint
+        or event.record_version != 1
+    ):
+        raise ValueError(f"{label} backup expiry event is invalid")
+    archive, receipt = event.archive, event.receipt
+    if event.phase == "confirmed":
+        if archive is not None or receipt is not None:
+            raise ValueError(unstarted_effects_error)
+        return
+    if not isinstance(archive, archive_type) or not matches_expiry_archive(
+        archive, plan
+    ):
+        raise ValueError(f"{label} backup expiry archive changed")
+    if event.phase == "completed":
+        if (
+            receipt_type is not None and not isinstance(receipt, receipt_type)
+        ) or receipt != receipt_for(plan, confirmation):
+            raise ValueError(f"{label} backup expiry receipt changed")
+    elif receipt is not None:
+        raise ValueError(unfinished_receipt_error)
+
+
+def require_expiry_restore_history(
+    plan: ExpiryPlan,
+    *,
+    confirmations: Callable[[], tuple[PrivateDataRestoreConfirmation, ...]],
+    restores: Callable[[], tuple[PrivateDataRestoreEvent, ...]],
+    label: str,
+) -> None:
+    if not any(
+        item.installation_key == plan.installation_key
+        and item.backup_id == plan.backup_id
+        and item.confirmation_id == plan.confirmation_id
+        and item.restore_completion_digest == plan.restore_completion_digest
+        and item.restored_target_id == plan.restored_target_id
+        for item in confirmations()
+    ):
+        raise ValueError(f"{label} backup expiry confirmation changed")
+    if not any(
+        item.phase == "completed"
+        and item.installation_key == plan.installation_key
+        and item.backup_id == plan.backup_id
+        and item.record_digest == plan.restore_completion_digest
+        for item in restores()
+    ):
+        raise ValueError(f"{label} backup expiry restore history changed")
 
 
 def validate_expiry_history(
@@ -77,7 +190,6 @@ def validate_expiry_history(
 
 
 _AdvanceEventT = TypeVar("_AdvanceEventT", bound=ExpiryHistoryEvent)
-_PlanT = TypeVar("_PlanT", bound=ExpiryPlan)
 _ConfirmationT = TypeVar("_ConfirmationT")
 _ArchiveT = TypeVar("_ArchiveT")
 _EventT = TypeVar("_EventT", bound=ExpiryHistoryEvent)
