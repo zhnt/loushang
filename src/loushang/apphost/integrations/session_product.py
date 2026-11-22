@@ -10,13 +10,7 @@ import asyncio
 import inspect
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
-from loushang.apphost.application import (
-    _method_descriptor,
-    _observe_background_result,
-)
-from loushang.apphost.application import (
-    _phase_task_failed as _void_task_needs_retry,
-)
+from loushang.apphost.application import _method_descriptor
 from loushang.apphost.contracts import (
     AppHostSessionLeaseV1,
     OpenedProductCandidateV1,
@@ -28,7 +22,10 @@ from loushang.apphost.runtime import AppHostRuntimeV1, _BoundProfileView
 from loushang.appserver.protocol import SessionIdentityV1
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.runtime import await_owned_task
-from loushang.harness.runtime._owned_tasks import _UnpublishedProductOwners
+from loushang.harness.runtime._owned_tasks import (
+    _get_close_task,
+    _UnpublishedProductOwners,
+)
 from loushang.harness.session import SessionControlPort
 
 from .session_control import (
@@ -119,11 +116,9 @@ class _LeasedForegroundBindingMethods(Generic[SnapshotT, EventT]):
         async with self._close_lock:
             if self._runtime_closed:
                 return
-            task = self._close_task
-            if task is None or _void_task_needs_retry(task):
-                task = asyncio.create_task(self._close_once())
-                task.add_done_callback(_observe_background_result)
-                self._close_task = task
+            task = self._close_task = _get_close_task(
+                self._close_task, self._close_once
+            )
         await await_owned_task(task)
 
     async def _close_once(self) -> None:
@@ -167,11 +162,9 @@ class _ForegroundSessionOwner(Generic[BindingT]):
         async with self._close_lock:
             if self._closed:
                 return
-            task = self._close_task
-            if task is None or _void_task_needs_retry(task):
-                task = asyncio.create_task(self.binding.close())
-                task.add_done_callback(_observe_background_result)
-                self._close_task = task
+            task = self._close_task = _get_close_task(
+                self._close_task, lambda: self.binding.close()
+            )
         await await_owned_task(task)
         async with self._close_lock:
             if self._close_task is task:

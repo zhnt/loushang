@@ -61,9 +61,6 @@ from loushang.coding.resume.input_lookup import (
 )
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session.manager import SessionManager
-from loushang.foundation._owned_tasks import (
-    _observe_task_result as _observe_close,
-)
 from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
@@ -76,6 +73,7 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeFactoryPort,
 )
 from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
+from loushang.harness.runtime._owned_tasks import _get_close_task
 from loushang.harness.session import SessionControlPort
 from loushang.harness.session.model_resolution import resolve_default_model
 from loushang.harness.tools.core import ToolDefinition
@@ -374,14 +372,8 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         )
 
     async def close(self) -> None:
-        task = self._close_task
-        if task is None or (
-            task.done() and (task.cancelled() or task.exception() is not None)
-        ):
-            task = asyncio.create_task(self._close_once())
-            task.add_done_callback(_observe_close)
-            self._close_task = task
-        await asyncio.shield(task)
+        self._close_task = _get_close_task(self._close_task, self._close_once)
+        await asyncio.shield(self._close_task)
 
     async def _close_once(self) -> None:
         await self.close_interactive_goal()

@@ -3,16 +3,35 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Generic, Protocol, TypeVar
+from collections.abc import Callable, Coroutine
+from typing import Any, Generic, Protocol, TypeVar
 
 from loushang.foundation._owned_tasks import (
     _join_failure_first,
+    _observe_task_result,
 )
 
 T = TypeVar("T")
 
 
 _await_cancellation_atomic = _join_failure_first
+
+
+def _get_close_task(
+    task: asyncio.Task[None] | None,
+    close: Callable[[], Coroutine[Any, Any, None]],
+    *,
+    retry_cancelled: bool = True,
+) -> asyncio.Task[None]:
+    """Reuse an in-flight close and observe failures even without a waiter."""
+    if task is not None and (
+        not task.done()
+        or (not retry_cancelled if task.cancelled() else task.exception() is None)
+    ):
+        return task
+    task = asyncio.create_task(close())
+    task.add_done_callback(_observe_task_result)
+    return task
 
 
 class _UnpublishedCloseOwner(Protocol):

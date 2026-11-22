@@ -49,7 +49,6 @@ from loushang.coding.hosted.session import (
     _MAX_INTERACTIONS,
     _TEXT_LIMIT,
     CodingRealHostedSessionV1,
-    _observe_close,
     _resolve_hosted_saved_model,
 )
 from loushang.coding.package.product_runtime import (
@@ -71,6 +70,7 @@ from loushang.harness.approval import (
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.journal._owned_io import settled_io
+from loushang.harness.runtime._owned_tasks import _get_close_task
 from loushang.harness.session import SessionControlPort
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
@@ -472,23 +472,15 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     ) -> _ActivatedHostedResumeV1:
 
         from loushang.coding.composition.capability_plugins import (
-            prepare_coding_resume_plugin_effect_owners,
             require_coding_resume_plugin_effect_settlement,
-        )
-        from loushang.coding.composition.product_capability_plugins import (
-            coding_session_plugin_state_relative_path,
         )
         from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
         from loushang.coding.resume.continuation import (
             prepare_coding_resume_continuation,
         )
         from loushang.coding.resume.first_input import (
-            bind_first_input_settlement,
-            build_first_input_attempt,
+            prepare_first_input_effects,
             require_first_input_attempt,
-        )
-        from loushang.coding.resume.plugin_effects import (
-            resume_capability_plugins_required as _resume_capability_plugins_required,
         )
 
         async with self._activation_lock:
@@ -525,24 +517,11 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 settings_manager=self._services.settings_manager,
             )
             require_subject()
-            plugins_enabled = _resume_capability_plugins_required(
-                plan_set_id=plan.composition_comparison.candidate_set_id,
-                settings_manager=self._services.settings_manager,
-                no_tools=None,
+            effects = prepare_first_input_effects(
+                plan,
                 history=self._source.history,
-            )
-            relative_plugin_state = coding_session_plugin_state_relative_path(
-                plan.session_id
-            )
-            plugin_state_root = (
-                self._source.record.scope.session_dir / relative_plugin_state
-            )
-            plugin_owners = (
-                prepare_coding_resume_plugin_effect_owners(
-                    session_id=plan.session_id, state_root=plugin_state_root
-                )
-                if plugins_enabled
-                else ()
+                session_dir=self._source.record.scope.session_dir,
+                settings_manager=self._services.settings_manager,
             )
             stable = hashlib.sha256(
                 (
@@ -553,13 +532,13 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                     + submission_id
                 ).encode()
             ).hexdigest()
-            attempt = build_first_input_attempt(
-                plan,
+            attempt, settle = effects.bind(
                 attempt_id=f"resume-attempt:{token_hex(16)}",
                 request_id=f"resume-input:{stable}",
                 epoch_fingerprint=epoch_fingerprint,
                 subject_digest=subject_digest,
-                effect_owners=tuple(sorted(plugin_owners, key=lambda owner: owner.identity)),
+                clock=lambda: time.time_ns() // 1_000_000,
+                verify_plugin_effects=require_coding_resume_plugin_effect_settlement,
             )
 
             def admit(observed: CodingActivationAttemptV1) -> None:
@@ -567,14 +546,6 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 require_subject()
                 if self._close_task is not None:
                     raise CodingHostedCatalogError()
-
-            settle = bind_first_input_settlement(
-                plan,
-                plugin_owners=plugin_owners,
-                plugin_state_root=plugin_state_root,
-                clock=lambda: time.time_ns() // 1_000_000,
-                verify_plugin_effects=require_coding_resume_plugin_effect_settlement,
-            )
 
             continuation = await prepare_coding_resume_continuation(
                 manager_type=self._source.manager_type,
@@ -626,12 +597,10 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._latest_input_query = query
 
     async def close(self) -> None:
-        task = self._close_task
-        if task is None or (task.done() and not task.cancelled() and task.exception()):
-            task = asyncio.create_task(self._close_once())
-            task.add_done_callback(_observe_close)
-            self._close_task = task
-        await asyncio.shield(task)
+        self._close_task = _get_close_task(
+            self._close_task, self._close_once, retry_cancelled=False
+        )
+        await asyncio.shield(self._close_task)
 
     async def _close_once(self) -> None:
         async with self._activation_lock:

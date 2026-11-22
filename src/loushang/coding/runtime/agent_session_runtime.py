@@ -42,6 +42,7 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.runtime.session_operations import SessionOperationResult
 from loushang.harness.session import AgentProductSessionRuntime
+from loushang.harness.session._resume_continuation import require_resume_owner_check
 from loushang.harness.session.lifecycle import (
     PreparedSessionLifecycleOperation,
 )
@@ -408,11 +409,9 @@ class AgentSessionRuntime(
 
         def current_view() -> None:
             if view is not None and view.require_current_view is not None:
-                result = cast(Callable[[], object], view.require_current_view)()
-                if result is not None:
-                    if inspect.iscoroutine(result):
-                        result.close()
-                    raise TypeError('Coding Resume view check must return None')
+                require_resume_owner_check(
+                    view.require_current_view, invalid_return="Coding Resume view check must return None"
+                )
 
         current_view()  # A cancelled/closed display cannot begin Writer preparation.
         factory = self._owned_transcript_factory
@@ -446,14 +445,10 @@ class AgentSessionRuntime(
                 raise RuntimeError('coding_resume_active_session_changed')
             if self._embedded_resume_approval_owner is not None:
                 self.require_current_embedded_resume_subject(observed)
-            result = cast(
-                "Callable[[CodingActivationAttemptV1], object]",
-                require_current_admission,
-            )(observed)
-            if result is not None:
-                if inspect.iscoroutine(result):
-                    result.close()
-                raise TypeError('Coding Resume owner check must return None')
+            require_resume_owner_check(
+                lambda: require_current_admission(observed),
+                invalid_return="Coding Resume owner check must return None",
+            )
             # Borrow the original selected native epoch, including before the
             # first Writer acquisition. This read cannot select/create an owner.
             # The caller's effect settlement remains an independent gate.
