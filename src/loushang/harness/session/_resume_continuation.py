@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import replace
+from datetime import datetime
 from hashlib import sha256
-from typing import ClassVar, Generic, Protocol, TypeVar, cast
+from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.types import ImagePart, UserMessage
@@ -20,7 +21,10 @@ from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     execution_profile_expansion_codes,
 )
-from loushang.harness.transcript._resume_continuation import _ResumeIntentRead
+from loushang.harness.transcript._resume_continuation import (
+    _ResumeContinuationTranscript,
+    _ResumeIntentRead,
+)
 from loushang.harness.transcript._resume_records import canonical_binding_bytes
 
 from .agent_product import AgentProductSession
@@ -558,70 +562,154 @@ def require_resume_owner_check(
         raise TypeError(invalid_return)
 
 
-async def commit_prepared_resume_input(
-    session: _ResumeContinuationSession[IntentT],
+_WriterT = TypeVar("_WriterT", bound=_ResumeContinuationTranscript[Any, Any, Any, Any, Any])
+_SessionT = TypeVar("_SessionT", bound=_ResumeContinuationSession[Any])
+_QueryT = TypeVar("_QueryT")
+_ContinuationT = TypeVar("_ContinuationT")
+_BindingT = TypeVar("_BindingT")
+
+
+async def prepare_resume_continuation(
     *,
-    transcript_lifecycle: _ResumeTranscriptLifecycle,
+    product_label: str,
     attempt: IntentT,
-    receipt: Mapping[str, object],
+    input_record_id: str,
     text: str,
     images: list[ImagePart] | None,
+    created_at: datetime,
     require_current_admission: Callable[[IntentT], None],
     require_current_epoch_settlement: Callable[[IntentT, Mapping[str, object]], None],
-    stage_input: Callable[[UserMessage], None],
-    observe_commit: Callable[[str], None],
-    record_phase: Callable[[str], None],
-    invalid_check_return: str,
-    missing_candidate: str,
-) -> str:
-    """Keep preflight and publication on the original graph and durable Writer."""
+    open_writer: Callable[[], Awaitable[_WriterT]],
+    build_session: Callable[[_WriterT], Awaitable[_SessionT]],
+    enroll_native_owners: Callable[[_WriterT], Callable[[], None]] | None,
+    prepare_binding: Callable[[UserMessage], _BindingT],
+    input_query: Callable[[str, str], _QueryT],
+    observe_input_identity: Callable[[_QueryT], None] | None,
+    retained_cleanup_error: type[BaseException],
+    discard: Callable[[_SessionT | None, BaseException, _WriterT | None], Awaitable[None]],
+    deliver: Callable[[_SessionT, str, str, _QueryT], _ContinuationT],
+) -> _ContinuationT:
+    """Commit initial input on the original Writer and publish its prepared Session."""
+
+    invalid_check_return = f"{product_label} owner check must return None"
+
+    def checked(check: Callable[[], None]) -> None:
+        require_resume_owner_check(check, invalid_return=invalid_check_return)
 
     def current() -> None:
-        require_resume_owner_check(
-            lambda: require_current_admission(attempt),
-            invalid_return=invalid_check_return,
+        checked(lambda: require_current_admission(attempt))
+
+    manager: _WriterT | None = None
+    session: _SessionT | None = None
+    observed_input = False
+    phase = "writer_preparation"
+    current()
+    try:
+        writer = manager = await open_writer()
+        with writer._lifecycle_session.sync_operation_scope():
+            current()
+            writer._require_fresh_resume_input(attempt, input_record_id)
+        phase = "intent_commit"
+        await writer._commit_resume_activation_intent(
+            writer._resume_records.prepare_attempt(attempt, created_at=created_at)
         )
+        seal = None
+        if enroll_native_owners is not None:
+            phase = "native_owner_enrollment"
+            current()
+            seal = enroll_native_owners(writer)
+            current()
 
-    def settled() -> None:
-        with transcript_lifecycle.sync_operation_scope():
+        phase = "runtime_preparation"
+        prepared = session = await build_session(writer)
+        receipt = await prepared._prepare_resume_runtime_graph(
+            attempt_id=attempt.attempt_id,
+            require_current_admission=require_current_admission,
+        )
+        if seal is not None:
+            phase = "native_owner_seal"
             current()
-            candidate = session._resume_candidate
-            if candidate is None:
-                raise RuntimeError(missing_candidate)
-            session._require_resume_candidate(candidate)
+            seal()
             current()
-            session._require_resume_worker_effect_settlement(attempt)
-            current()
-            require_resume_owner_check(
-                lambda: require_current_epoch_settlement(attempt, receipt),
-                invalid_return=invalid_check_return,
+
+        def settled() -> None:
+            with writer._lifecycle_session.sync_operation_scope():
+                current()
+                candidate = prepared._resume_candidate
+                if candidate is None:
+                    raise RuntimeError(f"{product_label} candidate was not delivered")
+                prepared._require_resume_candidate(candidate)
+                current()
+                prepared._require_resume_worker_effect_settlement(attempt)
+                current()
+                checked(lambda: require_current_epoch_settlement(attempt, receipt))
+                current()
+                prepared._require_resume_candidate(candidate)
+                current()
+
+        settled()
+        phase = "input_preparation"
+        message = await prepared._prepare_resume_first_user_input(
+            text,
+            images=images,
+            attempt_id=attempt.attempt_id,
+            require_current_admission=require_current_admission,
+        )
+        settled()
+        writer._stage_resume_first_user_input(
+            message,
+            prepare_binding=prepare_binding,
+            created_at=created_at,
+            original_leaf_id=attempt.original_leaf_id,
+            ancestry_digest=attempt.ancestry_digest,
+            attempt_id=attempt.attempt_id,
+        )
+        phase = "input_commit"
+        record_id = await prepared._commit_resume_first_user_input(
+            message,
+            attempt_id=attempt.attempt_id,
+            require_current_admission=require_current_admission,
+        )
+        _, committed = writer._require_committed_resume_input(attempt.attempt_id, record_id)
+        query = input_query(attempt.request_id, writer._resume_messages.record_digest(committed))
+        observed_input = True
+        if observe_input_identity is not None:
+            checked(lambda: observe_input_identity(query))
+        phase = "runtime_publication"
+        await prepared._publish_resume_runtime(
+            attempt_id=attempt.attempt_id,
+            input_record_id=record_id,
+            require_current_admission=require_current_admission,
+            require_current_epoch_settlement=require_current_epoch_settlement,
+        )
+        return deliver(prepared, attempt.attempt_id, record_id, query)
+    except BaseException as error:
+        error.add_note(
+            f"{product_label} continuation failed during {phase}; "
+            "no model was dispatched by this entry."
+        )
+        if isinstance(error, retained_cleanup_error):
+            # The failed bootstrap already retains the complete candidate and Writer.
+            raise
+        if phase in {"input_commit", "runtime_publication"}:
+            error.add_note(
+                "Input may already be committed; use original input lookup before any explicit recovery."
             )
-            current()
-            session._require_resume_candidate(candidate)
-            current()
-
-    settled()
-    record_phase("input_preparation")
-    message = await session._prepare_resume_first_user_input(
-        text,
-        images=images,
-        attempt_id=attempt.attempt_id,
-        require_current_admission=require_current_admission,
-    )
-    settled()
-    stage_input(message)
-    record_phase("input_commit")
-    record_id = await session._commit_resume_first_user_input(
-        message,
-        attempt_id=attempt.attempt_id,
-        require_current_admission=require_current_admission,
-    )
-    observe_commit(record_id)
-    record_phase("runtime_publication")
-    await session._publish_resume_runtime(
-        attempt_id=attempt.attempt_id,
-        input_record_id=record_id,
-        require_current_admission=require_current_admission,
-        require_current_epoch_settlement=require_current_epoch_settlement,
-    )
-    return record_id
+            if manager is not None and not observed_input and observe_input_identity is not None:
+                proof = manager._resume_committed_input
+                pending = manager._resume_first_input
+                record = proof[1] if proof is not None else (
+                    pending.prepared_record if pending is not None else None
+                )
+                if record is not None:
+                    try:
+                        recovery_query = input_query(
+                            attempt.request_id, manager._resume_messages.record_digest(record)
+                        )
+                        checked(lambda: observe_input_identity(recovery_query))
+                    except BaseException as observation_error:
+                        error.add_note(
+                            f"Resume input identity delivery also failed: {observation_error!r}"
+                        )
+        await discard(session, error, manager)
+        raise

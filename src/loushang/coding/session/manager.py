@@ -54,10 +54,13 @@ from loushang.coding.resume.binding import (
     CodingRuntimeBindingV1,
     coding_user_input_digest,
     freeze_coding_user_input,
+    inspect_coding_runtime_binding,
     prepare_coding_resume_user_record,
 )
 from loushang.coding.resume.binding_v2 import (
+    CODING_RUNTIME_BINDING_V2_METADATA_KEY,
     CodingRuntimeBindingV2,
+    decode_coding_runtime_binding_v2,
     prepare_coding_resume_v2_user_record,
 )
 from loushang.coding.resume.history import (
@@ -180,6 +183,17 @@ class _CodingResumeRecords:
     @staticmethod
     def validate_attempt(record: AgentTranscriptRecord) -> CodingActivationAttemptV1:
         return _validate_resume_attempt_record(record)
+
+    @staticmethod
+    def input_binding_identity(
+        metadata: Mapping[str, JSONValue],
+    ) -> tuple[str, str] | None:
+        binding = inspect_coding_runtime_binding(metadata).binding
+        if binding is None and CODING_RUNTIME_BINDING_V2_METADATA_KEY in metadata:
+            binding = decode_coding_runtime_binding_v2(metadata)
+        if binding is None:
+            return None
+        return binding.session_id, binding.input_id
 
     @staticmethod
     def prepare_attempt(

@@ -120,6 +120,9 @@ class _ResumeMessageCodec(Protocol):
 
 class _ResumeRecordCodec(Protocol[IntentT, BindingContra]):
     def validate_attempt(self, record: AgentTranscriptRecord) -> IntentT: ...
+    def input_binding_identity(
+        self, metadata: Mapping[str, JSONValue]
+    ) -> tuple[str, str] | None: ...
     def prepare_attempt(
         self, attempt: IntentT, *, created_at: datetime
     ) -> AgentTranscriptRecord: ...
@@ -194,6 +197,15 @@ class _ResumeContinuationTranscript(
         """Local readiness only; historical Binding cannot prove publication."""
 
         return self._resume_runtime_publication_pending
+
+    def _require_fresh_resume_input(self, attempt: IntentT, input_record_id: str) -> None:
+        reserved = {input_record_id, attempt.attempt_id}
+        if any(record.record_id in reserved for record in self.get_entries()):
+            raise self._resume_recovery_error("input.record_identity_conflict")
+        identity = (attempt.session_id, attempt.request_id)
+        for record in self.get_active_entries():
+            if self._resume_records.input_binding_identity(record.metadata) == identity:
+                raise self._resume_recovery_error("input.recovery_required")
 
     async def _commit_resume_activation_intent(
         self,
