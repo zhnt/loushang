@@ -95,10 +95,6 @@ class CodingExternalDataWheelBindingV1(_WheelSourceBindingMethods):
             artifact_digest=artifact_digest,
         )
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingExternalDataWheelBindingV1:
-        return cls._decode_binding(value)
-
     def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
         return project_plugin_wheel_binding(
             self, source_root, trust_class="local-data-only"

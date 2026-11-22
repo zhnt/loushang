@@ -10,12 +10,12 @@ import json
 import os
 import re
 import stat
-from collections.abc import Callable, Hashable, Iterable, Mapping
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
-from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar
+from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal import (
@@ -229,7 +229,7 @@ class _WheelSourceBindingMethods:
         return self._binding_schema.encode(self, sort_keys=self._sort_binding_fields)
 
     @classmethod
-    def _decode_binding(cls, value: object) -> Self:
+    def from_dict(cls, value: object) -> Self:
         if type(value) is not dict or set(value) != cls._binding_schema.keys:
             raise ValueError(f"{cls._binding_label} binding record is invalid")
         return cls._binding_schema.decode(cls, value)
@@ -378,6 +378,7 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
 
 
 class _StableWheelSource(Generic[RecordT]):
+    _label: str
     _source_label: str
     source_root: Path
     store_id: str
@@ -385,6 +386,7 @@ class _StableWheelSource(Generic[RecordT]):
     scope_id: str
     _create_binding: Callable[..., RecordT]
     _persist_admission = False
+    _binding_limit = 125
     _error_factory: Callable[[str], Exception]
     _source_read_errors: tuple[type[BaseException], ...] = (OSError,)
     _source_read_error_suffix = "Source changed"
@@ -422,6 +424,49 @@ class _StableWheelSource(Generic[RecordT]):
             and not source.is_relative_to(self.source_root)
         )
 
+    def _require_worker_capture_source(
+        self,
+        source: Path,
+        admission: PackageProductLocalWorkerAdmissionV1,
+        *,
+        native_platform: str,
+        filename: re.Pattern[str],
+        max_filename: int,
+        required_suffix: str = "",
+    ) -> None:
+        if (
+            not isinstance(admission, PackageProductLocalWorkerAdmissionV1)
+            or admission.native_platform != native_platform
+            or not isinstance(source, Path)
+            or not self._is_external_source(source)
+            or filename.fullmatch(source.name) is None
+            or (required_suffix and not source.name.endswith(required_suffix))
+            or len(source.name) > max_filename
+        ):
+            raise self._error_factory(f"{self._source_label} Source is invalid")
+
+    def _existing_capture(
+        self,
+        records: Sequence[RecordT],
+        source: Path,
+        digest: str,
+        admission: PackageProductLocalWorkerAdmissionV1 | None,
+    ) -> RecordT | None:
+        record = next((item for item in records if item.wheel_filename == source.name), None)
+        if record is None:
+            if len(records) >= self._binding_limit:
+                raise self._error_factory(f"{self._label} binding limit reached")
+        elif (
+            record.artifact_digest != digest
+            or record.original_source != str(source)
+            or (
+                self._persist_admission
+                and cast(_WorkerSourceRecord, record).admission != admission
+            )
+        ):
+            raise self._error_factory(f"{self._label} binding conflicts")
+        return record
+
     def _read_source(self, source: Path) -> tuple[bytes, str]:
         try:
             self._validate_source_name(source.name)
@@ -449,7 +494,6 @@ class _StableWheelSource(Generic[RecordT]):
 
 
 class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource[RecordT]):
-    _binding_limit = 125
     _read_only_capture_error = "Read-only catalog cannot capture"
 
     def _require_capture_epoch(
@@ -467,13 +511,6 @@ class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource[Recor
     ) -> None:
         pass
 
-    def _admission_conflicts(
-        self,
-        record: RecordT,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
-    ) -> bool:
-        return False
-
     def _capture_validated(
         self,
         source: Path,
@@ -486,20 +523,10 @@ class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource[Recor
         with journal_file_lock(self.path, "exclusive"):
             self._assert_epoch(epoch_runtime)
             records = self._load_unlocked()
-            existing = next(
-                (item for item in records if item.wheel_filename == source.name), None
-            )
+            existing = self._existing_capture(records, source, digest, admission)
             if existing is not None:
-                if (
-                    existing.artifact_digest != digest
-                    or existing.original_source != str(source)
-                    or self._admission_conflicts(existing, admission)
-                ):
-                    raise self._error_factory(f"{self._label} binding conflicts")
                 self._verify_controlled(existing)
                 return existing
-            if len(records) >= self._binding_limit:
-                raise self._error_factory(f"{self._label} binding limit reached")
             record = self._new_record(
                 source, digest, len(records) + 1, admission=admission
             )
@@ -695,6 +722,13 @@ class _DependencyWheelSourceCatalog(_WheelSourceCatalog[DependencyRecordT]):
     _source_read_error_suffix = "Source changed or is invalid"
     _binding_limit = 128
 
+    def _require_new_record(
+        self, record: DependencyRecordT, records: tuple[DependencyRecordT, ...]
+    ) -> None:
+        key = self._record_key(record)
+        if any(self._record_key(item) == key for item in records):
+            raise self._error_factory(f"{self._label} version is already bound")
+
     def _directory_name(self) -> str:
         raise NotImplementedError
 
@@ -762,7 +796,7 @@ class _DependencyWheelSourceCatalog(_WheelSourceCatalog[DependencyRecordT]):
         )
 
 
-class _WindowsWorkerRecord(_PluginSourceRecord, Protocol):
+class _WorkerSourceRecord(_PluginSourceRecord, Protocol):
     @property
     def admission(self) -> PackageProductLocalWorkerAdmissionV1: ...
     def to_dict(self) -> dict[str, object]: ...
@@ -770,7 +804,7 @@ class _WindowsWorkerRecord(_PluginSourceRecord, Protocol):
     def from_dict(cls, value: object) -> Self: ...
 
 
-WindowsRecordT = TypeVar("WindowsRecordT", bound=_WindowsWorkerRecord)
+WindowsRecordT = TypeVar("WindowsRecordT", bound=_WorkerSourceRecord)
 
 
 class _WindowsWorkerSourceCatalog(
@@ -825,20 +859,10 @@ class _WindowsWorkerSourceCatalog(
     ) -> WindowsRecordT:
         body, digest = self._read_source(source)
         records = self._records(allow_pending_stage=True)
-        existing = next(
-            (item for item in records if item.wheel_filename == source.name), None
-        )
+        existing = self._existing_capture(records, source, digest, admission)
         if existing is not None:
-            if (
-                existing.artifact_digest != digest
-                or existing.original_source != str(source)
-                or existing.admission != admission
-            ):
-                raise self._error_factory(f"{self._label} binding conflicts")
             self.verify_record(existing)
             return existing
-        if len(records) >= 125:
-            raise self._error_factory(f"{self._label} binding limit reached")
         record = self._new_record(source, digest, len(records) + 1, admission=admission)
         receipt_bytes = canonical_json_bytes(record.to_dict())
         if len(receipt_bytes) > self._max_record_bytes():

@@ -139,10 +139,6 @@ class CodingExternalDependencyWheelBindingV1(_WheelSourceBindingMethods):
             artifact_digest=artifact_digest,
         )
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingExternalDependencyWheelBindingV1:
-        return cls._decode_binding(value)
-
     def policy_dependency(
         self, source_root: Path
     ) -> PackageProductLocalWheelDependencyV1:
@@ -190,20 +186,6 @@ class CodingExternalDependencyWheelCatalog(
 
     def _verify_source_body(self, filename: str, body: bytes) -> None:
         _verify_wheel_body(filename, body)
-
-    def _require_new_record(
-        self,
-        record: CodingExternalDependencyWheelBindingV1,
-        records: tuple[CodingExternalDependencyWheelBindingV1, ...],
-    ) -> None:
-        if any(
-            item.project_name == record.project_name
-            and Version(item.version) == Version(record.version)
-            for item in records
-        ):
-            raise CodingExternalDependencyWheelError(
-                "Dependency Wheel version is already bound"
-            )
 
     def capture(
         self,

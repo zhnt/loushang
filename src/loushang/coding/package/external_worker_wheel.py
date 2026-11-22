@@ -132,10 +132,6 @@ class CodingExternalWorkerWheelBindingV1(_WheelSourceBindingMethods):
             admission=admission,
         )
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingExternalWorkerWheelBindingV1:
-        return cls._decode_binding(value)
-
     def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
         return project_plugin_wheel_binding(
             self, source_root, trust_class="local-worker-candidate", admission=self.admission
@@ -211,30 +207,19 @@ class CodingExternalWorkerWheelCatalog(
         epoch_runtime: PackageProductPosixFencedRuntimeOwner,
     ) -> CodingExternalWorkerWheelBindingV1:
         self._require_capture_epoch(epoch_runtime)
-        if (
-            not isinstance(admission, PackageProductLocalWorkerAdmissionV1)
-            or admission.native_platform != "linux-x86_64"
-            or not isinstance(source, Path)
-            or not self._is_external_source(source)
-            or _WHEEL_NAME.fullmatch(source.name) is None
-            or len(source.name) > _MAX_WHEEL_FILENAME
-        ):
-            raise CodingExternalWorkerWheelError(
-                "External Worker Wheel Source is invalid"
-            )
+        self._require_worker_capture_source(
+            source,
+            admission,
+            native_platform="linux-x86_64",
+            filename=_WHEEL_NAME,
+            max_filename=_MAX_WHEEL_FILENAME,
+        )
         return self._capture_validated(
             source, epoch_runtime=epoch_runtime, admission=admission
         )
 
     def _max_source_bytes(self) -> int:
         return _MAX_WHEEL_BYTES
-
-    def _admission_conflicts(
-        self,
-        record: CodingExternalWorkerWheelBindingV1,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
-    ) -> bool:
-        return record.admission != admission
 
 
 class CodingWindowsExternalWorkerWheelCatalog(
@@ -265,18 +250,14 @@ class CodingWindowsExternalWorkerWheelCatalog(
         admission: PackageProductLocalWorkerAdmissionV1,
     ) -> CodingExternalWorkerWheelBindingV1:
         self._assert_epoch()
-        if (
-            not isinstance(admission, PackageProductLocalWorkerAdmissionV1)
-            or admission.native_platform != "windows-amd64"
-            or not isinstance(source, Path)
-            or not self._is_external_source(source)
-            or _WHEEL_NAME.fullmatch(source.name) is None
-            or not source.name.endswith("-win_amd64.whl")
-            or len(source.name) > _MAX_WHEEL_FILENAME
-        ):
-            raise CodingExternalWorkerWheelError(
-                "Windows Worker Wheel Source is invalid"
-            )
+        self._require_worker_capture_source(
+            source,
+            admission,
+            native_platform="windows-amd64",
+            filename=_WHEEL_NAME,
+            max_filename=_MAX_WHEEL_FILENAME,
+            required_suffix="-win_amd64.whl",
+        )
         return self._capture_validated(source, admission=admission)
 
     def _max_source_bytes(self) -> int:
