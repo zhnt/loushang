@@ -23,6 +23,9 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.package_product._private_data_custody import (
+    hold_private_data_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -291,18 +294,14 @@ class CodingWindowsArchBackupCandidateClientV1:
             runtime_protocol_epoch=self.runtime_protocol_epoch,
             windows_candidate=True,
         )
-        try:
-            product = application.runtime_owner.product_owner
-            if not isinstance(
-                product, WindowsLocalWheelProductSessionOwner
-            ) or not isinstance(
-                application.epoch_runtime, PackageProductWindowsFencedRuntimeOwner
-            ):
-                raise ValueError("Windows Coding Arch backup Product owner changed")
+        with hold_private_data_product(
+            application,
+            WindowsLocalWheelProductSessionOwner,
+            PackageProductWindowsFencedRuntimeOwner,
+            error="Windows Coding Arch backup Product owner changed",
+        ) as product:
             yield CodingWindowsArchPrivateDataBackupOwner(self.layout, product)
             self._assert_workspace_identity()
-        finally:
-            application.close()
 
     def _assert_workspace_identity(self) -> None:
         metadata = self.workspace.lstat()

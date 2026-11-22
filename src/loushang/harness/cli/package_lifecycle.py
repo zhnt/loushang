@@ -13,9 +13,10 @@ from dataclasses import dataclass
 from functools import partial
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol, TextIO
+from typing import TYPE_CHECKING, Literal, Protocol, TextIO, TypeVar
 from uuid import uuid4
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleAction,
     PackageProductLifecycleRecordV1,
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     )
 
 _OPERATOR_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
+_RecordT = TypeVar("_RecordT")
 
 
 def package_operator_workspace(value: str, *, not_directory: str) -> Path:
@@ -70,6 +72,41 @@ def write_package_operator_result(
     output = sys.stdout if stream is None else stream
     output.write(encoded + "\n")
     return 0
+
+
+@dataclass(frozen=True, slots=True)
+class PackageOperatorRecordInput:
+    """Read a bounded command document and verify its embedded record."""
+
+    label: str
+    maximum_bytes: int
+
+    def read(
+        self,
+        path: Path,
+        field: str,
+        decode: Callable[[object], _RecordT],
+        *,
+        label: str,
+        fingerprint: Callable[[_RecordT], str] | None = None,
+    ) -> _RecordT:
+        with path.open("rb") as handle:
+            raw = handle.read(self.maximum_bytes + 1)
+        if len(raw) > self.maximum_bytes:
+            raise ValueError(f"{self.label} input is too large")
+        document = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_json_object_hook(
+                lambda: f"{self.label} has duplicate JSON keys"
+            ),
+        )
+        expected = {field} if fingerprint is None else {field, "fingerprint"}
+        if type(document) is not dict or set(document) != expected:
+            raise ValueError(f"{label} document is invalid")
+        record = decode(document[field])
+        if fingerprint is not None and document["fingerprint"] != fingerprint(record):
+            raise ValueError(f"{label} fingerprint changed")
+        return record
 
 
 def run_package_operator_command(

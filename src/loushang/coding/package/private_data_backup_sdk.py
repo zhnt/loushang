@@ -57,6 +57,9 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.package_product._application_runtime import handoff_product_open
+from loushang.harness.package_product._private_data_custody import (
+    hold_private_data_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -266,18 +269,13 @@ class CodingArchPrivateDataBackupClientV1:
 
     @contextmanager
     def _product(self) -> Iterator[PosixLocalWheelProductSessionOwner]:
-        application = self._open_application()
-        try:
-            product = application.runtime_owner.product_owner
-            if not isinstance(
-                product, PosixLocalWheelProductSessionOwner
-            ) or not isinstance(
-                application.epoch_runtime, PackageProductPosixFencedRuntimeOwner
-            ):
-                raise ValueError("Coding Arch backup Product owner is unsupported")
+        with hold_private_data_product(
+            self._open_application(),
+            PosixLocalWheelProductSessionOwner,
+            PackageProductPosixFencedRuntimeOwner,
+            error="Coding Arch backup Product owner is unsupported",
+        ) as product:
             yield product
-        finally:
-            application.close()
 
 
 def _require_backup_product_route(layout: CodingPluginLifecycleStateLayout) -> None:

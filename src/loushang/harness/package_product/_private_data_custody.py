@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeVar
 
@@ -22,10 +22,36 @@ if TYPE_CHECKING:
         PluginPackageGcReservationJournal,
     )
 
+    from ._application_runtime import FencedOrdinaryProductApplication
+    from ._legacy_runtime import _FencedRuntime
     from .product_local_wheel_runtime import (
         PosixLocalWheelProductSessionOwner,
         WindowsLocalWheelProductSessionOwner,
     )
+
+
+NativeProductT = TypeVar(
+    "NativeProductT",
+    bound="PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner",
+)
+
+
+@contextmanager
+def hold_private_data_product(
+    application: FencedOrdinaryProductApplication,
+    product_type: type[NativeProductT],
+    epoch_type: type[_FencedRuntime],
+    *,
+    error: str,
+) -> Iterator[NativeProductT]:
+    """Close the Product application after the operation or failed binding."""
+    with closing(application):
+        product = application.runtime_owner.product_owner
+        if not isinstance(product, product_type) or not isinstance(
+            application.epoch_runtime, epoch_type
+        ):
+            raise ValueError(error)
+        yield product
 
 
 @contextmanager

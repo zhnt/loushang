@@ -752,10 +752,10 @@ def restore_private_archive(
                     raise ValueError(f"{io.label} restore target changed")
                 journal = journal_factory()
                 restore_id = identity_for(key, name, deletion_receipt.receipt_id)
-                if existing_target and not any(
-                    event.restore_id == restore_id for event in journal.events()
-                ):
-                    raise ValueError(f"{io.label} existing data lacks restore start")
+                if existing_target:
+                    journal.require_started(
+                        restore_id, error=f"{io.label} existing data lacks restore start"
+                    )
                 started = journal.begin(
                     key=key,
                     backup_id=name,

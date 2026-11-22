@@ -155,8 +155,16 @@ def _retention_status(
     pending: bool,
     receipts: tuple[R, ...],
     *,
+    closed_archive_phases: tuple[str, ...],
+    reappeared_error: str,
     receipt_error: str,
 ) -> tuple[PluginBackupRetentionStatus, str | None]:
+    if (
+        latest is not None
+        and latest.phase in closed_archive_phases
+        and any(item.backup_id == latest.plan.backup_id for item in receipts)
+    ):
+        raise ValueError(reappeared_error)
     if pending:
         return "expiry_pending", None
     if receipts:
@@ -194,17 +202,13 @@ def read_posix_private_backup_retention(
         receipts = retained_receipts(
             tombstone_name(latest) if pending and latest is not None else None
         )
-        if (
-            latest is not None
-            and latest.phase == "completed"
-            and any(item.backup_id == latest.plan.backup_id for item in receipts)
-        ):
-            raise ValueError(f"{label} expired backup reappeared")
         status, receipt_id = _retention_status(
             key,
             latest,
             pending,
             receipts,
+            closed_archive_phases=("completed",),
+            reappeared_error=f"{label} expired backup reappeared",
             receipt_error=f"{label} backup expiry receipt changed",
         )
         trust = "verified"
@@ -292,17 +296,13 @@ def read_windows_private_backup_retention(
                     allowed_tombstone,
                     latest.plan.backup_id if pending and latest is not None else None,
                 )
-            if (
-                latest is not None
-                and latest.phase in {"renamed", "completed"}
-                and any(item.backup_id == latest.plan.backup_id for item in receipts)
-            ):
-                raise ValueError(f"{label} expired archive reappeared")
             status, expiry_receipt_id = _retention_status(
                 key,
                 latest,
                 pending,
                 receipts,
+                closed_archive_phases=("renamed", "completed"),
+                reappeared_error=f"{label} expired archive reappeared",
                 receipt_error=f"{label} expiry receipt changed",
             )
         except (OSError, ValueError):

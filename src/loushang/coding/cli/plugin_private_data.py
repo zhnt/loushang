@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import secrets
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
 from importlib.metadata import version
+from operator import attrgetter
 from pathlib import Path
 
 from loushang.coding.package.installation_private_data import (
@@ -35,6 +35,7 @@ from loushang.coding.package.private_data_deletion_owner import (
 from loushang.coding.package.private_data_restore import (
     CodingArchPrivateDataRestoreOwner,
     CodingArchPrivateDataRestorePlanV1,
+    CodingArchPrivateDataRestoreResultV1,
 )
 from loushang.coding.package.private_data_restore_journal import (
     CodingArchPrivateDataRestoreJournal,
@@ -54,8 +55,13 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.foundation.json import _unique_json_object_hook
-from loushang.harness.cli.package_lifecycle import run_package_operator_command
+from loushang.harness.cli.package_lifecycle import (
+    PackageOperatorRecordInput,
+    run_package_operator_command,
+)
+from loushang.harness.package_product._private_data_custody import (
+    hold_private_data_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -76,6 +82,10 @@ _POLICY_REVISION = "coding-arch-private-data-cli:1"
 _EXPIRY_POLICY_REVISION = "coding-arch-backup-expiry-cli:1"
 _MAX_INPUT_BYTES = 16 * 1024
 _BACKUP_ACCESS_ACTIONS = ("backup", "backup-status", "backup-verify", "restore-preview")
+_RECORD_INPUT = PackageOperatorRecordInput(
+    label="Coding private-data command", maximum_bytes=_MAX_INPUT_BYTES
+)
+_FINGERPRINT = attrgetter("fingerprint")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -180,21 +190,15 @@ def _run_posix_product_action(
         runtime_version=version("loushang"),
         runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     )
-    try:
-        product = application.runtime_owner.product_owner
-        if not isinstance(
-            product, PosixLocalWheelProductSessionOwner
-        ) or not isinstance(
-            application.epoch_runtime, PackageProductPosixFencedRuntimeOwner
-        ):
-            raise ValueError("Coding private-data Product owner is unsupported")
+    with hold_private_data_product(
+        application, PosixLocalWheelProductSessionOwner, PackageProductPosixFencedRuntimeOwner,
+        error="Coding private-data Product owner is unsupported",
+    ) as product:
         if args.action == "restore":
             return _run_restore(layout, product, args)
         if args.action in {"backup-expiry-confirm", "backup-expire"}:
             return _run_backup_expiry(layout, product, args)
         return _run_product_action(layout, application, product, args)
-    finally:
-        application.close()
 
 
 def _run_backup_access(
@@ -274,14 +278,7 @@ def _run_windows_action(
         restore_plan = _read_restore_plan(Path(args.plan_file))
         if args.accept_fingerprint != restore_plan.fingerprint:
             raise ValueError("Coding Arch restore plan was not accepted")
-        restore_result = client.restore(restore_plan)
-        return {
-            "restore": {
-                "backupId": restore_result.backup_id,
-                "disposition": restore_result.disposition,
-                "restoreId": restore_result.restore_id,
-            }
-        }
+        return _restore_document(client.restore(restore_plan))
     if action == "backup-expiry-preview":
         return _backup_expiry_preview_document(
             client.backup_expiry_preview(args.backup_id, args.confirmation_id)
@@ -363,14 +360,13 @@ def _run_restore(
         ):
             raise ValueError("Coding Arch restore plan is stale")
         restore_id = restore_id_for(key, plan.backup_id, plan.deletion_receipt_id)
-        if not any(
-            event.restore_id == restore_id
-            for event in CodingArchPrivateDataRestoreJournal(
-                product.state_root
-            ).events()
-        ):
-            raise ValueError("Coding Arch restore plan has no prior start")
-    result = owner.restore(key, plan.backup_id, expected_plan=plan)
+        CodingArchPrivateDataRestoreJournal(product.state_root).require_started(
+            restore_id, error="Coding Arch restore plan has no prior start"
+        )
+    return _restore_document(owner.restore(key, plan.backup_id, expected_plan=plan))
+
+
+def _restore_document(result: CodingArchPrivateDataRestoreResultV1) -> dict[str, object]:
     return {
         "restore": {
             "backupId": result.backup_id,
@@ -458,72 +454,40 @@ def _run(
 
 
 def _read_plan(path: Path) -> PluginPrivateDataDeletionPlanV1:
-    document = _read_json(path)
-    if type(document) is not dict or set(document) != {"fingerprint", "plan"}:
-        raise ValueError("Coding private-data preview document is invalid")
-    plan = PluginPrivateDataDeletionPlanV1.from_dict(document["plan"])
-    if document["fingerprint"] != plan.fingerprint:
-        raise ValueError("Coding private-data preview fingerprint changed")
-    return plan
+    return _RECORD_INPUT.read(
+        path, "plan", PluginPrivateDataDeletionPlanV1.from_dict,
+        label="Coding private-data preview", fingerprint=_FINGERPRINT,
+    )
 
 
 def _read_confirmation(path: Path) -> PluginPrivateDataDeletionConfirmationV1:
-    document = _read_json(path)
-    if type(document) is not dict or set(document) != {"confirmation"}:
-        raise ValueError("Coding private-data confirmation document is invalid")
-    return PluginPrivateDataDeletionConfirmationV1.from_dict(document["confirmation"])
+    return _RECORD_INPUT.read(
+        path, "confirmation", PluginPrivateDataDeletionConfirmationV1.from_dict,
+        label="Coding private-data confirmation",
+    )
 
 
 def _read_restore_plan(path: Path) -> CodingArchPrivateDataRestorePlanV1:
-    document = _read_json(path)
-    if type(document) is not dict or set(document) != {
-        "fingerprint",
-        "restorePlan",
-    }:
-        raise ValueError("Coding Arch restore preview document is invalid")
-    plan = CodingArchPrivateDataRestorePlanV1.from_dict(document["restorePlan"])
-    if document["fingerprint"] != plan.fingerprint:
-        raise ValueError("Coding Arch restore preview fingerprint changed")
-    return plan
+    return _RECORD_INPUT.read(
+        path, "restorePlan", CodingArchPrivateDataRestorePlanV1.from_dict,
+        label="Coding Arch restore preview", fingerprint=_FINGERPRINT,
+    )
 
 
 def _read_expiry_plan(path: Path) -> CodingArchPrivateDataBackupExpiryPlanV1:
-    document = _read_json(path)
-    if type(document) is not dict or set(document) != {
-        "backupExpiryPlan",
-        "fingerprint",
-    }:
-        raise ValueError("Coding Arch backup expiry preview document is invalid")
-    plan = CodingArchPrivateDataBackupExpiryPlanV1.from_dict(
-        document["backupExpiryPlan"]
+    return _RECORD_INPUT.read(
+        path, "backupExpiryPlan", CodingArchPrivateDataBackupExpiryPlanV1.from_dict,
+        label="Coding Arch backup expiry preview", fingerprint=_FINGERPRINT,
     )
-    if document["fingerprint"] != plan.fingerprint:
-        raise ValueError("Coding Arch backup expiry preview fingerprint changed")
-    return plan
 
 
 def _read_expiry_confirmation(
     path: Path,
 ) -> CodingArchPrivateDataBackupExpiryConfirmationV1:
-    document = _read_json(path)
-    if type(document) is not dict or set(document) != {"expiryConfirmation"}:
-        raise ValueError("Coding Arch backup expiry confirmation document is invalid")
-    return CodingArchPrivateDataBackupExpiryConfirmationV1.from_dict(
-        document["expiryConfirmation"]
+    return _RECORD_INPUT.read(
+        path, "expiryConfirmation", CodingArchPrivateDataBackupExpiryConfirmationV1.from_dict,
+        label="Coding Arch backup expiry confirmation",
     )
-
-
-def _read_json(path: Path) -> object:
-    with path.open("rb") as handle:
-        content = handle.read(_MAX_INPUT_BYTES + 1)
-    if len(content) > _MAX_INPUT_BYTES:
-        raise ValueError("Coding private-data command input is too large")
-    return json.loads(content.decode("utf-8"), object_pairs_hook=_unique_object)
-
-
-_unique_object = _unique_json_object_hook(
-    lambda: 'Coding private-data command has duplicate JSON keys',
-)
 
 
 if __name__ == "__main__":

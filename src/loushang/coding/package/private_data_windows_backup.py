@@ -160,9 +160,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
                 allowed_tombstone=tombstone,
                 pending_backup_id=pending,
             ),
-            revision_for=lambda status, receipt_id, receipts, trust: (
-                _backup_retention_revision(status, receipt_id, receipts, trust)
-            ),
+            revision_for=_backup_retention_revision,
             revision_prefix="coding-arch-backup:",
             label="Windows Coding Arch",
         )
