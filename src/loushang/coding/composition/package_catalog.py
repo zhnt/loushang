@@ -1,4 +1,4 @@
-"""Prepare and recheck the selected Package Product catalog evidence."""
+"""Prepare Coding’s initial Catalog and recheck its admission evidence on refresh."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from loushang.coding.composition.base_plugin import (
     prepare_coding_base_resource_plan_seed,
 )
 from loushang.coding.composition.base_product import (
+    CODING_BASE_PLUGIN_ID,
     CodingBaseProductCompilation,
     extend_coding_base_product_data_resources,
 )
@@ -26,6 +27,7 @@ from loushang.coding.composition.external_data import (
     CodingExternalDataProductCompilation,
     compile_coding_external_data_product_selection,
 )
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.product_capability_plugins import (
     CodingBuiltinProductCompositionPreparation,
     prepare_coding_builtin_product_composition,
@@ -33,6 +35,11 @@ from loushang.coding.composition.product_capability_plugins import (
 )
 from loushang.coding.composition.sets import CodingCompositionSetPlan
 from loushang.coding.resources.catalog import (
+    CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
+    CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+    CodingResourceCatalogAdmissionError,
+    CodingResourceCatalogSourcePolicy,
+    build_coding_initial_resource_catalog_adapter,
     finalize_coding_package_plugin_plan_seed,
     prepare_coding_package_plugin_plan_seed,
 )
@@ -75,7 +82,6 @@ if TYPE_CHECKING:
     from loushang.coding.composition.capability_specs import (
         CodingCapabilityPluginConfig,
     )
-    from loushang.coding.resources.catalog import CodingResourceCatalogSourcePolicy
     from loushang.harness.resource_catalog.product_inputs import (
         InitialResourceCatalogProductAdapter,
     )
@@ -88,19 +94,53 @@ if TYPE_CHECKING:
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.session.bootstrap_services import BootstrapServices
 
-_CatalogProjector = Callable[
-    ..., tuple["InitialResourceCatalogProductAdapter", "ResourceBundle"]
-]
+
+def prepare_coding_catalog_projection(
+    resource_loader: ResourceLoader,
+    *,
+    cwd: Path,
+    session_id: str,
+    disabled_skills: tuple[str, ...] | list[str] = (),
+    product_composition: ProductCompositionCompilation | None = None,
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None = None,
+    admission_now: int | None = None,
+    clock: Callable[[], int] | None = None,
+    receipt: ResourceCatalogInputReceipt | None = None,
+    source_policy: CodingResourceCatalogSourcePolicy = (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+    ),
+) -> tuple[InitialResourceCatalogProductAdapter, ResourceBundle]:
+    """Prepare one Catalog adapter and its disposable bootstrap projection."""
+
+    evaluated_at = int(time.time()) if admission_now is None else admission_now
+    resolved_receipt = require_catalog_receipt(
+        resource_loader, cwd, CodingResourceCatalogAdmissionError, receipt
+    )
+    adapter = build_coding_initial_resource_catalog_adapter(
+        resolved_receipt,
+        product_scope_id=session_id,
+        disabled_skills=disabled_skills,
+        product_composition=product_composition,
+        product_snapshot_resources=product_snapshot_resources,
+        package_admission_now=evaluated_at,
+        clock=clock,
+        source_policy=source_policy,
+    )
+    bundle = adapter.prepare_bootstrap_projection(
+        product_id=CODING_PRODUCT_ID,
+        session_id=session_id,
+        cwd=cwd,
+    )
+    return adapter, bundle
 
 
 @dataclass(frozen=True, slots=True)
 class CatalogProductAuthority:
-    runtime: PackageProductRuntimeBindingV1 | None
-    capability_selections: tuple[PackageProductPluginDesiredSelectionV1, ...]
-    disabled_base: PackageProductPluginDesiredSelectionV1 | None
-    external: CodingExternalDataProductCompilation | None
-    base: CodingBaseProductCompilation | None
-    product_label: str
+    runtime: PackageProductRuntimeBindingV1 | None = None
+    capability_selections: tuple[PackageProductPluginDesiredSelectionV1, ...] = ()
+    disabled_base: PackageProductPluginDesiredSelectionV1 | None = None
+    external: CodingExternalDataProductCompilation | None = None
+    base: CodingBaseProductCompilation | None = None
 
     def disabled_composition(
         self, preparation: CodingCapabilityPluginCompositionPreparation | None
@@ -120,7 +160,7 @@ class CatalogProductAuthority:
 
     def _require_runtime(self, role: str) -> PackageProductRuntimeBindingV1:
         if self.runtime is None:
-            raise RuntimeError(f"{self.product_label} {role} runtime is unavailable")
+            raise RuntimeError(f"Coding Product {role} runtime is unavailable")
         return self.runtime
 
     def require_current(
@@ -186,41 +226,51 @@ class CatalogProductAuthority:
             )
 
 
-@dataclass(frozen=True, slots=True)
-class FencedCatalogPreparation:
-    authority: CatalogProductAuthority
-    receipt: ResourceCatalogInputReceipt
-    evaluated_at: int | None
-    builtin: CodingBuiltinProductCompositionPreparation | None
-
-
 @dataclass(slots=True)
 class InitialCatalogHandoff:
     """Keep startup Catalog projection and its Session intake in one place."""
 
-    authority: CatalogProductAuthority
     services: BootstrapServices
     session_id: str
     custody: PreparationRootCustody[CodingCapabilityPluginCompositionPreparation]
     source_policy: CodingResourceCatalogSourcePolicy
+    authority: CatalogProductAuthority = field(
+        default_factory=CatalogProductAuthority, init=False
+    )
     legacy_preparation: CodingBasePluginSessionPreparation | None = field(
         default=None, init=False
     )
     builtin_preparation: CodingBuiltinProductCompositionPreparation | None = field(
         default=None, init=False
     )
-    _adapters: list[InitialResourceCatalogProductAdapter] = field(
-        default_factory=list, init=False
+    _adapter: InitialResourceCatalogProductAdapter | None = field(
+        default=None, init=False
     )
 
     def require_unprepared(self, error: str) -> None:
-        if self._adapters:
+        if self._adapter is not None:
             raise RuntimeError(error)
 
     def take_adapter(self) -> InitialResourceCatalogProductAdapter:
-        if len(self._adapters) != 1:
-            raise RuntimeError("Initial Resource Catalog projection adapter is unavailable")
-        return self._adapters.pop()
+        adapter = self._adapter
+        if adapter is None:
+            raise RuntimeError(
+                "Initial Resource Catalog projection adapter is unavailable"
+            )
+        self._adapter = None
+        return adapter
+
+    def record_admission_failure(
+        self, error: CodingResourceCatalogAdmissionError
+    ) -> None:
+        self.services.diagnostics_service.capture_failure(
+            code=error.code,
+            error=str(error),
+            phase="startup",
+            source="bootstrap",
+            session_id=self.session_id,
+            details={"reasons": list(error.reasons)},
+        )
 
     def prepare_legacy_projection(
         self,
@@ -237,10 +287,10 @@ class InitialCatalogHandoff:
         | None,
         reconcile_compatibility: Callable[[], None],
         clock: Callable[[], int] | None,
-        project_catalog: _CatalogProjector,
-        admission_failure: ProductAdmissionFailure,
     ) -> ResourceBundle:
-        receipt = require_catalog_receipt(loader, cwd, admission_failure)
+        receipt = require_catalog_receipt(
+            loader, cwd, CodingResourceCatalogAdmissionError
+        )
         evaluated_at = clock() if clock is not None else int(time.time())
         composition, self.legacy_preparation = prepare_initial_composition(
             receipt,
@@ -251,10 +301,9 @@ class InitialCatalogHandoff:
             include_configured=include_configured,
             custody=self.custody,
             prepare_capabilities=prepare_capabilities,
-            admission_failure=admission_failure,
         )
         reconcile_compatibility()
-        adapter, projection = project_catalog(
+        adapter, projection = prepare_coding_catalog_projection(
             loader,
             cwd=cwd,
             session_id=self.session_id,
@@ -269,53 +318,240 @@ class InitialCatalogHandoff:
             receipt=receipt,
             source_policy=self.source_policy,
         )
-        self._adapters.append(adapter)
+        self._adapter = adapter
         return projection
 
-    def project_fenced(
+    def prepare_fenced_projection(
         self,
-        prepared: FencedCatalogPreparation,
+        runtime: PackageProductRuntimeBindingV1,
         loader: ResourceLoader,
         *,
         cwd: Path,
-        capability_only_policy: CodingResourceCatalogSourcePolicy,
-        disabled_source_policy: CodingResourceCatalogSourcePolicy,
+        composition_set: CodingCompositionSetPlan,
+        requested_capabilities: tuple[tuple[str, bool], ...],
+        max_files: int,
+        max_total_bytes: int,
         clock: Callable[[], int],
-        project_catalog: _CatalogProjector,
+        compile_base: Callable[
+            [PackageProductSelectedPluginManifestV1, int], CodingBaseProductCompilation
+        ],
+        prepare_capability_inputs: Callable[
+            [list[str]], tuple[Path, Mapping[str, CodingCapabilityPluginConfig]]
+        ],
+        resume_parents: CodingResumePluginParents | None,
     ) -> ResourceBundle:
-        authority = prepared.authority
-        compiled = authority.base
-        disabled_composition = (
-            authority.disabled_composition(self.custody.preparation)
-            if compiled is None
+        selection = runtime.capture_plugin_desired_selection_for(CODING_BASE_PLUGIN_ID)
+        disabled_base = (
+            selection
+            if selection.desired_state == "installed_disabled"
+            or (selection.desired_state == "absent" and selection.recorded)
             else None
         )
-        adapter, projection = project_catalog(
+        if disabled_base is None and selection.desired_state != "installed_enabled":
+            raise CodingResourceCatalogAdmissionError(
+                ("product_requested_base_not_installed",)
+            )
+
+        external = None
+        base = None
+        receipt = None
+        evaluated_at = None
+        if disabled_base is not None:
+            external_ids = runtime.selected_external_data_plugin_ids()
+            if external_ids:
+                external = compile_coding_external_data_product_selection(
+                    capture_selected_manifests(
+                        runtime,
+                        external_ids,
+                        max_files=max_files,
+                        max_total_bytes=max_total_bytes,
+                    ),
+                    composition_set=composition_set,
+                    session_id=self.session_id,
+                    evaluated_at=clock(),
+                )
+        else:
+            selected = runtime.capture_selected_plugin_manifest_for(
+                CODING_BASE_PLUGIN_ID,
+                max_files=max_files,
+                max_total_bytes=max_total_bytes,
+            )
+            evaluated_at = clock()
+            base = compile_base(selected, evaluated_at)
+            receipt = require_catalog_receipt(
+                loader, cwd, CodingResourceCatalogAdmissionError
+            )
+
+        enabled, selections = observe_requested_plugins(
+            runtime, requested_capabilities, CodingResourceCatalogAdmissionError
+        )
+        builtin = None
+        if enabled:
+            state_root, configurations = prepare_capability_inputs(enabled)
+            if base is None:
+                try:
+                    self.custody.preparation = (
+                        prepare_coding_product_capability_plugin_composition(
+                            runtime,
+                            session_id=self.session_id,
+                            configurations=configurations,
+                            state_root=state_root,
+                            clock=clock,
+                            resume_parents=resume_parents,
+                        )
+                    )
+                except BaseException:
+                    self.custody.cleanup_roots_sequentially()
+                    raise
+            else:
+                try:
+                    builtin = prepare_coding_builtin_product_composition(
+                        runtime,
+                        base_compilation=base,
+                        session_id=self.session_id,
+                        configurations=configurations,
+                        external_data_plugin_ids=runtime.selected_external_data_plugin_ids(),
+                        state_root=state_root,
+                        clock=clock,
+                        resume_parents=resume_parents,
+                    )
+                except BaseException as error:
+                    self.custody.cleanup_roots_with_notes(
+                        error,
+                        state_label="Coding Product Capability state cleanup",
+                        private_label="Coding Product Arch private-state cleanup",
+                    )
+                    raise
+                self.custody.preparation = builtin.capability_preparation
+            self.custody.attach_cleanup(self.custody.preparation)
+            if builtin is not None:
+                base = builtin.base_compilation
+        elif resume_parents is not None:
+            raise CodingResourceCatalogAdmissionError(
+                ("resume_plugin_participation_changed",)
+            )
+        elif base is not None:
+            assert evaluated_at is not None
+            external_ids = runtime.selected_external_data_plugin_ids()
+            if external_ids:
+                base = extend_coding_base_product_data_resources(
+                    base,
+                    capture_selected_manifests(
+                        runtime,
+                        external_ids,
+                        max_files=max_files,
+                        max_total_bytes=max_total_bytes,
+                    ),
+                    evaluated_at=evaluated_at,
+                )
+        if receipt is None:
+            receipt = require_catalog_receipt(
+                loader, cwd, CodingResourceCatalogAdmissionError
+            )
+        authority = CatalogProductAuthority(
+            runtime=runtime,
+            capability_selections=selections,
+            disabled_base=disabled_base,
+            external=external,
+            base=base,
+        )
+        disabled_composition = (
+            authority.disabled_composition(self.custody.preparation)
+            if base is None
+            else None
+        )
+        adapter, projection = prepare_coding_catalog_projection(
             loader,
             cwd=cwd,
             session_id=self.session_id,
             disabled_skills=self.services.settings_manager.get_settings().disabled_skills,
             product_composition=(
-                compiled.product_composition if compiled is not None else disabled_composition
+                base.product_composition if base is not None else disabled_composition
             ),
             product_snapshot_resources=authority.snapshot_resources(
                 allow_empty_snapshot=disabled_composition is not None
             ),
-            admission_now=prepared.evaluated_at if compiled is not None else clock(),
+            admission_now=evaluated_at if base is not None else clock(),
             clock=clock,
-            receipt=prepared.receipt,
+            receipt=receipt,
             source_policy=(
                 self.source_policy
-                if compiled is not None
-                else capability_only_policy
+                if base is not None
+                else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
                 if disabled_composition is not None
-                else disabled_source_policy
+                else CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
             ),
         )
         self.authority = authority
-        self.builtin_preparation = prepared.builtin
-        self._adapters.append(adapter)
+        self.builtin_preparation = builtin
+        self._adapter = adapter
         return projection
+
+    def prepare_refresh(
+        self,
+        catalog_generation: int,
+        *,
+        get_cwd: Callable[[], str],
+        base: CodingBasePluginAssembly | None,
+        supplied: ProductCompositionAssemblyRequest | None,
+        include_configured: bool,
+        clock: Callable[[], int],
+    ) -> InitialSessionResourceCatalogBootstrap:
+        """Refresh the Catalog over the original selected composition and receipt."""
+        authority = self.authority
+        authority.require_current(refresh_failure=CodingResourceCatalogAdmissionError)
+        cwd = Path(get_cwd())
+        receipt = require_catalog_receipt(
+            self.services.resource_loader, cwd, CodingResourceCatalogAdmissionError
+        )
+        compiled = authority.base
+        disabled_base = authority.disabled_base is not None
+        evaluated_at = (
+            compiled.product_composition.authority_context.evaluated_at
+            if compiled is not None
+            else clock()
+            if base is not None
+            else int(time.time())
+        )
+        composition = prepare_refresh_composition(
+            receipt,
+            session_id=self.session_id,
+            evaluated_at=evaluated_at,
+            authority=authority,
+            base=base,
+            supplied=supplied,
+            preparation=self.custody.preparation,
+            include_configured=include_configured,
+            require_resource_seed=self.source_policy.include_package_resources,
+        )
+        adapter, bundle = prepare_coding_catalog_projection(
+            self.services.resource_loader,
+            cwd=cwd,
+            session_id=self.session_id,
+            disabled_skills=self.services.settings_manager.get_settings().disabled_skills,
+            product_composition=composition,
+            product_snapshot_resources=authority.snapshot_resources(
+                allow_empty_snapshot=disabled_base and composition is not None
+            ),
+            admission_now=evaluated_at,
+            clock=(
+                clock
+                if base is not None or compiled is not None or disabled_base
+                else None
+            ),
+            receipt=receipt,
+            source_policy=(
+                CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
+                if disabled_base and composition is None
+                else self.source_policy
+            ),
+        )
+        return adapter.prepare_session_bootstrap(
+            product_id=CODING_PRODUCT_ID,
+            session_id=self.session_id,
+            base_resource_bundle=bundle,
+            catalog_generation=catalog_generation,
+        )
 
 
 _CatalogSessionT = TypeVar("_CatalogSessionT")
@@ -324,147 +560,25 @@ _CatalogSessionT = TypeVar("_CatalogSessionT")
 def construct_catalog_session(
     adapter: InitialResourceCatalogProductAdapter,
     *,
-    product_id: str,
     session_id: str,
     bundle: ResourceBundle,
     construct: Callable[[InitialSessionResourceCatalogBootstrap], _CatalogSessionT],
     abort_unpublished: Callable[[], None] | None,
-    cleanup_label: str,
 ) -> _CatalogSessionT:
     try:
         return adapter.construct_session(
-            product_id=product_id,
+            product_id=CODING_PRODUCT_ID,
             session_id=session_id,
             base_resource_bundle=bundle,
             construct=construct,
         )
     except BaseException as error:
         if abort_unpublished is not None:
-            run_cleanup_steps(error, ((cleanup_label, abort_unpublished),))
+            run_cleanup_steps(
+                error,
+                (("Coding Capability Plugin assembly cleanup", abort_unpublished),),
+            )
         raise
-
-
-def prepare_fenced_catalog(
-    runtime: PackageProductRuntimeBindingV1,
-    *,
-    loader: ResourceLoader,
-    cwd: Path,
-    session_id: str,
-    composition_set: CodingCompositionSetPlan,
-    base_plugin_id: str,
-    disabled_base: PackageProductPluginDesiredSelectionV1 | None,
-    requested_capabilities: tuple[tuple[str, bool], ...],
-    max_files: int,
-    max_total_bytes: int,
-    clock: Callable[[], int],
-    compile_base: Callable[
-        [PackageProductSelectedPluginManifestV1, int], CodingBaseProductCompilation
-    ],
-    prepare_capability_inputs: Callable[
-        [list[str]], tuple[Path, Mapping[str, CodingCapabilityPluginConfig]]
-    ],
-    custody: PreparationRootCustody[CodingCapabilityPluginCompositionPreparation],
-    resume_parents: CodingResumePluginParents | None,
-    admission_failure: ProductAdmissionFailure,
-    product_label: str,
-    cleanup_labels: tuple[str, str],
-) -> FencedCatalogPreparation:
-    external = None
-    base = None
-    receipt = None
-    evaluated_at = None
-    if disabled_base is not None:
-        external_ids = runtime.selected_external_data_plugin_ids()
-        if external_ids:
-            external = compile_coding_external_data_product_selection(
-                capture_selected_manifests(
-                    runtime,
-                    external_ids,
-                    max_files=max_files,
-                    max_total_bytes=max_total_bytes,
-                ),
-                composition_set=composition_set,
-                session_id=session_id,
-                evaluated_at=clock(),
-            )
-    else:
-        selected = runtime.capture_selected_plugin_manifest_for(
-            base_plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
-        )
-        evaluated_at = clock()
-        base = compile_base(selected, evaluated_at)
-        receipt = require_catalog_receipt(loader, cwd, admission_failure)
-
-    enabled, selections = observe_requested_plugins(
-        runtime, requested_capabilities, admission_failure
-    )
-    builtin = None
-    if enabled:
-        state_root, configurations = prepare_capability_inputs(enabled)
-        if base is None:
-            try:
-                custody.preparation = (
-                    prepare_coding_product_capability_plugin_composition(
-                        runtime,
-                        session_id=session_id,
-                        configurations=configurations,
-                        state_root=state_root,
-                        clock=clock,
-                        resume_parents=resume_parents,
-                    )
-                )
-            except BaseException:
-                custody.cleanup_roots_sequentially()
-                raise
-        else:
-            try:
-                builtin = prepare_coding_builtin_product_composition(
-                    runtime,
-                    base_compilation=base,
-                    session_id=session_id,
-                    configurations=configurations,
-                    external_data_plugin_ids=runtime.selected_external_data_plugin_ids(),
-                    state_root=state_root,
-                    clock=clock,
-                    resume_parents=resume_parents,
-                )
-            except BaseException as error:
-                custody.cleanup_roots_with_notes(
-                    error,
-                    state_label=cleanup_labels[0],
-                    private_label=cleanup_labels[1],
-                )
-                raise
-            custody.preparation = builtin.capability_preparation
-        custody.attach_cleanup(custody.preparation)
-        if builtin is not None:
-            base = builtin.base_compilation
-    elif resume_parents is not None:
-        raise admission_failure(("resume_plugin_participation_changed",))
-    elif base is not None:
-        assert evaluated_at is not None
-        external_ids = runtime.selected_external_data_plugin_ids()
-        if external_ids:
-            base = extend_coding_base_product_data_resources(
-                base,
-                capture_selected_manifests(
-                    runtime,
-                    external_ids,
-                    max_files=max_files,
-                    max_total_bytes=max_total_bytes,
-                ),
-                evaluated_at=evaluated_at,
-            )
-    if receipt is None:
-        receipt = require_catalog_receipt(loader, cwd, admission_failure)
-    return FencedCatalogPreparation(
-        CatalogProductAuthority(
-            runtime, selections, disabled_base, external, base, product_label
-        ),
-        receipt,
-        evaluated_at,
-        builtin,
-    )
 
 
 def _bind_base_catalog_plan(
@@ -491,7 +605,6 @@ def prepare_initial_composition(
         CodingCapabilityPluginCompositionPreparation | None,
     ]
     | None,
-    admission_failure: ProductAdmissionFailure,
 ) -> tuple[
     ProductCompositionCompilation | None, CodingBasePluginSessionPreparation | None
 ]:
@@ -503,10 +616,10 @@ def prepare_initial_composition(
         include_configured_resource_plugins=include_configured,
     )
     if base is not None and seed is None:
-        raise admission_failure(("product_selected_package_missing",))
+        raise CodingResourceCatalogAdmissionError(("product_selected_package_missing",))
     if supplied is not None:
         if prepare_capabilities is not None:
-            raise admission_failure(("peer_product_compilation",))
+            raise CodingResourceCatalogAdmissionError(("peer_product_compilation",))
         return assemble_product_composition(supplied, evaluated_at=evaluated_at), None
     if prepare_capabilities is not None:
         custody.preparation = prepare_capabilities(seed)
@@ -530,7 +643,6 @@ def prepare_refresh_composition(
     preparation: CodingCapabilityPluginCompositionPreparation | None,
     include_configured: bool,
     require_resource_seed: bool,
-    admission_failure: ProductAdmissionFailure,
 ) -> ProductCompositionCompilation | None:
     if authority.base is not None:
         return authority.base.product_composition
@@ -557,76 +669,5 @@ def prepare_refresh_composition(
     if seed is not None:
         return _bind_base_catalog_plan(base, seed, evaluated_at).product_composition
     if require_resource_seed:
-        raise admission_failure(("product_selected_package_missing",))
+        raise CodingResourceCatalogAdmissionError(("product_selected_package_missing",))
     return None
-
-
-def prepare_catalog_refresh(
-    services: BootstrapServices,
-    *,
-    get_cwd: Callable[[], str],
-    session_id: str,
-    product_id: str,
-    catalog_generation: int,
-    authority: CatalogProductAuthority,
-    base: CodingBasePluginAssembly | None,
-    supplied: ProductCompositionAssemblyRequest | None,
-    custody: PreparationRootCustody[CodingCapabilityPluginCompositionPreparation],
-    include_configured: bool,
-    source_policy: CodingResourceCatalogSourcePolicy,
-    disabled_source_policy: CodingResourceCatalogSourcePolicy,
-    clock: Callable[[], int],
-    project_catalog: _CatalogProjector,
-    admission_failure: ProductAdmissionFailure,
-) -> InitialSessionResourceCatalogBootstrap:
-    """Refresh the Catalog over the original selected composition and receipt."""
-    authority.require_current(refresh_failure=admission_failure)
-    cwd = Path(get_cwd())
-    receipt = require_catalog_receipt(services.resource_loader, cwd, admission_failure)
-    compiled = authority.base
-    disabled_base = authority.disabled_base is not None
-    evaluated_at = (
-        compiled.product_composition.authority_context.evaluated_at
-        if compiled is not None
-        else clock()
-        if base is not None
-        else int(time.time())
-    )
-    composition = prepare_refresh_composition(
-        receipt,
-        session_id=session_id,
-        evaluated_at=evaluated_at,
-        authority=authority,
-        base=base,
-        supplied=supplied,
-        preparation=custody.preparation,
-        include_configured=include_configured,
-        require_resource_seed=source_policy.include_package_resources,
-        admission_failure=admission_failure,
-    )
-    adapter, bundle = project_catalog(
-        services.resource_loader,
-        cwd=cwd,
-        session_id=session_id,
-        disabled_skills=services.settings_manager.get_settings().disabled_skills,
-        product_composition=composition,
-        product_snapshot_resources=authority.snapshot_resources(
-            allow_empty_snapshot=disabled_base and composition is not None
-        ),
-        admission_now=evaluated_at,
-        clock=(
-            clock if base is not None or compiled is not None or disabled_base else None
-        ),
-        receipt=receipt,
-        source_policy=(
-            disabled_source_policy
-            if disabled_base and composition is None
-            else source_policy
-        ),
-    )
-    return adapter.prepare_session_bootstrap(
-        product_id=product_id,
-        session_id=session_id,
-        base_resource_bundle=bundle,
-        catalog_generation=catalog_generation,
-    )

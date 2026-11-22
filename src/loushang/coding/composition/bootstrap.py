@@ -57,11 +57,9 @@ from loushang.coding.composition.managed_plugin_preparation import (
     prepare_managed_plugins,
 )
 from loushang.coding.composition.package_catalog import (
-    CatalogProductAuthority,
     InitialCatalogHandoff,
     construct_catalog_session,
-    prepare_catalog_refresh,
-    prepare_fenced_catalog,
+    prepare_coding_catalog_projection,
 )
 from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PROFILE,
@@ -147,9 +145,6 @@ from loushang.coding.resources.catalog import (
     CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
     CodingResourceCatalogAdmissionError,
     CodingResourceCatalogSourcePolicy,
-    InitialResourceCatalogProductAdapter,
-    ResourceCatalogInputReceipt,
-    build_coding_initial_resource_catalog_adapter,
     canonical_coding_resource_catalog_source_policy,
 )
 from loushang.coding.resources.runtime import (
@@ -205,9 +200,6 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeFactoryPort,
 )
 from loushang.harness.policy import PolicyEvaluator
-from loushang.harness.resource_catalog.product_snapshot_source import (
-    ProductSelectedResourceInput,
-)
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.catalog_diagnostics import (
     record_package_lockfile_diagnostics,
@@ -259,7 +251,6 @@ from loushang.harness.session._cleanup import (
 )
 from loushang.harness.session.bootstrap_construction import (
     PreparationRootCustody,
-    require_catalog_receipt,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
@@ -330,47 +321,6 @@ def create_services(
     )
 
 
-def _prepare_coding_catalog_projection(
-    resource_loader: ResourceLoader,
-    *,
-    cwd: Path,
-    session_id: str,
-    disabled_skills: tuple[str, ...] | list[str] = (),
-    product_composition: object | None = None,
-    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None = None,
-    product_selection: object | None = None,
-    admission_now: int | None = None,
-    clock: Callable[[], int] | None = None,
-    receipt: ResourceCatalogInputReceipt | None = None,
-    source_policy: CodingResourceCatalogSourcePolicy = (
-        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
-    ),
-) -> tuple[InitialResourceCatalogProductAdapter, ResourceBundle]:
-    """Prepare one Catalog adapter and its disposable bootstrap projection."""
-
-    evaluated_at = int(time.time()) if admission_now is None else admission_now
-    resolved_receipt = require_catalog_receipt(
-        resource_loader, cwd, CodingResourceCatalogAdmissionError, receipt
-    )
-    adapter = build_coding_initial_resource_catalog_adapter(
-        resolved_receipt,
-        product_scope_id=session_id,
-        disabled_skills=disabled_skills,
-        product_composition=cast(Any, product_composition),
-        product_snapshot_resources=product_snapshot_resources,
-        product_selection=cast(Any, product_selection),
-        package_admission_now=evaluated_at,
-        clock=clock,
-        source_policy=source_policy,
-    )
-    bundle = adapter.prepare_bootstrap_projection(
-        product_id=CODING_PRODUCT_ID,
-        session_id=session_id,
-        cwd=cwd,
-    )
-    return adapter, bundle
-
-
 def _create_agent_session_services(
     *,
     cwd: str | Path,
@@ -411,7 +361,7 @@ def _create_agent_session_services(
             # excluded Extension merely to discover those flags.
             return ResourceBundle(cwd=resolved_cwd)
         preview_id = hashlib.sha256(str(resolved_cwd).encode("utf-8")).hexdigest()
-        _, bundle = _prepare_coding_catalog_projection(
+        _, bundle = prepare_coding_catalog_projection(
             loader,
             cwd=resolved_cwd,
             session_id=f"services-preview:{preview_id}",
@@ -988,6 +938,22 @@ def _create_agent_session(
     deferred_lsp_management_state_cleanup: Callable[[], None] | None = None
     managed = None
     use_managed_base = "coding.base" in requested_plugin_ids
+    include_base_tools = session_no_tools_mode is None and (
+        resolved_invocation_profile is None
+        or resolved_invocation_profile.include_base_tool_contribution
+    )
+    include_base_tool_claim = session_no_tools_mode is None and (
+        resolved_invocation_profile is None
+        or resolved_invocation_profile.include_base_tool_claim_prompt
+    )
+    include_base_skills = (
+        resolved_invocation_profile is None
+        or resolved_invocation_profile.include_base_skill_contribution
+    )
+    include_base_commands = (
+        resolved_invocation_profile is None
+        or resolved_invocation_profile.include_base_command_contribution
+    )
     if (
         package_product_runtime_factory is None
         and initial_resource_catalog_product_composition_assembly is None
@@ -1005,28 +971,10 @@ def _create_agent_session(
                 lifecycle=lifecycle,
                 legacy_disabled=("coding.base" in legacy_disabled_plugin_ids),
                 host_environment=session_host_environment,
-                include_tool_contribution=(
-                    session_no_tools_mode is None
-                    and (
-                        resolved_invocation_profile is None
-                        or resolved_invocation_profile.include_base_tool_contribution
-                    )
-                ),
-                include_tool_claim_prompt=(
-                    session_no_tools_mode is None
-                    and (
-                        resolved_invocation_profile is None
-                        or resolved_invocation_profile.include_base_tool_claim_prompt
-                    )
-                ),
-                include_skill_contribution=(
-                    resolved_invocation_profile is None
-                    or resolved_invocation_profile.include_base_skill_contribution
-                ),
-                include_command_contribution=(
-                    resolved_invocation_profile is None
-                    or resolved_invocation_profile.include_base_command_contribution
-                ),
+                include_tool_contribution=include_base_tools,
+                include_tool_claim_prompt=include_base_tool_claim,
+                include_skill_contribution=include_base_skills,
+                include_command_contribution=include_base_commands,
                 state_cleanup=cleanup,
                 session_owner_id=(
                     _session_manager_plugin_owner_id(session_manager)
@@ -1061,7 +1009,6 @@ def _create_agent_session(
         CodingCapabilityPluginCompositionPreparation
     ] = PreparationRootCustody()
     initial_catalog = InitialCatalogHandoff(
-        authority=CatalogProductAuthority(None, (), None, None, None, "Coding Product"),
         services=services,
         session_id=session_id,
         custody=preparation_custody,
@@ -1204,6 +1151,7 @@ def _create_agent_session(
         if coding_base_plugin_assembly is not None
         else ()
     )
+
     def prepare_initial_resource_catalog_projection(
         loader: ResourceLoader,
         resolved_cwd: Path,
@@ -1242,22 +1190,10 @@ def _create_agent_session(
                     or capability_plugins_enabled_for_session
                     else None
                 ),
-                project_catalog=_prepare_coding_catalog_projection,
-                admission_failure=CodingResourceCatalogAdmissionError,
             )
         except CodingResourceCatalogAdmissionError as error:
-            diagnose_catalog_admission(error)
+            initial_catalog.record_admission_failure(error)
             raise
-
-    def diagnose_catalog_admission(error: CodingResourceCatalogAdmissionError) -> None:
-        services.diagnostics_service.capture_failure(
-            code=error.code,
-            error=str(error),
-            phase="startup",
-            source="bootstrap",
-            session_id=session_id,
-            details={"reasons": list(error.reasons)},
-        )
 
     def _prepare_package_product_catalog_projection(
         loader: ResourceLoader,
@@ -1297,19 +1233,6 @@ def _create_agent_session(
             ("coding.lsp.default", eager_lsp_enabled_for_session),
             ("coding.arch.default", arch_enabled_for_session),
         )
-        base_selection = product_runtime.capture_plugin_desired_selection_for(
-            "coding.base"
-        )
-        disabled_base = (
-            base_selection
-            if base_selection.desired_state == "installed_disabled"
-            or (base_selection.desired_state == "absent" and base_selection.recorded)
-            else None
-        )
-        if disabled_base is None and base_selection.desired_state != "installed_enabled":
-            raise CodingResourceCatalogAdmissionError(
-                ("product_requested_base_not_installed",)
-            )
 
         def compile_base(
             selected: PackageProductSelectedPluginManifestV1, evaluated_at: int
@@ -1321,61 +1244,24 @@ def _create_agent_session(
                 session_id=session_id,
                 host_environment=session_host_environment,
                 evaluated_at=evaluated_at,
-                include_tool_contribution=(
-                    session_no_tools_mode is None
-                    and (
-                        resolved_invocation_profile is None
-                        or resolved_invocation_profile.include_base_tool_contribution
-                    )
-                ),
-                include_tool_claim_prompt=(
-                    session_no_tools_mode is None
-                    and (
-                        resolved_invocation_profile is None
-                        or resolved_invocation_profile.include_base_tool_claim_prompt
-                    )
-                ),
-                include_skill_contribution=(
-                    resolved_invocation_profile is None
-                    or resolved_invocation_profile.include_base_skill_contribution
-                ),
-                include_command_contribution=(
-                    resolved_invocation_profile is None
-                    or resolved_invocation_profile.include_base_command_contribution
-                ),
+                include_tool_contribution=include_base_tools,
+                include_tool_claim_prompt=include_base_tool_claim,
+                include_skill_contribution=include_base_skills,
+                include_command_contribution=include_base_commands,
             )
 
-        prepared = prepare_fenced_catalog(
+        return initial_catalog.prepare_fenced_projection(
             product_runtime,
-            loader=loader,
+            loader,
             cwd=resolved_cwd,
-            session_id=session_id,
             composition_set=resolved_composition_set,
-            base_plugin_id="coding.base",
-            disabled_base=disabled_base,
             requested_capabilities=requested_capabilities,
             max_files=_CATALOG_MANIFEST_MAX_FILES,
             max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
             clock=coding_plugin_clock,
             compile_base=compile_base,
             prepare_capability_inputs=prepare_capability_inputs,
-            custody=preparation_custody,
             resume_parents=_resume_plugin_parents,
-            admission_failure=CodingResourceCatalogAdmissionError,
-            product_label=initial_catalog.authority.product_label,
-            cleanup_labels=(
-                "Coding Product Capability state cleanup",
-                "Coding Product Arch private-state cleanup",
-            ),
-        )
-        return initial_catalog.project_fenced(
-            prepared,
-            loader,
-            cwd=resolved_cwd,
-            capability_only_policy=CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
-            disabled_source_policy=CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
-            clock=coding_plugin_clock,
-            project_catalog=_prepare_coding_catalog_projection,
         )
 
     def prepare_package_product_catalog_projection(
@@ -1389,7 +1275,7 @@ def _create_agent_session(
             )
         except BaseException as error:
             if isinstance(error, CodingResourceCatalogAdmissionError):
-                diagnose_catalog_admission(error)
+                initial_catalog.record_admission_failure(error)
             run_cleanup_steps(
                 error,
                 (("Coding Product runtime bootstrap cleanup", product_runtime.dispose_runtime),),
@@ -1422,26 +1308,14 @@ def _create_agent_session(
         product_external_data_compilation = catalog_authority.external
         catalog_authority.require_current()
 
-        def prepare_resource_catalog_refresh(
-            catalog_generation: int,
-        ) -> Any:
-            return prepare_catalog_refresh(
-                services,
-                get_cwd=session_manager.get_cwd,
-                session_id=session_id,
-                product_id=CODING_PRODUCT_ID,
-                catalog_generation=catalog_generation,
-                authority=initial_catalog.authority,
-                base=coding_base_plugin_assembly,
-                supplied=catalog_product_composition_assembly,
-                custody=preparation_custody,
-                include_configured=include_configured_catalog_plugins,
-                source_policy=resource_catalog_source_policy,
-                disabled_source_policy=CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
-                clock=coding_plugin_clock,
-                project_catalog=_prepare_coding_catalog_projection,
-                admission_failure=CodingResourceCatalogAdmissionError,
-            )
+        prepare_resource_catalog_refresh = partial(
+            initial_catalog.prepare_refresh,
+            get_cwd=session_manager.get_cwd,
+            base=coding_base_plugin_assembly,
+            supplied=catalog_product_composition_assembly,
+            include_configured=include_configured_catalog_plugins,
+            clock=coding_plugin_clock,
+        )
 
         process_session: AgentSession | None = None
 
@@ -1724,7 +1598,6 @@ def _create_agent_session(
 
         child_session = construct_catalog_session(
             resource_catalog_adapter,
-            product_id=CODING_PRODUCT_ID,
             session_id=session_id,
             bundle=bundle,
             construct=construct_child_session,
@@ -1733,7 +1606,6 @@ def _create_agent_session(
                 if capability_plugin_assembly is not None
                 else None
             ),
-            cleanup_label="Coding Capability Plugin assembly cleanup",
         )
         process_session = child_session
         constructed_session = child_session

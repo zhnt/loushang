@@ -537,7 +537,6 @@ def test_hosted_resume_lookup_uses_the_existing_canonical_binding(tmp_path: Path
 def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_property,
 ) -> None:
-    import loushang.coding.composition.bootstrap as bootstrap_module
     import loushang.coding.composition.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as hosted_module
     import loushang.coding.package.product_runtime as product_runtime_module
@@ -611,11 +610,11 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
         timed_sync("agent-session-construction", hosted_module.create_agent_session),
     )
     monkeypatch.setattr(
-        bootstrap_module,
-        "_prepare_coding_catalog_projection",
+        package_catalog_module,
+        "prepare_coding_catalog_projection",
         timed_sync(
             "product-catalog-projection",
-            bootstrap_module._prepare_coding_catalog_projection,
+            package_catalog_module.prepare_coding_catalog_projection,
         ),
     )
     monkeypatch.setattr(
