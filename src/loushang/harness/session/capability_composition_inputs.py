@@ -47,6 +47,8 @@ from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
     RegistrationOwner,
+    RegistrationScope,
+    registration_scope_retirement_receipt,
 )
 
 SessionCompositionChange = Literal["no_change", "restart_required"]
@@ -706,6 +708,79 @@ class SessionCapabilityOwnerGenerationBinding:
             and self.authority_gate.authority_context.scope_id
             == admission.candidate.scope_id
         )
+
+
+@dataclass(frozen=True, slots=True)
+class RegistrationScopeGeneration:
+    """Staged registrations and any revocable operations they expose."""
+
+    scope: RegistrationScope = field(repr=False)
+    family: object = field(repr=False)
+    invalidate: Callable[[], None] | None = field(default=None, repr=False)
+
+
+def bind_owner_registration_scope(
+    admission: OwnerContributionAdmissionRecord,
+    authority_gate: SessionCapabilityOwnerAuthorityGate,
+    *,
+    stage: Callable[
+        [tuple[SessionCapabilityConsumerCapture, ...]], RegistrationScopeGeneration
+    ],
+    generation_family: object,
+    label: str,
+    disposal_error: Callable[[], Exception],
+    retirement_contribution_id: Callable[[], str] | None = None,
+    inactive_retirement_message: str | None = None,
+    disposal_label: str | None = None,
+) -> SessionCapabilityOwnerGenerationBinding:
+    """Use the same Graph lifecycle for admitted Tool and Command scopes."""
+
+    def require_generation(
+        value: object, *, error_label: str = label
+    ) -> RegistrationScopeGeneration:
+        if (
+            not isinstance(value, RegistrationScopeGeneration)
+            or value.family is not generation_family
+        ):
+            raise TypeError(f"{error_label} owner received a foreign generation")
+        return value
+
+    async def dispose(value: object) -> None:
+        generation = require_generation(value, error_label=disposal_label or label)
+        if generation.invalidate is not None:
+            generation.invalidate()
+        if (await generation.scope.dispose()).has_failures:
+            raise disposal_error()
+
+    def retirement_receipt(value: object) -> OwnerGenerationRetirementReceipt:
+        scope = require_generation(value).scope
+        if inactive_retirement_message is not None and scope.state not in {
+            "open",
+            "committed",
+        }:
+            raise RuntimeError(inactive_retirement_message)
+        contribution_id = (
+            retirement_contribution_id()
+            if retirement_contribution_id is not None
+            else admission.contribution_id
+        )
+        return registration_scope_retirement_receipt(
+            scope, contribution_ids=(contribution_id,), allow_open=True
+        )
+
+    return SessionCapabilityOwnerGenerationBinding(
+        owner_id=admission.owner_id,
+        contribution_kind=admission.contribution_kind,
+        plugin_id=admission.plugin_id,
+        contribution_id=admission.contribution_id,
+        admission_fingerprint=admission.fingerprint,
+        authority_gate=authority_gate,
+        stage=stage,
+        dispose=dispose,
+        retirement_receipt=retirement_receipt,
+        commit=lambda value: require_generation(value).scope.commit(),
+        rollback_commit=lambda value: require_generation(value).scope.rollback_commit(),
+    )
 
 
 @dataclass(slots=True)

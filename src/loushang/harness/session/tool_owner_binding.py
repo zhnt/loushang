@@ -23,7 +23,6 @@ from loushang.harness.runtime.registration import (
     RegistrationLease,
     RegistrationOwner,
     RegistrationScope,
-    registration_scope_retirement_receipt,
     rollback_registration_scope,
 )
 from loushang.harness.tools.core import ToolDefinition
@@ -42,9 +41,11 @@ from loushang.harness.workspace.operations import (
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 from .capability_composition_inputs import (
+    RegistrationScopeGeneration,
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
+    bind_owner_registration_scope,
     product_contribution_registration_owner,
 )
 
@@ -99,12 +100,6 @@ class _ToolPackSourceInfo:
     admission_fingerprint: str
 
 
-@dataclass(frozen=True, slots=True)
-class _ToolPackGeneration:
-    scope: RegistrationScope = field(repr=False)
-    family: object = field(repr=False)
-
-
 class ToolPackBindingInputs(Protocol):
     """Read the original mutable fields at their original lifecycle points."""
 
@@ -133,17 +128,9 @@ def bind_admitted_tool_pack(
     """Wire one already-admitted pack; the Graph still drives its lifecycle."""
     bound_admission = inputs.admission
 
-    def require_generation(value: object) -> _ToolPackGeneration:
-        if (
-            not isinstance(value, _ToolPackGeneration)
-            or value.family is not generation_family
-        ):
-            raise TypeError(f"{label} owner received a foreign generation")
-        return value
-
     def stage(
         captures: tuple[SessionCapabilityConsumerCapture, ...],
-    ) -> _ToolPackGeneration:
+    ) -> RegistrationScopeGeneration:
         definitions = tuple(definitions_from_captures(captures))
         admission = inputs.admission
         owner = product_contribution_registration_owner(admission, inputs.scope_id)
@@ -166,29 +153,16 @@ def bind_admitted_tool_pack(
                 scope, error, incomplete_note=f"{label} staging rollback remains incomplete"
             )
             raise
-        return _ToolPackGeneration(scope, generation_family)
+        return RegistrationScopeGeneration(scope, generation_family)
 
-    async def dispose(value: object) -> None:
-        report = await require_generation(value).scope.dispose()
-        if report.has_failures:
-            raise disposal_error()
-
-    return SessionCapabilityOwnerGenerationBinding(
-        owner_id=bound_admission.owner_id,
-        contribution_kind=bound_admission.contribution_kind,
-        plugin_id=bound_admission.plugin_id,
-        contribution_id=bound_admission.contribution_id,
-        admission_fingerprint=bound_admission.fingerprint,
-        authority_gate=authority_gate,
+    return bind_owner_registration_scope(
+        bound_admission,
+        authority_gate,
         stage=stage,
-        dispose=dispose,
-        retirement_receipt=lambda value: registration_scope_retirement_receipt(
-            require_generation(value).scope,
-            contribution_ids=(inputs.admission.contribution_id,),
-            allow_open=True,
-        ),
-        commit=lambda value: require_generation(value).scope.commit(),
-        rollback_commit=lambda value: require_generation(value).scope.rollback_commit(),
+        generation_family=generation_family,
+        label=label,
+        disposal_error=disposal_error,
+        retirement_contribution_id=lambda: inputs.admission.contribution_id,
     )
 
 
@@ -233,18 +207,24 @@ def workspace_options_from_capture(
 
 
 def stage_workspace_tool_scope(
-    scope: RegistrationScope,
+    admission: OwnerContributionAdmissionRecord,
+    scope_id: str,
     operation_set: GenerationBoundOperationSet,
     tool_names: tuple[str, ...],
     *,
     registration: SessionToolRegistrationPort,
-    source_info: object,
     build_definitions: Callable[[], list[ToolDefinition]],
     label: str,
     failed_generation_message: str,
-) -> None:
+) -> RegistrationScope:
     """Stage the complete admitted pack under one revocable scope."""
 
+    scope = RegistrationScope(
+        product_contribution_registration_owner(admission, scope_id)
+    )
+    source_info = _ToolPackSourceInfo(
+        admission.plugin_id, admission.contribution_id, admission.fingerprint
+    )
     try:
         by_name = {item.name: item for item in build_definitions()}
         if set(by_name) != set(tool_names):
@@ -261,6 +241,7 @@ def stage_workspace_tool_scope(
             scope, error, incomplete_note=f"{label} rollback remains incomplete"
         )
         raise
+    return scope
 
 
 class _ToolOwnerBoundState(Protocol):
