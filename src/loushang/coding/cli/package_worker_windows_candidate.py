@@ -7,7 +7,6 @@ import json
 import os
 import platform
 import re
-import secrets
 import sys
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
@@ -60,15 +59,15 @@ from loushang.coding.plugin_manager.lifecycle import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeRequestV1,
-)
 from loushang.harness.package_product.product_worker_candidate import (
+    _capture_worker_candidate_installations,
     _change_worker_candidate_lifecycle,
-    _run_worker_candidate_lifecycle,
+    _install_worker_candidate,
+    _observe_installed_worker_candidate,
     _update_worker_candidate,
-    verify_product_selected_worker_candidate,
+    _worker_candidate_revision_matches,
 )
+from loushang.harness.resources.packages._file_consumption import read_bounded_prefix
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
     open_windows_regular_file_at,
@@ -394,23 +393,12 @@ def _execute(
             "defaultSessionRouting": "closed",
         }
     if args.action in {"candidate-install", "candidate-enable"}:
-        matching = tuple(
-            binding
-            for binding in product.policy.bindings
-            if binding.source_trust_class == "local-worker-candidate"
-            and binding.plugin_id == args.plugin_id
-            and binding.artifact_digest == args.artifact_digest
-        )
-        if len(matching) != 1:
-            raise ValueError("Windows Worker candidate is unavailable or ambiguous")
-        binding = matching[0]
-        snapshot = product.desired_state.snapshot()
-        installed = tuple(
-            item
-            for item in snapshot.installations
-            if item.installation_key.plugin_id == args.plugin_id
-            and item.installation_key.product_id == "coding"
-            and item.installation_key.installation_scope == "workspace"
+        binding, snapshot, installed = _capture_worker_candidate_installations(
+            product,
+            args.plugin_id,
+            args.artifact_digest,
+            product_id="coding",
+            label="Windows Worker",
         )
         if len(installed) > 1:
             raise ValueError("Windows Worker candidate installation is ambiguous")
@@ -418,10 +406,7 @@ def _execute(
             if len(installed) != 1 or installed[0].selection.package_revision is None:
                 raise ValueError("Windows Worker candidate is not installed")
             revision = installed[0].selection.package_revision
-            if (
-                revision.package_source_identity != binding.source_identity
-                or revision.package_content_digest != binding.artifact_digest
-            ):
+            if not _worker_candidate_revision_matches(revision, binding):
                 raise ValueError("Windows Worker candidate selection changed")
             operation_record, inventory_revision = _change_worker_candidate_lifecycle(
                 product,
@@ -438,40 +423,23 @@ def _execute(
                 "candidateManagementOperation": operation_record,
                 "inventoryRevision": inventory_revision,
             }
-        if installed:
-            installed_revision = installed[0].selection.package_revision
-            if (
-                installed_revision is None
-                or installed_revision.package_source_identity != binding.source_identity
-                or installed_revision.package_content_digest != binding.artifact_digest
-            ):
-                raise ValueError("Windows Worker candidate installation changed")
-            return {
-                "candidateInstall": {
-                    "pluginId": args.plugin_id,
-                    "artifactDigest": args.artifact_digest,
-                    "alreadyInstalled": True,
-                    "inventoryRevision": snapshot.inventory_revision,
-                }
-            }
-        session_id = f"worker-candidate-install-{secrets.token_hex(16)}"
-        lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
+        _lifecycle, inventory_revision, already_installed = _install_worker_candidate(
             product,
             binding,
+            snapshot,
+            installed[0] if installed else None,
             product_id="coding",
             plugin_id=args.plugin_id,
             operation_id=args.operation_id,
-            session_id=session_id,
-            action="install",
             label="Windows Worker",
-            entrypoint="cli",
-            refresh_install_inventory=True,
+            reinstall_removed=False,
+            refresh_inventory=True,
         )
         return {
             "candidateInstall": {
                 "pluginId": args.plugin_id,
                 "artifactDigest": args.artifact_digest,
-                "alreadyInstalled": False,
+                "alreadyInstalled": already_installed,
                 "inventoryRevision": inventory_revision,
             }
         }
@@ -483,99 +451,34 @@ def _read_candidate_selection(
 ) -> dict[str, object]:
     """Verify selected Product bytes without issuing a Worker-use receipt."""
 
-    installed = tuple(
-        item
-        for item in product.desired_state.snapshot().installations
-        if item.installation_key.product_id == "coding"
-        and item.installation_key.installation_scope == "workspace"
-        and item.installation_key.plugin_id == plugin_id
-        and item.selection.desired_state == "installed_enabled"
-        and item.selection.package_revision is not None
+    candidate, artifact_digest = _observe_installed_worker_candidate(
+        product,
+        plugin_id,
+        product_id="coding",
+        native_platform="windows-amd64",
+        label="Windows Worker",
     )
-    if len(installed) != 1:
-        raise ValueError("Windows Worker candidate selection is unavailable")
-    revision = installed[0].selection.package_revision
-    assert revision is not None
-    bindings = tuple(
-        binding
-        for binding in product.policy.bindings
-        if binding.plugin_id == plugin_id
-        and binding.source_trust_class == "local-worker-candidate"
-        and binding.worker_admission is not None
-        and binding.source_identity == revision.package_source_identity
-        and binding.artifact_digest == revision.package_content_digest
-    )
-    if len(bindings) != 1:
-        raise ValueError("Windows Worker candidate selection is unavailable")
-    binding = bindings[0]
-    admission = binding.worker_admission
-    assert admission is not None
-    session_id = f"worker-candidate-selection-{secrets.token_hex(16)}"
-    factory = product.factory_for_session(
-        session_id=session_id, cwd=product.workspace, runtime_id=session_id
-    )
-    try:
-        runtime = factory.create(
-            PackageProductRuntimeRequestV1(
-                product_id="coding", session_id=session_id, cwd=str(product.workspace)
-            )
-        )
-    except BaseException:
-        factory.dispose_unbound_runtime()
-        raise
-    try:
-        runtime.activate()
-        selected = runtime.capture_selected_plugin_manifest_for(
-            plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
-        )
-        revision = selected.snapshot.package_revision
-        if (
-            revision.package_source_identity != binding.source_identity
-            or revision.package_content_digest != binding.artifact_digest
-            or selected.snapshot.root_ref.artifact_digest != binding.artifact_digest
-        ):
-            raise ValueError("Windows Worker candidate selection changed")
-        candidate = verify_product_selected_worker_candidate(
-            selected,
-            contribution_id=admission.contribution_id,
-            native_platform="windows-amd64",
-        )
-        if candidate.owner_id != admission.owner_id:
-            raise ValueError("Windows Worker candidate owner changed")
-        return {
-            "candidateSelection": {
-                "stage": "observed_in_read",
-                "pluginId": candidate.plugin_id,
-                "pluginVersion": candidate.plugin_version,
-                "artifactDigest": binding.artifact_digest,
-                "executableDigest": candidate.executable_digest,
-            },
-            "productUse": "not_checked",
-        }
-    finally:
-        runtime.dispose_runtime()
+    return {
+        "candidateSelection": {
+            "stage": "observed_in_read",
+            "pluginId": candidate.plugin_id,
+            "pluginVersion": candidate.plugin_version,
+            "artifactDigest": artifact_digest,
+            "executableDigest": candidate.executable_digest,
+        },
+        "productUse": "not_checked",
+    }
 
 
 def _change_candidate(
     product: WindowsLocalWheelProductSessionOwner, args: argparse.Namespace
 ) -> dict[str, object]:
-    matching = tuple(
-        binding
-        for binding in product.policy.bindings
-        if binding.source_trust_class == "local-worker-candidate"
-        and binding.plugin_id == args.plugin_id
-        and binding.artifact_digest == args.artifact_digest
-    )
-    if len(matching) != 1:
-        raise ValueError("Windows Worker candidate is unavailable or ambiguous")
-    binding = matching[0]
-    snapshot = product.desired_state.snapshot()
-    installed = tuple(
-        item
-        for item in snapshot.installations
-        if item.installation_key.plugin_id == args.plugin_id
-        and item.installation_key.product_id == "coding"
-        and item.installation_key.installation_scope == "workspace"
+    binding, snapshot, installed = _capture_worker_candidate_installations(
+        product,
+        args.plugin_id,
+        args.artifact_digest,
+        product_id="coding",
+        label="Windows Worker",
     )
     if len(installed) != 1:
         raise ValueError("Windows Worker candidate installation changed")
@@ -606,9 +509,8 @@ def _change_candidate(
 
     if args.action == "candidate-remove":
         _require_candidate_revoked(product, args.plugin_id)
-    if revision is not None and (
-        revision.package_source_identity != binding.source_identity
-        or revision.package_content_digest != binding.artifact_digest
+    if revision is not None and not _worker_candidate_revision_matches(
+        revision, binding
     ):
         raise ValueError("Windows Worker candidate installation changed")
     action: Literal["disable", "remove"] = (
@@ -654,19 +556,14 @@ def _read_wheel(path: Path) -> bytes:
             metadata = os.fstat(descriptor)
             if not 0 < metadata.st_size <= _MAX_WHEEL_BYTES:
                 raise ValueError("Windows Worker backend Wheel source is invalid")
-            chunks: list[bytes] = []
-            size = 0
-            while True:
-                chunk = os.read(descriptor, min(64 * 1024, _MAX_WHEEL_BYTES + 1 - size))
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > _MAX_WHEEL_BYTES:
-                    raise ValueError("Windows Worker backend Wheel exceeds its bound")
-                chunks.append(chunk)
-            if size != metadata.st_size:
+            body = read_bounded_prefix(
+                descriptor, _MAX_WHEEL_BYTES, chunk_size=64 * 1024
+            )
+            if len(body) > _MAX_WHEEL_BYTES:
+                raise ValueError("Windows Worker backend Wheel exceeds its bound")
+            if len(body) != metadata.st_size:
                 raise ValueError("Windows Worker backend Wheel changed during read")
-            return b"".join(chunks)
+            return body
         finally:
             os.close(descriptor)
     finally:

@@ -7,7 +7,6 @@ import asyncio
 import json
 import os
 import re
-import secrets
 import stat
 import sys
 from collections.abc import Sequence
@@ -76,13 +75,16 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    _capture_worker_candidate_installations,
     _change_worker_candidate_lifecycle,
-    _run_worker_candidate_lifecycle,
+    _install_worker_candidate,
     _update_worker_candidate,
+    _worker_candidate_revision_matches,
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
+from loushang.harness.resources.packages._file_consumption import read_bounded_prefix
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -386,23 +388,12 @@ def _execute(
         "candidate-disable",
         "candidate-remove",
     }:
-        matching = tuple(
-            binding
-            for binding in product.policy.bindings
-            if binding.source_trust_class == "local-worker-candidate"
-            and binding.plugin_id == args.plugin_id
-            and binding.artifact_digest == args.artifact_digest
-        )
-        if len(matching) != 1:
-            raise ValueError("Coding Worker candidate is unavailable or ambiguous")
-        binding = matching[0]
-        snapshot = product.desired_state.snapshot()
-        installed = tuple(
-            item
-            for item in snapshot.installations
-            if item.installation_key.plugin_id == args.plugin_id
-            and item.installation_key.product_id == "coding"
-            and item.installation_key.installation_scope == "workspace"
+        binding, snapshot, installed = _capture_worker_candidate_installations(
+            product,
+            args.plugin_id,
+            args.artifact_digest,
+            product_id="coding",
+            label="Coding Worker",
         )
         if len(installed) > 1:
             raise ValueError("Coding Worker candidate installation is ambiguous")
@@ -448,36 +439,19 @@ def _execute(
                 "productSelection": "not_checked",
                 "productUse": "not_checked",
             }
-        if selected_revision is not None and (
-            selected_revision.package_source_identity != binding.source_identity
-            or selected_revision.package_content_digest != binding.artifact_digest
-        ):
-            raise ValueError("Coding Worker candidate installation changed")
         if args.action == "candidate-install":
-            if selected_revision is not None:
-                return {
-                    "candidateInstall": {
-                        "pluginId": args.plugin_id,
-                        "artifactDigest": args.artifact_digest,
-                        "lifecycle": "installed",
-                        "inventoryRevision": snapshot.inventory_revision,
-                        "alreadyInstalled": True,
-                    },
-                    "productAdmission": "installed",
-                    "productSelection": "not_checked",
-                    "productUse": "not_checked",
-                }
-            session_id = f"worker-candidate-install-{secrets.token_hex(16)}"
-            lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
-                product,
-                binding,
-                product_id="coding",
-                plugin_id=args.plugin_id,
-                operation_id=args.operation_id,
-                session_id=session_id,
-                action="install",
-                label="Coding Worker",
-                entrypoint="cli",
+            lifecycle, inventory_revision, already_installed = (
+                _install_worker_candidate(
+                    product,
+                    binding,
+                    snapshot,
+                    selected,
+                    product_id="coding",
+                    plugin_id=args.plugin_id,
+                    operation_id=args.operation_id,
+                    label="Coding Worker",
+                    reinstall_removed=True,
+                )
             )
             return {
                 "candidateInstall": {
@@ -485,12 +459,16 @@ def _execute(
                     "artifactDigest": args.artifact_digest,
                     "lifecycle": lifecycle,
                     "inventoryRevision": inventory_revision,
-                    "alreadyInstalled": False,
+                    "alreadyInstalled": already_installed,
                 },
                 "productAdmission": "installed",
                 "productSelection": "not_checked",
                 "productUse": "not_checked",
             }
+        if selected_revision is not None and not _worker_candidate_revision_matches(
+            selected_revision, binding
+        ):
+            raise ValueError("Coding Worker candidate installation changed")
         if args.action == "candidate-remove":
             current_opt_in = CodingWorkerProductOptInOwner(product).current(
                 args.plugin_id
@@ -870,19 +848,12 @@ def _read_wheel(path: Path) -> bytes:
             or not 0 < metadata.st_size <= _MAX_WHEEL_BYTES
         ):
             raise ValueError("Coding Worker native Wheel source is invalid")
-        chunks: list[bytes] = []
-        size = 0
-        while True:
-            chunk = os.read(descriptor, min(64 * 1024, _MAX_WHEEL_BYTES + 1 - size))
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > _MAX_WHEEL_BYTES:
-                raise ValueError("Coding Worker native Wheel exceeds its bound")
-            chunks.append(chunk)
-        if size != metadata.st_size:
+        body = read_bounded_prefix(descriptor, _MAX_WHEEL_BYTES, chunk_size=64 * 1024)
+        if len(body) > _MAX_WHEEL_BYTES:
+            raise ValueError("Coding Worker native Wheel exceeds its bound")
+        if len(body) != metadata.st_size:
             raise ValueError("Coding Worker native Wheel changed during read")
-        return b"".join(chunks)
+        return body
     finally:
         os.close(descriptor)
 
