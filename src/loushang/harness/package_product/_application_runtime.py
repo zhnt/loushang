@@ -24,6 +24,7 @@ from typing import (
     cast,
 )
 
+from loushang.harness.conversation import ConversationHeader
 from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.plugin_management.application import (
     PluginBackupRetentionProjectionSourcePort,
@@ -59,8 +60,14 @@ from loushang.harness.plugin_management.package_operation_explanation import (
     PackageOperationExplanationV1,
 )
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochFenceJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.journal import (
     PackageLifecycleJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseRegistryError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
@@ -83,6 +90,8 @@ from .product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductRuntimeFactory,
     WindowsLocalWheelProductSessionOwner,
+    _repair_ordinary_posix_runtime_leases,
+    _repair_ordinary_windows_runtime_leases,
 )
 
 _GC_RESERVATIONS_NAME = "gc-reservations.jsonl"
@@ -601,10 +610,119 @@ class _FencedProductApplication(Protocol):
     def close(self) -> None: ...
 
 
+class _ProductSessionIdentity(Protocol):
+    def get_header(self) -> ConversationHeader: ...
+    def get_cwd(self) -> str: ...
+
+
+_SessionManagerT = TypeVar("_SessionManagerT", bound=_ProductSessionIdentity)
+_ProductSessionFactory = (
+    PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory
+)
+
+
+class OrdinaryProductSessionOwner(Generic[_SessionManagerT]):
+    """Issue one ordinary Session factory from an original fenced Product."""
+
+    __slots__ = ()
+    product_owner: _ProductSessionOwner
+    _product_id: str
+    _label: str
+    _runtime_id_prefix: str
+    _session_manager_type: type[_ProductSessionIdentity]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(
+                self.product_owner,
+                (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
+            )
+            or self.product_owner.policy.product_id != self._product_id
+        ):
+            raise ValueError(f"{self._label} Package Product owner is required")
+
+    def factory_for_session(self, manager: _SessionManagerT) -> _ProductSessionFactory:
+        if not isinstance(manager, self._session_manager_type):
+            raise TypeError(f"{self._label} Product Session manager is required")
+        session_id = manager.get_header().conversation_id
+        return self.product_owner.factory_for_session(
+            session_id=session_id,
+            cwd=Path(manager.get_cwd()),
+            runtime_id=self._runtime_id_prefix + sha256(session_id.encode()).hexdigest(),
+        )
+
+
+class FencedOrdinaryProductApplication(Generic[_SessionManagerT]):
+    """Keep the original epoch through factory creation and ordinary recovery."""
+
+    __slots__ = ()
+    epoch_runtime: _FencedRuntime
+    runtime_owner: OrdinaryProductSessionOwner[_SessionManagerT]
+    _label: str
+    _runtime_id_prefix: str
+
+    def __post_init__(self) -> None:
+        if self.runtime_owner.product_owner.epoch_runtime is not self.epoch_runtime:
+            raise ValueError(f"{self._label} Product application epoch owner changed")
+
+    def factory_for_session(self, manager: _SessionManagerT) -> _ProductSessionFactory:
+        try:
+            return self.runtime_owner.factory_for_session(manager)
+        except PackageEpochRuntimeLeaseRegistryError as error:
+            if error.code != "package_epoch_lease_orphaned":
+                raise
+            repair_ordinary_product_runtime_leases(
+                self.runtime_owner.product_owner,
+                self.epoch_runtime,
+                runtime_id_prefix=self._runtime_id_prefix,
+                error_prefix=self._label,
+            )
+            return self.runtime_owner.factory_for_session(manager)
+
+    def close(self) -> None:
+        self.epoch_runtime.close()
+
+
+def repair_ordinary_product_runtime_leases(
+    product: _ProductSessionOwner,
+    epoch_runtime: _FencedRuntime,
+    *,
+    runtime_id_prefix: str,
+    error_prefix: str,
+) -> None:
+    if isinstance(product, WindowsLocalWheelProductSessionOwner):
+        _repair_ordinary_windows_runtime_leases(
+            product, epoch_runtime, runtime_id_prefix=runtime_id_prefix, error_prefix=error_prefix
+        )
+    elif isinstance(product, PosixLocalWheelProductSessionOwner):
+        _repair_ordinary_posix_runtime_leases(
+            product, epoch_runtime, runtime_id_prefix=runtime_id_prefix, error_prefix=error_prefix
+        )
+    else:
+        raise RuntimeError(f"{error_prefix} ordinary orphan recovery requires POSIX Product")
+
+
 _ApplicationT = TypeVar("_ApplicationT", bound=_FencedProductApplication)
 _FencedRuntimeT = TypeVar("_FencedRuntimeT", bound=_FencedRuntime)
 _ReceiptT = TypeVar("_ReceiptT")
 _SettingsT = TypeVar("_SettingsT")
+
+
+class _Closeable(Protocol):
+    def close(self) -> None: ...
+
+
+@contextmanager
+def handoff_product_open(owner: _Closeable, *, cleanup_note: str) -> Iterator[None]:
+    """Transfer the original owner only when its admission or assembly succeeds."""
+    try:
+        yield
+    except BaseException as error:
+        try:
+            owner.close()
+        except BaseException:
+            error.add_note(cleanup_note)
+        raise
 
 
 @contextmanager
@@ -675,6 +793,35 @@ class FencedProductApplicationSelection(Generic[_ApplicationT, _SettingsT], ABC)
     ) -> _ApplicationT | LegacyProductWorkspace:
         """Apply Product compatibility and opening policy under the selection lock."""
         raise NotImplementedError
+
+    def _prepare_workspace_storage(
+        self,
+        legacy: LegacyProductWorkspace,
+        *,
+        store_id: str,
+        native_blocked: bool,
+        require_current_admission: Callable[[], None] | None,
+        needs_legacy: Callable[[], bool],
+        bootstrap: Callable[[bool], None],
+    ) -> LegacyProductWorkspace | None:
+        """Select legacy or bootstrap a fenced workspace under the selection lock."""
+        label = self._application_label
+        if not legacy_product_fence_exists(legacy.control_root):
+            if native_blocked or needs_legacy():
+                require_current_product_admission(
+                    require_current_admission, label=f"{label} Product"
+                )
+                return legacy
+            bootstrap(True)
+            return None
+        if native_blocked:
+            # Even a closed platform route must detect a corrupt existing fence.
+            PackageEpochFenceJournal(
+                legacy.control_root / "epoch.jsonl", read_only=True
+            ).current(store_id)
+            raise RuntimeError(f"{label} native B Session route is not yet admitted")
+        bootstrap(False)
+        return None
 
     def _select_workspace(
         self,

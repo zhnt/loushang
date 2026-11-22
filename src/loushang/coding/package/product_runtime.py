@@ -28,10 +28,13 @@ from loushang.coding.resume.activation_attempt_v2 import CodingResumeEffectOwner
 from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._application_runtime import (
+    FencedOrdinaryProductApplication,
     FencedProductApplicationSelection,
     LegacyProductWorkspace,
+    OrdinaryProductSessionOwner,
     bind_fenced_product_session_owner,
     fenced_source_catalog_scope,
+    handoff_product_open,
     hold_accepted_product_adoption,
     open_fenced_product_management_state,
     prepare_product_state_for_recovery,
@@ -41,7 +44,6 @@ from loushang.harness.package_product._application_runtime import (
 )
 from loushang.harness.package_product._legacy_runtime import (
     inspect_fresh_product_epoch,
-    legacy_product_fence_exists,
     matches_epoch_layout,
     open_native_fenced_product_epoch,
     read_fresh_product_source_snapshot,
@@ -64,8 +66,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductRuntimeFactory,
     WindowsLocalWheelProductSessionOwner,
     _ApplicationWorkerProductRuntimeFactory,
-    _repair_ordinary_posix_runtime_leases,
-    _repair_ordinary_windows_runtime_leases,
     _SessionOwnedProductRuntimeFactory,
     _SessionProductRuntimeRelease,
 )
@@ -82,9 +82,6 @@ from loushang.harness.plugin_management.private_data_confirmation import (
 from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal as PackageEpochFenceJournal,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
-    PackageEpochRuntimeLeaseRegistryError,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -297,44 +294,25 @@ def open_coding_package_product_state(
     )
 
 
+_CODING_SESSION_RUNTIME_ID_PREFIX = "coding-session:"
+
+
 @dataclass(frozen=True, slots=True)
-class CodingPosixLocalWheelProductRuntimeOwner:
+class CodingPosixLocalWheelProductRuntimeOwner(OrdinaryProductSessionOwner[SessionManager]):
     """Select the exact Coding Session for a fenced Product owner."""
 
     product_owner: (
         PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
     )
 
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(
-                self.product_owner,
-                (
-                    PosixLocalWheelProductSessionOwner,
-                    WindowsLocalWheelProductSessionOwner,
-                ),
-            )
-            or self.product_owner.policy.product_id != "coding"
-        ):
-            raise ValueError("Coding Package Product owner is required")
-
-    def factory_for_session(
-        self, manager: SessionManager
-    ) -> PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory:
-        """Bind a live Session to one runtime lease without a legacy route."""
-
-        if not isinstance(manager, SessionManager):
-            raise TypeError("Coding Product Session manager is required")
-        session_id = manager.get_header().conversation_id
-        return self.product_owner.factory_for_session(
-            session_id=session_id,
-            cwd=Path(manager.get_cwd()),
-            runtime_id="coding-session:" + sha256(session_id.encode()).hexdigest(),
-        )
+    _product_id = "coding"
+    _label = "Coding"
+    _runtime_id_prefix = _CODING_SESSION_RUNTIME_ID_PREFIX
+    _session_manager_type = SessionManager
 
 
 @dataclass(frozen=True, slots=True)
-class CodingFencedProductApplicationOwner:
+class CodingFencedProductApplicationOwner(FencedOrdinaryProductApplication[SessionManager]):
     """Retain one B epoch owner for the lifetime of a Coding application."""
 
     epoch_runtime: (
@@ -342,55 +320,8 @@ class CodingFencedProductApplicationOwner:
     )
     runtime_owner: CodingPosixLocalWheelProductRuntimeOwner
 
-    def __post_init__(self) -> None:
-        if self.runtime_owner.product_owner.epoch_runtime is not self.epoch_runtime:
-            raise ValueError("Coding Product application epoch owner changed")
-
-    def factory_for_session(
-        self, manager: SessionManager
-    ) -> PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory:
-        try:
-            return self.runtime_owner.factory_for_session(manager)
-        except PackageEpochRuntimeLeaseRegistryError as error:
-            if error.code != "package_epoch_lease_orphaned":
-                raise
-            _repair_ordinary_coding_orphan_runtime_leases(self)
-            return self.runtime_owner.factory_for_session(manager)
-
-    def close(self) -> None:
-        self.epoch_runtime.close()
-
-
-def _repair_ordinary_coding_orphan_runtime_leases(
-    owner: CodingFencedProductApplicationOwner,
-) -> None:
-    """Recover dead ordinary Sessions only when no Worker authority exists."""
-
-    product = owner.runtime_owner.product_owner
-    if isinstance(product, WindowsLocalWheelProductSessionOwner):
-        _repair_windows_ordinary_coding_orphan_runtime_leases(owner, product)
-        return
-    if not isinstance(product, PosixLocalWheelProductSessionOwner):
-        raise RuntimeError("Coding ordinary orphan recovery requires POSIX Product")
-    _repair_ordinary_posix_runtime_leases(
-        product,
-        owner.epoch_runtime,
-        runtime_id_prefix="coding-session:",
-        error_prefix="Coding",
-    )
-
-
-def _repair_windows_ordinary_coding_orphan_runtime_leases(
-    owner: CodingFencedProductApplicationOwner,
-    product: WindowsLocalWheelProductSessionOwner,
-) -> None:
-    """Recheck ordinary-only evidence under the Windows orphan and GC locks."""
-    _repair_ordinary_windows_runtime_leases(
-        product,
-        owner.epoch_runtime,
-        runtime_id_prefix="coding-session:",
-        error_prefix="Coding",
-    )
+    _label = "Coding"
+    _runtime_id_prefix = _CODING_SESSION_RUNTIME_ID_PREFIX
 
 
 class CodingFencedProductApplicationSelection(
@@ -562,53 +493,43 @@ class CodingFencedProductApplicationSelection(
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
         if owner is None:
             epoch = resolve_coding_package_epoch_layout(lifecycle)
-            unadmitted_platform = (
+            native_blocked = (
                 os.name == "posix" and not sys.platform.startswith("linux")
             ) or (os.name == "nt" and not self._windows_candidate)
-            if not legacy_product_fence_exists(epoch.control_root):
-                # Ordinary upgrades retain the existing, fence-aware legacy
-                # owner. Never reinterpret existing installations/settings as
-                # empty Product input or require users to replace a workspace.
-                if unadmitted_platform or coding_product_inputs_need_compatibility(
-                    lifecycle,
-                    workspace=workspace,
-                    settings_manager=settings_manager,
-                ):
-                    _require_current_coding_product_admission(require_current_admission)
-                    return LegacyProductWorkspace(
-                        epoch.control_root, lifecycle.root, lifecycle.package_root
+            workspace_inputs = partial(
+                coding_product_inputs_need_compatibility,
+                lifecycle,
+                workspace=workspace,
+                settings_manager=settings_manager,
+            )
+
+            def bootstrap(initial: bool) -> None:
+                if initial:
+                    require_fresh_coding_product_inputs_without_writes(
+                        lifecycle, workspace=workspace, settings_manager=settings_manager
                     )
-                # A Linux fresh workspace enters B before any ordinary
-                # Session can prepare a legacy Plugin writer. Native
-                # cutover owns the cross-process fence.
-                require_fresh_coding_product_inputs_without_writes(
-                    lifecycle,
-                    workspace=workspace,
-                    settings_manager=settings_manager,
+                execute = (
+                    _initialize_fresh_coding_product_for_session
+                    if initial else _retry_fresh_bootstrap
                 )
-                _initialize_fresh_coding_product_for_session(
+                execute(
                     lifecycle,
                     workspace=workspace,
                     settings_manager=settings_manager,
                     windows_candidate=self._windows_candidate,
                     require_current_admission=require_current_admission,
                 )
-            else:
-                if unadmitted_platform:
-                    PackageEpochFenceJournal(
-                        epoch.control_root / "epoch.jsonl",
-                        read_only=True,
-                    ).current(epoch.store_id)
-                    raise RuntimeError(
-                        "Coding native B Session route is not yet admitted"
-                    )
-                _retry_fresh_bootstrap(
-                    lifecycle,
-                    workspace=workspace,
-                    settings_manager=settings_manager,
-                    windows_candidate=self._windows_candidate,
-                    require_current_admission=require_current_admission,
-                )
+
+            legacy = self._prepare_workspace_storage(
+                LegacyProductWorkspace(epoch.control_root, lifecycle.root, lifecycle.package_root),
+                store_id=epoch.store_id,
+                native_blocked=native_blocked,
+                require_current_admission=require_current_admission,
+                needs_legacy=workspace_inputs,
+                bootstrap=bootstrap,
+            )
+            if legacy is not None:
+                return legacy
 
         return open_coding_fenced_product_application_owner(
             lifecycle,
@@ -727,7 +648,9 @@ def open_coding_fenced_product_application_owner(
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     _require_current_coding_product_admission(require_current_admission)
     epoch_runtime = open_native_fenced_product_epoch(**epoch.fenced_runtime_open_kwargs())
-    try:
+    with handoff_product_open(
+        epoch_runtime, cleanup_note="Coding Product epoch cleanup also failed"
+    ):
         state = open_coding_package_product_state(
             lifecycle,
             epoch_runtime,
@@ -744,12 +667,6 @@ def open_coding_fenced_product_application_owner(
             worker_candidates=worker_candidates,
         )
         return CodingFencedProductApplicationOwner(epoch_runtime, runtime_owner)
-    except BaseException as error:
-        try:
-            epoch_runtime.close()
-        except BaseException:
-            error.add_note("Coding Product epoch cleanup also failed")
-        raise
 
 
 def admit_coding_external_data_wheel(
@@ -1040,6 +957,35 @@ def _coding_product_settings_need_compatibility(
     )
 
 
+def _fresh_coding_bootstrap_settings(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    workspace: Path,
+    settings_manager: SettingsManager | None,
+    *,
+    initial: bool,
+    require_current_admission: Callable[[], None] | None,
+) -> SettingsManager:
+    global_path = default_global_settings_path()
+    project_path = default_project_settings_path(workspace)
+    if settings_manager is not None:
+        if initial:
+            require_fresh_coding_product_inputs(
+                lifecycle, settings_manager, roots_may_be_absent=True
+            )
+        global_path = settings_manager.global_settings_path or global_path
+        project_path = settings_manager.project_settings_path or project_path
+    _require_current_coding_product_admission(require_current_admission)
+    return SettingsManager(
+        global_settings_path=global_path, project_settings_path=project_path
+    )
+
+
+def _native_coding_fresh_route(windows_candidate: bool) -> bool:
+    return (os.name == "posix" and sys.platform.startswith("linux")) or (
+        os.name == "nt" and windows_candidate
+    )
+
+
 def _initialize_fresh_coding_product_for_session(
     lifecycle: CodingPluginLifecycleStateLayout,
     *,
@@ -1050,27 +996,15 @@ def _initialize_fresh_coding_product_for_session(
 ) -> None:
     """Use the Product's offline fresh cutover before ordinary Session writes."""
 
-    if not (
-        (os.name == "posix" and sys.platform.startswith("linux"))
-        or (os.name == "nt" and windows_candidate)
-    ):
+    if not _native_coding_fresh_route(windows_candidate):
         raise RuntimeError(
             "Coding native automatic B Session route is not yet admitted"
         )
     if not workspace.is_dir():
         raise ValueError("Coding Product workspace must be an existing directory")
-    global_path = default_global_settings_path()
-    project_path = default_project_settings_path(workspace)
-    if settings_manager is not None:
-        require_fresh_coding_product_inputs(
-            lifecycle, settings_manager, roots_may_be_absent=True
-        )
-        global_path = settings_manager.global_settings_path or global_path
-        project_path = settings_manager.project_settings_path or project_path
-    _require_current_coding_product_admission(require_current_admission)
-    cutover_settings = SettingsManager(
-        global_settings_path=global_path,
-        project_settings_path=project_path,
+    cutover_settings = _fresh_coding_bootstrap_settings(
+        lifecycle, workspace, settings_manager, initial=True,
+        require_current_admission=require_current_admission,
     )
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
@@ -1441,10 +1375,7 @@ def _retry_fresh_bootstrap(
 ) -> None:
     """Resume only a proven fresh first-B cutover; preserve adopted B state."""
 
-    if not (
-        (os.name == "posix" and sys.platform.startswith("linux"))
-        or (os.name == "nt" and windows_candidate)
-    ):
+    if not _native_coding_fresh_route(windows_candidate):
         return
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     _require_current_coding_product_admission(require_current_admission)
@@ -1465,17 +1396,11 @@ def _retry_fresh_bootstrap(
     with closing(owner):
         if _fresh_coding_builtin_bootstrap_completed(owner):
             return
-    global_path = default_global_settings_path()
-    project_path = default_project_settings_path(workspace)
-    if settings_manager is not None:
-        global_path = settings_manager.global_settings_path or global_path
-        project_path = settings_manager.project_settings_path or project_path
-    _require_current_coding_product_admission(require_current_admission)
     bootstrap_coding_builtin_product_plugins(
         lifecycle,
-        SettingsManager(
-            global_settings_path=global_path,
-            project_settings_path=project_path,
+        _fresh_coding_bootstrap_settings(
+            lifecycle, workspace, settings_manager, initial=False,
+            require_current_admission=require_current_admission,
         ),
         workspace=workspace,
         runtime_version=version("loushang"),

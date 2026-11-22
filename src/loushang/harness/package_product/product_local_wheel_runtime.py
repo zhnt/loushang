@@ -1696,45 +1696,7 @@ class PosixLocalWheelProductSessionOwner:
     def settled_install_command_id(
         self, *, operation_id: str, plugin_id: str
     ) -> str | None:
-        """Read the exact Product handoff for a completed install retry."""
-
-        if not isinstance(operation_id, str) or not operation_id:
-            raise ValueError("Package Product operation id is required")
-        if not isinstance(plugin_id, str) or not plugin_id:
-            raise ValueError("Package Product Plugin id is required")
-        self.epoch_runtime.assert_current()
-        state_identity = self._state_root_identity
-        if _directory_identity(self.state_root) != state_identity:
-            raise ValueError("Package Product state root changed")
-        journal = PackageRetentionHandoffJournal(self.state_root / "handoff.jsonl")
-        receipts = tuple(
-            record.receipt
-            for record in journal.records()
-            if record.receipt is not None
-            and record.receipt.request.operation_id == operation_id
-        )
-        if _directory_identity(self.state_root) != state_identity:
-            raise ValueError("Package Product state root changed during handoff read")
-        self.epoch_runtime.assert_current()
-        if not receipts:
-            return None
-        if len({receipt.request.handoff_id for receipt in receipts}) != 1:
-            raise ValueError("Package Product operation has multiple handoffs")
-        latest = receipts[-1]
-        desired = latest.request.desired_request
-        if (
-            latest.state != "settled"
-            or latest.desired_receipt is None
-            or desired.product_id != self.policy.product_id
-            or desired.scope_id != self.policy.project_scope_id
-            or desired.plugin_id != plugin_id
-            or journal.current(latest.request.handoff_id) != latest
-        ):
-            raise ValueError("Package Product install handoff is not settled")
-        if _directory_identity(self.state_root) != state_identity:
-            raise ValueError("Package Product state root changed during handoff read")
-        self.epoch_runtime.assert_current()
-        return desired.command_id
+        return _settled_install_command_id(self, operation_id=operation_id, plugin_id=plugin_id)
 
     def assert_root_gc_authority_current(self) -> None:
         """Require the same fenced Product, workspace, state, and Store roots."""
@@ -2103,39 +2065,61 @@ class WindowsLocalWheelProductSessionOwner:
     def settled_install_command_id(
         self, *, operation_id: str, plugin_id: str
     ) -> str | None:
-        """Read one settled Windows Product install handoff."""
+        return _settled_install_command_id(self, operation_id=operation_id, plugin_id=plugin_id)
 
-        if not isinstance(operation_id, str) or not operation_id:
-            raise ValueError("Package Product operation id is required")
-        if not isinstance(plugin_id, str) or not plugin_id:
-            raise ValueError("Package Product Plugin id is required")
-        self.epoch_runtime.assert_current()
-        state_root = self.epoch_runtime.prepare_product_state_root()
-        journal = PackageRetentionHandoffJournal(state_root / "handoff.jsonl")
-        receipts = tuple(
-            record.receipt
-            for record in journal.records()
-            if record.receipt is not None
-            and record.receipt.request.operation_id == operation_id
-        )
-        self.epoch_runtime.assert_current()
-        if not receipts:
-            return None
-        if len({receipt.request.handoff_id for receipt in receipts}) != 1:
-            raise ValueError("Package Product operation has multiple handoffs")
-        latest = receipts[-1]
-        desired = latest.request.desired_request
-        if (
-            latest.state != "settled"
-            or latest.desired_receipt is None
-            or desired.product_id != self.policy.product_id
-            or desired.scope_id != self.policy.project_scope_id
-            or desired.plugin_id != plugin_id
-            or journal.current(latest.request.handoff_id) != latest
-        ):
-            raise ValueError("Package Product install handoff is not settled")
-        self.epoch_runtime.assert_current()
-        return desired.command_id
+
+def _settled_install_command_id(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    *,
+    operation_id: str,
+    plugin_id: str,
+) -> str | None:
+    """Read one settled handoff; each native owner retains its original rechecks."""
+    if not isinstance(operation_id, str) or not operation_id:
+        raise ValueError("Package Product operation id is required")
+    if not isinstance(plugin_id, str) or not plugin_id:
+        raise ValueError("Package Product Plugin id is required")
+    epoch = product.epoch_runtime
+    epoch.assert_current()
+    posix = product if isinstance(product, PosixLocalWheelProductSessionOwner) else None
+    if posix is None:
+        state_root = epoch.prepare_product_state_root()
+    else:
+        state_identity = posix._state_root_identity
+        state_root = posix.state_root
+        if _directory_identity(state_root) != state_identity:
+            raise ValueError("Package Product state root changed")
+
+    def assert_read_current() -> None:
+        if posix is not None and _directory_identity(posix.state_root) != state_identity:
+            raise ValueError("Package Product state root changed during handoff read")
+        epoch.assert_current()
+
+    journal = PackageRetentionHandoffJournal(state_root / "handoff.jsonl")
+    receipts = tuple(
+        record.receipt
+        for record in journal.records()
+        if record.receipt is not None
+        and record.receipt.request.operation_id == operation_id
+    )
+    assert_read_current()
+    if not receipts:
+        return None
+    if len({receipt.request.handoff_id for receipt in receipts}) != 1:
+        raise ValueError("Package Product operation has multiple handoffs")
+    latest = receipts[-1]
+    desired = latest.request.desired_request
+    if (
+        latest.state != "settled"
+        or latest.desired_receipt is None
+        or desired.product_id != product.policy.product_id
+        or desired.scope_id != product.policy.project_scope_id
+        or desired.plugin_id != plugin_id
+        or journal.current(latest.request.handoff_id) != latest
+    ):
+        raise ValueError("Package Product install handoff is not settled")
+    assert_read_current()
+    return desired.command_id
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

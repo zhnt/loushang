@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.package.product_runtime as coding
+import loushang.harness.package_product._application_runtime as application
 import loushang.harness.package_product.product_local_wheel_runtime as core
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistryError,
@@ -208,12 +208,16 @@ def run_case(monkeypatch, platform, scenario, fail_at=None):
 
     outcome = None
     with monkeypatch.context() as patch:
-        patch.setattr(coding, "os", FakeOS)
         patch.setattr(core, "os", FakeOS)
-        patch.setattr(coding, "PosixLocalWheelProductSessionOwner", PosixProduct)
-        patch.setattr(coding, "WindowsLocalWheelProductSessionOwner", WindowsProduct)
+        patch.setattr(application, "PosixLocalWheelProductSessionOwner", PosixProduct)
+        patch.setattr(application, "WindowsLocalWheelProductSessionOwner", WindowsProduct)
         try:
-            coding._repair_ordinary_coding_orphan_runtime_leases(owner)
+            application.repair_ordinary_product_runtime_leases(
+                owner.runtime_owner.product_owner,
+                owner.epoch_runtime,
+                runtime_id_prefix="coding-session:",
+                error_prefix="Coding",
+            )
         except BaseException as error:
             outcome = describe(error)
     return {"trace": trace, "outcome": outcome, "remaining": remaining}

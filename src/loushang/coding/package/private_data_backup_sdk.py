@@ -56,6 +56,7 @@ from loushang.coding.plugin_manager.lifecycle import (
     matches_coding_workspace_layout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.package_product._application_runtime import handoff_product_open
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -230,14 +231,10 @@ class CodingArchPrivateDataBackupClientV1:
             runtime_version=version("loushang"),
             runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         )
-        try:
+        with handoff_product_open(
+            application, cleanup_note="Coding Arch backup Product cleanup also failed"
+        ):
             self._assert_workspace_identity()
-        except BaseException as error:
-            try:
-                application.close()
-            except BaseException:
-                error.add_note("Coding Arch backup Product cleanup also failed")
-            raise
         return application
 
     def _assert_workspace_identity(self) -> None:
