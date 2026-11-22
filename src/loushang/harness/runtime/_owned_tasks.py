@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Generator
+from time import monotonic
 from typing import Any, Generic, Protocol, TypeVar
 
 from loushang.foundation._owned_tasks import (
@@ -15,6 +16,22 @@ T = TypeVar("T")
 
 
 _await_cancellation_atomic = _join_failure_first
+
+
+async def _finish_cooperative_scan(steps: Generator[object, None, T]) -> T:
+    """Drain an owned scan in eight-millisecond slices and close on exit."""
+    deadline = monotonic() + 0.008
+    try:
+        while True:
+            try:
+                next(steps)
+            except StopIteration as complete:
+                return complete.value
+            if monotonic() >= deadline:
+                await asyncio.sleep(0)
+                deadline = monotonic() + 0.008
+    finally:
+        steps.close()
 
 
 def _get_close_task(

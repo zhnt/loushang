@@ -14,7 +14,7 @@ from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     _require_v1_budget,
 )
-from loushang.foundation.json import JSONValue, dump_json_value
+from loushang.foundation.json import JSONValue
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript.kinds import EXTENSION_DATA_KIND
@@ -29,14 +29,7 @@ _OWNER_FIELDS = {"ownerId", "scopeDigest", "contractDigest", "phases", "effectCl
 _INTENT_FIELDS = _FIELDS | {"effectOwners"}
 
 
-def _bytes(value: object) -> bytes:
-    return dump_json_value(
-        value,
-        name="Coding Resume intent v2",
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
+_bytes = partial(_records.canonical_binding_bytes, name="Coding Resume intent v2")
 
 
 def _codes(value: tuple[str, ...], *, name: str, required: bool = False) -> None:

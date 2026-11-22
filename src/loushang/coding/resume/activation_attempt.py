@@ -10,17 +10,18 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import Literal
 
 from loushang.ai.types import UserMessage
 from loushang.coding.resume.binding import (
     _ANCESTRY_DOMAIN,
     CodingRuntimeBindingV1,
+    _require_decoded_v1_binding,
     inspect_coding_runtime_binding,
     matches_intent,
-    validate_coding_runtime_binding_record,
 )
-from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
+from loushang.foundation.json import JSONValue, require_json_mapping
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript._resume_records import SelectedAncestry
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND, EXTENSION_DATA_KIND
@@ -169,14 +170,17 @@ def _read_legacy_attempt_binding(
     observation = inspect_coding_runtime_binding(record.metadata)
     if observation.status == "absent":
         return None
-    if record.kind != AGENT_MESSAGE_KIND or not isinstance(record.payload, UserMessage):
+    payload = record.payload
+    if record.kind != AGENT_MESSAGE_KIND or not isinstance(payload, UserMessage):
         raise ValueError("activation Binding requires a user message")
     if observation.status == "unknown_version":
         return "unknown_version"
-    observed = observation.binding
-    if observed is None:
+    binding = observation.binding
+    if binding is None:
         raise ValueError("activation Binding known schema is missing")
-    binding = validate_coding_runtime_binding_record(record, expected_session_id=observed.session_id)
+    _require_decoded_v1_binding(
+        record, binding, payload=payload, expected_session_id=binding.session_id,
+    )
     attempt = pending.get(binding.session_id)
     if attempt is not None and (
         record.parent_id != attempt.attempt_id
@@ -232,10 +236,7 @@ def validate_coding_activation_attempt_record(
     )
 
 
-def _encoded(value: object) -> bytes:
-    return dump_json_value(
-        value, name="activation attempt", ensure_ascii=True, sort_keys=True,
-    ).encode("utf-8")
+_encoded = partial(_records.canonical_binding_bytes, name="activation attempt")
 
 
 def _require_v1_budget(document: object) -> None:

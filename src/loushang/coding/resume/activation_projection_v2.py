@@ -5,9 +5,7 @@ No projection result establishes present admission or native effect settlement.
 
 from __future__ import annotations
 
-import asyncio
 import re as re
-import time
 from collections.abc import Callable, Generator, Iterable
 from collections.abc import Mapping as Mapping
 from dataclasses import dataclass
@@ -75,6 +73,7 @@ from loushang.coding.resume.binding_v2 import (
 from loushang.coding.resume.binding_v2 import (
     validate_coding_resume_v2_user_record as validate_coding_resume_v2_user_record,
 )
+from loushang.harness.runtime._owned_tasks import _finish_cooperative_scan
 from loushang.harness.transcript._resume_records import (
     SelectedAncestry,
     finish_history_scan,
@@ -113,21 +112,9 @@ async def project_coding_activation_attempt_path_v2_async(
 ) -> CodingActivationAttemptProjectionV2:
     """Perform the same complete historical check while allowing UI work."""
 
-    steps = _project_activation_history_steps(
-        records, current_session_id=current_session_id
+    return await _finish_cooperative_scan(
+        _project_activation_history_steps(records, current_session_id=current_session_id)
     )
-    deadline = time.monotonic() + 0.008
-    try:
-        while True:
-            try:
-                next(steps)
-            except StopIteration as complete:
-                return complete.value
-            if time.monotonic() >= deadline:
-                await asyncio.sleep(0)
-                deadline = time.monotonic() + 0.008
-    finally:
-        steps.close()
 
 
 def _project_activation_history_steps(

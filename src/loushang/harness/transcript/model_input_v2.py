@@ -14,6 +14,7 @@ from typing import Literal, Protocol, Self, cast
 from weakref import WeakKeyDictionary
 
 from loushang.foundation.json import JSONValue, require_json_value
+from loushang.harness.runtime._owned_tasks import _finish_cooperative_scan
 from loushang.harness.transcript.kinds import (
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
@@ -277,15 +278,7 @@ class ModelInputV2NodeIndex:
         """Build an unpublished index, yielding between the same strict checks."""
 
         index = cls(())
-        steps = index._index_records(records)
-        deadline = time.monotonic() + 0.008
-        try:
-            for _ in steps:
-                if time.monotonic() >= deadline:
-                    await asyncio.sleep(0)
-                    deadline = time.monotonic() + 0.008
-        finally:
-            steps.close()
+        await _finish_cooperative_scan(index._index_records(records))
         return index
 
     def _index_records(

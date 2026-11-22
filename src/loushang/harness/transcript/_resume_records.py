@@ -8,7 +8,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Generic, Literal, NamedTuple, Protocol, TypeVar, cast
 
 from loushang.ai.types import ImagePart, UserMessage
-from loushang.foundation.json import JSONValue, dump_json_value
+from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 from loushang.harness.conversation.jsonl_codec import ConversationJsonlRecordCodec
 from loushang.harness.transcript.codecs import (
     STANDARD_PAYLOAD_VERSION,
@@ -41,6 +41,45 @@ def make_resume_record(
         clock=lambda: created_at, id_factory=lambda: record_id
     )
     return factory.create(kind, payload, parent_id=parent_id, metadata=metadata)
+
+
+class _ResumeMessageBinding(Protocol):
+    @property
+    def record_id(self) -> str: ...
+
+    def to_message_metadata(self) -> dict[str, JSONValue]: ...
+
+
+def make_resume_user_record(
+    message: UserMessage,
+    binding: _ResumeMessageBinding,
+    *,
+    parent_id: str | None,
+    created_at: datetime,
+    resource_metadata: Mapping[str, JSONValue] | None,
+    evidence_name: str,
+    metadata_conflict: str,
+    reserved_prefix: str | None = None,
+) -> AgentTranscriptRecord:
+    """Build an ordinary UserMessage record with detached resource evidence."""
+    evidence = require_json_mapping(
+        {} if resource_metadata is None else dict(resource_metadata), name=evidence_name
+    )
+    if reserved_prefix is not None and any(
+        key.startswith(reserved_prefix) for key in evidence
+    ):
+        raise ValueError(metadata_conflict)
+    binding_metadata = binding.to_message_metadata()
+    if reserved_prefix is None and evidence.keys() & binding_metadata.keys():
+        raise ValueError(metadata_conflict)
+    return make_resume_record(
+        AGENT_MESSAGE_KIND,
+        message,
+        record_id=binding.record_id,
+        parent_id=parent_id,
+        created_at=created_at,
+        metadata={**evidence, **binding_metadata},
+    )
 
 
 def freeze_user_message(message: UserMessage) -> UserMessage:

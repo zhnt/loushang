@@ -7,8 +7,9 @@ native effect settlement. Transcript still owns the durable commit.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
+from functools import partial
 
 from loushang.ai.types import UserMessage
 from loushang.coding.resume.activation_attempt_v2 import CodingActivationAttemptV2
@@ -22,7 +23,7 @@ from loushang.coding.resume.binding import (
     inspect_coding_runtime_binding,
     matches_intent,
 )
-from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
+from loushang.foundation.json import JSONValue
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord
@@ -31,14 +32,7 @@ CODING_RUNTIME_BINDING_V2_METADATA_KEY = "coding.runtimeBindingV2"
 CODING_RUNTIME_BINDING_V2_MAX_BYTES = 8192
 
 
-def _encoded(value: object) -> bytes:
-    return dump_json_value(
-        value,
-        name="Coding RuntimeBinding v2",
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
+_encoded = partial(_records.canonical_binding_bytes, name="Coding RuntimeBinding v2")
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,19 +88,8 @@ def decode_coding_runtime_binding_v2(
     if type(digest) is not str:
         raise ValueError("RuntimeBinding v2 intent digest is invalid")
     return CodingRuntimeBindingV2(
-        base.attempt_id,
-        base.input_id,
-        base.record_id,
-        base.session_id,
-        base.original_leaf_id,
-        base.ancestry_digest,
-        base.subject_digest,
-        base.origin_composition,
-        base.planned_fingerprint,
-        base.actual_fingerprint,
-        base.payload_digest,
-        base.difference_codes,
-        digest,
+        **{item.name: getattr(base, item.name) for item in fields(base)},
+        intent_digest=digest,
     )
 
 
@@ -142,19 +125,15 @@ def prepare_coding_resume_v2_user_record(
         raise ValueError(
             "RuntimeBinding v2 payload digest differs from the user message"
         )
-    evidence = require_json_mapping(
-        {} if resource_metadata is None else dict(resource_metadata),
-        name="Resume v2 resource evidence",
-    )
-    if any(key.startswith("coding.runtimeBinding") for key in evidence):
-        raise ValueError("Resume resource metadata conflicts with Binding version")
-    record = _records.make_resume_record(
-        AGENT_MESSAGE_KIND,
+    record = _records.make_resume_user_record(
         frozen_message,
-        record_id=binding.record_id,
+        binding,
         parent_id=intent.attempt_id,
         created_at=created_at,
-        metadata={**evidence, **binding.to_message_metadata()},
+        resource_metadata=resource_metadata,
+        evidence_name="Resume v2 resource evidence",
+        metadata_conflict="Resume resource metadata conflicts with Binding version",
+        reserved_prefix="coding.runtimeBinding",
     )
     validate_coding_resume_v2_user_record(record, intent=intent)
     return record

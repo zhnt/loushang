@@ -1533,6 +1533,8 @@ def test_model_input_index_preparation_yields_without_publishing_partial_state(
 ):
     from types import SimpleNamespace
 
+    from loushang.harness.runtime import _owned_tasks
+
     async def scenario():
         transcript = await _memory_transcript()
         root = transcript.leaf_id
@@ -1580,6 +1582,7 @@ def test_model_input_index_preparation_yields_without_publishing_partial_state(
             SimpleNamespace(monotonic=lambda: clock[0]),
             raising=False,
         )
+        monkeypatch.setattr(_owned_tasks, "monotonic", lambda: clock[0])
         job = asyncio.create_task(committer.commit_prepared_request(_prepared()))
         while not indexed and not job.done():
             await asyncio.sleep(0)
