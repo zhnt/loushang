@@ -540,6 +540,7 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     import loushang.coding.composition.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as hosted_module
     import loushang.coding.package.product_runtime as product_runtime_module
+    import loushang.harness.package_product._plugin_bootstrap as plugin_bootstrap_module
     from loushang.harness.capabilities.component_runtime import (
         CapabilityOwnerComponentBinder,
     )
@@ -597,11 +598,11 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
         ),
     )
     monkeypatch.setattr(
-        product_runtime_module,
-        "_bootstrap_coding_builtin_plugin",
+        plugin_bootstrap_module,
+        "bootstrap_product_plugin",
         timed_sync(
             "builtin-plugin-bootstrap",
-            product_runtime_module._bootstrap_coding_builtin_plugin,
+            plugin_bootstrap_module.bootstrap_product_plugin,
         ),
     )
     monkeypatch.setattr(
@@ -1007,6 +1008,7 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
     import loushang.coding.composition.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as module
     import loushang.coding.package.product_runtime as product_runtime_module
+    import loushang.harness.package_product._plugin_bootstrap as plugin_bootstrap_module
 
     began = time.perf_counter()
     cpu_began = time.process_time()
@@ -1048,11 +1050,11 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
         ),
     )
     monkeypatch.setattr(
-        product_runtime_module,
-        "_bootstrap_coding_builtin_plugin",
+        plugin_bootstrap_module,
+        "bootstrap_product_plugin",
         timed_sync(
             "builtin-plugin-bootstrap",
-            product_runtime_module._bootstrap_coding_builtin_plugin,
+            plugin_bootstrap_module.bootstrap_product_plugin,
         ),
     )
     monkeypatch.setattr(

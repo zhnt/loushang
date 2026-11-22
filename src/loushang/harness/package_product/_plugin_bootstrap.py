@@ -122,6 +122,29 @@ def product_bootstrap_completed(
     return True
 
 
+def bootstrap_product_plugins(
+    product: _ProductOwner,
+    plugin_ids: tuple[str, ...],
+    *,
+    policy: _PluginBootstrapPolicy,
+    disabled_ids: Collection[str] = (),
+    require_current_admission: Callable[[], None] | None = None,
+) -> bool:
+    """Replay the Product's ordered first-party selections under its admission."""
+    changed = False
+    for plugin_id in plugin_ids:
+        if require_current_admission is not None:
+            require_current_admission()
+        changed = bootstrap_product_plugin(
+            product,
+            plugin_id,
+            store_id=product.epoch_runtime.registry.store_id,
+            policy=policy,
+            enable=plugin_id not in disabled_ids,
+        ) or changed
+    return changed
+
+
 def bootstrap_product_plugin(
     product: _ProductOwner,
     plugin_id: str,

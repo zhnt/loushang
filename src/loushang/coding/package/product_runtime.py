@@ -6,7 +6,9 @@ import json as json
 import os as os
 import sys as sys
 from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass, field
+from functools import partial
 from hashlib import sha256
 from importlib.metadata import version as version
 from pathlib import Path
@@ -38,8 +40,10 @@ from loushang.harness.package_product._application_runtime import (
     require_product_owner_for_factory,
 )
 from loushang.harness.package_product._legacy_runtime import (
+    inspect_fresh_product_epoch,
     legacy_product_fence_exists,
     matches_epoch_layout,
+    open_native_fenced_product_epoch,
     read_fresh_product_source_snapshot,
 )
 from loushang.harness.package_product._local_source_catalog import (
@@ -48,6 +52,7 @@ from loushang.harness.package_product._local_source_catalog import (
 from loushang.harness.package_product._plugin_bootstrap import (
     _PluginBootstrapPolicy,
     bootstrap_product_plugin,
+    bootstrap_product_plugins,
     product_bootstrap_completed,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -720,13 +725,8 @@ def open_coding_fenced_product_application_owner(
     if os.name == "nt" and not windows_candidate:
         raise RuntimeError("Coding Windows Product Session route is not yet admitted")
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_owner_type = (
-        PackageProductWindowsFencedRuntimeOwner
-        if os.name == "nt"
-        else PackageProductPosixFencedRuntimeOwner
-    )
     _require_current_coding_product_admission(require_current_admission)
-    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
+    epoch_runtime = open_native_fenced_product_epoch(**epoch.fenced_runtime_open_kwargs())
     try:
         state = open_coding_package_product_state(
             lifecycle,
@@ -830,12 +830,7 @@ def _capture_coding_worker_source(
     """Capture one inert Worker candidate; the normal Session route stays dark."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_owner_type = (
-        PackageProductWindowsFencedRuntimeOwner
-        if os.name == "nt"
-        else PackageProductPosixFencedRuntimeOwner
-    )
-    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
+    epoch_runtime = open_native_fenced_product_epoch(**epoch.fenced_runtime_open_kwargs())
     with fenced_source_catalog_scope(
         epoch_runtime, no_namespace="Coding Package Product root is not fenced"
     ) as (namespace_id, state_root, source_root):
@@ -883,14 +878,15 @@ def bootstrap_coding_builtin_product_plugins(
         windows_candidate=windows_candidate,
         require_current_admission=require_current_admission,
     )
-    try:
-        changed = False
-        for plugin_id in _CODING_BUILTIN_PLUGIN_IDS:
-            _require_current_coding_product_admission(require_current_admission)
-            changed = _bootstrap_coding_builtin_plugin(owner, plugin_id) or changed
-        return changed
-    finally:
-        owner.close()
+    with closing(owner):
+        return bootstrap_product_plugins(
+            owner.runtime_owner.product_owner,
+            _CODING_BUILTIN_PLUGIN_IDS,
+            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+            require_current_admission=partial(
+                _require_current_coding_product_admission, require_current_admission
+            ),
+        )
 
 
 def bootstrap_coding_accepted_disabled_only_product_plugins(
@@ -922,11 +918,12 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
             runtime_protocol_epoch=runtime_protocol_epoch,
         ),
     ) as (receipt, owner):
-        disabled = {item.plugin_id for item in receipt.review.disabled_plugins}
-        for plugin_id in _CODING_BUILTIN_PLUGIN_IDS:
-            _bootstrap_coding_builtin_plugin(
-                owner, plugin_id, enable=plugin_id not in disabled
-            )
+        bootstrap_product_plugins(
+            owner.runtime_owner.product_owner,
+            _CODING_BUILTIN_PLUGIN_IDS,
+            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+            disabled_ids={item.plugin_id for item in receipt.review.disabled_plugins},
+        )
         return receipt
 
 
@@ -1451,20 +1448,12 @@ def _retry_fresh_bootstrap(
         return
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     _require_current_coding_product_admission(require_current_admission)
-    runtime = (
-        PackageProductWindowsFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs()
-        )
-        if os.name == "nt"
-        else PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs(), read_only=True
-        )
-    )
-    try:
-        if not is_coding_fresh_first_b_snapshot(lifecycle, runtime):
-            return
-    finally:
-        runtime.close()
+    if not inspect_fresh_product_epoch(
+        epoch.fenced_runtime_open_kwargs(),
+        windows=os.name == "nt",
+        verify_snapshot=partial(is_coding_fresh_first_b_snapshot, lifecycle),
+    ):
+        return
     owner = open_coding_fenced_product_application_owner(
         lifecycle,
         workspace=workspace,
@@ -1473,11 +1462,9 @@ def _retry_fresh_bootstrap(
         windows_candidate=windows_candidate,
         require_current_admission=require_current_admission,
     )
-    try:
+    with closing(owner):
         if _fresh_coding_builtin_bootstrap_completed(owner):
             return
-    finally:
-        owner.close()
     global_path = default_global_settings_path()
     project_path = default_project_settings_path(workspace)
     if settings_manager is not None:

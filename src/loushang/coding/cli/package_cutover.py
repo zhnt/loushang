@@ -89,7 +89,10 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.package_product._legacy_runtime import legacy_product_fence_exists
+from loushang.harness.package_product._legacy_runtime import (
+    inspect_fresh_product_epoch,
+    legacy_product_fence_exists,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackagePosixEpochCutoverResultV1,
 )
@@ -474,20 +477,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             finally:
                 read_owner.close()
+            pending_removals = bool(legacy_inventory.unselected_source_identities)
+            if pending_removals and removed_acceptance is None:
+                raise RuntimeError(
+                    "Coding old local removals need explicit adoption or retry"
+                )
+            if removed_acceptance is not None and (pending_removals or not local):
+                adopt_coding_first_b_removed_local(
+                    lifecycle,
+                    settings,
+                    workspace=workspace,
+                    accepted_review_id=removed_acceptance.review.review_id,
+                    runtime_version=runtime_version,
+                    runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                )
             if local:
-                if legacy_inventory.unselected_source_identities:
-                    if removed_acceptance is None:
-                        raise RuntimeError(
-                            "Coding old local removals need explicit adoption or retry"
-                        )
-                    adopt_coding_first_b_removed_local(
-                        lifecycle,
-                        settings,
-                        workspace=workspace,
-                        accepted_review_id=removed_acceptance.review.review_id,
-                        runtime_version=runtime_version,
-                        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                    )
                 if not all(
                     coding_legacy_local_data_adoption_settled(
                         lifecycle,
@@ -502,45 +506,33 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise RuntimeError(
                         "Coding old local Skills need explicit adoption or retry"
                     )
-            elif removed_acceptance is not None:
-                adopt_coding_first_b_removed_local(
-                    lifecycle,
-                    settings,
-                    workspace=workspace,
-                    accepted_review_id=removed_acceptance.review.review_id,
-                    runtime_version=runtime_version,
-                    runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                )
-            elif legacy_inventory.unselected_source_identities:
-                raise RuntimeError(
-                    "Coding old local removals need explicit adoption or retry"
-                )
-            elif builtin_acceptance is not None:
-                adopt_coding_first_b_builtin_only(
-                    lifecycle,
-                    settings,
-                    workspace=workspace,
-                    accepted_review_id=builtin_acceptance.review.review_id,
-                    runtime_version=runtime_version,
-                    runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                )
-            elif acceptance is None:
-                bootstrap_coding_builtin_product_plugins(
-                    lifecycle,
-                    settings,
-                    workspace=workspace,
-                    runtime_version=runtime_version,
-                    runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                )
-            else:
-                bootstrap_coding_accepted_disabled_only_product_plugins(
-                    lifecycle,
-                    settings,
-                    workspace=workspace,
-                    accepted_review_id=acceptance.review.review_id,
-                    runtime_version=runtime_version,
-                    runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                )
+            elif removed_acceptance is None:
+                if builtin_acceptance is not None:
+                    adopt_coding_first_b_builtin_only(
+                        lifecycle,
+                        settings,
+                        workspace=workspace,
+                        accepted_review_id=builtin_acceptance.review.review_id,
+                        runtime_version=runtime_version,
+                        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                    )
+                elif acceptance is not None:
+                    bootstrap_coding_accepted_disabled_only_product_plugins(
+                        lifecycle,
+                        settings,
+                        workspace=workspace,
+                        accepted_review_id=acceptance.review.review_id,
+                        runtime_version=runtime_version,
+                        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                    )
+                else:
+                    bootstrap_coding_builtin_product_plugins(
+                        lifecycle,
+                        settings,
+                        workspace=workspace,
+                        runtime_version=runtime_version,
+                        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                    )
         else:
             cutover = cutover_and_bootstrap_coding_package_product(
                 lifecycle,
@@ -729,14 +721,12 @@ def _run_windows_fresh_candidate(
         settings = _cutover_settings(workspace)
         result = reopen_coding_package_cutover(lifecycle)
         _require_cutover_namespace(result, namespace_id)
-        first_b = PackageProductWindowsFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs()
-        )
-        try:
-            if not is_coding_fresh_first_b_snapshot(lifecycle, first_b):
-                raise RuntimeError("Coding Product fence is not a fresh cutover")
-        finally:
-            first_b.close()
+        if not inspect_fresh_product_epoch(
+            epoch.fenced_runtime_open_kwargs(),
+            windows=True,
+            verify_snapshot=partial(is_coding_fresh_first_b_snapshot, lifecycle),
+        ):
+            raise RuntimeError("Coding Product fence is not a fresh cutover")
     if result.disposition != "fenced":
         raise RuntimeError("Coding Product fence was not committed")
     if not bootstrap_complete:

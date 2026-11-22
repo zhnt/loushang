@@ -7,10 +7,10 @@ import stat
 import sys
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol, TypedDict, TypeVar, Unpack
 
 from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
 from loushang.harness.resources.packages._private_directory import (
@@ -55,6 +55,40 @@ _FencedRuntime = (
 _SnapshotStore = (
     PackagePosixEpochSnapshotEvidenceStore | PackageWindowsEpochSnapshotEvidenceStore
 )
+
+
+class FencedRuntimeOpenKwargs(TypedDict):
+    authority_root: Path
+    control_root: Path
+    store_id: str
+    epochs_root_name: str
+
+
+def open_native_fenced_product_epoch(
+    *,
+    windows: bool | None = None,
+    posix_read_only: bool = False,
+    **roots: Unpack[FencedRuntimeOpenKwargs],
+) -> _FencedRuntime:
+    """Open the selected native owner, with read-only reopen on POSIX when required."""
+    if windows is None:
+        windows = os.name == "nt"
+    if windows:
+        return PackageProductWindowsFencedRuntimeOwner.open(**roots)
+    return PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=posix_read_only)
+
+
+def inspect_fresh_product_epoch(
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    windows: bool,
+    verify_snapshot: Callable[[_FencedRuntime], bool],
+) -> bool:
+    """Check original snapshot evidence within one native epoch lifetime."""
+    with closing(
+        open_native_fenced_product_epoch(windows=windows, posix_read_only=True, **roots)
+    ) as runtime:
+        return verify_snapshot(runtime)
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,24 +287,15 @@ def bind_legacy_pre_b_snapshot_owner(
 
 def reopen_legacy_product_cutover(
     *,
-    authority_root: Path,
-    control_root: Path,
-    store_id: str,
-    epochs_root_name: str,
     read_only: bool,
+    **roots: Unpack[FencedRuntimeOpenKwargs],
 ) -> PackagePosixEpochCutoverResultV1:
     reopen = (
         reopen_windows_product_cutover
         if os.name == "nt"
         else reopen_posix_product_cutover
     )
-    return reopen(
-        authority_root=authority_root,
-        control_root=control_root,
-        store_id=store_id,
-        epochs_root_name=epochs_root_name,
-        read_only=read_only,
-    )
+    return reopen(**roots, read_only=read_only)
 
 
 class _LegacyStateRoots(Protocol):
