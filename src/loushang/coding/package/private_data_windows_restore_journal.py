@@ -22,15 +22,11 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 from loushang.harness.plugin_management._private_data_deletion_windows import (
     read_windows_deletion_history,
-    require_finished_windows_deletion,
 )
 from loushang.harness.plugin_management._private_data_restore_windows import (
     WindowsPrivateRestoreTransaction,
-    require_windows_restore_product_state,
 )
-from loushang.harness.plugin_management.private_data_deletion import (
-    latest_deleted_target_receipt,
-)
+from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
@@ -38,8 +34,11 @@ from loushang.harness.resources.packages._private_receipts_windows import (
 from loushang.harness.resources.packages._private_tree_windows import (
     PrivateWindowsTreeIO,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 
-from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     _prepare_windows_arch_restore_generation_intent,
     _publish_windows_arch_restored_root_receipt,
@@ -114,41 +113,25 @@ class CodingWindowsArchRestorePublicationV1:
         return ".arch-restore-" + self.restore_id.split(":", 1)[1] + ".staging"
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "desiredInventoryRevision": self.desired_inventory_revision,
-            "generationNumber": self.generation_number,
-            "parentIdentity": list(self.parent_identity),
-            "planFingerprint": self.plan_fingerprint,
-            "restoreId": self.restore_id,
-            "stageIdentity": list(self.stage_identity),
-            "startedDigest": self.started_digest,
-        }
+        return _PUBLICATION_SCHEMA.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingWindowsArchRestorePublicationV1:
-        if type(value) is not dict or set(value) != {
-            "desiredInventoryRevision",
-            "generationNumber",
-            "parentIdentity",
-            "planFingerprint",
-            "restoreId",
-            "stageIdentity",
-            "startedDigest",
-        }:
+        if type(value) is not dict or set(value) != _PUBLICATION_SCHEMA.keys:
             raise ValueError("Windows Coding Arch restore publication fields changed")
         parent = value["parentIdentity"]
         stage = value["stageIdentity"]
         if type(parent) is not list or type(stage) is not list:
             raise ValueError("Windows Coding Arch restore publication identity changed")
-        return cls(
-            restore_id=value["restoreId"],
-            started_digest=value["startedDigest"],
-            plan_fingerprint=value["planFingerprint"],
-            desired_inventory_revision=value["desiredInventoryRevision"],
-            generation_number=value["generationNumber"],
-            stage_identity=tuple(stage),
-            parent_identity=tuple(parent),
-        )
+        return _PUBLICATION_SCHEMA.decode(cls, value)
+
+
+_PUBLICATION_SCHEMA = RecordSchema.for_dataclass(
+    CodingWindowsArchRestorePublicationV1,
+    lambda value: value,
+    RecordField("stage_identity", decoder=tuple, encoder=list),
+    RecordField("parent_identity", decoder=tuple, encoder=list),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,13 +140,8 @@ class CodingWindowsArchPrivateDataRestoreJournal:
     product: WindowsLocalWheelProductSessionOwner
 
     def __post_init__(self) -> None:
-        CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
-        if (
-            self.product.state_root
-            != resolve_coding_package_epoch_layout(self.layout).control_root
-            / "product-state"
-        ):
-            raise ValueError("Windows Coding Arch restore Product state changed")
+        preview = CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
+        preview._require_product_state_root("restore")
 
     @contextmanager
     def transaction(self) -> Iterator[CodingWindowsArchPrivateDataRestoreTransaction]:
@@ -247,32 +225,25 @@ class CodingWindowsArchPrivateDataRestoreTransaction(
     ) -> CodingArchPrivateDataTargetSnapshotV1:
         return _capture_windows_target_snapshot(root, expected_root=expected_root)
 
-    def _require_plan_current(
-        self, plan: CodingArchPrivateDataRestorePlanV1
-    ) -> CodingArchPrivateDataTargetSnapshotV1:
-        desired, transitions = self.product.desired_state.capture()
-        require_windows_restore_product_state(
-            desired,
-            plan.installation_key,
-            expected_revision=plan.desired_inventory_revision,
-            transitions=transitions,
-            error=f"{self._label} restore Product state changed",
-        )
-        events = read_windows_deletion_history(
+    @property
+    def _desired_state(self) -> PluginDesiredStateLedger:
+        return self.product.desired_state
+
+    def _deletion_history(self) -> tuple[CodingArchPrivateDataDeletionEventV1, ...]:
+        return read_windows_deletion_history(
             CodingWindowsArchPrivateDataDeletionTransaction(
                 self.product.state_root, self.state_fd
             )
         )
-        require_finished_windows_deletion(events, label=self._label)
-        if _latest_deletion_receipt(events, plan) != plan.deletion_receipt_id:
-            raise ValueError(f"{self._label} restore deletion changed")
-        return self._verify_plan_archive(plan)
+
+    def _backup_parent(self, key: PluginInstallationKeyV1) -> Path:
+        return backup_parent(self.layout, key)
 
     def _verify_plan_archive(
         self, plan: CodingArchPrivateDataRestorePlanV1
     ) -> CodingArchPrivateDataTargetSnapshotV1:
         return _archive_io.read_restore_source(
-            backup_parent(self.layout, plan.installation_key),
+            self._backup_parent(plan.installation_key),
             plan.backup_id,
             plan.installation_key,
             label=self._label,
@@ -308,22 +279,12 @@ class CodingWindowsArchPrivateDataRestoreTransaction(
         stage_fd: int,
     ) -> None:
         _archive_io.copy_restore_source(
-            backup_parent(self.layout, plan.installation_key),
+            self._backup_parent(plan.installation_key),
             plan.backup_id,
             source,
             stage_fd,
             label=self._label,
         )
-
-
-def _latest_deletion_receipt(
-    events: tuple[CodingArchPrivateDataDeletionEventV1, ...],
-    plan: CodingArchPrivateDataRestorePlanV1,
-) -> str | None:
-    receipt = latest_deleted_target_receipt(
-        events, plan.installation_key, plan.source_target_id
-    )
-    return None if receipt is None else receipt.receipt_id
 
 
 __all__ = [

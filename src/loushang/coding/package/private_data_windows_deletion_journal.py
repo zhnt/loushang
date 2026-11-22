@@ -41,7 +41,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     _windows_arch_current_root_generation,
     coding_arch_installation_private_data_root,
@@ -74,13 +73,8 @@ class CodingWindowsArchPrivateDataDeletionJournal:
     product: WindowsLocalWheelProductSessionOwner
 
     def __post_init__(self) -> None:
-        CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
-        if (
-            self.product.state_root
-            != resolve_coding_package_epoch_layout(self.layout).control_root
-            / "product-state"
-        ):
-            raise ValueError("Windows Coding Arch deletion Product state changed")
+        preview = CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
+        preview._require_product_state_root("deletion")
 
     @contextmanager
     def transaction(self) -> Iterator[CodingWindowsArchPrivateDataDeletionTransaction]:

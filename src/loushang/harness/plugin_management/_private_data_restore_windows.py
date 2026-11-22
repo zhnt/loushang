@@ -40,13 +40,19 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
 
-from ._private_data_backup_windows import WindowsPrivateArchiveSnapshot
+from ._private_data_backup_windows import (
+    WindowsPrivateArchiveIO,
+    WindowsPrivateArchiveSnapshot,
+)
+from ._private_data_deletion_windows import require_finished_windows_deletion
 from ._private_data_expiry import ExpiryPlan
 from .journal_codecs import PluginDesiredStateJournalTransition
-from .ledger import PluginDesiredStateSnapshotV1
+from .ledger import PluginDesiredStateLedger, PluginDesiredStateSnapshotV1
+from .private_data_backup import R
 from .private_data_deletion import (
-    PluginPrivateDataDeletionReceiptV1,
+    PluginPrivateDataDeletionEventV1,
     PrivateDataDeletionTarget,
+    latest_deleted_target_receipt,
 )
 from .private_data_restore_journal import (
     PrivateDataRestoreConfirmation,
@@ -63,6 +69,7 @@ def require_windows_restore_product_state(
     error: str,
     expected_revision: int | None = None,
     transitions: tuple[PluginDesiredStateJournalTransition, ...] = (),
+    exact_revision: bool = False,
 ) -> None:
     state = desired.installation(key)
     if (
@@ -72,6 +79,7 @@ def require_windows_restore_product_state(
             expected_revision is not None
             and (
                 desired.inventory_revision < expected_revision
+                or (exact_revision and desired.inventory_revision != expected_revision)
                 or any(
                     item.inventory_revision > expected_revision
                     and item.mutation.installation_key == key
@@ -85,6 +93,18 @@ def require_windows_restore_product_state(
 
 class _RestorePlan(Protocol):
     __dataclass_fields__: ClassVar[dict[str, Field[object]]]
+
+    def __init__(
+        self,
+        *,
+        installation_key: PluginInstallationKeyV1,
+        backup_id: str,
+        deletion_receipt_id: str,
+        source_target_id: str,
+        desired_inventory_revision: int,
+        target_state: Literal["absent", "same_bytes"],
+    ) -> None: ...
+
 
     @property
     def installation_key(self) -> PluginInstallationKeyV1: ...
@@ -224,7 +244,34 @@ class WindowsPrivateRestoreTransaction(
     def _capture_root(self, root: Path, *, expected_root: tuple[int, int]) -> _SourceT:
         raise NotImplementedError
 
+    @property
+    def _desired_state(self) -> PluginDesiredStateLedger:
+        raise NotImplementedError
+
+    def _deletion_history(self) -> tuple[PluginPrivateDataDeletionEventV1[_SourceT], ...]:
+        raise NotImplementedError
+
+    def _backup_parent(self, key: PluginInstallationKeyV1) -> Path:
+        raise NotImplementedError
+
     def _require_plan_current(self, plan: _PlanT) -> _SourceT:
+        desired, transitions = self._desired_state.capture()
+        key = plan.installation_key
+        require_windows_restore_product_state(
+            desired,
+            key,
+            expected_revision=plan.desired_inventory_revision,
+            transitions=transitions,
+            error=f"{self._label} restore Product state changed",
+        )
+        events = self._deletion_history()
+        require_finished_windows_deletion(events, label=self._label)
+        receipt = latest_deleted_target_receipt(events, key, plan.source_target_id)
+        if receipt is None or receipt.receipt_id != plan.deletion_receipt_id:
+            raise ValueError(f"{self._label} restore deletion changed")
+        return self._verify_plan_archive(plan)
+
+    def _verify_plan_archive(self, plan: _PlanT) -> _SourceT:
         raise NotImplementedError
 
     def _close(self) -> None:
@@ -857,34 +904,62 @@ def read_windows_expiry_restore_proof(
     restore: WindowsPrivateRestoreTransaction[
         _PlanT, _EventT, _ConfirmationT, _SourceT, _PublicationT
     ],
-    plan: _PlanT,
+    key: PluginInstallationKeyV1,
+    backup_id: str,
     confirmation_id: str,
     *,
-    capture_archive: Callable[[], _ArchiveT],
-    label: str,
-) -> tuple[_ConfirmationT, _EventT, _SourceT, _ArchiveT]:
+    archive_io: WindowsPrivateArchiveIO[_SourceT, R],
+    capture_archive: Callable[[_SourceT, R], _ArchiveT],
+) -> tuple[R, _SourceT, _ConfirmationT, _EventT, _SourceT, _ArchiveT, int]:
+    """Join the retained archive, latest deletion, and confirmed restore."""
+    label = restore._label
+    desired = restore._desired_state.snapshot()
+    require_windows_restore_product_state(
+        desired, key, error=f"{label} backup expiry requires removal"
+    )
+    receipt, source = archive_io.read_expiry_manifest(
+        restore._backup_parent(key), backup_id, key, label=label
+    )
+    events = restore._deletion_history()
+    require_finished_windows_deletion(events, label=label)
+    deletion = latest_deleted_target_receipt(events, key, receipt.source_target_id)
+    if deletion is None:
+        raise ValueError(f"{label} backup expiry lacks deletion")
+    plan = restore._plan_type(
+        installation_key=key,
+        backup_id=backup_id,
+        deletion_receipt_id=deletion.receipt_id,
+        source_target_id=source.target_id,
+        desired_inventory_revision=desired.inventory_revision,
+        target_state="absent",
+    )
     plan = replace(
         plan, desired_inventory_revision=restore.completed_plan_revision_for(plan)
     )
     confirmation = restore.verify_confirmation(plan, confirmation_id)
     completion, restored = restore._completed_restore(plan)
-    archive = capture_archive()
+    archive = capture_archive(source, receipt)
     if archive.root_identity is None:
         raise ValueError(f"{label} backup archive disappeared")
     if restore.verify_confirmation(plan, confirmation_id) != confirmation:
         raise ValueError(f"{label} restore confirmation changed")
-    return confirmation, completion, restored, archive
+    return (
+        receipt, source, confirmation, completion, restored, archive,
+        desired.inventory_revision,
+    )
 
 
-def require_windows_expiry_restored_target(
+def require_windows_expiry_recovery_authority(
     restore: WindowsPrivateRestoreTransaction[
         _PlanT, _EventT, _ConfirmationT, _SourceT, _PublicationT
     ],
     expiry: ExpiryPlan,
-    deletion: PluginPrivateDataDeletionReceiptV1,
     root: Path,
     *,
-    restore_plan_for: Callable[[str], _PlanT],
+    desired_state: PluginDesiredStateLedger,
+    deletion_history: Callable[
+        [], tuple[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget], ...]
+    ],
     observe_bound_root: Callable[[], tuple[int, int] | None],
     capture_restored: Callable[[tuple[int, int]], PrivateDataDeletionTarget],
     tree_io: PrivateWindowsTreeIO,
@@ -893,6 +968,17 @@ def require_windows_expiry_restored_target(
 ) -> None:
     """Verify the published restore after an expiry no longer has its archive."""
     key = expiry.installation_key
+    restore._require_active()
+    require_windows_restore_product_state(
+        desired_state.snapshot(),
+        key,
+        expected_revision=expiry.desired_inventory_revision,
+        exact_revision=True,
+        error=f"{label} backup expiry Desired State changed",
+    )
+    deletion = latest_deleted_target_receipt(deletion_history(), key, expiry.source_target_id)
+    if deletion is None:
+        raise ValueError(f"{label} backup expiry deletion changed")
     confirmations, staged = restore._scan_confirmations()
     confirmation = next(
         (
@@ -912,7 +998,14 @@ def require_windows_expiry_restored_target(
         or confirmation.restored_target_id != expiry.restored_target_id
     ):
         raise ValueError(f"{label} backup expiry confirmation changed")
-    plan = restore_plan_for(confirmation.deletion_receipt_id)
+    plan = restore._plan_type(
+        installation_key=key,
+        backup_id=expiry.backup_id,
+        deletion_receipt_id=confirmation.deletion_receipt_id,
+        source_target_id=expiry.source_target_id,
+        desired_inventory_revision=expiry.desired_inventory_revision,
+        target_state="absent",
+    )
     events = restore.events()
     completion = events[-1] if events else None
     started = events[-2] if len(events) >= 2 else None
