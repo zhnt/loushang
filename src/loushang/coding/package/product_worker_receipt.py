@@ -62,6 +62,7 @@ from loushang.harness.worker.history._receipts import (
     _MAX_RECEIPTS,
     _ReceiptRecordMethods,
     decode_receipt_history,
+    is_receipt_fingerprint,
     parse_receipt_segment,
     receipt_line,
 )
@@ -308,11 +309,7 @@ def read_coding_product_worker_receipt_record(
 
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
         raise TypeError("Coding Worker Product owner is required")
-    if (
-        type(receipt_fingerprint) is not str
-        or len(receipt_fingerprint) != 64
-        or any(char not in "0123456789abcdef" for char in receipt_fingerprint)
-    ):
+    if not is_receipt_fingerprint(receipt_fingerprint):
         raise ValueError("Coding Worker receipt fingerprint is invalid")
     return _receipt_history_for_product(product).find_retained_record(
         receipt_fingerprint

@@ -38,7 +38,10 @@ from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.history._activation import _RetainedAttemptFields
 from loushang.harness.worker.history._activation_store import SegmentedActivationJournal
 from loushang.harness.worker.history._no_effect import is_no_effect_closure
-from loushang.harness.worker.history._receipts import _ReceiptRecordMethods
+from loushang.harness.worker.history._receipts import (
+    _ReceiptRecordMethods,
+    is_receipt_fingerprint,
+)
 from loushang.harness.worker.history._retention import (
     AttemptReference,
     RegisteredRepairReference,
@@ -2055,9 +2058,5 @@ def _require_receipt_lookup_input(
 ) -> None:
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
         raise TypeError(product_required_message)
-    if (
-        type(receipt_fingerprint) is not str
-        or len(receipt_fingerprint) != 64
-        or any((char not in "0123456789abcdef" for char in receipt_fingerprint))
-    ):
+    if not is_receipt_fingerprint(receipt_fingerprint):
         raise ValueError(receipt_invalid_message)

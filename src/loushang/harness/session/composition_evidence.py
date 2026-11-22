@@ -8,7 +8,7 @@ from copy import deepcopy
 from hashlib import sha256
 from itertools import chain
 from re import fullmatch
-from typing import TYPE_CHECKING, TypeGuard, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard, TypeVar, cast
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.config.agent import CapabilityMountMode
@@ -110,17 +110,35 @@ def read_composition_receipt(
     return found
 
 
-def capture_ordinary_worker_startup(
+class _StartupReceiptOwner(Protocol):
+    def issue(self) -> ProductWorkerActivationReceiptV1 | None: ...
+
+
+_ReceiptOwnerT = TypeVar("_ReceiptOwnerT", bound=_StartupReceiptOwner)
+_ReceiptContextT = TypeVar("_ReceiptContextT")
+
+
+def bind_ordinary_worker_startup(
     transcript: ProductTranscriptSession,
     runtime: PackageProductRuntimeBindingV1,
     *,
+    plugin_id: str,
     base_context: ProductCompositionAuthorityContext,
     plan_context: PluginPreflightContextV1,
     extension_type: str,
     label: str,
+    max_files: int,
+    max_total_bytes: int,
+    open_receipt_owner: Callable[[AgentTranscriptDirectoryRuntime], _ReceiptOwnerT],
+    bind_receipt_context: Callable[[ProductWorkerActivationReceiptV1], _ReceiptContextT],
     failure: Callable[[str], RuntimeError],
-) -> tuple[AgentTranscriptDirectoryRuntime, dict[str, object] | None]:
-    """Join the current base graph to an admitted transcript before Worker selection."""
+) -> tuple[
+    _ReceiptOwnerT,
+    ProductWorkerActivationReceiptV1,
+    PackageProductSelectedPluginManifestV1,
+    _ReceiptContextT,
+]:
+    """Issue authority for the attached transcript and reprove its selected manifest."""
     if (
         runtime.session_id != transcript.get_header().conversation_id
         or plan_context.scope_id != f"session:{runtime.session_id}"
@@ -132,7 +150,81 @@ def capture_ordinary_worker_startup(
     )
     if startup is None and transcript.get_entries():
         raise failure("startup_provenance_missing")
-    return AgentTranscriptDirectoryRuntime(session_dir=transcript.get_session_dir()), startup
+    owner = open_receipt_owner(
+        AgentTranscriptDirectoryRuntime(session_dir=transcript.get_session_dir())
+    )
+    receipt = owner.issue()
+    if receipt is None:
+        raise failure("candidate_not_allowed")
+    context = bind_receipt_context(receipt)
+    selected = _capture_worker_startup_selection(
+        runtime=runtime,
+        plugin_id=plugin_id,
+        receipt=receipt,
+        existing_startup=startup,
+        max_files=max_files,
+        max_total_bytes=max_total_bytes,
+        failure=failure,
+    )
+    return owner, receipt, selected, context
+
+
+def _capture_worker_startup_selection(
+    *,
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_id: str,
+    receipt: ProductWorkerActivationReceiptV1,
+    existing_startup: dict[str, object] | None,
+    max_files: int,
+    max_total_bytes: int,
+    failure: Callable[[str], RuntimeError],
+) -> PackageProductSelectedPluginManifestV1:
+    selected_worker = runtime.capture_selected_plugin_manifest_for(
+        plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
+    )
+
+    if (
+        selected_worker.snapshot.root_ref.artifact_digest
+        != receipt.policy.plugin_revision_digest
+    ):
+        raise failure("selection_changed")
+
+    if existing_startup is not None:
+        worker = existing_startup.get("workerSelection")
+        expected_revision = {
+            "pluginId": plugin_id,
+            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
+                selected_worker.snapshot.package_revision
+            ),
+            "instanceRevisionRef": selected_worker.snapshot.instance_revision_ref.to_dict(),
+        }
+        revisions = existing_startup.get("selectedRevisions")
+        if (
+            not isinstance(worker, dict)
+            or not isinstance(revisions, list)
+            or expected_revision not in revisions
+            or (worker.get("pluginId") != receipt.policy.plugin_id)
+            or (
+                worker.get("productPolicyRevision")
+                != receipt.policy.product_policy_revision
+            )
+            or (worker.get("nativeProfileId") != receipt.policy.native_profile_id)
+            or (
+                worker.get("selectedLocatorRevision")
+                != receipt.policy.selected_locator_revision
+            )
+            or (
+                worker.get("selectedLocatorFingerprint")
+                != receipt.policy.selected_locator_fingerprint
+            )
+            or (
+                worker.get("workerConfigurationFingerprint")
+                != receipt.policy.worker_configuration_fingerprint
+            )
+        ):
+            raise failure("startup_selection_changed")
+
+    return selected_worker
 
 
 def _validate_startup_record(

@@ -22,6 +22,7 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
+from loushang.harness.worker.history._receipts import is_receipt_fingerprint
 
 from .product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .product_worker_policy import CodingWorkerPolicySelectionError
@@ -118,9 +119,7 @@ def read_coding_windows_product_worker_receipt_record(
     if (
         os.name != "nt"
         or type(product) is not WindowsLocalWheelProductSessionOwner
-        or type(receipt_fingerprint) is not str
-        or len(receipt_fingerprint) != 64
-        or any(char not in "0123456789abcdef" for char in receipt_fingerprint)
+        or not is_receipt_fingerprint(receipt_fingerprint)
     ):
         raise ValueError("Windows Worker receipt lookup is invalid")
     return CodingWindowsWorkerProductReceiptOwner._read_retained_receipt(

@@ -42,9 +42,6 @@ from loushang.harness.package_product.product_worker_candidate import (
     _read_product_selected_worker_payload_facts,
     verify_product_selected_worker_candidate,
 )
-from loushang.harness.plugin_management.current_preview import (
-    plugin_package_revision_fingerprint,
-)
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
@@ -281,64 +278,6 @@ def _derive_product_selected_worker_policy(
         product_policy_revision=policy_revision,
         kill_switch_generation=opt_in.kill_switch_generation,
     )
-
-
-def capture_worker_startup_selection(
-    *,
-    runtime: PackageProductRuntimeBindingV1,
-    plugin_id: str,
-    receipt: ProductWorkerActivationReceiptV1,
-    existing_startup: dict[str, object] | None,
-    max_files: int,
-    max_total_bytes: int,
-    failure: Callable[[str], RuntimeError],
-) -> PackageProductSelectedPluginManifestV1:
-    selected_worker = runtime.capture_selected_plugin_manifest_for(
-        plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
-    )
-
-    if (
-        selected_worker.snapshot.root_ref.artifact_digest
-        != receipt.policy.plugin_revision_digest
-    ):
-        raise failure("selection_changed")
-
-    if existing_startup is not None:
-        worker = existing_startup.get("workerSelection")
-        expected_revision = {
-            "pluginId": plugin_id,
-            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
-                selected_worker.snapshot.package_revision
-            ),
-            "instanceRevisionRef": selected_worker.snapshot.instance_revision_ref.to_dict(),
-        }
-        revisions = existing_startup.get("selectedRevisions")
-        if (
-            not isinstance(worker, dict)
-            or not isinstance(revisions, list)
-            or expected_revision not in revisions
-            or (worker.get("pluginId") != receipt.policy.plugin_id)
-            or (
-                worker.get("productPolicyRevision")
-                != receipt.policy.product_policy_revision
-            )
-            or (worker.get("nativeProfileId") != receipt.policy.native_profile_id)
-            or (
-                worker.get("selectedLocatorRevision")
-                != receipt.policy.selected_locator_revision
-            )
-            or (
-                worker.get("selectedLocatorFingerprint")
-                != receipt.policy.selected_locator_fingerprint
-            )
-            or (
-                worker.get("workerConfigurationFingerprint")
-                != receipt.policy.worker_configuration_fingerprint
-            )
-        ):
-            raise failure("startup_selection_changed")
-
-    return selected_worker
 
 
 class ProductNativeClosureReadPort(Protocol):
@@ -617,6 +556,16 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
 
     def _derive(self, opt_in: object) -> ProductWorkerActivationPolicyV1 | None:
         raise NotImplementedError
+
+    def _current_receipt_issuance(
+        self,
+    ) -> tuple[ProductWorkerActivationPolicyV1, _OptInDecisionMethods] | None:
+        """Resolve allowed policy under the caller's existing GC write guard."""
+        decision = self._opt_in.current(self._selected.snapshot.installation_key.plugin_id)
+        if decision is None or decision.action != "allow":
+            return None
+        policy = self._derive(decision.opt_in)
+        return (policy, decision) if policy is not None else None
 
     def current_witness(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -1146,15 +1095,8 @@ class _PosixWorkerProductReceiptAuthority(
 
         with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
-            decision = self._opt_in.current(
-                self._selected.snapshot.installation_key.plugin_id
-            )
-            if decision is None or decision.action != "allow":
-                return None
-            policy = self._derive(decision.opt_in)
-            if policy is None:
-                return None
-            return self._issue_recorded_receipt(policy, decision)
+            issuance = self._current_receipt_issuance()
+            return None if issuance is None else self._issue_recorded_receipt(*issuance)
 
     @contextmanager
     def serialized_admission(self) -> Iterator[None]:
@@ -1551,14 +1493,10 @@ class _WindowsWorkerProductReceiptAuthority(
         with self._product.gc_gate.guard(require_write=True):
             self._product.assert_session_runtime_current(self._runtime)
             self._runtime.assert_selected_plugin_manifest_current(self._selected)
-            decision = self._opt_in.current(
-                self._selected.snapshot.installation_key.plugin_id
-            )
-            if decision is None or decision.action != "allow":
+            issuance = self._current_receipt_issuance()
+            if issuance is None:
                 return None
-            policy = self._derive(decision.opt_in)
-            if policy is None:
-                return None
+            policy, decision = issuance
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
             ):
@@ -1777,6 +1715,23 @@ class _ProductWorkerOptInPlanning(Generic[P]):
     _opt_in_error: ClassVar[type[RuntimeError]]
     _error_prefix: ClassVar[str]
     _opt_in_type: ClassVar[type[_OptInValue]]
+    _product_id: ClassVar[str]
+    _selection_error_prefix: ClassVar[str]
+    _product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
+
+    def _current_native_closure(self) -> ProductWorkerNativeClosureFacts:
+        raise NotImplementedError("the installed native owner is required")
+
+    def _capture_allowed_candidate(
+        self, plugin_id: str,
+    ) -> tuple[PackageProductLocalWheelBindingV1, PackageProductLocalWorkerAdmissionV1]:
+        binding, admission = _capture_worker_opt_in_selection(
+            self._product, plugin_id, product_id=self._product_id,
+            error_type=self._opt_in_error, error_prefix=self._selection_error_prefix,
+        )
+        if self._current_native_closure().native_platform != admission.native_platform:
+            raise self._opt_in_error(self._error_prefix + "opt_in_native_platform_changed")
+        return binding, admission
 
     def _plan_allow(
         self,
@@ -1831,12 +1786,7 @@ class _PosixWorkerProductOptInAuthority(
 ):
     _product: PosixLocalWheelProductSessionOwner
     _journal: OptInJournal[D, OptInProjectionT, P]
-    _product_id: ClassVar[str]
     _requiredness_error: ClassVar[str]
-    _selection_error_prefix: ClassVar[str]
-
-    def _current_native_closure(self) -> ProductWorkerNativeClosureFacts:
-        raise NotImplementedError("the installed native owner is required")
 
     def current(self, plugin_id: str) -> D | None:
         return self._journal.current(plugin_id)
@@ -1853,18 +1803,7 @@ class _PosixWorkerProductOptInAuthority(
         if type(require_worker) is not bool:
             raise TypeError(self._requiredness_error)
         with self._product.gc_gate.guard(require_write=True):
-            binding, admission = _capture_worker_opt_in_selection(
-                self._product,
-                plugin_id,
-                product_id=self._product_id,
-                error_type=self._opt_in_error,
-                error_prefix=self._selection_error_prefix,
-            )
-            closure = self._current_native_closure()
-            if closure.native_platform != admission.native_platform:
-                raise self._opt_in_error(
-                    self._error_prefix + "opt_in_native_platform_changed"
-                )
+            binding, admission = self._capture_allowed_candidate(plugin_id)
             previous = self._journal.current(plugin_id)
             opt_in = self._plan_allow(
                 previous,
@@ -1905,14 +1844,15 @@ class _WindowsWorkerProductOptInAuthority(
     _journal: WindowsOptInRecords[D, P]
     _opt_in_error: ClassVar[type[RuntimeError]]
     _error_prefix: ClassVar[str]
-    _product_id: ClassVar[str]
     _requiredness_error: ClassVar[str]
-    _selection_error_prefix: ClassVar[str]
 
     def _read_backend(
         self, product: WindowsLocalWheelProductSessionOwner
     ) -> _WindowsBackendInstalledMethods:
         raise NotImplementedError
+
+    def _current_native_closure(self) -> ProductWorkerNativeClosureFacts:
+        return self._read_backend(self._product).native_closure()
 
     def current(self, plugin_id: str) -> D | None:
         with WindowsProductWorkerHistoryAccess(self._product).decision_root() as root:
@@ -1931,18 +1871,7 @@ class _WindowsWorkerProductOptInAuthority(
         if type(require_worker) is not bool:
             raise TypeError(self._requiredness_error)
         with self._product.gc_gate.guard(require_write=True):
-            binding, admission = _capture_worker_opt_in_selection(
-                self._product,
-                plugin_id,
-                product_id=self._product_id,
-                error_type=self._opt_in_error,
-                error_prefix=self._selection_error_prefix,
-            )
-            closure = self._read_backend(self._product).native_closure()
-            if closure.native_platform != admission.native_platform:
-                raise self._opt_in_error(
-                    self._error_prefix + "opt_in_native_platform_changed"
-                )
+            binding, admission = self._capture_allowed_candidate(plugin_id)
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
             ):

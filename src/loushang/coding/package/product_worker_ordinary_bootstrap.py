@@ -11,9 +11,6 @@ from loushang.coding.composition.provenance import (
     CODING_COMPOSITION_STARTUP_TYPE,
 )
 from loushang.coding.session.manager import SessionManager
-from loushang.harness.package_product._worker_product_authority import (
-    capture_worker_startup_selection as capture_worker_startup_selection,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
@@ -26,7 +23,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
 from loushang.harness.session.composition_evidence import (
-    capture_ordinary_worker_startup,
+    bind_ordinary_worker_startup,
 )
 
 from .product_worker_ordinary_error import CodingWorkerOrdinaryBootstrapError
@@ -131,56 +128,38 @@ def prepare_coding_product_worker_ordinary_binding(
             'coding_worker_ordinary_transcript_not_materialized'
         )
     base_context = ordinary.session_inputs.product_composition.authority_context
-    transcript_directory, existing_startup = capture_ordinary_worker_startup(
+    open_receipt_owner: Callable[
+        ..., CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    ] = (
+        open_coding_windows_product_selected_worker_receipt_owner
+        if type(product_owner) is WindowsLocalWheelProductSessionOwner
+        else open_coding_product_selected_worker_receipt_owner
+    )
+    receipt_owner, receipt, selected_worker, resume_settlement = bind_ordinary_worker_startup(
         session_manager,
         runtime,
+        plugin_id=plugin_id,
         base_context=base_context,
         plan_context=ordinary.compilation.plan.context,
         extension_type=CODING_COMPOSITION_STARTUP_TYPE,
         label="Coding Session",
-        failure=_startup_failure,
-    )
-    open_receipt_owner: Callable[
-        ..., CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
-    ]
-    if type(product_owner) is WindowsLocalWheelProductSessionOwner:
-        open_receipt_owner = partial(
-            open_coding_windows_product_selected_worker_receipt_owner,
-            product_owner=product_owner,
-        )
-    else:
-        assert type(product_owner) is PosixLocalWheelProductSessionOwner
-        open_receipt_owner = partial(
-            open_coding_product_selected_worker_receipt_owner,
-            product_owner=product_owner,
-        )
-    receipt_owner = open_receipt_owner(
-        runtime=runtime,
-        plugin_id=plugin_id,
-        transcript_directory=transcript_directory,
-        session_manager=session_manager,
-        active_session=True,
-    )
-    receipt = receipt_owner.issue()
-    if receipt is None:
-        raise CodingWorkerOrdinaryBootstrapError(
-            'coding_worker_ordinary_candidate_not_allowed'
-        )
-    resume_settlement = (
-        CodingWorkerResumeSettlementBinding(
-            receipt=receipt,
-            context=resume_parent_context,
-        )
-        if resume_parent_context is not None
-        else None
-    )
-    selected_worker = capture_worker_startup_selection(
-        runtime=runtime,
-        plugin_id=plugin_id,
-        receipt=receipt,
-        existing_startup=existing_startup,
         max_files=_STARTUP_MAX_FILES,
         max_total_bytes=_STARTUP_MAX_BYTES,
+        open_receipt_owner=lambda directory: open_receipt_owner(
+            product_owner=product_owner,
+            runtime=runtime,
+            plugin_id=plugin_id,
+            transcript_directory=directory,
+            session_manager=session_manager,
+            active_session=True,
+        ),
+        bind_receipt_context=lambda selected_receipt: (
+            CodingWorkerResumeSettlementBinding(
+                receipt=selected_receipt, context=resume_parent_context
+            )
+            if resume_parent_context is not None
+            else None
+        ),
         failure=_startup_failure,
     )
     base_policy = CodingWorkerBaseCompositionPolicyBinding(
