@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
-from typing import ClassVar, Generic, Literal, Protocol, TypeVar
+from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -20,6 +21,11 @@ from loushang.harness.journal import (
 from loushang.harness.journal._path_admission import (
     private_journal_exists,
     require_private_journal_parent,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
 )
 
 from .private_data_restore_journal import (
@@ -63,6 +69,44 @@ class ExpiryHistoryEvent(Protocol):
     def record_version(self) -> int: ...
     @property
     def receipt(self) -> object | None: ...
+
+
+class _ExpiryWireRecord(Protocol):
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
+
+    def to_dict(self) -> dict[str, object]: ...
+
+
+def expiry_event_schema(
+    event_type: type[ExpiryHistoryEvent],
+    *,
+    plan: type[_ExpiryWireRecord],
+    confirmation: type[_ExpiryWireRecord],
+    archive: type[_ExpiryWireRecord],
+    receipt: type[_ExpiryWireRecord],
+) -> RecordSchema:
+    """Use the same nested record fields for both native expiry journals."""
+    return RecordSchema.for_dataclass(
+        event_type,
+        lambda value: value,
+        RecordField("plan", decoder=plan.from_dict, encoder=plan.to_dict),
+        RecordField(
+            "confirmation", decoder=confirmation.from_dict, encoder=confirmation.to_dict
+        ),
+        RecordField(
+            "archive", decoder=partial(decode_nullable, decoder=archive.from_dict),
+            encoder=_encode_optional,
+        ),
+        RecordField(
+            "receipt", decoder=partial(decode_nullable, decoder=receipt.from_dict),
+            encoder=_encode_optional,
+        ),
+    )
+
+
+def _encode_optional(value: _ExpiryWireRecord | None) -> dict[str, object] | None:
+    return None if value is None else value.to_dict()
 
 
 class _ExpiryConfirmation(Protocol):

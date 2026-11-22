@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeVar
 
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -46,6 +46,34 @@ def private_data_mutation_fence(
         with product.gc_gate.guard(require_write=require_write):
             yield
         product.assert_root_gc_authority_current()
+
+
+class _NativePrivateDataTransaction(Protocol):
+    def _close(self) -> None: ...
+
+
+TransactionT = TypeVar("TransactionT", bound=_NativePrivateDataTransaction)
+
+
+@contextmanager
+def windows_private_data_mutation_transaction(
+    product: WindowsLocalWheelProductSessionOwner,
+    create: Callable[[int], TransactionT],
+    *,
+    active_message: str,
+) -> Iterator[TransactionT]:
+    """Keep the state descriptor and write fence until the transaction is closed."""
+    with (
+        private_data_mutation_fence(
+            product, active_message=active_message, require_write=True
+        ),
+        product.epoch_runtime.borrow_product_state_root_descriptor() as fd,
+    ):
+        transaction = create(fd)
+        try:
+            yield transaction
+        finally:
+            transaction._close()
 
 
 @contextmanager

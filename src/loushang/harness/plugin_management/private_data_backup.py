@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, TypeVar
+from typing import Generic, Literal, Protocol, Self, TypeVar
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.resources.packages._file_consumption import closing_descriptor
 from loushang.harness.resources.packages._private_tree_posix import (
     PrivatePosixTreeIO,
@@ -23,6 +26,9 @@ from loushang.harness.resources.packages._tree_observation import (
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     _entry_exists,
     _rename_directory_noreplace,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
 )
 
 from ._private_data_expiry import ExpiryHistoryEvent, ExpiryPlan
@@ -70,6 +76,78 @@ class PrivateArchiveCodec(Protocol[S, R]):
     def encode(self, key: PluginInstallationKeyV1, source: S, receipt: R) -> bytes: ...
 
     def decode(self, raw: bytes) -> tuple[R, S]: ...
+
+
+class _ManifestSource(PrivateDataDeletionTarget, Protocol):
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
+    def to_dict(self) -> dict[str, object]: ...
+
+
+class _ManifestReceipt(PrivateBackupReceipt, Protocol):
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
+    def to_dict(self) -> dict[str, object]: ...
+
+
+_ManifestSourceT = TypeVar("_ManifestSourceT", bound=_ManifestSource)
+_ManifestReceiptT = TypeVar("_ManifestReceiptT", bound=_ManifestReceipt)
+
+
+@dataclass(frozen=True, slots=True)
+class PrivateArchiveManifestCodec(Generic[_ManifestSourceT, _ManifestReceiptT]):
+    """Share manifest identity checks while retaining each platform's read rules."""
+
+    source_type: type[_ManifestSourceT]
+    receipt_type: type[_ManifestReceiptT]
+    backup_id_for: Callable[[PluginInstallationKeyV1, _ManifestSourceT], str]
+    label: str
+    windows: bool
+
+    max_manifest_bytes = 4 * 1024 * 1024
+    files_name = "files"
+    manifest_name = "manifest.json"
+    stage_suffix = ".staging"
+
+    def encode(
+        self,
+        key: PluginInstallationKeyV1,
+        source: _ManifestSourceT,
+        receipt: _ManifestReceiptT,
+    ) -> bytes:
+        if not self.windows and receipt.installation_key != key:
+            raise ValueError(f"{self.label} backup Installation changed")
+        return canonical_json_bytes(
+            {"receipt": receipt.to_dict(), "source": source.to_dict()}
+        ) + b"\n"
+
+    def decode(self, raw: bytes) -> tuple[_ManifestReceiptT, _ManifestSourceT]:
+        duplicate_error = (
+            "has duplicate fields" if self.windows else "has a duplicate JSON key"
+        )
+        try:
+            document = json.loads(
+                (bytes(raw) if self.windows else raw).decode("utf-8"),
+                object_pairs_hook=_unique_json_object_hook(
+                    lambda: f"{self.label} backup manifest {duplicate_error}"
+                ),
+            )
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            if not self.windows:
+                raise
+            raise ValueError(f"{self.label} backup manifest is invalid") from exc
+        if type(document) is not dict or set(document) != {"receipt", "source"}:
+            raise ValueError(f"{self.label} backup manifest fields are invalid")
+        source = self.source_type.from_dict(document["source"])
+        receipt = self.receipt_type.from_dict(document["receipt"])
+        if (
+            receipt.source_target_id != source.target_id
+            or receipt.backup_id != self.backup_id_for(receipt.installation_key, source)
+            or (self.windows and bytes(raw) != canonical_json_bytes(document) + b"\n")
+        ):
+            changed = "identity" if self.windows else "target"
+            raise ValueError(f"{self.label} backup manifest {changed} changed")
+        return receipt, source
 
 
 class PrivateTreePreparePort(Protocol):

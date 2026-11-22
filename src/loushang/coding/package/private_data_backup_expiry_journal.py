@@ -14,11 +14,8 @@ from typing import Literal
 from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
 from loushang.harness.plugin_management._private_data_expiry import (
     PrivateDataExpiryJournal,
+    expiry_event_schema,
     validate_expiry_event,
-)
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
 )
 
 from .private_data_backup_expiry_records import (
@@ -128,37 +125,12 @@ class CodingArchPrivateDataBackupExpiryJournal(
         return _MAX_BYTES
 
 
-_SCHEMA_BACKUP_EXPIRY_EVENT_V1 = RecordSchema.for_dataclass(
+_SCHEMA_BACKUP_EXPIRY_EVENT_V1 = expiry_event_schema(
     CodingArchPrivateDataBackupExpiryEventV1,
-    lambda value: value,
-    RecordField(
-        "plan",
-        decoder=CodingArchPrivateDataBackupExpiryPlanV1.from_dict,
-        encoder=CodingArchPrivateDataBackupExpiryPlanV1.to_dict,
-    ),
-    RecordField(
-        "confirmation",
-        decoder=CodingArchPrivateDataBackupExpiryConfirmationV1.from_dict,
-        encoder=CodingArchPrivateDataBackupExpiryConfirmationV1.to_dict,
-    ),
-    RecordField(
-        "archive",
-        decoder=lambda item: (
-            None
-            if item is None
-            else CodingArchPrivateDataTargetSnapshotV1.from_dict(item)
-        ),
-        encoder=lambda item: None if item is None else item.to_dict(),
-    ),
-    RecordField(
-        "receipt",
-        decoder=lambda item: (
-            None
-            if item is None
-            else CodingArchPrivateDataBackupExpiryReceiptV1.from_dict(item)
-        ),
-        encoder=lambda item: None if item is None else item.to_dict(),
-    ),
+    plan=CodingArchPrivateDataBackupExpiryPlanV1,
+    confirmation=CodingArchPrivateDataBackupExpiryConfirmationV1,
+    archive=CodingArchPrivateDataTargetSnapshotV1,
+    receipt=CodingArchPrivateDataBackupExpiryReceiptV1,
 )
 
 __all__ = [

@@ -15,7 +15,7 @@ from typing import ClassVar
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._private_data_custody import (
-    private_data_mutation_fence,
+    windows_private_data_mutation_transaction,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -167,21 +167,14 @@ class CodingWindowsArchPrivateDataRestoreJournal:
 
     @contextmanager
     def transaction(self) -> Iterator[CodingWindowsArchPrivateDataRestoreTransaction]:
-        with (
-            private_data_mutation_fence(
-                self.product,
-                active_message="Windows Coding Arch restore runtime is active",
-                require_write=True,
-            ),
-            self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd,
-        ):
-            transaction = CodingWindowsArchPrivateDataRestoreTransaction(
+        with windows_private_data_mutation_transaction(
+            self.product,
+            lambda fd: CodingWindowsArchPrivateDataRestoreTransaction(
                 self.layout, self.product, fd
-            )
-            try:
-                yield transaction
-            finally:
-                transaction._close()
+            ),
+            active_message="Windows Coding Arch restore runtime is active",
+        ) as transaction:
+            yield transaction
 
 
 @dataclass(frozen=True, slots=True)

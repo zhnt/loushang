@@ -23,6 +23,7 @@ from loushang.harness.plugin_management._private_data_backup_windows import (
     WindowsArchiveExpiryIO,
 )
 from loushang.harness.plugin_management._private_data_expiry import (
+    expiry_event_schema,
     validate_expiry_event,
 )
 from loushang.harness.plugin_management._private_data_expiry_windows import (
@@ -106,37 +107,18 @@ class CodingWindowsArchBackupExpiryEventV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingWindowsArchBackupExpiryEventV1:
-        if type(value) is not dict or set(value) != {
-            "archive",
-            "confirmation",
-            "phase",
-            "plan",
-            "receipt",
-            "recordVersion",
-            "revision",
-        }:
+        if type(value) is not dict or set(value) != _SCHEMA_BACKUP_EXPIRY_EVENT_V1.keys:
             raise ValueError("Windows Coding Arch backup expiry event fields changed")
-        archive = value["archive"]
-        receipt = value["receipt"]
-        return cls(
-            revision=value["revision"],
-            phase=value["phase"],
-            plan=CodingArchPrivateDataBackupExpiryPlanV1.from_dict(value["plan"]),
-            confirmation=CodingArchPrivateDataBackupExpiryConfirmationV1.from_dict(
-                value["confirmation"]
-            ),
-            archive=(
-                None
-                if archive is None
-                else CodingWindowsArchBackupArchiveSnapshotV1.from_dict(archive)
-            ),
-            receipt=(
-                None
-                if receipt is None
-                else CodingArchPrivateDataBackupExpiryReceiptV1.from_dict(receipt)
-            ),
-            record_version=value["recordVersion"],
-        )
+        return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.decode(cls, value)
+
+
+_SCHEMA_BACKUP_EXPIRY_EVENT_V1 = expiry_event_schema(
+    CodingWindowsArchBackupExpiryEventV1,
+    plan=CodingArchPrivateDataBackupExpiryPlanV1,
+    confirmation=CodingArchPrivateDataBackupExpiryConfirmationV1,
+    archive=CodingWindowsArchBackupArchiveSnapshotV1,
+    receipt=CodingArchPrivateDataBackupExpiryReceiptV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
