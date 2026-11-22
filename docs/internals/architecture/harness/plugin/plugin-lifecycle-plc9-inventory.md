@@ -1409,8 +1409,8 @@ The listed scopes track the corresponding Product settings references.
 | `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.from_dict` | `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.from_dict` | 1 |
 | `src/loushang/coding/package/legacy_disabled_review.py::CodingLegacyDisabledOnlyReviewV1.from_dict` | `src/loushang/coding/package/legacy_disabled_review.py::CodingLegacyDisabledOnlyReviewV1.from_dict` | 1 |
 | `src/loushang/coding/package/legacy_local_acceptance.py::CodingLegacyLocalAcceptanceV1.create` | `src/loushang/coding/package/legacy_local_acceptance.py::CodingLegacyLocalAcceptanceV1.create` | 1 |
-| `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.__post_init__` | `src/loushang/harness/package_product/_legacy_removed_review.py::LegacyRemovalReviewRecord.__post_init__` | 2 |
-| `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.from_dict` | `src/loushang/harness/package_product/_legacy_removed_review.py::LegacyRemovalReviewRecord.from_dict` | 1 |
+| `CodingLegacyRemovedReviewV1.__post_init__` in `src/loushang/coding/package/legacy_removed_review.py` | `src/loushang/harness/package_product/_legacy_removed_review.py::LegacyRemovalReviewRecord.__post_init__` | 2 |
+| `CodingLegacyRemovedReviewV1.from_dict` in `src/loushang/coding/package/legacy_removed_review.py` | `src/loushang/harness/package_product/_legacy_removed_review.py::LegacyRemovalReviewRecord.from_dict` | 1 |
 | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | 1 |
 | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.from_dict` | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.from_dict` | 1 |
 | `src/loushang/coding/package/product_runtime.py::bootstrap_coding_accepted_disabled_only_product_plugins` | `src/loushang/coding/package/product_runtime.py::bootstrap_coding_accepted_disabled_only_product_plugins` | 1 |
