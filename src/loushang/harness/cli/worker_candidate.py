@@ -17,7 +17,6 @@ from loushang.harness.package_product.product_worker_candidate import (
     _update_worker_candidate,
     _worker_candidate_revision_matches,
 )
-from loushang.harness.worker.history._opt_in import _OptInDecisionMethods
 
 _CHANGE_ACTIONS = (
     "candidate-install",
@@ -76,8 +75,12 @@ def add_worker_candidate_opt_in_commands(
             command.add_argument("--require-worker", action="store_true")
 
 
+class _OptInDecision(Protocol):
+    def to_dict(self) -> dict[str, object]: ...
+
+
 class _OptInAuthority(Protocol):
-    def current(self, plugin_id: str) -> _OptInDecisionMethods | None: ...
+    def current(self, plugin_id: str) -> _OptInDecision | None: ...
 
     def allow(
         self,
@@ -86,15 +89,15 @@ class _OptInAuthority(Protocol):
         operation_id: str,
         expected_generation: int,
         require_worker: bool,
-    ) -> _OptInDecisionMethods: ...
+    ) -> _OptInDecision: ...
 
     def revoke(
         self, *, plugin_id: str, operation_id: str, expected_generation: int
-    ) -> _OptInDecisionMethods: ...
+    ) -> _OptInDecision: ...
 
 
 def worker_candidate_opt_in_document(
-    decision: _OptInDecisionMethods | None, *, ordinary_session_routing: str | None
+    decision: _OptInDecision | None, *, ordinary_session_routing: str | None
 ) -> dict[str, object]:
     document: dict[str, object] = {
         "candidateOptInDecision": None if decision is None else decision.to_dict(),
