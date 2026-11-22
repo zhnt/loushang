@@ -57,8 +57,11 @@ from loushang.coding.plugin_manager.lifecycle import (
 )
 from loushang.harness.cli.worker_candidate import (
     WORKER_CANDIDATE_CHANGE_ACTIONS,
+    WORKER_CANDIDATE_OPT_IN_ACTIONS,
     add_worker_candidate_commands,
+    add_worker_candidate_opt_in_commands,
     execute_worker_candidate_change,
+    execute_worker_candidate_opt_in,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -66,7 +69,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.package_product.product_worker_candidate import (
     _observe_installed_worker_candidate,
 )
-from loushang.harness.resources.packages._file_consumption import read_bounded_prefix
+from loushang.harness.resources.packages._file_consumption import (
+    closing_descriptor,
+    read_exact_bounded_file,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
     open_windows_regular_file_at,
@@ -140,17 +146,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     revoke_release = actions.add_parser("release-revoke", help="revoke native approval")
     revoke_release.add_argument("--operation-id", required=True)
     revoke_release.add_argument("--expected-generation", type=int, required=True)
-    status = actions.add_parser("candidate-status", help="read one Worker opt-in")
-    status.add_argument("--plugin-id", required=True)
-    allow = actions.add_parser("candidate-allow", help="allow one selected Worker")
-    allow.add_argument("--plugin-id", required=True)
-    allow.add_argument("--operation-id", required=True)
-    allow.add_argument("--expected-generation", type=int, required=True)
-    allow.add_argument("--require-worker", action="store_true")
-    revoke = actions.add_parser("candidate-revoke", help="revoke one Worker opt-in")
-    revoke.add_argument("--plugin-id", required=True)
-    revoke.add_argument("--operation-id", required=True)
-    revoke.add_argument("--expected-generation", type=int, required=True)
+    add_worker_candidate_opt_in_commands(
+        actions,
+        help_text={
+            "candidate-status": "read one Worker opt-in",
+            "candidate-allow": "allow one selected Worker",
+            "candidate-revoke": "revoke one Worker opt-in",
+        },
+    )
     args = parser.parse_args(argv)
     if os.name != "nt" or platform.machine().lower() not in {"x86_64", "amd64"}:
         sys.stderr.write(
@@ -348,29 +351,12 @@ def _execute(
             "nativeClosure": native_installed.native_closure().to_dict(),
             "approvalGeneration": native_installed.approval_generation,
         }
-    if args.action in {"candidate-status", "candidate-allow", "candidate-revoke"}:
-        opt_in = CodingWindowsWorkerProductOptInOwner(product)
-        if args.action == "candidate-status":
-            opt_in_decision = opt_in.current(args.plugin_id)
-        elif args.action == "candidate-allow":
-            opt_in_decision = opt_in.allow(
-                plugin_id=args.plugin_id,
-                operation_id=args.operation_id,
-                expected_generation=args.expected_generation,
-                require_worker=args.require_worker,
-            )
-        else:
-            opt_in_decision = opt_in.revoke(
-                plugin_id=args.plugin_id,
-                operation_id=args.operation_id,
-                expected_generation=args.expected_generation,
-            )
-        return {
-            "candidateOptInDecision": (
-                None if opt_in_decision is None else opt_in_decision.to_dict()
-            ),
-            "defaultSessionRouting": "closed",
-        }
+    if args.action in WORKER_CANDIDATE_OPT_IN_ACTIONS:
+        return execute_worker_candidate_opt_in(
+            CodingWindowsWorkerProductOptInOwner(product),
+            args,
+            ordinary_session_routing=None,
+        )
     raise ValueError("Windows Worker candidate action is unsupported")
 
 
@@ -411,27 +397,20 @@ def _require_candidate_revoked(
 
 def _read_wheel(path: Path) -> bytes:
     target = path.expanduser().absolute()
-    parent = open_windows_directory(target.parent, writable=False)
-    try:
-        descriptor = open_windows_regular_file_at(
-            parent, target.name, create_new=False, write=False
-        )
-        try:
-            metadata = os.fstat(descriptor)
-            if not 0 < metadata.st_size <= _MAX_WHEEL_BYTES:
-                raise ValueError("Windows Worker backend Wheel source is invalid")
-            body = read_bounded_prefix(
-                descriptor, _MAX_WHEEL_BYTES, chunk_size=64 * 1024
+    with closing_descriptor(
+        open_windows_directory(target.parent, writable=False)
+    ) as parent:
+        with closing_descriptor(
+            open_windows_regular_file_at(
+                parent, target.name, create_new=False, write=False
             )
-            if len(body) > _MAX_WHEEL_BYTES:
-                raise ValueError("Windows Worker backend Wheel exceeds its bound")
-            if len(body) != metadata.st_size:
-                raise ValueError("Windows Worker backend Wheel changed during read")
-            return body
-        finally:
-            os.close(descriptor)
-    finally:
-        os.close(parent)
+        ) as descriptor:
+            return read_exact_bounded_file(
+                descriptor,
+                _MAX_WHEEL_BYTES,
+                label="Windows Worker backend Wheel",
+                check_regular=False,
+            )
 
 
 if __name__ == "__main__":

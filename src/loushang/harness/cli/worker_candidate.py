@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from collections.abc import Callable, Mapping
-from typing import Literal, cast
+from typing import Literal, Protocol, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -17,6 +17,7 @@ from loushang.harness.package_product.product_worker_candidate import (
     _update_worker_candidate,
     _worker_candidate_revision_matches,
 )
+from loushang.harness.worker.history._opt_in import _OptInDecisionMethods
 
 _CHANGE_ACTIONS = (
     "candidate-install",
@@ -26,6 +27,11 @@ _CHANGE_ACTIONS = (
     "candidate-remove",
 )
 WORKER_CANDIDATE_CHANGE_ACTIONS = frozenset(_CHANGE_ACTIONS)
+WORKER_CANDIDATE_OPT_IN_ACTIONS = (
+    "candidate-status",
+    "candidate-allow",
+    "candidate-revoke",
+)
 
 
 def add_worker_candidate_commands(
@@ -55,6 +61,74 @@ def add_worker_candidate_commands(
             command.add_argument(
                 "--expected-inventory-revision", type=int, required=True
             )
+
+
+def add_worker_candidate_opt_in_commands(
+    actions: _SubParsersAction[ArgumentParser], *, help_text: Mapping[str, str]
+) -> None:
+    for action in WORKER_CANDIDATE_OPT_IN_ACTIONS:
+        command = actions.add_parser(action, help=help_text[action])
+        command.add_argument("--plugin-id", required=True)
+        if action != "candidate-status":
+            command.add_argument("--operation-id", required=True)
+            command.add_argument("--expected-generation", type=int, required=True)
+        if action == "candidate-allow":
+            command.add_argument("--require-worker", action="store_true")
+
+
+class _OptInAuthority(Protocol):
+    def current(self, plugin_id: str) -> _OptInDecisionMethods | None: ...
+
+    def allow(
+        self,
+        *,
+        plugin_id: str,
+        operation_id: str,
+        expected_generation: int,
+        require_worker: bool,
+    ) -> _OptInDecisionMethods: ...
+
+    def revoke(
+        self, *, plugin_id: str, operation_id: str, expected_generation: int
+    ) -> _OptInDecisionMethods: ...
+
+
+def worker_candidate_opt_in_document(
+    decision: _OptInDecisionMethods | None, *, ordinary_session_routing: str | None
+) -> dict[str, object]:
+    document: dict[str, object] = {
+        "candidateOptInDecision": None if decision is None else decision.to_dict(),
+        "defaultSessionRouting": "closed",
+    }
+    if ordinary_session_routing is not None:
+        document["ordinarySessionRouting"] = ordinary_session_routing
+    return document
+
+
+def execute_worker_candidate_opt_in(
+    owner: _OptInAuthority, args: Namespace, *, ordinary_session_routing: str | None
+) -> dict[str, object]:
+    """Resolve an operator request through the existing native decision authority."""
+    if args.action == "candidate-status":
+        decision = owner.current(args.plugin_id)
+    elif args.action == "candidate-allow":
+        decision = owner.allow(
+            plugin_id=args.plugin_id,
+            operation_id=args.operation_id,
+            expected_generation=args.expected_generation,
+            require_worker=args.require_worker,
+        )
+    elif args.action == "candidate-revoke":
+        decision = owner.revoke(
+            plugin_id=args.plugin_id,
+            operation_id=args.operation_id,
+            expected_generation=args.expected_generation,
+        )
+    else:
+        raise ValueError("Worker candidate opt-in action is unsupported")
+    return worker_candidate_opt_in_document(
+        decision, ordinary_session_routing=ordinary_session_routing
+    )
 
 
 def execute_worker_candidate_change(

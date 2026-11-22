@@ -7,7 +7,6 @@ import asyncio
 import json
 import os
 import re
-import stat
 import sys
 from collections.abc import Sequence
 from hashlib import sha256
@@ -68,8 +67,12 @@ from loushang.coding.plugin_manager.lifecycle import (
 )
 from loushang.harness.cli.worker_candidate import (
     WORKER_CANDIDATE_CHANGE_ACTIONS,
+    WORKER_CANDIDATE_OPT_IN_ACTIONS,
     add_worker_candidate_commands,
+    add_worker_candidate_opt_in_commands,
     execute_worker_candidate_change,
+    execute_worker_candidate_opt_in,
+    worker_candidate_opt_in_document,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -77,7 +80,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.resources.packages._file_consumption import read_bounded_prefix
+from loushang.harness.resources.packages._file_consumption import (
+    closing_descriptor,
+    read_exact_bounded_file,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -85,8 +91,8 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWorkerAdmissionV1,
 )
 
-_MAX_WHEEL_BYTES = 4 * 1024 * 1024
 _SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
+_MAX_WHEEL_BYTES = 4 * 1024 * 1024
 
 
 class CodingWorkerNativeCandidateCommandError(ValueError):
@@ -122,24 +128,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     revoke = actions.add_parser("revoke", help="revoke the current release approval")
     revoke.add_argument("--operation-id", required=True)
     revoke.add_argument("--expected-generation", type=int, required=True)
-    candidate_status = actions.add_parser(
-        "candidate-status", help="read one explicit Product Worker opt-in decision"
+    add_worker_candidate_opt_in_commands(
+        actions,
+        help_text={
+            "candidate-status": "read one explicit Product Worker opt-in decision",
+            "candidate-allow": "allow one selected Worker candidate, without routing Sessions",
+            "candidate-revoke": "revoke one Product Worker candidate opt-in",
+        },
     )
-    candidate_status.add_argument("--plugin-id", required=True)
-    candidate_allow = actions.add_parser(
-        "candidate-allow",
-        help="allow one selected Worker candidate, without routing Sessions",
-    )
-    candidate_allow.add_argument("--plugin-id", required=True)
-    candidate_allow.add_argument("--operation-id", required=True)
-    candidate_allow.add_argument("--expected-generation", type=int, required=True)
-    candidate_allow.add_argument("--require-worker", action="store_true")
-    candidate_revoke = actions.add_parser(
-        "candidate-revoke", help="revoke one Product Worker candidate opt-in"
-    )
-    candidate_revoke.add_argument("--plugin-id", required=True)
-    candidate_revoke.add_argument("--operation-id", required=True)
-    candidate_revoke.add_argument("--expected-generation", type=int, required=True)
     query = actions.add_parser(
         "query", help="query an installed, selected Worker in an existing Session"
     )
@@ -268,11 +264,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _candidate_status_document(
     decision: CodingWorkerOptInDecisionV1 | None,
 ) -> dict[str, object]:
-    return {
-        "candidateOptInDecision": None if decision is None else decision.to_dict(),
-        "ordinarySessionRouting": "python_sdk_explicit_linux",
-        "defaultSessionRouting": "closed",
-    }
+    return worker_candidate_opt_in_document(
+        decision, ordinary_session_routing="python_sdk_explicit_linux"
+    )
 
 
 def _read_candidate_status_document(
@@ -394,28 +388,12 @@ def _execute(
             )
         )
         return {"workerQuery": {"text": answer}}
-    if args.action in {"candidate-status", "candidate-allow", "candidate-revoke"}:
-        opt_in = CodingWorkerProductOptInOwner(product)
-        if args.action == "candidate-status":
-            return _candidate_status_document(opt_in.current(args.plugin_id))
-        if args.action == "candidate-allow":
-            candidate_decision = opt_in.allow(
-                plugin_id=args.plugin_id,
-                operation_id=args.operation_id,
-                expected_generation=args.expected_generation,
-                require_worker=args.require_worker,
-            )
-        else:
-            candidate_decision = opt_in.revoke(
-                plugin_id=args.plugin_id,
-                operation_id=args.operation_id,
-                expected_generation=args.expected_generation,
-            )
-        return {
-            "candidateOptInDecision": candidate_decision.to_dict(),
-            "ordinarySessionRouting": "python_sdk_explicit_linux",
-            "defaultSessionRouting": "closed",
-        }
+    if args.action in WORKER_CANDIDATE_OPT_IN_ACTIONS:
+        return execute_worker_candidate_opt_in(
+            CodingWorkerProductOptInOwner(product),
+            args,
+            ordinary_session_routing="python_sdk_explicit_linux",
+        )
     if args.action in {"review-orphan-runtime", "repair-orphan-runtime"}:
         orphan_review = review_coding_product_worker_orphan_runtime(
             product, attempt_id=args.attempt_id
@@ -634,22 +612,15 @@ def _gated_review_id(
 
 def _read_wheel(path: Path) -> bytes:
     target = path.expanduser().absolute()
-    descriptor = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    try:
-        metadata = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or not 0 < metadata.st_size <= _MAX_WHEEL_BYTES
-        ):
-            raise ValueError("Coding Worker native Wheel source is invalid")
-        body = read_bounded_prefix(descriptor, _MAX_WHEEL_BYTES, chunk_size=64 * 1024)
-        if len(body) > _MAX_WHEEL_BYTES:
-            raise ValueError("Coding Worker native Wheel exceeds its bound")
-        if len(body) != metadata.st_size:
-            raise ValueError("Coding Worker native Wheel changed during read")
-        return body
-    finally:
-        os.close(descriptor)
+    with closing_descriptor(
+        os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    ) as descriptor:
+        return read_exact_bounded_file(
+            descriptor,
+            _MAX_WHEEL_BYTES,
+            label="Coding Worker native Wheel",
+            check_regular=True,
+        )
 
 
 if __name__ == "__main__":
