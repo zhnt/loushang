@@ -320,22 +320,6 @@ def hold_coding_pre_b_snapshot_owner(
                 lifecycle=state,
                 package=package,
             )
-            domain_roots = {
-                "store_bytes": package.source_root,
-                "binding_history": package.source_root,
-                "lock_history": package.source_root,
-                "desired_state": state.source_root,
-                "enablement_state": state.source_root,
-                "instance_state": state.source_root,
-                "fence_record": epoch.control_root,
-                "source_configuration": source_root,
-                "legacy_root_pointer": pointer_root,
-            }
-            domain_members: dict[str, tuple[str, ...] | None] = {
-                domain: None for domain in domain_roots
-            }
-            domain_members.update(package.domain_members())
-            domain_members.update(state.domain_members())
             shared_members = (
                 (
                     PackageProductPreBSnapshotSharedMemberV1(
@@ -350,8 +334,13 @@ def hold_coding_pre_b_snapshot_owner(
             owner = bind_legacy_pre_b_snapshot_owner(
                 epoch.snapshot_root,
                 store_id=epoch.store_id,
-                domain_roots=domain_roots,
-                domain_members=domain_members,
+                observed_roots=(
+                    (package.source_root, package.domain_members()),
+                    (state.source_root, state.domain_members()),
+                ),
+                fence_root=epoch.control_root,
+                source_configuration_root=source_root,
+                legacy_pointer_root=pointer_root,
                 legacy_root_pointer_name=epoch.legacy_root_name,
                 shared_members=shared_members,
             )

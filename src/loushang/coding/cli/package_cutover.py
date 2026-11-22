@@ -89,6 +89,7 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._legacy_runtime import legacy_product_fence_exists
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackagePosixEpochCutoverResultV1,
 )
@@ -417,12 +418,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
         namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-        try:
-            (epoch.control_root / "epoch.jsonl").lstat()
-        except FileNotFoundError:
-            has_fence = False
-        else:
-            has_fence = True
+        has_fence = legacy_product_fence_exists(epoch.control_root)
         if not has_fence:
             require_fresh_coding_product_inputs_without_writes(
                 lifecycle, workspace=workspace
@@ -595,9 +591,7 @@ def _prepare_review_cutover(
     Admission remains the original cutover owner's Product callback. Existing
     fences do not run admission or a new preparation.
     """
-    try:
-        (epoch.control_root / "epoch.jsonl").lstat()
-    except FileNotFoundError:
+    if not legacy_product_fence_exists(epoch.control_root):
         if before_prepare is not None:
             before_prepare()
         prepared = prepare_and_cutover_coding_package_store_from_legacy(
@@ -714,9 +708,7 @@ def _run_windows_fresh_candidate(
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-    try:
-        (epoch.control_root / "epoch.jsonl").lstat()
-    except FileNotFoundError:
+    if not legacy_product_fence_exists(epoch.control_root):
         bootstrap_complete = True
         require_fresh_coding_product_inputs_without_writes(
             lifecycle, workspace=workspace

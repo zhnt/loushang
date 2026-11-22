@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import stat
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
@@ -15,7 +16,6 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
 
 from loushang.foundation.json import _unique_json_object_hook
@@ -64,7 +64,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff impo
     PackageRetentionHandoffJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
-    _hold_windows_private_cutover_directory,
     _PinnedWindowsAuthority,
 )
 from loushang.harness.resources.packages.product_contract import (
@@ -80,7 +79,7 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
-    write_legacy_product_projection,
+    hold_legacy_product_projection_root,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
@@ -1205,6 +1204,31 @@ class _LegacyLocalInstallation:
                 raise self.error_type("Legacy local Product Package install refused")
 
 
+_LegacySourceScope = Literal["global", "project"]
+_LEGACY_SOURCE_SCOPES: tuple[_LegacySourceScope, ...] = ("global", "project")
+_LEGACY_PACKAGE_FILTER_KEYS = frozenset({"extensions", "skills", "prompts", "themes"})
+_SOURCE_PROJECTION_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _valid_snapshot_package_source(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value)
+    if not isinstance(value, dict) or not set(value) <= {
+        "source",
+        *_LEGACY_PACKAGE_FILTER_KEYS,
+    }:
+        return False
+    source = value.get("source")
+    if not isinstance(source, str) or not source:
+        return False
+    return all(
+        isinstance(items, list)
+        and all(isinstance(item, str) and item for item in items)
+        for key, items in value.items()
+        if key in _LEGACY_PACKAGE_FILTER_KEYS
+    )
+
+
 @dataclass(frozen=True)
 class _LegacySourceProjection:
     """Keep the original Settings transaction and native projection alive together.
@@ -1283,24 +1307,14 @@ class _LegacySourceProjection:
             contents = self.projection_bytes(
                 {"productId": self.product_id, "projectionVersion": 1, "scopes": layers}
             )
-            if os.name == "nt":
-                with _hold_windows_private_cutover_directory(
-                    parent,
-                    prefix=self.prefix,
-                    projection_name=self.projection_name,
-                    projection_label=f"{self.label} Source projection",
-                    projection_contents=contents,
-                ) as source_root:
-                    yield source_root
-            else:
-                with TemporaryDirectory(prefix=self.prefix, dir=parent) as raw:
-                    source_root = Path(raw)
-                    write_legacy_product_projection(
-                        source_root,
-                        projection_name=self.projection_name,
-                        contents=contents,
-                    )
-                    yield source_root
+            with hold_legacy_product_projection_root(
+                parent,
+                prefix=self.prefix,
+                projection_name=self.projection_name,
+                projection_label=f"{self.label} Source projection",
+                projection_contents=contents,
+            ) as source_root:
+                yield source_root
 
     def require_path(self, path: Path, *, name: str) -> Path:
         if not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts:
@@ -1355,6 +1369,85 @@ class _LegacySourceProjection:
                 if not isinstance(value, list) or value:
                     return True
         return False
+
+    def classify(
+        self,
+        projection: object,
+        *,
+        disabled_setting: str,
+        configured_source_keys: frozenset[str],
+    ) -> tuple[tuple[tuple[_LegacySourceScope, str], ...], tuple[str, ...]]:
+        """Check the frozen settings wire and report its scoped source choices."""
+        if not isinstance(projection, dict) or set(projection) != {
+            "productId",
+            "projectionVersion",
+            "scopes",
+        }:
+            raise ValueError(f"{self.label} Source projection is invalid")
+        if (
+            projection["productId"] != self.product_id
+            or type(projection["projectionVersion"]) is not int
+            or projection["projectionVersion"] != 1
+        ):
+            raise ValueError(f"{self.label} Source projection version is unsupported")
+        scopes = projection["scopes"]
+        if not isinstance(scopes, dict) or set(scopes) != set(_LEGACY_SOURCE_SCOPES):
+            raise ValueError(f"{self.label} Source projection scopes are invalid")
+
+        disabled: list[tuple[_LegacySourceScope, str]] = []
+        sources: list[str] = []
+        for scope in _LEGACY_SOURCE_SCOPES:
+            layer = scopes[scope]
+            if not isinstance(layer, dict) or set(layer) != {
+                "present",
+                "rawSha256",
+                "settingsPath",
+                "sourcePatch",
+            }:
+                raise ValueError(f"{self.label} Source projection layer is invalid")
+            present, digest, path, patch = (
+                layer["present"],
+                layer["rawSha256"],
+                layer["settingsPath"],
+                layer["sourcePatch"],
+            )
+            if (
+                type(present) is not bool
+                or (
+                    present
+                    and (
+                        not isinstance(digest, str)
+                        or not _SOURCE_PROJECTION_DIGEST.fullmatch(digest)
+                    )
+                )
+                or (not present and digest is not None)
+                or not isinstance(path, str)
+                or not Path(path).is_absolute()
+                or ".." in Path(path).parts
+                or not isinstance(patch, dict)
+                or not set(patch) <= self.source_keys
+                or (not present and patch)
+                or ("packages" in patch and "package_sources" in patch)
+            ):
+                raise ValueError(f"{self.label} Source projection layer is invalid")
+            for key, value in patch.items():
+                if not isinstance(value, list):
+                    raise ValueError(f"{self.label} legacy Source setting is invalid")
+                if key == disabled_setting:
+                    if any(not isinstance(item, str) or not item for item in value):
+                        raise ValueError(f"{self.label} legacy disabled Plugin is invalid")
+                    if len(value) != len(set(value)):
+                        raise ValueError(f"{self.label} legacy disabled Plugin is duplicated")
+                    disabled.extend((scope, item) for item in value)
+                elif key in {"packages", "package_sources"}:
+                    if any(not _valid_snapshot_package_source(item) for item in value):
+                        raise ValueError(f"{self.label} legacy Package Source is invalid")
+                elif any(not isinstance(item, str) or not item for item in value):
+                    raise ValueError(f"{self.label} legacy Source setting is invalid")
+                if key in configured_source_keys and value:
+                    sources.append(f"{scope}:{key}")
+
+        return tuple(disabled), tuple(sources)
 
     def verify_snapshot(
         self,

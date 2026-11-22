@@ -38,6 +38,7 @@ from loushang.harness.package_product._application_runtime import (
     require_product_owner_for_factory,
 )
 from loushang.harness.package_product._legacy_runtime import (
+    legacy_product_fence_exists,
     matches_epoch_layout,
     read_fresh_product_source_snapshot,
 )
@@ -559,9 +560,7 @@ class CodingFencedProductApplicationSelection(
             unadmitted_platform = (
                 os.name == "posix" and not sys.platform.startswith("linux")
             ) or (os.name == "nt" and not self._windows_candidate)
-            try:
-                (epoch.control_root / "epoch.jsonl").lstat()
-            except FileNotFoundError:
+            if not legacy_product_fence_exists(epoch.control_root):
                 # Ordinary upgrades retain the existing, fence-aware legacy
                 # owner. Never reinterpret existing installations/settings as
                 # empty Product input or require users to replace a workspace.
@@ -931,6 +930,17 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
         return receipt
 
 
+def _coding_settings_have_legacy_product_inputs(settings_manager: SettingsManager) -> bool:
+    settings = settings_manager.get_settings()
+    return bool(
+        settings.disabled_plugins
+        or settings.plugin_sources
+        or settings.resource_roots
+        or settings.package_roots
+        or settings.package_sources
+    )
+
+
 def require_fresh_coding_product_inputs(
     lifecycle: CodingPluginLifecycleStateLayout,
     settings_manager: SettingsManager,
@@ -941,14 +951,7 @@ def require_fresh_coding_product_inputs(
 
     if not isinstance(settings_manager, SettingsManager):
         raise TypeError("Coding settings manager is required")
-    settings = settings_manager.get_settings()
-    if (
-        settings.disabled_plugins
-        or settings.plugin_sources
-        or settings.resource_roots
-        or settings.package_roots
-        or settings.package_sources
-    ):
+    if _coding_settings_have_legacy_product_inputs(settings_manager):
         raise RuntimeError(
             "Coding pre-B workspace is unsupported; use a fresh workspace"
         )
@@ -1025,16 +1028,7 @@ def _coding_product_settings_need_compatibility(
     if settings_manager is not None:
         if not isinstance(settings_manager, SettingsManager):
             raise TypeError("Coding Product settings manager is invalid")
-        effective = settings_manager.get_settings()
-        if any(
-            (
-                effective.disabled_plugins,
-                effective.plugin_sources,
-                effective.resource_roots,
-                effective.package_roots,
-                effective.package_sources,
-            )
-        ):
+        if _coding_settings_have_legacy_product_inputs(settings_manager):
             return True
         settings_paths.extend(
             path

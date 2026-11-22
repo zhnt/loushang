@@ -116,7 +116,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             Path("src/loushang/coding/package/legacy_classification.py"),
             "CodingLegacySourceConfigurationV1",
         ): 1,
-        (Path("src/loushang/coding/package/legacy_classification.py"), "<module>"): 1,
         (
             Path("src/loushang/coding/package/legacy_classification.py"),
             "classify_coding_legacy_workspace",
@@ -124,12 +123,8 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/coding/package/legacy_classification.py"),
             "classify_coding_legacy_source_configuration",
-        ): 2,
-        (Path("src/loushang/coding/package/source_snapshot.py"), "<module>"): 1,
-        (
-            Path("src/loushang/coding/package/product_runtime.py"),
-            "require_fresh_coding_product_inputs",
         ): 1,
+        (Path("src/loushang/coding/package/source_snapshot.py"), "<module>"): 1,
         (
             Path("src/loushang/coding/package/product_runtime.py"),
             "is_coding_fresh_first_b_snapshot",
@@ -137,7 +132,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         # ARD-008: read effective legacy settings before selecting a storage owner.
         (
             Path("src/loushang/coding/package/product_runtime.py"),
-            "_coding_product_settings_need_compatibility",
+            "_coding_settings_have_legacy_product_inputs",
         ): 1,
         (
             Path("src/loushang/harness/config/agent/_settings_patch.py"),

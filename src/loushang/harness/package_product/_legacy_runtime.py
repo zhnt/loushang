@@ -199,15 +199,43 @@ def prepare_legacy_product_cutover_roots(
         )
 
 
+def legacy_product_fence_exists(control_root: Path) -> bool:
+    """Observe the journal name only; the native owner validates its contents."""
+    try:
+        (control_root / "epoch.jsonl").lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
 def bind_legacy_pre_b_snapshot_owner(
     snapshot_root: Path,
     *,
     store_id: str,
-    domain_roots: Mapping[str, Path],
-    domain_members: Mapping[str, tuple[str, ...] | None],
+    observed_roots: Iterable[tuple[Path, Mapping[str, tuple[str, ...]]]],
+    fence_root: Path,
+    source_configuration_root: Path,
+    legacy_pointer_root: Path,
     legacy_root_pointer_name: str,
     shared_members: tuple[PackageProductPreBSnapshotSharedMemberV1, ...],
 ) -> PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner:
+    """Bind observed store and lifecycle members to the native cutover inputs."""
+    domain_roots: dict[str, Path] = {}
+    domain_members: dict[str, tuple[str, ...] | None] = {}
+    for root, members in observed_roots:
+        if domain_roots.keys() & members.keys():
+            raise ValueError("Legacy Product snapshot domains overlap")
+        domain_roots.update(dict.fromkeys(members, root))
+        domain_members.update(members)
+    inert_roots = {
+        "fence_record": fence_root,
+        "source_configuration": source_configuration_root,
+        "legacy_root_pointer": legacy_pointer_root,
+    }
+    if domain_roots.keys() & inert_roots.keys():
+        raise ValueError("Legacy Product snapshot domains overlap")
+    domain_roots.update(inert_roots)
+    domain_members.update(dict.fromkeys(inert_roots))
     owner_type = (
         PackageProductWindowsPreBSnapshotOwner
         if os.name == "nt"

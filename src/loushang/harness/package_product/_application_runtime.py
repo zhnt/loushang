@@ -76,7 +76,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from ._legacy_runtime import _FencedRuntime
+from ._legacy_runtime import _FencedRuntime, legacy_product_fence_exists
 from .product_local_wheel_runtime import (
     PosixLocalWheelProductHostInputs,
     PosixLocalWheelProductRuntimeFactory,
@@ -534,11 +534,7 @@ def fingerprint_product_resume_epoch(
         if legacy_roots is None:
             raise RuntimeError(f"{label} epoch is unavailable")
         control_root, state_root, package_root = legacy_roots
-        try:
-            (control_root / "epoch.jsonl").lstat()
-        except FileNotFoundError:
-            pass
-        else:
+        if legacy_product_fence_exists(control_root):
             raise RuntimeError(f"{label} storage epoch changed")
         identity = workspace.stat()
         document = {

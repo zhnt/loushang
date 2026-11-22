@@ -392,7 +392,12 @@ def _require_legacy_cutover_directory(path: Path, *, label: str) -> None:
 
 @contextmanager
 def hold_legacy_product_projection_root(
-    parent: Path, *, prefix: str, projection_name: str, projection_label: str
+    parent: Path,
+    *,
+    prefix: str,
+    projection_name: str,
+    projection_label: str,
+    projection_contents: bytes | None = None,
 ) -> Iterator[Path]:
     """Borrow the original native temporary root through exact exit cleanup."""
     if os.name == "nt":
@@ -401,11 +406,17 @@ def hold_legacy_product_projection_root(
             prefix=prefix,
             projection_name=projection_name,
             projection_label=projection_label,
+            projection_contents=projection_contents,
         ) as root:
             yield root
     else:
         with TemporaryDirectory(prefix=prefix, dir=parent) as raw:
-            yield Path(raw)
+            root = Path(raw)
+            if projection_contents is not None:
+                write_legacy_product_projection(
+                    root, projection_name=projection_name, contents=projection_contents
+                )
+            yield root
 
 
 def read_legacy_product_projection(source_root: Path, *, name: str) -> bytes:

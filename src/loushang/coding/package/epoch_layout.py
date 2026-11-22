@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_runtime import legacy_product_fence_exists
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     inspect_legacy_product_domain_members,
 )
@@ -285,12 +286,9 @@ __all__ = [
 def coding_fenced_product_exists(layout: CodingPluginLifecycleStateLayout) -> bool:
     """Only an existing fence selects B; malformed existing B fails closed later."""
 
-    epoch = resolve_coding_package_epoch_layout(layout)
-    try:
-        (epoch.control_root / "epoch.jsonl").lstat()
-    except FileNotFoundError:
-        return False
-    return True
+    return legacy_product_fence_exists(
+        resolve_coding_package_epoch_layout(layout).control_root
+    )
 
 
 # Preserve the deployed callable/pickle route after moving its implementation.
