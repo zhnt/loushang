@@ -21,8 +21,7 @@ from loushang.harness.journal import (
 )
 from loushang.harness.package_product._local_source_catalog import (
     _DependencyWheelSourceCatalog,
-    issue_wheel_source_binding,
-    wheel_source_binding_digest,
+    _WheelSourceBindingMethods,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordSchema,
@@ -40,7 +39,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelDependencyV1,
-    PackageProductLocalWorkerAdmissionV1,
 )
 
 _WHEEL_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.whl\Z")
@@ -78,7 +76,7 @@ def _wheel_identity(filename: str) -> tuple[str, str]:
 
 
 @dataclass(frozen=True, slots=True)
-class CodingExternalDependencyWheelBindingV1:
+class CodingExternalDependencyWheelBindingV1(_WheelSourceBindingMethods):
     record_revision: int
     store_id: str
     namespace_id: str
@@ -89,6 +87,8 @@ class CodingExternalDependencyWheelBindingV1:
     version: str
     artifact_digest: str
     record_id: str
+
+    _binding_label = "Dependency Wheel"
 
     def __post_init__(self) -> None:
         project_name, version = _wheel_identity(self.wheel_filename)
@@ -112,8 +112,7 @@ class CodingExternalDependencyWheelBindingV1:
             or _DIGEST.fullmatch(self.record_id) is None
         ):
             raise ValueError("Dependency Wheel binding is invalid")
-        if self.record_id != wheel_source_binding_digest(self.to_dict()):
-            raise ValueError("Dependency Wheel binding identity changed")
+        self._require_binding_identity()
 
     @classmethod
     def create(
@@ -128,9 +127,7 @@ class CodingExternalDependencyWheelBindingV1:
         artifact_digest: str,
     ) -> CodingExternalDependencyWheelBindingV1:
         project_name, version = _wheel_identity(wheel_filename)
-        return issue_wheel_source_binding(
-            cls,
-            _BINDING_SCHEMA,
+        return cls._seal_binding(
             record_revision=record_revision,
             store_id=store_id,
             namespace_id=namespace_id,
@@ -142,14 +139,9 @@ class CodingExternalDependencyWheelBindingV1:
             artifact_digest=artifact_digest,
         )
 
-    def to_dict(self) -> dict[str, object]:
-        return _BINDING_SCHEMA.encode(self)
-
     @classmethod
     def from_dict(cls, value: object) -> CodingExternalDependencyWheelBindingV1:
-        if type(value) is not dict or set(value) != _BINDING_SCHEMA.keys:
-            raise ValueError("Dependency Wheel binding record is invalid")
-        return _BINDING_SCHEMA.decode(cls, value)
+        return cls._decode_binding(value)
 
     def policy_dependency(
         self, source_root: Path
@@ -162,7 +154,7 @@ class CodingExternalDependencyWheelBindingV1:
         )
 
 
-_BINDING_SCHEMA = RecordSchema.for_dataclass(
+CodingExternalDependencyWheelBindingV1._binding_schema = RecordSchema.for_dataclass(
     CodingExternalDependencyWheelBindingV1, lambda value: value
 )
 
@@ -182,6 +174,7 @@ class CodingExternalDependencyWheelCatalog(
     _path_label = "Dependency Wheel"
     _error_factory = CodingExternalDependencyWheelError
     _codec = _CODEC
+    _create_binding = staticmethod(CodingExternalDependencyWheelBindingV1.create)
 
     _source_label = "Dependency Wheel"
     _product_id = "coding"
@@ -197,24 +190,6 @@ class CodingExternalDependencyWheelCatalog(
 
     def _verify_source_body(self, filename: str, body: bytes) -> None:
         _verify_wheel_body(filename, body)
-
-    def _new_record(
-        self,
-        source: Path,
-        digest: str,
-        revision: int,
-        *,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
-    ) -> CodingExternalDependencyWheelBindingV1:
-        return CodingExternalDependencyWheelBindingV1.create(
-            record_revision=revision,
-            store_id=self.store_id,
-            namespace_id=self.namespace_id,
-            scope_id=self.scope_id,
-            original_source=str(source),
-            wheel_filename=source.name,
-            artifact_digest=digest,
-        )
 
     def _require_new_record(
         self,

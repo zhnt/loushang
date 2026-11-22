@@ -15,7 +15,7 @@ from contextlib import suppress
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Generic, Literal, Protocol, Self, TypeVar
+from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal import (
@@ -202,22 +202,59 @@ def wheel_source_binding_digest(document: Mapping[str, object]) -> str:
     return sha256(canonical_json_bytes(fields)).hexdigest()
 
 
-def issue_wheel_source_binding(
-    constructor: Callable[..., RecordT],
-    schema: RecordSchema,
-    /,
-    **attributes: object,
-) -> RecordT:
-    """Seal the declared wire fields, then construct the original record type."""
-    document: dict[str, object] = {}
-    for field in schema.fields:
-        if field.attribute == "record_id":
-            continue
-        value = attributes[field.attribute]
-        document[field.wire_key] = (
-            value if field.encoder is None else field.encoder(value)
-        )
-    return constructor(**attributes, record_id=wheel_source_binding_digest(document))
+class _WheelSourceBindingMethods:
+    """Encode and authenticate a controlled Wheel using its declared wire fields."""
+
+    __slots__ = ()
+    record_id: str
+    _binding_schema: ClassVar[RecordSchema]
+    _binding_label: ClassVar[str]
+    _sort_binding_fields: ClassVar[bool] = False
+
+    @classmethod
+    def _seal_binding(cls, **attributes: object) -> Self:
+        """Seal the declared wire fields before constructing the nominal record."""
+        document: dict[str, object] = {}
+        for field in cls._binding_schema.fields:
+            if field.attribute == "record_id":
+                continue
+            value = attributes[field.attribute]
+            document[field.wire_key] = (
+                value if field.encoder is None else field.encoder(value)
+            )
+        construct: Callable[..., Self] = cls
+        return construct(**attributes, record_id=wheel_source_binding_digest(document))
+
+    def to_dict(self) -> dict[str, object]:
+        return self._binding_schema.encode(self, sort_keys=self._sort_binding_fields)
+
+    @classmethod
+    def _decode_binding(cls, value: object) -> Self:
+        if type(value) is not dict or set(value) != cls._binding_schema.keys:
+            raise ValueError(f"{cls._binding_label} binding record is invalid")
+        return cls._binding_schema.decode(cls, value)
+
+    def _require_binding_identity(self) -> None:
+        if self.record_id != wheel_source_binding_digest(self.to_dict()):
+            raise ValueError(f"{self._binding_label} binding identity changed")
+
+
+def project_plugin_wheel_binding(
+    record: _PluginSourceRecord,
+    source_root: Path,
+    *,
+    trust_class: str,
+    admission: PackageProductLocalWorkerAdmissionV1 | None = None,
+) -> PackageProductLocalWheelBindingV1:
+    return PackageProductLocalWheelBindingV1(
+        source_identity=str(source_root / record.wheel_filename),
+        requested_package=f"{record.plugin_id}=={record.version}",
+        plugin_id=record.plugin_id,
+        artifact_digest=record.artifact_digest,
+        plugin_manifest_path=f"{record.plugin_id}/plugin.json",
+        source_trust_class=trust_class,
+        worker_admission=admission,
+    )
 
 
 class _SourceCatalogReadScopes(Generic[CatalogRecordT]):
@@ -340,9 +377,14 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
         raise NotImplementedError
 
 
-class _StableWheelSource:
+class _StableWheelSource(Generic[RecordT]):
     _source_label: str
     source_root: Path
+    store_id: str
+    namespace_id: str
+    scope_id: str
+    _create_binding: Callable[..., RecordT]
+    _persist_admission = False
     _error_factory: Callable[[str], Exception]
     _source_read_errors: tuple[type[BaseException], ...] = (OSError,)
     _source_read_error_suffix = "Source changed"
@@ -352,6 +394,26 @@ class _StableWheelSource:
 
     def _validate_source_name(self, filename: str) -> None:
         pass
+
+    def _new_record(
+        self,
+        source: Path,
+        digest: str,
+        revision: int,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1 | None,
+    ) -> RecordT:
+        extra = {"admission": admission} if self._persist_admission else {}
+        return self._create_binding(
+            record_revision=revision,
+            store_id=self.store_id,
+            namespace_id=self.namespace_id,
+            scope_id=self.scope_id,
+            original_source=str(source),
+            wheel_filename=source.name,
+            artifact_digest=digest,
+            **extra,
+        )
 
     def _is_external_source(self, source: Path) -> bool:
         return (
@@ -386,7 +448,7 @@ class _StableWheelSource:
         return body, digest
 
 
-class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource):
+class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource[RecordT]):
     _binding_limit = 125
     _read_only_capture_error = "Read-only catalog cannot capture"
 
@@ -411,16 +473,6 @@ class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource):
         admission: PackageProductLocalWorkerAdmissionV1 | None,
     ) -> bool:
         return False
-
-    def _new_record(
-        self,
-        source: Path,
-        digest: str,
-        revision: int,
-        *,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
-    ) -> RecordT:
-        raise NotImplementedError
 
     def _capture_validated(
         self,
@@ -722,25 +774,16 @@ WindowsRecordT = TypeVar("WindowsRecordT", bound=_WindowsWorkerRecord)
 
 
 class _WindowsWorkerSourceCatalog(
-    _StableWheelSource, _PluginSourcePolicy[WindowsRecordT]
+    _StableWheelSource[WindowsRecordT], _PluginSourcePolicy[WindowsRecordT]
 ):
     _receipt_io: WindowsPrivateReceiptIO
     _source_files: ExactProductSourceFiles
     _record_type: type[WindowsRecordT]
     _receipt_write_maximum: int
     _publication_label: str
+    _persist_admission = True
 
     def _max_record_bytes(self) -> int:
-        raise NotImplementedError
-
-    def _new_record(
-        self,
-        source: Path,
-        digest: str,
-        revision: int,
-        *,
-        admission: PackageProductLocalWorkerAdmissionV1,
-    ) -> WindowsRecordT:
         raise NotImplementedError
 
     def _check_policy_current(self) -> None:

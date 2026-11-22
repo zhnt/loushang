@@ -12,9 +12,9 @@ from loushang.harness.journal import (
 )
 from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
-    issue_wheel_source_binding,
+    _WheelSourceBindingMethods,
     plugin_wheel_source_fields_match,
-    wheel_source_binding_digest,
+    project_plugin_wheel_binding,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordSchema,
@@ -27,7 +27,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
-    PackageProductLocalWorkerAdmissionV1,
 )
 
 _WHEEL_NAME = re.compile(
@@ -44,7 +43,7 @@ class CodingExternalDataWheelError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingExternalDataWheelBindingV1:
+class CodingExternalDataWheelBindingV1(_WheelSourceBindingMethods):
     record_revision: int
     store_id: str
     namespace_id: str
@@ -56,6 +55,8 @@ class CodingExternalDataWheelBindingV1:
     artifact_digest: str
     record_id: str
 
+    _binding_label = "External data Wheel"
+
     def __post_init__(self) -> None:
         match = _WHEEL_NAME.fullmatch(self.wheel_filename)
         if (
@@ -65,8 +66,7 @@ class CodingExternalDataWheelBindingV1:
             or _DIGEST.fullmatch(self.record_id) is None
         ):
             raise ValueError("External data Wheel binding is invalid")
-        if self.record_id != wheel_source_binding_digest(self.to_dict()):
-            raise ValueError("External data Wheel binding identity changed")
+        self._require_binding_identity()
 
     @classmethod
     def create(
@@ -83,9 +83,7 @@ class CodingExternalDataWheelBindingV1:
         match = _WHEEL_NAME.fullmatch(wheel_filename)
         if match is None:
             raise ValueError("External data Wheel filename is unsupported")
-        return issue_wheel_source_binding(
-            cls,
-            _BINDING_SCHEMA,
+        return cls._seal_binding(
             record_revision=record_revision,
             store_id=store_id,
             namespace_id=namespace_id,
@@ -97,27 +95,17 @@ class CodingExternalDataWheelBindingV1:
             artifact_digest=artifact_digest,
         )
 
-    def to_dict(self) -> dict[str, object]:
-        return _BINDING_SCHEMA.encode(self)
-
     @classmethod
     def from_dict(cls, value: object) -> CodingExternalDataWheelBindingV1:
-        if type(value) is not dict or set(value) != _BINDING_SCHEMA.keys:
-            raise ValueError("External data Wheel binding record is invalid")
-        return _BINDING_SCHEMA.decode(cls, value)
+        return cls._decode_binding(value)
 
     def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
-        return PackageProductLocalWheelBindingV1(
-            source_identity=str(source_root / self.wheel_filename),
-            requested_package=f"{self.plugin_id}=={self.version}",
-            plugin_id=self.plugin_id,
-            artifact_digest=self.artifact_digest,
-            plugin_manifest_path=f"{self.plugin_id}/plugin.json",
-            source_trust_class="local-data-only",
+        return project_plugin_wheel_binding(
+            self, source_root, trust_class="local-data-only"
         )
 
 
-_BINDING_SCHEMA = RecordSchema.for_dataclass(
+CodingExternalDataWheelBindingV1._binding_schema = RecordSchema.for_dataclass(
     CodingExternalDataWheelBindingV1, lambda value: value
 )
 
@@ -137,6 +125,7 @@ class CodingExternalDataWheelCatalog(
     _path_label = "External data Wheel"
     _error_factory = CodingExternalDataWheelError
     _codec = _CODEC
+    _create_binding = staticmethod(CodingExternalDataWheelBindingV1.create)
     _read_only_capture_error = "Read-only Source catalog cannot capture"
     _product_id = "coding"
     _source_label = "External data Wheel"
@@ -171,24 +160,6 @@ class CodingExternalDataWheelCatalog(
 
     def _max_source_bytes(self) -> int:
         return _MAX_WHEEL_BYTES
-
-    def _new_record(
-        self,
-        source: Path,
-        digest: str,
-        revision: int,
-        *,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
-    ) -> CodingExternalDataWheelBindingV1:
-        return CodingExternalDataWheelBindingV1.create(
-            record_revision=revision,
-            store_id=self.store_id,
-            namespace_id=self.namespace_id,
-            scope_id=self.scope_id,
-            original_source=str(source),
-            wheel_filename=source.name,
-            artifact_digest=digest,
-        )
 
 
 __all__ = [
