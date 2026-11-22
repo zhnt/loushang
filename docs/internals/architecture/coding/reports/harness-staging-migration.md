@@ -697,6 +697,30 @@ corrected source. This includes startup receipt concurrency, retained
 workspaces, partial failure and exact persisted input publication on Linux.
 Native Windows remains pending.
 
+### Resume History, Model Evidence And Writer Acquisition
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `history_snapshot` | Formal Transcript discovery checks source identity around the existing bounded byte capture. Coding retains its historical header, activation-codec choice and result identity. |
+| `selected_ancestry` and `resume_records` | Formal Transcript owns the selected-path hash, fixed record construction, frozen message and input digest. Coding supplies its historical digest domains and version-specific intent binding. |
+| `activation_history` | Coding retains its V1 and V2 facts and selected-path interpretation. The shared ancestry owner and Transcript's exact single-input selection handle record custody and digest verification. |
+| `model_history` | Formal Model Call projection locates an exact first invocation after the selected input and verifies its terminal evidence. |
+| `writer_acquisition` | The formal Transcript owner restores and rechecks the selected history under its existing Writer. Coding verifies its Product plan, expected binding and history before exposing the retained Manager. |
+
+The batch removes 723 net staging lines and adds 377 Coding Product lines
+and 243 formal Harness lines. System production Python decreases by 103
+lines for the batch and 962 against baseline, with no Hosting, other
+production or script changes. Staging has 38 files and 6,690 lines.
+
+All 69 selected Linux cases pass, including source identity and byte-digest
+drift, historical snapshots and malformed facts, original fixed input and
+model observation, Writer acquisition, runtime continuation, and the
+existing Harness dependency check. The follow-up suite passes all 131
+selected V1/V2 mode, fixed Binding, activation projection and historical
+reader compatibility cases. Scoped mypy passed on nine implementation
+files before the final two codec call sites were pointed at the same
+Coding intent-matching policy. Native Windows remains pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

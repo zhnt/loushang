@@ -18,7 +18,6 @@ from loushang.coding.composition.provenance import (
 from loushang.coding.composition.provenance import (
     historical_startup_composition_record as historical_startup_composition_record,
 )
-from loushang.coding.harness.session import history_snapshot as _programs
 from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
 from loushang.coding.resume.activation_projection_v2 import (
     project_coding_activation_attempt_path_v2 as project_coding_activation_attempt_path_v2,
@@ -30,28 +29,19 @@ from loushang.harness.conversation import (
     ConversationRepository as ConversationRepository,
 )
 from loushang.harness.runtime import RuntimeProfileSnapshot
-from loushang.harness.transcript.jsonl_file import (
-    load_agent_transcript_file_with_content_digest as load_agent_transcript_file_with_content_digest,
-)
+from loushang.harness.session.composition_evidence import composition_receipt_matches
 from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_header,
 )
 from loushang.harness.transcript.session_catalog import (
-    read_agent_transcript_bounded_preview as read_agent_transcript_bounded_preview,
+    capture_transcript_history_snapshot,
 )
 from loushang.harness.transcript.session_catalog import (
-    session_file_authority_fingerprint as session_file_authority_fingerprint,
+    read_agent_transcript_bounded_preview as read_agent_transcript_bounded_preview,
 )
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 MAX_CODING_RESUME_HISTORY_BYTES = 64 * 1024 * 1024
-
-
-_RESUME_PLAN_PROGRAM_VALUES = {
-    "value_001": "Coding Resume snapshot budget must be within 1 to 64 MiB",
-    "value_002": "Coding Resume source changed before snapshot",
-    "value_003": "Coding Resume source changed during snapshot",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,11 +128,74 @@ def read_coding_resume_snapshot(
 ) -> CodingResumeHistoryPreview:
     """Read a bounded historical snapshot without acquiring transcript authority."""
 
-    return _programs.read_resume_snapshot(
-        path,
-        max_bytes=max_bytes,
-        selected_leaf_id=selected_leaf_id,
-        expected_source_fingerprint=expected_source_fingerprint,
+    if (
+        type(max_bytes) is not int
+        or not 1 <= max_bytes <= MAX_CODING_RESUME_HISTORY_BYTES
+    ):
+        raise ValueError("Coding Resume snapshot budget must be within 1 to 64 MiB")
+    header, records, source_content_digest, source_fingerprint = (
+        capture_transcript_history_snapshot(
+            path,
+            max_bytes=max_bytes,
+            expected_source_fingerprint=expected_source_fingerprint,
+            label="Coding Resume",
+        )
+    )
+    header_preview = inspect_coding_resume_header(header)
+    repository = ConversationRepository.create(
+        header=header,
+        records=records,
+        record_id=lambda record: record.record_id,
+        parent_id=lambda record: record.parent_id,
+        leaf_id=selected_leaf_id,
+    )
+    startup = historical_startup_composition_record(records)
+    composition = header_preview.composition
+    selected_records = repository.active_records()
+    try:
+        projection = project_coding_activation_attempt_path_v2(
+            selected_records,
+            current_session_id=header.conversation_id,
+        )
+        binding_status: Literal["none", "bound", "unknown_version", "invalid"] = (
+            projection.binding_status
+        )
+        binding = projection.binding
+        ancestry_digest = projection.ancestry_digest
+        activation_status: Literal["none", "pending", "unknown_version", "invalid"] = (
+            projection.status
+        )
+        pending_attempt = projection.attempt
+        pending_record_id = projection.record_id
+    except ValueError:
+        # Historical viewing remains possible when persisted Resume facts are unusable.
+        binding_status = "invalid"
+        binding = None
+        ancestry_digest = None
+        activation_status = "invalid"
+        pending_attempt = None
+        pending_record_id = None
+    return CodingResumeHistoryPreview(
+        header_preview=header_preview,
+        records=tuple(records),
+        selected_records=selected_records,
+        selected_leaf_id=repository.leaf_id,
+        startup=startup,
+        provenance_conflict=(
+            startup is not None
+            and composition is not None
+            and not composition_receipt_matches(
+                startup, composition.set_id, composition.plan_fingerprint
+            )
+        ),
+        binding_status=binding_status,
+        binding=binding,
+        selected_ancestry_digest=ancestry_digest,
+        source_fingerprint=source_fingerprint,
+        source_content_digest=source_content_digest,
+        activation_status=activation_status,
+        pending_activation_attempt=pending_attempt,
+        pending_activation_record_id=pending_record_id,
     )
 
 
@@ -153,7 +206,16 @@ def read_coding_resume_recent_page(
 ) -> CodingResumeRecentPage:
     """Show recent decoded tail records without proving their selected branch."""
 
-    return _programs.read_resume_recent_page(path, segment_bytes=segment_bytes)
+    bounded = read_agent_transcript_bounded_preview(
+        path,
+        segment_bytes=segment_bytes,
+    )
+    return CodingResumeRecentPage(
+        header_preview=inspect_coding_resume_header(bounded.header),
+        records=bounded.tail_records,
+        source_fingerprint=bounded.source_fingerprint,
+        bytes_read=bounded.bytes_read,
+    )
 
 
 __all__ = [

@@ -13,14 +13,15 @@ from datetime import datetime
 from typing import Literal, cast
 
 from loushang.ai.types import UserMessage
-from loushang.coding.harness.session import resume_records as _records
-from loushang.coding.harness.session.selected_ancestry import SelectedAncestry
 from loushang.coding.resume.binding import (
     _ANCESTRY_DOMAIN,
     inspect_coding_runtime_binding,
+    matches_intent,
     validate_coding_runtime_binding_record,
 )
 from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
+from loushang.harness.transcript import _resume_records as _records
+from loushang.harness.transcript._resume_records import SelectedAncestry
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND, EXTENSION_DATA_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord, ExtensionData
 
@@ -180,7 +181,7 @@ def project_coding_activation_attempt_path(
                 if binding.session_id == current_session_id and pending is not None:
                     if (
                         record.parent_id != pending_record_id
-                        or not _records.matches_intent(binding, pending, check_session=False)
+                        or not matches_intent(binding, pending, check_session=False)
                     ):
                         raise ValueError("activation Binding does not match intent")
                     pending = None

@@ -25,11 +25,6 @@ from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
     resolve_coding_composition_set,
 )
-from loushang.coding.harness.session.activation_history import (
-    find_input_records,
-    select_input_record,
-)
-from loushang.coding.harness.session.writer_acquisition import acquire_writer
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
@@ -44,9 +39,14 @@ from loushang.coding.resume.activation_attempt_v2 import (
 )
 from loushang.coding.resume.activation_plan import (
     ActivationOwnerInputRefV1,
+    ResumePlanStaleError,
     SessionActivationPlanV1,
+    build_session_activation_plan,
+    require_current_resume_plan_inputs,
+    require_current_resume_plan_source,
 )
 from loushang.coding.resume.activation_projection_v2 import (
+    find_input_records,
     project_coding_activation_attempt_path_v2,
     project_coding_activation_attempt_path_v2_async,
 )
@@ -60,6 +60,10 @@ from loushang.coding.resume.binding_v2 import (
     CodingRuntimeBindingV2,
     prepare_coding_resume_v2_user_record,
 )
+from loushang.coding.resume.history import (
+    MAX_CODING_RESUME_HISTORY_BYTES,
+    read_coding_resume_snapshot,
+)
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     CodingResumeInputLookupResultV1,
@@ -70,6 +74,7 @@ from loushang.harness.conversation import (
     ConversationHeader,
     ConversationRecord,
 )
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import (
     SIDE_QUESTION_PROVIDER_SLOT,
     ResolvedRuntimeProfile,
@@ -82,6 +87,7 @@ from loushang.harness.session.composition_evidence import (
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
+    AgentTranscriptLifecycleSession,
     AgentTranscriptRecord,
     AgentTranscriptSessionFactory,
 )
@@ -93,6 +99,10 @@ from loushang.harness.transcript._resume_continuation import (
     _ResumeContinuationTranscript,
     _ResumePendingInput,
     _ResumeProjector,
+)
+from loushang.harness.transcript._resume_records import (
+    restore_verified_branch,
+    select_input_record,
 )
 from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_file,
@@ -368,13 +378,67 @@ class SessionManager(
         """
 
         cls._require_resume_writer_capabilities(required_writer_capabilities)
-        return await acquire_writer(
-            cls,
-            session_file,
-            plan=plan,
-            current_owner_inputs=current_owner_inputs,
-            factory=_factory,
+        factory = _factory
+        if factory is None:
+            factory = cls._factory_for_persistence(True)
+        label = _RESUME_WRITER_LABEL
+        if not isinstance(factory, AgentTranscriptSessionFactory):
+            raise TypeError(f"{label} factory is invalid")
+        if not factory.owns_persistent_sessions:
+            raise ValueError(f"{label} requires its application-owned factory")
+        if (
+            not isinstance(plan, SessionActivationPlanV1)
+            or plan.status != "needs_final_validation"
+        ):
+            raise ValueError(f"{label} requires an available activation Plan")
+        require_current_resume_plan_inputs(plan, current_owner_inputs)
+        context = factory._discover_owned_context(session_file)
+        history = await settled_io(
+            read_coding_resume_snapshot,
+            context.session_file,
+            max_bytes=MAX_CODING_RESUME_HISTORY_BYTES,
+            selected_leaf_id=plan.selected_leaf_id,
+            expected_source_fingerprint=plan.source_fingerprint,
         )
+        require_current_resume_plan_source(plan, history)
+        if (
+            context.header != history.header_preview.header
+            or context.cwd != plan.workspace_root
+            or build_session_activation_plan(
+                history,
+                resolve_coding_composition_set(
+                    plan.composition_comparison.candidate_set_id
+                ),
+                workspace_root=Path(plan.workspace_root),
+                owner_inputs=plan.owner_inputs,
+                owner_selections=plan.owner_selections,
+            )
+            != plan
+        ):
+            raise ResumePlanStaleError(f"{label} Plan differs from current history")
+        binding = factory._resolve_binding_input(True)
+        # Historical identity must still match. Epoch equality belongs to the new binding.
+        _validate_coding_restored_header(context.header, binding, False)
+        result: list[Self] = []
+
+        def project(
+            session: AgentTranscriptLifecycleSession[RuntimeProfileBinding],
+        ) -> None:
+            manager = cls(lifecycle_session=session)
+            manager._resume_runtime_publication_pending = True
+            restore_verified_branch(
+                manager,
+                records=history.records,
+                selected_leaf_id=history.selected_leaf_id,
+                selected_records=history.selected_records,
+                stale=lambda: ResumePlanStaleError(f"{label} history changed during acquisition"),
+            )
+            manager._resume_writer_plan = plan
+            manager._creation_factory = factory
+            result.append(manager)
+
+        await factory._construct_owned(context, binding, restore=True, _projection=project)
+        return result[0]
 
     def _require_resume_bootstrap_composition(
         self,

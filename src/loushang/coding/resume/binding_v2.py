@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from loushang.ai.types import UserMessage
-from loushang.coding.harness.session import resume_records as _records
 from loushang.coding.resume.activation_attempt_v2 import CodingActivationAttemptV2
 from loushang.coding.resume.binding import (
     _FIELDS,
@@ -20,8 +19,10 @@ from loushang.coding.resume.binding import (
     coding_user_payload_digest,
     freeze_coding_user_input,
     inspect_coding_runtime_binding,
+    matches_intent,
 )
 from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
+from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
@@ -128,7 +129,7 @@ def _require_intent(
         or type(intent) is not CodingActivationAttemptV2
     ):
         raise TypeError("RuntimeBinding v2 requires exact v2 Binding and intent values")
-    if binding.intent_digest != intent.digest or not _records.matches_intent(
+    if binding.intent_digest != intent.digest or not matches_intent(
         binding, intent, check_session=True
     ):
         raise ValueError("RuntimeBinding v2 does not match the exact frozen intent")

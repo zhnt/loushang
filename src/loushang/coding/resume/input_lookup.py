@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.coding.harness.session.resume_records import input_record_digest
+from loushang.harness.transcript._resume_records import input_record_digest
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")

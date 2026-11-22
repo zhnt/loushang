@@ -9,14 +9,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from loushang.coding.harness.session.activation_history import find_legacy_model_input
-from loushang.coding.harness.session.model_history import find_initial_model_invocation
+from loushang.coding.resume.activation_projection_v2 import find_legacy_model_input
 from loushang.coding.resume.history import CodingResumeHistoryPreview
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     coding_resume_input_record_digest,
 )
-from loushang.harness.transcript.model_call import ModelCallInvocationState
+from loushang.harness.transcript.model_call import (
+    ModelCallInvocationState,
+    find_initial_model_invocation,
+)
 
 CodingResumeModelOutcomeStatus: TypeAlias = Literal[
     "unknown", "conflict", "observed_completed", "observed_failed", "observed_cancelled",

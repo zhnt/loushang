@@ -11,8 +11,7 @@ from hashlib import sha256
 from typing import Literal, TypeVar
 
 from loushang.coding.resume import activation_plan as _binding
-
-from .resume_records import canonical_binding_bytes
+from loushang.harness.transcript._resume_records import canonical_binding_bytes
 
 _RefT = TypeVar(
     "_RefT", bound="_binding.ActivationOwnerInputRefV1 | _binding.ActivationOwnerSelectionRefV1"

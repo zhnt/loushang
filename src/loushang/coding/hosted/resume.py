@@ -420,7 +420,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         active = self._active
         if active is not None:
             return await active.lookup_resume_input(query)
-        from loushang.coding.harness.session.activation_history import (
+        from loushang.coding.resume.activation_projection_v2 import (
             observe_latest_bound_input,
         )
         from loushang.coding.resume.input_lookup import (

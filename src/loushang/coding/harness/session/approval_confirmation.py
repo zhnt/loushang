@@ -17,8 +17,7 @@ from loushang.harness.authorization import (
 )
 from loushang.harness.permissions import PermissionProfilePolicyEvaluator
 from loushang.harness.policy.engine import PolicyEngine
-
-from .resume_records import canonical_binding_bytes
+from loushang.harness.transcript._resume_records import canonical_binding_bytes
 
 if TYPE_CHECKING:
     from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
