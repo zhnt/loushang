@@ -344,6 +344,7 @@ def test_plc9c1_through_c4_runtime_is_present_but_default_dark() -> None:
         HARNESS_ROOT / "package_product/product_worker_wheel_admission.py",
         HARNESS_ROOT / "session/_worker_operator_query.py",
         HARNESS_ROOT / "session/_worker_provider.py",
+        HARNESS_ROOT / "session/composition_evidence.py",
     }
 
 

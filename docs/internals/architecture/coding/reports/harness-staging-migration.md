@@ -879,7 +879,7 @@ literal Coding module destinations. It reaches 1,052 local modules from all
 source API comparison covers 396 existing Coding exports in changed files.
 Their measured function signatures and annotated class field and dataclass
 shapes match the baseline. Ruff passes on all changed Python and mypy passes
-on all 158 changed production Python modules. Test source is down 83 lines.
+on all 158 changed production Python modules. Test source is down 82 lines.
 
 The final focused Linux run passes all 203 existing cases for Resume planning,
 permission, native journal settlement, first input, indexed Continuity,
@@ -891,6 +891,11 @@ and the child construction type import. The native adapter now lives with
 formal Session, and child construction imports the defining services module.
 All 42 affected boundary and Continuity cases pass after these corrections.
 The corrections have zero production line delta.
+
+The exact effect inventory now points to managed Plugin preparation's live
+Product entry. The default-dark Worker inventory follows the startup receipt
+type into its formal evidence module. All 49 PLC9B contract cases and all nine
+Worker default-dark cases pass after those inventory corrections.
 
 ## Validation And Commit Rhythm
 

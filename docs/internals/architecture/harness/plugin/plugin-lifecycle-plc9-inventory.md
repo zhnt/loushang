@@ -793,7 +793,7 @@ materializes packages.
 PLC9B.0 began with the pre-runtime-migration snapshot at parent `4bd71d63`; A2
 revised the original snapshot. The current accepted source-wide inventories have
 119 ingress/declaration rows with 174 occurrences and 153 effect/capability rows
-with 169 occurrences. The executable
+with 170 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -992,10 +992,11 @@ src/loushang/harness/plugin_management/_continuity_installed_plugins.py::_inspec
 src/loushang/harness/plugin_management/_continuity_installed_plugins.py::publish_continuity_runtime::PackageMaterializer = 1
 src/loushang/coding/composition/continuity.py::bind_coding_configured_continuity::PackageMaterializer = 1
 src/loushang/harness/plugin_management/_continuity_installed_plugins.py::<module>::PackageMaterializer = 1
-src/loushang/coding/harness/session/managed_plugin_preparation.py::ManagedPluginPreparation::PackageMaterializer = 1
-src/loushang/coding/harness/session/managed_plugin_preparation.py::prepare_managed_plugins::GitPackageMaterializerBackend = 1
-src/loushang/coding/harness/session/managed_plugin_preparation.py::prepare_managed_plugins::PackageMaterializer = 3
-src/loushang/coding/harness/session/plugin_preparation.py::prepare_capability_plugins::CodingPackageMaterializer = 1
+src/loushang/coding/composition/managed_plugin_preparation.py::<module>::CodingPackageMaterializer = 2
+src/loushang/coding/composition/managed_plugin_preparation.py::<module>::GitPackageMaterializerBackend = 1
+src/loushang/coding/composition/managed_plugin_preparation.py::ManagedPluginPreparation::CodingPackageMaterializer = 1
+src/loushang/coding/composition/managed_plugin_preparation.py::prepare_managed_plugins::CodingPackageMaterializer = 3
+src/loushang/coding/composition/managed_plugin_preparation.py::prepare_managed_plugins::GitPackageMaterializerBackend = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::assemble_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::prepare_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
