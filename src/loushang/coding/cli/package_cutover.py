@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Sequence
+from functools import partial
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Literal
@@ -251,179 +252,111 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.windows_candidate:
             raise ValueError("Windows Product candidate requires Windows")
-        if args.review_legacy_removed_only or args.prepare_legacy_removed_review:
-            settings = SettingsManager(
-                global_settings_path=default_global_settings_path(),
-                project_settings_path=default_project_settings_path(workspace),
-            )
-            namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-            if args.prepare_legacy_removed_review:
+        review_routes = (
+            (
+                args.review_legacy_removed_only,
+                args.prepare_legacy_removed_review,
+                review_coding_first_b_removed_local,
+                admit_coding_removed_local_snapshot,
+            ),
+            (
+                args.review_legacy_builtin_only,
+                args.prepare_legacy_builtin_review,
+                review_coding_first_b_builtin_only,
+                admit_coding_builtin_only_snapshot,
+            ),
+            (
+                args.review_legacy_disabled_only,
+                args.prepare_legacy_disabled_review,
+                review_coding_first_b_disabled_only,
+                None,
+            ),
+        )
+        for read_review, prepare_review, project_review, admit_snapshot in review_routes:
+            if not (read_review or prepare_review):
+                continue
+            settings = _cutover_settings(workspace)
+            if prepare_review:
                 _prepare_review_cutover(
                     lifecycle,
                     settings,
                     epoch,
-                    namespace_id,
-                    snapshot_admission=lambda preparation, snapshot: (
-                        admit_coding_removed_local_snapshot(
-                            lifecycle, preparation, snapshot
-                        )
+                    _fresh_coding_product_namespace_id(epoch.store_id),
+                    snapshot_admission=(
+                        partial(admit_snapshot, lifecycle)
+                        if admit_snapshot is not None
+                        else None
+                    ),
+                    before_prepare=(
+                        partial(_require_disabled_only_preflight, lifecycle, settings)
+                        if admit_snapshot is None
+                        else None
                     ),
                 )
-            owner = PackageProductPosixFencedRuntimeOwner.open(
+            with PackageProductPosixFencedRuntimeOwner.open(
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
-            )
-            try:
-                removed_review = review_coding_first_b_removed_local(
-                    lifecycle, owner, settings_manager=settings
-                )
-            finally:
-                owner.close()
-            sys.stdout.write(
-                json.dumps(removed_review.to_dict(), sort_keys=True) + "\n"
-            )
+            ) as owner:
+                review = project_review(lifecycle, owner, settings_manager=settings)
+            sys.stdout.write(json.dumps(review.to_dict(), sort_keys=True) + "\n")
             return 0
-        if args.review_legacy_builtin_only or args.prepare_legacy_builtin_review:
-            settings = SettingsManager(
-                global_settings_path=default_global_settings_path(),
-                project_settings_path=default_project_settings_path(workspace),
-            )
-            namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-            if args.prepare_legacy_builtin_review:
+
+        review_plugin_id = args.review_legacy_local_plugin
+        prepare_kind: Literal["skill", "prompt", "theme"] | None = None
+        if args.prepare_legacy_local_theme_review:
+            review_plugin_id = args.prepare_legacy_local_theme_review
+            prepare_kind = "theme"
+        elif args.prepare_legacy_local_prompt_review:
+            review_plugin_id = args.prepare_legacy_local_prompt_review
+            prepare_kind = "prompt"
+        elif args.prepare_legacy_local_skill_review:
+            review_plugin_id = args.prepare_legacy_local_skill_review
+            prepare_kind = "skill"
+        if review_plugin_id:
+            if prepare_kind is not None:
                 _prepare_review_cutover(
                     lifecycle,
-                    settings,
+                    _cutover_settings(workspace),
                     epoch,
-                    namespace_id,
-                    snapshot_admission=lambda preparation, snapshot: (
-                        admit_coding_builtin_only_snapshot(
-                            lifecycle, preparation, snapshot
-                        )
+                    _fresh_coding_product_namespace_id(epoch.store_id),
+                    snapshot_admission=partial(
+                        admit_coding_single_legacy_skill_snapshot,
+                        lifecycle,
+                        plugin_id=review_plugin_id,
+                        resource_kind=prepare_kind,
                     ),
                 )
-            owner = PackageProductPosixFencedRuntimeOwner.open(
+            with PackageProductPosixFencedRuntimeOwner.open(
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
-            )
-            try:
-                builtin_review = review_coding_first_b_builtin_only(
-                    lifecycle, owner, settings_manager=settings
-                )
-            finally:
-                owner.close()
-            sys.stdout.write(
-                json.dumps(builtin_review.to_dict(), sort_keys=True) + "\n"
-            )
-            return 0
-        if args.review_legacy_local_plugin:
-            owner = PackageProductPosixFencedRuntimeOwner.open(
-                **epoch.fenced_runtime_open_kwargs(), read_only=True
-            )
-            try:
+            ) as owner:
+                if prepare_kind is not None:
+                    require_coding_fenced_single_legacy_data(
+                        lifecycle, owner, plugin_id=review_plugin_id, resource_kind=prepare_kind
+                    )
                 local_review = review_coding_legacy_installed_local_source(
                     lifecycle,
                     owner,
-                    plugin_id=args.review_legacy_local_plugin,
+                    plugin_id=review_plugin_id,
                     policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
                 )
-            finally:
-                owner.close()
             sys.stdout.write(json.dumps(local_review.to_dict(), sort_keys=True) + "\n")
             return 0
-        if (
-            args.prepare_legacy_local_skill_review
-            or args.prepare_legacy_local_prompt_review
-            or args.prepare_legacy_local_theme_review
-        ):
-            resource_kind: Literal["skill", "prompt", "theme"] = (
-                "theme"
-                if args.prepare_legacy_local_theme_review
-                else "prompt"
-                if args.prepare_legacy_local_prompt_review
-                else "skill"
-            )
-            plugin_id = (
-                args.prepare_legacy_local_theme_review
-                or args.prepare_legacy_local_prompt_review
-                or args.prepare_legacy_local_skill_review
-            )
-            settings = SettingsManager(
-                global_settings_path=default_global_settings_path(),
-                project_settings_path=default_project_settings_path(workspace),
-            )
-            namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-            _prepare_review_cutover(
+
+        adoption_routes = (
+            (
+                args.adopt_legacy_disabled_review,
+                bootstrap_coding_accepted_disabled_only_product_plugins,
+            ),
+            (args.adopt_legacy_builtin_review, adopt_coding_first_b_builtin_only),
+            (args.adopt_legacy_removed_review, adopt_coding_first_b_removed_local),
+        )
+        for accepted_review_id, adopt_review in adoption_routes:
+            if not accepted_review_id:
+                continue
+            receipt = adopt_review(
                 lifecycle,
-                settings,
-                epoch,
-                namespace_id,
-                snapshot_admission=lambda preparation, snapshot: (
-                    admit_coding_single_legacy_skill_snapshot(
-                        lifecycle,
-                        preparation,
-                        snapshot,
-                        plugin_id=plugin_id,
-                        resource_kind=resource_kind,
-                    )
-                ),
-            )
-            owner = PackageProductPosixFencedRuntimeOwner.open(
-                **epoch.fenced_runtime_open_kwargs(), read_only=True
-            )
-            try:
-                require_coding_fenced_single_legacy_data(
-                    lifecycle,
-                    owner,
-                    plugin_id=plugin_id,
-                    resource_kind=resource_kind,
-                )
-                local_skill_review = review_coding_legacy_installed_local_source(
-                    lifecycle,
-                    owner,
-                    plugin_id=plugin_id,
-                    policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-                )
-            finally:
-                owner.close()
-            sys.stdout.write(
-                json.dumps(local_skill_review.to_dict(), sort_keys=True) + "\n"
-            )
-            return 0
-        if args.review_legacy_disabled_only or args.prepare_legacy_disabled_review:
-            settings = SettingsManager(
-                global_settings_path=default_global_settings_path(),
-                project_settings_path=default_project_settings_path(workspace),
-            )
-            if args.prepare_legacy_disabled_review:
-                namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-                _prepare_review_cutover(
-                    lifecycle,
-                    settings,
-                    epoch,
-                    namespace_id,
-                    before_prepare=lambda: _require_disabled_only_preflight(
-                        lifecycle, settings
-                    ),
-                )
-            owner = PackageProductPosixFencedRuntimeOwner.open(
-                **epoch.fenced_runtime_open_kwargs(), read_only=True
-            )
-            try:
-                review = review_coding_first_b_disabled_only(
-                    lifecycle, owner, settings_manager=settings
-                )
-            finally:
-                owner.close()
-            sys.stdout.write(json.dumps(review.to_dict(), sort_keys=True) + "\n")
-            return 0
-        if args.adopt_legacy_disabled_review:
-            settings = SettingsManager(
-                global_settings_path=default_global_settings_path(),
-                project_settings_path=default_project_settings_path(workspace),
-            )
-            receipt = bootstrap_coding_accepted_disabled_only_product_plugins(
-                lifecycle,
-                settings,
+                _cutover_settings(workspace),
                 workspace=workspace,
-                accepted_review_id=args.adopt_legacy_disabled_review,
+                accepted_review_id=accepted_review_id,
                 runtime_version=version("loushang"),
                 runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             )
@@ -433,56 +366,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "disposition": "adopted",
                         "acceptanceId": receipt.acceptance_id,
                         "reviewId": receipt.review.review_id,
-                    },
-                    sort_keys=True,
-                )
-                + "\n"
-            )
-            return 0
-        if args.adopt_legacy_builtin_review:
-            settings = SettingsManager(
-                global_settings_path=default_global_settings_path(),
-                project_settings_path=default_project_settings_path(workspace),
-            )
-            builtin_receipt = adopt_coding_first_b_builtin_only(
-                lifecycle,
-                settings,
-                workspace=workspace,
-                accepted_review_id=args.adopt_legacy_builtin_review,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            )
-            sys.stdout.write(
-                json.dumps(
-                    {
-                        "disposition": "adopted",
-                        "acceptanceId": builtin_receipt.acceptance_id,
-                        "reviewId": builtin_receipt.review.review_id,
-                    },
-                    sort_keys=True,
-                )
-                + "\n"
-            )
-            return 0
-        if args.adopt_legacy_removed_review:
-            settings = SettingsManager(
-                global_settings_path=default_global_settings_path(),
-                project_settings_path=default_project_settings_path(workspace),
-            )
-            removed_receipt = adopt_coding_first_b_removed_local(
-                lifecycle,
-                settings,
-                workspace=workspace,
-                accepted_review_id=args.adopt_legacy_removed_review,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            )
-            sys.stdout.write(
-                json.dumps(
-                    {
-                        "disposition": "adopted",
-                        "acceptanceId": removed_receipt.acceptance_id,
-                        "reviewId": removed_receipt.review.review_id,
                     },
                     sort_keys=True,
                 )
@@ -544,10 +427,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             require_fresh_coding_product_inputs_without_writes(
                 lifecycle, workspace=workspace
             )
-        settings = SettingsManager(
-            global_settings_path=default_global_settings_path(),
-            project_settings_path=default_project_settings_path(workspace),
-        )
+        settings = _cutover_settings(workspace)
         runtime_version = version("loushang")
         if has_fence:
             result = reopen_coding_package_cutover(lifecycle)
@@ -694,6 +574,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def _cutover_settings(workspace: Path) -> SettingsManager:
+    return SettingsManager(
+        global_settings_path=default_global_settings_path(),
+        project_settings_path=default_project_settings_path(workspace),
+    )
+
+
 def _prepare_review_cutover(
     lifecycle: CodingPluginLifecycleStateLayout,
     settings: SettingsManager,
@@ -781,10 +668,7 @@ def _run_windows_builtin_candidate(
     """Exercise the reviewed builtin-only Windows migration behind its gate."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    settings = SettingsManager(
-        global_settings_path=default_global_settings_path(),
-        project_settings_path=default_project_settings_path(workspace),
-    )
+    settings = _cutover_settings(workspace)
     if accepted_review_id is not None:
         receipt = adopt_coding_first_b_builtin_only(
             lifecycle,
@@ -837,10 +721,7 @@ def _run_windows_fresh_candidate(
         require_fresh_coding_product_inputs_without_writes(
             lifecycle, workspace=workspace
         )
-        settings = SettingsManager(
-            global_settings_path=default_global_settings_path(),
-            project_settings_path=default_project_settings_path(workspace),
-        )
+        settings = _cutover_settings(workspace)
         prepared = cutover_and_bootstrap_coding_package_product(
             lifecycle,
             settings,
@@ -853,10 +734,7 @@ def _run_windows_fresh_candidate(
         result = prepared.attempt.result
     else:
         bootstrap_complete = False
-        settings = SettingsManager(
-            global_settings_path=default_global_settings_path(),
-            project_settings_path=default_project_settings_path(workspace),
-        )
+        settings = _cutover_settings(workspace)
         result = reopen_coding_package_cutover(lifecycle)
         _require_cutover_namespace(result, namespace_id)
         first_b = PackageProductWindowsFencedRuntimeOwner.open(
