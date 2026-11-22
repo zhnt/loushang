@@ -10,8 +10,8 @@ from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionProfileProvider,
     constrain_execution_profile,
-    select_execution_profile,
 )
+from loushang.harness.authorization.execution_profile import WorkspaceExecutionSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.environment import HostEnvironmentProbe
@@ -23,44 +23,20 @@ from loushang.harness.sandbox import (
     SandboxScopeRequest,
     SandboxSettings,
     bind_sandbox_execution_runtime,
-    sandbox_scope_request_from_profile,
 )
+from loushang.harness.sandbox.authorization import authorize_workspace_sandbox_scope
 from loushang.harness.workspace.exec import ExecRequest, ExecService
 from loushang.harness.workspace.git import find_git_paths
 
 
 @dataclass(frozen=True, slots=True)
-class CodingExecutionAuthority:
+class CodingExecutionAuthority(WorkspaceExecutionSelection):
     """Live user selection within immutable Product and delegated ceilings."""
 
     workspace_root: Path
     workspace_profile: EffectiveExecutionProfile
     ceiling: EffectiveExecutionProfile
     permission_snapshot: Callable[[], PermissionProfileSnapshot]
-
-    def __call__(self) -> EffectiveExecutionProfile:
-        return self._select(self.workspace_profile)
-
-    def for_workspace_operation(self) -> EffectiveExecutionProfile:
-        # Git processes need linked-worktree metadata outside the workspace.
-        # Ordinary Standard/Cautious file tools retain their original boundary.
-        workspace_only = constrain_execution_profile(
-            self.workspace_profile,
-            EffectiveExecutionProfile(
-                readable_roots=(self.workspace_root,),
-                writable_roots=(self.workspace_root,),
-            ),
-        )
-        return self._select(workspace_only)
-
-    def _select(self, workspace_profile: EffectiveExecutionProfile) -> EffectiveExecutionProfile:
-        profile = self.permission_snapshot().effective_profile
-        selected = (
-            self.ceiling
-            if profile.workspace_access == "managed_ceiling"
-            else workspace_profile
-        )
-        return constrain_execution_profile(self.ceiling, selected)
 
 
 def coding_host_execution_profile(
@@ -140,31 +116,12 @@ class CodingSandboxScopePolicy:
         )
 
     def __call__(self, request: ExecRequest) -> SandboxScopeRequest:
-        if request.cwd is None:
-            raise ValueError("Coding sandbox requires a materialized working directory")
-        cwd = Path(request.cwd).expanduser().resolve(strict=False)
-        assert self.execution_profile is not None
-        selected = select_execution_profile(self.execution_profile, self.execution_profile_provider)
-        if (
-            not any(cwd.is_relative_to(root) for root in selected.readable_roots)
-            or any(cwd.is_relative_to(root) for root in selected.denied_roots)
-            or (self.execution_profile_provider is None and not cwd.is_relative_to(self.workspace_root))
-        ):
-            raise PermissionError(
-                f"process cwd is outside the Coding sandbox workspace: {cwd}"
-            )
-        requested_profile = request.execution_profile
-        if requested_profile is not None and not isinstance(
-            requested_profile,
-            EffectiveExecutionProfile,
-        ):
-            raise TypeError("execution profile must be an EffectiveExecutionProfile")
-        return sandbox_scope_request_from_profile(
-            constrain_execution_profile(
-                selected,
-                requested_profile or selected,
-            ),
-            cwd=cwd,
+        return authorize_workspace_sandbox_scope(
+            request,
+            workspace_root=self.workspace_root,
+            execution_profile=self.execution_profile,
+            execution_profile_provider=self.execution_profile_provider,
+            product_label="Coding",
         )
 
 

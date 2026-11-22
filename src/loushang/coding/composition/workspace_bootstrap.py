@@ -16,13 +16,9 @@ from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     constrain_execution_profile,
 )
-from loushang.harness.capabilities.workspace_provider import (
-    workspace_capability_provider_binding,
-    workspace_profile_binding_fingerprint,
-)
+from loushang.harness.capabilities.workspace_provider import bind_authorized_workspace
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.exec import ExecService
-from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -125,31 +121,19 @@ def bind_session_workspace(
         execution_profile=execution_ceiling,
         execution_profile_provider=execution_authority,
     )
-    authorized_process_launcher = sandbox_runtime.bind_process_launcher(
-        ProcessExecutionScope(
+    workspace_binding = bind_authorized_workspace(
+        sandbox_runtime,
+        process_scope=ProcessExecutionScope(
             policy_evaluator=tool_policy_evaluator,
             approval_resolver=approval_resolver,
             audit_sink=audit_sink,
             execution_profile_ceiling=execution_ceiling,
             execution_profile_provider=execution_authority,
-        )
-    )
-    workspace_root = str(workspace_root_path)
-    workspace_binding_fingerprint = workspace_profile_binding_fingerprint(
-        execution_ceiling, namespace=fingerprint_namespace
-    )
-    workspace_binding = workspace_capability_provider_binding(
-        operations=CodingWorkspaceOperations(
-            root=workspace_root_path,
-            operations=LOCAL_TOOL_OPERATIONS,
-            execution_profile=execution_ceiling,
-            execution_profile_provider=execution_authority.for_workspace_operation,
         ),
-        process_launcher=authorized_process_launcher,
-        scope_instance_id=f"workspace:{workspace_root}",
-        binding_input_fingerprint=workspace_binding_fingerprint,
+        operations_factory=CodingWorkspaceOperations,
         provider_id=provider_id,
         source_id=source_id,
+        fingerprint_namespace=fingerprint_namespace,
     )
     return sandbox_runtime, workspace_binding
 
