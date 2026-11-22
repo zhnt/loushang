@@ -194,6 +194,59 @@ def _coordinator(
     )
 
 
+def _publish_native_worker_activation(
+    coordinator: ProductWorkerActivationCoordinator,
+    receipt: ProductWorkerActivationReceiptV1,
+    identity: WorkerLaunchIdentityV1,
+    profile: ProductWorkerNativeProfilePort,
+) -> None:
+    coordinator.publish(
+        receipt=receipt,
+        attempt_id=identity.attempt_id,
+        owner_generation=identity.owner_generation,
+        realized_native_policy_closure_fingerprint=(
+            profile.realized_native_policy_closure_fingerprint
+        ),
+        native_profile_catalog_revision=profile.native_profile_catalog_revision,
+        native_profile_id=profile.native_profile_id,
+    )
+
+
+def _settle_posix_worker(
+    coordinator: ProductWorkerActivationCoordinator,
+    evidence: _Evidence,
+    receipt: ProductWorkerActivationReceiptV1,
+    identity: WorkerLaunchIdentityV1,
+    *,
+    host_identity: str,
+    boot_identity: str,
+) -> None:
+    """Retire one POSIX attempt and attest its native tree under the original witness."""
+    coordinator.retire_exact(
+        receipt=receipt,
+        attempt_id=identity.attempt_id,
+        owner_generation=identity.owner_generation,
+    )
+    coordinator.record_protocol_terminal(
+        receipt=receipt,
+        attempt_id=identity.attempt_id,
+        owner_generation=identity.owner_generation,
+    )
+    coordinator.record_cleanup_settlement(
+        WorkerCleanupSettlementV1(
+            receipt_fingerprint=receipt.fingerprint,
+            attempt_id=identity.attempt_id,
+            owner_generation=identity.owner_generation,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            protocol_terminal=True,
+            domain_retired=True,
+            tree_settled=True,
+        ),
+        witness=evidence.current_tree_witness(attempt_id=identity.attempt_id),
+    )
+
+
 async def _prepare_posix_native_worker(
     *,
     launch_source: _PosixSource[PayloadT],
@@ -227,32 +280,13 @@ async def _prepare_posix_native_worker(
                     assert cleanup_evidence is not None
                     assert host_identity is not None
                     assert boot_identity is not None
-                    attempt_id = pending_launch.identity.attempt_id
-                    owner_generation = pending_launch.identity.owner_generation
-                    coordinator.retire_exact(
-                        receipt=receipt,
-                        attempt_id=attempt_id,
-                        owner_generation=owner_generation,
-                    )
-                    coordinator.record_protocol_terminal(
-                        receipt=receipt,
-                        attempt_id=attempt_id,
-                        owner_generation=owner_generation,
-                    )
-                    coordinator.record_cleanup_settlement(
-                        WorkerCleanupSettlementV1(
-                            receipt_fingerprint=receipt.fingerprint,
-                            attempt_id=attempt_id,
-                            owner_generation=owner_generation,
-                            host_identity=host_identity,
-                            boot_identity=boot_identity,
-                            protocol_terminal=True,
-                            domain_retired=True,
-                            tree_settled=True,
-                        ),
-                        witness=cleanup_evidence.current_tree_witness(
-                            attempt_id=attempt_id
-                        ),
+                    _settle_posix_worker(
+                        coordinator,
+                        cleanup_evidence,
+                        receipt,
+                        pending_launch.identity,
+                        host_identity=host_identity,
+                        boot_identity=boot_identity,
                     )
 
         task = asyncio.create_task(
@@ -358,19 +392,8 @@ async def _prepare_posix_native_worker(
 
         def commit_activation() -> None:
             assert coordinator is not None
-            coordinator.publish(
-                receipt=receipt,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-                realized_native_policy_closure_fingerprint=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).realized_native_policy_closure_fingerprint,
-                native_profile_catalog_revision=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).native_profile_catalog_revision,
-                native_profile_id=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).native_profile_id,
+            _publish_native_worker_activation(
+                coordinator, receipt, request.identity, profile
             )
             ProductWorkerActivationCoordinator.seal_current_resume_parent(
                 coordinator, context=resume_parent_context, failure=parent_failure
@@ -588,19 +611,9 @@ async def _prepare_windows_native_worker(
 
         def commit_activation() -> None:
             assert coordinator is not None
-            coordinator.publish(
-                receipt=receipt,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-                realized_native_policy_closure_fingerprint=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).realized_native_policy_closure_fingerprint,
-                native_profile_catalog_revision=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).native_profile_catalog_revision,
-                native_profile_id=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).native_profile_id,
+            _publish_native_worker_activation(
+                coordinator, receipt, request.identity,
+                cast(ProductWorkerNativeProfilePort, profile),
             )
             ProductWorkerActivationCoordinator.seal_current_resume_parent(
                 coordinator, context=resume_parent_context, failure=parent_failure
