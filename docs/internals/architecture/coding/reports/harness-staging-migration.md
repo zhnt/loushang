@@ -435,7 +435,7 @@ their existing read order, quota, missing-evidence errors and digest behavior.
 The shared history reader receives paths, frozen Desired facts and error
 types. It calls the existing Harness verification functions directly.
 
-The candidate retires five staged files and shrinks two more. Staged Python
+The first batch retired five staged files and shrank two more. Staged Python
 decreases by 983 lines, Coding Product grows by 318 lines and formal Harness
 grows by 605 lines. The system decreases by 60 production Python lines. No
 test or script source changes are included. The 55 inventory, lock and
@@ -446,6 +446,30 @@ and existing dependency-graph checks. The final candidate passed the existing
 acyclic Harness check and imported all three new formal evidence modules with
 Coding imports forbidden. Final source files in the task worktree match the
 tested candidate byte for byte.
+
+### Fenced Legacy Installation Inventory
+
+The Coding inventory entry calls the existing formal Package Product inventory
+owner. The former staged `legacy_inventory` module has exited. Package Product
+enumerates authenticated members, reads the binding and Desired captures,
+validates captured journal locks and settled management history, and reconciles
+the Installation inventory. It preserves the membership and proof order. The
+same formal first-snapshot reader reauthenticates the native POSIX or Windows
+receipt around each read and checks the runtime before returning the inventory.
+Coding supplies the workspace and paths, supported builtin IDs, established
+error types and historical result records.
+
+This batch removes 129 staged Python lines and adds 45 Coding Product and 150
+formal Harness lines. The added lines provide the typed boundary, formal
+orchestration and compatibility projection. Hosting, other production code,
+tests and scripts have no changes. Across both batches the staging layer has
+90 files and 16,113 lines, down 6 files and 1,112 lines. The system adds 6
+production Python lines relative to the baseline.
+
+The final inventory batch passed 48 Linux cases covering inventory, frozen
+Source settings, binding locks, Desired evidence and the Harness dependency
+graph. The formal inventory module also loaded with all Coding imports
+forbidden. Native Windows validation remains outstanding.
 
 ## Validation And Commit Rhythm
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_management_evidence import (
+    LEGACY_DESIRED_CAPTURE_MAX_BYTES,
     decode_legacy_desired_evidence,
 )
 from loushang.harness.plugin_management.journal_codecs import (
@@ -20,7 +21,7 @@ from .legacy_snapshot_member import (
     read_coding_first_b_snapshot_member,
 )
 
-_MAX_DESIRED_BYTES = 2 * 1024 * 1024
+_MAX_DESIRED_BYTES = LEGACY_DESIRED_CAPTURE_MAX_BYTES
 
 
 class CodingLegacyDesiredError(ValueError):

@@ -14,6 +14,8 @@ from loushang.harness.resources.packages.materializer import (
 from loushang.harness.resources.plugins.dependencies import PluginDependencyClosureLock
 from loushang.harness.resources.plugins.types import PluginSourceBinding
 
+LEGACY_BINDING_CAPTURE_MAX_BYTES = 2 * 1024 * 1024
+
 _TOP_LEVEL_KEYS = frozenset(
     {"version", "trustedSources", "packages", "pluginBindings", "pluginBindingHeads"}
 )

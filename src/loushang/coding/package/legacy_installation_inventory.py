@@ -5,27 +5,40 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.coding.harness.package_product import legacy_inventory as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_binding_evidence import (
+    LegacyLocalBindingEvidence,
+)
 from loushang.harness.package_product._legacy_inventory import (
+    LegacyInventoryFacts,
     classify_legacy_installations,
     prove_removed_legacy_bindings,
+    read_legacy_installation_inventory,
 )
 
 from .legacy_desired_evidence import (
+    CodingLegacyDesiredError,
     CodingLegacyDesiredEvidenceV1,
 )
 from .legacy_desired_evidence import (
     read_coding_legacy_desired_evidence as read_coding_legacy_desired_evidence,
 )
 from .legacy_instance_evidence import (
+    CodingLegacyInstanceEvidenceError,
+    _management_capture_paths,
+)
+from .legacy_instance_evidence import (
     parse_coding_legacy_retired_instance_capture as parse_coding_legacy_retired_instance_capture,
 )
 from .legacy_lock_evidence import (
     CodingLegacyLocalBindingEvidenceV1,
+    CodingLegacyLockError,
 )
 from .legacy_lock_evidence import (
     read_coding_legacy_local_binding_heads as read_coding_legacy_local_binding_heads,
+)
+from .legacy_operation_evidence import (
+    CodingLegacyOperationEvidenceError,
 )
 from .legacy_operation_evidence import (
     CodingLegacyRetirementCaptureV1 as CodingLegacyRetirementCaptureV1,
@@ -38,6 +51,7 @@ from .legacy_operation_evidence import (
 )
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
+    _snapshot_reader,
 )
 from .legacy_snapshot_member import (
     CodingLegacyEvidenceDomain as CodingLegacyEvidenceDomain,
@@ -54,23 +68,6 @@ from .legacy_snapshot_member import (
 
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 CodingLegacyInstalledState = Literal["installed_disabled", "installed_enabled"]
-
-
-_LEGACY_PROGRAM_VALUES = {
-    "value_001": "Coding Plugin lifecycle layout is required",
-    "value_002": "Fenced Product epoch owner is required",
-    "value_003": "Coding legacy binding members are ambiguous",
-    "value_004": "Coding legacy state without a binding lock is unsupported",
-    "value_005": "Coding legacy first fence is missing",
-    "value_006": "package-lock.json",
-    "value_007": "Coding old Desired state is missing",
-    "value_008": "package-lock.json.lock",
-    "value_009": "Coding old Package lock changed",
-    "value_017": "Coding old management operation journal is missing",
-    "value_020": "Coding old management lock changed",
-    "value_022": "Coding old retirement journals are missing",
-    "value_023": "Coding old Instance runtime evidence is missing",
-}
 
 
 class CodingLegacyInventoryError(ValueError):
@@ -128,7 +125,32 @@ def read_coding_legacy_installation_inventory(
 ) -> CodingLegacyInstallationInventoryEvidenceV1:
     """Join authenticated old lock and desired state under the current B fence."""
 
-    return _programs.read_inventory(lifecycle, epoch_runtime)
+    if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
+        raise TypeError("Coding Plugin lifecycle layout is required")
+    if not isinstance(epoch_runtime, CodingFencedEpochRuntime):
+        raise TypeError("Fenced Product epoch owner is required")
+    epoch_runtime.assert_current()
+    evidence = read_legacy_installation_inventory(
+        _snapshot_reader(lifecycle, epoch_runtime),
+        desired_path=lifecycle.desired_state,
+        management_paths=_management_capture_paths(lifecycle),
+        product_id="coding",
+        scope_id=lifecycle.scope_id,
+        builtin_ids=_BUILTINS,
+        inventory_error=CodingLegacyInventoryError,
+        lock_error=CodingLegacyLockError,
+        desired_error=CodingLegacyDesiredError,
+        operation_error=CodingLegacyOperationEvidenceError,
+        instance_error=CodingLegacyInstanceEvidenceError,
+        label="Coding",
+    )
+    return CodingLegacyInstallationInventoryEvidenceV1(
+        first_fence_id=evidence.first_fence_id,
+        snapshot_receipt_id=evidence.snapshot_receipt_id,
+        inventory=_project_inventory_facts(
+            evidence.inventory, desired_journal_digest=evidence.desired_journal_digest
+        ),
+    )
 
 
 def classify_coding_legacy_installations(
@@ -156,16 +178,37 @@ def classify_coding_legacy_installations(
         error_type=CodingLegacyInventoryError,
         label="Coding legacy",
     )
+    return _project_inventory_facts(
+        facts,
+        desired_journal_digest=None if desired is None else desired.journal_digest,
+    )
+
+
+def _project_inventory_facts(
+    facts: (
+        LegacyInventoryFacts[CodingLegacyLocalBindingEvidenceV1]
+        | LegacyInventoryFacts[LegacyLocalBindingEvidence]
+    ),
+    *,
+    desired_journal_digest: str | None,
+) -> CodingLegacyInstallationInventoryV1:
     return CodingLegacyInstallationInventoryV1(
         active_local=tuple(
-            CodingLegacyLocalInstallationV1(*item) for item in facts.active_local
+            CodingLegacyLocalInstallationV1(
+                binding
+                if isinstance(binding, CodingLegacyLocalBindingEvidenceV1)
+                else CodingLegacyLocalBindingEvidenceV1(*binding),
+                state,
+                version,
+            )
+            for binding, state, version in facts.active_local
         ),
         builtin_intent=tuple(
             CodingLegacyBuiltinIntentV1(*item) for item in facts.builtin_intent
         ),
         removed_plugin_ids=facts.removed_plugin_ids,
         unselected_source_identities=facts.unselected_source_identities,
-        desired_journal_digest=None if desired is None else desired.journal_digest,
+        desired_journal_digest=desired_journal_digest,
         lockfile_digest=facts.lockfile_digest,
     )
 

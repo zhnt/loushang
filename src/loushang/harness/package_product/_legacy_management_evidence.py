@@ -29,6 +29,7 @@ _MANAGEMENT_OPERATIONS = "management-operations.jsonl"
 _INSTANCE_RUNTIME = "instance-runtime.jsonl"
 _RETIREMENT_INTENTS = "retirement-intents.jsonl"
 _RETIREMENT_SETS = "retirement-sets.jsonl"
+LEGACY_DESIRED_CAPTURE_MAX_BYTES = 2 * 1024 * 1024
 LEGACY_MANAGEMENT_CAPTURE_MAX_BYTES = 2 * 1024 * 1024
 
 _SIMPLE_DESIRED_MEMBERS = ("desired-state.jsonl",)

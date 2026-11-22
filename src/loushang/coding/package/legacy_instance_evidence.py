@@ -28,6 +28,17 @@ class CodingLegacyInstanceEvidenceError(ValueError):
     """Frozen old Instance references are not safe for first-B adoption."""
 
 
+def _management_capture_paths(
+    lifecycle: CodingPluginLifecycleStateLayout,
+) -> LegacyManagementCapturePaths:
+    return LegacyManagementCapturePaths(
+        lifecycle.management_operations,
+        lifecycle.retirement_intents,
+        lifecycle.retirement_sets,
+        lifecycle.instance_runtime,
+    )
+
+
 def _read_management_history(
     lifecycle: CodingPluginLifecycleStateLayout,
     instance_members: tuple[str, ...],
@@ -41,12 +52,7 @@ def _read_management_history(
 ) -> str | None:
     return read_settled_management_history(
         read_member,
-        paths=LegacyManagementCapturePaths(
-            lifecycle.management_operations,
-            lifecycle.retirement_intents,
-            lifecycle.retirement_sets,
-            lifecycle.instance_runtime,
-        ),
+        paths=_management_capture_paths(lifecycle),
         instance_members=instance_members,
         desired_snapshot=desired.snapshot,
         desired_transitions=desired.transitions,

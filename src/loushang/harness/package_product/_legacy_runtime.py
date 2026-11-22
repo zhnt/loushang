@@ -51,45 +51,36 @@ _SnapshotStore = (
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _LegacyFirstSnapshot:
-    """Borrow one fenced runtime to read its authenticated, immutable first snapshot."""
+    """Reauthenticate the first fence and its receipt for each observation."""
 
     runtime: _FencedRuntime
-    snapshots: _SnapshotStore
-    receipt_id: str
-    evidence: PackageOfflineRestoreSnapshotEvidenceV1
+    store_id: str
+    control_root: Path
+    snapshot_root: Path
     error_type: type[Exception]
     label: str
 
-    @classmethod
-    def open(
-        cls,
-        runtime: _FencedRuntime,
-        *,
-        store_id: str,
-        control_root: Path,
-        snapshot_root: Path,
-        error_type: type[Exception],
-        label: str,
-    ) -> _LegacyFirstSnapshot:
+    def _open(self) -> tuple[_SnapshotStore, PackageOfflineRestoreSnapshotEvidenceV1]:
+        runtime = self.runtime
         runtime.assert_current()
         fence = runtime.cutover_result.fence
         if (
-            runtime.registry.store_id != store_id
-            or runtime.control_root != control_root
+            runtime.registry.store_id != self.store_id
+            or runtime.control_root != self.control_root
             or fence is None
-            or fence.store_id != store_id
+            or fence.store_id != self.store_id
             or fence.epoch != 1
             or fence.request.prior_epoch != 0
         ):
-            raise error_type(f"{label} first fence is unsupported")
+            raise self.error_type(f"{self.label} first fence is unsupported")
         snapshot_owner = (
             PackageWindowsEpochSnapshotEvidenceStore
             if isinstance(runtime, PackageProductWindowsFencedRuntimeOwner)
             else PackagePosixEpochSnapshotEvidenceStore
         )
-        snapshots = snapshot_owner(snapshot_root, store_id=store_id)
+        snapshots = snapshot_owner(self.snapshot_root, store_id=self.store_id)
         receipt_id = fence.request.snapshot_receipt_id
         evidence = snapshots.snapshot(receipt_id)
         if (
@@ -98,14 +89,15 @@ class _LegacyFirstSnapshot:
             or evidence.snapshot.legacy_root_identity
             != fence.request.legacy_root_identity
         ):
-            raise error_type(f"{label} snapshot is unavailable")
-        return cls(runtime, snapshots, receipt_id, evidence, error_type, label)
+            raise self.error_type(f"{self.label} snapshot is unavailable")
+        return snapshots, evidence
 
     def read_member(
         self, *, domain: str, member_name: str, maximum_bytes: int
     ) -> bytes | None:
-        raw = self.snapshots.read_regular_member(
-            self.receipt_id,
+        snapshots, evidence = self._open()
+        raw = snapshots.read_regular_member(
+            evidence.snapshot.receipt_id,
             domain=domain,
             member_name=member_name,
             maximum_bytes=maximum_bytes,
@@ -114,7 +106,10 @@ class _LegacyFirstSnapshot:
         return raw
 
     def list_members(self, *, domain: str) -> tuple[str, ...]:
-        members = self.snapshots.list_domain_members(self.receipt_id, domain=domain)
+        snapshots, evidence = self._open()
+        members = snapshots.list_domain_members(
+            evidence.snapshot.receipt_id, domain=domain
+        )
         if members is None:
             raise self.error_type(f"{self.label} snapshot disappeared")
         self.runtime.assert_current()
@@ -123,21 +118,22 @@ class _LegacyFirstSnapshot:
     def observe(
         self, *, store_id: str, legacy_root_identity: str
     ) -> PackageLegacyStateEvidenceV1:
+        _, evidence = self._open()
         fence = self.runtime.cutover_result.fence
         if (
             fence is None
             or store_id != fence.store_id
             or legacy_root_identity != fence.request.legacy_root_identity
-            or self.evidence.snapshot.store_id != store_id
+            or evidence.snapshot.store_id != store_id
         ):
             raise self.error_type(f"{self.label} observation authority changed")
         self.runtime.assert_current()
         return PackageLegacyStateEvidenceV1.create(
             store_id=store_id,
             legacy_root_identity=legacy_root_identity,
-            state_digest=self.evidence.snapshot_tree_digest,
-            entry_count=self.evidence.snapshot.entry_count,
-            byte_count=self.evidence.snapshot.byte_count,
+            state_digest=evidence.snapshot_tree_digest,
+            entry_count=evidence.snapshot.entry_count,
+            byte_count=evidence.snapshot.byte_count,
         )
 
 
