@@ -101,14 +101,14 @@ from ..control.settings_store import (
     default_project_settings_path,
 )
 from .builtin_wheel import (
-    CodingBaseProductWheelArtifactV1,
-    CodingCapabilityProductWheelArtifactV1,
-)
-from .builtin_wheel import (
     coding_base_product_local_wheel_policy as coding_base_product_local_wheel_policy,
 )
 from .builtin_wheel import (
     coding_builtin_product_local_wheel_policy as coding_builtin_product_local_wheel_policy,
+)
+from .builtin_wheel import (
+    inspect_posix_coding_base_product_wheel,
+    inspect_posix_coding_capability_product_wheels,
 )
 from .builtin_wheel import (
     prepare_posix_coding_base_product_wheel as prepare_posix_coding_base_product_wheel,
@@ -1189,31 +1189,11 @@ def _open_coding_product_runtime(
         no_namespace="Coding Package Product root is not fenced",
         state_root=state_root,
     )
-    source_root = roots.identity["source_root"]
-    windows = isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-    artifact = (
-        prepare_windows_coding_base_product_wheel(source_root)
-        if windows
-        else prepare_posix_coding_base_product_wheel(source_root)
-    )
-    host_inputs = PosixLocalWheelProductHostInputs.current_host(
-        max_transport_bytes=2 * 1024 * 1024
-    )
-    environment_fingerprint = host_inputs.environment.fingerprint
-    capabilities = None
-    if include_capabilities:
-        capabilities = (
-            prepare_windows_coding_capability_product_wheels(source_root)
-            if windows
-            else prepare_posix_coding_capability_product_wheels(source_root)
-        )
-    policy = _compose_coding_product_source_policy(
+    policy, host_inputs = _compose_coding_product_source_policy(
         lifecycle,
         epoch_runtime,
         roots,
-        artifact,
-        capabilities,
-        environment_fingerprint=environment_fingerprint,
+        include_capabilities=include_capabilities,
         include_worker_candidates=include_worker_candidates,
     )
     session_owner = bind_fenced_product_session_owner(
@@ -1242,43 +1222,50 @@ def _open_coding_product_runtime(
     return CodingPosixLocalWheelProductRuntimeOwner(product_owner=session_owner)
 
 
-def _bind_coding_builtin_wheel_policy(
-    base: CodingBaseProductWheelArtifactV1,
-    capabilities: tuple[CodingCapabilityProductWheelArtifactV1, ...] | None,
+def _compose_coding_product_source_policy(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner,
+    roots: FencedSourceCatalogRoots,
     *,
-    scope_id: str,
-    environment_fingerprint: str,
-) -> PackageProductLocalWheelPolicy:
-    arguments = dict(
-        project_scope_id=scope_id,
+    include_capabilities: bool = True,
+    include_worker_candidates: bool,
+    read_only: bool = False,
+) -> tuple[PackageProductLocalWheelPolicy, PosixLocalWheelProductHostInputs]:
+    """Assemble the same first-party Sources without promoting a read to a writer."""
+    source_root = roots.identity["source_root"]
+    windows = isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
+    capabilities = None
+    if read_only:
+        base = inspect_posix_coding_base_product_wheel(source_root)
+        if include_capabilities:
+            capabilities = inspect_posix_coding_capability_product_wheels(source_root)
+    else:
+        base = (
+            prepare_windows_coding_base_product_wheel(source_root)
+            if windows
+            else prepare_posix_coding_base_product_wheel(source_root)
+        )
+    host = PosixLocalWheelProductHostInputs.current_host(
+        max_transport_bytes=2 * 1024 * 1024
+    )
+    environment_fingerprint = host.environment.fingerprint
+    if not read_only and include_capabilities:
+        capabilities = (
+            prepare_windows_coding_capability_product_wheels(source_root)
+            if windows
+            else prepare_posix_coding_capability_product_wheels(source_root)
+        )
+    policy_options = dict(
+        project_scope_id=roots.identity["scope_id"],
         resolution_environment_fingerprint=environment_fingerprint,
         policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
         quota_profile_revision="coding-product-package-quota:1",
         authority_id="coding-product-local-source",
     )
-    if capabilities is None:
-        return coding_base_product_local_wheel_policy(base, **arguments)
-    return coding_builtin_product_local_wheel_policy(base, capabilities, **arguments)
-
-
-def _compose_coding_product_source_policy(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner,
-    roots: FencedSourceCatalogRoots,
-    base: CodingBaseProductWheelArtifactV1,
-    capabilities: tuple[CodingCapabilityProductWheelArtifactV1, ...] | None,
-    *,
-    environment_fingerprint: str,
-    include_worker_candidates: bool,
-    read_only: bool = False,
-) -> PackageProductLocalWheelPolicy:
-    """Bind the same approved sources for preview and live Product selection."""
-
-    policy = _bind_coding_builtin_wheel_policy(
-        base,
-        capabilities,
-        scope_id=roots.identity["scope_id"],
-        environment_fingerprint=environment_fingerprint,
+    policy = (
+        coding_base_product_local_wheel_policy(base, **policy_options)
+        if capabilities is None
+        else coding_builtin_product_local_wheel_policy(base, capabilities, **policy_options)
     )
     state_root = roots.state_root
     policy_revision = policy.policy_revision
@@ -1309,16 +1296,19 @@ def _compose_coding_product_source_policy(
             read_only=read_only,
         ).extend_policy(policy)
     if include_worker_candidates:
-        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
-            return CodingWindowsExternalWorkerWheelCatalog(
+        worker_catalog = (
+            CodingWindowsExternalWorkerWheelCatalog(
                 epoch_runtime=epoch_runtime, state_root=state_root, **roots.identity
-            ).extend_policy(policy)
-        return CodingExternalWorkerWheelCatalog(
-            state_root / "external-worker-wheel-bindings.jsonl",
-            **roots.identity,
-            read_only=read_only,
-        ).extend_policy(policy)
-    return policy
+            )
+            if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
+            else CodingExternalWorkerWheelCatalog(
+                state_root / "external-worker-wheel-bindings.jsonl",
+                **roots.identity,
+                read_only=read_only,
+            )
+        )
+        policy = worker_catalog.extend_policy(policy)
+    return policy, host
 
 
 def _legacy_state_requires_migration(

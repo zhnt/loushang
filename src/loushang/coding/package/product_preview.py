@@ -336,19 +336,10 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 no_namespace="Coding Package Product root is not fenced",
                 read_only=True,
             )
-            source_root = roots.identity["source_root"]
-            base = inspect_posix_coding_base_product_wheel(source_root)
-            capabilities = inspect_posix_coding_capability_product_wheels(source_root)
-            host = PosixLocalWheelProductHostInputs.current_host(
-                max_transport_bytes=2 * 1024 * 1024
-            )
-            policy = _compose_coding_product_source_policy(
+            policy, _ = _compose_coding_product_source_policy(
                 layout,
                 runtime,
                 roots,
-                base,
-                capabilities,
-                environment_fingerprint=host.environment.fingerprint,
                 include_worker_candidates=worker_candidates,
                 read_only=True,
             )

@@ -6852,6 +6852,7 @@ def test_management_read_sdk_preview_refuses_workspace_replaced_after_epoch_open
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import loushang.coding.package.product_preview as preview_module
+    import loushang.coding.package.product_runtime as runtime_module
 
     workspace, _layout, _settings = _p2_workspace(tmp_path, monkeypatch)
     client = open_coding_plugin_management_read_client(workspace)
@@ -6876,7 +6877,7 @@ def test_management_read_sdk_preview_refuses_workspace_replaced_after_epoch_open
         classmethod(replace_after_epoch_open),
     )
     monkeypatch.setattr(
-        preview_module,
+        runtime_module,
         "inspect_posix_coding_base_product_wheel",
         forbid_product_source_read,
     )

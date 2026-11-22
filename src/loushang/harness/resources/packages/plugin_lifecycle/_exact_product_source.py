@@ -86,16 +86,7 @@ class ExactProductSourceFiles:
                 )
                 try:
                     acl.validate(member)
-                    metadata = os.fstat(member)
-                    if (
-                        not stat.S_ISREG(metadata.st_mode)
-                        or metadata.st_nlink != 1
-                        or metadata.st_size != len(body)
-                        or os.read(member, len(body) + 1) != body
-                    ):
-                        raise ValueError(
-                            f"{self._product} {label} Product Wheel changed on disk"
-                        )
+                    self._verify_member(member, body, label, posix=False)
                 finally:
                     os.close(member)
             source.assert_visible()
@@ -146,7 +137,7 @@ class ExactProductSourceFiles:
                 filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory
             )
             try:
-                self._verify_posix(member, body, label)
+                self._verify_member(member, body, label, posix=True)
             finally:
                 os.close(member)
         finally:
@@ -180,7 +171,7 @@ class ExactProductSourceFiles:
                 os.fsync(directory)
             else:
                 try:
-                    self._verify_posix(member, body, label)
+                    self._verify_member(member, body, label, posix=True)
                 finally:
                     os.close(member)
         finally:
@@ -245,13 +236,17 @@ class ExactProductSourceFiles:
             raise
         return descriptor
 
-    def _verify_posix(self, descriptor: int, body: bytes, label: str) -> None:
+    def _verify_member(
+        self, descriptor: int, body: bytes, label: str, *, posix: bool
+    ) -> None:
         member = os.fstat(descriptor)
         if (
             not stat.S_ISREG(member.st_mode)
             or member.st_nlink != 1
-            or member.st_uid != os.getuid()
-            or stat.S_IMODE(member.st_mode) & 0o077
+            or (
+                posix
+                and (member.st_uid != os.getuid() or stat.S_IMODE(member.st_mode) & 0o077)
+            )
             or member.st_size != len(body)
             or os.read(descriptor, len(body) + 1) != body
         ):

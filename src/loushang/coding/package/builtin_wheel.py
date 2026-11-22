@@ -52,6 +52,21 @@ class _BuiltinWheelSpec:
     def distribution_name(self) -> str:
         return self.package_name.replace("_", "-")
 
+    def bind(
+        self,
+        artifact: CodingBaseProductWheelArtifactV1 | CodingCapabilityProductWheelArtifactV1,
+        *,
+        plugin_id: str,
+    ) -> PackageProductLocalWheelBindingV1:
+        return PackageProductLocalWheelBindingV1(
+            source_identity=str(artifact.path),
+            requested_package=f"{self.distribution_name}==1",
+            plugin_id=plugin_id,
+            artifact_digest=artifact.artifact_digest,
+            plugin_manifest_path=f"{self.package_name}/plugin.json",
+            source_trust_class="host-equivalent-local",
+        )
+
 
 _BASE_SPEC = _BuiltinWheelSpec("coding.base", _PACKAGE_NAME, _MEMBERS)
 _CAPABILITY_SPECS = {
@@ -141,16 +156,7 @@ def coding_base_product_local_wheel_policy(
         product_id="coding",
         project_scope_id=project_scope_id,
         source_root=artifact.path.parent,
-        bindings=(
-            PackageProductLocalWheelBindingV1(
-                source_identity=str(artifact.path),
-                requested_package="coding-base==1",
-                plugin_id="coding.base",
-                artifact_digest=artifact.artifact_digest,
-                plugin_manifest_path="coding_base/plugin.json",
-                source_trust_class="host-equivalent-local",
-            ),
-        ),
+        bindings=(_BASE_SPEC.bind(artifact, plugin_id=_BASE_SPEC.plugin_id),),
         policy_revision=policy_revision,
         quota_profile_revision=quota_profile_revision,
         resolution_environment_fingerprint=resolution_environment_fingerprint,
@@ -197,16 +203,7 @@ def coding_builtin_product_local_wheel_policy(
             or artifact.byte_count > _MAX_WHEEL_BYTES
         ):
             raise ValueError("Coding Capability Product Wheel evidence is invalid")
-        bindings.append(
-            PackageProductLocalWheelBindingV1(
-                source_identity=str(artifact.path),
-                requested_package=f"{spec.distribution_name}==1",
-                plugin_id=artifact.plugin_id,
-                artifact_digest=artifact.artifact_digest,
-                plugin_manifest_path=f"{spec.package_name}/plugin.json",
-                source_trust_class="host-equivalent-local",
-            )
-        )
+        bindings.append(spec.bind(artifact, plugin_id=artifact.plugin_id))
     return replace(
         base_policy,
         bindings=tuple(sorted(bindings, key=lambda item: item.source_identity)),
