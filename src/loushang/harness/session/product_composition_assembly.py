@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import chain
-from typing import TYPE_CHECKING, Literal, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -701,47 +701,40 @@ class ProductPluginSelectionSeed:
         object.__setattr__(self, "owner_bindings", owners)
 
 
-OwnerCompletionRejection = Literal[
-    "invalid_package_resource_declaration",
-    "invalid_product_owner_binding_kind",
-    "duplicate_product_owner_binding",
-    "product_owner_binding_extra",
-]
+@dataclass(frozen=True, slots=True)
+class CatalogContributionOwnerPolicy:
+    """Product policy for a default owner of configured Catalog resources."""
+
+    product_id: str
+    configured_trust_class: str
+    policy_revision: Callable[[str, OwnerContributionKind], str]
 
 
-class ProductContributionOwnerResolver(Protocol):
-    """Product policy for one grouped owner's exact binding or default."""
-
-    def __call__(
-        self,
-        *,
-        owner_id: str,
-        contribution_kind: OwnerContributionKind,
-        trust_classes: set[str],
-        collection_ids: set[str],
-        supplied_binding: ProductContributionOwnerBinding | None,
-    ) -> ProductContributionOwnerBinding: ...
-
-
-def _complete_product_plugin_selection_seed(
+def _complete_catalog_plugin_selection_seed(
     seed: ProductPluginPlanSeed,
     *,
     selection: PluginSelection,
-    candidates: tuple[OwnerContributionCandidateEnvelope, ...],
-    resolve_owner: ProductContributionOwnerResolver,
-    reject: Callable[[OwnerCompletionRejection], Exception],
+    owner_policy: CatalogContributionOwnerPolicy,
+    reject: Callable[[Sequence[str]], Exception],
+    product_label: str,
 ) -> ProductPluginSelectionSeed:
-    """Group already-projected inputs without making Product policy decisions."""
+    """Attach exact contribution owners to one already-finalized Catalog selection."""
+    if not isinstance(seed, ProductPluginPlanSeed):
+        raise TypeError(f"{product_label} package Product plan seed is invalid")
+    if not isinstance(selection, PluginSelection) or selection.plan != seed.plan:
+        raise ValueError(
+            f"{product_label} package Product selection does not match its plan"
+        )
 
     owner_collections: dict[tuple[str, OwnerContributionKind], set[str]] = {}
     owner_trust_classes: dict[tuple[str, OwnerContributionKind], set[str]] = {}
-    for candidate in candidates:
+    for candidate in project_product_owner_candidates(selection):
         contribution = candidate.contribution
         if not isinstance(
             contribution,
             ResourceContributionSpec | CatalogConsumerContributionSpec,
         ):
-            raise reject("invalid_package_resource_declaration")
+            raise reject(("invalid_package_resource_declaration",))
         owner_key = (candidate.owner_id, candidate.contribution_kind)
         owner_collections.setdefault(owner_key, set()).add(contribution.collection_id)
         owner_trust_classes.setdefault(owner_key, set()).add(
@@ -750,36 +743,54 @@ def _complete_product_plugin_selection_seed(
     supplied: dict[
         tuple[str, OwnerContributionKind], ProductContributionOwnerBinding
     ] = {}
-    for binding in seed.owner_bindings:
-        owner_id, raw_contribution_kind, _ = binding.owner_key
+    for supplied_binding in seed.owner_bindings:
+        owner_id, raw_contribution_kind, _ = supplied_binding.owner_key
         if raw_contribution_kind not in PLUGIN_OWNER_CONTRIBUTION_KINDS:
-            raise reject("invalid_product_owner_binding_kind")
+            raise reject(("invalid_product_owner_binding_kind",))
         contribution_kind = cast(OwnerContributionKind, raw_contribution_kind)
         owner_key = (owner_id, contribution_kind)
         if owner_key in supplied:
-            raise reject("duplicate_product_owner_binding")
-        supplied[owner_key] = binding
+            raise reject(("duplicate_product_owner_binding",))
+        supplied[owner_key] = supplied_binding
 
     if set(supplied) - set(owner_collections):
-        raise reject("product_owner_binding_extra")
+        raise reject(("product_owner_binding_extra",))
 
-    owner_bindings_list: list[ProductContributionOwnerBinding] = []
+    owner_bindings: list[ProductContributionOwnerBinding] = []
     for owner_key, collection_ids in sorted(owner_collections.items()):
-        owner_bindings_list.append(
-            resolve_owner(
-                owner_id=owner_key[0],
-                contribution_kind=owner_key[1],
-                trust_classes=owner_trust_classes[owner_key],
+        owner_id, contribution_kind = owner_key
+        trust_classes = owner_trust_classes[owner_key]
+        binding = supplied.get(owner_key)
+        if binding is not None:
+            if not binding.authority.policy.covers_direct_session(
+                owner_id=owner_id,
+                contribution_kind=contribution_kind,
+                product_id=owner_policy.product_id,
+                trust_classes=trust_classes,
                 collection_ids=collection_ids,
-                supplied_binding=supplied.get(owner_key),
+            ):
+                raise reject(("product_owner_binding_boundary_mismatch",))
+        else:
+            if contribution_kind != "resource_item" or trust_classes != {
+                owner_policy.configured_trust_class
+            }:
+                raise reject(("product_owner_binding_missing",))
+            binding = ProductContributionOwnerBinding(
+                authority=OwnerContributionAuthority.for_direct_session(
+                    owner_id=owner_id,
+                    contribution_kind=contribution_kind,
+                    product_id=owner_policy.product_id,
+                    policy_revision=owner_policy.policy_revision(owner_id, contribution_kind),
+                    trust_classes=tuple(sorted(trust_classes)),
+                    collection_ids=tuple(sorted(collection_ids)),
+                )
             )
-        )
-    owner_bindings = tuple(owner_bindings_list)
+        owner_bindings.append(binding)
     return ProductPluginSelectionSeed(
         selection=selection,
         packages=seed.packages,
         bindings=seed.bindings,
-        owner_bindings=owner_bindings,
+        owner_bindings=tuple(owner_bindings),
     )
 
 
@@ -2041,7 +2052,7 @@ def _finalize_catalog_plugin_plan_seed(
     seed: ProductPluginPlanSeed,
     *,
     resolve: Callable[[ProductPluginPlanSeed], PluginSelection] | None = None,
-    resolve_owner: ProductContributionOwnerResolver,
+    owner_policy: CatalogContributionOwnerPolicy,
     reject: Callable[[Sequence[str]], Exception],
     product_label: str,
 ) -> ProductPluginSelectionSeed:
@@ -2069,34 +2080,9 @@ def _finalize_catalog_plugin_plan_seed(
     return _complete_catalog_plugin_selection_seed(
         seed,
         selection=selection,
-        resolve_owner=resolve_owner,
+        owner_policy=owner_policy,
         reject=reject,
         product_label=product_label,
-    )
-
-
-def _complete_catalog_plugin_selection_seed(
-    seed: ProductPluginPlanSeed,
-    *,
-    selection: PluginSelection,
-    resolve_owner: ProductContributionOwnerResolver,
-    reject: Callable[[Sequence[str]], Exception],
-    product_label: str,
-) -> ProductPluginSelectionSeed:
-    """Attach exact contribution owners to one already-finalized selection."""
-    if not isinstance(seed, ProductPluginPlanSeed):
-        raise TypeError(f"{product_label} package Product plan seed is invalid")
-    if not isinstance(selection, PluginSelection) or selection.plan != seed.plan:
-        raise ValueError(
-            f"{product_label} package Product selection does not match its plan"
-        )
-    candidates = project_product_owner_candidates(selection)
-    return _complete_product_plugin_selection_seed(
-        seed,
-        selection=selection,
-        candidates=candidates,
-        resolve_owner=resolve_owner,
-        reject=lambda reason: reject((reason,)),
     )
 
 

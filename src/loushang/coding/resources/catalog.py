@@ -11,9 +11,7 @@ from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.contribution_admission import (
-    OwnerContributionAuthority,
     OwnerContributionKind,
-    OwnerContributionPolicy,
 )
 from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -37,6 +35,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelection,
 )
 from loushang.harness.session.product_composition_assembly import (
+    CatalogContributionOwnerPolicy,
     ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
@@ -57,6 +56,11 @@ _PACKAGE_CATALOG_DEFINITIONS = (
 _CODING_RESOURCE_CATALOG_POLICY_REVISION = "coding-resource-catalog-v3"
 _CODING_PACKAGE_TRUST_CLASS = "coding-configured-published"
 _CODING_PACKAGE_TRUST_POLICY_REVISION = "coding-resource-package-trust-v1"
+_CATALOG_OWNER_POLICY = CatalogContributionOwnerPolicy(
+    product_id=_CATALOG_PRODUCT_ID,
+    configured_trust_class=_CODING_PACKAGE_TRUST_CLASS,
+    policy_revision=lambda owner_id, kind: f"{owner_id}-{kind}-coding-ingress-v1",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,7 +294,7 @@ def finalize_coding_package_plugin_plan_seed(
     return _finalize_catalog_plugin_plan_seed(
         seed,
         resolve=resolve,
-        resolve_owner=_resolve_coding_contribution_owner,
+        owner_policy=_CATALOG_OWNER_POLICY,
         reject=CodingResourceCatalogAdmissionError,
         product_label=_CATALOG_PRODUCT_LABEL,
     )
@@ -303,51 +307,9 @@ def complete_coding_package_plugin_selection_seed(
     return _complete_catalog_plugin_selection_seed(
         seed,
         selection=selection,
-        resolve_owner=_resolve_coding_contribution_owner,
+        owner_policy=_CATALOG_OWNER_POLICY,
         reject=CodingResourceCatalogAdmissionError,
         product_label=_CATALOG_PRODUCT_LABEL,
-    )
-
-
-def _resolve_coding_contribution_owner(
-    *,
-    owner_id: str,
-    contribution_kind: OwnerContributionKind,
-    trust_classes: set[str],
-    collection_ids: set[str],
-    supplied_binding: ProductContributionOwnerBinding | None,
-) -> ProductContributionOwnerBinding:
-    if supplied_binding is not None:
-        if not _owner_binding_covers(
-            supplied_binding,
-            owner_id=owner_id,
-            contribution_kind=contribution_kind,
-            trust_classes=trust_classes,
-            collection_ids=collection_ids,
-        ):
-            raise CodingResourceCatalogAdmissionError(
-                ("product_owner_binding_boundary_mismatch",)
-            )
-        return supplied_binding
-    if contribution_kind != "resource_item" or trust_classes != {
-        _CODING_PACKAGE_TRUST_CLASS
-    }:
-        raise CodingResourceCatalogAdmissionError(("product_owner_binding_missing",))
-    return ProductContributionOwnerBinding(
-        authority=OwnerContributionAuthority(
-            OwnerContributionPolicy(
-                owner_id=owner_id,
-                contribution_kind=contribution_kind,
-                product_id=_CATALOG_PRODUCT_ID,
-                policy_revision=f"{owner_id}-{contribution_kind}-coding-ingress-v1",
-                revocation_epoch=0,
-                allowed_source_trust_classes=tuple(sorted(trust_classes)),
-                allowed_collection_ids=tuple(sorted(collection_ids)),
-                allowed_requirement_bindings=("direct",),
-                consumer_scope="session",
-                consumer_refresh_boundary="sealed",
-            )
-        )
     )
 
 
@@ -359,16 +321,12 @@ def _owner_binding_covers(
     trust_classes: set[str],
     collection_ids: set[str],
 ) -> bool:
-    policy = binding.authority.policy
-    return (
-        policy.owner_id == owner_id
-        and policy.contribution_kind == contribution_kind
-        and policy.product_id == _CATALOG_PRODUCT_ID
-        and set(policy.allowed_source_trust_classes) == trust_classes
-        and set(policy.allowed_collection_ids) == collection_ids
-        and policy.allowed_requirement_bindings == ("direct",)
-        and policy.consumer_scope == "session"
-        and policy.consumer_refresh_boundary == "sealed"
+    return binding.authority.policy.covers_direct_session(
+        owner_id=owner_id,
+        contribution_kind=contribution_kind,
+        product_id=_CATALOG_PRODUCT_ID,
+        trust_classes=trust_classes,
+        collection_ids=collection_ids,
     )
 
 

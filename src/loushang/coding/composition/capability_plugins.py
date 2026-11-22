@@ -63,7 +63,6 @@ from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
-    OwnerContributionPolicy,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
@@ -1297,24 +1296,18 @@ def _provider_owner_authorities(
 
 
 def _tool_owner_authority(plugin_ids: frozenset[str]) -> OwnerContributionAuthority:
-    return OwnerContributionAuthority(
-        OwnerContributionPolicy(
-            owner_id=_TOOL_OWNER_ID,
-            contribution_kind="tool_pack",
-            product_id=CODING_PRODUCT_ID,
-            policy_revision=_TOOL_OWNER_POLICY_REVISION,
-            revocation_epoch=0,
-            allowed_source_trust_classes=(_SOURCE_TRUST_CLASS,),
-            allowed_collection_ids=tuple(
-                sorted(
-                    spec.tool_catalog_id
-                    for spec in ordered_coding_capability_plugin_specs(plugin_ids)
-                )
-            ),
-            allowed_requirement_bindings=("direct",),
-            consumer_scope="session",
-            consumer_refresh_boundary="sealed",
-        )
+    return OwnerContributionAuthority.for_direct_session(
+        owner_id=_TOOL_OWNER_ID,
+        contribution_kind="tool_pack",
+        product_id=CODING_PRODUCT_ID,
+        policy_revision=_TOOL_OWNER_POLICY_REVISION,
+        trust_classes=(_SOURCE_TRUST_CLASS,),
+        collection_ids=tuple(
+            sorted(
+                spec.tool_catalog_id
+                for spec in ordered_coding_capability_plugin_specs(plugin_ids)
+            )
+        ),
     )
 
 

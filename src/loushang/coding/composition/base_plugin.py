@@ -26,7 +26,6 @@ from loushang.harness.capabilities.consumer_requirements import (
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionKind,
-    OwnerContributionPolicy,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -827,19 +826,13 @@ def _owner_bindings(
     )
     return tuple(
         ProductContributionOwnerBinding(
-            authority=OwnerContributionAuthority(
-                OwnerContributionPolicy(
-                    owner_id=owner_id,
-                    contribution_kind=contribution_kind,
-                    product_id=CODING_PRODUCT_ID,
-                    policy_revision=f"coding-base-{owner_id}-owner-v1",
-                    revocation_epoch=0,
-                    allowed_source_trust_classes=(_SOURCE_TRUST_CLASS,),
-                    allowed_collection_ids=(collection_id,),
-                    allowed_requirement_bindings=("direct",),
-                    consumer_scope="session",
-                    consumer_refresh_boundary="sealed",
-                )
+            authority=OwnerContributionAuthority.for_direct_session(
+                owner_id=owner_id,
+                contribution_kind=contribution_kind,
+                product_id=CODING_PRODUCT_ID,
+                policy_revision=f"coding-base-{owner_id}-owner-v1",
+                trust_classes=(_SOURCE_TRUST_CLASS,),
+                collection_ids=(collection_id,),
             ),
             admission_ttl_seconds=_ADMISSION_TTL_SECONDS,
         )
