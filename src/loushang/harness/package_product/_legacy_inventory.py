@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Set
+import re
+from collections.abc import Callable, Mapping, Sequence, Set
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -56,6 +57,9 @@ _BINDING_LOCK = "package-lock.json"
 _PACKAGE_LOCK_MARKER = "package-lock.json.lock"
 _DESIRED_JOURNAL = "desired-state.jsonl"
 
+LEGACY_REVIEW_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+LEGACY_REVIEW_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+
 
 class _BindingHead(Protocol):
     @property
@@ -101,6 +105,79 @@ class LegacyInventoryEvidence(NamedTuple):
     snapshot_receipt_id: str
     inventory: LegacyInventoryFacts[LegacyLocalBindingEvidence]
     desired_journal_digest: str | None
+
+
+class _LegacyScopedDisable(Protocol):
+    def __init__(self, scope: Literal["global", "project"], plugin_id: str) -> None: ...
+
+    @property
+    def scope(self) -> str: ...
+
+    @property
+    def plugin_id(self) -> str: ...
+
+
+class _LegacyBuiltinIntent(Protocol):
+    def __init__(
+        self,
+        plugin_id: str,
+        desired_state: _InstalledState,
+    ) -> None: ...
+
+    @property
+    def plugin_id(self) -> str: ...
+
+    @property
+    def desired_state(self) -> str: ...
+
+
+def legacy_review_selection_wire(
+    disables: Sequence[_LegacyScopedDisable],
+    builtin_intent: Sequence[_LegacyBuiltinIntent],
+    removed_builtin_ids: Sequence[str],
+    *,
+    include_empty: bool,
+) -> dict[str, object]:
+    document: dict[str, object] = {}
+    if include_empty or disables:
+        document["disabledPlugins"] = [
+            {"scope": item.scope, "pluginId": item.plugin_id} for item in disables
+        ]
+    if include_empty or builtin_intent:
+        document["builtinIntent"] = [
+            {"pluginId": item.plugin_id, "desiredState": item.desired_state}
+            for item in builtin_intent
+        ]
+    if include_empty or removed_builtin_ids:
+        document["removedBuiltinIds"] = list(removed_builtin_ids)
+    return document
+
+
+def valid_legacy_disable_selections(
+    disables: Sequence[_LegacyScopedDisable], disable_type: type[_LegacyScopedDisable]
+) -> bool:
+    return not any(
+        not isinstance(item, disable_type)
+        or item.scope not in ("global", "project")
+        or LEGACY_REVIEW_ID.fullmatch(item.plugin_id) is None
+        for item in disables
+    ) and len({(item.scope, item.plugin_id) for item in disables}) == len(disables)
+
+
+def valid_legacy_builtin_intent(
+    intent: Sequence[_LegacyBuiltinIntent],
+    builtin_ids: frozenset[str],
+    *,
+    intent_type: type[_LegacyBuiltinIntent],
+) -> bool:
+    return not any(
+        not isinstance(item, intent_type)
+        or item.plugin_id not in builtin_ids
+        or item.desired_state not in ("installed_disabled", "installed_enabled")
+        for item in intent
+    ) and tuple(item.plugin_id for item in intent) == tuple(
+        sorted({item.plugin_id for item in intent})
+    )
 
 
 def classify_legacy_builtin_snapshot(

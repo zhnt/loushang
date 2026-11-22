@@ -1381,8 +1381,11 @@ These reviewed operation locations replace the corresponding mechanism scopes;
 nominal fields and actual Product policy remain at their original Code edges.
 Package Product owns the frozen removal snapshot membership and journal proof in
 `src/loushang/harness/package_product/_legacy_removed_review.py`. Coding still
-selects the supported settings and builtin policies and constructs the wire
-record. Live local review and acceptance replay use one formal evidence
+selects the supported settings and builtin policies and retains the nominal
+review records. Harness validates and encodes the removal review versions.
+`src/loushang/harness/package_product/_legacy_inventory.py` owns the selection
+fields shared by the removal, builtin-only, and local-adoption reviews.
+Live local review and acceptance replay use one formal evidence
 projection in `src/loushang/harness/package_product/_legacy_local_review.py`.
 The listed scopes track the corresponding Product settings references.
 
@@ -1406,9 +1409,9 @@ The listed scopes track the corresponding Product settings references.
 | `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.from_dict` | `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.from_dict` | 1 |
 | `src/loushang/coding/package/legacy_disabled_review.py::CodingLegacyDisabledOnlyReviewV1.from_dict` | `src/loushang/coding/package/legacy_disabled_review.py::CodingLegacyDisabledOnlyReviewV1.from_dict` | 1 |
 | `src/loushang/coding/package/legacy_local_acceptance.py::CodingLegacyLocalAcceptanceV1.create` | `src/loushang/coding/package/legacy_local_acceptance.py::CodingLegacyLocalAcceptanceV1.create` | 1 |
-| `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.__post_init__` | `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.__post_init__` | 4 |
-| `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.from_dict` | `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.from_dict` | 1 |
-| `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | 3 |
+| `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.__post_init__` | `src/loushang/harness/package_product/_legacy_removed_review.py::LegacyRemovalReviewRecord.__post_init__` | 2 |
+| `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.from_dict` | `src/loushang/harness/package_product/_legacy_removed_review.py::LegacyRemovalReviewRecord.from_dict` | 1 |
+| `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | 1 |
 | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.from_dict` | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.from_dict` | 1 |
 | `src/loushang/coding/package/product_runtime.py::bootstrap_coding_accepted_disabled_only_product_plugins` | `src/loushang/coding/package/product_runtime.py::bootstrap_coding_accepted_disabled_only_product_plugins` | 1 |
 | `src/loushang/coding/package/product_runtime.py::is_coding_fresh_first_b_snapshot` | `src/loushang/coding/package/product_runtime.py::is_coding_fresh_first_b_snapshot` | 1 |

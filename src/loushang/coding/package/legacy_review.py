@@ -9,6 +9,13 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_inventory import (
+    LEGACY_REVIEW_DIGEST,
+    LEGACY_REVIEW_ID,
+    legacy_review_selection_wire,
+    valid_legacy_builtin_intent,
+    valid_legacy_disable_selections,
+)
 from loushang.harness.package_product._legacy_local_review import (
     LegacyLocalReviewEvidence,
     read_live_legacy_local_review,
@@ -67,8 +74,6 @@ if TYPE_CHECKING:
     from .legacy_removed_review import CodingLegacyRemovedReviewV1
 
 
-_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-_SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _WHEEL_NAME = re.compile(r"loushang_legacy_[0-9a-f]{24}-1-py3-none-any\.whl\Z")
 
 
@@ -134,7 +139,7 @@ class CodingLegacyLocalAdoptionReviewV1:
             self.wheel_artifact_digest,
         )
         if any(
-            type(value) is not str or _SHA256.fullmatch(value) is None
+            type(value) is not str or LEGACY_REVIEW_DIGEST.fullmatch(value) is None
             for value in digests
         ):
             raise ValueError(_LEGACY_RECORD_VALUES["value_001"])
@@ -145,36 +150,26 @@ class CodingLegacyLocalAdoptionReviewV1:
             raise ValueError(_LEGACY_RECORD_VALUES["value_002"])
         if (
             type(self.store_id) is not str
-            or _SAFE_ID.fullmatch(self.store_id) is None
+            or LEGACY_REVIEW_ID.fullmatch(self.store_id) is None
             or type(self.scope_id) is not str
             or not self.scope_id.startswith("workspace:")
             or type(self.plugin_id) is not str
-            or _SAFE_ID.fullmatch(self.plugin_id) is None
+            or LEGACY_REVIEW_ID.fullmatch(self.plugin_id) is None
             or self.desired_state not in ("installed_disabled", "installed_enabled")
             or type(self.legacy_source_identity) is not str
             or not self.legacy_source_identity.startswith("local:/")
             or type(self.wheel_filename) is not str
             or _WHEEL_NAME.fullmatch(self.wheel_filename) is None
             or type(self.policy_revision) is not str
-            or _SAFE_ID.fullmatch(self.policy_revision) is None
+            or LEGACY_REVIEW_ID.fullmatch(self.policy_revision) is None
         ):
             raise ValueError(_LEGACY_RECORD_VALUES["value_003"])
-        if any(
-            not isinstance(item, CodingScopedLegacyDisableV1)
-            or item.scope not in ("global", "project")
-            or _SAFE_ID.fullmatch(item.plugin_id) is None
-            for item in self.disabled_plugins
-        ) or len(
-            {(item.scope, item.plugin_id) for item in self.disabled_plugins}
-        ) != len(self.disabled_plugins):
+        if not valid_legacy_disable_selections(
+            self.disabled_plugins, CodingScopedLegacyDisableV1
+        ):
             raise ValueError(_LEGACY_RECORD_VALUES["value_004"])
-        if any(
-            not isinstance(item, CodingLegacyBuiltinIntentV1)
-            or item.plugin_id not in _BUILTINS
-            or item.desired_state not in ("installed_disabled", "installed_enabled")
-            for item in self.builtin_intent
-        ) or tuple(item.plugin_id for item in self.builtin_intent) != tuple(
-            sorted({item.plugin_id for item in self.builtin_intent})
+        if not valid_legacy_builtin_intent(
+            self.builtin_intent, _BUILTINS, intent_type=CodingLegacyBuiltinIntentV1
         ):
             raise ValueError(_LEGACY_RECORD_VALUES["value_005"])
         if (
@@ -198,18 +193,14 @@ class CodingLegacyLocalAdoptionReviewV1:
 
     def _identity_dict(self) -> dict[str, object]:
         identity: dict[str, object] = _REVIEW_SCHEMA.encode(self)
-        if self.disabled_plugins:
-            identity["disabledPlugins"] = [
-                {"scope": item.scope, "pluginId": item.plugin_id}
-                for item in self.disabled_plugins
-            ]
-        if self.builtin_intent:
-            identity["builtinIntent"] = [
-                {"pluginId": item.plugin_id, "desiredState": item.desired_state}
-                for item in self.builtin_intent
-            ]
-        if self.removed_builtin_ids:
-            identity["removedBuiltinIds"] = list(self.removed_builtin_ids)
+        identity.update(
+            legacy_review_selection_wire(
+                self.disabled_plugins,
+                self.builtin_intent,
+                self.removed_builtin_ids,
+                include_empty=False,
+            )
+        )
         if self.configured_plugin_source_scope is not None:
             identity["configuredPluginSourceScope"] = (
                 self.configured_plugin_source_scope
@@ -322,7 +313,7 @@ def shared_coding_legacy_builtin_removal_operation_id(
 
     if (
         not isinstance(first_fence_id, str)
-        or _SHA256.fullmatch(first_fence_id) is None
+        or LEGACY_REVIEW_DIGEST.fullmatch(first_fence_id) is None
         or plugin_id not in _BUILTINS
     ):
         raise ValueError("Coding legacy builtin removal identity is invalid")
@@ -348,7 +339,7 @@ def review_coding_legacy_installed_local_source(
 
     if (
         not isinstance(policy_revision, str)
-        or _SAFE_ID.fullmatch(policy_revision) is None
+        or LEGACY_REVIEW_ID.fullmatch(policy_revision) is None
     ):
         raise ValueError("Coding Product policy revision is required")
     epoch_runtime.assert_current()

@@ -10,7 +10,9 @@ from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateL
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_inventory import (
     classify_legacy_builtin_snapshot,
+    legacy_review_selection_wire,
     read_legacy_builtin_admission,
+    valid_legacy_builtin_intent,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -125,14 +127,9 @@ class CodingLegacyBuiltinOnlyReviewV1:
             )
             or len({(item.scope, item.plugin_id) for item in self.disabled_plugins})
             != len(self.disabled_plugins)
-            or any(
-                not isinstance(item, CodingLegacyBuiltinIntentV1)
-                or item.plugin_id not in _BUILTINS
-                or item.desired_state not in ("installed_disabled", "installed_enabled")
-                for item in self.builtin_intent
+            or not valid_legacy_builtin_intent(
+                self.builtin_intent, _BUILTINS, intent_type=CodingLegacyBuiltinIntentV1
             )
-            or tuple(item.plugin_id for item in self.builtin_intent)
-            != tuple(sorted({item.plugin_id for item in self.builtin_intent}))
             or self.removed_builtin_ids != tuple(sorted(set(self.removed_builtin_ids)))
             or any(item not in _REMOVABLE for item in self.removed_builtin_ids)
             or set(self.removed_builtin_ids).intersection(
@@ -150,15 +147,12 @@ class CodingLegacyBuiltinOnlyReviewV1:
     def _identity(self) -> dict[str, object]:
         return {
             **_REVIEW_SCHEMA.encode(self),
-            "disabledPlugins": [
-                {"scope": item.scope, "pluginId": item.plugin_id}
-                for item in self.disabled_plugins
-            ],
-            "builtinIntent": [
-                {"pluginId": item.plugin_id, "desiredState": item.desired_state}
-                for item in self.builtin_intent
-            ],
-            "removedBuiltinIds": list(self.removed_builtin_ids),
+            **legacy_review_selection_wire(
+                self.disabled_plugins,
+                self.builtin_intent,
+                self.removed_builtin_ids,
+                include_empty=True,
+            ),
             "reviewVersion": self.review_version,
         }
 
