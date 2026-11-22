@@ -32,9 +32,6 @@ if TYPE_CHECKING:
     from loushang.harness.plugin_management.package_product import (
         PackageProductSelectedRootSnapshotV1,
     )
-    from loushang.harness.resource_catalog.bootstrap_projection import (
-        ResourceCatalogBootstrapResult,
-    )
     from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
     from loushang.harness.resources.packages.product_epoch_guard import (
         PackageProductPosixFencedRuntimeOwner,
@@ -476,7 +473,7 @@ def observe_current_product_composition(
     composition_set_id: str,
     disabled_skills_known: bool,
     compiled_plugin_ids: tuple[str, ...],
-    catalog_result: ResourceCatalogBootstrapResult | None = None,
+    catalog_projection: tuple[ResourceBundle, ResourceCatalogSnapshot] | None = None,
     product_inputs: tuple[_CurrentProductResourceInput, ...] = (),
     compiled: _PreviewedComposition | None = None,
     blocker: _PreviewCompositionFailure | None = None,
@@ -488,8 +485,8 @@ def observe_current_product_composition(
 
     bundle = catalog = None
     selections: list[PluginCurrentResourceSelectionV1] = []
-    if catalog_result is not None:
-        bundle, catalog = catalog_result.bundle, catalog_result.catalog
+    if catalog_projection is not None:
+        bundle, catalog = catalog_projection
         selections = project_current_product_resource_selections(
             catalog, product_inputs
         )

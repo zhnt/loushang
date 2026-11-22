@@ -314,7 +314,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
         )
         return preview(
             compiled_plugin_ids=compiled_plugin_ids,
-            catalog_result=catalog_result,
+            catalog_projection=(catalog_result.bundle, catalog_result.catalog),
             product_inputs=product_inputs,
             compiled=compiled,
         )
