@@ -211,6 +211,12 @@ class CodingFencedProductReadOnlyPreviewOwner:
         base_disabled = base_state == "installed_disabled"
         external_ids = self.selected_manifests.selected_external_data_plugin_ids()
         evaluated_at = int(time.time())
+        capture_manifests = partial(
+            capture_selected_manifests,
+            self.selected_manifests.capture_selected_manifest_for_plugin,
+            max_files=_RESOURCE_PREVIEW_MAX_FILES,
+            max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
+        )
         compiled: (
             CodingBaseProductCompilation | CodingExternalDataProductCompilation | None
         ) = None
@@ -242,22 +248,13 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 if external_ids:
                     compiled_plugin_ids = external_ids
                     compiled = compile_coding_external_data_product_selection(
-                        capture_selected_manifests(
-                            self.selected_manifests.capture_selected_manifest_for_plugin,
-                            external_ids,
-                            max_files=_RESOURCE_PREVIEW_MAX_FILES,
-                            max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
-                        ),
+                        capture_manifests(external_ids),
                         composition_set=composition_set,
                         session_id="plugin-preview-current",
                         evaluated_at=evaluated_at,
                     )
             else:
-                base = self.selected_manifests.capture_selected_manifest_for_plugin(
-                    "coding.base",
-                    max_files=_RESOURCE_PREVIEW_MAX_FILES,
-                    max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
-                )
+                (base,) = capture_manifests(("coding.base",))
                 base_compiled = compile_coding_base_product_selection(
                     base,
                     composition_set,
@@ -273,12 +270,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
                     )
                     base_compiled = extend_coding_base_product_data_resources(
                         base_compiled,
-                        capture_selected_manifests(
-                            self.selected_manifests.capture_selected_manifest_for_plugin,
-                            external_ids,
-                            max_files=_RESOURCE_PREVIEW_MAX_FILES,
-                            max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
-                        ),
+                        capture_manifests(external_ids),
                         evaluated_at=evaluated_at,
                     )
                     compiled_plugin_ids = base_compiled.plan.selected_plugin_ids

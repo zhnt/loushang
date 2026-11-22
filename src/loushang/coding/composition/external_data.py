@@ -90,6 +90,7 @@ from loushang.harness.session.product_composition_assembly import (
 )
 from loushang.harness.session.product_composition_assembly import (
     build_product_data_selection_plan,
+    project_selected_product_data_candidates,
 )
 
 
@@ -154,9 +155,8 @@ def compile_coding_external_data_product_selection(
             f"coding-external-data-v1:{composition_set.set_id}:{composition_set.fingerprint}:{policy_digest}"
         ),
     )
-    candidates = tuple(
-        _candidate(item, plan, reservation, declaration)
-        for item, reservation, declaration in declarations
+    candidates = project_selected_product_data_candidates(
+        plan, declarations, prepare=_candidate
     )
     bindings = _bind_coding_external_resource_owners(
         (),

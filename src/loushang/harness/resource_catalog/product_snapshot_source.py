@@ -182,16 +182,21 @@ def project_selected_resource_inputs(
     admissions: tuple[OwnerContributionAdmissionRecord, ...],
     selected: tuple[PackageProductSelectedPluginManifestV1, ...],
     body_paths: Mapping[str, str],
+    *,
+    expected_bodies: Mapping[str, bytes] | None = None,
 ) -> tuple[ProductSelectedResourceInput, ...]:
     by_id = {item.manifest.name: item for item in selected}
-    return tuple(
-        ProductSelectedResourceInput(
+    inputs = []
+    for admission in admissions:
+        item = ProductSelectedResourceInput(
             admission=admission,
             selected_manifest=by_id[admission.plugin_id],
             relative_path=body_paths[admission.fingerprint],
         )
-        for admission in admissions
-    )
+        if expected_bodies is not None and item.body != expected_bodies[admission.fingerprint]:
+            raise ValueError("Product Resource body changed selected Store bytes")
+        inputs.append(item)
+    return tuple(inputs)
 
 
 def product_snapshot_source_policy_fingerprint(

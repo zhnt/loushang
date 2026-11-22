@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -302,6 +303,12 @@ class InitialCatalogHandoff:
                 ("product_requested_base_not_installed",)
             )
 
+        capture_manifests = partial(
+            capture_selected_manifests,
+            runtime.capture_selected_plugin_manifest_for,
+            max_files=max_files,
+            max_total_bytes=max_total_bytes,
+        )
         external = None
         base = None
         receipt = None
@@ -310,22 +317,13 @@ class InitialCatalogHandoff:
             external_ids = runtime.selected_external_data_plugin_ids()
             if external_ids:
                 external = compile_coding_external_data_product_selection(
-                    capture_selected_manifests(
-                        runtime.capture_selected_plugin_manifest_for,
-                        external_ids,
-                        max_files=max_files,
-                        max_total_bytes=max_total_bytes,
-                    ),
+                    capture_manifests(external_ids),
                     composition_set=composition_set,
                     session_id=self.session_id,
                     evaluated_at=clock(),
                 )
         else:
-            selected = runtime.capture_selected_plugin_manifest_for(
-                CODING_BASE_PLUGIN_ID,
-                max_files=max_files,
-                max_total_bytes=max_total_bytes,
-            )
+            (selected,) = capture_manifests((CODING_BASE_PLUGIN_ID,))
             evaluated_at = clock()
             base = compile_base(selected, evaluated_at)
             receipt = require_catalog_receipt(
@@ -386,12 +384,7 @@ class InitialCatalogHandoff:
             if external_ids:
                 base = extend_coding_base_product_data_resources(
                     base,
-                    capture_selected_manifests(
-                        runtime.capture_selected_plugin_manifest_for,
-                        external_ids,
-                        max_files=max_files,
-                        max_total_bytes=max_total_bytes,
-                    ),
+                    capture_manifests(external_ids),
                     evaluated_at=evaluated_at,
                 )
         if receipt is None:

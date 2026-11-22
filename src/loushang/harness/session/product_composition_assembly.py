@@ -1890,6 +1890,30 @@ SelectedProductDataDeclaration = tuple[
 ]
 
 
+def project_selected_product_data_candidates(
+    plan: PluginSelectionPlanV2,
+    declarations: Iterable[SelectedProductDataDeclaration],
+    *,
+    prepare: Callable[
+        [
+            PackageProductSelectedPluginManifestV1,
+            PluginSelectionPlanV2,
+            PluginContributionReservation,
+            PluginDeclaration,
+        ],
+        OwnerContributionCandidateEnvelope,
+    ],
+) -> tuple[OwnerContributionCandidateEnvelope, ...]:
+    """Project precisely the plan's admitted declarations in capture order."""
+    selected_refs = set(plan.selected_contributions)
+    return tuple(
+        prepare(item, plan, reservation, declaration)
+        for item, reservation, declaration in declarations
+        if PluginContributionRef(item.manifest.name, reservation.contribution_id)
+        in selected_refs
+    )
+
+
 def build_product_plugin_selection_plan(
     *,
     product_id: str,

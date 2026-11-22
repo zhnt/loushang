@@ -96,6 +96,7 @@ from loushang.harness.session.product_composition_assembly import (
     SelectedProductDataDeclaration,
     build_product_data_selection_plan,
     prepare_product_selected_contribution_candidate,
+    project_selected_product_data_candidates,
 )
 from loushang.harness.session.product_composition_assembly import (
     _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
@@ -196,26 +197,11 @@ class CodingBaseProductCompilation:
             )
         ):
             raise ValueError("Product manifests changed B selection facts")
-        selected_by_id = {
-            item.manifest.name: item
-            for item in (
-                self.selected_manifest,
-                *self.selected_external_data_manifests,
-            )
-        }
-        for admission in self.product_composition.resource_admissions:
-            captured = next(
-                item
-                for item in self.resource_bodies
-                if item.admission_fingerprint == admission.fingerprint
-            )
-            input_record = ProductSelectedResourceInput(
-                admission=admission,
-                selected_manifest=selected_by_id[admission.plugin_id],
-                relative_path=captured.logical_path,
-            )
-            if input_record.body != captured.body:
-                raise ValueError("Product Resource body changed selected Store bytes")
+        self._project_resource_inputs(
+            expected_bodies={
+                item.admission_fingerprint: item.body for item in self.resource_bodies
+            }
+        )
 
     def read_resource_body(
         self, admission_fingerprint: str, *, max_bytes: int
@@ -237,10 +223,16 @@ class CodingBaseProductCompilation:
     def product_resource_inputs(self) -> tuple[ProductSelectedResourceInput, ...]:
         """Pair captured bytes with their exact Product owner admissions."""
 
+        return self._project_resource_inputs()
+
+    def _project_resource_inputs(
+        self, *, expected_bodies: Mapping[str, bytes] | None = None
+    ) -> tuple[ProductSelectedResourceInput, ...]:
         return project_selected_resource_inputs(
             self.product_composition.resource_admissions,
             (self.selected_manifest, *self.selected_external_data_manifests),
             {item.admission_fingerprint: item.logical_path for item in self.resource_bodies},
+            expected_bodies=expected_bodies,
         )
 
     def build_owners(
@@ -342,15 +334,13 @@ def compile_coding_base_product_selection(
         include_command_contribution=include_command_contribution,
     )
     selected_refs = set(plan.selected_contributions)
-    pairs = selected.verified_data_only_declarations()
-    candidates = tuple(
-        _candidate(selected, plan, reservation, declaration)
-        for reservation, declaration in pairs
-        if PluginContributionRef(
-            CODING_BASE_PLUGIN_ID,
-            reservation.contribution_id,
-        )
-        in selected_refs
+    candidates = project_selected_product_data_candidates(
+        plan,
+        (
+            (selected, reservation, declaration)
+            for reservation, declaration in selected.verified_data_only_declarations()
+        ),
+        prepare=_candidate,
     )
     if {
         PluginContributionRef(item.plugin_id, item.contribution_id)
@@ -412,11 +402,8 @@ def extend_coding_base_product_data_resources(
         (base.selected_manifest, reservation, declaration)
         for reservation, declaration in base.selected_manifest.verified_data_only_declarations()
     )
-    candidates = tuple(
-        _candidate(selected, plan, reservation, declaration)
-        for selected, reservation, declaration in chain(base_declarations, declarations)
-        if PluginContributionRef(selected.manifest.name, reservation.contribution_id)
-        in plan.selected_contributions
+    candidates = project_selected_product_data_candidates(
+        plan, chain(base_declarations, declarations), prepare=_candidate
     )
     builtin_owners = {
         item.owner_id for item in candidates if item.plugin_id == CODING_BASE_PLUGIN_ID

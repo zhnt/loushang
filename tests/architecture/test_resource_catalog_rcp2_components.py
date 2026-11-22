@@ -21,6 +21,9 @@ PRODUCT_INPUTS_PATH = ORCHESTRATION_ROOT / "product_inputs.py"
 SESSION_BOOTSTRAP_PATH = ORCHESTRATION_ROOT / "session_bootstrap.py"
 BOOTSTRAP_PROJECTION_PATH = ORCHESTRATION_ROOT / "bootstrap_projection.py"
 AGENT_PRODUCT_SESSION_PATH = Path("src/loushang/harness/session/agent_product.py")
+SESSION_BOOTSTRAP_CONSTRUCTION_PATH = Path(
+    "src/loushang/harness/session/bootstrap_construction.py"
+)
 PRODUCT_COMPOSITION_ASSEMBLY_PATH = Path(
     "src/loushang/harness/session/product_composition_assembly.py"
 )
@@ -137,11 +140,16 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
     forbidden_importers = set()
     for path in production_paths:
         allowed = set()
-        if path in {AGENT_PRODUCT_SESSION_PATH, CODING_PACKAGE_CATALOG_PATH}:
+        if path in {
+            AGENT_PRODUCT_SESSION_PATH,
+            CODING_PACKAGE_CATALOG_PATH,
+            SESSION_BOOTSTRAP_CONSTRUCTION_PATH,
+        }:
             allowed.add("loushang.harness.resource_catalog.session_bootstrap")
         if path in {
             CODING_SHADOW_ADAPTER_PATH,
             CODING_PACKAGE_CATALOG_PATH,
+            SESSION_BOOTSTRAP_CONSTRUCTION_PATH,
         }:
             allowed.add("loushang.harness.resource_catalog.product_inputs")
         if path == CODING_SHADOW_ADAPTER_PATH:
@@ -237,6 +245,7 @@ def test_rcp4_joint_generation_has_one_private_session_bootstrap_adapter() -> No
         AGENT_PRODUCT_SESSION_PATH,
         PRODUCT_INPUTS_PATH,
         CODING_PACKAGE_CATALOG_PATH,
+        SESSION_BOOTSTRAP_CONSTRUCTION_PATH,
     }
     imports = _imported_modules(JOINT_GENERATION_PATH)
     assert "loushang.harness.extensions.runner" not in imports
@@ -265,6 +274,7 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     } - {ORCHESTRATION_ROOT / "_loader_inputs.py"} == {
         CODING_SHADOW_ADAPTER_PATH,
         CODING_PACKAGE_CATALOG_PATH,
+        SESSION_BOOTSTRAP_CONSTRUCTION_PATH,
     }
     imports = _imported_modules(PRODUCT_INPUTS_PATH)
     assert not imports & {
