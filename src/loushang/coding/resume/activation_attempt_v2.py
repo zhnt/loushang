@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
 
-from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
+from loushang.coding.resume.activation_attempt import (
+    CodingActivationAttemptV1,
+    _require_v1_budget,
+)
 from loushang.foundation.json import JSONValue, dump_json_value
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.transcript import _resume_records as _records
@@ -109,19 +112,8 @@ class CodingActivationAttemptV2(CodingActivationAttemptV1):
     effect_owners: tuple[CodingResumeEffectOwnerV1, ...] = ()
 
     def __post_init__(self) -> None:
-        # Validate the unchanged common fields through their explicit v1 value;
-        # a v2 document is never relabelled as a v1 wire record.
-        CodingActivationAttemptV1(
-            self.attempt_id,
-            self.request_id,
-            self.session_id,
-            self.original_leaf_id,
-            self.ancestry_digest,
-            self.plan_fingerprint,
-            self.epoch_fingerprint,
-            self.subject_digest,
-            self.effect_classes,
-        )
+        CodingActivationAttemptV1._validate_v1_fields(self)
+        _require_v1_budget(CodingActivationAttemptV1.to_data(self))
         owners = self.effect_owners
         if (
             type(owners) is not tuple

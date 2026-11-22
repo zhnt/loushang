@@ -7,7 +7,7 @@ current authority nor evidence that an effect or user input completed.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, cast
@@ -15,6 +15,7 @@ from typing import Literal, cast
 from loushang.ai.types import UserMessage
 from loushang.coding.resume.binding import (
     _ANCESTRY_DOMAIN,
+    CodingRuntimeBindingV1,
     inspect_coding_runtime_binding,
     matches_intent,
     validate_coding_runtime_binding_record,
@@ -53,6 +54,10 @@ class CodingActivationAttemptV1:
     effect_classes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        self._validate_v1_fields()
+        _require_v1_budget(self.to_data())
+
+    def _validate_v1_fields(self) -> None:
         for name in ("attempt_id", "request_id", "session_id"):
             value = getattr(self, name)
             if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
@@ -77,8 +82,6 @@ class CodingActivationAttemptV1:
             or codes != tuple(sorted(set(codes)))
         ):
             raise ValueError("activation attempt effect classes are invalid")
-        if len(_encoded(self.to_data())) > CODING_ACTIVATION_ATTEMPT_MAX_BYTES:
-            raise ValueError("activation attempt exceeds its byte budget")
 
     def to_data(self) -> dict[str, JSONValue]:
         return {
@@ -139,61 +142,48 @@ def project_coding_activation_attempt_path(
 
     if type(current_session_id) is not str or _IDENTIFIER.fullmatch(current_session_id) is None:
         raise ValueError("activation attempt current Session id is invalid")
-    ancestry = SelectedAncestry(_ANCESTRY_DOMAIN)
-    pending: CodingActivationAttemptV1 | None = None
-    pending_record_id: str | None = None
-    unknown_version = False
-    for record in records:
-        ancestry.require_next(
-            record, error="activation attempt projection requires a complete path"
-        )
-        prefix_digest = ancestry.hexdigest()
-        payload = record.payload
-        if isinstance(payload, ExtensionData) and payload.extension_type.startswith(
-            "coding.activation-attempt/"
-        ):
-            if payload.extension_type != CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE:
-                unknown_version = True
-            else:
-                attempt = validate_coding_activation_attempt_record(record)
-                if attempt.ancestry_digest != prefix_digest:
-                    raise ValueError("activation attempt ancestry does not match history")
-                if attempt.session_id == current_session_id:
-                    if pending is not None:
-                        raise ValueError("activation attempt precedes unresolved intent")
-                    pending = attempt
-                    pending_record_id = record.record_id
-        observation = inspect_coding_runtime_binding(record.metadata)
-        if observation.status != "absent":
-            if record.kind != AGENT_MESSAGE_KIND or not isinstance(
-                record.payload, UserMessage,
-            ):
-                raise ValueError("activation Binding requires a user message")
-            if observation.status == "unknown_version":
-                unknown_version = True
-            else:
-                observed_binding = observation.binding
-                if observed_binding is None:
-                    raise ValueError("activation Binding known schema is missing")
-                binding = validate_coding_runtime_binding_record(
-                    record, expected_session_id=observed_binding.session_id,
-                )
-                if binding.session_id == current_session_id and pending is not None:
-                    if (
-                        record.parent_id != pending_record_id
-                        or not matches_intent(binding, pending, check_session=False)
-                    ):
-                        raise ValueError("activation Binding does not match intent")
-                    pending = None
-                    pending_record_id = None
-        ancestry.advance(record, _encoded)
-    if unknown_version:
-        return CodingActivationAttemptPathProjection("unknown_version")
-    if pending is not None:
-        return CodingActivationAttemptPathProjection(
-            "pending", attempt=pending, record_id=pending_record_id,
-        )
-    return CodingActivationAttemptPathProjection("none")
+    result = _records.finish_history_scan(_records.scan_activation_history(
+        records,
+        current_session_id=current_session_id,
+        ancestry=SelectedAncestry(_ANCESTRY_DOMAIN),
+        encode=_encoded,
+        attempt_prefix="coding.activation-attempt/",
+        attempt_readers={
+            CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE: validate_coding_activation_attempt_record,
+        },
+        read_binding=_read_legacy_attempt_binding,
+        path_error="activation attempt projection requires a complete path",
+        ancestry_error="activation attempt ancestry does not match history",
+        duplicate_error="activation attempt precedes unresolved intent",
+        track_other_sessions=False,
+    ))
+    attempt = result.attempt
+    return CodingActivationAttemptPathProjection(
+        result.status, attempt=attempt, record_id=None if attempt is None else attempt.attempt_id,
+    )
+
+
+def _read_legacy_attempt_binding(
+    record: AgentTranscriptRecord, pending: Mapping[str, CodingActivationAttemptV1],
+) -> CodingRuntimeBindingV1 | Literal["unknown_version"] | None:
+    observation = inspect_coding_runtime_binding(record.metadata)
+    if observation.status == "absent":
+        return None
+    if record.kind != AGENT_MESSAGE_KIND or not isinstance(record.payload, UserMessage):
+        raise ValueError("activation Binding requires a user message")
+    if observation.status == "unknown_version":
+        return "unknown_version"
+    observed = observation.binding
+    if observed is None:
+        raise ValueError("activation Binding known schema is missing")
+    binding = validate_coding_runtime_binding_record(record, expected_session_id=observed.session_id)
+    attempt = pending.get(binding.session_id)
+    if attempt is not None and (
+        record.parent_id != attempt.attempt_id
+        or not matches_intent(binding, attempt, check_session=False)
+    ):
+        raise ValueError("activation Binding does not match intent")
+    return binding
 
 
 def prepare_coding_activation_attempt_record(
@@ -253,6 +243,11 @@ def _encoded(value: object) -> bytes:
     return dump_json_value(
         value, name="activation attempt", ensure_ascii=True, sort_keys=True,
     ).encode("utf-8")
+
+
+def _require_v1_budget(document: object) -> None:
+    if len(_encoded(document)) > CODING_ACTIVATION_ATTEMPT_MAX_BYTES:
+        raise ValueError("activation attempt exceeds its byte budget")
 
 
 __all__ = [

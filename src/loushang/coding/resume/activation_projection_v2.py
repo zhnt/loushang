@@ -77,6 +77,8 @@ from loushang.coding.resume.binding_v2 import (
 )
 from loushang.harness.transcript._resume_records import (
     SelectedAncestry,
+    finish_history_scan,
+    scan_activation_history,
     select_input_record,
 )
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND as AGENT_MESSAGE_KIND
@@ -100,15 +102,9 @@ def project_coding_activation_attempt_path_v2(
     *,
     current_session_id: str,
 ) -> CodingActivationAttemptProjectionV2:
-    steps = _project_activation_history_steps(
-        records, current_session_id=current_session_id
+    return finish_history_scan(
+        _project_activation_history_steps(records, current_session_id=current_session_id)
     )
-    while True:
-        try:
-            next(steps)
-        except StopIteration as complete:
-            return complete.value
-
 
 async def project_coding_activation_attempt_path_v2_async(
     records: Iterable[AgentTranscriptRecord],
@@ -149,141 +145,81 @@ def _project_activation_history_steps(
         or re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", current_session_id) is None
     ):
         raise ValueError('Coding activation projection Session id is invalid')
-    ancestry = SelectedAncestry(_ANCESTRY_DOMAIN)
-    pending: dict[str, CodingActivationAttemptV1] = {}
-    unknown = False
-    selected_binding: (
-        CodingRuntimeBindingV1 | CodingRuntimeBindingV2 | None
-    ) = None
-    selected_binding_record_id: str | None = None
-    for record in records:
-        ancestry.require_next(
-            record, error='Coding activation projection requires a complete selected path'
-        )
-        observed_binding: CodingRuntimeBindingV1 | None = None
-        payload = record.payload
-        if isinstance(
-            payload, ExtensionData
-        ) and payload.extension_type.startswith(
-            'coding.activation-attempt/'
-        ):
-            attempt: CodingActivationAttemptV1 | None
-            if (
-                payload.extension_type
-                == CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE
-            ):
-                attempt = validate_coding_activation_attempt_record(record)
-            elif (
-                payload.extension_type
-                == CODING_ACTIVATION_ATTEMPT_V2_EXTENSION_TYPE
-            ):
-                attempt = validate_coding_activation_attempt_v2_record(record)
-            else:
-                unknown = True
-                attempt = None
-            if attempt is not None:
-                if attempt.ancestry_digest != ancestry.hexdigest():
-                    raise ValueError('Coding activation intent ancestry differs')
-                if attempt.session_id in pending:
-                    raise ValueError('Coding activation intent precedes unresolved intent')
-                pending[attempt.session_id] = attempt
-        reserved = {
-            key
-            for key in record.metadata
-            if key.startswith('coding.runtimeBinding')
-        }
-        if reserved:
-            if record.kind != AGENT_MESSAGE_KIND or not isinstance(
-                payload, UserMessage
-            ):
-                raise ValueError('Coding RuntimeBinding requires a UserMessage record')
-            if reserved == {CODING_RUNTIME_BINDING_V2_METADATA_KEY}:
-                raw = record.metadata[CODING_RUNTIME_BINDING_V2_METADATA_KEY]
-                version = (
-                    raw.get("version") if isinstance(raw, Mapping) else None
-                )
-                if type(version) is int and version > 2:
-                    unknown = True
-                else:
-                    binding_v2 = decode_coding_runtime_binding_v2(
-                        record.metadata
-                    )
-                    matched = pending.get(binding_v2.session_id)
-                    if type(matched) is not CodingActivationAttemptV2:
-                        raise ValueError('Coding Binding v2 lacks its exact persisted v2 intent')
-                    _require_decoded_v2_binding(
-                        record,
-                        binding_v2,
-                        payload=_require_v2_user_payload(record),
-                        intent=matched,
-                    )
-                    observed_binding = binding_v2
-                    del pending[binding_v2.session_id]
-            elif reserved == {CODING_RUNTIME_BINDING_METADATA_KEY}:
-                observation = inspect_coding_runtime_binding(record.metadata)
-                if observation.status == "unknown_version":
-                    unknown = True
-                elif (binding := observation.binding) is not None:
-                    _require_decoded_v1_binding(
-                        record,
-                        binding,
-                        payload=payload,
-                        expected_session_id=binding.session_id,
-                    )
-                    matched = pending.get(binding.session_id)
-                    if matched is not None:
-                        if type(matched) is not CodingActivationAttemptV1:
-                            raise ValueError(
-                                'Coding Binding v1 cannot close a v2 intent'
-                            )
-                        if record.parent_id != matched.attempt_id or not matches_intent(
-                            binding, matched, check_session=False
-                        ):
-                            raise ValueError(
-                                'Coding Binding v1 does not match its intent'
-                            )
-                        del pending[binding.session_id]
-                    observed_binding = binding
-            else:
-                unknown = True
-        match = None
-        if (
-            observed_binding is not None
-            and observed_binding.session_id == current_session_id
-            and not unknown
-        ):
-            selected_binding = observed_binding
-            selected_binding_record_id = record.record_id
-            if observed_binding.input_id == input_id:
-                match = record
-        ancestry.advance(record, _encoded)
-        yield match
-    ancestry_digest = ancestry.hexdigest()
-    if unknown:
-        return CodingActivationAttemptProjectionV2(
-            "unknown_version",
-            ancestry_digest=ancestry_digest,
-            binding_status="unknown_version",
-            binding_record_id=selected_binding_record_id,
-        )
-    current = pending.get(current_session_id)
-    if current is not None:
-        return CodingActivationAttemptProjectionV2(
-            "pending",
-            current,
-            current.attempt_id,
-            ancestry_digest,
-            "bound" if selected_binding is not None else "none",
-            selected_binding,
-            selected_binding_record_id,
-        )
-    return CodingActivationAttemptProjectionV2(
-        "none",
-        ancestry_digest=ancestry_digest,
-        binding_status="bound" if selected_binding is not None else "none",
-        binding=selected_binding,
-        binding_record_id=selected_binding_record_id,
+    history = yield from scan_activation_history(
+        records,
+        current_session_id=current_session_id,
+        ancestry=SelectedAncestry(_ANCESTRY_DOMAIN),
+        encode=_encoded,
+        attempt_prefix="coding.activation-attempt/",
+        attempt_readers={
+            CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE: validate_coding_activation_attempt_record,
+            CODING_ACTIVATION_ATTEMPT_V2_EXTENSION_TYPE: validate_coding_activation_attempt_v2_record,
+        },
+        read_binding=_read_activation_path_binding,
+        path_error="Coding activation projection requires a complete selected path",
+        ancestry_error="Coding activation intent ancestry differs",
+        duplicate_error="Coding activation intent precedes unresolved intent",
+        input_id=input_id,
     )
+    binding_status: Literal["none", "bound", "unknown_version"] = (
+        "unknown_version" if history.status == "unknown_version"
+        else "bound" if history.binding is not None
+        else "none"
+    )
+    attempt = history.attempt
+    return CodingActivationAttemptProjectionV2(
+        history.status,
+        attempt,
+        None if attempt is None else attempt.attempt_id,
+        history.ancestry_digest,
+        binding_status,
+        history.binding,
+        history.binding_record_id,
+    )
+
+
+def _read_activation_path_binding(
+    record: AgentTranscriptRecord, pending: Mapping[str, CodingActivationAttemptV1],
+) -> CodingRuntimeBindingV1 | Literal["unknown_version"] | None:
+    reserved = {key for key in record.metadata if key.startswith("coding.runtimeBinding")}
+    if not reserved:
+        return None
+    payload = record.payload
+    if record.kind != AGENT_MESSAGE_KIND or not isinstance(payload, UserMessage):
+        raise ValueError("Coding RuntimeBinding requires a UserMessage record")
+    if reserved == {CODING_RUNTIME_BINDING_V2_METADATA_KEY}:
+        raw = record.metadata[CODING_RUNTIME_BINDING_V2_METADATA_KEY]
+        version = raw.get("version") if isinstance(raw, Mapping) else None
+        if type(version) is int and version > 2:
+            return "unknown_version"
+        binding_v2 = decode_coding_runtime_binding_v2(record.metadata)
+        attempt = pending.get(binding_v2.session_id)
+        if type(attempt) is not CodingActivationAttemptV2:
+            raise ValueError("Coding Binding v2 lacks its exact persisted v2 intent")
+        _require_decoded_v2_binding(
+            record, binding_v2, payload=_require_v2_user_payload(record), intent=attempt,
+        )
+        return binding_v2
+    if reserved != {CODING_RUNTIME_BINDING_METADATA_KEY}:
+        return "unknown_version"
+    observation = inspect_coding_runtime_binding(record.metadata)
+    if observation.status == "unknown_version":
+        return "unknown_version"
+    binding = observation.binding
+    if binding is None:
+        return None
+    _require_decoded_v1_binding(
+        record, binding, payload=payload, expected_session_id=binding.session_id,
+    )
+    attempt = pending.get(binding.session_id)
+    if attempt is not None:
+        if type(attempt) is not CodingActivationAttemptV1:
+            raise ValueError("Coding Binding v1 cannot close a v2 intent")
+        if record.parent_id != attempt.attempt_id or not matches_intent(
+            binding, attempt, check_session=False
+        ):
+            raise ValueError("Coding Binding v1 does not match its intent")
+    return binding
 
 
 def find_input_records(
@@ -297,14 +233,9 @@ def find_input_records(
         records, current_session_id=current_session_id, input_id=input_id
     )
     matches: list[AgentTranscriptRecord] = []
-    while True:
-        try:
-            record = next(steps)
-        except StopIteration as complete:
-            # A later unknown version invalidates even an earlier known input.
-            return None if complete.value.status == "unknown_version" else matches
-        if record is not None:
-            matches.append(record)
+    history = finish_history_scan(steps, matches)
+    # A later unknown version invalidates even an earlier known input.
+    return None if history.status == "unknown_version" else matches
 
 
 def observe_latest_bound_input(

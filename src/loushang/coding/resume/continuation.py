@@ -12,6 +12,7 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import cast as cast
 
@@ -495,23 +496,13 @@ async def prepare_coding_resume_continuation(
         def binding(
             persisted: UserMessage,
         ) -> CodingRuntimeBindingV1 | CodingRuntimeBindingV2:
-            if type(attempt) is CodingActivationAttemptV2:
-                return CodingRuntimeBindingV2(
-                    attempt_id=attempt.attempt_id,
-                    input_id=attempt.request_id,
-                    record_id=input_record_id,
-                    session_id=attempt.session_id,
-                    original_leaf_id=attempt.original_leaf_id,
-                    ancestry_digest=attempt.ancestry_digest,
-                    subject_digest=attempt.subject_digest,
-                    origin_composition=plan.composition_comparison.origin,
-                    planned_fingerprint=attempt.plan_fingerprint,
-                    actual_fingerprint=attempt.epoch_fingerprint,
-                    payload_digest=coding_user_payload_digest(persisted),
-                    difference_codes=plan.composition_comparison.difference_codes,
-                    intent_digest=attempt.digest,
-                )
-            return CodingRuntimeBindingV1(
+            payload_digest = coding_user_payload_digest(persisted)
+            constructor = (
+                partial(CodingRuntimeBindingV2, intent_digest=attempt.digest)
+                if type(attempt) is CodingActivationAttemptV2
+                else CodingRuntimeBindingV1
+            )
+            return constructor(
                 attempt_id=attempt.attempt_id,
                 input_id=attempt.request_id,
                 record_id=input_record_id,
@@ -522,7 +513,7 @@ async def prepare_coding_resume_continuation(
                 origin_composition=plan.composition_comparison.origin,
                 planned_fingerprint=attempt.plan_fingerprint,
                 actual_fingerprint=attempt.epoch_fingerprint,
-                payload_digest=coding_user_payload_digest(persisted),
+                payload_digest=payload_digest,
                 difference_codes=plan.composition_comparison.difference_codes,
             )
 

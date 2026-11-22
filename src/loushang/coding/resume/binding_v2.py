@@ -16,6 +16,7 @@ from loushang.coding.resume.binding import (
     _FIELDS,
     CODING_RUNTIME_BINDING_METADATA_KEY,
     CodingRuntimeBindingV1,
+    _require_v1_budget,
     coding_user_payload_digest,
     freeze_coding_user_input,
     inspect_coding_runtime_binding,
@@ -45,20 +46,8 @@ class CodingRuntimeBindingV2(CodingRuntimeBindingV1):
     intent_digest: str = ""
 
     def __post_init__(self) -> None:
-        CodingRuntimeBindingV1(
-            self.attempt_id,
-            self.input_id,
-            self.record_id,
-            self.session_id,
-            self.original_leaf_id,
-            self.ancestry_digest,
-            self.subject_digest,
-            self.origin_composition,
-            self.planned_fingerprint,
-            self.actual_fingerprint,
-            self.payload_digest,
-            self.difference_codes,
-        )
+        CodingRuntimeBindingV1._validate_v1_fields(self)
+        _require_v1_budget(CodingRuntimeBindingV1._document(self))
         if (
             type(self.intent_digest) is not str
             or len(self.intent_digest) != 64

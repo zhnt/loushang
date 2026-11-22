@@ -58,6 +58,10 @@ class CodingRuntimeBindingV1:
     difference_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        self._validate_v1_fields()
+        _require_v1_budget(self._document())
+
+    def _validate_v1_fields(self) -> None:
         for name in ("attempt_id", "input_id", "record_id", "session_id"):
             _require_identifier(getattr(self, name), name=name)
         if self.original_leaf_id is not None:
@@ -82,8 +86,6 @@ class CodingRuntimeBindingV1:
             for code in self.difference_codes
         ):
             raise ValueError("RuntimeBinding difference codes must be redacted identifiers")
-        if len(_canonical_bytes(self._document())) > CODING_RUNTIME_BINDING_MAX_BYTES:
-            raise ValueError("RuntimeBinding metadata exceeds its byte budget")
 
     def to_message_metadata(self) -> dict[str, JSONValue]:
         return {CODING_RUNTIME_BINDING_METADATA_KEY: self._document()}
@@ -354,6 +356,11 @@ def _require_decoded_v1_binding(
 
 def _canonical_bytes(value: object) -> bytes:
     return _records.canonical_binding_bytes(value)
+
+
+def _require_v1_budget(document: object) -> None:
+    if len(_canonical_bytes(document)) > CODING_RUNTIME_BINDING_MAX_BYTES:
+        raise ValueError("RuntimeBinding metadata exceeds its byte budget")
 
 
 def _require_identifier(value: object, *, name: str) -> None:
