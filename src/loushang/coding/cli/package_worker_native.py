@@ -7,6 +7,7 @@ import asyncio
 import os
 import sys
 from collections.abc import Sequence
+from contextlib import closing
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
@@ -68,6 +69,8 @@ from loushang.harness.cli.package_lifecycle import (
 from loushang.harness.cli.worker_candidate import (
     WORKER_CANDIDATE_CHANGE_ACTIONS,
     WORKER_CANDIDATE_OPT_IN_ACTIONS,
+    NativeWorkerReleaseInput,
+    add_native_worker_review_commands,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
     execute_worker_candidate_capture,
@@ -78,12 +81,10 @@ from loushang.harness.cli.worker_candidate import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages._file_consumption import (
-    closing_descriptor,
-    read_exact_bounded_file,
-)
 
-_MAX_WHEEL_BYTES = 4 * 1024 * 1024
+_RELEASE_INPUT = NativeWorkerReleaseInput(
+    "Coding Worker native Wheel", 4 * 1024 * 1024, "linux-x86_64"
+)
 
 
 class CodingWorkerNativeCandidateCommandError(ValueError):
@@ -109,13 +110,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         native_platform_option="linux-x86_64",
     )
     actions.add_parser("status", help="read the current Product approval decision")
-    review = actions.add_parser("review", help="verify and review one native Wheel")
-    review.add_argument("--wheel", required=True)
-    approve = actions.add_parser("approve", help="approve one unchanged review")
-    approve.add_argument("--wheel", required=True)
-    approve.add_argument("--review-id", required=True)
-    approve.add_argument("--operation-id", required=True)
-    approve.add_argument("--expected-generation", type=int, required=True)
+    add_native_worker_review_commands(
+        actions,
+        review_help="verify and review one native Wheel",
+        approve_help="approve one unchanged review",
+    )
     revoke = actions.add_parser("revoke", help="revoke the current release approval")
     revoke.add_argument("--operation-id", required=True)
     revoke.add_argument("--expected-generation", type=int, required=True)
@@ -219,13 +218,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             worker_candidates=True,
         )
-        try:
+        with closing(application):
             product = application.runtime_owner.product_owner
             if not isinstance(product, PosixLocalWheelProductSessionOwner):
                 raise ValueError("Coding Worker native Product owner is unsupported")
             return _execute(product, args)
-        finally:
-            application.close()
 
     return run_package_operator_command(
         args.workspace,
@@ -260,17 +257,6 @@ _PAYLOAD_REPAIRS: dict[
 }
 
 
-def _require_candidate_revoked(
-    product: PosixLocalWheelProductSessionOwner, plugin_id: str
-) -> None:
-    decision = CodingWorkerProductOptInOwner(product).current(plugin_id)
-    if decision is not None and decision.action == "allow":
-        raise CodingWorkerNativeCandidateCommandError(
-            "coding_worker_candidate_opt_in_revoke_required",
-            "Coding Worker candidate opt-in must be revoked",
-        )
-
-
 def _execute(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
@@ -282,9 +268,11 @@ def _execute(
             product_id="coding",
             native_platform="linux-x86_64",
             label="Coding Worker",
-            require_revoked=lambda: _require_candidate_revoked(product, args.plugin_id),
+            current_opt_in=lambda plugin_id: CodingWorkerProductOptInOwner(
+                product
+            ).current(plugin_id),
             error_type=CodingWorkerNativeCandidateCommandError,
-            stale_update_code="coding_worker_candidate_update_selection_stale",
+            error_prefix="coding_worker",
         )
     if args.action == "list-gated-attempts":
         return {
@@ -463,7 +451,7 @@ def _execute(
             product, approval_owner=owner, approved=decision.approval
         )
         return {"nativeClosure": reader.current_closure().to_dict()}
-    wheel = _read_wheel(Path(args.wheel))
+    wheel = _RELEASE_INPUT.read(args.wheel)
     review = review_coding_product_worker_native_release(product, wheel=wheel)
     if args.action == "review":
         return {"nativeReleaseReview": review.to_dict()}
@@ -508,19 +496,6 @@ def _gated_review_id(
         store_root_identity=fence.fenced_root_identity,
         plan=plan,
     )
-
-
-def _read_wheel(path: Path) -> bytes:
-    target = path.expanduser().absolute()
-    with closing_descriptor(
-        os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    ) as descriptor:
-        return read_exact_bounded_file(
-            descriptor,
-            _MAX_WHEEL_BYTES,
-            label="Coding Worker native Wheel",
-            check_regular=True,
-        )
 
 
 if __name__ == "__main__":

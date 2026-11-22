@@ -7,6 +7,7 @@ import os
 import platform
 import sys
 from collections.abc import Sequence
+from contextlib import closing
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
@@ -59,6 +60,8 @@ from loushang.harness.cli.package_lifecycle import (
 from loushang.harness.cli.worker_candidate import (
     WORKER_CANDIDATE_CHANGE_ACTIONS,
     WORKER_CANDIDATE_OPT_IN_ACTIONS,
+    NativeWorkerReleaseInput,
+    add_native_worker_review_commands,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
     execute_worker_candidate_capture,
@@ -72,16 +75,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.package_product.product_worker_candidate import (
     _observe_installed_worker_candidate,
 )
-from loushang.harness.resources.packages._file_consumption import (
-    closing_descriptor,
-    read_exact_bounded_file,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
-    open_windows_regular_file_at,
-)
 
-_MAX_WHEEL_BYTES = 64 * 1024 * 1024
+_RELEASE_INPUT = NativeWorkerReleaseInput(
+    "Windows Worker backend Wheel", 64 * 1024 * 1024, "windows-amd64"
+)
 
 
 class WindowsWorkerCandidateCommandError(ValueError):
@@ -128,15 +125,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
     )
     actions.add_parser("release-status", help="read the exact native approval")
-    review = actions.add_parser(
-        "release-review", help="review the installed backend Wheel"
+    add_native_worker_review_commands(
+        actions,
+        prefix="release-",
+        review_help="review the installed backend Wheel",
+        approve_help="approve one exact review",
     )
-    review.add_argument("--wheel", required=True)
-    approve = actions.add_parser("release-approve", help="approve one exact review")
-    approve.add_argument("--wheel", required=True)
-    approve.add_argument("--review-id", required=True)
-    approve.add_argument("--operation-id", required=True)
-    approve.add_argument("--expected-generation", type=int, required=True)
     install_release = actions.add_parser(
         "release-install", help="install the approved backend"
     )
@@ -194,7 +188,7 @@ def _run_product_action(
         windows_candidate=True,
         worker_candidates=True,
     )
-    try:
+    with closing(owner):
         product = owner.runtime_owner.product_owner
         if type(product) is not WindowsLocalWheelProductSessionOwner:
             raise ValueError("Windows Worker candidate Product is unavailable")
@@ -232,9 +226,7 @@ def _run_product_action(
             }
         else:
             document = _execute(product, args)
-    finally:
-        owner.close()
-    return document
+        return document
 
 
 def _execute(
@@ -249,9 +241,11 @@ def _execute(
             product_id="coding",
             native_platform="windows-amd64",
             label="Windows Worker",
-            require_revoked=lambda: _require_candidate_revoked(product, args.plugin_id),
+            current_opt_in=lambda plugin_id: CodingWindowsWorkerProductOptInOwner(
+                product
+            ).current(plugin_id),
             error_type=WindowsWorkerCandidateCommandError,
-            stale_update_code="windows_worker_candidate_update_selection_stale",
+            error_prefix="windows_worker",
         )
     if args.action == "list-attempts":
         return {
@@ -308,7 +302,7 @@ def _execute(
         )
         return {"approvalDecision": decision.to_dict()}
     if args.action in {"release-review", "release-approve", "release-install"}:
-        wheel = _read_wheel(Path(args.wheel))
+        wheel = _RELEASE_INPUT.read(args.wheel)
         release_review = review_coding_windows_worker_backend_release(
             product, loushang_wheel=wheel
         )
@@ -358,35 +352,6 @@ def _read_candidate_selection(
         ),
         "productUse": "not_checked",
     }
-
-
-def _require_candidate_revoked(
-    product: WindowsLocalWheelProductSessionOwner, plugin_id: str
-) -> None:
-    decision = CodingWindowsWorkerProductOptInOwner(product).current(plugin_id)
-    if decision is not None and decision.action == "allow":
-        raise WindowsWorkerCandidateCommandError(
-            "windows_worker_candidate_opt_in_revoke_required",
-            "Windows Worker candidate opt-in must be revoked",
-        )
-
-
-def _read_wheel(path: Path) -> bytes:
-    target = path.expanduser().absolute()
-    with closing_descriptor(
-        open_windows_directory(target.parent, writable=False)
-    ) as parent:
-        with closing_descriptor(
-            open_windows_regular_file_at(
-                parent, target.name, create_new=False, write=False
-            )
-        ) as descriptor:
-            return read_exact_bounded_file(
-                descriptor,
-                _MAX_WHEEL_BYTES,
-                label="Windows Worker backend Wheel",
-                check_regular=False,
-            )
 
 
 if __name__ == "__main__":

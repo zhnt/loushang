@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
@@ -24,6 +27,14 @@ from loushang.harness.package_product.product_worker_candidate import (
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
+)
+from loushang.harness.resources.packages._file_consumption import (
+    closing_descriptor,
+    read_exact_bounded_file,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    open_windows_regular_file_at,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWorkerAdmissionV1,
@@ -85,6 +96,50 @@ def add_worker_candidate_opt_in_commands(
             command.add_argument("--expected-generation", type=int, required=True)
         if action == "candidate-allow":
             command.add_argument("--require-worker", action="store_true")
+
+
+def add_native_worker_review_commands(
+    actions: _SubParsersAction[ArgumentParser],
+    *,
+    prefix: str = "",
+    review_help: str,
+    approve_help: str,
+) -> None:
+    review = actions.add_parser(prefix + "review", help=review_help)
+    review.add_argument("--wheel", required=True)
+    approve = actions.add_parser(prefix + "approve", help=approve_help)
+    approve.add_argument("--wheel", required=True)
+    approve.add_argument("--review-id", required=True)
+    approve.add_argument("--operation-id", required=True)
+    approve.add_argument("--expected-generation", type=int, required=True)
+
+
+@dataclass(frozen=True, slots=True)
+class NativeWorkerReleaseInput:
+    """Freeze the bytes presented to the Product's review and approval owners."""
+
+    label: str
+    maximum_bytes: int
+    native_platform: Literal["linux-x86_64", "windows-amd64"]
+
+    def read(self, value: str) -> bytes:
+        path = Path(value).expanduser().absolute()
+        windows = self.native_platform == "windows-amd64"
+        with ExitStack() as custody:
+            if windows:
+                parent = open_windows_directory(path.parent, writable=False)
+                custody.enter_context(closing_descriptor(parent))
+                descriptor = open_windows_regular_file_at(
+                    parent, path.name, create_new=False, write=False
+                )
+            else:
+                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            return read_exact_bounded_file(
+                custody.enter_context(closing_descriptor(descriptor)),
+                self.maximum_bytes,
+                label=self.label,
+                check_regular=not windows,
+            )
 
 
 class _WorkerCandidateRecord(Protocol):
@@ -281,11 +336,20 @@ def execute_worker_candidate_change(
     product_id: str,
     native_platform: Literal["linux-x86_64", "windows-amd64"],
     label: str,
-    require_revoked: Callable[[], None],
+    current_opt_in: Callable[[str], _CandidateStatusDecision | None],
     error_type: Callable[[str, str], Exception],
-    stale_update_code: str,
+    error_prefix: str,
 ) -> dict[str, object]:
     """Run the existing lifecycle with the platform's operator contract."""
+
+    def require_revoked() -> None:
+        decision = current_opt_in(args.plugin_id)
+        if decision is not None and decision.action == "allow":
+            raise error_type(
+                f"{error_prefix}_candidate_opt_in_revoke_required",
+                f"{label} candidate opt-in must be revoked",
+            )
+
     windows = native_platform == "windows-amd64"
     if args.action not in WORKER_CANDIDATE_CHANGE_ACTIONS:
         raise ValueError(f"{label} candidate action is unsupported")
@@ -345,7 +409,7 @@ def execute_worker_candidate_change(
             label=label,
             require_revoked=require_revoked,
             error_type=error_type,
-            error_code=stale_update_code,
+            error_code=f"{error_prefix}_candidate_update_selection_stale",
             post_selection_error_type=None if windows else error_type,
         )
         update_result = {

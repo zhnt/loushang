@@ -10,6 +10,10 @@ from unittest.mock import patch
 import pytest
 
 import loushang.coding.cli.package_worker_windows_candidate as cli
+from loushang.harness.cli import worker_candidate
+from loushang.harness.resources.packages.plugin_lifecycle.journal import (
+    PackageLifecycleJournal,
+)
 
 
 @pytest.mark.parametrize("windows_candidate", (True, False))
@@ -68,14 +72,27 @@ def test_windows_worker_update_reports_required_opt_in_revocation(
 ) -> None:
     monkeypatch.setattr(cli, "os", SimpleNamespace(name="nt"))
 
-    def refuse_allowed_revision(*_args):
-        cli._require_candidate_revoked(SimpleNamespace(), "demo")
+    def run_update(_layout, workspace, args):
+        return cli._execute(SimpleNamespace(state_root=workspace), args)
+
+    selected = SimpleNamespace(
+        selection=SimpleNamespace(
+            package_revision=SimpleNamespace(package_content_digest="a" * 64),
+            desired_state="installed_enabled",
+        )
+    )
 
     with (
         patch.object(cli.platform, "machine", return_value="AMD64"),
         patch.object(cli, "resolve_coding_plugin_lifecycle_state_layout"),
-        patch.object(cli, "_run_product_action", side_effect=refuse_allowed_revision),
+        patch.object(cli, "_run_product_action", side_effect=run_update),
         patch.object(cli, "CodingWindowsWorkerProductOptInOwner") as opt_in,
+        patch.object(PackageLifecycleJournal, "request", return_value=None),
+        patch.object(
+            worker_candidate,
+            "_capture_worker_candidate_installations",
+            return_value=(None, SimpleNamespace(inventory_revision=1), (selected,)),
+        ),
     ):
         opt_in.return_value.current.return_value = SimpleNamespace(action="allow")
         assert (
