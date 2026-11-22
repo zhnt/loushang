@@ -12,7 +12,8 @@ import errno
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
@@ -290,14 +291,16 @@ class _CanonicalTranscriptCatalogMethods(
         )
         return self._project_catalog_record(scope, path, revision, header)
 
-    def _require_current_discovered_record(
-        self, reference: SessionCandidateRefV1
-    ) -> RecordT:
-        """Resolve a history reference in the caller's locked catalog view."""
-        record = self._records.get(reference)
-        if record is None or self._source_revision(record.path) != reference.revision:
-            raise self._catalog_error()
-        return record
+    @asynccontextmanager
+    async def _current_discovered_record(
+        self, reference: SessionCandidateRefV1,
+    ) -> AsyncIterator[RecordT]:
+        async with self._lock:
+            self._accepting()
+            record = self._records.get(reference)
+            if record is None or self._source_revision(record.path) != reference.revision:
+                raise self._catalog_error()
+            yield record
 
     async def _read_discovered_history(
         self,
@@ -307,10 +310,9 @@ class _CanonicalTranscriptCatalogMethods(
     ) -> HistoryT:
         """Observe the exact discovered history without acquiring a Writer."""
         self._accepting()
-        async with self._lock:
-            self._accepting()
-            record = self._require_current_discovered_record(reference)
-        history = await settled_io(read, record.path)
+        async with self._current_discovered_record(reference) as record:
+            path = record.path
+        history = await settled_io(read, path)
         self._accepting()
         if (
             self._source_revision(record.path) != reference.revision
@@ -318,6 +320,54 @@ class _CanonicalTranscriptCatalogMethods(
         ):
             raise self._catalog_error()
         return history
+
+    async def _open_discovered_history_candidate(
+        self,
+        reference: SessionCandidateRefV1,
+        binding: BindingT,
+        project: Callable[[RecordT, BindingT], CandidateT],
+    ) -> CandidateT:
+        try:
+            async with self._current_discovered_record(reference) as record:
+                return project(record, binding)
+        except BaseException:
+            await binding.close()
+            raise
+
+    def _admitted_scope(self, scope: SessionScopeV1, fingerprint: str) -> CanonicalTranscriptScope | None:
+        return next(
+            (item for item in self.scopes if item.scope is scope and item.fingerprint == fingerprint),
+            None,
+        )
+
+    async def _delete_canonical_history(
+        self, identity: SessionIdentityV1, session_path: Callable[[Path, str], Path],
+    ) -> None:
+        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
+
+        async with self._lock:
+            self._accepting()
+            scope = self._admitted_scope(identity.scope, identity.scope_fingerprint)
+            if scope is None:
+                raise self._catalog_error()
+            path = session_path(scope.session_dir, identity.session_id)
+            record = await settled_io(self._read_record, scope, path)
+            if record is None or record.identity != identity or not self._record_compatible(record):
+                raise self._catalog_error()
+            await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
+            self._records = {
+                key: value for key, value in self._records.items() if value.identity != identity
+            }
+
+    @staticmethod
+    def _record_lifecycle_context(record: RecordT) -> AgentTranscriptLifecycleContext:
+        return AgentTranscriptLifecycleContext(
+            session_dir=record.scope.session_dir,
+            cwd=str(record.scope.cwd),
+            persist=True,
+            header=record.header,
+            session_file=record.path,
+        )
 
     async def _open_legacy_record(self, record: RecordT) -> CandidateT:
         revision = self._source_revision
@@ -327,13 +377,7 @@ class _CanonicalTranscriptCatalogMethods(
         candidate = self._candidate_from_manager
         if revision(record.path) != record.projection.reference.revision:
             raise error()
-        context = AgentTranscriptLifecycleContext(
-            session_dir=record.scope.session_dir,
-            cwd=str(record.scope.cwd),
-            persist=True,
-            header=record.header,
-            session_file=record.path,
-        )
+        context = self._record_lifecycle_context(record)
         manager = manager_type(lifecycle_session=await factory.restore_context(context))
         try:
             if (
@@ -437,13 +481,7 @@ class _CanonicalTranscriptCatalogMethods(
             return await self._open_legacy_record(record)
         if self._source_revision(record.path) != record.projection.reference.revision:
             raise self._catalog_error_class()()
-        context = AgentTranscriptLifecycleContext(
-            session_dir=record.scope.session_dir,
-            cwd=str(record.scope.cwd),
-            persist=True,
-            header=record.header,
-            session_file=record.path,
-        )
+        context = self._record_lifecycle_context(record)
         session = await self._owned_factory.restore_context(context)
         return await self._candidate_from_owned(session, record.scope, expected=record)
 
@@ -456,15 +494,7 @@ class _CanonicalTranscriptCatalogMethods(
             or scope.product_id != self._product_id()
         ):
             raise ValueError("unadmitted discovery scope")
-        selected = next(
-            (
-                item
-                for item in self.scopes
-                if item.scope is scope.scope
-                and item.fingerprint == scope.scope_fingerprint
-            ),
-            None,
-        )
+        selected = self._admitted_scope(scope.scope, scope.scope_fingerprint)
         if selected is None:
             raise ValueError("unadmitted discovery scope")
         cancelled = threading.Event()

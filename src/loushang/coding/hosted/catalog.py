@@ -631,23 +631,7 @@ class CodingHostedSessionCatalogV1(
         return await super().close()
 
     async def delete_session_history(self, identity: SessionIdentityV1) -> None:
-        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
-
-        async with self._lock:
-            self._accepting()
-            for scope in self.scopes:
-                if scope.scope is identity.scope and scope.fingerprint == identity.scope_fingerprint:
-                    break
-            else:
-                raise CodingHostedCatalogError()
-            path = _hosted_session_path(scope.session_dir, identity.session_id)
-            record = await settled_io(self._read_record, scope, path)
-            if record is None or record.identity != identity or not self._record_compatible(record):
-                raise CodingHostedCatalogError()
-            await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
-            self._records = {
-                key: value for key, value in self._records.items() if value.identity != identity
-            }
+        await self._delete_canonical_history(identity, _hosted_session_path)
 
     async def discover_sessions(
         self,
@@ -674,9 +658,7 @@ class CodingHostedSessionCatalogV1(
         """Inspect a discovered Header without claiming its writable candidate."""
 
         self._accepting()
-        async with self._lock:
-            self._accepting()
-            record = self._require_current_discovered_record(reference)
+        async with self._current_discovered_record(reference) as record:
             preview = inspect_coding_resume_header(record.header)
             if self._source_revision(record.path) != reference.revision:
                 raise CodingHostedCatalogError()
@@ -718,9 +700,8 @@ class CodingHostedSessionCatalogV1(
         preview = await self.preview_history_snapshot(
             reference, max_bytes=max_bytes, selected_leaf_id=selected_leaf_id,
         )
-        async with self._lock:
-            self._accepting()
-            identity = self._require_current_discovered_record(reference).identity
+        async with self._current_discovered_record(reference) as record:
+            identity = record.identity
         return CodingHostedHistoryBindingV1(identity, preview)
 
     async def preview_resume_model_outcome(
@@ -746,27 +727,21 @@ class CodingHostedSessionCatalogV1(
     ) -> _Candidate:
         """Use the existing AppHost claim and factory chain for detached history."""
 
+        def project(record: _Record, binding: CodingHostedSessionBindingV1) -> _Candidate:
+            return _Candidate(record, CodingHostedHistoryCandidateBindingV1(
+                record,
+                binding,
+                self._accepting,
+                manager_type=(
+                    _OwnedHostedTranscript if self._owned_factory is not None else _HostedTranscript
+                ),
+                writer_factory=self._owned_factory or _HOSTED_FACTORY,
+            ))
+
         binding = await self.open_history_binding(
             reference, max_bytes=max_bytes, selected_leaf_id=selected_leaf_id,
         )
-        try:
-            async with self._lock:
-                self._accepting()
-                record = self._require_current_discovered_record(reference)
-                return _Candidate(record, CodingHostedHistoryCandidateBindingV1(
-                    record,
-                    binding,
-                    self._accepting,
-                    manager_type=(
-                        _OwnedHostedTranscript
-                        if self._owned_factory is not None
-                        else _HostedTranscript
-                    ),
-                    writer_factory=self._owned_factory or _HOSTED_FACTORY,
-                ))
-        except BaseException:
-            await binding.close()
-            raise
+        return await self._open_discovered_history_candidate(reference, binding, project)
 
     def _scope_for(self, request: SessionCreateRequestV1) -> CodingHostedScopeV1:
         if request.product_id != "coding" or request.requested_continuity_id is None:

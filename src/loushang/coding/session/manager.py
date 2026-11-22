@@ -90,7 +90,6 @@ from loushang.harness.session.composition_evidence import (
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
-    AgentTranscriptLifecycleSession,
     AgentTranscriptRecord,
     AgentTranscriptSessionFactory,
 )
@@ -433,12 +432,8 @@ class SessionManager(
         binding = factory._resolve_binding_input(True)
         # Historical identity must still match. Epoch equality belongs to the new binding.
         _validate_coding_restored_header(context.header, binding, False)
-        result: list[Self] = []
 
-        def project(
-            session: AgentTranscriptLifecycleSession[RuntimeProfileBinding],
-        ) -> None:
-            manager = cls(lifecycle_session=session)
+        def prepare(manager: Self) -> None:
             manager._resume_runtime_publication_pending = True
             restore_verified_branch(
                 manager,
@@ -448,11 +443,12 @@ class SessionManager(
                 stale=lambda: ResumePlanStaleError(f"{label} history changed during acquisition"),
             )
             manager._resume_writer_plan = plan
-            manager._creation_factory = factory
-            result.append(manager)
 
-        await factory._construct_owned(context, binding, restore=True, _projection=project)
-        return result[0]
+        return await cls._construct_product(
+            factory,
+            partial(factory._construct_owned, context, binding, restore=True),
+            prepare_owned=prepare,
+        )
 
     def _require_resume_bootstrap_composition(
         self,

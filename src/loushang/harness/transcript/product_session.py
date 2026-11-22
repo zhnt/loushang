@@ -299,6 +299,7 @@ class ProductTranscriptSession(
     async def _construct_product(
         cls, factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT],
         operation: Callable[..., Awaitable[AgentTranscriptLifecycleSession[ProductBindingT]]],
+        *, prepare_owned: Callable[[Self], None] | None = None,
     ) -> Self:
         if not factory.owns_persistent_sessions:
             return cls(lifecycle_session=await operation())
@@ -309,6 +310,8 @@ class ProductTranscriptSession(
             # Synchronous construction only: do not publish or transfer Graph
             # ownership before the factory completes its original handoff.
             value = cls(lifecycle_session=session)
+            if prepare_owned is not None:
+                prepare_owned(value)
             value._creation_factory = factory
             projected = value
 
