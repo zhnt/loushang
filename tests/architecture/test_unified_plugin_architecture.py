@@ -919,8 +919,15 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         "ExactProductSourceFiles",
         {"path_read": 1},
     ),
+    (
+        "plugin_management/private_data_backup.py",
+        "PrivateArchiveManifestCodec.decode",
+        "PrivateArchiveManifestCodec",
+        {"json_decode": 1},
+    ),
 )
 PLC9_CLOSURE_BOUNDARY_OWNERS = {
+    "PrivateArchiveManifestCodec",
     "_WindowsInstallationRootLineage",
     "PrivatePosixTreeIO",
     "ExactProductSourceFiles",
