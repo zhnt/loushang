@@ -7,12 +7,10 @@ from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.journal import (
-    FunctionalJournalRecordCodec,
-)
 from loushang.harness.package_product._legacy_local_migration import (
     _FirstAcceptanceEnvelope,
     _FirstAcceptanceJournal,
+    _FirstAcceptanceRecord,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -45,42 +43,21 @@ _envelope = _FirstAcceptanceEnvelope(
 
 
 @dataclass(frozen=True, slots=True)
-class CodingLegacyBuiltinOnlyAcceptanceV1:
+class CodingLegacyBuiltinOnlyAcceptanceV1(
+    _FirstAcceptanceRecord[CodingLegacyBuiltinOnlyReviewV1]
+):
     review: CodingLegacyBuiltinOnlyReviewV1
     acceptance_id: str
     acceptance_version: int = 1
 
-    @classmethod
-    def create(
-        cls, review: CodingLegacyBuiltinOnlyReviewV1
-    ) -> CodingLegacyBuiltinOnlyAcceptanceV1:
-        if not isinstance(review, CodingLegacyBuiltinOnlyReviewV1):
-            raise TypeError("Coding builtin-only review is required")
-        acceptance_id = _envelope.identity(review.review_id)
-        return cls(review=review, acceptance_id=acceptance_id)
+    _envelope = _envelope
+    _review_type = CodingLegacyBuiltinOnlyReviewV1
+    _review_required = "Coding builtin-only review is required"
 
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "acceptanceId": self.acceptance_id,
-            "acceptanceVersion": self.acceptance_version,
-            "review": self.review.to_dict(),
-        }
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingLegacyBuiltinOnlyAcceptanceV1:
-        return _envelope.decode(
-            value, CodingLegacyBuiltinOnlyReviewV1.from_dict, cls.create
-        )
-
-
-_CODEC = FunctionalJournalRecordCodec(
-    encoder=CodingLegacyBuiltinOnlyAcceptanceV1.to_dict,
-    decoder=CodingLegacyBuiltinOnlyAcceptanceV1.from_dict,
-)
 
 _acceptance_journal = _FirstAcceptanceJournal(
     filename="legacy-builtin-acceptance.jsonl",
-    codec=_CODEC,
+    codec=CodingLegacyBuiltinOnlyAcceptanceV1._record_codec(),
     error_type=CodingLegacyBuiltinOnlyAcceptanceError,
     directory_label="Builtin-only Product state directory",
     posix_read_error_type=CodingLegacyDisabledOnlyAcceptanceError,
@@ -109,8 +86,8 @@ def accept_coding_first_b_builtin_only(
     return _acceptance_journal.accept_review(
         epoch_runtime,
         accepted_review_id=accepted_review_id,
-        current_review_id=review.review_id,
-        create=lambda: CodingLegacyBuiltinOnlyAcceptanceV1.create(review),
+        review=review,
+        create=CodingLegacyBuiltinOnlyAcceptanceV1.create,
         expected_store_id=lambda: (
             resolve_coding_package_epoch_layout(lifecycle).store_id
         ),

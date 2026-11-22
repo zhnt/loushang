@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Generic, Literal, Protocol, TypeVar
+from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
 
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -24,6 +24,7 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.config.store import _read_stable_json_patch
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
+    FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalLoadPolicy,
     JournalRecordCodec,
@@ -140,6 +141,61 @@ class _FirstAcceptanceEnvelope:
             ) from exc
 
 
+class _FirstAcceptanceReview(Protocol):
+    @property
+    def review_id(self) -> str: ...
+
+    def to_dict(self) -> dict[str, object]: ...
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
+
+
+_FirstReviewT = TypeVar("_FirstReviewT", bound=_FirstAcceptanceReview)
+
+
+class _FirstAcceptanceRecord(Generic[_FirstReviewT]):
+    """Keep the V1 receipt codec with the journal that publishes it."""
+
+    __slots__ = ()
+    review: _FirstReviewT
+    acceptance_id: str
+    acceptance_version: int
+    _envelope: ClassVar[_FirstAcceptanceEnvelope]
+    _review_type: ClassVar[type[_FirstAcceptanceReview]]
+    _review_required: ClassVar[str]
+
+    @classmethod
+    def create(cls, review: _FirstReviewT) -> Self:
+        if not isinstance(review, cls._review_type):
+            raise TypeError(cls._review_required)
+        cls._check_review(review)
+        create: Callable[..., Self] = cls
+        return create(
+            review=review, acceptance_id=cls._envelope.identity(review.review_id)
+        )
+
+    @classmethod
+    def _check_review(cls, review: _FirstReviewT) -> None:
+        """Apply any Product-specific eligibility rule after the nominal check."""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "acceptanceId": self.acceptance_id,
+            "acceptanceVersion": self.acceptance_version,
+            "review": self.review.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        review_type = cast(type[_FirstReviewT], cls._review_type)
+        return cls._envelope.decode(value, review_type.from_dict, cls.create)
+
+    @classmethod
+    def _record_codec(cls) -> FunctionalJournalRecordCodec[Self]:
+        return FunctionalJournalRecordCodec(encoder=cls.to_dict, decoder=cls.from_dict)
+
+
 @dataclass(frozen=True)
 class _FirstAcceptanceJournal(Generic[RecordT]):
     """One frozen first-adoption receipt, committed before any Desired mutation.
@@ -166,15 +222,15 @@ class _FirstAcceptanceJournal(Generic[RecordT]):
         runtime: _FencedRuntime,
         *,
         accepted_review_id: str,
-        current_review_id: str,
-        create: Callable[[], RecordT],
+        review: _FirstReviewT,
+        create: Callable[[_FirstReviewT], RecordT],
         expected_store_id: Callable[[], str],
         changed_review: str,
         conflict_message: str,
     ) -> RecordT:
-        if accepted_review_id != current_review_id:
+        if accepted_review_id != review.review_id:
             raise self.error_type(changed_review)
-        proposed = create()
+        proposed = create(review)
         self._require_store(runtime, expected_store_id())
         return self.accept(runtime, proposed, conflict_message=conflict_message)
 

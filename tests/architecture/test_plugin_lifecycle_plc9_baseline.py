@@ -279,7 +279,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         ): 2,
         (
             Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
-            "CodingLegacyDisabledOnlyAcceptanceV1.create",
+            "CodingLegacyDisabledOnlyAcceptanceV1._check_review",
         ): 1,
         (
             Path("src/loushang/coding/package/legacy_disabled_review.py"),
