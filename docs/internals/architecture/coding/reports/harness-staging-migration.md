@@ -904,6 +904,21 @@ The two affected boundary checks, the effect inventory and cycle checks pass.
 The Continuity bootstrapping routes and their named fault injection pass after
 tracking the current host module. There is no production line delta.
 
+### Cumulative Linux Verification
+
+The architecture suite passes 644 cases on the initial complete source tree.
+All six remaining checks pass on the targeted reruns after the Session,
+Worker and Package inventory and boundary corrections above.
+
+The Harness suite passes 5,938 cases with 113 skips and three deselections.
+The affected Coding suite passes 460 cases with six skips. The full runs each
+report one timing failure, respectively a large Transcript load and a Product
+crash-recovery child handshake. Both failures also occur on unmodified main
+under parallel load. The pair passes when run by itself on baseline and final
+candidate, in 20.27 and 19.81 seconds for the two-case runs. The test budgets,
+failure priority and runtime behavior keep their existing checks. Native Windows
+coverage follows the repository's existing PR workflow.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected
