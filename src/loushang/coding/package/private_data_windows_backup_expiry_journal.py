@@ -152,40 +152,6 @@ class CodingWindowsArchBackupExpiryTransaction(
     product: WindowsLocalWheelProductSessionOwner
     restore: CodingWindowsArchPrivateDataRestoreTransaction
 
-    def confirm(
-        self,
-        plan: CodingArchPrivateDataBackupExpiryPlanV1,
-        *,
-        actor_id: str,
-        policy_revision: str,
-    ) -> CodingArchPrivateDataBackupExpiryConfirmationV1:
-        if not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1):
-            raise ValueError("Windows Coding Arch backup expiry plan is invalid")
-        self._require_current_plan(plan)
-        return self._confirm_current(
-            plan, actor_id=actor_id, policy_revision=policy_revision
-        )
-
-    def begin(
-        self,
-        plan: CodingArchPrivateDataBackupExpiryPlanV1,
-        confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
-        archive: CodingWindowsArchBackupArchiveSnapshotV1,
-    ) -> CodingWindowsArchBackupExpiryEventV1:
-        if (
-            not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1)
-            or not isinstance(
-                confirmation, CodingArchPrivateDataBackupExpiryConfirmationV1
-            )
-            or confirmation.plan_fingerprint != plan.fingerprint
-            or not isinstance(archive, CodingWindowsArchBackupArchiveSnapshotV1)
-            or archive.root_identity != plan.archive_root_identity
-            or archive.target_id != plan.archive_target_id
-        ):
-            raise ValueError("Windows Coding Arch backup expiry start is invalid")
-        self._require_current_plan(plan)
-        return self._begin_current(plan, confirmation, archive)
-
     def advance(
         self,
         prior: CodingWindowsArchBackupExpiryEventV1,
@@ -236,6 +202,9 @@ class CodingWindowsArchBackupExpiryTransaction(
             self.layout, self.product, self.restore, plan
         )
 
+    _plan_type = CodingArchPrivateDataBackupExpiryPlanV1
+    _confirmation_type = CodingArchPrivateDataBackupExpiryConfirmationV1
+    _archive_type = CodingWindowsArchBackupArchiveSnapshotV1
     _event_factory = CodingWindowsArchBackupExpiryEventV1
     _confirmation_factory = staticmethod(
         CodingArchPrivateDataBackupExpiryConfirmationV1.create

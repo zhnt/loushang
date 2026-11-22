@@ -243,11 +243,12 @@ _ArchiveT = TypeVar("_ArchiveT")
 _EventT = TypeVar("_EventT", bound=ExpiryHistoryEvent)
 
 
-class ExpiryAdvance(Generic[_AdvanceEventT]):
-    """One original checkpoint advance; stores retain scanning and publication."""
+class ExpiryJournalTransitions(Generic[_AdvanceEventT]):
+    """Exact confirmation and checkpoints over the native expiry journals."""
 
     __slots__ = ()
     _label: ClassVar[str]
+    _completed_phrase: ClassVar[str] = "was already completed"
 
     @property
     def _event_factory(self) -> Callable[..., _AdvanceEventT]:
@@ -267,6 +268,57 @@ class ExpiryAdvance(Generic[_AdvanceEventT]):
         event: _AdvanceEventT,
     ) -> _AdvanceEventT:
         raise NotImplementedError
+
+    def _record_confirmation(self, plan: ExpiryPlan, confirmation: object) -> None:
+        events, staged = self._scan()
+        completed_error = f"{self._label} backup expiry {self._completed_phrase}"
+        if events:
+            last = events[-1]
+            if last.phase != "completed":
+                if staged is not None:
+                    message = f"{self._label} backup expiry event needs recovery"
+                    raise ValueError(message)
+                if last.plan == plan and last.confirmation == confirmation:
+                    return
+                raise ValueError(f"Another {self._label} backup expiry is unfinished")
+            if last.plan == plan:
+                if staged is not None or last.confirmation != confirmation:
+                    raise ValueError(completed_error)
+                return
+            if any(
+                event.phase == "completed" and event.plan.backup_id == plan.backup_id
+                for event in events
+            ):
+                raise ValueError(completed_error)
+        event = self._event_factory(
+            revision=len(events) + 1,
+            phase="confirmed",
+            plan=plan,
+            confirmation=confirmation,
+        )
+        self._append_current(events, staged, event)
+
+    def _begin_current(
+        self, plan: ExpiryPlan, confirmation: object, archive: object
+    ) -> _AdvanceEventT:
+        events, staged = self._scan()
+        if not events or (
+            events[-1].plan != plan or events[-1].confirmation != confirmation
+        ):
+            raise ValueError(f"{self._label} backup expiry confirmation changed")
+        prior = events[-1]
+        if prior.phase != "confirmed":
+            if staged is not None or prior.archive != archive:
+                raise ValueError(f"{self._label} backup expiry archive changed")
+            return prior
+        event = self._event_factory(
+            revision=len(events) + 1,
+            phase="started",
+            plan=plan,
+            confirmation=confirmation,
+            archive=archive,
+        )
+        return self._append_current(events, staged, event)
 
     def _advance_current(
         self, prior: _AdvanceEventT, phase: Literal["renamed", "completed"]
@@ -298,7 +350,8 @@ class ExpiryAdvance(Generic[_AdvanceEventT]):
 
 
 class PrivateDataExpiryJournal(
-    ExpiryAdvance[_EventT], Generic[_PlanT, _ConfirmationT, _ArchiveT, _EventT]
+    ExpiryJournalTransitions[_EventT],
+    Generic[_PlanT, _ConfirmationT, _ArchiveT, _EventT],
 ):
     """One append-only exact attempt at a time in the Product state root."""
 
@@ -334,29 +387,8 @@ class PrivateDataExpiryJournal(
         )
         self._require_private_parent()
         with journal_file_lock(self._path, "exclusive"):
-            events = self._load(self._write_policy)
-            if events and events[-1].phase != "completed":
-                last = events[-1]
-                if last.plan == plan and last.confirmation == confirmation:
-                    return confirmation
-                raise ValueError(f"Another {self._label} backup expiry is unfinished")
-            if events and events[-1].plan == plan:
-                if events[-1].confirmation == confirmation:
-                    return confirmation
-                raise ValueError(f"{self._label} backup expiry was already completed")
-            if any(
-                event.phase == "completed" and event.plan.backup_id == plan.backup_id
-                for event in events
-            ):
-                raise ValueError(f"{self._label} backup expiry was already completed")
-            event = self._event_factory(
-                revision=len(events) + 1,
-                phase="confirmed",
-                plan=plan,
-                confirmation=confirmation,
-            )
-            self._append(event)
-            return confirmation
+            self._record_confirmation(plan, confirmation)
+        return confirmation
 
     def begin(
         self,
@@ -366,25 +398,7 @@ class PrivateDataExpiryJournal(
     ) -> _EventT:
         self._require_private_parent()
         with journal_file_lock(self._path, "exclusive"):
-            events = self._load(self._write_policy)
-            if not events or (
-                events[-1].plan != plan or events[-1].confirmation != confirmation
-            ):
-                raise ValueError(f"{self._label} backup expiry confirmation changed")
-            last = events[-1]
-            if last.phase != "confirmed":
-                if last.archive == archive:
-                    return last
-                raise ValueError(f"{self._label} backup expiry archive changed")
-            event = self._event_factory(
-                revision=len(events) + 1,
-                phase="started",
-                plan=plan,
-                confirmation=confirmation,
-                archive=archive,
-            )
-            self._append(event)
-            return event
+            return self._begin_current(plan, confirmation, archive)
 
     def advance(
         self, prior: _EventT, phase: Literal["renamed", "completed"]

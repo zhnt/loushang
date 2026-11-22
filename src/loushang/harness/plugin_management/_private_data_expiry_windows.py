@@ -39,9 +39,11 @@ from ._private_data_backup_windows import (
     WindowsPrivateArchiveSnapshot,
 )
 from ._private_data_expiry import (
-    ExpiryAdvance,
     ExpiryHistoryEvent,
+    ExpiryJournalTransitions,
     ExpiryPlan,
+    _ExpiryConfirmation,
+    matches_expiry_archive,
     validate_expiry_history,
 )
 from .records import PluginInstallationKeyV1
@@ -60,13 +62,14 @@ class _ExpiryEvent(ExpiryHistoryEvent, Protocol):
 
 
 _PlanT = TypeVar("_PlanT", bound=ExpiryPlan)
-_ConfirmationT = TypeVar("_ConfirmationT")
+_ConfirmationT = TypeVar("_ConfirmationT", bound=_ExpiryConfirmation)
 _ArchiveT = TypeVar("_ArchiveT", bound=WindowsPrivateArchiveSnapshot)
 _EventT = TypeVar("_EventT", bound=_ExpiryEvent)
 
 
 class WindowsPrivateExpiryTransaction(
-    ExpiryAdvance[_EventT], Generic[_PlanT, _ConfirmationT, _ArchiveT, _EventT]
+    ExpiryJournalTransitions[_EventT],
+    Generic[_PlanT, _ConfirmationT, _ArchiveT, _EventT],
 ):
     """One fixed original expiry action, no added state or runtime policy table."""
 
@@ -74,11 +77,39 @@ class WindowsPrivateExpiryTransaction(
     _label: ClassVar[str]
     _tree_io: ClassVar[PrivateWindowsTreeIO]
     _archive_io: ClassVar[WindowsArchiveExpiryIO]
+    _completed_phrase: ClassVar[str] = "already completed"
+    _plan_type: type[_PlanT]
+    _confirmation_type: type[_ConfirmationT]
+    _archive_type: type[_ArchiveT]
+
+    def confirm(
+        self, plan: _PlanT, *, actor_id: str, policy_revision: str
+    ) -> _ConfirmationT:
+        if not isinstance(plan, self._plan_type):
+            raise ValueError(f"{self._label} backup expiry plan is invalid")
+        self._require_current_plan(plan)
+        confirmation = self._confirmation_factory(
+            plan, actor_id=actor_id, policy_revision=policy_revision
+        )
+        self._record_confirmation(plan, confirmation)
+        return confirmation
+
+    def _require_current_plan(self, plan: _PlanT) -> None:
+        raise NotImplementedError
 
     def begin(
         self, plan: _PlanT, confirmation: _ConfirmationT, archive: _ArchiveT
     ) -> _EventT:
-        raise NotImplementedError
+        if (
+            not isinstance(plan, self._plan_type)
+            or not isinstance(confirmation, self._confirmation_type)
+            or confirmation.plan_fingerprint != plan.fingerprint
+            or not isinstance(archive, self._archive_type)
+            or not matches_expiry_archive(archive, plan)
+        ):
+            raise ValueError(f"{self._label} backup expiry start is invalid")
+        self._require_current_plan(plan)
+        return self._begin_current(plan, confirmation, archive)
 
     def advance(
         self, prior: _EventT, phase: Literal["renamed", "completed"]
@@ -240,7 +271,7 @@ class WindowsPrivateExpiryTransaction(
             raise ValueError(f"{self._label} backup expiry event needs recovery")
         return events
 
-    def _append(
+    def _append_current(
         self,
         before: tuple[_EventT, ...],
         staged: int | None,
@@ -294,61 +325,3 @@ class WindowsPrivateExpiryTransaction(
 
     def _event_path(self, revision: int) -> Path:
         return self._state_root / f"{self._event_prefix}{revision:08d}.json"
-
-    def _confirm_current(
-        self, plan: _PlanT, *, actor_id: str, policy_revision: str
-    ) -> _ConfirmationT:
-        confirmation = self._confirmation_factory(
-            plan, actor_id=actor_id, policy_revision=policy_revision
-        )
-        events, staged = self._scan()
-        if events and events[-1].phase != "completed":
-            if staged is not None:
-                raise ValueError(f"{self._label} backup expiry event needs recovery")
-            if events[-1].plan == plan and events[-1].confirmation == confirmation:
-                return confirmation
-            raise ValueError(f"Another {self._label} backup expiry is unfinished")
-        if events and events[-1].plan == plan:
-            if staged is not None or events[-1].confirmation != confirmation:
-                raise ValueError(f"{self._label} backup expiry already completed")
-            return confirmation
-        if any(
-            event.phase == "completed" and event.plan.backup_id == plan.backup_id
-            for event in events
-        ):
-            raise ValueError(f"{self._label} backup expiry already completed")
-        event = self._event_factory(
-            revision=len(events) + 1,
-            phase="confirmed",
-            plan=plan,
-            confirmation=confirmation,
-        )
-        self._append(events, staged, event)
-        return confirmation
-
-    def _begin_current(
-        self, plan: _PlanT, confirmation: _ConfirmationT, archive: _ArchiveT
-    ) -> _EventT:
-        events, staged = self._scan()
-        if not events or (
-            events[-1].plan != plan or events[-1].confirmation != confirmation
-        ):
-            raise ValueError(f"{self._label} backup expiry confirmation changed")
-        prior = events[-1]
-        if prior.phase != "confirmed":
-            if staged is not None or prior.archive != archive:
-                raise ValueError(f"{self._label} backup expiry archive changed")
-            return prior
-        event = self._event_factory(
-            revision=len(events) + 1,
-            phase="started",
-            plan=plan,
-            confirmation=confirmation,
-            archive=archive,
-        )
-        return self._append(events, staged, event)
-
-    def _append_current(
-        self, before: tuple[_EventT, ...], staged: int | None, event: _EventT
-    ) -> _EventT:
-        return self._append(before, staged, event)
