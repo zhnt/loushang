@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
-import re
 import sys
 from collections.abc import Sequence
+from functools import partial
 from hashlib import sha256
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
 
@@ -65,11 +64,16 @@ from loushang.coding.package.product_worker_start_gate_recovery import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.cli.package_lifecycle import (
+    package_operator_error_code,
+    run_package_operator_command,
+)
 from loushang.harness.cli.worker_candidate import (
     WORKER_CANDIDATE_CHANGE_ACTIONS,
     WORKER_CANDIDATE_OPT_IN_ACTIONS,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
+    execute_worker_candidate_capture,
     execute_worker_candidate_change,
     execute_worker_candidate_opt_in,
     worker_candidate_opt_in_document,
@@ -87,11 +91,7 @@ from loushang.harness.resources.packages._file_consumption import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWorkerAdmissionV1,
-)
 
-_SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
 _MAX_WHEEL_BYTES = 4 * 1024 * 1024
 
 
@@ -207,58 +207,45 @@ def main(argv: Sequence[str] | None = None) -> int:
     if os.name != "posix" or not sys.platform.startswith("linux"):
         sys.stderr.write("Coding Worker native command refused: platform_unsupported\n")
         return 1
-    try:
-        workspace = Path(args.workspace).expanduser().resolve(strict=True)
-        if not workspace.is_dir():
-            raise ValueError("Coding workspace is not a directory")
+
+    def execute(workspace: Path) -> dict[str, object]:
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-        result: dict[str, object]
         if args.action == "candidate-capture":
-            binding = admit_coding_external_worker_wheel(
-                lifecycle,
-                source=Path(args.wheel).expanduser().absolute(),
-                admission=PackageProductLocalWorkerAdmissionV1(
-                    contribution_id=args.contribution_id,
-                    owner_id=args.owner_id,
-                    native_platform=args.native_platform,
-                ),
+            return execute_worker_candidate_capture(
+                partial(admit_coding_external_worker_wheel, lifecycle),
+                args,
+                native_platform=args.native_platform,
             )
-            result = {
-                "workerCandidateBinding": binding.to_dict(),
-                "candidateCapture": "recorded",
-                "productAdmission": "not_checked",
-                "productUse": "not_checked",
-            }
-        elif args.action == "candidate-status":
+        if args.action == "candidate-status":
             with CodingFencedProductReadOnlyPreviewOwner.open(
                 lifecycle, worker_candidates=True
             ) as read_owner:
-                result = _read_candidate_status_document(read_owner, args.plugin_id)
-        else:
-            application = open_coding_fenced_product_application_owner(
-                lifecycle,
-                workspace=workspace,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                worker_candidates=True,
-            )
-            try:
-                product = application.runtime_owner.product_owner
-                if not isinstance(product, PosixLocalWheelProductSessionOwner):
-                    raise ValueError(
-                        "Coding Worker native Product owner is unsupported"
-                    )
-                result = _execute(product, args)
-            finally:
-                application.close()
-    except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
-        reason = getattr(error, "code", None)
-        if not isinstance(reason, str) or _SAFE_ERROR_CODE.fullmatch(reason) is None:
-            reason = "coding_worker_native_command_unavailable"
-        sys.stderr.write(f"Coding Worker native command refused: {reason}\n")
-        return 1
-    sys.stdout.write(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n")
-    return 0
+                return _read_candidate_status_document(read_owner, args.plugin_id)
+        application = open_coding_fenced_product_application_owner(
+            lifecycle,
+            workspace=workspace,
+            runtime_version=version("loushang"),
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+            worker_candidates=True,
+        )
+        try:
+            product = application.runtime_owner.product_owner
+            if not isinstance(product, PosixLocalWheelProductSessionOwner):
+                raise ValueError("Coding Worker native Product owner is unsupported")
+            return _execute(product, args)
+        finally:
+            application.close()
+
+    return run_package_operator_command(
+        args.workspace,
+        execute,
+        not_directory="Coding workspace is not a directory",
+        refused="Coding Worker native command refused",
+        failure_reason=partial(
+            package_operator_error_code, fallback="coding_worker_native_command_unavailable"
+        ),
+        compact=True,
+    )
 
 
 def _candidate_status_document(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from collections.abc import Callable, Sequence
@@ -87,6 +86,10 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.harness.cli.package_lifecycle import (
+    package_operator_workspace,
+    write_package_operator_result,
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_runtime import (
@@ -205,15 +208,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        workspace = Path(args.workspace).expanduser().resolve(strict=True)
-        if not workspace.is_dir():
-            raise ValueError("Coding workspace must be a directory")
+        workspace = package_operator_workspace(
+            args.workspace, not_directory="Coding workspace must be a directory"
+        )
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
         epoch = resolve_coding_package_epoch_layout(lifecycle)
         if args.backup_status:
             document = inspect_coding_package_cutover_backup(lifecycle).to_dict()
-            sys.stdout.write(json.dumps(document, sort_keys=True) + "\n")
-            return 0
+            return write_package_operator_result(document)
         if os.name == "nt":
             if (
                 not args.windows_candidate
@@ -252,8 +254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             else:
                 document = _run_windows_fresh_candidate(lifecycle, workspace=workspace)
-            sys.stdout.write(json.dumps(document, sort_keys=True) + "\n")
-            return 0
+            return write_package_operator_result(document)
         if args.windows_candidate:
             raise ValueError("Windows Product candidate requires Windows")
         review_routes = (
@@ -301,8 +302,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
             ) as owner:
                 review = project_review(lifecycle, owner, settings_manager=settings)
-            sys.stdout.write(json.dumps(review.to_dict(), sort_keys=True) + "\n")
-            return 0
+            return write_package_operator_result(review.to_dict())
 
         review_plugin_id = args.review_legacy_local_plugin
         prepare_kind: Literal["skill", "prompt", "theme"] | None = None
@@ -342,8 +342,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     plugin_id=review_plugin_id,
                     policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
                 )
-            sys.stdout.write(json.dumps(local_review.to_dict(), sort_keys=True) + "\n")
-            return 0
+            return write_package_operator_result(local_review.to_dict())
 
         adoption_routes = (
             (
@@ -364,18 +363,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 runtime_version=version("loushang"),
                 runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             )
-            sys.stdout.write(
-                json.dumps(
-                    {
-                        "disposition": "adopted",
-                        "acceptanceId": receipt.acceptance_id,
-                        "reviewId": receipt.review.review_id,
-                    },
-                    sort_keys=True,
-                )
-                + "\n"
+            return write_package_operator_result(
+                {
+                    "disposition": "adopted",
+                    "acceptanceId": receipt.acceptance_id,
+                    "reviewId": receipt.review.review_id,
+                },
             )
-            return 0
         if (
             args.adopt_legacy_local_skill_review
             or args.adopt_legacy_local_prompt_review
@@ -401,25 +395,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                     else "skill"
                 ),
             )
-            sys.stdout.write(
-                json.dumps(
-                    {
-                        "disposition": "adopted",
-                        "pluginId": plugin_id,
-                        "reviewId": review_id,
-                        "acceptanceId": adopted.acceptance.acceptance_id,
-                        "installOperationId": adopted.installation.operation_id,
-                        "enableOperationId": (
-                            None
-                            if adopted.enablement is None
-                            else adopted.enablement.enable_operation_id
-                        ),
-                    },
-                    sort_keys=True,
-                )
-                + "\n"
+            return write_package_operator_result(
+                {
+                    "disposition": "adopted",
+                    "pluginId": plugin_id,
+                    "reviewId": review_id,
+                    "acceptanceId": adopted.acceptance.acceptance_id,
+                    "installOperationId": adopted.installation.operation_id,
+                    "enableOperationId": (
+                        None
+                        if adopted.enablement is None
+                        else adopted.enablement.enable_operation_id
+                    ),
+                },
             )
-            return 0
         namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
         has_fence = legacy_product_fence_exists(epoch.control_root)
         if not has_fence:
@@ -548,18 +537,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
         sys.stderr.write(f"Coding Package Product cutover refused: {error}\n")
         return 1
-    sys.stdout.write(
-        json.dumps(
-            {
-                "disposition": "fenced",
-                "namespaceId": namespace_id,
-                "storeId": epoch.store_id,
-            },
-            sort_keys=True,
-        )
-        + "\n"
+    return write_package_operator_result(
+        {
+            "disposition": "fenced",
+            "namespaceId": namespace_id,
+            "storeId": epoch.store_id,
+        },
     )
-    return 0
 
 
 def _cutover_settings(workspace: Path) -> SettingsManager:

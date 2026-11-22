@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import platform
-import re
 import sys
 from collections.abc import Sequence
-from importlib.metadata import PackageNotFoundError, version
+from functools import partial
+from importlib.metadata import version
 from pathlib import Path
 
 from loushang.coding.package.product_runtime import (
@@ -55,11 +54,16 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.cli.package_lifecycle import (
+    package_operator_error_code,
+    run_package_operator_command,
+)
 from loushang.harness.cli.worker_candidate import (
     WORKER_CANDIDATE_CHANGE_ACTIONS,
     WORKER_CANDIDATE_OPT_IN_ACTIONS,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
+    execute_worker_candidate_capture,
     execute_worker_candidate_change,
     execute_worker_candidate_opt_in,
 )
@@ -77,11 +81,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
     open_windows_directory,
     open_windows_regular_file_at,
 )
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWorkerAdmissionV1,
-)
 
-_SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
 _MAX_WHEEL_BYTES = 64 * 1024 * 1024
 
 
@@ -160,37 +160,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Windows Worker candidate refused: windows_worker_candidate_platform_closed\n"
         )
         return 1
-    try:
-        workspace = Path(args.workspace).expanduser().resolve(strict=True)
-        if not workspace.is_dir():
-            raise ValueError("Coding workspace must be a directory")
+
+    def execute(workspace: Path) -> dict[str, object]:
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-        document: dict[str, object]
         if args.action == "candidate-capture":
-            binding = admit_coding_external_worker_wheel(
-                lifecycle,
-                source=Path(args.wheel).expanduser().absolute(),
-                admission=PackageProductLocalWorkerAdmissionV1(
-                    contribution_id=args.contribution_id,
-                    owner_id=args.owner_id,
-                    native_platform="windows-amd64",
-                ),
+            return execute_worker_candidate_capture(
+                partial(admit_coding_external_worker_wheel, lifecycle),
+                args,
+                native_platform="windows-amd64",
             )
-            document = {
-                "workerCandidateBinding": binding.to_dict(),
-                "productAdmission": "not_checked",
-                "productUse": "not_checked",
-            }
-        else:
-            document = _run_product_action(lifecycle, workspace, args)
-    except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
-        reason = getattr(error, "code", None)
-        if not isinstance(reason, str) or _SAFE_ERROR_CODE.fullmatch(reason) is None:
-            reason = "windows_worker_candidate_recovery_unavailable"
-        sys.stderr.write(f"Windows Worker candidate refused: {reason}\n")
-        return 1
-    sys.stdout.write(json.dumps(document, sort_keys=True) + "\n")
-    return 0
+        return _run_product_action(lifecycle, workspace, args)
+
+    return run_package_operator_command(
+        args.workspace,
+        execute,
+        not_directory="Coding workspace must be a directory",
+        refused="Windows Worker candidate refused",
+        failure_reason=partial(
+            package_operator_error_code, fallback="windows_worker_candidate_recovery_unavailable"
+        ),
+    )
 
 
 def _run_product_action(

@@ -9,7 +9,7 @@ import secrets
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import version
 from pathlib import Path
 
 from loushang.coding.package.installation_private_data import (
@@ -55,6 +55,7 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.foundation.json import _unique_json_object_hook
+from loushang.harness.cli.package_lifecycle import run_package_operator_command
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -145,27 +146,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.plugin_id != _PLUGIN_ID:
         sys.stderr.write("Coding private-data command refused: plugin_type_unopened\n")
         return 1
-    try:
-        workspace = Path(args.workspace).expanduser().resolve(strict=True)
-        if not workspace.is_dir():
-            raise ValueError("Coding workspace is not a directory")
+
+    def execute(workspace: Path) -> dict[str, object]:
         layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
         if os.name == "nt":
-            result = _run_windows_action(workspace, layout, args)
-        elif args.action in _BACKUP_ACCESS_ACTIONS or args.action in {
+            return _run_windows_action(workspace, layout, args)
+        if args.action in _BACKUP_ACCESS_ACTIONS or args.action in {
             "preview",
             "restore-confirm",
             "restore-confirm-verify",
             "backup-expiry-preview",
         }:
-            result = _run_posix_backup_action(workspace, args)
-        else:
-            result = _run_posix_product_action(workspace, layout, args)
-    except (OSError, RuntimeError, ValueError, PackageNotFoundError):
-        sys.stderr.write("Coding private-data command refused: operation_refused\n")
-        return 1
-    sys.stdout.write(json.dumps(result, sort_keys=True) + "\n")
-    return 0
+            return _run_posix_backup_action(workspace, args)
+        return _run_posix_product_action(workspace, layout, args)
+
+    return run_package_operator_command(
+        args.workspace,
+        execute,
+        not_directory="Coding workspace is not a directory",
+        refused="Coding private-data command refused",
+        failure_reason="operation_refused",
+    )
 
 
 def _run_posix_product_action(

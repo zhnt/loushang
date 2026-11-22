@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Literal, Protocol, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -16,6 +17,9 @@ from loushang.harness.package_product.product_worker_candidate import (
     _install_worker_candidate,
     _update_worker_candidate,
     _worker_candidate_revision_matches,
+)
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWorkerAdmissionV1,
 )
 
 _CHANGE_ACTIONS = (
@@ -75,12 +79,40 @@ def add_worker_candidate_opt_in_commands(
             command.add_argument("--require-worker", action="store_true")
 
 
-class _OptInDecision(Protocol):
+class _WorkerCandidateRecord(Protocol):
     def to_dict(self) -> dict[str, object]: ...
 
 
+class _CaptureWorkerCandidate(Protocol):
+    def __call__(
+        self, *, source: Path, admission: PackageProductLocalWorkerAdmissionV1
+    ) -> _WorkerCandidateRecord: ...
+
+
+def execute_worker_candidate_capture(
+    admit: _CaptureWorkerCandidate,
+    args: Namespace,
+    *,
+    native_platform: Literal["linux-x86_64", "windows-amd64"],
+) -> dict[str, object]:
+    """Pin the selected Wheel through its Product's unchanged capture authority."""
+    binding = admit(
+        source=Path(args.wheel).expanduser().absolute(),
+        admission=PackageProductLocalWorkerAdmissionV1(
+            contribution_id=args.contribution_id,
+            owner_id=args.owner_id,
+            native_platform=native_platform,
+        ),
+    )
+    document: dict[str, object] = {"workerCandidateBinding": binding.to_dict()}
+    if native_platform == "linux-x86_64":
+        document["candidateCapture"] = "recorded"
+    document.update(productAdmission="not_checked", productUse="not_checked")
+    return document
+
+
 class _OptInAuthority(Protocol):
-    def current(self, plugin_id: str) -> _OptInDecision | None: ...
+    def current(self, plugin_id: str) -> _WorkerCandidateRecord | None: ...
 
     def allow(
         self,
@@ -89,15 +121,15 @@ class _OptInAuthority(Protocol):
         operation_id: str,
         expected_generation: int,
         require_worker: bool,
-    ) -> _OptInDecision: ...
+    ) -> _WorkerCandidateRecord: ...
 
     def revoke(
         self, *, plugin_id: str, operation_id: str, expected_generation: int
-    ) -> _OptInDecision: ...
+    ) -> _WorkerCandidateRecord: ...
 
 
 def worker_candidate_opt_in_document(
-    decision: _OptInDecision | None, *, ordinary_session_routing: str | None
+    decision: _WorkerCandidateRecord | None, *, ordinary_session_routing: str | None
 ) -> dict[str, object]:
     document: dict[str, object] = {
         "candidateOptInDecision": None if decision is None else decision.to_dict(),

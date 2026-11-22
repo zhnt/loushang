@@ -1,16 +1,67 @@
-"""Shared asynchronous package lifecycle command orchestration."""
+"""Shared Package lifecycle and standalone operator command execution."""
 
 from __future__ import annotations
 
 import inspect
+import json
+import re
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError
+from pathlib import Path
 from uuid import uuid4
 
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleAction,
     canonicalize_package_product_scope,
 )
+
+_OPERATOR_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
+
+
+def package_operator_workspace(value: str, *, not_directory: str) -> Path:
+    workspace = Path(value).expanduser().resolve(strict=True)
+    if not workspace.is_dir():
+        raise ValueError(not_directory)
+    return workspace
+
+
+def package_operator_error_code(error: Exception, *, fallback: str) -> str:
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and _OPERATOR_ERROR_CODE.fullmatch(code) is not None:
+        return code
+    return fallback
+
+
+def write_package_operator_result(
+    document: dict[str, object], *, compact: bool = False
+) -> int:
+    encoded = json.dumps(
+        document, sort_keys=True, separators=(",", ":") if compact else None
+    )
+    sys.stdout.write(encoded + "\n")
+    return 0
+
+
+def run_package_operator_command(
+    workspace: str,
+    execute: Callable[[Path], dict[str, object]],
+    *,
+    not_directory: str,
+    refused: str,
+    failure_reason: Callable[[Exception], object] | str,
+    compact: bool = False,
+) -> int:
+    """Resolve and execute one admitted command with its Product's output contract."""
+    try:
+        resolved = package_operator_workspace(workspace, not_directory=not_directory)
+        document = execute(resolved)
+    except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
+        reason = failure_reason(error) if callable(failure_reason) else failure_reason
+        sys.stderr.write(f"{refused}: {reason}\n")
+        return 1
+    return write_package_operator_result(document, compact=compact)
 
 
 class PackageLifecycleError(RuntimeError):

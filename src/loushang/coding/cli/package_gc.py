@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
 from collections.abc import Sequence
 from hashlib import sha256
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import version
 from pathlib import Path
 
 from loushang.coding.package.product_runtime import (
@@ -25,6 +24,7 @@ from loushang.coding.package.product_worker_windows_gc_history import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.cli.package_lifecycle import run_package_operator_command
 from loushang.harness.package_product.product_gc_executor import (
     PackageProductRootGcCommandV1,
 )
@@ -134,10 +134,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write("Coding Package GC refused: package_gc_platform_unsupported\n")
         return 1
 
-    try:
-        workspace = Path(args.workspace).expanduser().resolve(strict=True)
-        if not workspace.is_dir():
-            raise ValueError("Coding workspace must be a directory")
+    def execute(workspace: Path) -> dict[str, object]:
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
         owner = open_coding_fenced_product_application_owner(
             lifecycle,
@@ -166,15 +163,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ),
                 )
             )
-            document = _run(gc, args)
+            return _run(gc, args)
         finally:
             owner.close()
-    except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
-        reason = getattr(error, "code", None) or str(error)
-        sys.stderr.write(f"Coding Package GC refused: {reason}\n")
-        return 1
-    sys.stdout.write(json.dumps(document, sort_keys=True) + "\n")
-    return 0
+
+    return run_package_operator_command(
+        args.workspace,
+        execute,
+        not_directory="Coding workspace must be a directory",
+        refused="Coding Package GC refused",
+        failure_reason=lambda error: getattr(error, "code", None) or str(error),
+    )
 
 
 def _run(
