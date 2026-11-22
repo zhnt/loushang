@@ -471,6 +471,36 @@ Source settings, binding locks, Desired evidence and the Harness dependency
 graph. The formal inventory module also loaded with all Coding imports
 forbidden. Native Windows validation remains outstanding.
 
+### Removed Installation Admission And Review
+
+The pre-fence CLI admission and the fenced CLI and acceptance review use
+`LegacyRemovalSnapshot` in formal Package Product. It verifies exact
+membership and lock markers, reads the binding and Desired captures through
+the appropriate native authority, and reuses the settled management checks
+and the removed Installation proof. Each invocation reconciles the inventory
+once. Admission verifies the Installation history before inspecting the
+management journal. Fenced review verifies the management journal first and
+retains its digest for the existing wire record. Both routes remain read-only.
+
+Coding keeps the eligibility decision, frozen Source matching, supported
+disabled and builtin sets, pre-fence error code and review wire types. The
+Product Source matcher in `legacy_configured_source` also serves data
+admission and legacy Source review. The staged `legacy_removed_review` and
+`legacy_source_matching` files exit. The existing PLC9 inventory and its
+source-location expectations follow the actual references to Product settings.
+
+This removes 415 staged lines and adds 159 Coding Product and 274 Harness
+production lines. Hosting and other production code are unchanged. The
+system adds 18 production Python lines for this batch and 24 cumulatively.
+Staging now holds 88 files and 15,698 lines, down 8 files and 1,527 lines from
+the baseline.
+
+The batch passed 74 Linux behavior cases, including first-fence refusal,
+settled retirement, mixed active and removed Installations, and replay through
+the CLI. All 14 existing PLC9 baseline and acyclic dependency checks passed.
+The formal removal proof loaded with Coding imports forbidden. No native
+Windows cases ran.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

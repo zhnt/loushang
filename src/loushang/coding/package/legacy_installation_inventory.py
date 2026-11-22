@@ -67,6 +67,7 @@ from .legacy_snapshot_member import (
 )
 
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
+_MAX_REMOVAL_BINDINGS = 16
 CodingLegacyInstalledState = Literal["installed_disabled", "installed_enabled"]
 
 
@@ -240,7 +241,7 @@ def classify_coding_legacy_removed_local_installations(
             unselected_source_identities=inventory.unselected_source_identities,
             removed_plugin_ids=inventory.removed_plugin_ids,
             builtin_ids=_BUILTINS,
-            maximum_bindings=16,
+            maximum_bindings=_MAX_REMOVAL_BINDINGS,
             error_type=CodingLegacyInventoryError,
             label="Coding old local removal",
         )

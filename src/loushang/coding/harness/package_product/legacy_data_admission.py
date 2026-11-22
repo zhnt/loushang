@@ -10,6 +10,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 from loushang.coding.package import legacy_skill_cutover_admission as _binding
+from loushang.coding.package.legacy_configured_source import _index_configured_sources
 from loushang.coding.package.legacy_instance_evidence import _read_management_history
 from loushang.harness.package_product._legacy_management_evidence import (
     require_empty_lock_markers,
@@ -17,7 +18,6 @@ from loushang.harness.package_product._legacy_management_evidence import (
 )
 
 from .legacy_reacquisition import reacquire_bound_wheel
-from .legacy_source_matching import index_configured_sources
 
 if TYPE_CHECKING:
     from loushang.coding.package.legacy_installation_inventory import (
@@ -154,7 +154,7 @@ def admit_local_snapshot(
                 raise ValueError(_binding._LEGACY_PROGRAM_VALUES["value_026"])
             if index == 0:
                 # Every Source is checked together before reading any live bytes.
-                index_configured_sources(source, source_identities)
+                _index_configured_sources(source, source_identities)
             wheel = reacquire_bound_wheel(
                 lifecycle, installation, staging_prefix="loushang-legacy-pre-fence-"
             )
@@ -251,7 +251,7 @@ def require_fenced_local_snapshot(
         removed_local_ids,
         _binding._LEGACY_PROGRAM_VALUES["value_039"],
     )
-    index_configured_sources(source, source_identities)
+    _index_configured_sources(source, source_identities)
     epoch_runtime.assert_current()
 
 
