@@ -29,12 +29,8 @@ from loushang.harness.resources.packages.plugin_lifecycle._record_schema import 
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes as canonical_json_bytes,
 )
-from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
-)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
-    PackageProductLocalWheelPolicy,
 )
 
 from .legacy_data_trust import trust_class_for_legacy_data_resource
@@ -312,52 +308,6 @@ class CodingLegacyLocalBindingCatalog(
         self._acceptance_reader = acceptance_reader
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
-
-    def publish_candidate(
-        self,
-        candidate: CodingLegacyLocalWheelCandidateV1,
-        *,
-        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-    ) -> Path:
-        """Stage verified inert bytes atomically under the exact B Source root."""
-        return super().publish_candidate(candidate, epoch_runtime=epoch_runtime)
-
-    def append(
-        self,
-        candidate: CodingLegacyLocalWheelCandidateV1,
-        *,
-        legacy_source_identity: str,
-        legacy_binding_digest: str,
-        dependency_lock_digest: str,
-        approval_id: str,
-        resource_kind: Literal["skill", "prompt", "theme"] = "skill",
-    ) -> CodingLegacyLocalBindingV1:
-        return super().append(
-            candidate,
-            legacy_source_identity=legacy_source_identity,
-            legacy_binding_digest=legacy_binding_digest,
-            dependency_lock_digest=dependency_lock_digest,
-            approval_id=approval_id,
-            resource_kind=resource_kind,
-        )
-
-    def records(self) -> tuple[CodingLegacyLocalBindingV1, ...]:
-        return super().records()
-
-    def read_records(self) -> tuple[CodingLegacyLocalBindingV1, ...]:
-        """Observe policy bindings without creating or repairing owner state."""
-        return super().read_records()
-
-    def extend_policy(
-        self, base: PackageProductLocalWheelPolicy
-    ) -> PackageProductLocalWheelPolicy:
-        return super().extend_policy(base)
-
-    def read_extend_policy(
-        self, base: PackageProductLocalWheelPolicy
-    ) -> PackageProductLocalWheelPolicy:
-        """Build the same policy from strict, non-repairing Source evidence."""
-        return super().read_extend_policy(base)
 
     def _require_accepted_binding(self, record: CodingLegacyLocalBindingV1) -> None:
         if self._acceptance_reader is None:

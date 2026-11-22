@@ -40,6 +40,9 @@ from loushang.harness.package_product._legacy_runtime import (
     matches_epoch_layout,
     read_fresh_product_source_snapshot,
 )
+from loushang.harness.package_product._local_source_catalog import (
+    project_local_source_policy_group,
+)
 from loushang.harness.package_product._plugin_bootstrap import (
     _PluginBootstrapPolicy,
     bootstrap_product_plugin,
@@ -90,6 +93,10 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 from ..control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
+)
+from .builtin_wheel import (
+    CodingBaseProductWheelArtifactV1,
+    CodingCapabilityProductWheelArtifactV1,
 )
 from .builtin_wheel import (
     coding_base_product_local_wheel_policy as coding_base_product_local_wheel_policy,
@@ -505,19 +512,13 @@ class CodingFencedProductApplicationSelection(
             namespace_id=switch.namespace_id,
             scope_id=lifecycle.scope_id,
         )
-        expected_data = tuple(
-            sorted(
-                (
-                    record.policy_binding(catalog.source_root)
-                    for record in catalog.records()
-                ),
-                key=lambda item: item.source_identity,
-            )
-        )
-        observed_data = tuple(
-            item
-            for item in product.policy.bindings
-            if item.source_trust_class == "local-data-only"
+        expected_data, observed_data = project_local_source_policy_group(
+            product.policy,
+            (
+                record.policy_binding(catalog.source_root)
+                for record in catalog.records()
+            ),
+            trust_classes=frozenset({"local-data-only"}),
         )
         legacy_catalog = CodingLegacyLocalBindingCatalog(
             product.state_root / "legacy-local-bindings.jsonl",
@@ -527,19 +528,13 @@ class CodingFencedProductApplicationSelection(
             scope_id=lifecycle.scope_id,
             policy_revision=product.policy.policy_revision,
         )
-        expected_legacy = tuple(
-            sorted(
-                (
-                    record.to_policy_binding(legacy_catalog.source_root)
-                    for record in legacy_catalog.read_records()
-                ),
-                key=lambda item: item.source_identity,
-            )
-        )
-        observed_legacy = tuple(
-            item
-            for item in product.policy.bindings
-            if item.source_trust_class in LEGACY_LOCAL_DATA_TRUST_CLASSES
+        expected_legacy, observed_legacy = project_local_source_policy_group(
+            product.policy,
+            (
+                record.to_policy_binding(legacy_catalog.source_root)
+                for record in legacy_catalog.read_records()
+            ),
+            trust_classes=LEGACY_LOCAL_DATA_TRUST_CLASSES,
         )
         return expected_data == observed_data and expected_legacy == observed_legacy
 
@@ -1294,25 +1289,19 @@ def _open_coding_product_runtime(
     host_inputs = PosixLocalWheelProductHostInputs.current_host(
         max_transport_bytes=2 * 1024 * 1024
     )
-    policy_arguments = dict(
-        project_scope_id=scope_id,
-        resolution_environment_fingerprint=host_inputs.environment.fingerprint,
-        policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-        quota_profile_revision="coding-product-package-quota:1",
-        authority_id="coding-product-local-source",
-    )
-    policy = (
-        coding_builtin_product_local_wheel_policy(
-            artifact,
-            (
-                prepare_windows_coding_capability_product_wheels(source_root)
-                if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-                else prepare_posix_coding_capability_product_wheels(source_root)
-            ),
-            **policy_arguments,
+    environment_fingerprint = host_inputs.environment.fingerprint
+    capabilities = None
+    if include_capabilities:
+        capabilities = (
+            prepare_windows_coding_capability_product_wheels(source_root)
+            if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
+            else prepare_posix_coding_capability_product_wheels(source_root)
         )
-        if include_capabilities
-        else coding_base_product_local_wheel_policy(artifact, **policy_arguments)
+    policy = _bind_coding_builtin_wheel_policy(
+        artifact,
+        capabilities,
+        scope_id=scope_id,
+        environment_fingerprint=environment_fingerprint,
     )
 
     policy = _extend_coding_product_source_policy(
@@ -1348,6 +1337,25 @@ def _open_coding_product_runtime(
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
     return CodingPosixLocalWheelProductRuntimeOwner(product_owner=session_owner)
+
+
+def _bind_coding_builtin_wheel_policy(
+    base: CodingBaseProductWheelArtifactV1,
+    capabilities: tuple[CodingCapabilityProductWheelArtifactV1, ...] | None,
+    *,
+    scope_id: str,
+    environment_fingerprint: str,
+) -> PackageProductLocalWheelPolicy:
+    arguments = dict(
+        project_scope_id=scope_id,
+        resolution_environment_fingerprint=environment_fingerprint,
+        policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+        quota_profile_revision="coding-product-package-quota:1",
+        authority_id="coding-product-local-source",
+    )
+    if capabilities is None:
+        return coding_base_product_local_wheel_policy(base, **arguments)
+    return coding_builtin_product_local_wheel_policy(base, capabilities, **arguments)
 
 
 class _SourceCatalogBinding(TypedDict):

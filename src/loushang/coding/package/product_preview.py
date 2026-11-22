@@ -103,7 +103,7 @@ from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
 from .product_runtime import (
-    CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+    _bind_coding_builtin_wheel_policy,
     _extend_coding_product_source_policy,
 )
 from .product_worker_opt_in import CodingWorkerOptInDecisionV1, CodingWorkerOptInJournal
@@ -349,14 +349,11 @@ class CodingFencedProductReadOnlyPreviewOwner:
             host = PosixLocalWheelProductHostInputs.current_host(
                 max_transport_bytes=2 * 1024 * 1024
             )
-            policy = coding_builtin_product_local_wheel_policy(
+            policy = _bind_coding_builtin_wheel_policy(
                 base,
                 capabilities,
-                project_scope_id=layout.scope_id,
-                resolution_environment_fingerprint=host.environment.fingerprint,
-                policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-                quota_profile_revision="coding-product-package-quota:1",
-                authority_id="coding-product-local-source",
+                scope_id=layout.scope_id,
+                environment_fingerprint=host.environment.fingerprint,
             )
             policy = _extend_coding_product_source_policy(
                 policy,

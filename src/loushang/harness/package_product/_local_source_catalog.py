@@ -10,7 +10,7 @@ import json
 import os
 import re
 import stat
-from collections.abc import Callable, Hashable, Mapping
+from collections.abc import Callable, Hashable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import replace
 from hashlib import sha256
@@ -173,6 +173,27 @@ def plugin_wheel_source_fields_match(
 
 RecordT = TypeVar("RecordT", bound=_SourceRecord)
 PluginRecordT = TypeVar("PluginRecordT", bound=_PluginSourceRecord)
+
+
+def local_wheel_bindings_in_source_order(
+    bindings: Iterable[PackageProductLocalWheelBindingV1],
+) -> tuple[PackageProductLocalWheelBindingV1, ...]:
+    return tuple(sorted(bindings, key=lambda item: item.source_identity))
+
+
+def project_local_source_policy_group(
+    policy: PackageProductLocalWheelPolicy,
+    bindings: Iterable[PackageProductLocalWheelBindingV1],
+    *,
+    trust_classes: frozenset[str],
+) -> tuple[
+    tuple[PackageProductLocalWheelBindingV1, ...],
+    tuple[PackageProductLocalWheelBindingV1, ...],
+]:
+    """Return observed bindings and the corresponding existing policy partition."""
+    return local_wheel_bindings_in_source_order(bindings), tuple(
+        item for item in policy.bindings if item.source_trust_class in trust_classes
+    )
 
 
 def wheel_source_binding_digest(document: Mapping[str, object]) -> str:
@@ -517,13 +538,10 @@ class _PluginSourcePolicy(Generic[PluginRecordT]):
         self._check_policy_current()
         return replace(
             base,
-            bindings=tuple(
-                sorted(
-                    (
-                        *base.bindings,
-                        *(item.policy_binding(self.source_root) for item in records),
-                    ),
-                    key=lambda item: item.source_identity,
+            bindings=local_wheel_bindings_in_source_order(
+                (
+                    *base.bindings,
+                    *(item.policy_binding(self.source_root) for item in records),
                 )
             ),
         )
@@ -1156,13 +1174,10 @@ class _LegacyLocalSourceCatalog(
             )
         return replace(
             base,
-            bindings=tuple(
-                sorted(
-                    (
-                        *base.bindings,
-                        *(item.to_policy_binding(self.source_root) for item in records),
-                    ),
-                    key=lambda item: item.source_identity,
+            bindings=local_wheel_bindings_in_source_order(
+                (
+                    *base.bindings,
+                    *(item.to_policy_binding(self.source_root) for item in records),
                 )
             ),
         )
