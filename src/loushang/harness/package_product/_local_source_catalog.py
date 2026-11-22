@@ -215,6 +215,7 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
     _label: str
     _path_label: str
     _error_factory: Callable[[str], Exception]
+    _codec: JournalRecordCodec[RecordT]
     _catalog_regular_single_link = False
 
     def __init__(
@@ -257,7 +258,7 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
             return ()
         records = load_jsonl(
             self.path,
-            record_codec=self._record_codec(),
+            record_codec=self._codec,
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._durability,
             load_policy=load_policy or JournalLoadPolicy(partial_tail="raise"),
@@ -287,15 +288,13 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
             raise self._error_factory(f"{self._label} binding file is unsafe")
         return True
 
-    def _record_codec(self) -> JournalRecordCodec[RecordT]:
-        raise NotImplementedError
-
     def _record_key(self, record: RecordT) -> Hashable:
         raise NotImplementedError
 
 
 class _StableWheelSource:
     _source_label: str
+    source_root: Path
     _error_factory: Callable[[str], Exception]
     _source_read_errors: tuple[type[BaseException], ...] = (OSError,)
     _source_read_error_suffix = "Source changed"
@@ -305,6 +304,13 @@ class _StableWheelSource:
 
     def _validate_source_name(self, filename: str) -> None:
         pass
+
+    def _is_external_source(self, source: Path) -> bool:
+        return (
+            source.is_absolute()
+            and os.path.normpath(str(source)) == str(source)
+            and not source.is_relative_to(self.source_root)
+        )
 
     def _read_source(self, source: Path) -> tuple[bytes, str]:
         try:
@@ -334,6 +340,14 @@ class _StableWheelSource:
 
 class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource):
     _binding_limit = 125
+    _read_only_capture_error = "Read-only catalog cannot capture"
+
+    def _require_capture_epoch(
+        self, epoch_runtime: PackageProductPosixFencedRuntimeOwner
+    ) -> None:
+        if self._read_only:
+            raise self._error_factory(self._read_only_capture_error)
+        self._assert_epoch(epoch_runtime)
 
     def _verify_source_body(self, filename: str, body: bytes) -> None:
         pass
@@ -394,7 +408,7 @@ class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource):
             append_jsonl_record(
                 self.path,
                 record,
-                record_codec=self._record_codec(),
+                record_codec=self._codec,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._durability,
             )

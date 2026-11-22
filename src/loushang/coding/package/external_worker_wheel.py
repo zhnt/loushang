@@ -7,7 +7,6 @@ separate owners and decisions.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from hashlib import sha256 as sha256
@@ -18,12 +17,15 @@ from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalFileError,
-    JournalRecordCodec,
 )
 from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
     _WindowsWorkerSourceCatalog,
     plugin_wheel_source_fields_match,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes as canonical_json_bytes,
@@ -33,11 +35,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
-    PackageProductLocalWheelPolicy,
     PackageProductLocalWorkerAdmissionV1,
-)
-from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    PackageProductWindowsFencedRuntimeOwner,
 )
 
 from .builtin_wheel import _product_source_files as _worker_source_files
@@ -119,11 +117,7 @@ class CodingExternalWorkerWheelBindingV1:
         if match is None:
             raise ValueError("External Worker Wheel filename is unsupported")
         fields = {
-            "admission": {
-                "contributionId": admission.contribution_id,
-                "nativePlatform": admission.native_platform,
-                "ownerId": admission.owner_id,
-            },
+            "admission": _encode_admission(admission),
             "artifactDigest": artifact_digest,
             "namespaceId": namespace_id,
             "originalSource": original_source,
@@ -154,65 +148,13 @@ class CodingExternalWorkerWheelBindingV1:
         }
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "admission": {
-                "contributionId": self.admission.contribution_id,
-                "nativePlatform": self.admission.native_platform,
-                "ownerId": self.admission.owner_id,
-            },
-            "artifactDigest": self.artifact_digest,
-            "namespaceId": self.namespace_id,
-            "originalSource": self.original_source,
-            "pluginId": self.plugin_id,
-            "recordId": self.record_id,
-            "recordRevision": self.record_revision,
-            "scopeId": self.scope_id,
-            "storeId": self.store_id,
-            "version": self.version,
-            "wheelFilename": self.wheel_filename,
-        }
+        return _BINDING_SCHEMA.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingExternalWorkerWheelBindingV1:
-        keys = {
-            "admission",
-            "artifactDigest",
-            "namespaceId",
-            "originalSource",
-            "pluginId",
-            "recordId",
-            "recordRevision",
-            "scopeId",
-            "storeId",
-            "version",
-            "wheelFilename",
-        }
-        if type(value) is not dict or set(value) != keys:
+        if type(value) is not dict or set(value) != _BINDING_SCHEMA.keys:
             raise ValueError("External Worker Wheel binding record is invalid")
-        admission = value["admission"]
-        if type(admission) is not dict or set(admission) != {
-            "contributionId",
-            "nativePlatform",
-            "ownerId",
-        }:
-            raise ValueError("External Worker Wheel admission record is invalid")
-        return cls(
-            record_revision=value["recordRevision"],
-            store_id=value["storeId"],
-            namespace_id=value["namespaceId"],
-            scope_id=value["scopeId"],
-            original_source=value["originalSource"],
-            wheel_filename=value["wheelFilename"],
-            plugin_id=value["pluginId"],
-            version=value["version"],
-            artifact_digest=value["artifactDigest"],
-            admission=PackageProductLocalWorkerAdmissionV1(
-                contribution_id=admission["contributionId"],
-                owner_id=admission["ownerId"],
-                native_platform=admission["nativePlatform"],
-            ),
-            record_id=value["recordId"],
-        )
+        return _BINDING_SCHEMA.decode(cls, value)
 
     def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
         return PackageProductLocalWheelBindingV1(
@@ -224,6 +166,37 @@ class CodingExternalWorkerWheelBindingV1:
             source_trust_class="local-worker-candidate",
             worker_admission=self.admission,
         )
+
+
+def _encode_admission(
+    admission: PackageProductLocalWorkerAdmissionV1,
+) -> dict[str, object]:
+    return {
+        "contributionId": admission.contribution_id,
+        "nativePlatform": admission.native_platform,
+        "ownerId": admission.owner_id,
+    }
+
+
+def _decode_admission(value: object) -> PackageProductLocalWorkerAdmissionV1:
+    if type(value) is not dict or set(value) != {
+        "contributionId",
+        "nativePlatform",
+        "ownerId",
+    }:
+        raise ValueError("External Worker Wheel admission record is invalid")
+    return PackageProductLocalWorkerAdmissionV1(
+        contribution_id=value["contributionId"],
+        owner_id=value["ownerId"],
+        native_platform=value["nativePlatform"],
+    )
+
+
+_BINDING_SCHEMA = RecordSchema.for_dataclass(
+    CodingExternalWorkerWheelBindingV1,
+    lambda value: value,
+    RecordField("admission", decoder=_decode_admission, encoder=_encode_admission),
+)
 
 
 _CODEC = FunctionalJournalRecordCodec(
@@ -240,6 +213,8 @@ class CodingExternalWorkerWheelCatalog(
     _label = "External Worker"
     _path_label = "External Worker Wheel"
     _error_factory = CodingExternalWorkerWheelError
+    _codec = _CODEC
+    _read_only_capture_error = "Read-only Worker Source cannot capture"
     _product_id = "coding"
     _source_label = "External Worker Wheel"
     _read_errors = (
@@ -259,18 +234,12 @@ class CodingExternalWorkerWheelCatalog(
         admission: PackageProductLocalWorkerAdmissionV1,
         epoch_runtime: PackageProductPosixFencedRuntimeOwner,
     ) -> CodingExternalWorkerWheelBindingV1:
-        if self._read_only:
-            raise CodingExternalWorkerWheelError(
-                "Read-only Worker Source cannot capture"
-            )
-        self._assert_epoch(epoch_runtime)
+        self._require_capture_epoch(epoch_runtime)
         if (
             not isinstance(admission, PackageProductLocalWorkerAdmissionV1)
             or admission.native_platform != "linux-x86_64"
             or not isinstance(source, Path)
-            or not source.is_absolute()
-            or os.path.normpath(str(source)) != str(source)
-            or source.is_relative_to(self.source_root)
+            or not self._is_external_source(source)
             or _WHEEL_NAME.fullmatch(source.name) is None
             or len(source.name) > _MAX_WHEEL_FILENAME
         ):
@@ -280,15 +249,6 @@ class CodingExternalWorkerWheelCatalog(
         return self._capture_validated(
             source, epoch_runtime=epoch_runtime, admission=admission
         )
-
-    def _record_codec(self) -> JournalRecordCodec[CodingExternalWorkerWheelBindingV1]:
-        return _CODEC
-
-    def records(self) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
-        return super().records()
-
-    def read_records(self) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
-        return super().read_records()
 
     def _max_source_bytes(self) -> int:
         return _MAX_WHEEL_BYTES
@@ -340,25 +300,6 @@ class CodingWindowsExternalWorkerWheelCatalog(
     _receipt_write_maximum = 4 * 1024 * 1024
     _publication_label = "external Worker"
 
-    def __init__(
-        self,
-        *,
-        epoch_runtime: PackageProductWindowsFencedRuntimeOwner,
-        state_root: Path,
-        source_root: Path,
-        store_id: str,
-        namespace_id: str,
-        scope_id: str,
-    ) -> None:
-        super().__init__(
-            epoch_runtime=epoch_runtime,
-            state_root=state_root,
-            source_root=source_root,
-            store_id=store_id,
-            namespace_id=namespace_id,
-            scope_id=scope_id,
-        )
-
     def capture(
         self,
         source: Path,
@@ -370,9 +311,7 @@ class CodingWindowsExternalWorkerWheelCatalog(
             not isinstance(admission, PackageProductLocalWorkerAdmissionV1)
             or admission.native_platform != "windows-amd64"
             or not isinstance(source, Path)
-            or not source.is_absolute()
-            or os.path.normpath(str(source)) != str(source)
-            or source.is_relative_to(self.source_root)
+            or not self._is_external_source(source)
             or _WHEEL_NAME.fullmatch(source.name) is None
             or not source.name.endswith("-win_amd64.whl")
             or len(source.name) > _MAX_WHEEL_FILENAME
@@ -381,18 +320,6 @@ class CodingWindowsExternalWorkerWheelCatalog(
                 "Windows Worker Wheel Source is invalid"
             )
         return self._capture_validated(source, admission=admission)
-
-    def records(self) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
-        return super().records()
-
-    def verify_record(self, record: CodingExternalWorkerWheelBindingV1) -> None:
-        """Reopen one exact receipt and its Product-controlled Wheel bytes."""
-        super().verify_record(record)
-
-    def extend_policy(
-        self, base: PackageProductLocalWheelPolicy
-    ) -> PackageProductLocalWheelPolicy:
-        return super().extend_policy(base)
 
     def _max_source_bytes(self) -> int:
         return _MAX_WHEEL_BYTES

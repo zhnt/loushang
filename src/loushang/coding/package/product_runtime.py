@@ -30,9 +30,9 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._application_runtime import (
     bind_fenced_product_session_owner,
     close_product_applications,
+    fenced_source_catalog_scope,
     fingerprint_product_resume_epoch,
     open_fenced_product_management_state,
-    prepare_fenced_source_catalog,
     prepare_product_state_for_recovery,
     product_management_paths_match,
     require_current_product_admission,
@@ -905,10 +905,9 @@ def _capture_coding_inert_source(
     epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
         **epoch.fenced_runtime_open_kwargs()
     )
-    try:
-        namespace_id, state_root, source_root = prepare_fenced_source_catalog(
-            epoch_runtime, no_namespace="Coding Package Product root is not fenced"
-        )
+    with fenced_source_catalog_scope(
+        epoch_runtime, no_namespace="Coding Package Product root is not fenced"
+    ) as (namespace_id, state_root, source_root):
         return (
             CodingExternalDataWheelCatalog
             if kind == "data"
@@ -925,8 +924,6 @@ def _capture_coding_inert_source(
             namespace_id=namespace_id,
             scope_id=lifecycle.scope_id,
         ).capture(source, epoch_runtime=epoch_runtime)
-    finally:
-        epoch_runtime.close()
 
 
 def _capture_coding_worker_source(
@@ -944,10 +941,9 @@ def _capture_coding_worker_source(
         else PackageProductPosixFencedRuntimeOwner
     )
     epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
-    try:
-        namespace_id, state_root, source_root = prepare_fenced_source_catalog(
-            epoch_runtime, no_namespace="Coding Package Product root is not fenced"
-        )
+    with fenced_source_catalog_scope(
+        epoch_runtime, no_namespace="Coding Package Product root is not fenced"
+    ) as (namespace_id, state_root, source_root):
         if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
             return CodingWindowsExternalWorkerWheelCatalog(
                 epoch_runtime=epoch_runtime,
@@ -964,8 +960,6 @@ def _capture_coding_worker_source(
             namespace_id=namespace_id,
             scope_id=lifecycle.scope_id,
         ).capture(source, admission=admission, epoch_runtime=epoch_runtime)
-    finally:
-        epoch_runtime.close()
 
 
 def bootstrap_coding_builtin_product_plugins(

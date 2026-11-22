@@ -18,7 +18,6 @@ from packaging.version import Version
 
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalRecordCodec,
 )
 from loushang.harness.package_product._local_source_catalog import (
     _DependencyWheelSourceCatalog,
@@ -195,6 +194,7 @@ class CodingExternalDependencyWheelCatalog(
     _label = "Dependency Wheel"
     _path_label = "Dependency Wheel"
     _error_factory = CodingExternalDependencyWheelError
+    _codec = _CODEC
 
     _source_label = "Dependency Wheel"
     _product_id = "coding"
@@ -249,29 +249,12 @@ class CodingExternalDependencyWheelCatalog(
         *,
         epoch_runtime: PackageProductPosixFencedRuntimeOwner,
     ) -> CodingExternalDependencyWheelBindingV1:
-        if self._read_only:
-            raise CodingExternalDependencyWheelError("Read-only catalog cannot capture")
-        self._assert_epoch(epoch_runtime)
-        if (
-            not source.is_absolute()
-            or os.path.normpath(str(source)) != str(source)
-            or source.is_relative_to(self.source_root)
-        ):
+        self._require_capture_epoch(epoch_runtime)
+        if not self._is_external_source(source):
             raise CodingExternalDependencyWheelError(
                 "Dependency Wheel Source is invalid"
             )
         return self._capture_validated(source, epoch_runtime=epoch_runtime)
-
-    def _record_codec(
-        self,
-    ) -> JournalRecordCodec[CodingExternalDependencyWheelBindingV1]:
-        return _CODEC
-
-    def records(self) -> tuple[CodingExternalDependencyWheelBindingV1, ...]:
-        return super().records()
-
-    def read_records(self) -> tuple[CodingExternalDependencyWheelBindingV1, ...]:
-        return super().read_records()
 
     def _record_key(
         self, record: CodingExternalDependencyWheelBindingV1

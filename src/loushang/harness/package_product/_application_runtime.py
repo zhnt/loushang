@@ -6,7 +6,8 @@ import inspect
 import json
 import os
 import stat
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal, NamedTuple, Protocol, TypedDict, TypeVar, Unpack, cast
@@ -102,19 +103,23 @@ def prepare_product_state_for_recovery(
     return state_root, gate
 
 
-def prepare_fenced_source_catalog(
+@contextmanager
+def fenced_source_catalog_scope(
     runtime: _FencedRuntime, *, no_namespace: str
-) -> tuple[str, Path, Path]:
-    """Prepare both controlled Source paths after selecting the current fence."""
+) -> Iterator[tuple[str, Path, Path]]:
+    """Hold the opened epoch while a controlled Source is pinned."""
 
-    switch = runtime.cutover_result.switch_receipt
-    if switch is None:
-        raise ValueError(no_namespace)
-    return (
-        switch.namespace_id,
-        runtime.prepare_product_state_root(),
-        runtime.prepare_product_source_root(),
-    )
+    try:
+        switch = runtime.cutover_result.switch_receipt
+        if switch is None:
+            raise ValueError(no_namespace)
+        yield (
+            switch.namespace_id,
+            runtime.prepare_product_state_root(),
+            runtime.prepare_product_source_root(),
+        )
+    finally:
+        runtime.close()
 
 
 class FencedProductManagementState(NamedTuple):

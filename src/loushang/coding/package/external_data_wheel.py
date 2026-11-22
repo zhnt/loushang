@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from hashlib import sha256 as sha256
@@ -10,7 +9,6 @@ from pathlib import Path
 
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalRecordCodec,
 )
 from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
@@ -151,6 +149,8 @@ class CodingExternalDataWheelCatalog(
     _label = "External data Wheel"
     _path_label = "External data Wheel"
     _error_factory = CodingExternalDataWheelError
+    _codec = _CODEC
+    _read_only_capture_error = "Read-only Source catalog cannot capture"
     _product_id = "coding"
     _source_label = "External data Wheel"
 
@@ -160,15 +160,9 @@ class CodingExternalDataWheelCatalog(
         *,
         epoch_runtime: PackageProductPosixFencedRuntimeOwner,
     ) -> CodingExternalDataWheelBindingV1:
-        if self._read_only:
-            raise CodingExternalDataWheelError(
-                "Read-only Source catalog cannot capture"
-            )
-        self._assert_epoch(epoch_runtime)
+        self._require_capture_epoch(epoch_runtime)
         if (
-            not source.is_absolute()
-            or os.path.normpath(str(source)) != str(source)
-            or source.is_relative_to(self.source_root)
+            not self._is_external_source(source)
             or _WHEEL_NAME.fullmatch(source.name) is None
             or len(source.name) > _MAX_WHEEL_FILENAME
         ):
@@ -187,15 +181,6 @@ class CodingExternalDataWheelCatalog(
         ):
             raise CodingExternalDataWheelError("External data Wheel binding changed")
         self._verify_controlled(record)
-
-    def _record_codec(self) -> JournalRecordCodec[CodingExternalDataWheelBindingV1]:
-        return _CODEC
-
-    def records(self) -> tuple[CodingExternalDataWheelBindingV1, ...]:
-        return super().records()
-
-    def read_records(self) -> tuple[CodingExternalDataWheelBindingV1, ...]:
-        return super().read_records()
 
     def _max_source_bytes(self) -> int:
         return _MAX_WHEEL_BYTES
