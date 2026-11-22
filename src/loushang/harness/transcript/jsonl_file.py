@@ -11,7 +11,7 @@ import importlib
 import json
 import os
 import stat as stat_module
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -53,7 +53,10 @@ from loushang.harness.transcript.model_input_v2_types import (
     MODEL_INPUT_V2_PROJECTION_VERSION,
     MODEL_INPUT_V2_SCHEMA_VERSION,
 )
-from loushang.harness.transcript.profile import AgentTranscriptProfile
+from loushang.harness.transcript.profile import (
+    AgentTranscriptProfile,
+    create_transcript_branch_repository,
+)
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 if TYPE_CHECKING:
@@ -193,14 +196,10 @@ def write_agent_transcript_export(
 def create_agent_transcript_repository(
     *,
     header: ConversationHeader,
-    records: list[AgentTranscriptRecord],
+    records: Sequence[AgentTranscriptRecord],
 ) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
-    return ConversationRepository.create(
-        header=header,
-        records=records,
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        mode="compatible",
+    return create_transcript_branch_repository(
+        header=header, records=records, mode="compatible"
     )
 
 
@@ -217,7 +216,7 @@ def load_agent_transcript_repository(
                 path=path,
                 code="missing_conversation_header",
             )
-        return _create_detached_repository(
+        return create_agent_transcript_repository(
             header=snapshot.header,
             records=snapshot.records,
         )
@@ -703,20 +702,6 @@ def _load_agent_transcript_readonly_snapshot(
         compatibility_token=_LOAD_INDEX_COMPATIBILITY_TOKEN,
         write_index=False, read_bytes=lambda: reader(path),
         read_cache=reader,
-    )
-
-
-def _create_detached_repository(
-    *,
-    header: ConversationHeader,
-    records: tuple[AgentTranscriptRecord, ...],
-) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
-    return ConversationRepository.create(
-        header=header,
-        records=records,
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        mode="compatible",
     )
 
 

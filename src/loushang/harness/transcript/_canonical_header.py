@@ -64,7 +64,12 @@ def canonical_transcript_revision(
         or status.st_size > maximum_bytes()
     ):
         raise error()
-    return hashlib.sha256(session_file_authority_fingerprint(path).encode()).hexdigest()
+    return transcript_fingerprint_revision(session_file_authority_fingerprint(path))
+
+
+def transcript_fingerprint_revision(source_fingerprint: str) -> str:
+    """Encode one previously observed source identity as a canonical catalog revision."""
+    return hashlib.sha256(source_fingerprint.encode()).hexdigest()
 
 
 def read_canonical_transcript_header(

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from loushang.ai.types import AssistantMessage, UserMessage
+from loushang.coding.resume.history import CodingResumeRecentPage
 from loushang.coding.resume.history import (
     read_coding_resume_header as read_coding_resume_header,
 )
@@ -92,13 +93,14 @@ from loushang.harness.transcript import (
     session_summary_revision,
     user_message_text,
 )
-from loushang.harness.transcript.jsonl_file import AgentTranscriptFileError
+from loushang.harness.transcript.session_catalog import (
+    read_transcript_history_or_recent,
+)
 
 if TYPE_CHECKING:
     from loushang.coding.resume.history import (
         CodingResumeHeaderPreview,
         CodingResumeHistoryPreview,
-        CodingResumeRecentPage,
     )
 
 
@@ -721,45 +723,39 @@ async def _read_history_preview(
     if header.header.conversation_id != session_id:
         return _HistoryPreview(changed=True)
 
-    def matches(evidence: CodingResumeHistoryPreview | CodingResumeRecentPage) -> bool:
-        return evidence.header_preview.header == header.header and (
-            authority_fingerprint is None
-            or evidence.source_fingerprint == authority_fingerprint
-        )
-
     try:
         from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
 
         if isinstance(runtime, AgentSessionRuntime):
-            snapshot = await AgentSessionRuntime.preview_resume_history(
-                runtime, path, max_bytes=max_bytes
+            evidence = await read_transcript_history_or_recent(
+                partial(
+                    AgentSessionRuntime.preview_resume_history,
+                    runtime,
+                    path,
+                    max_bytes=max_bytes,
+                ),
+                lambda: AgentSessionRuntime.preview_resume_recent_page(runtime, path),
             )
         else:
-            snapshot = await settled_io(
-                read_coding_resume_snapshot, path, max_bytes=max_bytes
+            evidence = await read_transcript_history_or_recent(
+                partial(
+                    settled_io, read_coding_resume_snapshot, path, max_bytes=max_bytes
+                ),
+                lambda: settled_io(read_coding_resume_recent_page, path),
             )
-    except AgentTranscriptFileError as error:
-        if error.code != "session_file_too_large":
-            return _HistoryPreview(header=header)
-        try:
-            if isinstance(runtime, AgentSessionRuntime):
-                recent = await AgentSessionRuntime.preview_resume_recent_page(
-                    runtime, path
-                )
-            else:
-                recent = await settled_io(read_coding_resume_recent_page, path)
-        except (OSError, ValueError):
-            return _HistoryPreview(header=header)
-        if not recent.records:
-            return _HistoryPreview(header=header)
-        if not matches(recent):
-            return _HistoryPreview(header=header, changed=True)
-        return _HistoryPreview(header=header, recent=recent)
     except (OSError, ValueError):
         return _HistoryPreview(header=header)
-    if not matches(snapshot):
+
+    if isinstance(evidence, CodingResumeRecentPage) and not evidence.records:
+        return _HistoryPreview(header=header)
+    if evidence.header_preview.header != header.header or (
+        authority_fingerprint is not None
+        and evidence.source_fingerprint != authority_fingerprint
+    ):
         return _HistoryPreview(header=header, changed=True)
-    return _HistoryPreview(header=header, snapshot=snapshot)
+    if isinstance(evidence, CodingResumeRecentPage):
+        return _HistoryPreview(header=header, recent=evidence)
+    return _HistoryPreview(header=header, snapshot=evidence)
 
 
 def _session_index_discovery_diagnostics(

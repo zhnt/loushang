@@ -281,9 +281,9 @@ class CodingHostedResumeSourceV1:
         if self._closed:
             raise CodingHostedCatalogError()
         self._require_accepting()
-        if _revision(self.record.path) != hashlib.sha256(
-            self.history.source_fingerprint.encode()
-        ).hexdigest():
+        if _revision(self.record.path) != _canonical_header.transcript_fingerprint_revision(
+            self.history.source_fingerprint
+        ):
             raise CodingHostedCatalogError()
 
     async def refresh_after_model_change(self, manager: SessionManager) -> None:
@@ -678,7 +678,7 @@ class CodingHostedSessionCatalogV1(
                 selected_leaf_id=selected_leaf_id,
             ),
             lambda history, revision, header: (
-                hashlib.sha256(history.source_fingerprint.encode()).hexdigest()
+                _canonical_header.transcript_fingerprint_revision(history.source_fingerprint)
                 == revision
                 and history.header_preview.header == header
             ),

@@ -51,7 +51,9 @@ from loushang.harness.session.lifecycle import (
 )
 from loushang.harness.session.multiagent import compose_multiagent_before_release
 from loushang.harness.session.transcript_lifecycle import ResolvedDiscoveredSessionFile
-from loushang.harness.transcript import AgentTranscriptFileError
+from loushang.harness.transcript.session_catalog import (
+    read_transcript_history_or_recent,
+)
 
 from .resume_planning import ResumePlanningSlot
 
@@ -731,12 +733,10 @@ class AgentSessionRuntime(
         Writer. Other decode and identity failures remain errors.
         """
 
-        try:
-            return await self.preview_resume_history(session_id)
-        except AgentTranscriptFileError as error:
-            if error.code != "session_file_too_large":
-                raise
-        return await self.preview_resume_recent_page(session_id)
+        return await read_transcript_history_or_recent(
+            lambda: self.preview_resume_history(session_id),
+            lambda: self.preview_resume_recent_page(session_id),
+        )
 
     async def preview_resume_recent_page(
         self, session_id: str | Path, *, segment_bytes: int = 64 * 1024,
