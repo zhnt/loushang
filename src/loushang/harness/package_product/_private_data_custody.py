@@ -12,10 +12,9 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
-from ._application_runtime import (
-    bind_read_only_product_desired_state,
-    private_product_state_identity,
-)
+from ._application_runtime import private_product_state_identity
+from ._legacy_runtime import open_read_only_fenced_product
+from .product_local_wheel_runtime import bind_read_only_product_desired_state
 
 if TYPE_CHECKING:
     from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
@@ -105,14 +104,12 @@ def prepare_posix_private_data_reader(
     label: str,
 ) -> Iterator[PosixPrivateDataReadAuthority]:
     """Open existing state and transfer the epoch after successful construction."""
-    epoch = PackageProductPosixFencedRuntimeOwner.open(
+    with open_read_only_fenced_product(
         authority_root=authority_root,
         control_root=control_root,
         store_id=store_id,
         epochs_root_name=epochs_root_name,
-        read_only=True,
-    )
-    try:
+    ) as epoch:
         assert_private_read_workspace(workspace, workspace_identity, label=label)
         state_root = epoch.control_root / "product-state"
         state_identity = private_product_state_identity(
@@ -124,9 +121,6 @@ def prepare_posix_private_data_reader(
         yield PosixPrivateDataReadAuthority(
             epoch, state_root, state_identity, binding.gc_reservations, binding.desired
         )
-    except BaseException:
-        epoch.close()
-        raise
 
 
 def assert_private_read_current(

@@ -52,6 +52,12 @@ from loushang.harness.capabilities.consumer_requirements import (
 from loushang.harness.environment.probe import (
     LocalHostEnvironmentProbe as LocalHostEnvironmentProbe,
 )
+from loushang.harness.package_product._application_runtime import (
+    fenced_source_catalog_roots,
+)
+from loushang.harness.package_product._legacy_runtime import (
+    open_read_only_fenced_product,
+)
 from loushang.harness.package_product._selected_plugin_revisions import (
     capture_selected_manifests,
 )
@@ -102,10 +108,7 @@ from .builtin_wheel import (
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
-from .product_runtime import (
-    _bind_coding_builtin_wheel_policy,
-    _extend_coding_product_source_policy,
-)
+from .product_runtime import _compose_coding_product_source_policy
 from .product_worker_opt_in import CodingWorkerOptInDecisionV1, CodingWorkerOptInJournal
 
 CodingDataResourceAdmissionPreviewV1 = PluginCurrentResourceAdmissionV1
@@ -332,43 +335,35 @@ class CodingFencedProductReadOnlyPreviewOwner:
         if not isinstance(layout, CodingPluginLifecycleStateLayout):
             raise TypeError("Coding Plugin lifecycle layout is required")
         epoch = resolve_coding_package_epoch_layout(layout)
-        runtime = PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs(), read_only=True
-        )
-        try:
+        with open_read_only_fenced_product(**epoch.fenced_runtime_open_kwargs()) as runtime:
             if workspace_guard is not None:
                 workspace_guard()
-            switch = runtime.cutover_result.switch_receipt
-            if switch is None:
-                raise ValueError("Coding Package Product root is not fenced")
-            state_root = runtime.control_root / "product-state"
-            source_root = runtime.control_root / "product-sources"
-            runtime.require_existing_product_state_root()
+            roots = fenced_source_catalog_roots(
+                runtime,
+                scope_id=layout.scope_id,
+                no_namespace="Coding Package Product root is not fenced",
+                read_only=True,
+            )
+            source_root = roots.identity["source_root"]
             base = inspect_posix_coding_base_product_wheel(source_root)
             capabilities = inspect_posix_coding_capability_product_wheels(source_root)
             host = PosixLocalWheelProductHostInputs.current_host(
                 max_transport_bytes=2 * 1024 * 1024
             )
-            policy = _bind_coding_builtin_wheel_policy(
-                base,
-                capabilities,
-                scope_id=layout.scope_id,
-                environment_fingerprint=host.environment.fingerprint,
-            )
-            policy = _extend_coding_product_source_policy(
-                policy,
+            policy = _compose_coding_product_source_policy(
                 layout,
                 runtime,
-                state_root=state_root,
-                source_root=source_root,
-                namespace_id=switch.namespace_id,
+                roots,
+                base,
+                capabilities,
+                environment_fingerprint=host.environment.fingerprint,
                 include_worker_candidates=worker_candidates,
                 read_only=True,
             )
             selected_manifests, gc_gate = bind_read_only_local_wheel_manifests(
                 runtime,
                 policy=policy,
-                plugin_store_root=epoch.epoch_root(switch.namespace_id),
+                plugin_store_root=epoch.epoch_root(roots.identity["namespace_id"]),
                 root_store_identity=f"coding-product-root-store:{epoch.store_id}",
             )
             runtime.assert_current()
@@ -381,9 +376,6 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 gc_gate=gc_gate,
                 worker_candidates=worker_candidates,
             )
-        except BaseException:
-            runtime.close()
-            raise
 
     def close(self) -> None:
         self.epoch_runtime.close()

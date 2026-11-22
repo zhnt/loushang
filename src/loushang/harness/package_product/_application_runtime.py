@@ -37,10 +37,6 @@ from loushang.harness.plugin_management.application import (
     PluginManagementReadModelProjector,
     PluginSourceProjectionSourcePort,
 )
-from loushang.harness.plugin_management.assembly import (
-    PluginDesiredStateBindings,
-    bind_plugin_desired_state,
-)
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
@@ -88,6 +84,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 
 from ._legacy_runtime import _FencedRuntime, legacy_product_fence_exists
 from .product_local_wheel_runtime import (
+    READ_ONLY_PRODUCT_JOURNAL_POLICY,
     PosixLocalWheelProductHostInputs,
     PosixLocalWheelProductRuntimeFactory,
     PosixLocalWheelProductSessionOwner,
@@ -95,13 +92,13 @@ from .product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
     _repair_ordinary_posix_runtime_leases,
     _repair_ordinary_windows_runtime_leases,
+    bind_read_only_product_desired_state,
 )
 
 _GC_RESERVATIONS_NAME = "gc-reservations.jsonl"
 _GC_BINDINGS_NAME = "gc-bindings.jsonl"
 _DESIRED_NAME = "desired-state.jsonl"
 _MANAGEMENT_NAME = "management-operations.jsonl"
-_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 _ProductSessionOwner = (
     PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
 )
@@ -160,23 +157,60 @@ def prepare_product_state_for_recovery(
     return state_root, gate
 
 
+class SourceCatalogIdentity(TypedDict):
+    source_root: Path
+    store_id: str
+    namespace_id: str
+    scope_id: str
+
+
+class FencedSourceCatalogRoots(NamedTuple):
+    state_root: Path
+    identity: SourceCatalogIdentity
+
+
+def fenced_source_catalog_roots(
+    runtime: _FencedRuntime,
+    *,
+    scope_id: str,
+    no_namespace: str,
+    state_root: Path | None = None,
+    read_only: bool = False,
+) -> FencedSourceCatalogRoots:
+    """Bind one native fence to its Catalog and controlled Source roots."""
+    switch = runtime.cutover_result.switch_receipt
+    if switch is None:
+        raise ValueError(no_namespace)
+    if read_only:
+        if not isinstance(runtime, PackageProductPosixFencedRuntimeOwner):
+            raise TypeError("Read-only Product Source catalog requires a POSIX epoch")
+        runtime.require_existing_product_state_root()
+        state_root = runtime.control_root / "product-state"
+        source_root = runtime.control_root / "product-sources"
+    else:
+        if state_root is None:
+            state_root = runtime.prepare_product_state_root()
+        source_root = runtime.prepare_product_source_root()
+    return FencedSourceCatalogRoots(
+        state_root,
+        SourceCatalogIdentity(
+            source_root=source_root,
+            store_id=runtime.registry.store_id,
+            namespace_id=switch.namespace_id,
+            scope_id=scope_id,
+        ),
+    )
+
+
 @contextmanager
 def fenced_source_catalog_scope(
-    runtime: _FencedRuntime, *, no_namespace: str
-) -> Iterator[tuple[str, Path, Path]]:
+    runtime: _FencedRuntime, *, scope_id: str, no_namespace: str
+) -> Iterator[FencedSourceCatalogRoots]:
     """Hold the opened epoch while a controlled Source is pinned."""
-
-    try:
-        switch = runtime.cutover_result.switch_receipt
-        if switch is None:
-            raise ValueError(no_namespace)
-        yield (
-            switch.namespace_id,
-            runtime.prepare_product_state_root(),
-            runtime.prepare_product_source_root(),
+    with closing(runtime):
+        yield fenced_source_catalog_roots(
+            runtime, scope_id=scope_id, no_namespace=no_namespace
         )
-    finally:
-        runtime.close()
 
 
 class FencedProductManagementState(NamedTuple):
@@ -220,14 +254,6 @@ def private_product_state_identity(
     return metadata.st_dev, metadata.st_ino
 
 
-def bind_read_only_product_desired_state(state_root: Path) -> PluginDesiredStateBindings:
-    return bind_plugin_desired_state(
-        state_root / _GC_RESERVATIONS_NAME,
-        state_root / _DESIRED_NAME,
-        load_policy=_READ_ONLY_LOAD_POLICY,
-    )
-
-
 def open_read_only_product_management_state(
     state_root: Path,
 ) -> tuple[PluginDesiredStateLedger, PluginManagementService, JournalLoadPolicy]:
@@ -243,9 +269,9 @@ def open_read_only_product_management_state(
     management = PluginManagementService(
         desired_state=desired,
         operation_journal_path=state_root / _MANAGEMENT_NAME,
-        load_policy=_READ_ONLY_LOAD_POLICY,
+        load_policy=READ_ONLY_PRODUCT_JOURNAL_POLICY,
     )
-    return desired, management, _READ_ONLY_LOAD_POLICY
+    return desired, management, READ_ONLY_PRODUCT_JOURNAL_POLICY
 
 
 class PackageChangeFailureEvidence(NamedTuple):
@@ -498,7 +524,7 @@ def read_fenced_product_desired_transition(
 
     desired = PluginDesiredStateLedger(
         runtime.control_root / "product-state" / _DESIRED_NAME,
-        load_policy=_READ_ONLY_LOAD_POLICY,
+        load_policy=READ_ONLY_PRODUCT_JOURNAL_POLICY,
     )
     _snapshot, transitions = desired.capture_read_only()
     matches = [

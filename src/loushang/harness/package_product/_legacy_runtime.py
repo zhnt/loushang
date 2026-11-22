@@ -78,6 +78,19 @@ def open_native_fenced_product_epoch(
     return PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=posix_read_only)
 
 
+@contextmanager
+def open_read_only_fenced_product(
+    **roots: Unpack[FencedRuntimeOpenKwargs],
+) -> Iterator[PackageProductPosixFencedRuntimeOwner]:
+    """Transfer a POSIX read authority only after assembly succeeds."""
+    runtime = PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=True)
+    try:
+        yield runtime
+    except BaseException:
+        runtime.close()
+        raise
+
+
 def inspect_fresh_product_epoch(
     roots: FencedRuntimeOpenKwargs,
     *,

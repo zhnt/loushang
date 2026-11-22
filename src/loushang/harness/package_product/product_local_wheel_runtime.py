@@ -57,7 +57,10 @@ from loushang.harness.package_product.product_worker_wheel_admission import (
 from loushang.harness.plugin_authoring.resource_item import (
     ResourceItemDeclarationPayload,
 )
-from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
+from loushang.harness.plugin_management.assembly import (
+    PluginDesiredStateBindings,
+    bind_plugin_desired_state,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -551,6 +554,17 @@ def _admit_external_data_only_candidate(
         ) from exc
 
 
+READ_ONLY_PRODUCT_JOURNAL_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
+
+
+def bind_read_only_product_desired_state(state_root: Path) -> PluginDesiredStateBindings:
+    return bind_plugin_desired_state(
+        state_root / "gc-reservations.jsonl",
+        state_root / "desired-state.jsonl",
+        load_policy=READ_ONLY_PRODUCT_JOURNAL_POLICY,
+    )
+
+
 def bind_read_only_local_wheel_manifests(
     runtime: PackageProductPosixFencedRuntimeOwner,
     *,
@@ -561,11 +575,7 @@ def bind_read_only_local_wheel_manifests(
     """Bind exact selected manifests without allowing journal repair or activation."""
 
     state_root = runtime.control_root / "product-state"
-    desired = bind_plugin_desired_state(
-        state_root / "gc-reservations.jsonl",
-        state_root / "desired-state.jsonl",
-        load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
-    )
+    desired = bind_read_only_product_desired_state(state_root)
     settlements = PackageStoreSettlementJournal(state_root / "root-settlements.jsonl")
     roots = PackageProductSelectedRootReader(
         product_id=policy.product_id,
