@@ -99,20 +99,9 @@ from .builtin_wheel import (
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
-from .external_data_wheel import (
-    CodingExternalDataWheelCatalog as CodingExternalDataWheelCatalog,
-)
-from .external_dependency_wheel import (
-    CodingExternalDependencyWheelCatalog as CodingExternalDependencyWheelCatalog,
-)
-from .external_worker_wheel import (
-    CodingExternalWorkerWheelCatalog as CodingExternalWorkerWheelCatalog,
-)
-from .legacy_binding_catalog import (
-    CodingLegacyLocalBindingCatalog as CodingLegacyLocalBindingCatalog,
-)
-from .legacy_local_acceptance import (
-    reopen_coding_legacy_installed_local_acceptance as reopen_coding_legacy_installed_local_acceptance,
+from .product_runtime import (
+    CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+    _extend_coding_product_source_policy,
 )
 from .product_worker_opt_in import CodingWorkerOptInDecisionV1, CodingWorkerOptInJournal
 
@@ -429,51 +418,20 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 capabilities,
                 project_scope_id=layout.scope_id,
                 resolution_environment_fingerprint=host.environment.fingerprint,
-                policy_revision="coding-product-package-policy:1",
+                policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
                 quota_profile_revision="coding-product-package-quota:1",
                 authority_id="coding-product-local-source",
             )
-            policy = CodingLegacyLocalBindingCatalog(
-                state_root / "legacy-local-bindings.jsonl",
+            policy = _extend_coding_product_source_policy(
+                policy,
+                layout,
+                runtime,
+                state_root=state_root,
                 source_root=source_root,
-                store_id=epoch.store_id,
                 namespace_id=switch.namespace_id,
-                scope_id=layout.scope_id,
-                policy_revision=policy.policy_revision,
-                acceptance_reader=lambda plugin_id: (
-                    reopen_coding_legacy_installed_local_acceptance(
-                        layout,
-                        runtime,
-                        plugin_id=plugin_id,
-                        policy_revision=policy.policy_revision,
-                    )
-                ),
-            ).read_extend_policy(policy)
-            policy = CodingExternalDataWheelCatalog(
-                state_root / "external-data-wheel-bindings.jsonl",
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=layout.scope_id,
+                include_worker_candidates=worker_candidates,
                 read_only=True,
-            ).extend_policy(policy)
-            policy = CodingExternalDependencyWheelCatalog(
-                state_root / "external-dependency-wheel-bindings.jsonl",
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=layout.scope_id,
-                read_only=True,
-            ).extend_policy(policy)
-            if worker_candidates:
-                policy = CodingExternalWorkerWheelCatalog(
-                    state_root / "external-worker-wheel-bindings.jsonl",
-                    source_root=source_root,
-                    store_id=epoch.store_id,
-                    namespace_id=switch.namespace_id,
-                    scope_id=layout.scope_id,
-                    read_only=True,
-                ).extend_policy(policy)
+            )
             selected_manifests, gc_gate = bind_read_only_local_wheel_manifests(
                 runtime,
                 policy=policy,

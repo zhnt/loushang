@@ -13,7 +13,7 @@ from hashlib import sha256
 from importlib.metadata import version as version
 from pathlib import Path
 from threading import Lock, RLock
-from typing import Literal, cast
+from typing import Literal, TypedDict, cast
 
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -82,6 +82,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWheelPolicy,
     PackageProductLocalWorkerAdmissionV1,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
@@ -1415,59 +1416,15 @@ def _open_coding_product_runtime(
         else coding_base_product_local_wheel_policy(artifact, **policy_arguments)
     )
 
-    def read_legacy_acceptance(plugin_id: str):
-        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
-            return None
-        return reopen_coding_legacy_installed_local_acceptance(
-            lifecycle,
-            epoch_runtime,
-            plugin_id=plugin_id,
-            policy_revision=policy.policy_revision,
-        )
-
-    policy = CodingLegacyLocalBindingCatalog(
-        state_root / "legacy-local-bindings.jsonl",
+    policy = _extend_coding_product_source_policy(
+        policy,
+        lifecycle,
+        epoch_runtime,
+        state_root=state_root,
         source_root=source_root,
-        store_id=epoch.store_id,
         namespace_id=switch.namespace_id,
-        scope_id=scope_id,
-        policy_revision=policy.policy_revision,
-        acceptance_reader=read_legacy_acceptance,
-    ).extend_policy(policy)
-    policy = CodingExternalDataWheelCatalog(
-        state_root / "external-data-wheel-bindings.jsonl",
-        source_root=source_root,
-        store_id=epoch.store_id,
-        namespace_id=switch.namespace_id,
-        scope_id=scope_id,
-    ).extend_policy(policy)
-    if isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
-        policy = CodingExternalDependencyWheelCatalog(
-            state_root / "external-dependency-wheel-bindings.jsonl",
-            source_root=source_root,
-            store_id=epoch.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=scope_id,
-        ).extend_policy(policy)
-    if include_worker_candidates:
-        policy = (
-            CodingWindowsExternalWorkerWheelCatalog(
-                epoch_runtime=epoch_runtime,
-                state_root=state_root,
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=scope_id,
-            ).extend_policy(policy)
-            if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-            else CodingExternalWorkerWheelCatalog(
-                state_root / "external-worker-wheel-bindings.jsonl",
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=scope_id,
-            ).extend_policy(policy)
-        )
+        include_worker_candidates=include_worker_candidates,
+    )
     session_owner = bind_fenced_product_session_owner(
         epoch_runtime,
         workspace=workspace,
@@ -1492,6 +1449,72 @@ def _open_coding_product_runtime(
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
     return CodingPosixLocalWheelProductRuntimeOwner(product_owner=session_owner)
+
+
+class _SourceCatalogBinding(TypedDict):
+    source_root: Path
+    store_id: str
+    namespace_id: str
+    scope_id: str
+
+
+def _extend_coding_product_source_policy(
+    policy: PackageProductLocalWheelPolicy,
+    lifecycle: CodingPluginLifecycleStateLayout,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner,
+    *,
+    state_root: Path,
+    source_root: Path,
+    namespace_id: str,
+    include_worker_candidates: bool,
+    read_only: bool = False,
+) -> PackageProductLocalWheelPolicy:
+    """Bind the same approved sources for preview and live Product selection."""
+
+    catalog_binding = _SourceCatalogBinding(
+        source_root=source_root,
+        store_id=epoch_runtime.registry.store_id,
+        namespace_id=namespace_id,
+        scope_id=lifecycle.scope_id,
+    )
+    policy_revision = policy.policy_revision
+
+    def read_legacy_acceptance(plugin_id: str):
+        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
+            return None
+        return reopen_coding_legacy_installed_local_acceptance(
+            lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
+        )
+
+    legacy = CodingLegacyLocalBindingCatalog(
+        state_root / "legacy-local-bindings.jsonl",
+        **catalog_binding,
+        policy_revision=policy_revision,
+        acceptance_reader=read_legacy_acceptance,
+    )
+    policy = legacy.read_extend_policy(policy) if read_only else legacy.extend_policy(policy)
+    policy = CodingExternalDataWheelCatalog(
+        state_root / "external-data-wheel-bindings.jsonl",
+        **catalog_binding,
+        read_only=read_only,
+    ).extend_policy(policy)
+    if isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
+        policy = CodingExternalDependencyWheelCatalog(
+            state_root / "external-dependency-wheel-bindings.jsonl",
+            **catalog_binding,
+            read_only=read_only,
+        ).extend_policy(policy)
+    if include_worker_candidates:
+        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
+            return CodingWindowsExternalWorkerWheelCatalog(
+                epoch_runtime=epoch_runtime, state_root=state_root, **catalog_binding
+            ).extend_policy(policy)
+        return CodingExternalWorkerWheelCatalog(
+            state_root / "external-worker-wheel-bindings.jsonl",
+            **catalog_binding,
+            read_only=read_only,
+        ).extend_policy(policy)
+    return policy
 
 
 def _legacy_state_requires_migration(
