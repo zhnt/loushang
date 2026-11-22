@@ -209,64 +209,23 @@ def build_coding_initial_resource_catalog_adapter(
     source_policy = canonical_coding_resource_catalog_source_policy(
         source_policy
     )
-    if product_scope_id is not None and (
-        not isinstance(product_scope_id, str) or not product_scope_id.strip()
-    ):
-        raise ValueError(f"{product_label} Resource Catalog Product scope is invalid")
-    resolved_clock = clock or (lambda: int(time.time()))
-    if not callable(resolved_clock):
-        raise TypeError(f"{product_label} Resource Catalog clock is invalid")
-    resolved_admission_now = (
-        resolved_clock() if package_admission_now is None else package_admission_now
-    )
-    if product_composition is not None and not isinstance(
-        product_composition,
-        ProductCompositionCompilation,
-    ):
-        raise TypeError(
-            f"{product_label} Resource Catalog Product composition is invalid"
-        )
-    if product_selection is not None and not isinstance(
-        product_selection,
-        PluginSelection,
-    ):
-        raise TypeError(
-            f"{product_label} Resource Catalog Product selection is invalid"
-        )
-    if product_composition is not None and product_selection is not None:
-        raise ValueError(
-            f"{product_label} Resource Catalog cannot receive both a composition and selection"
-        )
-    if product_snapshot_resources is not None and product_selection is not None:
-        raise ValueError(
-            f"{product_label} Resource Catalog cannot mix Product snapshot and legacy selection"
-        )
-    if product_snapshot_resources is not None and product_composition is None:
-        raise ValueError(
-            f"{product_label} Resource Catalog Product snapshot requires a composition"
-        )
-    if product_selection is not None and not source_policy.include_package_resources:
-        raise ValueError(
-            f"{product_label} Resource Catalog source policy excludes Product package selection"
-        )
-    if product_composition is None and source_policy.include_package_resources:
-        product_composition = _compile_package_composition(
-            receipt, product_scope_id, resolved_admission_now, product_selection
-        )
     return bind_product_catalog_receipt(
         receipt,
         product_id=_CATALOG_PRODUCT_ID,
         product_label=product_label,
+        product_scope_id=product_scope_id,
         default_policy_revision=source_policy.product_policy_revision,
         product_composition=product_composition,
         product_snapshot_resources=product_snapshot_resources,
-        resolved_admission_now=resolved_admission_now,
-        clock=resolved_clock,
+        product_selection=product_selection,
+        package_admission_now=package_admission_now,
+        clock=clock,
         include_native_resources=source_policy.include_native_resources,
         include_package_resources=source_policy.include_package_resources,
         include_embedded_resources=source_policy.include_embedded_resources,
         disabled_skills=disabled_skills,
         reject=CodingResourceCatalogAdmissionError,
+        compile_package=_compile_package_composition,
     )
 
 
