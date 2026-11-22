@@ -76,17 +76,13 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    _change_worker_candidate_lifecycle,
     _run_worker_candidate_lifecycle,
     _update_worker_candidate,
-)
-from loushang.harness.plugin_management.operations import (
-    PluginManagementCommandV1,
-    PluginManagementOperationEventV1,
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -506,68 +502,27 @@ def _execute(
                 )
         if selected is None:
             raise ValueError("Coding Worker candidate installation changed")
-        if selected_revision is None:
-            prior = product.management.operation(args.operation_id)
-            if (
-                args.action != "candidate-remove"
-                or selected.selection.desired_state != "absent"
-                or not isinstance(prior, PluginManagementOperationEventV1)
-                or prior.command.action != "remove"
-                or prior.command.mutation.installation_key != selected.installation_key
-                or prior.command.mutation.expected_inventory_revision
-                != args.expected_inventory_revision
-                or prior.status != "terminal"
-                or prior.result is None
-                or prior.result.disposition != "succeeded"
-                or prior.result.transition is None
-                or (
-                    previous
-                    := prior.result.transition.previous_state.selection.package_revision
-                )
-                is None
-                or previous.package_source_identity != binding.source_identity
-                or previous.package_content_digest != binding.artifact_digest
-            ):
-                raise ValueError("Coding Worker candidate removal changed")
-            return {
-                "candidateManagementOperation": prior.to_dict(),
-                "inventoryRevision": snapshot.inventory_revision,
-                "productSelection": "not_checked",
-                "productUse": "not_checked",
-                "packageRetirement": "not_checked",
-            }
-        desired_action: Literal["enable", "disable", "remove"]
-        desired_state: Literal["installed_enabled", "installed_disabled", "absent"]
+        action: Literal["enable", "disable", "remove"]
         if args.action == "candidate-enable":
-            desired_action, desired_state = "enable", "installed_enabled"
+            action = "enable"
         elif args.action == "candidate-disable":
-            desired_action, desired_state = "disable", "installed_disabled"
+            action = "disable"
         else:
-            desired_action, desired_state = "remove", "absent"
-        operation = product.management.submit(
-            PluginManagementCommandV1(
-                action=desired_action,
-                mutation=PluginDesiredStateMutationV1(
-                    operation_id=args.operation_id,
-                    idempotency_key=args.operation_id,
-                    expected_inventory_revision=args.expected_inventory_revision,
-                    installation_key=selected.installation_key,
-                    desired_state=desired_state,
-                    package_revision=None,
-                    actor_id=product.actor_id,
-                    policy_revision=product.desired_policy_revision,
-                ),
-            )
+            action = "remove"
+        operation_record, inventory_revision = _change_worker_candidate_lifecycle(
+            product,
+            binding,
+            snapshot,
+            selected,
+            action=action,
+            operation_id=args.operation_id,
+            expected_inventory_revision=args.expected_inventory_revision,
+            label="Coding Worker",
+            unsettled_message="Coding Worker candidate enable did not settle",
         )
-        if (
-            operation.status != "terminal"
-            or operation.result is None
-            or operation.result.disposition != "succeeded"
-        ):
-            raise ValueError("Coding Worker candidate enable did not settle")
         return {
-            "candidateManagementOperation": operation.to_dict(),
-            "inventoryRevision": product.desired_state.snapshot().inventory_revision,
+            "candidateManagementOperation": operation_record,
+            "inventoryRevision": inventory_revision,
             "productSelection": "not_checked",
             "productUse": "not_checked",
             **(

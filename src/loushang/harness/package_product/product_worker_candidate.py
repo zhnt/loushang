@@ -9,7 +9,12 @@ from re import Pattern
 from typing import Literal, Protocol
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
+from loushang.harness.plugin_management.operations import (
+    PluginManagementCommandV1,
+    PluginManagementOperationEventV1,
+)
 from loushang.harness.plugin_management.records import (
+    PluginDesiredStateMutationV1,
     PluginInstallationKeyV1,
     PluginInstallationStateV1,
 )
@@ -436,6 +441,78 @@ def _run_worker_candidate_lifecycle(
         return routed.record.lifecycle, inventory_revision
     finally:
         runtime.dispose_runtime()
+
+
+def _change_worker_candidate_lifecycle(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    binding: PackageProductLocalWheelBindingV1,
+    snapshot: PluginDesiredStateSnapshotV1,
+    selected: PluginInstallationStateV1,
+    *,
+    action: Literal["enable", "disable", "remove"],
+    operation_id: str,
+    expected_inventory_revision: int,
+    label: str,
+    unsettled_message: str,
+) -> tuple[dict[str, object], int]:
+    """Submit a validated candidate change or prove the exact removal replay.
+
+    The operator route checks candidate selection and opt-in policy before
+    calling this function. Its original validation order stays at that edge.
+    """
+    if selected.selection.package_revision is None:
+        prior = product.management.operation(operation_id)
+        if (
+            action != "remove"
+            or selected.selection.desired_state != "absent"
+            or not isinstance(prior, PluginManagementOperationEventV1)
+            or prior.command.action != "remove"
+            or prior.command.mutation.installation_key != selected.installation_key
+            or prior.command.mutation.expected_inventory_revision != expected_inventory_revision
+            or prior.status != "terminal"
+            or prior.result is None
+            or prior.result.disposition != "succeeded"
+            or prior.result.transition is None
+            or (
+                previous
+                := prior.result.transition.previous_state.selection.package_revision
+            )
+            is None
+            or previous.package_source_identity != binding.source_identity
+            or previous.package_content_digest != binding.artifact_digest
+        ):
+            raise ValueError(f"{label} candidate removal changed")
+        return prior.to_dict(), snapshot.inventory_revision
+
+    desired_state: Literal["installed_enabled", "installed_disabled", "absent"]
+    if action == "enable":
+        desired_state = "installed_enabled"
+    elif action == "disable":
+        desired_state = "installed_disabled"
+    else:
+        desired_state = "absent"
+    operation = product.management.submit(
+        PluginManagementCommandV1(
+            action=action,
+            mutation=PluginDesiredStateMutationV1(
+                operation_id=operation_id,
+                idempotency_key=operation_id,
+                expected_inventory_revision=expected_inventory_revision,
+                installation_key=selected.installation_key,
+                desired_state=desired_state,
+                package_revision=None,
+                actor_id=product.actor_id,
+                policy_revision=product.desired_policy_revision,
+            ),
+        )
+    )
+    if (
+        operation.status != "terminal"
+        or operation.result is None
+        or operation.result.disposition != "succeeded"
+    ):
+        raise ValueError(unsettled_message)
+    return operation.to_dict(), product.desired_state.snapshot().inventory_revision
 
 
 class _WorkerCandidateUpdateInput(Protocol):

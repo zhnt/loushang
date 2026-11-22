@@ -64,15 +64,11 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    _change_worker_candidate_lifecycle,
     _run_worker_candidate_lifecycle,
     _update_worker_candidate,
     verify_product_selected_worker_candidate,
 )
-from loushang.harness.plugin_management.operations import (
-    PluginManagementCommandV1,
-    PluginManagementOperationEventV1,
-)
-from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
     open_windows_regular_file_at,
@@ -427,30 +423,20 @@ def _execute(
                 or revision.package_content_digest != binding.artifact_digest
             ):
                 raise ValueError("Windows Worker candidate selection changed")
-            operation = product.management.submit(
-                PluginManagementCommandV1(
-                    action="enable",
-                    mutation=PluginDesiredStateMutationV1(
-                        operation_id=args.operation_id,
-                        idempotency_key=args.operation_id,
-                        expected_inventory_revision=args.expected_inventory_revision,
-                        installation_key=installed[0].installation_key,
-                        desired_state="installed_enabled",
-                        package_revision=None,
-                        actor_id=product.actor_id,
-                        policy_revision=product.desired_policy_revision,
-                    ),
-                )
+            operation_record, inventory_revision = _change_worker_candidate_lifecycle(
+                product,
+                binding,
+                snapshot,
+                installed[0],
+                action="enable",
+                operation_id=args.operation_id,
+                expected_inventory_revision=args.expected_inventory_revision,
+                label="Windows Worker",
+                unsettled_message="Windows Worker candidate enable did not settle",
             )
-            if (
-                operation.status != "terminal"
-                or operation.result is None
-                or operation.result.disposition != "succeeded"
-            ):
-                raise ValueError("Windows Worker candidate enable did not settle")
             return {
-                "candidateManagementOperation": operation.to_dict(),
-                "inventoryRevision": product.desired_state.snapshot().inventory_revision,
+                "candidateManagementOperation": operation_record,
+                "inventoryRevision": inventory_revision,
             }
         if installed:
             installed_revision = installed[0].selection.package_revision
@@ -620,35 +606,7 @@ def _change_candidate(
 
     if args.action == "candidate-remove":
         _require_candidate_revoked(product, args.plugin_id)
-    if revision is None:
-        prior = product.management.operation(args.operation_id)
-        if (
-            args.action != "candidate-remove"
-            or selected.selection.desired_state != "absent"
-            or not isinstance(prior, PluginManagementOperationEventV1)
-            or prior.command.action != "remove"
-            or prior.command.mutation.installation_key != selected.installation_key
-            or prior.command.mutation.expected_inventory_revision
-            != args.expected_inventory_revision
-            or prior.status != "terminal"
-            or prior.result is None
-            or prior.result.disposition != "succeeded"
-            or prior.result.transition is None
-            or (
-                previous
-                := prior.result.transition.previous_state.selection.package_revision
-            )
-            is None
-            or previous.package_source_identity != binding.source_identity
-            or previous.package_content_digest != binding.artifact_digest
-        ):
-            raise ValueError("Windows Worker candidate removal changed")
-        return {
-            "candidateManagementOperation": prior.to_dict(),
-            "inventoryRevision": snapshot.inventory_revision,
-            "packageRetirement": "not_checked",
-        }
-    if (
+    if revision is not None and (
         revision.package_source_identity != binding.source_identity
         or revision.package_content_digest != binding.artifact_digest
     ):
@@ -656,33 +614,20 @@ def _change_candidate(
     action: Literal["disable", "remove"] = (
         "disable" if args.action == "candidate-disable" else "remove"
     )
-    desired_state: Literal["installed_disabled", "absent"] = (
-        "installed_disabled" if action == "disable" else "absent"
+    operation_record, inventory_revision = _change_worker_candidate_lifecycle(
+        product,
+        binding,
+        snapshot,
+        selected,
+        action=action,
+        operation_id=args.operation_id,
+        expected_inventory_revision=args.expected_inventory_revision,
+        label="Windows Worker",
+        unsettled_message="Windows Worker candidate change did not settle",
     )
-    operation = product.management.submit(
-        PluginManagementCommandV1(
-            action=action,
-            mutation=PluginDesiredStateMutationV1(
-                operation_id=args.operation_id,
-                idempotency_key=args.operation_id,
-                expected_inventory_revision=args.expected_inventory_revision,
-                installation_key=selected.installation_key,
-                desired_state=desired_state,
-                package_revision=None,
-                actor_id=product.actor_id,
-                policy_revision=product.desired_policy_revision,
-            ),
-        )
-    )
-    if (
-        operation.status != "terminal"
-        or operation.result is None
-        or operation.result.disposition != "succeeded"
-    ):
-        raise ValueError("Windows Worker candidate change did not settle")
     return {
-        "candidateManagementOperation": operation.to_dict(),
-        "inventoryRevision": product.desired_state.snapshot().inventory_revision,
+        "candidateManagementOperation": operation_record,
+        "inventoryRevision": inventory_revision,
         **({"packageRetirement": "not_checked"} if action == "remove" else {}),
     }
 
