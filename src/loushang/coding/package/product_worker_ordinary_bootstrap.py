@@ -8,15 +8,9 @@ from functools import partial
 
 from loushang.coding.composition.base_product import CodingBaseProductSessionAssembly
 from loushang.coding.composition.provenance import (
-    historical_startup_composition_record as historical_startup_composition_record,
+    CODING_COMPOSITION_STARTUP_TYPE,
 )
 from loushang.coding.session.manager import SessionManager
-from loushang.harness.capabilities import (
-    MODEL_INPUT_CAPABILITY_DEFINITION as MODEL_INPUT_CAPABILITY_DEFINITION,
-)
-from loushang.harness.capabilities import (
-    WORKSPACE_CAPABILITY_DEFINITION as WORKSPACE_CAPABILITY_DEFINITION,
-)
 from loushang.harness.package_product._worker_product_authority import (
     capture_worker_startup_selection as capture_worker_startup_selection,
 )
@@ -31,8 +25,8 @@ from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
-from loushang.harness.transcript.directory import (
-    AgentTranscriptDirectoryRuntime as AgentTranscriptDirectoryRuntime,
+from loushang.harness.session.composition_evidence import (
+    capture_ordinary_worker_startup,
 )
 
 from .product_worker_ordinary_error import CodingWorkerOrdinaryBootstrapError
@@ -72,9 +66,6 @@ from .product_worker_session_composition import (
 from .product_worker_session_composition import (
     CodingProductWorkerOrdinarySessionBinding,
 )
-from .product_worker_session_composition import (
-    compose_coding_product_worker_with_ordinary_session as compose_coding_product_worker_with_ordinary_session,
-)
 from .product_worker_windows_payload import (
     plan_coding_windows_product_worker_pending_launch as plan_coding_windows_product_worker_pending_launch,
 )
@@ -92,6 +83,10 @@ _STARTUP_MAX_FILES = 16
 _STARTUP_MAX_BYTES = 16 * 1024 * 1024
 _PROVIDER_ELIGIBILITY_DURATION = 300000
 _PROVIDER_ADMISSION_DURATION = 180000
+
+
+def _startup_failure(code: str) -> CodingWorkerOrdinaryBootstrapError:
+    return CodingWorkerOrdinaryBootstrapError("coding_worker_ordinary_" + code)
 
 
 def prepare_coding_product_worker_ordinary_binding(
@@ -136,24 +131,14 @@ def prepare_coding_product_worker_ordinary_binding(
             'coding_worker_ordinary_transcript_not_materialized'
         )
     base_context = ordinary.session_inputs.product_composition.authority_context
-    if (
-        runtime.session_id != session_manager.get_header().conversation_id
-        or ordinary.compilation.plan.context.scope_id != f"session:{runtime.session_id}"
-        or base_context.product_policy_revision
-        != ordinary.compilation.plan.context.policy_revision
-    ):
-        raise CodingWorkerOrdinaryBootstrapError(
-            'coding_worker_ordinary_product_scope_changed'
-        )
-    existing_startup = historical_startup_composition_record(
-        session_manager.get_entries()
-    )
-    if existing_startup is None and session_manager.get_entries():
-        raise CodingWorkerOrdinaryBootstrapError(
-            'coding_worker_ordinary_startup_provenance_missing'
-        )
-    transcript_directory = AgentTranscriptDirectoryRuntime(
-        session_dir=session_manager.get_session_dir()
+    transcript_directory, existing_startup = capture_ordinary_worker_startup(
+        session_manager,
+        runtime,
+        base_context=base_context,
+        plan_context=ordinary.compilation.plan.context,
+        extension_type=CODING_COMPOSITION_STARTUP_TYPE,
+        label="Coding Session",
+        failure=_startup_failure,
     )
     open_receipt_owner: Callable[
         ..., CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
@@ -196,9 +181,7 @@ def prepare_coding_product_worker_ordinary_binding(
         existing_startup=existing_startup,
         max_files=_STARTUP_MAX_FILES,
         max_total_bytes=_STARTUP_MAX_BYTES,
-        failure=lambda code: CodingWorkerOrdinaryBootstrapError(
-            'coding_worker_ordinary_' + code
-        ),
+        failure=_startup_failure,
     )
     base_policy = CodingWorkerBaseCompositionPolicyBinding(
         base=ordinary.compilation,
@@ -258,22 +241,10 @@ def prepare_coding_product_worker_ordinary_binding(
         resume_parent_context=resume_parent_context,
         resume_settlement=resume_settlement,
     )
-    definitions = {
-        item.capability_id: item
-        for item in (
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-            CODING_WORKER_QUERY_DEFINITION,
-            *(
-                entry.definition
-                for entry in ordinary.session_inputs.resolved_providers.entries
-            ),
-        )
-    }
-    combined = compose_coding_product_worker_with_ordinary_session(
+    combined = _WORKER_SESSION_COMPOSITION.compose_selected(
         ordinary=ordinary.session_inputs,
         worker=worker,
-        definitions=tuple(definitions.values()),
+        worker_definition=CODING_WORKER_QUERY_DEFINITION,
         workspace_binding=ordinary.workspace_binding,
     )
     return CodingProductWorkerOrdinarySessionBinding(

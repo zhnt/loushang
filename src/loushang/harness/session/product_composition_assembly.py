@@ -174,6 +174,28 @@ class _WorkerSessionComposition:
             evaluated_at=evaluated_at,
         )
 
+    def compose_selected(
+        self,
+        *,
+        ordinary: SessionCapabilityCompositionInputs,
+        worker: SessionCapabilityCompositionInputs,
+        worker_definition: CapabilityDefinition,
+        workspace_binding: CapabilityBundleProviderBinding,
+    ) -> SessionCapabilityCompositionInputs:
+        definitions = {
+            item.capability_id: item
+            for item in (
+                MODEL_INPUT_CAPABILITY_DEFINITION,
+                WORKSPACE_CAPABILITY_DEFINITION,
+                worker_definition,
+                *(entry.definition for entry in ordinary.resolved_providers.entries),
+            )
+        }
+        return self.compose(
+            ordinary=ordinary, worker=worker, definitions=tuple(definitions.values()),
+            workspace_binding=workspace_binding,
+        )
+
     def compose(
         self,
         *,

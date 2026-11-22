@@ -182,16 +182,39 @@ class _NativeWorkerAttempt:
     commit_activation: Callable[[], None]
 
 
-def _coordinator(
-    inputs: _ActivationInputs, evidence: _Evidence
+def _admitted_worker_coordinator(
+    inputs: _ActivationInputs,
+    evidence: _Evidence,
+    receipt: ProductWorkerActivationReceiptV1,
+    failure: Callable[[str], RuntimeError],
+    *,
+    refusal_code: str = "c5_admission_refused",
 ) -> ProductWorkerActivationCoordinator:
-    return ProductWorkerActivationCoordinator(
+    coordinator = ProductWorkerActivationCoordinator(
         authority=inputs._worker_activation_authority,
         evidence_authority=evidence,
         trusted_evidence_authority_id=evidence.authority_id,
         trusted_evidence_authority_fingerprint=evidence.authority_fingerprint,
         state_store=inputs._open_worker_state_store(),
     )
+    if coordinator.evaluate(receipt.policy, receipt).get("reason") != "admitted":
+        raise failure(refusal_code)
+    return coordinator
+
+
+def _enroll_worker_resume_parent(
+    activation: _ActivationInputs,
+    receipt: ProductWorkerActivationReceiptV1,
+    context: ResumeEffectParentContextV1,
+    failure: Callable[[str], RuntimeError],
+    parent_failure: Callable[[str], RuntimeError],
+) -> tuple[_Evidence, ProductWorkerActivationCoordinator]:
+    evidence = activation._worker_evidence(receipt)
+    coordinator = _admitted_worker_coordinator(activation, evidence, receipt, failure)
+    ProductWorkerActivationCoordinator.observe_or_enroll_resume_parent(
+        coordinator, receipt=receipt, context=context, failure=parent_failure,
+    )
+    return evidence, coordinator
 
 
 def _publish_native_worker_activation(
@@ -296,18 +319,8 @@ async def _prepare_posix_native_worker(
 
     try:
         if resume_parent_context is not None:
-            cleanup_evidence = activation._worker_evidence(receipt)
-            coordinator = _coordinator(activation, cleanup_evidence)
-            if (
-                coordinator.evaluate(receipt.policy, receipt).get("reason")
-                != "admitted"
-            ):
-                raise failure("c5_admission_refused")
-            ProductWorkerActivationCoordinator.observe_or_enroll_resume_parent(
-                coordinator,
-                receipt=receipt,
-                context=resume_parent_context,
-                failure=parent_failure,
+            cleanup_evidence, coordinator = _enroll_worker_resume_parent(
+                activation, receipt, resume_parent_context, failure, parent_failure,
             )
         payload = stack.enter_context(
             launch_source._materialize_worker_payload(
@@ -357,12 +370,9 @@ async def _prepare_posix_native_worker(
         stack.push_async_callback(settle_supervisor)
         if coordinator is None:
             cleanup_evidence = activation._worker_evidence(receipt)
-            coordinator = _coordinator(activation, cleanup_evidence)
-            if (
-                coordinator.evaluate(receipt.policy, receipt).get("reason")
-                != "admitted"
-            ):
-                raise failure("c5_admission_refused")
+            coordinator = _admitted_worker_coordinator(
+                activation, cleanup_evidence, receipt, failure
+            )
         if resume_settlement is not None:
             resume_settlement.bind(coordinator)
         assert cleanup_evidence is not None
@@ -505,18 +515,8 @@ async def _prepare_windows_native_worker(
 
     try:
         if resume_parent_context is not None:
-            enrollment_evidence = activation._worker_evidence(receipt)
-            enrollment_coordinator = _coordinator(activation, enrollment_evidence)
-            if (
-                enrollment_coordinator.evaluate(receipt.policy, receipt).get("reason")
-                != "admitted"
-            ):
-                raise failure("c5_admission_refused")
-            ProductWorkerActivationCoordinator.observe_or_enroll_resume_parent(
-                enrollment_coordinator,
-                receipt=receipt,
-                context=resume_parent_context,
-                failure=parent_failure,
+            _enroll_worker_resume_parent(
+                activation, receipt, resume_parent_context, failure, parent_failure,
             )
         payload = launch_source._materialize_worker_payload(
             receipt, pending_launch.identity.attempt_id
@@ -552,9 +552,9 @@ async def _prepare_windows_native_worker(
 
         stack.push_async_callback(close_unowned_profile)
         cleanup_evidence = activation._worker_evidence(receipt, request)
-        coordinator = _coordinator(activation, cleanup_evidence)
-        if coordinator.evaluate(receipt.policy, receipt).get("reason") != "admitted":
-            raise failure("c5_admission_refused")
+        coordinator = _admitted_worker_coordinator(
+            activation, cleanup_evidence, receipt, failure
+        )
         if resume_settlement is not None:
             resume_settlement.bind(coordinator)
         host = _create_windows_lpac_product_worker_session_host()

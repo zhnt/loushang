@@ -19,13 +19,23 @@ from loushang.harness.resources._catalog_records import (
     ResourceCatalogSnapshot,
     fingerprint_catalog_value,
 )
+from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 if TYPE_CHECKING:
+    from loushang.harness.capabilities.consumer_requirements import (
+        ProductCompositionAuthorityContext,
+    )
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeBindingV1,
+    )
     from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
-    from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+    from loushang.harness.resources.plugins.selection import (
+        PluginInstanceRevisionRef,
+        PluginPreflightContextV1,
+    )
     from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
     from loushang.harness.transcript.product_session import ProductTranscriptSession
     from loushang.harness.worker.product_activation import (
@@ -98,6 +108,31 @@ def read_composition_receipt(
             payload.data, label=label, require_current=require_current
         )
     return found
+
+
+def capture_ordinary_worker_startup(
+    transcript: ProductTranscriptSession,
+    runtime: PackageProductRuntimeBindingV1,
+    *,
+    base_context: ProductCompositionAuthorityContext,
+    plan_context: PluginPreflightContextV1,
+    extension_type: str,
+    label: str,
+    failure: Callable[[str], RuntimeError],
+) -> tuple[AgentTranscriptDirectoryRuntime, dict[str, object] | None]:
+    """Join the current base graph to an admitted transcript before Worker selection."""
+    if (
+        runtime.session_id != transcript.get_header().conversation_id
+        or plan_context.scope_id != f"session:{runtime.session_id}"
+        or base_context.product_policy_revision != plan_context.policy_revision
+    ):
+        raise failure("product_scope_changed")
+    startup = read_composition_receipt(
+        transcript.get_entries(), extension_type=extension_type, label=label
+    )
+    if startup is None and transcript.get_entries():
+        raise failure("startup_provenance_missing")
+    return AgentTranscriptDirectoryRuntime(session_dir=transcript.get_session_dir()), startup
 
 
 def _validate_startup_record(

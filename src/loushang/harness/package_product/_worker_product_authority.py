@@ -137,35 +137,6 @@ MaterialCo = TypeVar(
 )
 
 
-def _capture_selected_worker_session_file(
-    *,
-    session_manager: _AttachedTranscriptReadPort,
-    transcript_directory: AgentTranscriptDirectoryRuntime,
-    runtime: PackageProductRuntimeBindingV1,
-    product_owner: PosixLocalWheelProductSessionOwner
-    | WindowsLocalWheelProductSessionOwner,
-    invalid_owner: str,
-) -> Path:
-    selected_session_file = session_manager.get_session_file()
-    if (
-        not session_manager.is_persisted()
-        or selected_session_file is None
-        or session_manager.get_header().conversation_id != runtime.session_id
-        or (
-            Path(session_manager.get_cwd()).resolve(strict=True)
-            != product_owner.workspace
-        )
-        or (
-            not (
-                transcript_directory.is_authority_session_file(selected_session_file)
-                or transcript_directory.is_discovery_session_file(selected_session_file)
-            )
-        )
-    ):
-        raise ValueError(invalid_owner)
-    return selected_session_file
-
-
 def _derive_product_selected_worker_policy(
     *,
     runtime: PackageProductRuntimeBindingV1,
@@ -428,6 +399,46 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     _worker_state_store_factory: ClassVar[Callable[..., _ActivationStateStore]]
     _worker_supervisor_factory: ClassVar[Callable[..., WorkerSupervisorJournal]]
     _worker_evidence_type: ClassVar[type[_Evidence]]
+
+    @classmethod
+    def _capture_selected_worker_session_file(
+        cls,
+        *,
+        session_manager: _AttachedTranscriptReadPort,
+        transcript_directory: AgentTranscriptDirectoryRuntime,
+        runtime: PackageProductRuntimeBindingV1,
+        product_owner: PosixLocalWheelProductSessionOwner
+        | WindowsLocalWheelProductSessionOwner,
+        plugin_id: str,
+    ) -> Path:
+        label = cls._receipt_factory_label
+        if not isinstance(plugin_id, str) or not plugin_id or plugin_id != plugin_id.strip():
+            raise ValueError(f"{label} Plugin identity is invalid")
+        posix_owner = isinstance(product_owner, PosixLocalWheelProductSessionOwner)
+        if posix_owner and runtime.session_id is None:
+            raise ValueError(f"{label} Session identity is unavailable")
+        if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
+            raise TypeError(f"{label} requires a Transcript directory owner")
+        if not isinstance(session_manager, cls._receipt_session_type()):
+            raise TypeError(f"{label} requires a {cls._receipt_session_label}")
+        selected_session_file = session_manager.get_session_file()
+        if (
+            not session_manager.is_persisted()
+            or selected_session_file is None
+            or session_manager.get_header().conversation_id != runtime.session_id
+            or (
+                Path(session_manager.get_cwd()).resolve(strict=True)
+                != product_owner.workspace
+            )
+            or (
+                not (
+                    transcript_directory.is_authority_session_file(selected_session_file)
+                    or transcript_directory.is_discovery_session_file(selected_session_file)
+                )
+            )
+        ):
+            raise ValueError(f"{label} selected Session owner changed")
+        return selected_session_file
 
     @property
     def product_owner(
@@ -1059,30 +1070,12 @@ class _PosixWorkerProductReceiptAuthority(
             raise TypeError(
                 f"{cls._receipt_factory_label} requires an active Product runtime"
             )
-        if (
-            not isinstance(plugin_id, str)
-            or not plugin_id
-            or plugin_id != plugin_id.strip()
-        ):
-            raise ValueError(f"{cls._receipt_factory_label} Plugin identity is invalid")
-        if runtime.session_id is None:
-            raise ValueError(
-                f"{cls._receipt_factory_label} Session identity is unavailable"
-            )
-        if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
-            raise TypeError(
-                f"{cls._receipt_factory_label} requires a Transcript directory owner"
-            )
-        if not isinstance(session_manager, cls._receipt_session_type()):
-            raise TypeError(
-                f"{cls._receipt_factory_label} requires a {cls._receipt_session_label}"
-            )
-        selected_session_file = _capture_selected_worker_session_file(
+        selected_session_file = cls._capture_selected_worker_session_file(
             session_manager=session_manager,
             transcript_directory=transcript_directory,
             runtime=runtime,
             product_owner=product_owner,
-            invalid_owner=f"{cls._receipt_factory_label} selected Session owner changed",
+            plugin_id=plugin_id,
         )
         root_reader = runtime._selected_root_reader
         manifest_reader = runtime._selected_manifest_reader
@@ -1116,7 +1109,7 @@ class _PosixWorkerProductReceiptAuthority(
         discovery = cls._receipt_discovery_type()(
             directory=transcript_directory,
             gc_gate=product_owner.gc_gate,
-            session_id=runtime.session_id,
+            session_id=cast(str, runtime.session_id),
             selected_session_file=selected_session_file,
             attached_session=session_manager if active_session else None,
         )
@@ -1512,26 +1505,12 @@ class _WindowsWorkerProductReceiptAuthority(
             raise TypeError(
                 f"{cls._receipt_factory_label} requires an active Product runtime"
             )
-        if (
-            not isinstance(plugin_id, str)
-            or not plugin_id
-            or plugin_id != plugin_id.strip()
-        ):
-            raise ValueError(f"{cls._receipt_factory_label} Plugin identity is invalid")
-        if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
-            raise TypeError(
-                f"{cls._receipt_factory_label} requires a Transcript directory owner"
-            )
-        if not isinstance(session_manager, cls._receipt_session_type()):
-            raise TypeError(
-                f"{cls._receipt_factory_label} requires a {cls._receipt_session_label}"
-            )
-        selected_session_file = _capture_selected_worker_session_file(
+        selected_session_file = cls._capture_selected_worker_session_file(
             session_manager=session_manager,
             transcript_directory=transcript_directory,
             runtime=runtime,
             product_owner=product_owner,
-            invalid_owner=f"{cls._receipt_factory_label} selected Session owner changed",
+            plugin_id=plugin_id,
         )
         product_owner.assert_session_runtime_current(runtime)
         selected = runtime.capture_selected_plugin_manifest_for(

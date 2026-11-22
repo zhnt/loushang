@@ -33,7 +33,7 @@ from loushang.harness.worker._native_profile_bridge import (
 )
 from loushang.harness.worker._ordinary_prepare import (
     _ActivationInputs,
-    _coordinator,
+    _admitted_worker_coordinator,
     _Evidence,
     _Gate,
     _publish_native_worker_activation,
@@ -300,12 +300,10 @@ async def _query_selected_worker_once(
                     start_gate=bind_worker_gated_start_release(gate),
                 )
                 cleanup_evidence = source._worker_evidence(receipt)
-                coordinator = _coordinator(source, cleanup_evidence)
-                if (
-                    coordinator.evaluate(receipt.policy, receipt).get("reason")
-                    != "admitted"
-                ):
-                    raise failure(error_prefix + "_c5_admission_refused")
+                coordinator = _admitted_worker_coordinator(
+                    source, cleanup_evidence, receipt, failure,
+                    refusal_code=error_prefix + "_c5_admission_refused",
+                )
                 host_identity = cleanup_evidence.host_identity
                 boot_identity = cleanup_evidence.boot_identity
                 with coordinator.admission(
