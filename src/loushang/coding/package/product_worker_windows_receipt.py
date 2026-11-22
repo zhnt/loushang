@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 
-from loushang.coding.session.manager import SessionManager
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendInstalledMethods,
 )
@@ -23,7 +22,6 @@ from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
 
-from .product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .product_worker_policy import CodingWorkerPolicySelectionError
 from .product_worker_receipt import (
     CodingWorkerReceiptError,
@@ -50,10 +48,6 @@ class CodingWindowsWorkerProductReceiptOwner(
     """Keep original admission/data construction; all fixed custody is Core."""
 
     _receipt_factory_label = "Windows Worker"
-    _receipt_session_type = staticmethod(lambda: SessionManager)
-    _receipt_discovery_type = staticmethod(
-        lambda: CodingWorkerTranscriptDiscoveryReader
-    )
 
     _stale_derivation_errors = (
         CodingWorkerPolicySelectionError,
@@ -85,18 +79,6 @@ class CodingWindowsWorkerProductReceiptOwner(
             runtime=runtime,
             selected=selected,
             session_discovery_reader=session_discovery_reader,
-        )
-
-    def latch_kill_switch(self, *, expected_generation: int) -> int:
-        """Persist a Windows opt-in revocation before C5 retires its domain."""
-        return self._latch_kill_switch(
-            expected_generation=expected_generation,
-            invalid_generation_message="Windows Worker kill-switch generation is invalid",
-            revoke=lambda plugin_id, operation_id, decision: self._opt_in.revoke(
-                plugin_id=plugin_id,
-                operation_id=operation_id,
-                expected_generation=decision.generation,
-            ),
         )
 
     def _read_backend(

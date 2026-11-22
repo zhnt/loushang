@@ -24,6 +24,8 @@ from loushang.harness.journal import (
     JournalRecordCodec,
 )
 from loushang.harness.package_product._worker_product_authority import (
+    ProductNativeClosureReadPort,
+    ProductSessionDiscoveryReadPort,
     _PosixWorkerProductReceiptAuthority,
     _ProductWorkerReceiptAuthority,
 )
@@ -39,9 +41,6 @@ from loushang.harness.package_product.product_worker_candidate import (
     ProductWorkerNativeClosureFacts,
     ProductWorkerOptInFacts,
     ProductWorkerSelectedPayloadFacts,
-)
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
@@ -90,25 +89,14 @@ from .product_worker_policy import (
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
 
-class CodingWorkerNativeClosureReadPort(Protocol):
+class CodingWorkerNativeClosureReadPort(ProductNativeClosureReadPort, Protocol):
     """Product-bound native facts; changes share the selection/GC gate."""
-
-    @property
-    def gc_gate(self) -> PluginPackageGcReservationJournal: ...
 
     def current_closure(self) -> CodingWorkerNativeClosureV1: ...
 
 
-class CodingWorkerSessionDiscoveryReadPort(Protocol):
+class CodingWorkerSessionDiscoveryReadPort(ProductSessionDiscoveryReadPort, Protocol):
     """Product-bound resumed Session discovery, rechecked for each witness."""
-
-    @property
-    def gc_gate(self) -> PluginPackageGcReservationJournal: ...
-
-    @property
-    def session_id(self) -> str: ...
-
-    def current_discovery(self) -> SessionDiscoveryMetadata: ...
 
 
 class CodingWorkerReceiptError(RuntimeError):
@@ -191,6 +179,8 @@ class _CodingWorkerReceiptAuthority(
     _error_prefix = "coding_worker_"
     _product_id = "coding"
     _receipt_session_label = "Coding Session owner"
+    _receipt_session_type = staticmethod(lambda: SessionManager)
+    _receipt_discovery_type = staticmethod(lambda: CodingWorkerTranscriptDiscoveryReader)
     _receipt_manifest_max_files = 16
     _receipt_manifest_max_bytes = 16 * 1024 * 1024
     _max_files = 64
@@ -245,10 +235,6 @@ class CodingWorkerProductReceiptOwner(
     _native_error = CodingWorkerNativeClosureReadError
 
     _receipt_factory_label = "Coding Worker"
-    _receipt_session_type = staticmethod(lambda: SessionManager)
-    _receipt_discovery_type = staticmethod(
-        lambda: CodingWorkerTranscriptDiscoveryReader
-    )
     _receipt_opt_in_journal_type = staticmethod(lambda: CodingWorkerOptInJournal)
 
     _stale_derivation_errors = (
@@ -280,20 +266,6 @@ class CodingWorkerProductReceiptOwner(
             opt_in_journal=opt_in_journal,
             native_closure_reader=native_closure_reader,
             session_discovery_reader=session_discovery_reader,
-        )
-
-    def latch_kill_switch(self, *, expected_generation: int) -> int:
-        """Persist revocation before the coordinator retires future requests."""
-        return self._latch_kill_switch(
-            expected_generation=expected_generation,
-            invalid_generation_message="Coding Worker kill-switch generation is invalid",
-            revoke=lambda plugin_id, operation_id, decision: self._opt_in.change(
-                plugin_id=plugin_id,
-                operation_id=operation_id,
-                expected_generation=decision.generation,
-                action="revoke",
-                opt_in=None,
-            ),
         )
 
     def _history_for_product(
