@@ -13,7 +13,10 @@ from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionAuthorityContext,
     ProductCompositionCompiler,
 )
-from loushang.harness.capabilities.contracts import CapabilityRequirement
+from loushang.harness.capabilities.contracts import (
+    CapabilityDefinition,
+    CapabilityRequirement,
+)
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderCandidateEnvelope,
     CapabilityProviderOwnerAuthority,
@@ -30,15 +33,13 @@ from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProvider,
     ResolvedCapabilityProviderSet,
 )
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.session.capability_composition_inputs import (
     PreparedSessionWorkerCapabilityComponent,
     SessionCapabilityCompositionInputs,
     SessionCapabilityWorkerComponentRequest,
 )
-from loushang.harness.worker._ordinary_prepare import (
-    _NativeWorkerAttempt,
-    _PendingLaunch,
-)
+from loushang.harness.worker._ordinary_prepare import _NativeWorkerAttempt
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
     CapabilityWorkerAdmissionV1,
@@ -51,6 +52,7 @@ from loushang.harness.worker.capability_query import (
 )
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.facet_proxy import CapabilityWorkerReadOnlyFacetProxy
+from loushang.harness.worker.payload._selected_payload import _PendingPayload
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 if TYPE_CHECKING:
@@ -576,29 +578,58 @@ class _PendingWorkerHost(Protocol):
     ) -> Awaitable[PreparedSessionWorkerCapabilityComponent]: ...
 
 
+_ResumeSettlementT = TypeVar("_ResumeSettlementT")
+
+
 def _prepare_pending_worker_session_inputs(
     *,
     resolved_providers: ResolvedCapabilityProviderSet,
     provider_owner: CapabilityProviderOwnerAuthority,
     receipt_owner: object,
     receipt: ProductWorkerActivationReceiptV1,
-    pending_launch: _PendingLaunch,
+    pending_launch: _PendingPayload,
     evaluated_at: int,
     clock: Callable[[], int],
     base_policy_binding: _BasePolicyGuard,
-    resume_parent_context: object | None,
-    resume_settlement: object | None,
-    capability_id: str,
+    resume_parent_context: ResumeEffectParentContextV1 | None,
+    resume_settlement: _ResumeSettlementT,
+    resume_matches: Callable[
+        [
+            ProductWorkerActivationReceiptV1,
+            ResumeEffectParentContextV1 | None,
+            _ResumeSettlementT,
+        ],
+        bool,
+    ],
+    definition: CapabilityDefinition,
+    expected_provider_owner: Callable[[], CapabilityProviderOwnerAuthority],
     owner_policy_revision: str,
+    base_policy_type: type[_BasePolicyGuard],
     host_type: Callable[..., _PendingWorkerHost],
     prepare_session_inputs: Callable[..., SessionCapabilityCompositionInputs],
+    policy: PendingWorkerSessionPolicy,
+    require_bound_receipt_owner: bool = False,
 ) -> SessionCapabilityCompositionInputs:
-    """Bind selected intent facts and defer native effects to the existing host."""
+    """Join the receipt, owner and Resume facts before deferred native preparation."""
+    if (
+        not resume_matches(receipt, resume_parent_context, resume_settlement)
+        or pending_launch.receipt_fingerprint != receipt.fingerprint
+        or not isinstance(base_policy_binding, base_policy_type)
+        or (
+            require_bound_receipt_owner
+            and getattr(base_policy_binding, "receipt_owner") is not receipt_owner
+        )
+        or len(resolved_providers.entries) != 1
+        or resolved_providers.entries[0].capability_id != definition.capability_id
+        or resolved_providers.entries[0].definition != definition
+        or provider_owner.policy != expected_provider_owner().policy
+    ):
+        raise policy.failure("selection_invalid")
     base_policy_binding.assert_current()
     identity = pending_launch.identity
     binding = _binding_for_worker(
         identity,
-        allowed_capability_ids=(capability_id,),
+        allowed_capability_ids=(definition.capability_id,),
         product_policy_revision=lambda: receipt.policy.product_policy_revision,
         owner_policy_revision=owner_policy_revision,
         revocation_epoch=0,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets as secrets
 from collections.abc import Callable
+from functools import partial
 
 from loushang.coding.composition.base_product import CodingBaseProductSessionAssembly
 from loushang.coding.composition.provenance import (
@@ -27,6 +28,9 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
+from loushang.harness.session.capability_composition_inputs import (
+    SessionCapabilityCompositionInputs,
+)
 from loushang.harness.transcript.directory import (
     AgentTranscriptDirectoryRuntime as AgentTranscriptDirectoryRuntime,
 )
@@ -151,31 +155,27 @@ def prepare_coding_product_worker_ordinary_binding(
     transcript_directory = AgentTranscriptDirectoryRuntime(
         session_dir=session_manager.get_session_dir()
     )
-    receipt_owner: (
-        CodingWorkerProductReceiptOwner
-        | CodingWindowsWorkerProductReceiptOwner
-    )
+    open_receipt_owner: Callable[
+        ..., CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    ]
     if type(product_owner) is WindowsLocalWheelProductSessionOwner:
-        receipt_owner = (
-            open_coding_windows_product_selected_worker_receipt_owner(
-                product_owner=product_owner,
-                runtime=runtime,
-                plugin_id=plugin_id,
-                transcript_directory=transcript_directory,
-                session_manager=session_manager,
-                active_session=True,
-            )
+        open_receipt_owner = partial(
+            open_coding_windows_product_selected_worker_receipt_owner,
+            product_owner=product_owner,
         )
     else:
         assert type(product_owner) is PosixLocalWheelProductSessionOwner
-        receipt_owner = open_coding_product_selected_worker_receipt_owner(
+        open_receipt_owner = partial(
+            open_coding_product_selected_worker_receipt_owner,
             product_owner=product_owner,
-            runtime=runtime,
-            plugin_id=plugin_id,
-            transcript_directory=transcript_directory,
-            session_manager=session_manager,
-            active_session=True,
         )
+    receipt_owner = open_receipt_owner(
+        runtime=runtime,
+        plugin_id=plugin_id,
+        transcript_directory=transcript_directory,
+        session_manager=session_manager,
+        active_session=True,
+    )
     receipt = receipt_owner.issue()
     if receipt is None:
         raise CodingWorkerOrdinaryBootstrapError(
@@ -225,44 +225,39 @@ def prepare_coding_product_worker_ordinary_binding(
         eligibility_duration=_PROVIDER_ELIGIBILITY_DURATION,
         admission_duration=_PROVIDER_ADMISSION_DURATION,
     )
+    prepare_pending: Callable[..., SessionCapabilityCompositionInputs]
     if type(product_owner) is WindowsLocalWheelProductSessionOwner:
         assert type(receipt_owner) is CodingWindowsWorkerProductReceiptOwner
-        pending_windows = plan_coding_windows_product_worker_pending_launch(
+        prepare_pending = partial(
+            prepare_coding_windows_product_worker_pending_session_inputs,
             receipt_owner=receipt_owner,
-            receipt=receipt,
-            attempt_id=secrets.token_hex(16),
-        )
-        worker = prepare_coding_windows_product_worker_pending_session_inputs(
-            resolved_providers=resolved,
-            provider_owner=provider_owner,
-            receipt_owner=receipt_owner,
-            receipt=receipt,
-            pending_launch=pending_windows,
-            evaluated_at=evaluated_at,
-            clock=clock,
-            base_policy_binding=base_policy,
-            resume_parent_context=resume_parent_context,
-            resume_settlement=resume_settlement,
+            pending_launch=plan_coding_windows_product_worker_pending_launch(
+                receipt_owner=receipt_owner,
+                receipt=receipt,
+                attempt_id=secrets.token_hex(16),
+            ),
         )
     else:
         assert type(receipt_owner) is CodingWorkerProductReceiptOwner
-        pending_linux = plan_coding_product_worker_pending_launch(
+        prepare_pending = partial(
+            prepare_coding_product_worker_pending_session_inputs,
             receipt_owner=receipt_owner,
-            receipt=receipt,
-            attempt_id=secrets.token_hex(16),
+            pending_launch=plan_coding_product_worker_pending_launch(
+                receipt_owner=receipt_owner,
+                receipt=receipt,
+                attempt_id=secrets.token_hex(16),
+            ),
         )
-        worker = prepare_coding_product_worker_pending_session_inputs(
-            resolved_providers=resolved,
-            provider_owner=provider_owner,
-            receipt_owner=receipt_owner,
-            receipt=receipt,
-            pending_launch=pending_linux,
-            evaluated_at=evaluated_at,
-            clock=clock,
-            base_policy_binding=base_policy,
-            resume_parent_context=resume_parent_context,
-            resume_settlement=resume_settlement,
-        )
+    worker = prepare_pending(
+        resolved_providers=resolved,
+        provider_owner=provider_owner,
+        receipt=receipt,
+        evaluated_at=evaluated_at,
+        clock=clock,
+        base_policy_binding=base_policy,
+        resume_parent_context=resume_parent_context,
+        resume_settlement=resume_settlement,
+    )
     definitions = {
         item.capability_id: item
         for item in (

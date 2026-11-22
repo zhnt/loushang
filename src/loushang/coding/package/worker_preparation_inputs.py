@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from loushang.coding.package.product_worker_activation_state import (
     open_coding_product_worker_activation_state_store,
@@ -46,7 +46,6 @@ from loushang.coding.package.product_worker_receipt import (
     CodingWorkerProductReceiptOwner,
 )
 from loushang.coding.package.product_worker_resume import (
-    CodingWorkerResumeSettlementBinding,
     _parent_failure,
     _resume_parent_matches_settlement,
 )
@@ -81,20 +80,14 @@ from loushang.harness.capabilities.provider_admission import (
 )
 from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProvider,
-    ResolvedCapabilityProviderSet,
 )
-from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.session._worker_provider import (
     PendingWorkerSessionPolicy,
     _prepare_pending_worker_session_inputs,
     _QueryAuthority,
 )
-from loushang.harness.session.capability_composition_inputs import (
-    SessionCapabilityCompositionInputs,
-)
 from loushang.harness.worker._ordinary_prepare import (
     _NativeWorkerAttempt,
-    _PendingLaunch,
 )
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
@@ -225,11 +218,6 @@ CodingWindowsWorkerProductReceiptOwner._worker_provisioning_factory = staticmeth
 )
 
 
-class _SelectedPendingLaunch(_PendingLaunch, Protocol):
-    @property
-    def receipt_fingerprint(self) -> str: ...
-
-
 async def prepare_pending_provider(
     host: CodingProductWorkerPendingHost | CodingWindowsProductWorkerPendingHost,
     graph_generation: int,
@@ -281,56 +269,12 @@ async def prepare_pending_provider(
     )
 
 
-def prepare_pending_session_inputs(
-    *,
-    resolved_providers: ResolvedCapabilityProviderSet,
-    provider_owner: CapabilityProviderOwnerAuthority,
-    receipt_owner: object,
-    receipt: ProductWorkerActivationReceiptV1,
-    pending_launch: _SelectedPendingLaunch,
-    evaluated_at: int,
-    clock: Callable[[], int],
-    base_policy_binding: CodingWorkerBaseCompositionPolicyBinding,
-    resume_parent_context: ResumeEffectParentContextV1 | None,
-    resume_settlement: CodingWorkerResumeSettlementBinding | None,
-    host_type: Callable[
-        ..., CodingProductWorkerPendingHost | CodingWindowsProductWorkerPendingHost
-    ],
-    policy: PendingWorkerSessionPolicy,
-    require_bound_receipt_owner: bool = False,
-) -> SessionCapabilityCompositionInputs:
-    """Join the selected Worker, provider, and Resume facts before native preparation."""
-
-    if (
-        not _resume_parent_matches_settlement(
-            receipt, resume_parent_context, resume_settlement
-        )
-        or pending_launch.receipt_fingerprint != receipt.fingerprint
-        or not isinstance(base_policy_binding, CodingWorkerBaseCompositionPolicyBinding)
-        or (
-            require_bound_receipt_owner
-            and base_policy_binding.receipt_owner is not receipt_owner
-        )
-        or len(resolved_providers.entries) != 1
-        or resolved_providers.entries[0].capability_id
-        != CODING_WORKER_QUERY_CAPABILITY_ID
-        or resolved_providers.entries[0].definition != CODING_WORKER_QUERY_DEFINITION
-        or provider_owner.policy != coding_worker_query_owner_authority().policy
-    ):
-        raise policy.failure("selection_invalid")
-    return _prepare_pending_worker_session_inputs(
-        resolved_providers=resolved_providers,
-        provider_owner=provider_owner,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        pending_launch=pending_launch,
-        evaluated_at=evaluated_at,
-        clock=clock,
-        base_policy_binding=base_policy_binding,
-        resume_parent_context=resume_parent_context,
-        resume_settlement=resume_settlement,
-        capability_id=CODING_WORKER_QUERY_CAPABILITY_ID,
-        owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
-        host_type=host_type,
-        prepare_session_inputs=prepare_coding_product_worker_session_inputs,
-    )
+prepare_pending_session_inputs = partial(
+    _prepare_pending_worker_session_inputs,
+    definition=CODING_WORKER_QUERY_DEFINITION,
+    expected_provider_owner=coding_worker_query_owner_authority,
+    owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
+    base_policy_type=CodingWorkerBaseCompositionPolicyBinding,
+    resume_matches=_resume_parent_matches_settlement,
+    prepare_session_inputs=prepare_coding_product_worker_session_inputs,
+)

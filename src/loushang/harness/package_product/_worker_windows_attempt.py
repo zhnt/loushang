@@ -96,6 +96,7 @@ from loushang.harness.worker.history._windows_stage_review_wire import (
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from loushang.harness.worker.payload._selected_payload import (
     _PendingPayload,
+    require_current_pending_launch,
     worker_identity_from_receipt,
 )
 from loushang.harness.worker.payload._windows_stage_io import (
@@ -1941,25 +1942,17 @@ class WindowsProductWorkerPayload(
         verify_current(initial=True)
         if pending_launch is not None:
             with product.gc_gate.guard():
-                if (
-                    type(pending_launch) is not self.pending_type
-                    or pending_launch.receipt_fingerprint != receipt.fingerprint
-                    or pending_launch.identity
-                    != worker_identity_from_receipt(
-                        receipt=receipt,
-                        owner_id=payload_lease.owner_id,
-                        attempt_id=payload_lease.attempt_id,
-                        supervisor_epoch=supervisor_epoch,
-                        session_nonce=pending_launch.identity.session_nonce,
-                    )
-                    or (
-                        self.supervisor_journal(product).next_supervisor_epoch(
-                            pending_launch.identity
-                        )
-                        != supervisor_epoch
-                    )
-                ):
-                    raise self.error_type(self.error_prefix + "_pending_launch_changed")
+                require_current_pending_launch(
+                    pending_launch,
+                    pending_type=self.pending_type,
+                    receipt=receipt,
+                    owner_id=payload_lease.owner_id,
+                    attempt_id=payload_lease.attempt_id,
+                    supervisor_epoch=supervisor_epoch,
+                    supervisor=partial(self.supervisor_journal, product),
+                    error_type=self.error_type,
+                    error_prefix=self.error_prefix,
+                )
 
         def validate_current() -> None:
             try:
