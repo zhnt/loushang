@@ -11,7 +11,6 @@ import sys
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Literal
 
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
@@ -56,16 +55,16 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.cli.worker_candidate import (
+    WORKER_CANDIDATE_CHANGE_ACTIONS,
+    add_worker_candidate_commands,
+    execute_worker_candidate_change,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_worker_candidate import (
-    _capture_worker_candidate_installations,
-    _change_worker_candidate_lifecycle,
-    _install_worker_candidate,
     _observe_installed_worker_candidate,
-    _update_worker_candidate,
-    _worker_candidate_revision_matches,
 )
 from loushang.harness.resources.packages._file_consumption import read_bounded_prefix
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
@@ -112,46 +111,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         "candidate-selection", help="read one exact selected Worker candidate"
     )
     selection.add_argument("--plugin-id", required=True)
-    capture = actions.add_parser(
-        "candidate-capture", help="capture one inert Worker Wheel"
+    add_worker_candidate_commands(
+        actions,
+        help_text={
+            "candidate-capture": "capture one inert Worker Wheel",
+            "candidate-install": "install one captured Worker disabled",
+            "candidate-update": "update one exact installed Worker revision",
+            "candidate-enable": "enable one exact installed Worker",
+            "candidate-disable": "disable one exact installed Worker",
+            "candidate-remove": "remove one Worker from Desired State",
+        },
     )
-    capture.add_argument("--wheel", required=True)
-    capture.add_argument("--contribution-id", required=True)
-    capture.add_argument("--owner-id", required=True)
-    install_candidate = actions.add_parser(
-        "candidate-install", help="install one captured Worker disabled"
-    )
-    install_candidate.add_argument("--plugin-id", required=True)
-    install_candidate.add_argument("--artifact-digest", required=True)
-    install_candidate.add_argument("--operation-id", required=True)
-    update_candidate = actions.add_parser(
-        "candidate-update", help="update one exact installed Worker revision"
-    )
-    update_candidate.add_argument("--plugin-id", required=True)
-    update_candidate.add_argument("--from-artifact-digest", required=True)
-    update_candidate.add_argument("--artifact-digest", required=True)
-    update_candidate.add_argument("--operation-id", required=True)
-    update_candidate.add_argument(
-        "--expected-inventory-revision", type=int, required=True
-    )
-    enable_candidate = actions.add_parser(
-        "candidate-enable", help="enable one exact installed Worker"
-    )
-    enable_candidate.add_argument("--plugin-id", required=True)
-    enable_candidate.add_argument("--artifact-digest", required=True)
-    enable_candidate.add_argument("--operation-id", required=True)
-    enable_candidate.add_argument(
-        "--expected-inventory-revision", type=int, required=True
-    )
-    for action, help_text in (
-        ("candidate-disable", "disable one exact installed Worker"),
-        ("candidate-remove", "remove one Worker from Desired State"),
-    ):
-        change = actions.add_parser(action, help=help_text)
-        change.add_argument("--plugin-id", required=True)
-        change.add_argument("--artifact-digest", required=True)
-        change.add_argument("--operation-id", required=True)
-        change.add_argument("--expected-inventory-revision", type=int, required=True)
     actions.add_parser("release-status", help="read the exact native approval")
     review = actions.add_parser(
         "release-review", help="review the installed backend Wheel"
@@ -281,8 +251,17 @@ def _execute(
 ) -> dict[str, object]:
     if args.action == "candidate-selection":
         return _read_candidate_selection(product, args.plugin_id)
-    if args.action in {"candidate-update", "candidate-disable", "candidate-remove"}:
-        return _change_candidate(product, args)
+    if args.action in WORKER_CANDIDATE_CHANGE_ACTIONS:
+        return execute_worker_candidate_change(
+            product,
+            args,
+            product_id="coding",
+            native_platform="windows-amd64",
+            label="Windows Worker",
+            require_revoked=lambda: _require_candidate_revoked(product, args.plugin_id),
+            error_type=WindowsWorkerCandidateCommandError,
+            stale_update_code="windows_worker_candidate_update_selection_stale",
+        )
     if args.action == "list-attempts":
         return {
             "attempts": [
@@ -392,57 +371,6 @@ def _execute(
             ),
             "defaultSessionRouting": "closed",
         }
-    if args.action in {"candidate-install", "candidate-enable"}:
-        binding, snapshot, installed = _capture_worker_candidate_installations(
-            product,
-            args.plugin_id,
-            args.artifact_digest,
-            product_id="coding",
-            label="Windows Worker",
-        )
-        if len(installed) > 1:
-            raise ValueError("Windows Worker candidate installation is ambiguous")
-        if args.action == "candidate-enable":
-            if len(installed) != 1 or installed[0].selection.package_revision is None:
-                raise ValueError("Windows Worker candidate is not installed")
-            revision = installed[0].selection.package_revision
-            if not _worker_candidate_revision_matches(revision, binding):
-                raise ValueError("Windows Worker candidate selection changed")
-            operation_record, inventory_revision = _change_worker_candidate_lifecycle(
-                product,
-                binding,
-                snapshot,
-                installed[0],
-                action="enable",
-                operation_id=args.operation_id,
-                expected_inventory_revision=args.expected_inventory_revision,
-                label="Windows Worker",
-                unsettled_message="Windows Worker candidate enable did not settle",
-            )
-            return {
-                "candidateManagementOperation": operation_record,
-                "inventoryRevision": inventory_revision,
-            }
-        _lifecycle, inventory_revision, already_installed = _install_worker_candidate(
-            product,
-            binding,
-            snapshot,
-            installed[0] if installed else None,
-            product_id="coding",
-            plugin_id=args.plugin_id,
-            operation_id=args.operation_id,
-            label="Windows Worker",
-            reinstall_removed=False,
-            refresh_inventory=True,
-        )
-        return {
-            "candidateInstall": {
-                "pluginId": args.plugin_id,
-                "artifactDigest": args.artifact_digest,
-                "alreadyInstalled": already_installed,
-                "inventoryRevision": inventory_revision,
-            }
-        }
     raise ValueError("Windows Worker candidate action is unsupported")
 
 
@@ -467,70 +395,6 @@ def _read_candidate_selection(
             "executableDigest": candidate.executable_digest,
         },
         "productUse": "not_checked",
-    }
-
-
-def _change_candidate(
-    product: WindowsLocalWheelProductSessionOwner, args: argparse.Namespace
-) -> dict[str, object]:
-    binding, snapshot, installed = _capture_worker_candidate_installations(
-        product,
-        args.plugin_id,
-        args.artifact_digest,
-        product_id="coding",
-        label="Windows Worker",
-    )
-    if len(installed) != 1:
-        raise ValueError("Windows Worker candidate installation changed")
-    selected = installed[0]
-    revision = selected.selection.package_revision
-    if args.action == "candidate-update":
-        _lifecycle, inventory_revision, already_updated = _update_worker_candidate(
-            product,
-            binding,
-            snapshot,
-            selected,
-            args,
-            product_id="coding",
-            label="Windows Worker",
-            require_revoked=lambda: _require_candidate_revoked(product, args.plugin_id),
-            error_type=WindowsWorkerCandidateCommandError,
-            error_code="windows_worker_candidate_update_selection_stale",
-        )
-        return {
-            "candidateUpdate": {
-                "pluginId": args.plugin_id,
-                "fromArtifactDigest": args.from_artifact_digest,
-                "artifactDigest": args.artifact_digest,
-                "inventoryRevision": inventory_revision,
-                "alreadyUpdated": already_updated,
-            }
-        }
-
-    if args.action == "candidate-remove":
-        _require_candidate_revoked(product, args.plugin_id)
-    if revision is not None and not _worker_candidate_revision_matches(
-        revision, binding
-    ):
-        raise ValueError("Windows Worker candidate installation changed")
-    action: Literal["disable", "remove"] = (
-        "disable" if args.action == "candidate-disable" else "remove"
-    )
-    operation_record, inventory_revision = _change_worker_candidate_lifecycle(
-        product,
-        binding,
-        snapshot,
-        selected,
-        action=action,
-        operation_id=args.operation_id,
-        expected_inventory_revision=args.expected_inventory_revision,
-        label="Windows Worker",
-        unsettled_message="Windows Worker candidate change did not settle",
-    )
-    return {
-        "candidateManagementOperation": operation_record,
-        "inventoryRevision": inventory_revision,
-        **({"packageRetirement": "not_checked"} if action == "remove" else {}),
     }
 
 

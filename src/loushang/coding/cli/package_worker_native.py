@@ -66,15 +66,13 @@ from loushang.coding.package.product_worker_start_gate_recovery import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.cli.worker_candidate import (
+    WORKER_CANDIDATE_CHANGE_ACTIONS,
+    add_worker_candidate_commands,
+    execute_worker_candidate_change,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
-)
-from loushang.harness.package_product.product_worker_candidate import (
-    _capture_worker_candidate_installations,
-    _change_worker_candidate_lifecycle,
-    _install_worker_candidate,
-    _update_worker_candidate,
-    _worker_candidate_revision_matches,
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
@@ -101,51 +99,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-worker-native")
     parser.add_argument("--workspace", default=".", help="fenced Coding workspace")
     actions = parser.add_subparsers(dest="action", required=True)
-    candidate_capture = actions.add_parser(
-        "candidate-capture", help="capture one inert Product Worker Wheel candidate"
+    add_worker_candidate_commands(
+        actions,
+        help_text={
+            "candidate-capture": "capture one inert Product Worker Wheel candidate",
+            "candidate-install": "install one captured Worker candidate disabled",
+            "candidate-update": "update one installed Worker from an exact revision",
+            "candidate-enable": "enable one exact installed Worker candidate",
+            "candidate-disable": "disable one exact installed Worker candidate",
+            "candidate-remove": "remove one Worker candidate from Desired State",
+        },
+        native_platform_option="linux-x86_64",
     )
-    candidate_capture.add_argument("--wheel", required=True)
-    candidate_capture.add_argument("--contribution-id", required=True)
-    candidate_capture.add_argument("--owner-id", required=True)
-    candidate_capture.add_argument(
-        "--native-platform", choices=("linux-x86_64",), required=True
-    )
-    candidate_install = actions.add_parser(
-        "candidate-install", help="install one captured Worker candidate disabled"
-    )
-    candidate_install.add_argument("--plugin-id", required=True)
-    candidate_install.add_argument("--artifact-digest", required=True)
-    candidate_install.add_argument("--operation-id", required=True)
-    candidate_update = actions.add_parser(
-        "candidate-update", help="update one installed Worker from an exact revision"
-    )
-    candidate_update.add_argument("--plugin-id", required=True)
-    candidate_update.add_argument("--from-artifact-digest", required=True)
-    candidate_update.add_argument("--artifact-digest", required=True)
-    candidate_update.add_argument("--operation-id", required=True)
-    candidate_update.add_argument(
-        "--expected-inventory-revision", type=int, required=True
-    )
-    candidate_enable = actions.add_parser(
-        "candidate-enable", help="enable one exact installed Worker candidate"
-    )
-    candidate_enable.add_argument("--plugin-id", required=True)
-    candidate_enable.add_argument("--artifact-digest", required=True)
-    candidate_enable.add_argument("--operation-id", required=True)
-    candidate_enable.add_argument(
-        "--expected-inventory-revision", type=int, required=True
-    )
-    for action, help_text in (
-        ("candidate-disable", "disable one exact installed Worker candidate"),
-        ("candidate-remove", "remove one Worker candidate from Desired State"),
-    ):
-        candidate_change = actions.add_parser(action, help=help_text)
-        candidate_change.add_argument("--plugin-id", required=True)
-        candidate_change.add_argument("--artifact-digest", required=True)
-        candidate_change.add_argument("--operation-id", required=True)
-        candidate_change.add_argument(
-            "--expected-inventory-revision", type=int, required=True
-        )
     actions.add_parser("status", help="read the current Product approval decision")
     review = actions.add_parser("review", help="verify and review one native Wheel")
     review.add_argument("--wheel", required=True)
@@ -385,138 +350,32 @@ _PAYLOAD_REPAIRS: dict[
 }
 
 
+def _require_candidate_revoked(
+    product: PosixLocalWheelProductSessionOwner, plugin_id: str
+) -> None:
+    decision = CodingWorkerProductOptInOwner(product).current(plugin_id)
+    if decision is not None and decision.action == "allow":
+        raise CodingWorkerNativeCandidateCommandError(
+            "coding_worker_candidate_opt_in_revoke_required",
+            "Coding Worker candidate opt-in must be revoked",
+        )
+
+
 def _execute(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    if args.action in {
-        "candidate-install",
-        "candidate-update",
-        "candidate-enable",
-        "candidate-disable",
-        "candidate-remove",
-    }:
-        binding, snapshot, installed = _capture_worker_candidate_installations(
+    if args.action in WORKER_CANDIDATE_CHANGE_ACTIONS:
+        return execute_worker_candidate_change(
             product,
-            args.plugin_id,
-            args.artifact_digest,
+            args,
             product_id="coding",
+            native_platform="linux-x86_64",
             label="Coding Worker",
+            require_revoked=lambda: _require_candidate_revoked(product, args.plugin_id),
+            error_type=CodingWorkerNativeCandidateCommandError,
+            stale_update_code="coding_worker_candidate_update_selection_stale",
         )
-        if len(installed) > 1:
-            raise ValueError("Coding Worker candidate installation is ambiguous")
-        selected = installed[0] if installed else None
-        selected_revision = (
-            None if selected is None else selected.selection.package_revision
-        )
-        if args.action == "candidate-update":
-
-            def require_revoked() -> None:
-                current_opt_in = CodingWorkerProductOptInOwner(product).current(
-                    args.plugin_id
-                )
-                if current_opt_in is not None and current_opt_in.action == "allow":
-                    raise CodingWorkerNativeCandidateCommandError(
-                        "coding_worker_candidate_opt_in_revoke_required",
-                        "Coding Worker candidate opt-in must be revoked",
-                    )
-
-            lifecycle, inventory_revision, already_updated = _update_worker_candidate(
-                product,
-                binding,
-                snapshot,
-                selected,
-                args,
-                product_id="coding",
-                label="Coding Worker",
-                require_revoked=require_revoked,
-                error_type=CodingWorkerNativeCandidateCommandError,
-                error_code="coding_worker_candidate_update_selection_stale",
-                post_selection_error_type=CodingWorkerNativeCandidateCommandError,
-            )
-            return {
-                "candidateUpdate": {
-                    "pluginId": args.plugin_id,
-                    "fromArtifactDigest": args.from_artifact_digest,
-                    "artifactDigest": args.artifact_digest,
-                    "lifecycle": lifecycle,
-                    "inventoryRevision": inventory_revision,
-                    "alreadyUpdated": already_updated,
-                },
-                "productAdmission": "installed",
-                "productSelection": "not_checked",
-                "productUse": "not_checked",
-            }
-        if args.action == "candidate-install":
-            lifecycle, inventory_revision, already_installed = (
-                _install_worker_candidate(
-                    product,
-                    binding,
-                    snapshot,
-                    selected,
-                    product_id="coding",
-                    plugin_id=args.plugin_id,
-                    operation_id=args.operation_id,
-                    label="Coding Worker",
-                    reinstall_removed=True,
-                )
-            )
-            return {
-                "candidateInstall": {
-                    "pluginId": args.plugin_id,
-                    "artifactDigest": args.artifact_digest,
-                    "lifecycle": lifecycle,
-                    "inventoryRevision": inventory_revision,
-                    "alreadyInstalled": already_installed,
-                },
-                "productAdmission": "installed",
-                "productSelection": "not_checked",
-                "productUse": "not_checked",
-            }
-        if selected_revision is not None and not _worker_candidate_revision_matches(
-            selected_revision, binding
-        ):
-            raise ValueError("Coding Worker candidate installation changed")
-        if args.action == "candidate-remove":
-            current_opt_in = CodingWorkerProductOptInOwner(product).current(
-                args.plugin_id
-            )
-            if current_opt_in is not None and current_opt_in.action == "allow":
-                raise CodingWorkerNativeCandidateCommandError(
-                    "coding_worker_candidate_opt_in_revoke_required",
-                    "Coding Worker candidate opt-in must be revoked",
-                )
-        if selected is None:
-            raise ValueError("Coding Worker candidate installation changed")
-        action: Literal["enable", "disable", "remove"]
-        if args.action == "candidate-enable":
-            action = "enable"
-        elif args.action == "candidate-disable":
-            action = "disable"
-        else:
-            action = "remove"
-        operation_record, inventory_revision = _change_worker_candidate_lifecycle(
-            product,
-            binding,
-            snapshot,
-            selected,
-            action=action,
-            operation_id=args.operation_id,
-            expected_inventory_revision=args.expected_inventory_revision,
-            label="Coding Worker",
-            unsettled_message="Coding Worker candidate enable did not settle",
-        )
-        return {
-            "candidateManagementOperation": operation_record,
-            "inventoryRevision": inventory_revision,
-            "productSelection": "not_checked",
-            "productUse": "not_checked",
-            **(
-                {"packageRetirement": "not_checked"}
-                if args.action == "candidate-remove"
-                else {}
-            ),
-        }
     if args.action == "list-gated-attempts":
         return {
             "gatedAttempts": [
