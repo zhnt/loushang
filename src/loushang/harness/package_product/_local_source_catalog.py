@@ -1,7 +1,7 @@
 """Private Product-owned catalogs over existing Journal and controlled Source IO.
 
 Concrete Products retain record classes, codecs, kind admission and policy.
-These classes share the original namespace/query/publication mechanics only.
+The catalogs share binding identities, namespace checks and Source publication.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import json
 import os
 import re
 import stat
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Mapping
 from contextlib import suppress
 from dataclasses import replace
 from hashlib import sha256
@@ -51,6 +51,9 @@ from loushang.harness.resources.packages.plugin_lifecycle._controlled_source_io 
 )
 from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
     ExactProductSourceFiles,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     open_regular_no_follow,
@@ -170,6 +173,30 @@ def plugin_wheel_source_fields_match(
 
 RecordT = TypeVar("RecordT", bound=_SourceRecord)
 PluginRecordT = TypeVar("PluginRecordT", bound=_PluginSourceRecord)
+
+
+def wheel_source_binding_digest(document: Mapping[str, object]) -> str:
+    """Hash the canonical record content without the stored digest."""
+    fields = {key: value for key, value in document.items() if key != "recordId"}
+    return sha256(canonical_json_bytes(fields)).hexdigest()
+
+
+def issue_wheel_source_binding(
+    constructor: Callable[..., RecordT],
+    schema: RecordSchema,
+    /,
+    **attributes: object,
+) -> RecordT:
+    """Seal the declared wire fields, then construct the original record type."""
+    document: dict[str, object] = {}
+    for field in schema.fields:
+        if field.attribute == "record_id":
+            continue
+        value = attributes[field.attribute]
+        document[field.wire_key] = (
+            value if field.encoder is None else field.encoder(value)
+        )
+    return constructor(**attributes, record_id=wheel_source_binding_digest(document))
 
 
 class _SourceCatalogReadScopes(Generic[CatalogRecordT]):

@@ -21,7 +21,9 @@ from loushang.harness.journal import (
 from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
     _WindowsWorkerSourceCatalog,
+    issue_wheel_source_binding,
     plugin_wheel_source_fields_match,
+    wheel_source_binding_digest,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -97,7 +99,7 @@ class CodingExternalWorkerWheelBindingV1:
             or _DIGEST.fullmatch(self.record_id) is None
         ):
             raise ValueError("External Worker Wheel binding is invalid")
-        if self.record_id != sha256(canonical_json_bytes(self._identity())).hexdigest():
+        if self.record_id != wheel_source_binding_digest(self.to_dict()):
             raise ValueError("External Worker Wheel binding identity changed")
 
     @classmethod
@@ -116,19 +118,9 @@ class CodingExternalWorkerWheelBindingV1:
         match = _WHEEL_NAME.fullmatch(wheel_filename)
         if match is None:
             raise ValueError("External Worker Wheel filename is unsupported")
-        fields = {
-            "admission": _encode_admission(admission),
-            "artifactDigest": artifact_digest,
-            "namespaceId": namespace_id,
-            "originalSource": original_source,
-            "pluginId": match["plugin"],
-            "recordRevision": record_revision,
-            "scopeId": scope_id,
-            "storeId": store_id,
-            "version": match["version"],
-            "wheelFilename": wheel_filename,
-        }
-        return cls(
+        return issue_wheel_source_binding(
+            cls,
+            _BINDING_SCHEMA,
             record_revision=record_revision,
             store_id=store_id,
             namespace_id=namespace_id,
@@ -139,13 +131,7 @@ class CodingExternalWorkerWheelBindingV1:
             version=match["version"],
             artifact_digest=artifact_digest,
             admission=admission,
-            record_id=sha256(canonical_json_bytes(fields)).hexdigest(),
         )
-
-    def _identity(self) -> dict[str, object]:
-        return {
-            key: value for key, value in self.to_dict().items() if key != "recordId"
-        }
 
     def to_dict(self) -> dict[str, object]:
         return _BINDING_SCHEMA.encode(self, sort_keys=True)

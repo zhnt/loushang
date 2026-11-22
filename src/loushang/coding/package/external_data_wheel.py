@@ -12,7 +12,9 @@ from loushang.harness.journal import (
 )
 from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
+    issue_wheel_source_binding,
     plugin_wheel_source_fields_match,
+    wheel_source_binding_digest,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordSchema,
@@ -63,7 +65,7 @@ class CodingExternalDataWheelBindingV1:
             or _DIGEST.fullmatch(self.record_id) is None
         ):
             raise ValueError("External data Wheel binding is invalid")
-        if self.record_id != sha256(canonical_json_bytes(self._identity())).hexdigest():
+        if self.record_id != wheel_source_binding_digest(self.to_dict()):
             raise ValueError("External data Wheel binding identity changed")
 
     @classmethod
@@ -81,18 +83,9 @@ class CodingExternalDataWheelBindingV1:
         match = _WHEEL_NAME.fullmatch(wheel_filename)
         if match is None:
             raise ValueError("External data Wheel filename is unsupported")
-        fields = {
-            "recordRevision": record_revision,
-            "storeId": store_id,
-            "namespaceId": namespace_id,
-            "scopeId": scope_id,
-            "originalSource": original_source,
-            "wheelFilename": wheel_filename,
-            "pluginId": match["plugin"],
-            "version": match["version"],
-            "artifactDigest": artifact_digest,
-        }
-        return cls(
+        return issue_wheel_source_binding(
+            cls,
+            _BINDING_SCHEMA,
             record_revision=record_revision,
             store_id=store_id,
             namespace_id=namespace_id,
@@ -102,13 +95,7 @@ class CodingExternalDataWheelBindingV1:
             plugin_id=match["plugin"],
             version=match["version"],
             artifact_digest=artifact_digest,
-            record_id=sha256(canonical_json_bytes(fields)).hexdigest(),
         )
-
-    def _identity(self) -> dict[str, object]:
-        return {
-            key: value for key, value in self.to_dict().items() if key != "recordId"
-        }
 
     def to_dict(self) -> dict[str, object]:
         return _BINDING_SCHEMA.encode(self)
