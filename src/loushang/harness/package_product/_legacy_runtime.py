@@ -422,6 +422,33 @@ def prepare_private_state_layout(
         pass
 
 
+@contextmanager
+def legacy_plugin_management_startup(
+    layout: _LegacyStateRoots,
+    *,
+    policy: _LegacyStartupPolicy,
+    hold_startup: Callable[[], bool],
+    release_startup: Callable[[], None],
+    read_only: bool,
+    lifecycle: bool,
+) -> Iterator[bool]:
+    """Release only the process startup lease acquired by a failed assembly."""
+
+    owns_startup = (
+        not read_only
+        and (lifecycle or sys.platform.startswith("linux") or os.name == "nt")
+        and hold_startup()
+    )
+    try:
+        if not read_only and not owns_startup:
+            prepare_private_state_layout(layout, policy=policy)
+        yield owns_startup
+    except BaseException:
+        if owns_startup:
+            release_startup()
+        raise
+
+
 def _hold_process_startup_lease(
     layout: _LegacyStateRoots,
     *,

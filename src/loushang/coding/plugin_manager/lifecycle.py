@@ -10,6 +10,7 @@ import sys as sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from importlib.metadata import version as version
 from pathlib import Path
 from typing import Literal, cast
@@ -63,20 +64,13 @@ from loushang.harness.plugin_management import (
     decode_plugin_enablement_migration_snapshots as decode_plugin_enablement_migration_snapshots,
 )
 from loushang.harness.plugin_management.assembly import (
+    LegacyPluginLifecycleBindings,
     _FirstPartyDefaultBootstrap,
     _FirstPartyDefaultPolicy,
     _gc_writer_epoch_ready,
     _prepare_gc_writer_epoch,
     _SettledHostRetirementPolicy,
-    bind_plugin_enablement_migrations,
-    bind_plugin_management_application_ports,
-    prepare_plugin_management_runtime,
-)
-from loushang.harness.plugin_management.assembly import (
-    bind_plugin_management_core as bind_plugin_management_core,
-)
-from loushang.harness.plugin_management.assembly import (
-    bind_plugin_runtime_ledgers as bind_plugin_runtime_ledgers,
+    assemble_legacy_plugin_management,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
@@ -174,10 +168,6 @@ def _release_process_startup_lease(
     _legacy_runtime._release_process_startup_lease(
         _startup_lease_path(layout, startup_id=startup_id)
     )
-
-
-def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> None:
-    _legacy_runtime.prepare_private_state_layout(layout, policy=_STARTUP_POLICY)
 
 
 def _prepare_private_tree(path: Path, *, private_base: Path, label: str) -> None:
@@ -765,65 +755,40 @@ def _assemble_legacy_plugin_management(
     source: PluginSourceProjectionSourcePort | None = None,
     security_acceptances: PluginInstanceSecurityRetirementJournal | None = None,
 ) -> CodingPluginLifecycle | PluginManagementApplicationPorts:
-    read_only = mode == "queries"
-    owns_process_startup_lease = (
-        not read_only
-        and (mode == "lifecycle" or sys.platform.startswith("linux") or os.name == "nt")
-        and _hold_process_startup_lease(layout, startup_id=startup_id)
-    )
-    try:
-        if not read_only and not owns_process_startup_lease:
-            _prepare_private_state_layout(layout)
-        core = bind_plugin_management_core(
-            gc_reservations_path=layout.package_gc_reservations,
-            desired_state_path=layout.desired_state,
-            operation_journal_path=layout.management_operations,
-            retirement_intents_path=layout.retirement_intents,
-            retirement_sets_path=layout.retirement_sets,
-            migration_journal_path=layout.enablement_migration,
-            load_policy=(
-                JournalLoadPolicy(partial_tail="raise", create_lock=False)
-                if read_only
-                else None
-            ),
-        )
-        prepare_plugin_management_runtime(
-            core, runtime_version=version("loushang"), read_only=read_only
-        )
-        migrations = (
-            bind_plugin_enablement_migrations(core, runtime_version=version("loushang"))
-            if mode == "lifecycle"
-            else None
-        )
-        runtime = bind_plugin_runtime_ledgers(
-            core,
-            instance_runtime_path=layout.instance_runtime,
-            package_lifecycle_path=layout.package_lifecycle,
-            startup_id=startup_id,
-            security_acceptances=security_acceptances,
-        )
-        if migrations is None:
-            return bind_plugin_management_application_ports(core, runtime, source=source)
+    def build_lifecycle(
+        bindings: LegacyPluginLifecycleBindings,
+    ) -> CodingPluginLifecycle:
         return CodingPluginLifecycle(
             layout=layout,
             startup_id=startup_id,
-            desired=core.desired,
-            management=core.management,
-            enablement_migrations=migrations,
-            instances=runtime.instances,
-            retirement_sets=core.retirement_sets,
-            packages=runtime.packages,
-            _gc_reservations=core.gc_reservations,
-            security=runtime.security,
             owner_evidence=CodingOwnerGenerationEvidenceLedger(
                 layout.owner_generation_evidence
             ),
-            _owns_process_startup_lease=owns_process_startup_lease,
+            **bindings,
         )
-    except BaseException:
-        if owns_process_startup_lease:
-            _release_process_startup_lease(layout, startup_id=startup_id)
-        raise
+
+    read_only = mode == "queries"
+    lifecycle = mode == "lifecycle"
+    startup = _legacy_runtime.legacy_plugin_management_startup(
+        layout,
+        policy=_STARTUP_POLICY,
+        hold_startup=partial(_hold_process_startup_lease, layout, startup_id=startup_id),
+        release_startup=partial(
+            _release_process_startup_lease, layout, startup_id=startup_id
+        ),
+        read_only=read_only,
+        lifecycle=lifecycle,
+    )
+    return assemble_legacy_plugin_management(
+        layout,
+        startup_id=startup_id,
+        startup=startup,
+        runtime_version=lambda: version("loushang"),
+        read_only=read_only,
+        source=source,
+        security_acceptances=security_acceptances,
+        build_lifecycle=build_lifecycle if lifecycle else None,
+    )
 
 
 def project_coding_plugin_enablement_compatibility(

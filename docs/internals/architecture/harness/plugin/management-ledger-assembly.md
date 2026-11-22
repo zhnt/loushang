@@ -11,6 +11,16 @@
 
 继承[收敛审计 D1](convergence-audit.md)、[PLC9A1 管理合同](plugin-lifecycle-plc9a1-contract.md)、[现有负责人图](../current-owner-map.md)与[升级兼容](../../decisions/accepted/ARD-008-workspace-upgrade-compatibility.md)。按内部实现重组处理：共同对象本就归 Harness，本切片移动的是重复的构造关系，不转移持久权威、不新建管理器或第三条 Product 路线。保持既有公开 Coding builder 签名和返回类型。
 
+## 当前实现
+
+2026-11-22，旧版工作区的生命周期、管理命令和只读查询共用 [Harness Plugin Management 装配](../../../../../src/loushang/harness/plugin_management/assembly.py)。同一操作按原顺序绑定 GC 和 Desired State，检查兼容版本，在可写路径恢复管理操作，再绑定实例和包账本。生命周期路径在恢复后沿用第二次版本查询及迁移协调器。
+
+[Harness Package Product](../../../../../src/loushang/harness/package_product/_legacy_runtime.py) 持有启动租约的装配范围。装配失败时释放本次取得的租约，已有进程租约继续由原持有者管理。只读入口使用严格加载策略，无目录准备、租约取得或恢复步骤。Coding 提供布局、产品策略、版本来源和名义生命周期对象。Fenced B 继续使用自己的 epoch 与准入流程。
+
+以 `c4def04e8` 为迁移前基线，311 个模拟平台和持久化边界的调用轨迹一致，覆盖三个入口、版本查询顺序、账本构造故障和租约释放。本机复测覆盖注册、只读尾部、管理失败和 Continuity 恢复。
+
+以下章节记录 2026-11-04 首切片及其验收。首切片中的两段绑定函数和中间引用组已并入当前内部装配入口。
+
 ## 1. 实施前基线与具体问题
 
 | 入口 / 位置 | 原构造与副作用顺序 | 本切片界限 |

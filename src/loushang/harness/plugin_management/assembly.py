@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import secrets
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Literal, Protocol, TypeVar
+from typing import TYPE_CHECKING, ClassVar, Literal, Protocol, TypedDict, TypeVar
 
 from loushang.harness.journal import JournalLoadPolicy, journal_file_lock
 from loushang.harness.plugin_management.application import (
@@ -63,24 +64,6 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class PluginManagementCoreBindings:
-    gc_reservations: PluginPackageGcReservationJournal
-    desired: PluginDesiredStateLedger
-    intents: PluginRetirementIntentLedger
-    retirement_sets: PluginRetirementSetLedger
-    management: PluginManagementService
-    migration_journal: PluginEnablementMigrationJournal
-    load_policy: JournalLoadPolicy | None
-
-
-@dataclass(frozen=True, slots=True)
-class PluginRuntimeLedgerBindings:
-    security: PluginInstanceSecurityRetirementJournal
-    instances: PluginInstanceRuntimeLedger
-    packages: PluginPackageLifecycleLedger
-
-
-@dataclass(frozen=True, slots=True)
 class PluginDesiredStateBindings:
     gc_reservations: PluginPackageGcReservationJournal
     desired: PluginDesiredStateLedger
@@ -101,130 +84,152 @@ def bind_plugin_desired_state(
     return PluginDesiredStateBindings(gate, desired)
 
 
-def bind_plugin_management_core(
+class _LegacyManagementLayout(Protocol):
+    @property
+    def package_gc_reservations(self) -> Path: ...
+    @property
+    def desired_state(self) -> Path: ...
+    @property
+    def management_operations(self) -> Path: ...
+    @property
+    def retirement_intents(self) -> Path: ...
+    @property
+    def retirement_sets(self) -> Path: ...
+    @property
+    def enablement_migration(self) -> Path: ...
+    @property
+    def instance_runtime(self) -> Path: ...
+    @property
+    def package_lifecycle(self) -> Path: ...
+
+
+class LegacyPluginLifecycleBindings(TypedDict):
+    desired: PluginDesiredStateLedger
+    management: PluginManagementService
+    enablement_migrations: PluginEnablementMigrationCoordinator
+    instances: PluginInstanceRuntimeLedger
+    retirement_sets: PluginRetirementSetLedger
+    packages: PluginPackageLifecycleLedger
+    _gc_reservations: PluginPackageGcReservationJournal
+    security: PluginInstanceSecurityRetirementJournal
+    _owns_process_startup_lease: bool
+
+
+_LifecycleT = TypeVar("_LifecycleT")
+
+
+def assemble_legacy_plugin_management(
+    layout: _LegacyManagementLayout,
     *,
-    gc_reservations_path: str | Path,
-    desired_state_path: str | Path,
-    operation_journal_path: str | Path,
-    retirement_intents_path: str | Path,
-    retirement_sets_path: str | Path,
-    migration_journal_path: str | Path,
-    load_policy: JournalLoadPolicy | None = None,
-) -> PluginManagementCoreBindings:
-    desired_binding = bind_plugin_desired_state(
-        gc_reservations_path, desired_state_path, load_policy=load_policy
-    )
-    intents = PluginRetirementIntentLedger(
-        retirement_intents_path,
-        load_policy=load_policy,
-    )
-    retirement_sets = PluginRetirementSetLedger(
-        retirement_sets_path,
-        retirement_intents=intents,
-        load_policy=load_policy,
-    )
-    management = PluginManagementService(
-        desired_state=desired_binding.desired,
-        operation_journal_path=operation_journal_path,
-        retirement_intents=intents,
-        retirement_sets=retirement_sets,
-        load_policy=load_policy,
-    )
-    migration_journal = PluginEnablementMigrationJournal(
-        migration_journal_path,
-        load_policy=load_policy,
-    )
-    return PluginManagementCoreBindings(
-        gc_reservations=desired_binding.gc_reservations,
-        desired=desired_binding.desired,
-        intents=intents,
-        retirement_sets=retirement_sets,
-        management=management,
-        migration_journal=migration_journal,
-        load_policy=load_policy,
-    )
-
-
-def prepare_plugin_management_runtime(
-    core: PluginManagementCoreBindings, *, runtime_version: str, read_only: bool = False
-) -> None:
-    core.migration_journal.assert_runtime_compatible(
-        supported_migration_epoch=PLUGIN_ENABLEMENT_MIGRATION_EPOCH,
-        runtime_version=runtime_version,
-    )
-    if not read_only:
-        core.management.recover()
-
-
-def bind_plugin_enablement_migrations(
-    core: PluginManagementCoreBindings, *, runtime_version: str
-) -> PluginEnablementMigrationCoordinator:
-    return PluginEnablementMigrationCoordinator(
-        journal=core.migration_journal,
-        desired_state=core.desired,
-        commands=PluginManagementCommandApplication(core.management),
-        runtime_version=runtime_version,
-    )
-
-
-def bind_plugin_management_application_ports(
-    core: PluginManagementCoreBindings,
-    runtime: PluginRuntimeLedgerBindings,
-    *,
-    source: PluginSourceProjectionSourcePort | None,
-) -> PluginManagementApplicationPorts:
-    return PluginManagementApplicationPorts(
-        commands=PluginManagementCommandApplication(core.management),
-        queries=PluginManagementReadModelProjector(
-            desired_state=core.desired,
-            operations=core.management,
-            migrations=core.migration_journal,
-            source=source,
-            instances=runtime.instances,
-            packages=runtime.packages,
-            retirement=core.retirement_sets,
-        ),
-    )
-
-
-def bind_plugin_runtime_ledgers(
-    core: PluginManagementCoreBindings,
-    *,
-    instance_runtime_path: str | Path,
-    package_lifecycle_path: str | Path,
     startup_id: str,
-    security_acceptances: PluginInstanceSecurityRetirementJournal | None = None,
-) -> PluginRuntimeLedgerBindings:
-    security = security_acceptances or (
-        PluginInstanceSecurityRetirementJournal.for_instance_runtime(
-            instance_runtime_path,
-            load_policy=core.load_policy,
+    startup: AbstractContextManager[bool],
+    runtime_version: Callable[[], str],
+    read_only: bool,
+    source: PluginSourceProjectionSourcePort | None,
+    security_acceptances: PluginInstanceSecurityRetirementJournal | None,
+    build_lifecycle: Callable[[LegacyPluginLifecycleBindings], _LifecycleT] | None,
+) -> PluginManagementApplicationPorts | _LifecycleT:
+    """Assemble and reconcile the legacy ledgers under the existing startup scope."""
+
+    with startup as owns_startup:
+        gc_path = layout.package_gc_reservations
+        desired_path = layout.desired_state
+        operations_path = layout.management_operations
+        intents_path = layout.retirement_intents
+        sets_path = layout.retirement_sets
+        migration_path = layout.enablement_migration
+        load_policy = (
+            JournalLoadPolicy(partial_tail="raise", create_lock=False)
+            if read_only
+            else None
         )
-    )
-    instances = PluginInstanceRuntimeLedger(
-        instance_runtime_path,
-        management_operation_journal_path=core.management.operation_journal_path,
-        desired_state=core.desired,
-        retirement_intents=core.intents,
-        retirement_sets=core.retirement_sets,
-        security_acceptances=security,
-        gc_gate=core.gc_reservations,
-        load_policy=core.load_policy,
-    )
-    packages = PluginPackageLifecycleLedger(
-        package_lifecycle_path,
-        startup_id=startup_id,
-        desired_state=core.desired,
-        instance_runtime=instances,
-        retirement_sets=core.retirement_sets,
-        gc_gate=core.gc_reservations,
-        load_policy=core.load_policy,
-    )
-    return PluginRuntimeLedgerBindings(
-        security=security,
-        instances=instances,
-        packages=packages,
-    )
+        desired_binding = bind_plugin_desired_state(
+            gc_path, desired_path, load_policy=load_policy
+        )
+        gate, desired = desired_binding.gc_reservations, desired_binding.desired
+        intents = PluginRetirementIntentLedger(intents_path, load_policy=load_policy)
+        retirement_sets = PluginRetirementSetLedger(
+            sets_path, retirement_intents=intents, load_policy=load_policy
+        )
+        management = PluginManagementService(
+            desired_state=desired,
+            operation_journal_path=operations_path,
+            retirement_intents=intents,
+            retirement_sets=retirement_sets,
+            load_policy=load_policy,
+        )
+        migration_journal = PluginEnablementMigrationJournal(
+            migration_path, load_policy=load_policy
+        )
+        migration_journal.assert_runtime_compatible(
+            supported_migration_epoch=PLUGIN_ENABLEMENT_MIGRATION_EPOCH,
+            runtime_version=runtime_version(),
+        )
+        if not read_only:
+            management.recover()
+        migrations = None
+        if build_lifecycle is not None:
+            migration_runtime_version = runtime_version()
+            migrations = PluginEnablementMigrationCoordinator(
+                journal=migration_journal,
+                desired_state=desired,
+                commands=PluginManagementCommandApplication(management),
+                runtime_version=migration_runtime_version,
+            )
+
+        instance_path = layout.instance_runtime
+        package_path = layout.package_lifecycle
+        security = security_acceptances or (
+            PluginInstanceSecurityRetirementJournal.for_instance_runtime(
+                instance_path, load_policy=load_policy
+            )
+        )
+        instances = PluginInstanceRuntimeLedger(
+            instance_path,
+            management_operation_journal_path=management.operation_journal_path,
+            desired_state=desired,
+            retirement_intents=intents,
+            retirement_sets=retirement_sets,
+            security_acceptances=security,
+            gc_gate=gate,
+            load_policy=load_policy,
+        )
+        packages = PluginPackageLifecycleLedger(
+            package_path,
+            startup_id=startup_id,
+            desired_state=desired,
+            instance_runtime=instances,
+            retirement_sets=retirement_sets,
+            gc_gate=gate,
+            load_policy=load_policy,
+        )
+        if build_lifecycle is not None:
+            assert migrations is not None
+            return build_lifecycle(
+                LegacyPluginLifecycleBindings(
+                    desired=desired,
+                    management=management,
+                    enablement_migrations=migrations,
+                    instances=instances,
+                    retirement_sets=retirement_sets,
+                    packages=packages,
+                    _gc_reservations=gate,
+                    security=security,
+                    _owns_process_startup_lease=owns_startup,
+                )
+            )
+        return PluginManagementApplicationPorts(
+            commands=PluginManagementCommandApplication(management),
+            queries=PluginManagementReadModelProjector(
+                desired_state=desired,
+                operations=management,
+                migrations=migration_journal,
+                source=source,
+                instances=instances,
+                packages=packages,
+                retirement=retirement_sets,
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
