@@ -7,10 +7,14 @@ from argparse import Namespace
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal, TextIO, TypeVar
+from typing import TYPE_CHECKING, Literal, TextIO, TypeVar
 
 from loushang.harness.environment import resolve_platform_paths
 from loushang.harness.host.prompt_input import PromptInputPlan, resolve_prompt_input
+
+if TYPE_CHECKING:
+    from loushang.harness.session.bootstrap_services import BootstrapServices
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 AgentCliMode = Literal["text", "print", "json", "rpc", "channel"]
 CommandListFormat = Literal["tsv", "json"]
@@ -440,6 +444,49 @@ def cwd_bound_services_factory(
         return getattr(result, "services", result)
 
     return build_for_cwd
+
+
+def prepare_agent_cli_runtime_options(
+    args: AgentCliArgs,
+    *,
+    session_dir: Path,
+    services: BootstrapServices,
+    create_services: Callable[..., object],
+    create_services_options: Mapping[str, object] | None,
+    tool_registry: WorkspaceToolRegistry,
+    tool_selection: tuple[list[str] | None, list[str] | None],
+    approval_resolver: object | None,
+    tool_policy_evaluator: object | None,
+) -> dict[str, object]:
+    """Prepare the standard loader, workspace rebinding, and Tool options."""
+    from loushang.harness.capabilities.tools import ToolSelection
+
+    resource_options = configure_agent_resource_loader(services.resource_loader, args)
+    services_factory = cwd_bound_services_factory(
+        services,
+        resource_options,
+        create_services=create_services,
+        create_services_options=create_services_options,
+    )
+    allowed, active = tool_selection
+    return {
+        "session_dir": session_dir,
+        "services": services,
+        "services_factory": services_factory,
+        "tool_registry": tool_registry,
+        "allowed_tool_names": ToolSelection.ALL if allowed is None else allowed,
+        "active_tool_names": active,
+        "no_tools": (
+            "all"
+            if getattr(args, "no_tools", False)
+            else "builtin"
+            if getattr(args, "no_builtin_tools", False)
+            else None
+        ),
+        "persist": not args.no_session,
+        "approval_resolver": approval_resolver,
+        "tool_policy_evaluator": tool_policy_evaluator,
+    }
 
 
 def _normalize_package_command(argv: list[str]) -> list[str]:

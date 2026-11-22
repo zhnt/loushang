@@ -36,6 +36,7 @@ from loushang.coding.cli.args import (
 from loushang.coding.cli.composition_choice import resolve_cli_composition_choice
 from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
+from loushang.coding.cli.prompt import run_prompt_command, run_prompt_plan_command
 from loushang.coding.cli.startup_route import _cli_launch_plan
 from loushang.coding.cli.workspace import (
     extract_workspace_argv,
@@ -129,7 +130,6 @@ from loushang.harness.approval import (
     InteractiveApprovalResolver,
     configure_persistent_approval_policy,
 )
-from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.cli import (
     AgentCliApplicationBinding,
     AgentCliApplicationState,
@@ -152,8 +152,6 @@ from loushang.harness.cli import (
     agent_tool_selection,
     capture_cli_parse,
     configure_agent_cli_session,
-    configure_agent_resource_loader,
-    cwd_bound_services_factory,
     distribution_version,
     extract_machine_resource_argv,
     extract_multiagent_argv,
@@ -173,6 +171,7 @@ from loushang.harness.cli import (
 from loushang.harness.cli import (
     format_cli_error as _format_cli_error,
 )
+from loushang.harness.cli.agent_args import prepare_agent_cli_runtime_options
 from loushang.harness.cli.application import (
     cli_options_match_defaults,
     run_guarded_cli_operation,
@@ -184,6 +183,9 @@ from loushang.harness.cli.plugin_listing import (
     format_plugin_records,
     list_plugin_records,
 )
+from loushang.harness.cli.session_resolution import (
+    configure_agent_cli_session_discovery,
+)
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.continuity import consume_prepared_activation
 from loushang.harness.diagnostics.observability_runtime import (
@@ -192,10 +194,6 @@ from loushang.harness.diagnostics.observability_runtime import (
 )
 from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 from loushang.harness.host.rpc import run_rpc_host
-from loushang.harness.machine_resources import (
-    prepare_private_directory_chain,
-    resolve_machine_resource_layout,
-)
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
     project_plugin_current_preview,
@@ -217,10 +215,6 @@ from loushang.harness.tools.workspace import (
     workspace_tool_runtime_settings,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-from loushang.harness.transcript import (
-    SessionDiscoverySource,
-    session_origin_from_resource_id,
-)
 from loushang.harness.workspace.paths import capture_workspace_directory_identity
 from loushang.harnesstui.continuity import run_continuity_picker
 from loushang.harnesstui.conversation.agent_binding import (
@@ -244,83 +238,6 @@ from loushang.method import (
 )
 
 _WORK_LOG_INSPECT_LIMIT = 20
-
-
-async def run_prompt_command(
-    *,
-    runtime: Any,
-    session: Any,
-    prompt: str,
-    stdout: TextIO,
-    stderr: TextIO,
-    images: list[object] | None = None,
-    follow_up_messages: Sequence[str] = (),
-    verbose: bool = False,
-    work_event_log: Any = None,
-    work_runtime: Any = None,
-    method_id: str | None = None,
-    plan_id: str | None = None,
-    step_id: str | None = None,
-    step_index: int | None = None,
-    step_title: str | None = None,
-    planned_constraint: Mapping[str, object] | None = None,
-    audit_policy: Mapping[str, object] | None = None,
-    plan_facts: Mapping[str, object] | None = None,
-    step_facts: Mapping[str, object] | None = None,
-    dispose: bool = True,
-) -> int:
-    """Load plain prompt presentation only for a plain prompt invocation."""
-    from loushang.coding.cli.prompt import run_prompt_command as run
-
-    return await run(
-        runtime=runtime,
-        session=session,
-        prompt=prompt,
-        stdout=stdout,
-        stderr=stderr,
-        images=images,
-        follow_up_messages=follow_up_messages,
-        verbose=verbose,
-        work_event_log=work_event_log,
-        work_runtime=work_runtime,
-        method_id=method_id,
-        plan_id=plan_id,
-        step_id=step_id,
-        step_index=step_index,
-        step_title=step_title,
-        planned_constraint=planned_constraint,
-        audit_policy=audit_policy,
-        plan_facts=plan_facts,
-        step_facts=step_facts,
-        dispose=dispose,
-    )
-
-
-async def run_prompt_plan_command(
-    *,
-    runtime: Any,
-    session: Any,
-    turns: Sequence[Any],
-    stdout: TextIO,
-    stderr: TextIO,
-    work_event_log: Any,
-    work_runtime: Any = None,
-    verbose: bool = False,
-    dispose: bool = True,
-) -> int:
-    from loushang.coding.cli.prompt import run_prompt_plan_command as run
-
-    return await run(
-        runtime=runtime,
-        session=session,
-        turns=turns,
-        stdout=stdout,
-        stderr=stderr,
-        work_event_log=work_event_log,
-        work_runtime=work_runtime,
-        verbose=verbose,
-        dispose=dispose,
-    )
 
 
 def build_default_services(project_root: Path) -> BootstrapServices:
@@ -426,13 +343,10 @@ def default_runtime_builder(
         if invocation_product_profile is not None
         else args
     )
-    resource_loader_options = configure_agent_resource_loader(
-        services.resource_loader,
+    runtime_options = prepare_agent_cli_runtime_options(
         resource_profile_args,
-    )
-    services_factory = cwd_bound_services_factory(
-        services,
-        resource_loader_options,
+        session_dir=session_dir,
+        services=services,
         create_services=_create_agent_session_services,
         create_services_options=(
             {
@@ -443,32 +357,16 @@ def default_runtime_builder(
             if invocation_product_profile is not None
             else None
         ),
+        tool_registry=runtime_tool_registry,
+        tool_selection=(allowed_tool_names, active_tool_names),
+        approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
     )
+    runtime_options["enable_multiagent"] = True
     runtime_factory = (
         _create_agent_invocation_session_runtime
         if invocation_product_profile is not None
         else create_agent_session_runtime
-    )
-    runtime_options = dict(
-        session_dir=session_dir,
-        services=services,
-        services_factory=services_factory,
-        tool_registry=runtime_tool_registry,
-        allowed_tool_names=(
-            ToolSelection.ALL if allowed_tool_names is None else allowed_tool_names
-        ),
-        active_tool_names=active_tool_names,
-        no_tools=(
-            "all"
-            if getattr(args, "no_tools", False)
-            else "builtin"
-            if getattr(args, "no_builtin_tools", False)
-            else None
-        ),
-        persist=not args.no_session,
-        approval_resolver=approval_resolver,
-        tool_policy_evaluator=tool_policy_evaluator,
-        enable_multiagent=True,
     )
     if invocation_product_profile is not None:
         runtime_options["product_profile"] = invocation_product_profile
@@ -530,49 +428,7 @@ def default_runtime_builder(
                     subject_digest=runtime._current_embedded_resume_subject_digest,
                     policy_digest=policy_fingerprint,
                 )
-    resource_layout = resolve_machine_resource_layout(cwd=cwd)
-    platform_sessions = resource_layout.sessions
-    if session_dir.expanduser().resolve(strict=False) == platform_sessions:
-        prepare_private_directory_chain(platform_sessions)
-        platform_sessions.chmod(0o700)
-        set_authority = getattr(runtime, "set_session_authority_source", None)
-        if callable(set_authority):
-            set_authority(
-                SessionDiscoverySource(
-                    source_id="sessions.global",
-                    root=platform_sessions,
-                    mode="canonical",
-                    origin="global",
-                    priority=0,
-                )
-            )
-        add_source = getattr(runtime, "add_session_discovery_source", None)
-        if callable(add_source):
-            for resource in resource_layout.resources:
-                if not (
-                    resource.resource_id.startswith("sessions.")
-                    and resource.mode == "compatibility"
-                ):
-                    continue
-                add_source(
-                    SessionDiscoverySource(
-                        source_id=resource.resource_id,
-                        root=resource.path,
-                        mode="compatibility",
-                        origin=session_origin_from_resource_id(resource.resource_id),
-                        priority=(
-                            10
-                            if resource.resource_id == "sessions.cwd_compatibility"
-                            else 20
-                            if resource.resource_id == "sessions.home_compatibility"
-                            else 100
-                        ),
-                    )
-                )
-        else:
-            add_legacy_source = getattr(runtime, "add_session_discovery_dir", None)
-            if callable(add_legacy_source):
-                add_legacy_source(cwd / ".loushang" / "sessions")
+    configure_agent_cli_session_discovery(runtime, cwd=cwd, session_dir=session_dir)
     return runtime
 
 

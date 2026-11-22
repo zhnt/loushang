@@ -11,6 +11,65 @@ from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session import require_session_operation_session
 from loushang.harness.transcript import SessionQuery
 
+_COMPATIBILITY_SESSION_PRIORITIES = {
+    "sessions.cwd_compatibility": 10,
+    "sessions.home_compatibility": 20,
+}
+
+
+def configure_agent_cli_session_discovery(
+    runtime: object, *, cwd: Path, session_dir: Path
+) -> None:
+    """Bind the platform Session writer and its read-only compatibility sources."""
+    from loushang.harness.machine_resources import (
+        prepare_private_directory_chain,
+        resolve_machine_resource_layout,
+    )
+    from loushang.harness.transcript import (
+        SessionDiscoverySource,
+        session_origin_from_resource_id,
+    )
+
+    layout = resolve_machine_resource_layout(cwd=cwd)
+    platform_sessions = layout.sessions
+    if session_dir.expanduser().resolve(strict=False) != platform_sessions:
+        return
+    prepare_private_directory_chain(platform_sessions)
+    platform_sessions.chmod(0o700)
+    set_authority = getattr(runtime, "set_session_authority_source", None)
+    if callable(set_authority):
+        set_authority(
+            SessionDiscoverySource(
+                source_id="sessions.global",
+                root=platform_sessions,
+                mode="canonical",
+                origin="global",
+                priority=0,
+            )
+        )
+    add_source = getattr(runtime, "add_session_discovery_source", None)
+    if callable(add_source):
+        for resource in layout.resources:
+            if (
+                resource.resource_id.startswith("sessions.")
+                and resource.mode == "compatibility"
+            ):
+                add_source(
+                    SessionDiscoverySource(
+                        source_id=resource.resource_id,
+                        root=resource.path,
+                        mode="compatibility",
+                        origin=session_origin_from_resource_id(resource.resource_id),
+                        priority=_COMPATIBILITY_SESSION_PRIORITIES.get(
+                            resource.resource_id, 100
+                        ),
+                    )
+                )
+    else:
+        add_legacy_source = getattr(runtime, "add_session_discovery_dir", None)
+        if callable(add_legacy_source):
+            add_legacy_source(cwd / ".loushang" / "sessions")
+
 
 @dataclass(frozen=True, slots=True)
 class SessionResolutionRequest:
