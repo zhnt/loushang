@@ -6,9 +6,11 @@ import hashlib
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import cast
 
 from loushang.coding.resume.activation_attempt import (
+    _FIELDS,
     CodingActivationAttemptV1,
     _require_v1_budget,
 )
@@ -24,19 +26,7 @@ _ID = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _CODE = re.compile(r"[a-z][a-z0-9._-]{0,63}\Z")
 _OWNER_FIELDS = {"ownerId", "scopeDigest", "contractDigest", "phases", "effectClasses"}
-_INTENT_FIELDS = {
-    "version",
-    "attemptId",
-    "requestId",
-    "sessionId",
-    "originalLeafId",
-    "ancestryDigest",
-    "planFingerprint",
-    "epochFingerprint",
-    "subjectDigest",
-    "effectClasses",
-    "effectOwners",
-}
+_INTENT_FIELDS = _FIELDS | {"effectOwners"}
 
 
 def _bytes(value: object) -> bytes:
@@ -193,23 +183,15 @@ def validate_coding_activation_attempt_v2_record(
         raise ValueError("Coding Resume v2 intent version is invalid")
     if type(raw["effectOwners"]) is not list or type(raw["effectClasses"]) is not list:
         raise ValueError("Coding Resume v2 intent lists are invalid")
-    attempt = CodingActivationAttemptV2(
-        attempt_id=cast(str, raw["attemptId"]),
-        request_id=cast(str, raw["requestId"]),
-        session_id=cast(str, raw["sessionId"]),
-        original_leaf_id=cast(str | None, raw["originalLeafId"]),
-        ancestry_digest=cast(str, raw["ancestryDigest"]),
-        plan_fingerprint=cast(str, raw["planFingerprint"]),
-        epoch_fingerprint=cast(str, raw["epochFingerprint"]),
-        subject_digest=cast(str, raw["subjectDigest"]),
-        effect_classes=tuple(cast(list[str], raw["effectClasses"])),
-        effect_owners=tuple(
-            CodingResumeEffectOwnerV1.from_data(owner) for owner in raw["effectOwners"]
+    return _records.decode_attempt_record_fields(
+        record,
+        raw,
+        effect_classes=tuple(raw["effectClasses"]),
+        construct=partial(
+            CodingActivationAttemptV2,
+            effect_owners=tuple(
+                CodingResumeEffectOwnerV1.from_data(owner) for owner in raw["effectOwners"]
+            ),
         ),
+        identity_error="Coding Resume v2 record identity or parent differs",
     )
-    if (
-        record.record_id != attempt.attempt_id
-        or record.parent_id != attempt.original_leaf_id
-    ):
-        raise ValueError("Coding Resume v2 record identity or parent differs")
-    return attempt

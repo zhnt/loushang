@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import re as re
 import time
-from collections.abc import Callable, Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable
 from collections.abc import Mapping as Mapping
 from dataclasses import dataclass
 from typing import Literal
@@ -236,36 +236,6 @@ def find_input_records(
     history = finish_history_scan(steps, matches)
     # A later unknown version invalidates even an earlier known input.
     return None if history.status == "unknown_version" else matches
-
-
-def observe_latest_bound_input(
-    records: Sequence[AgentTranscriptRecord],
-    *,
-    current_session_id: str,
-    input_id: str,
-    expected_digest: str,
-    digest: Callable[[AgentTranscriptRecord], str],
-) -> AgentTranscriptRecord | Literal["unknown", "conflict"] | None:
-    """Observe the latest bound input before a live owner is attached.
-
-    None allows the caller to consult its retained request when the projected
-    Binding does not identify this input.
-    """
-    projection = project_coding_activation_attempt_path_v2(
-        records, current_session_id=current_session_id
-    )
-    binding = projection.binding
-    if (
-        projection.binding_status != "bound"
-        or binding is None
-        or binding.input_id != input_id
-        or projection.binding_record_id is None
-    ):
-        return None
-    return select_input_record(
-        [record for record in records if record.record_id == projection.binding_record_id],
-        expected_digest=expected_digest, digest=digest, duplicate="unknown",
-    )
 
 
 def find_legacy_model_input(

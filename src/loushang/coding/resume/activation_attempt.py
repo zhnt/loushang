@@ -10,7 +10,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, cast
+from typing import Literal
 
 from loushang.ai.types import UserMessage
 from loushang.coding.resume.binding import (
@@ -223,20 +223,13 @@ def validate_coding_activation_attempt_record(
     effects = data["effectClasses"]
     if not isinstance(effects, list):
         raise ValueError("activation attempt effect classes are invalid")
-    attempt = CodingActivationAttemptV1(
-        attempt_id=cast(str, data["attemptId"]),
-        request_id=cast(str, data["requestId"]),
-        session_id=cast(str, data["sessionId"]),
-        original_leaf_id=cast(str | None, data["originalLeafId"]),
-        ancestry_digest=cast(str, data["ancestryDigest"]),
-        plan_fingerprint=cast(str, data["planFingerprint"]),
-        epoch_fingerprint=cast(str, data["epochFingerprint"]),
-        subject_digest=cast(str, data["subjectDigest"]),
-        effect_classes=cast(tuple[str, ...], tuple(effects)),
+    return _records.decode_attempt_record_fields(
+        record,
+        data,
+        effect_classes=tuple(effects),
+        construct=CodingActivationAttemptV1,
+        identity_error="activation attempt record identity or parent differs",
     )
-    if record.record_id != attempt.attempt_id or record.parent_id != attempt.original_leaf_id:
-        raise ValueError("activation attempt record identity or parent differs")
-    return attempt
 
 
 def _encoded(value: object) -> bytes:

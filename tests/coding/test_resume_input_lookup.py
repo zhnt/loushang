@@ -3,21 +3,29 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 
 import pytest
 
 from loushang.ai.types import UserMessage
+from loushang.coding.resume.activation_projection_v2 import (
+    project_coding_activation_attempt_path_v2,
+)
 from loushang.coding.resume.binding import (
     CodingRuntimeBindingV1,
     coding_user_payload_digest,
     prepare_coding_resume_user_record,
     project_coding_runtime_binding_path,
 )
+from loushang.coding.resume.history import read_coding_resume_snapshot
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     coding_resume_input_record_digest,
 )
 from loushang.coding.session.manager import SessionManager
+from loushang.harness.transcript._resume_continuation import (
+    lookup_detached_resume_input,
+)
 
 
 def _record(manager, *, record_id="record-1", text="continue"):
@@ -57,6 +65,24 @@ def test_logical_resume_input_lookup_survives_restart_without_a_ledger(tmp_path)
             assert path is not None
         finally:
             await manager.dispose_runtime_profile()
+        before = path.read_bytes()
+        history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+        lookup_detached = partial(
+            lookup_detached_resume_input,
+            history.selected_records,
+            current_session_id="session-1",
+            digest=coding_resume_input_record_digest,
+            project=project_coding_activation_attempt_path_v2,
+        )
+        assert lookup_detached(input_id=query.input_id, expected_digest=query.record_digest) == (
+            "record-1", "committed",
+        )
+        assert lookup_detached(input_id=query.input_id, expected_digest="d" * 64) == (
+            None, "conflict",
+        )
+        assert lookup_detached(input_id="missing", expected_digest=query.record_digest) is None
+        assert path.read_bytes() == before
+
         restored = await SessionManager.load(path)
         try:
             before = path.read_bytes()

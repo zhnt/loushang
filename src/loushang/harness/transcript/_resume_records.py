@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from datetime import datetime
 from hashlib import sha256
-from typing import TYPE_CHECKING, Generic, Literal, NamedTuple, Protocol, TypeVar
+from typing import TYPE_CHECKING, Generic, Literal, NamedTuple, Protocol, TypeVar, cast
 
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.foundation.json import JSONValue, dump_json_value
@@ -123,6 +123,34 @@ class _HistoricalBinding(Protocol):
 _IntentT = TypeVar("_IntentT", bound="_ResumeIntentRead")
 _BindingT = TypeVar("_BindingT", bound=_HistoricalBinding)
 _ResultT = TypeVar("_ResultT")
+
+
+def decode_attempt_record_fields(
+    record: AgentTranscriptRecord,
+    document: Mapping[str, object],
+    *,
+    effect_classes: tuple[object, ...],
+    construct: Callable[..., _IntentT],
+    identity_error: str,
+) -> _IntentT:
+    """Decode the shared intent fields after the Product checks its wire version."""
+    attempt = construct(
+        attempt_id=cast(str, document["attemptId"]),
+        request_id=cast(str, document["requestId"]),
+        session_id=cast(str, document["sessionId"]),
+        original_leaf_id=cast(str | None, document["originalLeafId"]),
+        ancestry_digest=cast(str, document["ancestryDigest"]),
+        plan_fingerprint=cast(str, document["planFingerprint"]),
+        epoch_fingerprint=cast(str, document["epochFingerprint"]),
+        subject_digest=cast(str, document["subjectDigest"]),
+        effect_classes=cast(tuple[str, ...], effect_classes),
+    )
+    if (
+        record.record_id != attempt.attempt_id
+        or record.parent_id != attempt.original_leaf_id
+    ):
+        raise ValueError(identity_error)
+    return attempt
 
 
 class _ActivationHistory(NamedTuple, Generic[_IntentT, _BindingT]):

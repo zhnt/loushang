@@ -91,14 +91,9 @@ from loushang.coding.resume.input_lookup import (
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session.manager import SessionManager
 from loushang.harness.approval import InteractiveApprovalResolver
-from loushang.harness.approval.plugin_activation import (
-    PluginActivationDecisionJournal as PluginActivationDecisionJournal,
-)
+from loushang.harness.approval._plugin_resume_parents import plugin_resume_journals
 from loushang.harness.approval.plugin_activation import (
     PluginActivationJournalError as PluginActivationJournalError,
-)
-from loushang.harness.approval.plugin_execution import (
-    PluginExecutionDecisionJournal as PluginExecutionDecisionJournal,
 )
 from loushang.harness.approval.plugin_execution import (
     PluginExecutionJournalError as PluginExecutionJournalError,
@@ -211,20 +206,11 @@ def _require_v2_native_writer_protocols(
         / '.resume-protocol-probe'
     )
     try:
-        PluginExecutionDecisionJournal(
-            probe_root / 'definition-decisions.jsonl',
-            scope_kind="workspace",
-            scope_id='session:protocol-probe',
-            required_writer_capabilities=frozenset(
-                {'harness.plugin-execution.resume-context/v1'}
-            ),
-        )
-        PluginActivationDecisionJournal(
-            probe_root / 'activation-decisions.jsonl',
-            scope_id='session:protocol-probe',
-            required_writer_capabilities=frozenset(
-                {'harness.plugin-activation.resume-context/v1'}
-            ),
+        plugin_resume_journals(
+            "protocol-probe",
+            probe_root / "definition-decisions.jsonl",
+            probe_root / "activation-decisions.jsonl",
+            require_resume_context=True,
         )
         WorkerActivationStateJournal(
             probe_root / 'worker-activation-state.jsonl',

@@ -102,10 +102,7 @@ from loushang.harness.transcript._resume_continuation import (
     _ResumePendingInput,
     _ResumeProjector,
 )
-from loushang.harness.transcript._resume_records import (
-    restore_verified_branch,
-    select_input_record,
-)
+from loushang.harness.transcript._resume_records import restore_verified_branch
 from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_file,
     load_agent_transcript_header,
@@ -251,6 +248,8 @@ class _CodingResumeRecords:
 
 
 class _CodingResumeHistory:
+    find_input_records = staticmethod(find_input_records)
+
     @property
     def project(self) -> _ResumeProjector[CodingActivationAttemptV1]:
         return project_coding_activation_attempt_path_v2
@@ -522,37 +521,10 @@ class SessionManager(
 
         if not isinstance(query, CodingResumeInputLookupQueryV1):
             raise TypeError("Coding Resume lookup query is invalid")
-        unknown = CodingResumeInputLookupResultV1(query.input_id, None, "unknown")
-        if not self.persist or len(self._transcript.records) > 65536:
-            return unknown
-        session_id = self.get_header().conversation_id
-        try:
-            candidates = find_input_records(
-                self._transcript.active_path(),
-                current_session_id=session_id,
-                input_id=query.input_id,
-            )
-        except ValueError:
-            return unknown
-        if candidates is None:
-            return unknown
-        pending = self._resume_first_input
-        if (
-            not candidates
-            and isinstance(pending, _PendingResumeFirstInput)
-            and pending.attempt.request_id == query.input_id
-            and pending.prepared_record is not None
-        ):
-            candidates.append(pending.prepared_record)
-        selected = select_input_record(
-            candidates, expected_digest=query.record_digest, digest=coding_resume_input_record_digest
+        observation = await self._lookup_resume_input_observation(
+            input_id=query.input_id, expected_digest=query.record_digest, max_records=65536,
         )
-        if isinstance(selected, str):
-            return CodingResumeInputLookupResultV1(query.input_id, None, selected)
-        observed = await self.lookup_prebuilt_user_message(selected)
-        return CodingResumeInputLookupResultV1(
-            query.input_id, observed.record_id, observed.status
-        )
+        return CodingResumeInputLookupResultV1(query.input_id, *observation)
 
     @classmethod
     def _session_factory(

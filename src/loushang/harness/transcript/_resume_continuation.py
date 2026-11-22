@@ -8,15 +8,16 @@ The original Transcript owner still performs all writes, blobs and lookups.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
-from typing import ClassVar, Generic, Protocol, TypeVar, cast
+from typing import ClassVar, Generic, Literal, NamedTuple, Protocol, TypeVar, cast
 
 from loushang.ai.types import UserMessage
 from loushang.foundation.json import JSONValue, require_json_mapping
 from loushang.harness.conversation import ConversationRecord, StoreCommitOutcomeUnknown
 
+from ._resume_records import _HistoricalBinding, select_input_record
 from .committer import CommitResult, PrebuiltUserMessageLookupResult
 from .product_session import BindingInputT, ProductBindingT, ProductTranscriptSession
 from .types import AgentTranscriptRecord, ExtensionData
@@ -77,6 +78,8 @@ class _ResumeProjection(Protocol[IntentCo]):
     def ancestry_digest(self) -> str: ...
     @property
     def binding_status(self) -> str: ...
+    @property
+    def binding(self) -> _HistoricalBinding | None: ...
     @property
     def binding_record_id(self) -> str | None: ...
 
@@ -153,6 +156,50 @@ class _ResumeHistory(Protocol[IntentCo]):
     def project(self) -> _ResumeProjector[IntentCo]: ...
     @property
     def project_async(self) -> _AsyncResumeProjector[IntentCo]: ...
+
+    def find_input_records(
+        self,
+        records: Iterable[AgentTranscriptRecord],
+        *,
+        current_session_id: str,
+        input_id: str,
+    ) -> list[AgentTranscriptRecord] | None: ...
+
+
+class _ResumeInputObservation(NamedTuple):
+    record_id: str | None
+    status: Literal["committed", "not_committed_verified", "unknown", "conflict"]
+
+
+def lookup_detached_resume_input(
+    records: Sequence[AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+    input_id: str,
+    expected_digest: str,
+    digest: Callable[[AgentTranscriptRecord], str],
+    project: _ResumeProjector[_ResumeIntentRead],
+) -> _ResumeInputObservation | None:
+    """Observe the latest bound input from a borrowed, read-only selected path."""
+    projection = project(records, current_session_id=current_session_id)
+    binding = projection.binding
+    record_id = projection.binding_record_id
+    if (
+        projection.binding_status != "bound"
+        or binding is None
+        or binding.input_id != input_id
+        or record_id is None
+    ):
+        return None
+    selected = select_input_record(
+        [record for record in records if record.record_id == record_id],
+        expected_digest=expected_digest,
+        digest=digest,
+        duplicate="unknown",
+    )
+    if isinstance(selected, str):
+        return _ResumeInputObservation(None, selected)
+    return _ResumeInputObservation(selected.record_id, "committed")
 
 
 class _ResumeContinuationTranscript(
@@ -655,6 +702,42 @@ class _ResumeContinuationTranscript(
             raise self._resume_recovery_error("runtime.input_unverified")
         self._require_committed_resume_input(attempt_id, record_id)
         return attempt
+
+    async def _lookup_resume_input_observation(
+        self, *, input_id: str, expected_digest: str, max_records: int
+    ) -> _ResumeInputObservation:
+        """Find exact selected or staged evidence and ask the original Writer."""
+        unknown = _ResumeInputObservation(None, "unknown")
+        if not self.persist or len(self._transcript.records) > max_records:
+            return unknown
+        session_id = self.get_header().conversation_id
+        try:
+            candidates = self._resume_history.find_input_records(
+                self._transcript.active_path(),
+                current_session_id=session_id,
+                input_id=input_id,
+            )
+        except ValueError:
+            return unknown
+        if candidates is None:
+            return unknown
+        pending = self._resume_first_input
+        if (
+            not candidates
+            and isinstance(pending, self._resume_pending_type)
+            and pending.attempt.request_id == input_id
+            and pending.prepared_record is not None
+        ):
+            candidates.append(pending.prepared_record)
+        selected = select_input_record(
+            candidates,
+            expected_digest=expected_digest,
+            digest=self._resume_messages.record_digest,
+        )
+        if isinstance(selected, str):
+            return _ResumeInputObservation(None, selected)
+        observed = await self.lookup_prebuilt_user_message(selected)
+        return _ResumeInputObservation(observed.record_id, observed.status)
 
     async def _lookup_resume_first_user_input(
         self,

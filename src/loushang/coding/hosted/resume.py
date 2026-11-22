@@ -56,9 +56,13 @@ from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.resume.activation_plan import SessionActivationPlanV1
+from loushang.coding.resume.activation_projection_v2 import (
+    project_coding_activation_attempt_path_v2,
+)
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     CodingResumeInputLookupResultV1,
+    coding_resume_input_record_digest,
 )
 from loushang.coding.resume.permission_confirmation import NativeResumePolicy
 from loushang.coding.runtime.resume_planning import ResumePlanningSlot
@@ -79,6 +83,9 @@ from loushang.harness.session.model_selection import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+from loushang.harness.transcript._resume_continuation import (
+    lookup_detached_resume_input,
+)
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 
@@ -411,26 +418,19 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         active = self._active
         if active is not None:
             return await active.lookup_resume_input(query)
-        from loushang.coding.resume.activation_projection_v2 import (
-            observe_latest_bound_input,
-        )
-        from loushang.coding.resume.input_lookup import (
-            coding_resume_input_record_digest,
-        )
-
         try:
-            selected = observe_latest_bound_input(
+            observation = lookup_detached_resume_input(
                 self._source.history.selected_records,
                 current_session_id=self.identity.session_id,
-                input_id=query.input_id, expected_digest=query.record_digest,
+                input_id=query.input_id,
+                expected_digest=query.record_digest,
                 digest=coding_resume_input_record_digest,
+                project=project_coding_activation_attempt_path_v2,
             )
         except ValueError:
             return CodingResumeInputLookupResultV1(query.input_id, None, "unknown")
-        if isinstance(selected, str):
-            return CodingResumeInputLookupResultV1(query.input_id, None, selected)
-        if selected is not None:
-            return CodingResumeInputLookupResultV1(query.input_id, selected.record_id, "committed")
+        if observation is not None:
+            return CodingResumeInputLookupResultV1(query.input_id, *observation)
         retained = self._latest_input_query
         if retained is not None and retained.input_id == query.input_id:
             return CodingResumeInputLookupResultV1(
