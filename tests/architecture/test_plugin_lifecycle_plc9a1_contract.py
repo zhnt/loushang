@@ -20,6 +20,9 @@ CODING_BINDING = Path("src/loushang/coding/plugin_manager/binding.py")
 CODING_COMPATIBILITY = Path("src/loushang/coding/plugin_manager/enablement_compatibility.py")
 CODING_BOOTSTRAP = Path('src/loushang/coding/composition/bootstrap.py')
 CODING_CONTINUITY = Path('src/loushang/coding/composition/continuity.py')
+INSTALLED_CONTINUITY = Path(
+    "src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py"
+)
 SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
 CONFIG_ENGINE = Path("src/loushang/harness/config/engine.py")
 CONFIG_RUNTIME = Path("src/loushang/harness/config/runtime.py")
@@ -281,9 +284,13 @@ def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
     assert "bind_coding_plugin_enablement_compatibility(" in binding
     assert "resolve_coding_plugin_lifecycle_state_layout(" in bootstrap
     assert "bind_coding_plugin_enablement_compatibility(" in bootstrap
-    assert "resolve_installed_continuity_sources(" in continuity
+    assert "hold_installed_continuity_runtime(" in continuity
+    installed = _source(INSTALLED_CONTINUITY)
+    assert "resolve_installed_continuity_sources(" in installed
     assert continuity.count("bind_coding_plugin_enablement_compatibility(") == 1
-    assert continuity.count("compatibility.reconcile()") == 3
+    assert continuity.count("compatibility.reconcile()") == 1
+    assert "compatibility.reconcile if compatibility is not None else None" in continuity
+    assert installed.count("reconcile_compatibility()") == 2
     # PLC9B reads an existing composition early to hold the startup lease;
     # compatibility still reconciles before any cached composition can return.
     assert continuity.index(
