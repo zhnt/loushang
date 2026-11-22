@@ -21,7 +21,10 @@ from loushang.harness.package_product._legacy_management_evidence import (
     require_empty_lock_markers,
     require_service_lock_markers,
 )
-from loushang.harness.package_product._legacy_runtime import _LegacyFirstSnapshot
+from loushang.harness.package_product._legacy_runtime import (
+    _FencedRuntime,
+    _LegacyFirstSnapshot,
+)
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
@@ -29,9 +32,6 @@ from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshot
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.plugin_management.retirement import (
     inspect_removed_installation_epoch,
-)
-from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_legacy_source_wheel import (
     _LegacyWheelValues,
@@ -251,7 +251,7 @@ def reacquire_legacy_bound_wheel(
 
 def reacquire_legacy_inventory_source(
     read_inventory: Callable[[], LegacyInventoryEvidence],
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    epoch_runtime: _FencedRuntime,
     *,
     legacy_package_root: Path,
     plugin_id: str,

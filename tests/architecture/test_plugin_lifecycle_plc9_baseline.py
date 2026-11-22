@@ -67,8 +67,6 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/composition/continuity.py"),
     Path("src/loushang/coding/harness/package_product/legacy_builtin_review.py"),
     Path("src/loushang/coding/harness/package_product/legacy_disabled_review.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_local_acceptance.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
     Path("src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py"),
     Path("src/loushang/coding/harness/package_product/startup.py"),
     Path("src/loushang/coding/harness/session/configured_continuity.py"),
@@ -78,6 +76,7 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
     Path("src/loushang/coding/package/legacy_disabled_review.py"),
     Path("src/loushang/coding/package/legacy_removed_review.py"),
+    Path("src/loushang/coding/package/legacy_local_acceptance.py"),
     Path("src/loushang/coding/package/legacy_review.py"),
     Path("src/loushang/coding/package/product_runtime.py"),
     Path("src/loushang/coding/package/source_snapshot.py"),
@@ -324,16 +323,12 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "review_disabled_snapshot",
         ): 3,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_local_acceptance.py"
-            ),
-            "create_acceptance",
+            Path("src/loushang/coding/package/legacy_local_acceptance.py"),
+            "CodingLegacyLocalAcceptanceV1.create",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_local_acceptance.py"
-            ),
-            "require_frozen_review",
+            Path("src/loushang/coding/package/legacy_local_acceptance.py"),
+            "_require_frozen_review",
         ): 2,
         (
             Path(
@@ -370,20 +365,20 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "CodingLegacyLocalAdoptionReviewV1",
         ): 1,
         (
-            Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
-            "validate_review",
+            Path("src/loushang/coding/package/legacy_review.py"),
+            "CodingLegacyLocalAdoptionReviewV1.__post_init__",
         ): 3,
         (
             Path("src/loushang/coding/package/legacy_review.py"),
             "CodingLegacyLocalAdoptionReviewV1._identity_dict",
         ): 2,
         (
-            Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
-            "decode_review",
+            Path("src/loushang/coding/package/legacy_review.py"),
+            "CodingLegacyLocalAdoptionReviewV1.from_dict",
         ): 1,
         (
-            Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
-            "review_local_source",
+            Path("src/loushang/coding/package/legacy_review.py"),
+            "review_coding_legacy_installed_local_source",
         ): 2,
         (
             Path("src/loushang/coding/harness/package_product/startup.py"),

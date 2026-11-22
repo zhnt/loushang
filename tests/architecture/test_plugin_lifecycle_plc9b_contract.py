@@ -2249,15 +2249,6 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             })
         elif path in apphost_file_primitives:
             _require_package_kernel_imports(path, apphost_file_primitives[path])
-        elif path == SOURCE_ROOT / "coding/harness/package_product/legacy_local_review.py":
-            _require_package_kernel_imports(path, {
-                "loushang.harness.resources.packages.plugin_lifecycle.adoption": {
-                    "PackageLegacyStateEvidenceV1",
-                },
-                "loushang.harness.resources.packages.plugin_lifecycle.epoch_fence": {
-                    "PackageEpochFenceReceiptV1",
-                },
-            })
         elif path.is_relative_to(Path("src/loushang/coding")):
             assert (
                 path.parent == Path("src/loushang/coding/package")

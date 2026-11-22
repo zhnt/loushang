@@ -530,6 +530,28 @@ and Harness dependency direction. Five formal modules loaded with Coding
 imports forbidden. The task worktree sources match that candidate byte for
 byte. Native Windows coverage for the epoch identity callers is pending.
 
+### Local Source Review And Acceptance
+
+The staged `legacy_local_review` and `legacy_local_acceptance` engines exit.
+Formal Package Product owns the shared first-fence evidence projection. Live
+review verifies the recaptured Wheel and joins it to the same inventory and
+fence; accepted receipt reopen reads the frozen snapshot and checks the same
+identity fields without live Source. The existing acceptance journal retains
+its locks, current-review check and atomic publication. Coding applies the
+operator's review choice, resource kind, supported Source and builtin policy,
+and the existing nominal codecs and versions.
+
+This batch removes 646 staging lines and adds 405 Coding Product and 207
+Harness production lines. Hosting and other production code have no changes.
+The system decreases by 34 production Python lines for this batch and 146
+cumulatively. Staging holds 80 files and 14,396 lines, down 16 files and 2,829
+lines from baseline. Existing architecture expectations follow the moved
+Product settings and remove the retired staging import exemption.
+
+The batch passed 41 Linux behavior cases and all 63 existing architecture
+cases. The behavior cases include reopening an accepted Prompt after the
+original Source has disappeared and the exact install and enable guards.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected
