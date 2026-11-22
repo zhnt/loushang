@@ -1965,24 +1965,16 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         if isinstance(request, SessionCapabilityWorkerComponentRequest):
                             continue
                         assert component_host is not None
-                        component_starts[id(request)] = component_host.begin_admission(
-                            request.resolved,
-                            owner_snapshot=request.owner_snapshot,
-                            trust_snapshot=request.trust_snapshot,
-                            decision_id=request.activation_decision_id,
+                        component_starts[id(request)] = request.begin_admission(
+                            component_host
                         )
                     for request in composition_inputs.component_requests:
                         if isinstance(request, SessionCapabilityWorkerComponentRequest):
                             continue
                         assert component_host is not None
                         prepared_components.append(
-                            component_host.prepare_component(
-                                request.resolved,
-                                package=request.package,
-                                owner_snapshot=request.owner_snapshot,
-                                trust_snapshot=request.trust_snapshot,
-                                decision_id=request.activation_decision_id,
-                                admission_start=component_starts[id(request)],
+                            request.prepare_component(
+                                component_host, component_starts[id(request)]
                             )
                         )
                 catalog_bootstrap = self._initial_resource_catalog_bootstrap

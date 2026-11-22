@@ -9,6 +9,7 @@ from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 from loushang.harness.session.capability_composition_inputs import (
     StagedSessionCapabilityOwnerGeneration,
+    capture_owner_generation_receipts,
 )
 
 from ._owner_evidence import _receipt_identity
@@ -162,20 +163,6 @@ class _OwnerPublication(Generic[ReceiptT]):
         self._retired = True
 
 
-def _capture_generation_receipts(
-    generations: OwnerGenerations, plugin_id: str, prepared: bool
-) -> list[OwnerGenerationRetirementReceipt]:
-    return [
-        (
-            generation.capture_prepared_retirement_receipt()
-            if prepared
-            else generation.capture_retirement_receipt()
-        )
-        for generation in generations
-        if generation.binding.plugin_id == plugin_id
-    ]
-
-
 def _single_owner_publication(
     lease: _OwnerEvidenceTarget[OwnerReceipts],
     *,
@@ -189,7 +176,9 @@ def _single_owner_publication(
         candidate: StagedResourceCompositionCandidate | None,
         prepared: bool,
     ) -> OwnerReceipts:
-        receipts = _capture_generation_receipts(generations, plugin_id, prepared)
+        receipts = capture_owner_generation_receipts(
+            generations, plugin_id, prepared=prepared
+        )
         owners = owner_contributions()
         if owners is None:
             return ()
@@ -228,7 +217,9 @@ def _owner_set_publication(
         return {
             plugin_id: tuple(
                 sorted(
-                    _capture_generation_receipts(generations, plugin_id, prepared),
+                    capture_owner_generation_receipts(
+                        generations, plugin_id, prepared=prepared
+                    ),
                     key=_receipt_identity,
                 )
             )

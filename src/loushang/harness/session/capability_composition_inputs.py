@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from threading import Lock
-from typing import Literal, Protocol, TypeAlias, cast, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, cast, runtime_checkable
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCapabilityConsumerRequirementEntry,
@@ -50,6 +50,12 @@ from loushang.harness.runtime.registration import (
     RegistrationScope,
     registration_scope_retirement_receipt,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.capabilities.component_host import (
+        CapabilityComponentAdmissionStart,
+        CapabilityComponentHost,
+    )
 
 SessionCompositionChange = Literal["no_change", "restart_required"]
 
@@ -114,6 +120,30 @@ class SessionCapabilityComponentRequest:
     @property
     def capability_id(self) -> str:
         return self.resolved.capability_id
+
+    def begin_admission(
+        self, host: CapabilityComponentHost
+    ) -> CapabilityComponentAdmissionStart:
+        return host.begin_admission(
+            self.resolved,
+            owner_snapshot=self.owner_snapshot,
+            trust_snapshot=self.trust_snapshot,
+            decision_id=self.activation_decision_id,
+        )
+
+    def prepare_component(
+        self,
+        host: CapabilityComponentHost,
+        admission_start: CapabilityComponentAdmissionStart,
+    ) -> PreparedSessionCapabilityComponent:
+        return host.prepare_component(
+            self.resolved,
+            package=self.package,
+            owner_snapshot=self.owner_snapshot,
+            trust_snapshot=self.trust_snapshot,
+            decision_id=self.activation_decision_id,
+            admission_start=admission_start,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -879,6 +909,23 @@ class StagedSessionCapabilityOwnerGeneration:
         self.committed = False
         self.commit_started = False
         self.disposed = True
+
+
+def capture_owner_generation_receipts(
+    generations: tuple[StagedSessionCapabilityOwnerGeneration, ...],
+    plugin_id: str,
+    *,
+    prepared: bool,
+) -> list[OwnerGenerationRetirementReceipt]:
+    return [
+        (
+            generation.capture_prepared_retirement_receipt()
+            if prepared
+            else generation.capture_retirement_receipt()
+        )
+        for generation in generations
+        if generation.binding.plugin_id == plugin_id
+    ]
 
 
 class SessionCapabilityOwnerGenerationStagingError(RuntimeError):
