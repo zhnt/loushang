@@ -62,6 +62,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management.application import (
     PluginBackupRetentionRecordV1,
 )
+from loushang.harness.plugin_management.private_data_deletion import (
+    PluginPrivateDataDeletionPlanV1,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -110,6 +113,10 @@ class CodingArchPrivateDataBackupClientV1:
 
         with self._reader() as reader:
             return reader.verify_backup(self.installation_key, backup_id)
+
+    def _preview_deletion(self) -> PluginPrivateDataDeletionPlanV1:
+        with self._reader() as reader:
+            return reader.deletion_preview(self.installation_key)
 
     def restore_preview(self, backup_id: str) -> CodingArchPrivateDataRestorePlanV1:
         """Read a removed Installation's exact restore plan."""

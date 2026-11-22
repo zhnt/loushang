@@ -18,7 +18,6 @@ from loushang.coding.package.installation_private_data import (
 from loushang.coding.package.installation_private_data import (
     coding_arch_workspace_installation_key,
 )
-from loushang.coding.package.private_data_backup import CodingArchPrivateDataBackupOwner
 from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryOwner,
     CodingArchPrivateDataBackupExpiryPlanV1,
@@ -27,13 +26,11 @@ from loushang.coding.package.private_data_backup_expiry_journal import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
 )
 from loushang.coding.package.private_data_backup_sdk import (
+    CodingArchPrivateDataBackupClientV1,
     open_coding_arch_private_data_backup_client,
 )
 from loushang.coding.package.private_data_deletion_owner import (
     CodingArchPrivateDataDeletionOwner,
-)
-from loushang.coding.package.private_data_read_owner import (
-    CodingArchPrivateDataReadOwner,
 )
 from loushang.coding.package.private_data_restore import (
     CodingArchPrivateDataRestoreOwner,
@@ -44,6 +41,7 @@ from loushang.coding.package.private_data_restore_journal import (
     restore_id_for,
 )
 from loushang.coding.package.private_data_windows_backup_client import (
+    CodingWindowsArchBackupCandidateClientV1,
     open_coding_windows_arch_backup_candidate_client,
 )
 from loushang.coding.package.product_runtime import (
@@ -76,6 +74,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 _POLICY_REVISION = "coding-arch-private-data-cli:1"
 _EXPIRY_POLICY_REVISION = "coding-arch-backup-expiry-cli:1"
 _MAX_INPUT_BYTES = 16 * 1024
+_BACKUP_ACCESS_ACTIONS = ("backup", "backup-status", "backup-verify", "restore-preview")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -153,100 +152,92 @@ def main(argv: Sequence[str] | None = None) -> int:
         layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
         if os.name == "nt":
             result = _run_windows_action(workspace, layout, args)
-            sys.stdout.write(json.dumps(result, sort_keys=True) + "\n")
-            return 0
-        if args.action == "backup-status":
-            record = open_coding_arch_private_data_backup_client(workspace).status()
-            sys.stdout.write(
-                json.dumps({"backupRetention": record.to_dict()}, sort_keys=True) + "\n"
-            )
-            return 0
-        if args.action in {
-            "backup-verify",
+        elif args.action in _BACKUP_ACCESS_ACTIONS or args.action in {
             "preview",
-            "restore-preview",
+            "restore-confirm",
             "restore-confirm-verify",
             "backup-expiry-preview",
         }:
-            identity = workspace.lstat()
-            reader = CodingArchPrivateDataReadOwner.open(
-                layout=layout,
-                workspace=workspace,
-                workspace_identity=(identity.st_dev, identity.st_ino),
-            )
-            try:
-                read_result: dict[str, object]
-                key = coding_arch_workspace_installation_key(layout.scope_id)
-                if args.action == "backup-verify":
-                    receipt = reader.verify_backup(key, args.backup_id)
-                    read_result = {"backupReceipt": receipt.to_dict()}
-                elif args.action == "preview":
-                    read_plan = reader.deletion_preview(key)
-                    read_result = {
-                        "fingerprint": read_plan.fingerprint,
-                        "plan": read_plan.to_dict(),
-                    }
-                elif args.action == "restore-preview":
-                    restore_plan = reader.restore_preview(key, args.backup_id)
-                    read_result = {
-                        "fingerprint": restore_plan.fingerprint,
-                        "restorePlan": restore_plan.to_dict(),
-                    }
-                elif args.action == "restore-confirm-verify":
-                    confirmation = reader.verify_restore_confirmation(
-                        key, args.backup_id, args.confirmation_id
-                    )
-                    read_result = {"restoreConfirmation": confirmation.to_dict()}
-                else:
-                    expiry_plan = reader.expiry_preview(
-                        key, args.backup_id, args.confirmation_id
-                    )
-                    read_result = {
-                        "backupExpiryPlan": expiry_plan.to_dict(),
-                        "fingerprint": expiry_plan.fingerprint,
-                    }
-            finally:
-                reader.close()
-            sys.stdout.write(json.dumps(read_result, sort_keys=True) + "\n")
-            return 0
-        application = open_coding_fenced_product_application_owner(
-            layout,
-            workspace=workspace,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-        )
-        try:
-            product = application.runtime_owner.product_owner
-            if not isinstance(
-                product, PosixLocalWheelProductSessionOwner
-            ) or not isinstance(
-                application.epoch_runtime, PackageProductPosixFencedRuntimeOwner
-            ):
-                raise ValueError("Coding private-data Product owner is unsupported")
-            if args.action == "backup":
-                key = coding_arch_workspace_installation_key(layout.scope_id)
-                receipt = CodingArchPrivateDataBackupOwner(
-                    layout, product
-                ).retain(key)
-                result = {"backupReceipt": receipt.to_dict()}
-            elif args.action == "restore":
-                result = _run_restore(layout, product, args)
-            elif args.action == "restore-confirm":
-                key = coding_arch_workspace_installation_key(layout.scope_id)
-                owner = CodingArchPrivateDataRestoreOwner(layout, product)
-                confirmation = owner.confirm(key, args.backup_id)
-                result = {"restoreConfirmation": confirmation.to_dict()}
-            elif args.action in {"backup-expiry-confirm", "backup-expire"}:
-                result = _run_backup_expiry(layout, product, args)
-            else:
-                result = _run_product_action(layout, application, product, args)
-        finally:
-            application.close()
+            result = _run_posix_backup_action(workspace, args)
+        else:
+            result = _run_posix_product_action(workspace, layout, args)
     except (OSError, RuntimeError, ValueError, PackageNotFoundError):
         sys.stderr.write("Coding private-data command refused: operation_refused\n")
         return 1
     sys.stdout.write(json.dumps(result, sort_keys=True) + "\n")
     return 0
+
+
+def _run_posix_product_action(
+    workspace: Path,
+    layout: CodingPluginLifecycleStateLayout,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    application = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    )
+    try:
+        product = application.runtime_owner.product_owner
+        if not isinstance(
+            product, PosixLocalWheelProductSessionOwner
+        ) or not isinstance(
+            application.epoch_runtime, PackageProductPosixFencedRuntimeOwner
+        ):
+            raise ValueError("Coding private-data Product owner is unsupported")
+        if args.action == "restore":
+            return _run_restore(layout, product, args)
+        if args.action in {"backup-expiry-confirm", "backup-expire"}:
+            return _run_backup_expiry(layout, product, args)
+        return _run_product_action(layout, application, product, args)
+    finally:
+        application.close()
+
+
+def _run_backup_access(
+    client: CodingArchPrivateDataBackupClientV1
+    | CodingWindowsArchBackupCandidateClientV1,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    if args.action == "backup-status":
+        return {"backupRetention": client.status().to_dict()}
+    if args.action == "backup":
+        return {"backupReceipt": client.retain().to_dict()}
+    if args.action == "backup-verify":
+        return {"backupReceipt": client.verify(args.backup_id).to_dict()}
+    plan = client.restore_preview(args.backup_id)
+    return {"fingerprint": plan.fingerprint, "restorePlan": plan.to_dict()}
+
+
+def _run_posix_backup_action(
+    workspace: Path, args: argparse.Namespace
+) -> dict[str, object]:
+    client = open_coding_arch_private_data_backup_client(workspace)
+    if args.action == "preview":
+        deletion_plan = client._preview_deletion()
+        return {
+            "fingerprint": deletion_plan.fingerprint,
+            "plan": deletion_plan.to_dict(),
+        }
+    if args.action == "restore-confirm":
+        return {"restoreConfirmation": client.confirm_restore(args.backup_id).to_dict()}
+    if args.action == "restore-confirm-verify":
+        confirmation = client.verify_restore_confirmation(
+            args.backup_id, args.confirmation_id
+        )
+        return {"restoreConfirmation": confirmation.to_dict()}
+    if args.action == "backup-expiry-preview":
+        plan = client.expiry_preview(args.backup_id, args.confirmation_id)
+        return _backup_expiry_preview_document(plan)
+    return _run_backup_access(client, args)
+
+
+def _backup_expiry_preview_document(
+    plan: CodingArchPrivateDataBackupExpiryPlanV1,
+) -> dict[str, object]:
+    return {"backupExpiryPlan": plan.to_dict(), "fingerprint": plan.fingerprint}
 
 
 def _run_windows_action(
@@ -260,23 +251,13 @@ def _run_windows_action(
         workspace, layout=layout, runtime_version=version("loushang")
     )
     action = args.action
-    if action == "backup-status":
-        return {"backupRetention": client.status().to_dict()}
-    if action == "backup":
-        return {"backupReceipt": client.retain().to_dict()}
-    if action == "backup-verify":
-        return {"backupReceipt": client.verify(args.backup_id).to_dict()}
+    if action in _BACKUP_ACCESS_ACTIONS:
+        return _run_backup_access(client, args)
     if action == "preview":
         deletion_plan = client.deletion_preview()
         return {
             "fingerprint": deletion_plan.fingerprint,
             "plan": deletion_plan.to_dict(),
-        }
-    if action == "restore-preview":
-        restore_plan = client.restore_preview(args.backup_id)
-        return {
-            "fingerprint": restore_plan.fingerprint,
-            "restorePlan": restore_plan.to_dict(),
         }
     if action == "restore-confirm-verify":
         restore_plan = _read_windows_restore_plan(args)
@@ -301,11 +282,9 @@ def _run_windows_action(
             }
         }
     if action == "backup-expiry-preview":
-        expiry_plan = client.backup_expiry_preview(args.backup_id, args.confirmation_id)
-        return {
-            "backupExpiryPlan": expiry_plan.to_dict(),
-            "fingerprint": expiry_plan.fingerprint,
-        }
+        return _backup_expiry_preview_document(
+            client.backup_expiry_preview(args.backup_id, args.confirmation_id)
+        )
     if action == "backup-expiry-confirm":
         expiry_plan = _read_expiry_plan(Path(args.plan_file))
         if args.accept_fingerprint != expiry_plan.fingerprint:
@@ -371,9 +350,6 @@ def _run_restore(
 ) -> dict[str, object]:
     key = coding_arch_workspace_installation_key(layout.scope_id)
     owner = CodingArchPrivateDataRestoreOwner(layout, product)
-    if args.action == "restore-preview":
-        plan = owner.preview(key, args.backup_id)
-        return {"fingerprint": plan.fingerprint, "restorePlan": plan.to_dict()}
     plan = _read_restore_plan(Path(args.plan_file))
     if plan.installation_key != key or args.accept_fingerprint != plan.fingerprint:
         raise ValueError("Coding Arch restore plan was not accepted")
@@ -454,9 +430,6 @@ def _run(
     key: PluginInstallationKeyV1,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    if args.action == "preview":
-        plan = coordinator.preview(key)
-        return {"fingerprint": plan.fingerprint, "plan": plan.to_dict()}
     plan = _read_plan(Path(args.plan_file))
     if plan.installation_key != key:
         raise ValueError("Coding private-data plan is foreign")
