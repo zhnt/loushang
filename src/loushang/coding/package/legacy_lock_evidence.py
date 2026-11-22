@@ -2,25 +2,13 @@
 
 from __future__ import annotations
 
-import json as json
 from dataclasses import dataclass
-from hashlib import sha256 as sha256
 
-from loushang.coding.harness.package_product import legacy_binding_evidence as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.foundation.json import _unique_json_object_hook
-from loushang.harness.resources.packages.materializer import (
-    _plugin_binding_from_json as _plugin_binding_from_json,
+from loushang.harness.package_product._legacy_binding_evidence import (
+    decode_legacy_local_binding_heads,
 )
-from loushang.harness.resources.packages.materializer import (
-    _plugin_binding_history_key as _plugin_binding_history_key,
-)
-from loushang.harness.resources.plugins.dependencies import (
-    PluginDependencyClosureLock,
-)
-from loushang.harness.resources.plugins.types import (
-    PluginSourceBinding as PluginSourceBinding,
-)
+from loushang.harness.resources.plugins.dependencies import PluginDependencyClosureLock
 
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
@@ -28,37 +16,6 @@ from .legacy_snapshot_member import (
 )
 
 _MAX_LOCK_BYTES = 2 * 1024 * 1024
-_TOP_LEVEL_KEYS = frozenset(
-    {"version", "trustedSources", "packages", "pluginBindings", "pluginBindingHeads"}
-)
-_BINDING_KEYS = frozenset(
-    {
-        "source",
-        "sourceIdentity",
-        "sourceKind",
-        "pluginId",
-        "manifestDigest",
-        "contentDigest",
-        "revision",
-        "revisionKind",
-    }
-)
-
-
-_LEGACY_EVIDENCE_VALUES = {
-    "value_001": "Coding legacy Package lock exceeds budget",
-    "value_002": "Coding legacy Package lock version is unsupported",
-    "value_003": "Coding legacy Plugin history lacks a head",
-    "value_004": "Coding legacy Package lock is invalid JSON",
-    "value_005": "Coding legacy Plugin binding is malformed",
-    "value_006": "Coding legacy Plugin binding is invalid",
-    "value_007": "Coding legacy Plugin binding is duplicated",
-    "value_008": "Coding legacy Plugin head is malformed",
-    "value_009": "Coding legacy Plugin head is invalid",
-    "value_010": "Coding legacy Plugin head is ambiguous",
-    "value_011": "Coding legacy Plugin Source kind or dependency closure is unsupported",
-    "value_012": "Coding legacy Plugin identity is ambiguous",
-}
 
 
 class CodingLegacyLockError(ValueError):
@@ -104,12 +61,15 @@ def parse_coding_legacy_local_binding_heads(
     operator decision, and Product transaction before adoption.
     """
 
-    return _programs.parse_binding_heads(raw)
-
-
-_unique_object = _unique_json_object_hook(
-    lambda: "Coding legacy Package lock has duplicate JSON keys",
-)
+    return tuple(
+        CodingLegacyLocalBindingEvidenceV1(*evidence)
+        for evidence in decode_legacy_local_binding_heads(
+            raw,
+            maximum_bytes=_MAX_LOCK_BYTES,
+            error_type=CodingLegacyLockError,
+            label="Coding legacy",
+        )
+    )
 
 
 __all__ = [

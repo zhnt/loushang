@@ -7,8 +7,9 @@ from typing import Literal
 
 from loushang.coding.harness.package_product import legacy_inventory as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.plugin_management.retirement import (
-    inspect_removed_installation_epoch as inspect_removed_installation_epoch,
+from loushang.harness.package_product._legacy_inventory import (
+    classify_legacy_installations,
+    prove_removed_legacy_bindings,
 )
 
 from .legacy_desired_evidence import (
@@ -65,31 +66,10 @@ _LEGACY_PROGRAM_VALUES = {
     "value_007": "Coding old Desired state is missing",
     "value_008": "package-lock.json.lock",
     "value_009": "Coding old Package lock changed",
-    "value_010": "instance-runtime.jsonl",
-    "value_011": "retirement-intents.jsonl",
-    "value_016": "management-operations.jsonl",
     "value_017": "Coding old management operation journal is missing",
     "value_020": "Coding old management lock changed",
-    "value_021": "retirement-sets.jsonl",
     "value_022": "Coding old retirement journals are missing",
     "value_023": "Coding old Instance runtime evidence is missing",
-    "value_024": "Coding legacy local bindings are required",
-    "value_025": "Coding legacy desired evidence is invalid",
-    "value_026": "Coding legacy workspace scope is invalid",
-    "value_027": "Coding legacy lock snapshot changed",
-    "value_028": "Coding legacy binding identity is ambiguous",
-    "value_029": "coding",
-    "value_030": "Coding legacy Installation scope changed",
-    "value_031": "Coding legacy installed revision is missing",
-    "value_032": "Coding legacy installed revision differs from current Source head",
-    "value_033": "Coding legacy builtin Source is unsupported",
-    "value_034": "Coding legacy Desired evidence is required",
-    "value_035": "Coding old local removal set is unsupported",
-    "value_036": "Coding old local removal",
-    "value_037": "Coding old local removal does not match its lock head",
-    "value_038": "coding.base",
-    "value_039": "coding.lsp.default",
-    "value_040": "coding.arch.default",
 }
 
 
@@ -159,7 +139,35 @@ def classify_coding_legacy_installations(
 ) -> CodingLegacyInstallationInventoryV1:
     """List only exact installed local heads; preserve negative user intent."""
 
-    return _programs.classify_installations(bindings, desired, scope_id=scope_id)
+    if type(bindings) is not tuple or any(
+        not isinstance(item, CodingLegacyLocalBindingEvidenceV1) for item in bindings
+    ):
+        raise TypeError("Coding legacy local bindings are required")
+    if desired is not None and not isinstance(desired, CodingLegacyDesiredEvidenceV1):
+        raise TypeError("Coding legacy desired evidence is invalid")
+    if not isinstance(scope_id, str) or not scope_id.startswith("workspace:"):
+        raise ValueError("Coding legacy workspace scope is invalid")
+    facts = classify_legacy_installations(
+        bindings,
+        None if desired is None else desired.snapshot,
+        product_id="coding",
+        scope_id=scope_id,
+        builtin_ids=_BUILTINS,
+        error_type=CodingLegacyInventoryError,
+        label="Coding legacy",
+    )
+    return CodingLegacyInstallationInventoryV1(
+        active_local=tuple(
+            CodingLegacyLocalInstallationV1(*item) for item in facts.active_local
+        ),
+        builtin_intent=tuple(
+            CodingLegacyBuiltinIntentV1(*item) for item in facts.builtin_intent
+        ),
+        removed_plugin_ids=facts.removed_plugin_ids,
+        unselected_source_identities=facts.unselected_source_identities,
+        desired_journal_digest=None if desired is None else desired.journal_digest,
+        lockfile_digest=facts.lockfile_digest,
+    )
 
 
 def classify_coding_legacy_removed_local_installations(
@@ -176,8 +184,23 @@ def classify_coding_legacy_removed_local_installations(
     the final installation epoch and its eventual removal.
     """
 
-    return _programs.classify_removed_installations(
+    if not isinstance(desired, CodingLegacyDesiredEvidenceV1):
+        raise TypeError("Coding legacy Desired evidence is required")
+    inventory = classify_coding_legacy_installations(
         bindings, desired, scope_id=scope_id
+    )
+    return tuple(
+        CodingLegacyRemovedLocalInstallationV1(*item)
+        for item in prove_removed_legacy_bindings(
+            bindings,
+            desired.transitions,
+            unselected_source_identities=inventory.unselected_source_identities,
+            removed_plugin_ids=inventory.removed_plugin_ids,
+            builtin_ids=_BUILTINS,
+            maximum_bindings=16,
+            error_type=CodingLegacyInventoryError,
+            label="Coding old local removal",
+        )
     )
 
 

@@ -10,8 +10,12 @@ from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 from loushang.coding.package import legacy_skill_cutover_admission as _binding
+from loushang.coding.package.legacy_instance_evidence import _read_management_history
+from loushang.harness.package_product._legacy_management_evidence import (
+    require_empty_lock_markers,
+    require_service_lock_markers,
+)
 
-from . import legacy_management_evidence as _management_evidence
 from .legacy_reacquisition import reacquire_bound_wheel
 from .legacy_source_matching import index_configured_sources
 
@@ -79,7 +83,7 @@ def admit_local_snapshot(
         read_member = partial(owner.read_regular_member, receipt_id)
         package_lock = _binding._LEGACY_PROGRAM_VALUES["value_010"]
         if package_lock in lock_members:
-            _management_evidence.require_empty_lock_markers(
+            require_empty_lock_markers(
                 read_member,
                 (("lock_history", package_lock),),
                 error_type=ValueError,
@@ -108,16 +112,20 @@ def admit_local_snapshot(
             desired_raw, lifecycle=lifecycle
         )
         if has_operations:
-            _management_evidence.verify_settled_history(
-                lifecycle=lifecycle,
-                instance_members=instance_members,
-                desired=desired,
-                read_member=read_member,
-                receiver=_binding,
+            require_service_lock_markers(
+                read_member,
+                instance_members,
                 error_type=ValueError,
-                messages=(
+                message=_binding._LEGACY_PROGRAM_VALUES["value_031"],
+            )
+            _read_management_history(
+                lifecycle,
+                instance_members,
+                desired,
+                read_member,
+                error_type=ValueError,
+                missing_messages=(
                     _binding._LEGACY_PROGRAM_VALUES["value_025"],
-                    _binding._LEGACY_PROGRAM_VALUES["value_031"],
                     _binding._LEGACY_PROGRAM_VALUES["value_033"],
                     _binding._LEGACY_PROGRAM_VALUES["value_034"],
                 ),

@@ -408,6 +408,45 @@ modules and found the same signatures, class bases and annotated fields.
 Compatibility probes retain their original expectations and inject faults at
 the current call sites. Tests and documentation are accounted separately.
 
+## Formal Staging Convergence
+
+The baseline for this delivery is `db196bf1e`. It holds 96 staged Python
+files and 17,225 physical lines. Package Product accounts for 41 files and
+6,914 lines. The baseline includes 79 staged files with an absolute import
+from another Coding component. The delivery audit follows aliases and actual
+callers in addition to this initial source count.
+
+### Legacy Evidence And Historical Review Records
+
+| Staged module | Current disposition |
+| --- | --- |
+| `legacy_desired_evidence` | Formal Package Product decodes the frozen Desired journal and verifies scope. Coding constructs its historical evidence type. |
+| `legacy_operation_evidence` | Formal Package Product checks the exact legacy member shape. The Coding compatibility entry preserves its error identity. |
+| `legacy_management_evidence` | Formal Package Product reads the captured lock markers and journal bytes. Existing Plugin Management decoders verify the settled Desired and retirement history. |
+| `legacy_binding_evidence` | Formal Package Product checks v4 lock heads using the existing binding codec in Resources. Coding keeps the legacy result type. |
+| `legacy_classification` | The Coding workspace and settings classification policies live under their existing Product entrypoints. |
+| `legacy_inventory` | Formal Package Product joins captured lock heads to Desired records and verifies the exact removed Installation epoch. Snapshot orchestration remains in staging for the next batch. |
+| `legacy_removed_review` | The exact record validation and wire projection live with the Coding nominal records. Pre-fence admission and fenced review orchestration remain in staging. |
+
+Inventory, removed-Installation review and offline local data admission use
+the same settled-history proof. Builtin-only review uses the same marker check.
+The receipt-read authority remains with the caller. Both fence paths keep
+their existing read order, quota, missing-evidence errors and digest behavior.
+The shared history reader receives paths, frozen Desired facts and error
+types. It calls the existing Harness verification functions directly.
+
+The candidate retires five staged files and shrinks two more. Staged Python
+decreases by 983 lines, Coding Product grows by 318 lines and formal Harness
+grows by 605 lines. The system decreases by 60 production Python lines. No
+test or script source changes are included. The 55 inventory, lock and
+configuration tests and the 26 removal, retirement and pre-fence refusal
+tests pass on the isolated candidate on Linux.
+The capture-routing checkpoint passed 194 Linux tests covering the cutover CLI
+and existing dependency-graph checks. The final candidate passed the existing
+acyclic Harness check and imported all three new formal evidence modules with
+Coding imports forbidden. Final source files in the task worktree match the
+tested candidate byte for byte.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

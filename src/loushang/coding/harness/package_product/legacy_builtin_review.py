@@ -9,8 +9,10 @@ from __future__ import annotations
 from functools import partial
 
 from loushang.coding.package import legacy_builtin_review as _binding
-
-from .legacy_management_evidence import SERVICE_LOCK_MARKERS, require_empty_lock_markers
+from loushang.harness.package_product._legacy_management_evidence import (
+    SERVICE_LOCK_MARKERS,
+    require_empty_lock_markers,
+)
 
 
 def admit_builtin_snapshot(
