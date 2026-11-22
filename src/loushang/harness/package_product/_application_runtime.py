@@ -8,7 +8,8 @@ import os
 import stat
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from threading import RLock
@@ -24,6 +25,17 @@ from typing import (
 )
 
 from loushang.harness.journal import JournalLoadPolicy
+from loushang.harness.plugin_management.application import (
+    PluginBackupRetentionProjectionSourcePort,
+    PluginManagementApplicationCommandV1,
+    PluginManagementApplicationPorts,
+    PluginManagementApplicationResultV1,
+    PluginManagementCommandApplication,
+    PluginManagementProjectionV1,
+    PluginManagementQueryV1,
+    PluginManagementReadModelProjector,
+    PluginSourceProjectionSourcePort,
+)
 from loushang.harness.plugin_management.assembly import (
     PluginDesiredStateBindings,
     bind_plugin_desired_state,
@@ -32,14 +44,26 @@ from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.operation_explanation import (
+    PluginOperationExplanationProjector,
+    PluginOperationExplanationV1,
+)
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
+from loushang.harness.plugin_management.package_operation_explanation import (
+    PackageOperationExplanationProjector,
+    PackageOperationExplanationV1,
+)
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.plugin_lifecycle.journal import (
+    PackageLifecycleJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+    PackageRetentionHandoffJournal,
     PackageRetentionHandoffReceiptV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -210,6 +234,159 @@ def open_read_only_product_management_state(
         load_policy=_READ_ONLY_LOAD_POLICY,
     )
     return desired, management, _READ_ONLY_LOAD_POLICY
+
+
+class FencedProductManagementApplication(ABC):
+    """Scope management and Package evidence to one POSIX Product epoch per call."""
+
+    __slots__ = ()
+    workspace_guard: Callable[[], None] | None
+
+    @abstractmethod
+    def _open_epoch(
+        self, *, read_only: bool
+    ) -> PackageProductPosixFencedRuntimeOwner: ...
+
+    @abstractmethod
+    def _open_write_state(
+        self, runtime: PackageProductPosixFencedRuntimeOwner
+    ) -> tuple[PluginDesiredStateLedger, PluginManagementService]: ...
+
+    @abstractmethod
+    def _source(
+        self,
+        runtime: PackageProductPosixFencedRuntimeOwner,
+        desired: PluginDesiredStateLedger,
+        *,
+        read_only: bool,
+    ) -> PluginSourceProjectionSourcePort: ...
+
+    @abstractmethod
+    def _backup_retention(
+        self, runtime: PackageProductPosixFencedRuntimeOwner
+    ) -> PluginBackupRetentionProjectionSourcePort: ...
+
+    def assert_workspace_current(self) -> None:
+        if self.workspace_guard is not None:
+            self.workspace_guard()
+
+    def open(
+        self, *, read_only: bool
+    ) -> tuple[PackageProductPosixFencedRuntimeOwner, PluginManagementApplicationPorts]:
+        self.assert_workspace_current()
+        runtime = self._open_epoch(read_only=read_only)
+        try:
+            self.assert_workspace_current()
+            if read_only:
+                desired, management, _ = open_read_only_product_management_state(
+                    runtime.control_root / "product-state"
+                )
+            else:
+                runtime.prepare_product_state_root()
+                desired, management = self._open_write_state(runtime)
+            ports = PluginManagementApplicationPorts(
+                commands=PluginManagementCommandApplication(management),
+                queries=PluginManagementReadModelProjector(
+                    desired_state=desired,
+                    operations=management,
+                    retirement=management.retirement_projection,
+                    source=self._source(runtime, desired, read_only=read_only),
+                    backup_retention=self._backup_retention(runtime),
+                ),
+            )
+            runtime.assert_current()
+            self.assert_workspace_current()
+            return runtime, ports
+        except BaseException:
+            runtime.close()
+            raise
+
+    @contextmanager
+    def scope(
+        self, *, read_only: bool
+    ) -> Iterator[
+        tuple[PackageProductPosixFencedRuntimeOwner, PluginManagementApplicationPorts]
+    ]:
+        runtime, ports = self.open(read_only=read_only)
+        try:
+            yield runtime, ports
+            runtime.assert_current()
+            self.assert_workspace_current()
+        finally:
+            runtime.close()
+
+    def bind_ports(self) -> PluginManagementApplicationPorts:
+        return PluginManagementApplicationPorts(
+            commands=_FencedManagementCommands(self),
+            queries=_FencedManagementQueries(self),
+        )
+
+    def explain_package_operation(
+        self, operation_id: str
+    ) -> PackageOperationExplanationV1:
+        with self.scope(read_only=True) as (runtime, _):
+            return PackageOperationExplanationProjector(
+                PackageLifecycleJournal(
+                    runtime.control_root / "product-state" / "lifecycle.jsonl"
+                )
+            ).explain_operation(operation_id)
+
+    def explain_plugin_operation(
+        self, operation_id: str, *, correlation_id: str
+    ) -> PluginOperationExplanationV1:
+        with self.scope(read_only=True) as (runtime, ports):
+            state_root = runtime.control_root / "product-state"
+            return PluginOperationExplanationProjector(
+                package_operations=PackageLifecycleJournal(
+                    state_root / "lifecycle.jsonl"
+                ),
+                management_commands=ports.commands,
+                handoffs=PackageRetentionHandoffJournal(state_root / "handoff.jsonl"),
+            ).explain_operation(operation_id, correlation_id=correlation_id)
+
+    def read_package_handoff(
+        self, operation_id: str
+    ) -> PackageRetentionHandoffReceiptV1 | None:
+        with self.scope(read_only=True) as (runtime, _):
+            return PackageRetentionHandoffJournal(
+                runtime.control_root / "product-state" / "handoff.jsonl"
+            ).read_operation(operation_id)
+
+    def read_desired_transition(
+        self, operation_id: str
+    ) -> PluginDesiredStateJournalTransition | None:
+        runtime, _ = self.open(read_only=True)
+        with closing(runtime):
+            return read_fenced_product_desired_transition(runtime, operation_id)
+
+
+@dataclass(frozen=True, slots=True)
+class _FencedManagementQueries:
+    owner: FencedProductManagementApplication
+
+    def snapshot(self, query: PluginManagementQueryV1) -> PluginManagementProjectionV1:
+        with self.owner.scope(read_only=True) as (_, ports):
+            self.owner.assert_workspace_current()
+            return ports.queries.snapshot(query)
+
+
+@dataclass(frozen=True, slots=True)
+class _FencedManagementCommands:
+    owner: FencedProductManagementApplication
+
+    def submit(
+        self, request: PluginManagementApplicationCommandV1
+    ) -> PluginManagementApplicationResultV1:
+        with self.owner.scope(read_only=False) as (_, ports):
+            self.owner.assert_workspace_current()
+            return ports.commands.submit(request)
+
+    def operation(
+        self, operation_id: str, *, correlation_id: str
+    ) -> PluginManagementApplicationResultV1 | None:
+        with self.owner.scope(read_only=True) as (_, ports):
+            self.owner.assert_workspace_current()
+            return ports.commands.operation(operation_id, correlation_id=correlation_id)
 
 
 def read_fenced_product_desired_transition(

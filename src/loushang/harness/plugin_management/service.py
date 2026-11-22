@@ -7,7 +7,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
@@ -77,6 +77,11 @@ from loushang.harness.plugin_management.updates import (
     changed_package_fields,
     migration_fence_for,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.plugin_management.application import (
+        PluginRetirementProjectionSourcePort,
+    )
 
 _TERMINAL_LEDGER_FAILURE_CODES = frozenset(
     PLUGIN_MANAGEMENT_TERMINAL_ERROR_CODES - {"plugin_installation_already_enabled"}
@@ -203,6 +208,11 @@ class PluginManagementService:
     @property
     def retirement_set_journal_path(self) -> Path:
         return self._retirement_sets.path
+
+    @property
+    def retirement_projection(self) -> PluginRetirementProjectionSourcePort:
+        """Read retirement from the ledger bound to this command authority."""
+        return self._retirement_sets
 
     def submit(
         self,
