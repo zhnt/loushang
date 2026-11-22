@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
@@ -95,15 +95,12 @@ from loushang.harness.resources.packages._private_tree_windows import (
     prepare_private_windows_directory_chain,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
-from loushang.harness.resources.plugins.selection import (
-    PluginPreflightContextV1,
-    PluginSelectionPlanV2,
-    PluginSourceTrustSnapshotV1,
-)
+from loushang.harness.resources.plugins.selection import PluginSourceTrustSnapshotV1
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
+    build_product_plugin_selection_plan,
     project_product_owner_candidates,
 )
 from loushang.harness.session.product_composition_assembly import (
@@ -452,38 +449,6 @@ def _validate_product_lineage(
     validate_preparation_lineage(runtime, selected, label="Coding Product Capability")
 
 
-def _fenced_selection_plan(
-    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
-    packages: Iterable[PublishedPluginPackage],
-    *,
-    configurations: Mapping[str, CodingCapabilityPluginConfig],
-    product_id: str,
-    scope_id: str,
-    policy_revision: str,
-    base: PluginSelectionPlanV2 | None = None,
-) -> PluginSelectionPlanV2:
-    by_id = {item.manifest.name: item for item in selected}
-    selected_ids = tuple(sorted(by_id))
-    return PluginSelectionPlanV2.from_selected_entries(
-        PluginPreflightContextV1(
-            product_id=product_id,
-            scope_id=scope_id,
-            policy_revision=policy_revision,
-            instance_revision_refs=tuple(
-                by_id[plugin_id].snapshot.instance_revision_ref
-                for plugin_id in selected_ids
-            ),
-        ),
-        selected_plugin_ids=selected_ids,
-        source_trust_snapshots=tuple(
-            _required_trust(by_id[plugin_id]) for plugin_id in selected_ids
-        ),
-        additions=_capability_configuration_entries(packages, configurations),
-        allowed_authority_ceiling=("filesystem", "process"),
-        base=base,
-    )
-
-
 def _product_plan_seed(
     runtime: PluginRuntimeResolution,
     selected: tuple[PackageProductSelectedPluginManifestV1, ...],
@@ -508,19 +473,28 @@ def _product_plan_seed(
         selected_data_ids, base_owner_bindings = _builtin_data_owner_bindings(
             base_compilation, selected
         )
-    plan = _fenced_selection_plan(
-        selected,
-        (
-            package
-            for package, _ in pairs
-            if base_plan is None
-            or package.manifest.name in configurations
-            or package.manifest.name in selected_data_ids
-        ),
-        configurations=configurations,
+    by_id = {item.manifest.name: item for item in selected}
+    plugin_ids = tuple(sorted(by_id))
+    plan = build_product_plugin_selection_plan(
         product_id="coding" if base_plan is None else base_plan.context.product_id,
         scope_id=scope_id,
         policy_revision=product_policy_revision,
+        plugin_ids=plugin_ids,
+        instance_refs=tuple(
+            by_id[plugin_id].snapshot.instance_revision_ref for plugin_id in plugin_ids
+        ),
+        source_trust=(_required_trust(by_id[plugin_id]) for plugin_id in plugin_ids),
+        additions=_capability_configuration_entries(
+            (
+                package
+                for package, _ in pairs
+                if base_plan is None
+                or package.manifest.name in configurations
+                or package.manifest.name in selected_data_ids
+            ),
+            configurations,
+        ),
+        allowed_authority_ceiling=("filesystem", "process"),
         base=base_plan,
     )
     return ProductPluginPlanSeed(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from itertools import chain
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -90,9 +91,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginEffectiveConfigurationEntry,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
-    PluginPreflightContextV1,
     PluginSelection,
-    PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
@@ -118,6 +117,7 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
     bind_selected_registration_authority,
+    build_product_plugin_selection_plan,
 )
 from loushang.harness.session.product_composition_assembly import (
     prepare_product_plugin_composition as prepare_product_plugin_composition,
@@ -1160,89 +1160,54 @@ def _prepare_selection_plan_seed(
 ) -> ProductPluginPlanSeed:
     package_bindings = tuple(zip(runtime.packages, runtime.bindings, strict=True))
     base_plan = coding_product_plan_seed.plan if coding_product_plan_seed else None
-    policy_revision = (
-        base_plan.context.policy_revision
-        if base_plan is not None
-        else _PRODUCT_POLICY_REVISION
-    )
-    base_instance_refs = (
-        base_plan.context.instance_revision_refs if base_plan is not None else ()
-    )
-    base_plugin_ids = base_plan.selected_plugin_ids if base_plan is not None else ()
-    base_trust = base_plan.source_trust_snapshots if base_plan is not None else ()
-    plan = PluginSelectionPlanV2.from_selected_entries(
-        context=PluginPreflightContextV1(
-            product_id=CODING_PRODUCT_ID,
-            scope_id=scope_id,
-            policy_revision=policy_revision,
-            instance_revision_refs=tuple(
-                sorted(
-                    (
-                        *base_instance_refs,
-                        *tuple(
-                            (
-                                management_leases[plugin_id].instance_revision_ref
-                                if plugin_id in management_leases
-                                else PluginInstanceRevisionRef(
-                                    instance_id=f"{plugin_id}@{scope_id}",
-                                    plugin_id=plugin_id,
-                                    revision=1,
-                                )
-                            )
-                            for plugin_id in sorted(configurations)
-                        ),
-                    ),
-                    key=lambda item: (
-                        item.plugin_id,
-                        item.instance_id,
-                        item.revision,
-                    ),
-                )
-            ),
+    plugin_ids = tuple(sorted(configurations))
+    plan = build_product_plugin_selection_plan(
+        product_id=CODING_PRODUCT_ID,
+        scope_id=scope_id,
+        policy_revision=(
+            _PRODUCT_POLICY_REVISION
+            if base_plan is None
+            else base_plan.context.policy_revision
         ),
-        selected_plugin_ids=tuple(sorted((*base_plugin_ids, *configurations.keys()))),
-        source_trust_snapshots=tuple(
-            sorted(
-                (
-                    *base_trust,
-                    *tuple(
-                        PluginSourceTrustSnapshotV1(
-                            plugin_id=package.manifest.name,
-                            package_source_identity=binding.source_identity,
-                            source_trust_class=_SOURCE_TRUST_CLASS,
-                            source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
-                            trusted=True,
-                        )
-                        for package, binding in package_bindings
-                    ),
-                ),
-                key=lambda item: (item.plugin_id, item.package_source_identity),
+        plugin_ids=plugin_ids,
+        instance_refs=tuple(
+            management_leases[plugin_id].instance_revision_ref
+            if plugin_id in management_leases
+            else PluginInstanceRevisionRef(
+                instance_id=f"{plugin_id}@{scope_id}", plugin_id=plugin_id, revision=1
+            )
+            for plugin_id in plugin_ids
+        ),
+        source_trust=(
+            PluginSourceTrustSnapshotV1(
+                plugin_id=package.manifest.name,
+                package_source_identity=binding.source_identity,
+                source_trust_class=_SOURCE_TRUST_CLASS,
+                source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
+                trusted=True,
+            )
+            for package, binding in sorted(
+                package_bindings, key=lambda pair: pair[0].manifest.name
             )
         ),
         additions=_capability_configuration_entries(
             (package for package, _ in package_bindings), configurations
         ),
         base=base_plan,
+        extend_base_selection=True,
         allowed_authority_ceiling=("filesystem", "process"),
     )
-    all_package_bindings = tuple(
-        sorted(
-            (
-                *(
-                    tuple(
-                        zip(
-                            coding_product_plan_seed.packages,
-                            coding_product_plan_seed.bindings,
-                            strict=True,
-                        )
-                    )
-                    if coding_product_plan_seed is not None
-                    else ()
-                ),
-                *package_bindings,
-            ),
-            key=lambda item: item[0].manifest.name,
+    base_pairs = (
+        ()
+        if coding_product_plan_seed is None
+        else zip(
+            coding_product_plan_seed.packages,
+            coding_product_plan_seed.bindings,
+            strict=True,
         )
+    )
+    all_package_bindings = sorted(
+        chain(base_pairs, package_bindings), key=lambda pair: pair[0].manifest.name
     )
     return ProductPluginPlanSeed(
         plan=plan,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
@@ -1811,6 +1811,57 @@ SelectedProductDataDeclaration = tuple[
 ]
 
 
+def build_product_plugin_selection_plan(
+    *,
+    product_id: str,
+    scope_id: str,
+    policy_revision: str,
+    plugin_ids: tuple[str, ...],
+    instance_refs: tuple[PluginInstanceRevisionRef, ...],
+    source_trust: Iterable[PluginSourceTrustSnapshotV1],
+    additions: Iterable[PluginEffectiveConfigurationEntry],
+    allowed_authority_ceiling: tuple[str, ...],
+    base: PluginSelectionPlanV2 | None = None,
+    extend_base_selection: bool = False,
+) -> PluginSelectionPlanV2:
+    """Combine contribution entries with an exact Plugin selection.
+
+    By default the Plugin evidence describes the entire selection. If it covers
+    only additional Plugins, extend the base evidence as well as its entries.
+    """
+    extend_base = base if extend_base_selection else None
+    if extend_base is not None:
+        instance_refs = tuple(
+            sorted(
+                (*extend_base.context.instance_revision_refs, *instance_refs),
+                key=lambda item: (item.plugin_id, item.instance_id, item.revision),
+            )
+        )
+        plugin_ids = tuple(sorted((*extend_base.selected_plugin_ids, *plugin_ids)))
+    context = PluginPreflightContextV1(
+        product_id=product_id,
+        scope_id=scope_id,
+        policy_revision=policy_revision,
+        instance_revision_refs=instance_refs,
+    )
+    trust = tuple(source_trust)
+    if extend_base is not None:
+        trust = tuple(
+            sorted(
+                (*extend_base.source_trust_snapshots, *trust),
+                key=lambda item: item.plugin_id,
+            )
+        )
+    return PluginSelectionPlanV2.from_selected_entries(
+        context=context,
+        selected_plugin_ids=plugin_ids,
+        source_trust_snapshots=trust,
+        additions=additions,
+        base=base,
+        allowed_authority_ceiling=allowed_authority_ceiling,
+    )
+
+
 def build_product_data_selection_plan(
     external: tuple[PackageProductSelectedPluginManifestV1, ...],
     *,
@@ -1821,35 +1872,17 @@ def build_product_data_selection_plan(
     base: PluginSelectionPlanV2 | None = None,
 ) -> PluginSelectionPlanV2:
     """Build a data plan from verified Store facts and the Product's selected entries."""
-    instance_refs = tuple(item.snapshot.instance_revision_ref for item in external)
-    plugin_ids = tuple(item.manifest.name for item in external)
-    trust = tuple(
-        item.source_trust_snapshot
-        for item in external
-        if item.source_trust_snapshot is not None
-    )
-    if base is not None:
-        instance_refs = tuple(
-            sorted(
-                (*base.context.instance_revision_refs, *instance_refs),
-                key=lambda item: item.plugin_id,
-            )
-        )
-        plugin_ids = tuple(sorted((*base.selected_plugin_ids, *plugin_ids)))
-        trust = tuple(
-            sorted(
-                (*base.source_trust_snapshots, *trust), key=lambda item: item.plugin_id
-            )
-        )
-    return PluginSelectionPlanV2.from_selected_entries(
-        context=PluginPreflightContextV1(
-            product_id=product_id,
-            scope_id=scope_id,
-            policy_revision=policy_revision,
-            instance_revision_refs=instance_refs,
+    return build_product_plugin_selection_plan(
+        product_id=product_id,
+        scope_id=scope_id,
+        policy_revision=policy_revision,
+        plugin_ids=tuple(item.manifest.name for item in external),
+        instance_refs=tuple(item.snapshot.instance_revision_ref for item in external),
+        source_trust=(
+            item.source_trust_snapshot
+            for item in external
+            if item.source_trust_snapshot is not None
         ),
-        selected_plugin_ids=plugin_ids,
-        source_trust_snapshots=trust,
         additions=(
             PluginEffectiveConfigurationEntry(
                 plugin_id=item.manifest.name,
@@ -1859,6 +1892,7 @@ def build_product_data_selection_plan(
             for item, reservation, _ in declarations
         ),
         base=base,
+        extend_base_selection=True,
         allowed_authority_ceiling=()
         if base is None
         else base.allowed_authority_ceiling,
