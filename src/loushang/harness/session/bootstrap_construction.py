@@ -84,6 +84,14 @@ from loushang.harness.session.model_resolution import (
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
+if TYPE_CHECKING:
+    from loushang.harness.resource_catalog.product_inputs import (
+        InitialResourceCatalogProductAdapter,
+    )
+    from loushang.harness.resource_catalog.session_bootstrap import (
+        InitialSessionResourceCatalogBootstrap,
+    )
+
 
 class _RootOwnedResourceHandles(Protocol):
     skill_activation: SkillActivationRuntime
@@ -938,6 +946,29 @@ def rollback_unpublished_construction(
     run_cleanup_steps(error, steps)
 
 
+def construct_catalog_session(
+    adapter: InitialResourceCatalogProductAdapter,
+    *,
+    product_id: str,
+    session_id: str,
+    bundle: ResourceBundle,
+    construct: Callable[[InitialSessionResourceCatalogBootstrap], SessionT],
+    abort_unpublished: CleanupStep | None = None,
+) -> SessionT:
+    """Keep the original Catalog and Plugin cleanup order on a failed handoff."""
+    try:
+        return adapter.construct_session(
+            product_id=product_id,
+            session_id=session_id,
+            base_resource_bundle=bundle,
+            construct=construct,
+        )
+    except BaseException as error:
+        if abort_unpublished is not None:
+            run_cleanup_steps(error, (abort_unpublished,))
+        raise
+
+
 def require_catalog_receipt(
     loader: ResourceLoader,
     cwd: Path,
@@ -971,12 +1002,19 @@ class PreparationRootCustody(Generic[_PreparationT]):
     def prepare_roots(
         self,
         *,
-        make_state: Callable[[], ExplicitTemporaryDirectory | None],
-        make_private: Callable[[], ExplicitTemporaryDirectory | None],
+        state_prefix: str | None,
+        private_prefix: str | None,
         persistent_root: Callable[[], Path],
+        directory_factory: Callable[..., ExplicitTemporaryDirectory] = ExplicitTemporaryDirectory,
     ) -> Path:
-        self.state_root = make_state()
-        self.private_root = make_private()
+        self.state_root = (
+            directory_factory(prefix=state_prefix) if state_prefix is not None else None
+        )
+        self.private_root = (
+            directory_factory(prefix=private_prefix)
+            if private_prefix is not None
+            else None
+        )
         return (
             Path(self.state_root.name)
             if self.state_root is not None
@@ -984,12 +1022,21 @@ class PreparationRootCustody(Generic[_PreparationT]):
         )
 
     def attach_cleanup(self, preparation: _PreparationT) -> None:
-        preparation.state_cleanup = (
-            self.state_root.cleanup if self.state_root is not None else None
-        )
-        preparation.private_state_cleanup = (
-            self.private_root.cleanup if self.private_root is not None else None
-        )
+        preparation.state_cleanup = self.state_cleanup
+        preparation.private_state_cleanup = self.private_cleanup
+
+    @property
+    def state_cleanup(self) -> Callable[[], None] | None:
+        return self.state_root.cleanup if self.state_root is not None else None
+
+    @property
+    def private_cleanup(self) -> Callable[[], None] | None:
+        return self.private_root.cleanup if self.private_root is not None else None
+
+    def cleanup_preparation_sequentially(self) -> None:
+        if self.preparation is not None:
+            self.preparation.close()
+        self.cleanup_roots_sequentially()
 
     def cleanup_roots_sequentially(self) -> None:
         if self.state_root is not None:
@@ -1005,31 +1052,25 @@ class PreparationRootCustody(Generic[_PreparationT]):
             tuple(
                 (name, cleanup)
                 for name, cleanup in (
-                    (
-                        state_label,
-                        self.state_root.cleanup
-                        if self.state_root is not None
-                        else None,
-                    ),
-                    (
-                        private_label,
-                        self.private_root.cleanup
-                        if self.private_root is not None
-                        else None,
-                    ),
+                    (state_label, self.state_cleanup),
+                    (private_label, self.private_cleanup),
                 )
                 if cleanup is not None
             ),
         )
 
-    def failure_callbacks(
+    def rollback_startup(
         self,
+        error: BaseException,
         *,
         failure_custodian: _PreparationFailureCleanup | None,
         management_cleanup: Callable[[], None] | None,
-    ) -> tuple[
-        Callable[[], None] | None, Callable[[], None] | None, Callable[[], None] | None
-    ]:
+        product_label: str,
+        private_label: str,
+        before: tuple[str, Callable[[], None] | None],
+        after: tuple[str, Callable[[], None] | None],
+    ) -> None:
+        """Release a failed preparation between its surrounding Product owners."""
         preparation_cleanup: Callable[[], None] | None
         private_cleanup: Callable[[], None] | None
         selected_management: Callable[[], None] | None
@@ -1044,16 +1085,19 @@ class PreparationRootCustody(Generic[_PreparationT]):
             preparation_cleanup = (
                 self.preparation.close
                 if self.preparation is not None
-                else self.state_root.cleanup
-                if self.state_root is not None
-                else None
+                else self.state_cleanup
             )
             private_cleanup = (
-                self.private_root.cleanup
-                if self.preparation is None and self.private_root is not None
-                else None
+                self.private_cleanup if self.preparation is None else None
             )
             selected_management = (
                 management_cleanup if self.preparation is None else None
             )
-        return preparation_cleanup, selected_management, private_cleanup
+        steps = (
+            before,
+            (f"{product_label} Capability Plugin management-state cleanup", selected_management),
+            (f"{product_label} Capability Plugin preparation cleanup", preparation_cleanup),
+            (private_label, private_cleanup),
+            after,
+        )
+        run_cleanup_steps(error, ((label, cleanup) for label, cleanup in steps if cleanup is not None))

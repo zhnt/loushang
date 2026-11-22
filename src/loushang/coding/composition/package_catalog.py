@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssembly,
@@ -63,7 +63,6 @@ from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources.loader import ResourceLoader
-from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.bootstrap_construction import (
     PreparationRootCustody,
     require_catalog_receipt,
@@ -503,33 +502,6 @@ class InitialCatalogHandoff:
             base_resource_bundle=bundle,
             catalog_generation=catalog_generation,
         )
-
-
-_CatalogSessionT = TypeVar("_CatalogSessionT")
-
-
-def construct_catalog_session(
-    adapter: InitialResourceCatalogProductAdapter,
-    *,
-    session_id: str,
-    bundle: ResourceBundle,
-    construct: Callable[[InitialSessionResourceCatalogBootstrap], _CatalogSessionT],
-    abort_unpublished: Callable[[], None] | None,
-) -> _CatalogSessionT:
-    try:
-        return adapter.construct_session(
-            product_id=CODING_PRODUCT_ID,
-            session_id=session_id,
-            base_resource_bundle=bundle,
-            construct=construct,
-        )
-    except BaseException as error:
-        if abort_unpublished is not None:
-            run_cleanup_steps(
-                error,
-                (("Coding Capability Plugin assembly cleanup", abort_unpublished),),
-            )
-        raise
 
 
 def _bind_base_catalog_plan(

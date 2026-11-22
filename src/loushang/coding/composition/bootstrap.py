@@ -58,7 +58,6 @@ from loushang.coding.composition.managed_plugin_preparation import (
 )
 from loushang.coding.composition.package_catalog import (
     InitialCatalogHandoff,
-    construct_catalog_session,
     prepare_coding_catalog_projection,
 )
 from loushang.coding.composition.plan import (
@@ -252,6 +251,7 @@ from loushang.harness.session._cleanup import (
 )
 from loushang.harness.session.bootstrap_construction import (
     PreparationRootCustody,
+    construct_catalog_session,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
@@ -1020,19 +1020,14 @@ def _create_agent_session(
         state_prefix: str, private_prefix: str, *, arch_enabled: bool
     ) -> Path:
         return preparation_custody.prepare_roots(
-            make_state=lambda: (
-                _ExplicitTemporaryDirectory(prefix=state_prefix)
-                if not session_manager.persist
-                else None
-            ),
-            make_private=lambda: (
-                _ExplicitTemporaryDirectory(prefix=private_prefix)
-                if arch_enabled and (not session_manager.persist)
-                else None
+            state_prefix=None if session_manager.persist else state_prefix,
+            private_prefix=(
+                private_prefix if arch_enabled and not session_manager.persist else None
             ),
             persistent_root=lambda: _coding_capability_plugin_state_root(
                 session_manager, session_id=session_id
             ),
+            directory_factory=_ExplicitTemporaryDirectory,
         )
 
     def build_capability_configurations(
@@ -1114,16 +1109,8 @@ def _create_agent_session(
                 management_cleanup=capability_management_state_cleanup,
                 base=coding_base_plugin_assembly,
                 plan_seed=plan_seed,
-                state_cleanup=(
-                    preparation_custody.state_root.cleanup
-                    if preparation_custody.state_root is not None
-                    else None
-                ),
-                private_state_cleanup=(
-                    preparation_custody.private_root.cleanup
-                    if preparation_custody.private_root is not None
-                    else None
-                ),
+                state_cleanup=preparation_custody.state_cleanup,
+                private_state_cleanup=preparation_custody.private_cleanup,
             )
         except CodingCapabilityPluginCompositionError as error:
             if error.code != "coding_capability_plugins_management_disabled":
@@ -1597,11 +1584,15 @@ def _create_agent_session(
 
         child_session = construct_catalog_session(
             resource_catalog_adapter,
+            product_id=CODING_PRODUCT_ID,
             session_id=session_id,
             bundle=bundle,
             construct=construct_child_session,
             abort_unpublished=(
-                capability_plugin_assembly.abort_unpublished
+                (
+                    "Coding Capability Plugin assembly cleanup",
+                    capability_plugin_assembly.abort_unpublished,
+                )
                 if capability_plugin_assembly is not None
                 else None
             ),
@@ -1670,26 +1661,21 @@ def _create_agent_session(
         cleanup = get_session_construction_cleanup(error)
         if cleanup is not None and cleanup.owns_session(constructed_session):
             raise
-        failure_custodian = coding_capability_plugin_failure_custodian(error)
-        (
-            capability_plugin_cleanup,
-            capability_management_cleanup,
-            arch_private_cleanup,
-        ) = preparation_custody.failure_callbacks(
-            failure_custodian=failure_custodian,
+        preparation_custody.rollback_startup(
+            error,
+            failure_custodian=coding_capability_plugin_failure_custodian(error),
             management_cleanup=capability_management_state_cleanup,
-        )
-        cleanup_steps = (
-            ("Deferred Coding LSP management-state cleanup", deferred_lsp_management_state_cleanup),
-            ("Coding Capability Plugin management-state cleanup", capability_management_cleanup),
-            ("Coding Capability Plugin preparation cleanup", capability_plugin_cleanup),
-            ("Coding Arch private-state cleanup", arch_private_cleanup),
-            (
+            product_label="Coding",
+            private_label="Coding Arch private-state cleanup",
+            before=(
+                "Deferred Coding LSP management-state cleanup",
+                deferred_lsp_management_state_cleanup,
+            ),
+            after=(
                 "Coding base Plugin cleanup",
                 coding_base_plugin_assembly.close if coding_base_plugin_assembly is not None else None,
             ),
         )
-        run_cleanup_steps(error, ((label, close) for label, close in cleanup_steps if close is not None))
         raise
     try:
         result.session.cwd_bound_services_audit = (

@@ -49,6 +49,7 @@ from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
 )
 from loushang.harness.session._cleanup import ExplicitTemporaryDirectory
+from loushang.harness.session.bootstrap_construction import PreparationRootCustody
 from loushang.harness.session.bootstrap_services import BootstrapServices
 from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
     share_startup_cleanup,
@@ -241,15 +242,13 @@ def bind_deferred_plugin(
     admission_failure: ProductAdmissionFailure,
 ) -> tuple[CodingCapabilityPluginCompositionAssembly, _Cleanup | None]:
     """Prepare a requested generation and retain its selected Product evidence."""
-    temporary_state = (
-        ExplicitTemporaryDirectory(prefix=temporary_prefix)
-        if not session_manager.persist
-        else None
+    custody = PreparationRootCustody[CodingCapabilityPluginCompositionPreparation]()
+    state_root = custody.prepare_roots(
+        state_prefix=None if session_manager.persist else temporary_prefix,
+        private_prefix=None,
+        persistent_root=persistent_root,
+        directory_factory=ExplicitTemporaryDirectory,
     )
-    state_root = (
-        Path(temporary_state.name) if temporary_state is not None else persistent_root()
-    )
-    preparation = None
     current_selection_check = None
     try:
         configurations = {plugin_id: build_config()}
@@ -261,18 +260,18 @@ def bind_deferred_plugin(
                 max_total_bytes=max_manifest_bytes,
                 admission_failure=admission_failure,
             )
-            preparation = prepare_coding_product_capability_plugin_composition(
+            custody.preparation = prepare_coding_product_capability_plugin_composition(
                 runtime,
                 session_id=session_id,
                 configurations=configurations,
                 state_root=state_root,
                 clock=clock,
             )
-            if temporary_state is not None:
-                preparation.state_cleanup = temporary_state.cleanup
+            if custody.state_root is not None:
+                custody.preparation.state_cleanup = custody.state_cleanup
         else:
             assert managed is not None
-            preparation = managed.prepare_capabilities(
+            custody.preparation = managed.prepare_capabilities(
                 create_coding_capability_plugin_composition_request(
                     clock=clock, plugin_ids=frozenset({plugin_id})
                 ),
@@ -283,17 +282,14 @@ def bind_deferred_plugin(
                 clock=clock,
                 legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
                 management_cleanup=managed.deferred_cleanup,
-                state_cleanup=temporary_state.cleanup if temporary_state is not None else None,
+                state_cleanup=custody.state_cleanup,
             )
-        assembly = preparation.bind_workspace(
+        assembly = custody.preparation.bind_workspace(
             workspace_binding, host_boot_id=host_boot_id, tool_modes=tool_modes, clock=clock
         )
         return assembly, current_selection_check
     except BaseException:
-        if preparation is not None:
-            preparation.close()
-        if temporary_state is not None:
-            temporary_state.cleanup()
+        custody.cleanup_preparation_sequentially()
         raise
 
 
