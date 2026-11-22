@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from loushang.harness.package_product._plugin_bootstrap import _product_plugin_runtime
 from loushang.harness.package_product.product_gc_executor import (
     PackageProductGcExecutionError,
     PackageProductRootGcApplication,
@@ -21,10 +22,6 @@ from loushang.harness.package_product.product_gc_executor import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
-)
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeBindingV1,
-    PackageProductRuntimeRequestV1,
 )
 from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeLedger,
@@ -308,12 +305,7 @@ class LocalWheelProductRootGcOwner:
 
     def candidates(self) -> tuple[PluginPackageGcCandidateV1, ...]:
         with self._offline():
-            self._require_no_open_transaction_pins()
-            if not self.packages.gc_writer_epoch_sealed():
-                raise PackageProductGcExecutionError(
-                    "Package GC writer epoch is not sealed",
-                    code="plugin_package_gc_writer_epoch_unsealed",
-                )
+            self._require_sealed_gc_writer()
             return self.packages.gc_candidates()
 
     def execute(
@@ -487,40 +479,15 @@ class LocalWheelProductRootGcOwner:
             )
             prior = repairs.result_for(start)
             if prior is not None:
-                if prior.disposition == "succeeded" and (
-                    not self.dependency_settlements.is_tombstoned(
-                        target.retention.dependency_ref.ref_id
-                    )
-                    or prior.store_result is None
-                    or prior.store_result
-                    != PackageStoreGcResultV1.create(
-                        target.settlement,
-                        disposition=prior.store_result.disposition,
-                    )
-                ):
-                    raise PackageProductGcExecutionError(
-                        "Dependency GC repair success lost its Store proof",
-                        code="plugin_package_gc_dependency_repair_fence_missing",
-                    )
+                self._verify_dependency_store_success(prior, target, repair=True)
                 return prior
             try:
-                store = self.dependency_store_factory()
-                if not callable(getattr(store, "delete_settlement", None)):
-                    raise TypeError(
-                        "Package Product dependency Store owner is required"
-                    )
-                result = store.delete_settlement(target.settlement)
+                result = self._delete_dependency_store_target(target)
             except PackagePhysicalStagingError as exc:
                 return repairs.record(
                     start, settlement=target.settlement, error_code=exc.code
                 )
-            if not self.dependency_settlements.is_tombstoned(
-                target.retention.dependency_ref.ref_id
-            ):
-                raise PackageProductGcExecutionError(
-                    "Dependency GC repair Store result lacks its tombstone",
-                    code="plugin_package_gc_dependency_repair_fence_missing",
-                )
+            self._require_dependency_tombstone(target, repair=True)
             return repairs.record(
                 start, settlement=target.settlement, store_result=result
             )
@@ -576,21 +543,7 @@ class LocalWheelProductRootGcOwner:
                 "started",
                 None,
             )
-        if result.disposition == "succeeded" and (
-            not self.dependency_settlements.is_tombstoned(
-                target.retention.dependency_ref.ref_id
-            )
-            or result.store_result is None
-            or result.store_result
-            != PackageStoreGcResultV1.create(
-                target.settlement,
-                disposition=result.store_result.disposition,
-            )
-        ):
-            raise PackageProductGcExecutionError(
-                "Dependency GC repair success lost its Store proof",
-                code="plugin_package_gc_dependency_repair_fence_missing",
-            )
+        self._verify_dependency_store_success(result, target, repair=True)
         return PackageProductGcDependencyRepairStatusV1(
             review_id,
             review.terminal_attempt_id,
@@ -701,12 +654,7 @@ class LocalWheelProductRootGcOwner:
         """Capture root and dependency status under one offline Product hold."""
 
         with self._offline():
-            self._require_no_open_transaction_pins()
-            if not self.packages.gc_writer_epoch_sealed():
-                raise PackageProductGcExecutionError(
-                    "Package GC writer epoch is not sealed",
-                    code="plugin_package_gc_writer_epoch_unsealed",
-                )
+            self._require_sealed_gc_writer()
             statuses = self.read_model.snapshot()
             return PackageProductRootGcOperatorSnapshotV1(
                 candidates=self.packages.gc_candidates(),
@@ -826,27 +774,10 @@ class LocalWheelProductRootGcOwner:
             start, operation_id=operation_id, idempotency_key=idempotency_key
         )
         if prior is not None:
-            if prior.disposition == "succeeded" and (
-                not self.dependency_settlements.is_tombstoned(
-                    target.retention.dependency_ref.ref_id
-                )
-                or prior.store_result is None
-                or prior.store_result
-                != PackageStoreGcResultV1.create(
-                    target.settlement,
-                    disposition=prior.store_result.disposition,
-                )
-            ):
-                raise PackageProductGcExecutionError(
-                    "Dependency GC success lost its exact Store proof",
-                    code="plugin_package_gc_dependency_fence_missing",
-                )
+            self._verify_dependency_store_success(prior, target, repair=False)
             return prior
         try:
-            store = self.dependency_store_factory()
-            if not callable(getattr(store, "delete_settlement", None)):
-                raise TypeError("Package Product dependency Store owner is required")
-            result = store.delete_settlement(target.settlement)
+            result = self._delete_dependency_store_target(target)
         except PackagePhysicalStagingError as exc:
             return journal.record(
                 start,
@@ -856,13 +787,7 @@ class LocalWheelProductRootGcOwner:
                 error_code=exc.code,
                 terminal=True,
             )
-        if not self.dependency_settlements.is_tombstoned(
-            target.retention.dependency_ref.ref_id
-        ):
-            raise PackageProductGcExecutionError(
-                "Dependency GC Store result lacks its tombstone",
-                code="plugin_package_gc_dependency_fence_missing",
-            )
+        self._require_dependency_tombstone(target, repair=False)
         return journal.record(
             start,
             settlement=target.settlement,
@@ -870,6 +795,46 @@ class LocalWheelProductRootGcOwner:
             idempotency_key=idempotency_key,
             store_result=result,
         )
+
+    def _delete_dependency_store_target(
+        self, target: PackageDependencyGcTargetV1
+    ) -> PackageStoreGcResultV1:
+        store = self.dependency_store_factory()
+        if not callable(getattr(store, "delete_settlement", None)):
+            raise TypeError("Package Product dependency Store owner is required")
+        return store.delete_settlement(target.settlement)
+
+    def _dependency_store_tombstoned(self, target: PackageDependencyGcTargetV1) -> bool:
+        return self.dependency_settlements.is_tombstoned(
+            target.retention.dependency_ref.ref_id
+        )
+
+    def _require_dependency_tombstone(
+        self, target: PackageDependencyGcTargetV1, *, repair: bool
+    ) -> None:
+        if not self._dependency_store_tombstoned(target):
+            raise PackageProductGcExecutionError(
+                f"Dependency GC{' repair' if repair else ''} Store result lacks its tombstone",
+                code=_dependency_fence_missing_code(repair),
+            )
+
+    def _verify_dependency_store_success(
+        self,
+        attempt: PackageDependencyGcAttemptV1 | PackageDependencyGcRepairResultV1,
+        target: PackageDependencyGcTargetV1,
+        *,
+        repair: bool,
+    ) -> None:
+        if attempt.disposition == "succeeded" and (
+            not self._dependency_store_tombstoned(target)
+            or not _matches_dependency_store_result(target, attempt.store_result)
+        ):
+            raise PackageProductGcExecutionError(
+                "Dependency GC repair success lost its Store proof"
+                if repair
+                else "Dependency GC success lost its exact Store proof",
+                code=_dependency_fence_missing_code(repair),
+            )
 
     def _dependency_gc_journal(self) -> PackageDependencyGcJournal:
         return PackageDependencyGcJournal(
@@ -958,14 +923,13 @@ class LocalWheelProductRootGcOwner:
                     "terminal_failure",
                     "succeeded",
                 ]
-                if latest is not None and latest.disposition == "succeeded":
-                    if (
+                if latest is None:
+                    deletion_state = "not_started" if start is None else "started"
+                else:
+                    if latest.disposition == "succeeded" and (
                         not tombstoned
-                        or latest.store_result is None
-                        or latest.store_result
-                        != PackageStoreGcResultV1.create(
-                            target.settlement,
-                            disposition=latest.store_result.disposition,
+                        or not _matches_dependency_store_result(
+                            target, latest.store_result
                         )
                     ):
                         rows.append(
@@ -975,13 +939,7 @@ class LocalWheelProductRootGcOwner:
                             )
                         )
                         continue
-                    deletion_state = "succeeded"
-                elif latest is not None:
                     deletion_state = latest.disposition
-                elif start is not None:
-                    deletion_state = "started"
-                else:
-                    deletion_state = "not_started"
                 rows.append(
                     PackageDependencyGcInspectionV1(
                         item,
@@ -998,12 +956,7 @@ class LocalWheelProductRootGcOwner:
         *,
         statuses: tuple[PackageProductRootGcStatusV1, ...] | None = None,
     ) -> tuple[PackageDependencyRetentionV1, ...]:
-        self._require_no_open_transaction_pins()
-        if not self.packages.gc_writer_epoch_sealed():
-            raise PackageProductGcExecutionError(
-                "Package GC writer epoch is not sealed",
-                code="plugin_package_gc_writer_epoch_unsealed",
-            )
+        self._require_sealed_gc_writer()
         executor = self.application.executor
         committed_sets = executor.committed_sets.records()
         bindings = executor.bindings.records()
@@ -1035,26 +988,20 @@ class LocalWheelProductRootGcOwner:
 
     def _recover_product_transactions(self) -> None:
         recovery_id = f"product-gc-recovery:{secrets.token_hex(16)}"
-        factory = self.product.factory_for_session(
+        with _product_plugin_runtime(
+            self.product,
+            product_id=self.product.policy.product_id,
             session_id=recovery_id,
-            cwd=self.product.workspace,
-            runtime_id=recovery_id,
-        )
-        binding: PackageProductRuntimeBindingV1 | None = None
-        try:
-            binding = factory.create(
-                PackageProductRuntimeRequestV1(
-                    product_id=self.product.policy.product_id,
-                    session_id=recovery_id,
-                    cwd=str(self.product.workspace),
-                )
+        ):
+            pass
+
+    def _require_sealed_gc_writer(self) -> None:
+        self._require_no_open_transaction_pins()
+        if not self.packages.gc_writer_epoch_sealed():
+            raise PackageProductGcExecutionError(
+                "Package GC writer epoch is not sealed",
+                code="plugin_package_gc_writer_epoch_unsealed",
             )
-            binding.activate()
-        finally:
-            if binding is None:
-                factory.dispose_unbound_runtime()
-            else:
-                binding.dispose_runtime()
 
     def _require_no_open_transaction_pins(self) -> None:
         latest = {
@@ -1066,6 +1013,22 @@ class LocalWheelProductRootGcOwner:
                 "Package Product transaction pin is still acquired",
                 code="plugin_package_gc_transaction_pin_active",
             )
+
+
+def _matches_dependency_store_result(
+    target: PackageDependencyGcTargetV1, result: PackageStoreGcResultV1 | None
+) -> bool:
+    return result is not None and result == PackageStoreGcResultV1.create(
+        target.settlement, disposition=result.disposition
+    )
+
+
+def _dependency_fence_missing_code(repair: bool) -> str:
+    return (
+        "plugin_package_gc_dependency_repair_fence_missing"
+        if repair
+        else "plugin_package_gc_dependency_fence_missing"
+    )
 
 
 def open_posix_local_wheel_product_root_gc(
