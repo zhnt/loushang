@@ -8,7 +8,8 @@ This module neither approves nor executes a Plugin Definition.
 from __future__ import annotations
 
 import io
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
@@ -626,6 +627,100 @@ def require_current_catalog_selection(
             require_current_manifests(owner, manifests, reason, refresh_failure)
 
 
+SelectionPhase = Literal[
+    "worker", "desired", "base", "capability", "selected", "deferred"
+]
+SelectionError = PackageProductRuntimeActivationError | PackageProductRuntimeReadError
+SelectionFailure = Callable[
+    [SelectionPhase, SelectionError, PackageProductSelectedPluginManifestV1 | None],
+    BaseException,
+]
+
+
+@contextmanager
+def translate_selection_failure(
+    failure: SelectionFailure,
+    phase: SelectionPhase,
+    selected: PackageProductSelectedPluginManifestV1 | None = None,
+) -> Iterator[None]:
+    try:
+        yield
+    except (
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeReadError,
+    ) as exc:
+        raise failure(phase, exc, selected) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class ProductSessionSelection:
+    """Package facts pinned by a Session across construction, execution and receipt creation."""
+
+    runtime: PackageProductRuntimeBindingV1 | None
+    desired: tuple[PackageProductPluginDesiredSelectionV1, ...]
+    base: PackageProductSelectedPluginManifestV1 | None
+    capabilities: tuple[PackageProductSelectedPluginManifestV1, ...]
+    external: tuple[PackageProductSelectedPluginManifestV1, ...]
+    worker: PackageProductSelectedPluginManifestV1 | None
+
+    def manifests(
+        self, *, include_worker: bool = True
+    ) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
+        return (
+            *((self.base,) if self.base is not None else ()),
+            *self.capabilities,
+            *self.external,
+            *((self.worker,) if include_worker and self.worker is not None else ()),
+        )
+
+    def require_current(
+        self, failure: SelectionFailure, *, check_desired: bool
+    ) -> None:
+        runtime = self.runtime
+        if runtime is None:
+            return
+        if self.worker is not None:
+            with translate_selection_failure(failure, "worker"):
+                runtime.assert_selected_plugin_manifest_current(self.worker)
+        if check_desired:
+            for selection in self.desired:
+                with translate_selection_failure(failure, "desired"):
+                    runtime.assert_plugin_desired_selection_current(selection)
+        if self.base is not None:
+            with translate_selection_failure(failure, "base"):
+                runtime.assert_selected_plugin_manifest_current(self.base)
+            for manifest in self.capabilities:
+                with translate_selection_failure(failure, "capability", manifest):
+                    runtime.assert_selected_plugin_manifest_current(manifest)
+        else:
+            for manifest in (*self.capabilities, *self.external):
+                with translate_selection_failure(failure, "selected"):
+                    runtime.assert_selected_plugin_manifest_current(manifest)
+
+    def require_prepared_inventory(
+        self, packages: tuple[PublishedPluginPackage, ...], *, product_label: str
+    ) -> None:
+        """Check the composition inventory before a Session can use it."""
+        selected = (
+            self.manifests(include_worker=False)
+            if self.base is not None
+            else self.capabilities
+        )
+        inventory_changed = (
+            tuple(package.manifest.name for package in packages)
+            != tuple(sorted(item.manifest.name for item in selected))
+            if self.base is not None
+            else len(packages) != len(selected)
+        )
+        if inventory_changed or {
+            package.manifest.name: package.content_digest for package in packages
+        } != {
+            item.manifest.name: item.snapshot.root_ref.artifact_digest
+            for item in selected
+        }:
+            raise ValueError(f"{product_label} Product Session packages changed")
+
+
 def capture_selected_manifests(
     capture: Callable[..., PackageProductSelectedPluginManifestV1],
     plugin_ids: Iterable[str],
@@ -634,9 +729,7 @@ def capture_selected_manifests(
     max_total_bytes: int,
 ) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
     return tuple(
-        capture(
-            plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
-        )
+        capture(plugin_id, max_files=max_files, max_total_bytes=max_total_bytes)
         for plugin_id in plugin_ids
     )
 

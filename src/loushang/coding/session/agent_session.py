@@ -113,6 +113,10 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.package_product._selected_plugin_revisions import (
+    SelectionError,
+    SelectionPhase,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
@@ -602,11 +606,13 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             )
         ):
             raise ValueError("Coding base Product cannot mix Plugin session routes")
-        runtime_selection.require_prepared_selection(
+        product_selection = runtime_selection.require_prepared_selection(
             base=coding_base_product_session_assembly,
             capabilities=capability_plugin_assembly,
             runtime=coding_base_product_runtime_binding,
             selected_capabilities=coding_selected_capability_manifests,
+            external=coding_external_data_product_compilation,
+            desired_selections=coding_product_desired_selections,
             worker=coding_product_worker_ordinary_binding,
             needs_worker_receipt=coding_worker_turn_tool is not None,
             workspace_binding=workspace_capability_binding,
@@ -660,12 +666,10 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             capability_plugin_assembly if lsp_tool_owner is not None else None
         )
         self._coding_base_plugin_assembly = coding_base_plugin_assembly
-        self._coding_base_product_runtime_binding = coding_base_product_runtime_binding
         self._coding_product_worker_ordinary_binding = (
             coding_product_worker_ordinary_binding
         )
         self._coding_worker_turn_tool_lease: RegistrationLease | None = None
-        self._coding_product_desired_selections = coding_product_desired_selections
         self._coding_product_desired_preflight_completed = False
         self.coding_product_workspace_witness = coding_product_workspace_witness
         product_base = (
@@ -678,9 +682,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         self._coding_external_data_product_compilation = (
             coding_external_data_product_compilation
         )
-        self._coding_selected_capability_manifests = (
-            coding_selected_capability_manifests
-        )
+        self._product_session_selection = product_selection
         self._coding_composition_plan = coding_composition_plan
         self._coding_composition_record_lock = asyncio.Lock()
         self._init_resume_runtime_state()
@@ -1071,8 +1073,8 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
 
     def _current_selection_failure(
         self,
-        phase: runtime_selection.SelectionPhase,
-        error: runtime_selection.SelectionError,
+        phase: SelectionPhase,
+        error: SelectionError,
         selected: PackageProductSelectedPluginManifestV1 | None,
     ) -> BaseException:
         if phase == "worker":
