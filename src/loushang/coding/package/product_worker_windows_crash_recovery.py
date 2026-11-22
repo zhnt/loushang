@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, cast
 
-from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_recovery import (
     WindowsProductWorkerCrashRecovery,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )

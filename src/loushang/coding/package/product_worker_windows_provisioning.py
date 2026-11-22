@@ -9,11 +9,11 @@ from __future__ import annotations
 import os
 from typing import cast
 
-from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._worker_windows_attempt import (
     WindowsProductWorkerPayload,
     WindowsProductWorkerProvisioningAccess,
     WindowsWorkerLaunchPayload,
+    is_windows_product,
     read_windows_product_worker_attempts,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (

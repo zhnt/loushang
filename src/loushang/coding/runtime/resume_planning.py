@@ -7,10 +7,10 @@ from pathlib import Path
 from weakref import ref as ref
 
 from loushang.coding.composition.sets import CodingCompositionSetPlan
-from loushang.coding.harness.session import resume_planning as _continuation_programs
 from loushang.coding.resume.activation_plan import (
     ActivationOwnerInputRefV1,
     SessionActivationPlanV1,
+    _resume_domain_input_refs,
 )
 from loushang.coding.resume.activation_plan import (
     ResumePlanStaleError as ResumePlanStaleError,
@@ -30,13 +30,6 @@ from loushang.coding.resume.activation_plan import (
 from loushang.coding.resume.history import CodingResumeHistoryPreview
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.session.agent_product_runtime import _SessionPlanningSlot
-
-_CONTINUATION_PROGRAM_VALUES = {
-    "value_001": "coding_resume_planning_closed",
-    "value_002": "invalid Resume planning work budget",
-    "value_003": "invalid Resume planning time budget",
-    "value_004": "Resume planning requires the original ResourceLoader",
-}
 
 
 class ResumePlanningSlot(_SessionPlanningSlot[SessionActivationPlanV1]):
@@ -63,16 +56,47 @@ class ResumePlanningSlot(_SessionPlanningSlot[SessionActivationPlanV1]):
     ) -> None:
         """Start background pure-data work; no result admits continuation."""
 
-        return await _continuation_programs.start_planning(
-            self,
+        self._on_loop()
+        if self._closed:
+            raise RuntimeError('coding_resume_planning_closed')
+        # Validate all envelope inputs before scheduling. These are dependency
+        # observations, without approval/selection meaning.
+        baseline = build_session_activation_plan(
             history,
             current_composition,
             workspace_root=workspace_root,
-            resource_loader=resource_loader,
-            subject_digest=subject_digest,
-            policy_digest=policy_digest,
-            max_work_units=max_work_units,
-            time_budget_seconds=time_budget_seconds,
+            owner_inputs=_resume_domain_input_refs(
+                policy_digest=policy_digest, subject_digest=subject_digest
+            ),
+        )
+        if type(max_work_units) is not int or max_work_units < 1:
+            raise ValueError('invalid Resume planning work budget')
+        if (
+            type(time_budget_seconds) not in {int, float}
+            or not 0 < time_budget_seconds <= 60
+        ):
+            raise ValueError('invalid Resume planning time budget')
+        if not isinstance(resource_loader, ResourceLoader):
+            raise TypeError('Resume planning requires the original ResourceLoader')
+        key = (
+            baseline.plan_id,
+            ref(resource_loader),
+            max_work_units,
+            time_budget_seconds,
+        )
+        await self._start_work(
+            key,
+            lambda: plan_coding_resume_async(
+                history,
+                current_composition,
+                workspace_root=workspace_root,
+                resource_loader=resource_loader,
+                subject_digest=subject_digest,
+                policy_digest=policy_digest,
+                max_work_units=max_work_units,
+                time_budget_seconds=time_budget_seconds,
+                priority="background",
+            ),
         )
 
     def current(
@@ -87,6 +111,17 @@ class ResumePlanningSlot(_SessionPlanningSlot[SessionActivationPlanV1]):
         owners. A match grants neither Writer access nor executable authority.
         """
 
-        return _continuation_programs.current_plan(
-            self, history, current_owner_inputs=current_owner_inputs
-        )
+        self._on_loop()
+        if self._closed:
+            return None
+        plan = self._plan
+        if plan is None:
+            return None
+        try:
+            require_current_resume_plan_source(plan, history)
+            require_current_resume_plan_inputs(plan, current_owner_inputs)
+        except ResumePlanStaleError:
+            self._plan = None
+            self._key = None
+            return None
+        return plan

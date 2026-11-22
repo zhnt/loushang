@@ -408,6 +408,517 @@ modules and found the same signatures, class bases and annotated fields.
 Compatibility probes retain their original expectations and inject faults at
 the current call sites. Tests and documentation are accounted separately.
 
+## Formal Staging Convergence
+
+The baseline for this delivery is `db196bf1e`. It holds 96 staged Python
+files and 17,225 physical lines. Package Product accounts for 41 files and
+6,914 lines. The baseline includes 79 staged files with an absolute import
+from another Coding component. The delivery audit follows aliases and actual
+callers in addition to this initial source count.
+
+### Legacy Evidence And Historical Review Records
+
+| Staged module | Current disposition |
+| --- | --- |
+| `legacy_desired_evidence` | Formal Package Product decodes the frozen Desired journal and verifies scope. Coding constructs its historical evidence type. |
+| `legacy_operation_evidence` | Formal Package Product checks the exact legacy member shape. The Coding compatibility entry preserves its error identity. |
+| `legacy_management_evidence` | Formal Package Product reads the captured lock markers and journal bytes. Existing Plugin Management decoders verify the settled Desired and retirement history. |
+| `legacy_binding_evidence` | Formal Package Product checks v4 lock heads using the existing binding codec in Resources. Coding keeps the legacy result type. |
+| `legacy_classification` | The Coding workspace and settings classification policies live under their existing Product entrypoints. |
+| `legacy_inventory` | Formal Package Product joins captured lock heads to Desired records and verifies the exact removed Installation epoch. Snapshot orchestration remains in staging for the next batch. |
+| `legacy_removed_review` | The exact record validation and wire projection live with the Coding nominal records. Pre-fence admission and fenced review orchestration remain in staging. |
+
+Inventory, removed-Installation review and offline local data admission use
+the same settled-history proof. Builtin-only review uses the same marker check.
+The receipt-read authority remains with the caller. Both fence paths keep
+their existing read order, quota, missing-evidence errors and digest behavior.
+The shared history reader receives paths, frozen Desired facts and error
+types. It calls the existing Harness verification functions directly.
+
+The first batch retired five staged files and shrank two more. Staged Python
+decreases by 983 lines, Coding Product grows by 318 lines and formal Harness
+grows by 605 lines. The system decreases by 60 production Python lines. No
+test or script source changes are included. The 55 inventory, lock and
+configuration tests and the 26 removal, retirement and pre-fence refusal
+tests pass on the isolated candidate on Linux.
+The capture-routing checkpoint passed 194 Linux tests covering the cutover CLI
+and existing dependency-graph checks. The final candidate passed the existing
+acyclic Harness check and imported all three new formal evidence modules with
+Coding imports forbidden. Final source files in the task worktree match the
+tested candidate byte for byte.
+
+### Fenced Legacy Installation Inventory
+
+The Coding inventory entry calls the existing formal Package Product inventory
+owner. The former staged `legacy_inventory` module has exited. Package Product
+enumerates authenticated members, reads the binding and Desired captures,
+validates captured journal locks and settled management history, and reconciles
+the Installation inventory. It preserves the membership and proof order. The
+same formal first-snapshot reader reauthenticates the native POSIX or Windows
+receipt around each read and checks the runtime before returning the inventory.
+Coding supplies the workspace and paths, supported builtin IDs, established
+error types and historical result records.
+
+This batch removes 129 staged Python lines and adds 45 Coding Product and 150
+formal Harness lines. The added lines provide the typed boundary, formal
+orchestration and compatibility projection. Hosting, other production code,
+tests and scripts have no changes. Across both batches the staging layer has
+90 files and 16,113 lines, down 6 files and 1,112 lines. The system adds 6
+production Python lines relative to the baseline.
+
+The final inventory batch passed 48 Linux cases covering inventory, frozen
+Source settings, binding locks, Desired evidence and the Harness dependency
+graph. The formal inventory module also loaded with all Coding imports
+forbidden. Native Windows validation remains outstanding.
+
+### Removed Installation Admission And Review
+
+The pre-fence CLI admission and the fenced CLI and acceptance review use
+`LegacyRemovalSnapshot` in formal Package Product. It verifies exact
+membership and lock markers, reads the binding and Desired captures through
+the appropriate native authority, and reuses the settled management checks
+and the removed Installation proof. Each invocation reconciles the inventory
+once. Admission verifies the Installation history before inspecting the
+management journal. Fenced review verifies the management journal first and
+retains its digest for the existing wire record. Both routes remain read-only.
+
+Coding keeps the eligibility decision, frozen Source matching, supported
+disabled and builtin sets, pre-fence error code and review wire types. The
+Product Source matcher in `legacy_configured_source` also serves data
+admission and legacy Source review. The staged `legacy_removed_review` and
+`legacy_source_matching` files exit. The existing PLC9 inventory and its
+source-location expectations follow the actual references to Product settings.
+
+This removes 415 staged lines and adds 159 Coding Product and 274 Harness
+production lines. Hosting and other production code are unchanged. The
+system adds 18 production Python lines for this batch and 24 cumulatively.
+Staging now holds 88 files and 15,698 lines, down 8 files and 1,527 lines from
+the baseline.
+
+The batch passed 74 Linux behavior cases, including first-fence refusal,
+settled retirement, mixed active and removed Installations, and replay through
+the CLI. All 14 existing PLC9 baseline and acyclic dependency checks passed.
+The formal removal proof loaded with Coding imports forbidden. No native
+Windows cases ran.
+
+### Approved Local Source Publication And Installation
+
+| Retired staged module | Current disposition |
+| --- | --- |
+| `epoch_identity` | Formal Package Product matches the store and control root to the established epoch layout. Ordinary startup, acceptance, application open and private-data callers share this check. |
+| `legacy_local_wheel` | Resources owns input validation, bounded original Source capture and Wheel construction. Coding constructs its nominal candidate inside the existing custody scope. |
+| `legacy_reacquisition` | Formal Package Product selects the exact first-fence Installation, holds disposable staging for Resources, rereads the same inventory and verifies the runtime. The pre-fence data admission also uses its bound-Wheel capture. |
+| `legacy_binding` | Formal Package Product compares the approved identity and exact Wheel against the reacquired evidence. Its existing Source catalog owns publication, journal append and recheck. Coding opens the accepted receipt and supplies kind and trust policy. |
+| `legacy_binding_records` | The existing Coding record and catalog keep the nominal codec, compatibility versions and authorization. Creation reuses the same wire-field mapping as decoding. |
+| `legacy_installation` | The existing formal Installation owner executes install and enable. It resolves the same unique approved binding for both. Coding supplies authority, operation IDs and public receipts. |
+
+The catalog retains its original publication and journal lock order. Installed
+state and enablement replay continue through the formal Desired owner and its
+existing transition checks. The review and acceptance policy and its remaining
+frozen-evidence coordination stay within the current Goal.
+
+The batch removes 656 staging lines and adds 313 Coding Product and 207 Harness
+production lines. Hosting and other production code have no changes. The
+system decreases by 136 production Python lines for this batch and 112
+cumulatively. Staging now holds 82 files and 15,042 lines, down 14 files and
+2,183 lines from the baseline. Tests and scripts have no source changes in
+this batch.
+
+The final source candidate passed 69 Linux cases covering frozen inventory,
+reviewed Source binding, install and enable replay, Wheel custody failures
+and Harness dependency direction. Five formal modules loaded with Coding
+imports forbidden. The task worktree sources match that candidate byte for
+byte. Native Windows coverage for the epoch identity callers is pending.
+
+### Local Source Review And Acceptance
+
+The staged `legacy_local_review` and `legacy_local_acceptance` engines exit.
+Formal Package Product owns the shared first-fence evidence projection. Live
+review verifies the recaptured Wheel and joins it to the same inventory and
+fence; accepted receipt reopen reads the frozen snapshot and checks the same
+identity fields without live Source. The existing acceptance journal retains
+its locks, current-review check and atomic publication. Coding applies the
+operator's review choice, resource kind, supported Source and builtin policy,
+and the existing nominal codecs and versions.
+
+This batch removes 646 staging lines and adds 405 Coding Product and 207
+Harness production lines. Hosting and other production code have no changes.
+The system decreases by 34 production Python lines for this batch and 146
+cumulatively. Staging holds 80 files and 14,396 lines, down 16 files and 2,829
+lines from baseline. Existing architecture expectations follow the moved
+Product settings and remove the retired staging import exemption.
+
+The batch passed 41 Linux behavior cases and all 63 existing architecture
+cases. The behavior cases include reopening an accepted Prompt after the
+original Source has disappeared and the exact install and enable guards.
+
+### Reviewed Adoption, First-Fence Receipts And Admission
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `legacy_source_consumption` | Formal Package Product joins frozen settings ordering and digests to approved sources and owns durable consume/replay. Coding matches its historic settings keys once and supplies its scope policy. |
+| `legacy_adoption` | Formal Package Product verifies exact prior source bindings, installs the approved Wheel and replays builtin removals. Coding sequences operator-selected local adoption and Resource enablement. |
+| `legacy_adoption_observation` | The formal source binding comparison and existing read-only Desired and handoff owner prove settlement. Coding supplies the selected Resource, approvals, paths and historical operation IDs. |
+| `legacy_builtin_adoption` | Formal Package Product replays reviewed tombstones and bootstrap. Coding retains builtin selection and the explicit platform candidate check. |
+| `legacy_removed_adoption` | The shared tombstone replay and bootstrap owner execute the approved removal set. Coding chooses its sorted removals and preserves existing operation IDs. |
+| `reviewed_plugin_adoption` | The replay loop lives in formal bootstrap. The unified Product interpretation of reviewed disable choices lives with the Coding review records. |
+| `first_snapshot_acceptance` | The existing formal first-acceptance journal checks the review and Store, writes the receipt and reopens it through the original native read path. Coding supplies the old codecs and explicit approval. |
+| `legacy_builtin_review` | Formal Package Product checks exact old membership, frozen Desired and settled management history. Coding supplies builtin eligibility and preserves its review record. |
+| `legacy_disabled_review` | The shared snapshot member check proves old state is absent. Coding interprets scoped disable settings and preserves its review format. |
+| `legacy_members` | Resources inventories actual member names once and places them in the declared domains. Coding supplies its deployed domain mapping. |
+| `legacy_snapshot_scope` | Formal Package Product prepares ordered native roots, binds the native snapshot owner and reopens the durable fence. Coding supplies storage geometry, scoped settings custody and the freshness and admission decisions. |
+| `legacy_data_admission` | Formal Package Product verifies old binding and Desired state, retired and removed histories, exact live Wheel recapture before fencing and frozen sources after fencing. Coding selects the supported Resource, accepted source set and refusal codes. |
+
+This batch retires 12 more staging files. Against the original main
+baseline the task has 68 staged Python files and 12,707 lines,
+down 28 files and 4,518 lines. Coding Product adds 2,030 lines and formal
+Harness adds 2,109. Hosting and other production code have no changes and
+production Python decreases by 379 lines. The source inventory finds 53
+staging files with absolute imports from another Coding component.
+
+The contained validation worktree passed 21 cases covering frozen admission,
+multi-source refusal, mixed active and removed replay and the Harness import
+direction. It passed 3 settings consumption and replay cases and all 5 CLI
+reruns of cases first exercised from outside the editable source root.
+The preceding checkpoints passed 47 adoption and architecture cases,
+90 review, receipt and architecture cases, and 105 cutover and settings
+custody cases. Native Windows verification remains pending.
+
+### Remaining Package Product Staging After Legacy
+
+| Staged module | Lines | Current boundary to resolve |
+| --- | ---: | --- |
+| `application_runtime` | 725 | Product state and runtime opening, workspace selection and resume reconciliation. The formal runtime owners already execute session factories. |
+| `startup` | 303 | Fresh cutover selection, existing fence verification and builtin bootstrap retry. Keep Product eligibility and reuse the formal fence and bootstrap owners. |
+| `management` | 286 | Application and read scopes, source inspection, Desired handoff and repair dispatch. Preserve the existing read/repair permission split. |
+| `resource_preview` | 220 | Read-only resource projection over the selected manifest and candidate sources. Keep Coding resource admission. |
+| `preview` | 197 | Fenced preview owner, exact Worker candidate evidence and private-directory observation. |
+| `worker_source_record` | 165 | Worker source validation and historical record codec. |
+| `package_change` | 133 | Package command execution and failed-change observation. Keep the Coding CLI presentation and approval decisions. |
+| `dependency_source_record` | 91 | Dependency Wheel identity and historical binding records. |
+| `source_admission` | 89 | Inert and Worker source capture past the Product admission policy. |
+| `data_source_record` | 73 | Data Wheel binding checks and record construction. |
+| `repair` | 65 | Product repair command and presentation over the existing authority. |
+| `builtin_sources` | 48 | Exact built-in Wheel source access and Product selection. |
+| `__init__` | 1 | Package marker, removable when the staged owner files exit. |
+
+### Read-Only Package Product And Worker Preview
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `preview` | The POSIX epoch owner verifies the existing private state root. Package Product binds its selected-manifest reader to strict journals and the read-only materialized-root store. The Worker candidate owner verifies artifact and admission identity. Coding selects the source catalogs and authorizes candidate reads. |
+| `resource_preview` | The existing Plugin Management preview projects exact selection and resource evidence. Coding retains its composition set, base/extension policy, resource inputs and the blocked or successful Product presentation. |
+
+The batch removes 417 staging lines and adds 215 Coding Product lines and
+149 formal Harness lines. Hosting and other production code have no changes.
+The batch reduces system production Python by 53 lines, down 432 from
+baseline. Staging has 66 files and 12,290 lines. No test or script source
+changes are included. The existing projection compatibility probe keeps
+its original evidence and failure sequence. The selected Linux suite
+reports 28 passed and seven host-runtime cases skipped. It covers the workspace
+replacement guard, selected data and dependency sources, Worker read-only
+evidence and the existing Catalog and dependency boundaries.
+
+### Fenced Package Startup And Runtime
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `application_runtime` | Formal Package Product owns state preparation, the scope and admission rechecks around management recovery, binding and rechecking the native Session owner, the read-only resume epoch fingerprint, and application closure. Coding chooses the workspace, source admission, supported Product route and desired configuration. |
+| `startup` | Formal Package Product reads and proves the empty fresh Source snapshot under the selected fence, and reuses the existing built-in admission and recovery owner. Coding determines whether the selected platform and workspace may enter the fresh or Legacy route. |
+
+The batch retires 1,028 staging lines and adds 580 Coding Product lines and
+321 formal Harness lines. This reduces system production Python by 127
+lines, down 559 cumulatively. Hosting, other production code and scripts
+have no changes. Staging has 64 files and 11,262 lines. Package Product
+staging holds 951 lines. Existing architecture expectations follow the
+same Desired journal and bootstrap exception boundaries.
+
+All 97 selected Linux startup, workspace compatibility, Resume continuation,
+bootstrap fault-order and architecture cases pass. The seven source paths
+that hold the change and updated inventory were applied from that candidate.
+Native Windows startup and Resume are pending.
+
+### Package Management, Source Custody And Compatibility
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `management` | Formal Package Product binds strict management reads and verifies Desired transitions and exact handoff commits. The shared Wheel catalog compares current sources against selected revisions and projects management evidence. Coding sets the actor, workspace guard and Source catalog. |
+| `source_admission` | Formal Package Product prepares the fenced state and Source roots. Existing POSIX and Windows catalog owners perform capture. Coding selects the catalog and supplies the original Product scope and native admission. |
+| `data_source_record` and `worker_source_record` | The formal controlled Source catalog shares the Plugin Wheel path and identity field checks. Coding retains nominal records, exact wire, artifact tags and Worker admission policy. |
+| `dependency_source_record` | Coding retains the nominal dependency record and its historical source filename contract. The existing formal dependency catalog owns verification and custody. |
+| `builtin_sources` | Coding retains its selected built-in recipes. Exact Source read and publication remain with the existing formal POSIX and Windows readers. |
+| `package_change` | Coding retains CLI admission, status and failure presentation. The existing formal Package runtime executes updates and owns transaction results; the formal read path verifies durable progress after a failed command. |
+| `repair` | Coding retains the SDK client and workspace admission. The existing Harness Package repair operation executes with the bound runtime. |
+| `__init__` | Removed with the final Package Product staging modules. |
+
+This batch retires 951 staging lines and adds 460 Coding Product lines and
+227 formal Harness lines. Hosting, other production code and scripts have no
+changes. System production Python decreases by 264 lines for the batch and
+823 against baseline. The Package Product staging directory is empty.
+Across the task, staging contains 55 files and 10,311 lines. Direct absolute
+imports of other Coding components remain in 41 staged source files. That
+count does not include deferred or indirect call paths.
+
+The selected Linux suite reports 74 passed and seven host-runtime cases
+skipped, including the three Legacy CLI reruns inside the registered source
+tree. It covers recovery after an interrupted retention handoff, strict
+reads, workspace identity, source records, SDK/CLI repair, original
+bootstrap and preview probes, and existing architecture constraints.
+Native Windows and host-runtime verification remain pending.
+
+### C01 Session Startup, Registration And Provenance
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `registration_authority` | Formal Session composition joins the compiled owner snapshots to the live admission gate, including the independently selected route. |
+| `registration_generations` | Harness owns workspace facet capture, exact Tool and Command staging, and RegistrationScope rollback. Coding supplies reserved pack identities, Product options and compatibility generation values. |
+| `catalog_preparation` | Formal Package Product captures and verifies selected manifests. The formal Session composition owner resolves resource-only plans, and bootstrap consumes the original Catalog receipt. |
+| `managed_plugin_preparation` | Formal Session cleanup allocates and releases claims against the original resource and startup lease. Coding selects the layout, Materializer type and configured Plugin requests. |
+| `plugin_preparation` and `selected_plugin_preparation` | Existing formal selection, lease and failure cleanup owners handle native custody. Coding keeps its approved base and Capability plan, Product authorization and nominal preparation results. |
+| `composition_receipt` and `runtime_selection` | Formal Session decodes historical receipts, projects the live Catalog, Worker and owner facts and publishes startup evidence through the original Transcript. Coding keeps the composition set, schema namespace, selection inputs and error labels. |
+| `owner_binding` | Formal bootstrap runs unpublished rollback in the existing order. Coding selects its base, Arch and LSP owners and their registration slots. |
+| `package_catalog` | Coding retains Catalog policy, capability and configured-source selection and Profile assembly. Existing formal Catalog and Session owners retain projection and publication. |
+| `workspace_bootstrap` | Harness fingerprints the effective workspace binding and retains actual sandbox operations. Coding selects its execution and composition policy. |
+
+The batch removes 2,898 net staging lines and adds 1,961 Coding Product and
+901 formal Harness lines. Hosting, other production code and scripts have
+no changes. System production Python decreases by 36 lines in this batch
+and 859 cumulatively. Staging has 44 files and 7,413 lines, including 4,898
+Session lines. Direct absolute imports of other Coding components remain in
+33 staged files.
+
+The startup, managed capture, Tool and Command registration and owner
+publication candidate passed 214 cases before the Catalog import inventory
+found one misplaced projection helper. The helper now uses the existing
+formal composition owner, and final Catalog custody keeps its private
+adapter with the original reader. All 88 selected architecture, Product
+composition receipt and native Runtime publication cases pass on the
+corrected source. This includes startup receipt concurrency, retained
+workspaces, partial failure and exact persisted input publication on Linux.
+Native Windows remains pending.
+
+### Resume History, Model Evidence And Writer Acquisition
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `history_snapshot` | Formal Transcript discovery checks source identity around the existing bounded byte capture. Coding retains its historical header, activation-codec choice and result identity. |
+| `selected_ancestry` and `resume_records` | Formal Transcript owns the selected-path hash, fixed record construction, frozen message and input digest. Coding supplies its historical digest domains and version-specific intent binding. |
+| `activation_history` | Coding retains its V1 and V2 facts and selected-path interpretation. The shared ancestry owner and Transcript's exact single-input selection handle record custody and digest verification. |
+| `model_history` | Formal Model Call projection locates an exact first invocation after the selected input and verifies its terminal evidence. |
+| `writer_acquisition` | The formal Transcript owner restores and rechecks the selected history under its existing Writer. Coding verifies its Product plan, expected binding and history before exposing the retained Manager. |
+
+The batch removes 723 net staging lines and adds 377 Coding Product lines
+and 243 formal Harness lines. System production Python decreases by 103
+lines for the batch and 962 against baseline, with no Hosting, other
+production or script changes. Staging has 38 files and 6,690 lines.
+
+All 69 selected Linux cases pass, including source identity and byte-digest
+drift, historical snapshots and malformed facts, original fixed input and
+model observation, Writer acquisition, runtime continuation, and the
+existing Harness dependency check. The follow-up suite passes all 131
+selected V1/V2 mode, fixed Binding, activation projection and historical
+reader compatibility cases. Scoped mypy passed on nine implementation
+files before the final two codec call sites were pointed at the same
+Coding intent-matching policy. Native Windows remains pending.
+
+### Configured Continuity And Local Discovery
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `configured_continuity` | Formal Session joins actual and historical Source identities, reopens selected revisions, reconciles installed Instances, and releases unused revision handles. Formal Continuity keeps its Hub publication and generation. Coding supplies its scope, compatibility choices, approval policy and error identity. |
+| `local_discovery` | Formal Plugin Management joins read-only management, support and native Catalog evidence, then checks drift, sorts, filters and reports truncation. Coding retains the declared roots, selected resource and artifact policies, workspace admission and exact CLI output. |
+
+The batch removes 1,272 staging lines and adds 587 Coding Product and 766
+formal Harness lines. The explicit borrowed read and admission interfaces
+add 81 system production lines for the batch. The system still decreases
+by 881 lines against baseline. Hosting, other production code and scripts
+have no changes. Staging has 36 files and 5,418 lines.
+
+The Linux candidate passes 61 Continuity lifecycle, local discovery and
+existing architecture cases. The first dependency check caught a reverse
+edge from Continuity core to Plugin Management. The final host-gated owner
+is Session Plugin Lifecycle. Native Windows remains pending.
+
+### Resume Transaction And Retained Runtime
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `continuation_transaction` | Formal Session Resume runs the prepare, stage, commit, observe and publish sequence under the existing Writer operation scope. Coding chooses the effect owner and preserves its intent, codec, binding and uncertain-outcome handling. |
+| `retained_continuation` | Coding's runtime admits the retained selection and calls the existing Harness lifecycle candidate operations directly. The lifecycle still settles release on abort and attaches the original failure. |
+
+The batch removes 764 staging lines and adds 502 Coding Product and 80
+formal Harness lines. System production Python decreases by 182 lines for
+the batch and 1,063 against baseline. Staging has 34 files and 4,654 lines.
+Hosting, other production code, scripts and test source have no changes.
+
+All 100 existing Linux cases pass, covering V1/V2 continuation formats,
+prepared-operation custody, first input, runtime restart and the acyclic
+Harness graph. Three scoped sources pass mypy. Native Windows remains pending.
+
+### Plugin Support Evidence And Worker Session Preparation
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `plugin_management/preview_snapshot` and `support_read` | Formal Plugin Management owns revision rechecks and the preview read sequence. Formal Config reads the bounded existing settings leaf without following a replacement. Coding retains workspace admission, disabled resource policy and response identity. |
+| `plugin_management/support_evidence` | The formal support projector joins borrowed resource, Package and operation evidence. Coding renders the action allowed for its actor. |
+| `worker/operator_query` and `session_selection` | Coding applies selected-workspace and Product Profile policy and calls the formal Worker query and selected activation paths directly. |
+| `worker/pending_session` and `windows_admission` | The formal Session provider prepares the pending input, checks the native attempt and owns activation. The formal Package Product owner verifies exact Windows attempt identity. Coding retains the original wire inputs, approval and currentness decisions. |
+| `worker/__init__` | The staging namespace exits with its implementations. |
+
+Support retires 610 staged lines, adds 172 Coding Product and 389 formal
+Harness lines and reduces production by 49 lines. Worker retires 518 staged
+lines, adds 358 Coding Product and 36 formal Harness lines and reduces
+production by 124 lines. The combined reduction is 173 system production
+lines for the batch and 1,236 against baseline. Staging has 26 files and
+3,526 lines. Hosting, other production code and scripts have no changes.
+Existing Worker architecture assertions name the current exact import owners
+and have four fewer test lines.
+
+The support candidate passes 28 Linux cases for preview, support, discovery,
+stale scope and the acyclic graph. Worker passes 39 selected Linux behavior
+and boundary cases with eight host-runtime routes skipped. The affected C50,
+C51 and C54 architecture checks pass after aligning their exact locations to
+the relocated startup receipt type and Worker entrypoints. Scoped mypy passes
+on five Support and seven Worker files. Native Windows remains pending.
+
+### Session Profile, Tool Selection And Child Construction
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `extension_profiles` | Formal Session resolves admitted declarations, prepares implementations and checks provider graph refresh. Coding supplies its Runtime Plan and allowed slots. |
+| `tool_selection` | The formal Workspace Tools owner resolves native names and profiles, filters exact-owner tools and orders registered peers. |
+| `subagent_construction` | The existing formal child factory module owns delegated input selection and runtime construction. Coding supplies roles, writable workspace ceilings, Profile and runtime builder. |
+| `composition_history` | Formal Session encodes composition fingerprints. Coding Resume interprets its own historical comparison and retains its result type. |
+
+The batch removes 536 staging lines and adds 42 Coding Product and 475
+formal Harness lines. System production Python decreases by 19 lines for
+the batch and 1,255 against baseline. Staging has 22 files and 2,990 lines.
+Hosting, other production code, scripts and test source have no changes.
+
+All 85 existing Linux cases for Resume comparison, composition sets,
+extension refresh, Profile capability binding, Tool Pack, subagents and
+architecture pass. Ten scoped sources pass mypy. Native Windows remains pending.
+
+### Plugin Management Assembly And Product Scope
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `command_admission` and `session_scope` | The original Coding SDK command and RPC owners enforce their workspace witness and route admission. Formal Workspace and Plugin Management supply the directory identity primitives and the common ports. |
+| `dependency_grants` | Formal Package materialization verifies exact source identities. Coding selects reserved IDs, distribution and rejection codes. |
+| `enablement_projection` and `membership_evidence` | The existing formal projector and Session membership owner share captured downgrade projection and the exact holder codec. Coding retains the scope, historical prefix, configuration publication and errors. |
+| `lifecycle_binding` | Formal Plugin Management binds ledgers and ports and validates migration compatibility before optional writable recovery. Coding binds paths and borrows/transfers the startup lease. |
+| `operation_explanation` | Formal Plugin Management verifies that a partially observed handoff names the same Desired command and reads its commit evidence. Coding retains the platform and workspace checks and action rendering. |
+
+The batch removes 640 staging lines and adds 275 Coding Product and 244
+formal Harness lines. System production Python decreases by 121 lines for
+the batch and 1,376 against baseline. Staging has 15 files and 2,350 lines.
+Hosting, other production code and scripts have no changes. The existing
+architecture assertion follows the compatibility writer, with three fewer
+test lines.
+
+The Linux candidate passes 178 existing cases, including lifecycle, legacy
+projection, fenced CLI/SDK/RPC, workspace replacement, and the Harness
+dependency graph. Five platform cases are skipped. Eleven scoped sources
+pass mypy. Native Windows remains pending.
+
+### Selected Resources And Initial Catalog Admission
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `resource_composition` | Formal Session extends data selection from verified Store facts. The existing Catalog snapshot owner checks captured provenance and supplies body and admission inputs. Coding retains builtin selection, trusted external owners, precedence and error mapping. |
+| `external_resource_composition` | The external data Product selects trust and declares owner policy. It calls the same formal snapshot input projection and existing contribution compiler as the base Product. |
+| `catalog_adapter` | The existing Catalog input owner performs final receipt admission and creates the adapter. Coding applies receipt ingress, source policy and legacy package selection. |
+
+The batch removes 705 staging lines and adds 391 Coding Product and 194
+formal Harness lines. System production Python decreases by 120 lines for
+the batch and 1,496 against baseline. Staging has 12 files and 1,645 lines.
+Hosting, other production code and scripts have no changes. Catalog source
+assertions track the current owners with 13 fewer test lines.
+
+All 71 existing Linux cases pass for base owners, Catalog, external fenced
+Resources with and without the base Plugin, conflicting resource selection
+and architecture. Six scoped sources pass mypy. Native Windows remains pending.
+
+### Session Index, Resume Admission And Plugin Uninstall
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `session/continuity_history` | The formal Session adapter owns cached target identity, index refresh, current source verification, prepared restore and deletion sequencing. Coding retains its provider identity, display and native Resume preview selection. |
+| `session/activation_plan` and `session/resume_planning` | Formal Session validates ordered owner references and fingerprints bounded Plan bytes. The existing Harness planning slot owns asynchronous work. Coding validates its composition and native history, selects Resource inputs and retains the Plan and error types. |
+| `session/approval_confirmation` | Formal Session captures the native execution scope using the existing profile and transcript codec. Coding binds its hosted or embedded subject, confirmation policies and exact approval request. |
+| `session/first_input_activation` and `session/resume_cleanup` | Coding selects its intent, proves the admitted effect set and maps cleanup debt to its original owner and factory fence. Existing formal Session owners settle the receipt and dispose borrowed resource lifetimes. |
+| `session/plugin_resume` | Formal Approval reopens the original journal pair and verifies selected revisions against both sealed memberships. Coding supplies Product paths, the exact V2 intent, expected owners and failure identity. |
+| `plugin_management/owner_evidence_record` | Formal Session uses one canonical owner-generation payload and digest. Coding preserves the historical nominal record, codec identity, wire fields and validation precedence. |
+| `plugin_management/package_removal` | Formal Plugin Management submits and retries exact CAS removal and reads post-mutation evidence. Coding retains operation ID policy, fenced CLI admission and success/failure output. |
+| `__init__.py` in the root, `package_product`, `plugin_management`, `session` and `worker` | All five former package markers exit with the staging layer. |
+
+The final batch removes all 1,645 remaining staging lines. Coding Product
+adds 771 lines and formal Harness adds 640 lines. The completed batch reduces
+system production Python by 234 lines. Its existing tests move fault and
+instrumentation sites to their actual owners.
+
+| Production Python under `src/loushang` | Baseline `db196bf1e` | Candidate | Delta |
+| --- | ---: | ---: | ---: |
+| Coding Product | 88,730 | 97,451 | +8,721 |
+| `coding.harness` | 17,225 | 0 | −17,225 |
+| All Coding | 105,955 | 97,451 | −8,504 |
+| Formal Harness | 381,216 | 387,990 | +6,774 |
+| Hosting | 14,235 | 14,235 | 0 |
+| Other production Python | 154,018 | 154,018 | 0 |
+| System production Python | 655,424 | 653,694 | −1,730 |
+
+Physical line counts include comments and blank lines in tracked Python.
+The original staging files either move to a formal mechanism owner, return
+to an existing Product owner or retire after a shared implementation takes
+over. Coding imports no staging module and the staging namespace exits.
+
+The import audit follows relative and absolute source imports and checks
+literal Coding module destinations. It reaches 1,052 local modules from all
+925 formal Harness source modules and finds zero Coding destinations. The
+source API comparison covers 396 existing Coding exports in changed files.
+Their measured function signatures and annotated class field and dataclass
+shapes match the baseline. Ruff passes on all changed Python and mypy passes
+on all 158 changed production Python modules. Test source is down 76 lines.
+
+The final focused Linux run passes all 203 existing cases for Resume planning,
+permission, native journal settlement, first input, indexed Continuity,
+owner-generation evidence, public Plugin removal and import direction. The
+earlier isolated Continuity run passes 104 cases with one platform skip.
+
+The cumulative boundary suite caught the location of the native index adapter
+and the child construction type import. The native adapter now lives with
+formal Session, and child construction imports the defining services module.
+All 42 affected boundary and Continuity cases pass after these corrections.
+The corrections have zero production line delta.
+
+The exact effect inventory now points to managed Plugin preparation's live
+Product entry. The default-dark Worker inventory follows the startup receipt
+type into its formal evidence module. All 49 PLC9B contract cases and all nine
+Worker default-dark cases pass after those inventory corrections.
+
+The installed Continuity selection and Instance admission chain lives in the
+formal Session Plugin Lifecycle host. This keeps its Instance ledger effects
+on the host side of the existing management boundary. The package inventory
+also records the existing POSIX fence owner's bounded state-root observation.
+The two affected boundary checks, the effect inventory and cycle checks pass.
+The Continuity bootstrapping routes and their named fault injection pass after
+tracking the current host module. There is no production line delta.
+
+### Cumulative Linux Verification
+
+The architecture suite passes 644 cases on the initial complete source tree.
+All six remaining checks pass on the targeted reruns after the Session,
+Worker and Package inventory and boundary corrections above.
+
+The Harness suite passes 5,938 cases with 113 skips and three deselections.
+The affected Coding suite passes 460 cases with six skips. The full runs each
+report one timing failure, respectively a large Transcript load and a Product
+crash-recovery child handshake. Both failures also occur on unmodified main
+under parallel load. The pair passes when run by itself on baseline and final
+candidate, in 20.27 and 19.81 seconds for the two-case runs. The test budgets,
+failure priority and runtime behavior keep their existing checks. Native Windows
+coverage follows the repository's existing PR workflow.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

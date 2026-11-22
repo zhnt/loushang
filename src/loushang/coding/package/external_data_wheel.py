@@ -8,15 +8,13 @@ from dataclasses import dataclass
 from hashlib import sha256 as sha256
 from pathlib import Path
 
-from loushang.coding.harness.package_product import (
-    data_source_record as _lifecycle_programs,
-)
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
     JournalRecordCodec,
 )
 from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
+    plugin_wheel_source_fields_match,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordSchema,
@@ -41,13 +39,6 @@ _MAX_WHEEL_FILENAME = 180
 _CHUNK_SIZE = 64 * 1024
 
 
-_LIFECYCLE_PROGRAM_VALUES = {
-    "value_001": "External data Wheel binding is invalid",
-    "value_002": "External data Wheel binding identity changed",
-    "value_003": "External data Wheel filename is unsupported",
-}
-
-
 class CodingExternalDataWheelError(RuntimeError):
     """External data Wheel Source was not safely admitted."""
 
@@ -66,7 +57,16 @@ class CodingExternalDataWheelBindingV1:
     record_id: str
 
     def __post_init__(self) -> None:
-        return _lifecycle_programs.validate_record(self)
+        match = _WHEEL_NAME.fullmatch(self.wheel_filename)
+        if (
+            not plugin_wheel_source_fields_match(
+                self, match, maximum_filename=_MAX_WHEEL_FILENAME
+            )
+            or _DIGEST.fullmatch(self.record_id) is None
+        ):
+            raise ValueError("External data Wheel binding is invalid")
+        if self.record_id != sha256(canonical_json_bytes(self._identity())).hexdigest():
+            raise ValueError("External data Wheel binding identity changed")
 
     @classmethod
     def create(
@@ -80,15 +80,31 @@ class CodingExternalDataWheelBindingV1:
         wheel_filename: str,
         artifact_digest: str,
     ) -> CodingExternalDataWheelBindingV1:
-        return _lifecycle_programs.create_record(
-            cls,
+        match = _WHEEL_NAME.fullmatch(wheel_filename)
+        if match is None:
+            raise ValueError("External data Wheel filename is unsupported")
+        fields = {
+            "recordRevision": record_revision,
+            "storeId": store_id,
+            "namespaceId": namespace_id,
+            "scopeId": scope_id,
+            "originalSource": original_source,
+            "wheelFilename": wheel_filename,
+            "pluginId": match["plugin"],
+            "version": match["version"],
+            "artifactDigest": artifact_digest,
+        }
+        return cls(
             record_revision=record_revision,
             store_id=store_id,
             namespace_id=namespace_id,
             scope_id=scope_id,
             original_source=original_source,
             wheel_filename=wheel_filename,
+            plugin_id=match["plugin"],
+            version=match["version"],
             artifact_digest=artifact_digest,
+            record_id=sha256(canonical_json_bytes(fields)).hexdigest(),
         )
 
     def _identity(self) -> dict[str, object]:

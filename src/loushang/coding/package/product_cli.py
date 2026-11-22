@@ -6,14 +6,13 @@ import json
 import re as re
 import secrets as secrets
 from collections.abc import Sequence
+from functools import partial
 from hashlib import sha256 as sha256
 from importlib.metadata import version as version
 from pathlib import Path
 from typing import Literal, TextIO
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID as CODING_PRODUCT_ID
-from loushang.coding.harness.package_product import package_change as _change
-from loushang.coding.harness.plugin_management import package_removal as _removal
 from loushang.coding.package.management_binding import (
     CODING_CLI_MANAGEMENT_ACTOR_ID,
 )
@@ -61,7 +60,12 @@ from loushang.harness.plugin_management import (
     PluginManagementQueryV1 as PluginManagementQueryV1,
 )
 from loushang.harness.plugin_management.application import (
+    PluginManagementApplicationPorts,
     PluginManagementInstallationViewV1,
+)
+from loushang.harness.plugin_management.desired_command import (
+    PluginPackageRemovalAttempt,
+    remove_installed_plugin_package,
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1 as PackageProductLifecycleIntentV1,
@@ -105,13 +109,139 @@ def route_coding_fenced_data_wheels(
         )
         return 1
 
-    return _change.change_packages(
+    return _change_packages(
         layout,
         action=action,
         workspace=workspace,
         sources=sources,
         stdout=stdout,
         stderr=stderr,
+    )
+
+
+def _change_packages(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    action: Literal["install", "update"],
+    workspace: Path,
+    sources: Sequence[str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+
+    current_operation_id: str | None = None
+    try:
+        controlled = tuple(
+            admit_coding_external_data_wheel(layout, source=Path(raw))
+            for raw in sources
+        )
+        owner = open_coding_fenced_product_application_owner(
+            layout,
+            workspace=workspace,
+            runtime_version=version(_PACKAGE_DISTRIBUTION),
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        )
+        try:
+            product = owner.runtime_owner.product_owner
+            for record in controlled:
+                operation_id = (
+                    f"{_PACKAGE_OPERATION_PREFIX}{action}:{secrets.token_hex(16)}"
+                )
+                current_operation_id = operation_id
+                runtime_id = f"{_PACKAGE_RUNTIME_PREFIX}{secrets.token_hex(16)}"
+                with _product_plugin_runtime(
+                    product,
+                    product_id=CODING_PRODUCT_ID,
+                    session_id=runtime_id,
+                ) as runtime:
+                    outcome = runtime.lifecycle.route(
+                        PackageProductLifecycleIntentV1(
+                            operation_id=operation_id,
+                            action=action,
+                            source=str(
+                                owner.epoch_runtime.control_root
+                                / _PACKAGE_SOURCE_DIRECTORY
+                                / record.wheel_filename
+                            ),
+                            scope=_PACKAGE_SCOPE,
+                        ),
+                        entrypoint=_PACKAGE_ENTRYPOINT,
+                    )
+                if not outcome.handled or outcome.record is None:
+                    raise RuntimeError(f"Package Product {action} was not handled")
+                if outcome.record.lifecycle == "failed":
+                    _write_package_failure(
+                        layout,
+                        workspace=workspace,
+                        operation_id=operation_id,
+                        error_code=outcome.record.failure_code
+                        or "package_operation_failed",
+                        stderr=stderr,
+                    )
+                    return 1
+                _write_package_success(stdout, action, record, outcome.record)
+            return 0
+        finally:
+            owner.close()
+    except (OSError, RuntimeError, ValueError) as error:
+        if current_operation_id is None:
+            _write_cli_error(stderr, error)
+        else:
+            code = getattr(error, "code", None)
+            _write_package_failure(
+                layout,
+                workspace=workspace,
+                operation_id=current_operation_id,
+                error_code=(
+                    code
+                    if isinstance(code, str)
+                    and re.fullmatch(r"[a-z][a-z0-9_]{1,127}", code)
+                    else "package_operation_incomplete"
+                ),
+                stderr=stderr,
+            )
+        return 1
+
+
+def _observe_failed_change(
+    layout: CodingPluginLifecycleStateLayout,
+    operation_id: str,
+) -> tuple[str, dict[str, object] | None, int | None, str | None, str, str]:
+    """Observe recorded progress without retrying or inferring a rollback."""
+    stage = "unknown"
+    committed_revision: dict[str, object] | None = None
+    desired_inventory_revision: int | None = None
+    handoff_receipt_id: str | None = None
+    try:
+        handoff = read_coding_fenced_package_handoff(layout, operation_id)
+        if handoff is not None:
+            stage = handoff.state
+            handoff_receipt_id = handoff.receipt_id
+            desired_commit = read_coding_fenced_handoff_desired_commit(layout, handoff)
+            if desired_commit is not None:
+                desired_inventory_revision, committed_revision, _source = desired_commit
+                if handoff.state == "dependency_pinned":
+                    stage = "desired_committed"
+    except (OSError, RuntimeError, ValueError):
+        pass
+    try:
+        explanation = explain_coding_fenced_plugin_operation(
+            layout,
+            operation_id,
+            correlation_id=f"cli:failed-package:{operation_id}",
+        )
+        handoff_evidence: str = explanation.handoff_evidence
+        join_status: str = explanation.join_status
+    except (OSError, RuntimeError, ValueError):
+        handoff_evidence = "not_checked"
+        join_status = "not_checked"
+    return (
+        stage,
+        committed_revision,
+        desired_inventory_revision,
+        handoff_receipt_id,
+        handoff_evidence,
+        join_status,
     )
 
 
@@ -161,7 +291,7 @@ def _write_package_failure(
         handoff_receipt_id,
         handoff_evidence,
         join_status,
-    ) = _change.observe_failed_change(layout, operation_id)
+    ) = _observe_failed_change(layout, operation_id)
     next_commands = [
         ["loushang", "--explain-plugin-operation", operation_id],
         ["loushang", "--list-plugins", "--list-plugins-format", "json"],
@@ -326,8 +456,98 @@ def uninstall_coding_fenced_data_wheels(
             "Error: Fenced Product uninstall requires --package-scope project\n"
         )
         return 1
-    return _removal.remove_packages(
-        layout, workspace=workspace, plugin_ids=plugin_ids, stdout=stdout, stderr=stderr
+    ports = build_coding_fenced_product_management_cli_ports(layout)
+    attempt = PluginPackageRemovalAttempt()
+    try:
+        for plugin_id in plugin_ids:
+            attempt = PluginPackageRemovalAttempt()
+            correlation_id = f"cli:uninstall-package:{plugin_id}"
+            installed = remove_installed_plugin_package(
+                ports,
+                attempt,
+                query=PluginManagementQueryV1(
+                    correlation_id=f"{correlation_id}:query",
+                    product_id=CODING_PRODUCT_ID,
+                    installation_scope=_REMOVAL_SCOPE,
+                    scope_id=layout.scope_id,
+                    plugin_ids=(plugin_id,),
+                ),
+                correlation_id=correlation_id,
+                actor_id=CODING_CLI_MANAGEMENT_ACTOR_ID,
+                policy_revision=CODING_CLI_MANAGEMENT_POLICY_REVISION,
+                max_attempts=_REMOVAL_MAX_ATTEMPTS,
+                operation_id_for_revision=partial(
+                    _uninstall_operation_id, layout.scope_id, plugin_id
+                ),
+            )
+            operation_id = attempt.operation_id
+            assert operation_id is not None
+            _write_uninstall_success(
+                stdout,
+                workspace=workspace,
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                installed=installed,
+            )
+        return 0
+    except (OSError, RuntimeError, ValueError) as error:
+        _report_uninstall_failure(stderr, layout, ports, attempt, error)
+        return 1
+
+
+def _uninstall_operation_id(scope_id: str, plugin_id: str, revision: int) -> str:
+    identity = sha256(
+        f"{_REMOVAL_ID_DOMAIN}{scope_id}:{plugin_id}:{revision}".encode()
+    ).hexdigest()
+    return f"cli-product-uninstall:{identity}"
+
+
+def _report_uninstall_failure(
+    stderr: TextIO,
+    layout: CodingPluginLifecycleStateLayout,
+    ports: PluginManagementApplicationPorts,
+    attempt: PluginPackageRemovalAttempt,
+    error: BaseException,
+) -> None:
+    current_operation_id = attempt.operation_id
+    pending_operation = attempt.pending
+    if current_operation_id is None:
+        _write_cli_error(stderr, error)
+        return
+    operation_status = "unknown"
+    actor_id: str | None = None
+    committed_revision: int | None = None
+    try:
+        observed = ports.commands.operation(
+            current_operation_id,
+            correlation_id=f"cli:failed-uninstall:{current_operation_id}",
+        )
+        if observed is not None and isinstance(
+            observed.operation, PluginManagementOperationEventV1
+        ):
+            operation_status = observed.operation.status
+            actor_id = observed.operation.command.mutation.actor_id
+            pending_operation = observed.operation.status != "terminal"
+    except (OSError, RuntimeError, ValueError):
+        pass
+    try:
+        transition = read_coding_fenced_desired_transition(
+            layout, current_operation_id
+        )
+        if (
+            transition is not None
+            and transition.mutation.desired_state == "absent"
+        ):
+            committed_revision = transition.inventory_revision
+    except (OSError, RuntimeError, ValueError):
+        pass
+    _write_uninstall_failure(
+        stderr,
+        current_operation_id=current_operation_id,
+        operation_status=operation_status,
+        actor_id=actor_id,
+        pending_operation=pending_operation,
+        committed_revision=committed_revision,
     )
 
 

@@ -3,19 +3,36 @@
 from __future__ import annotations
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_management_evidence import (
+    LEGACY_MANAGEMENT_CAPTURE_MAX_BYTES,
+    LegacyManagementCapturePaths,
+)
 from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeInventorySnapshotV1,
     inspect_gracefully_retired_instance_capture,
 )
 
 from .legacy_desired_evidence import CodingLegacyDesiredEvidenceV1
-from .legacy_operation_evidence import CodingLegacyRetirementCaptureV1
+from .legacy_operation_evidence import (
+    CodingLegacyRetirementCaptureV1,
+)
 
-_MAX_CAPTURE_BYTES = 2 * 1024 * 1024
+_MAX_CAPTURE_BYTES = LEGACY_MANAGEMENT_CAPTURE_MAX_BYTES
 
 
 class CodingLegacyInstanceEvidenceError(ValueError):
     """Frozen old Instance references are not safe for first-B adoption."""
+
+
+def _management_capture_paths(
+    lifecycle: CodingPluginLifecycleStateLayout,
+) -> LegacyManagementCapturePaths:
+    return LegacyManagementCapturePaths(
+        lifecycle.management_operations,
+        lifecycle.retirement_intents,
+        lifecycle.retirement_sets,
+        lifecycle.instance_runtime,
+    )
 
 
 def parse_coding_legacy_retired_instance_capture(

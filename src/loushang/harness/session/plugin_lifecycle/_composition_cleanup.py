@@ -80,6 +80,17 @@ class _PreparationFailureCleanup(_CompositionCleanup):
     __slots__ = ()
     _released_plugin_ids: set[str]
 
+    def close_after_failed_preparation(
+        self, error: BaseException, *, cleanup_note_prefix: str
+    ) -> bool:
+        """Close owned preparation state and report whether custody can end."""
+        try:
+            self.close()
+        except BaseException as cleanup_error:
+            error.add_note(f"{cleanup_note_prefix}{cleanup_error}")
+            return False
+        return True
+
     def adopt_cleanup_callbacks(
         self,
         *,
@@ -261,3 +272,38 @@ class _PublishedCompositionCleanup(_CompositionCleanup):
                 f"{self._cleanup_label} Plugin private state requires retirement evidence"
             )
         self._clean_private_state()
+
+
+def share_startup_cleanup(
+    release_startup: Callable[[], None],
+    cleanup_state: Callable[[], None],
+    *,
+    primary: bool,
+    eager: bool,
+    deferred: bool,
+) -> tuple[Callable[[], None] | None, Callable[[], None] | None, Callable[[], None] | None]:
+    """Transfer one disposable startup root across successful consumers."""
+
+    remaining = sum((primary, eager, deferred))
+    cleanup_done = False
+
+    def create_claim() -> Callable[[], None]:
+        released = False
+
+        def release() -> None:
+            nonlocal remaining, cleanup_done, released
+            if not released:
+                remaining -= 1
+                released = True
+            if remaining == 0 and not cleanup_done:
+                release_startup()
+                cleanup_state()
+                cleanup_done = True
+
+        return release
+
+    return (
+        create_claim() if primary else None,
+        create_claim() if eager else None,
+        create_claim() if deferred else None,
+    )

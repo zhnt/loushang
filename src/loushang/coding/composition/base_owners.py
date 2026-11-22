@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import ClassVar, Protocol
 
-from loushang.coding.harness.session import registration_generations as _registrations
 from loushang.coding.resources.tool_pack import (
     create_coding_builtin_tool_definitions as create_coding_builtin_tool_definitions,
 )
@@ -30,9 +29,12 @@ from loushang.harness.runtime.registration import (
     registration_scope_retirement_receipt,
 )
 from loushang.harness.session.capability_composition_inputs import (
+    OwnerGenerationDispose,
+    OwnerGenerationStage,
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
+    product_contribution_registration_owner,
 )
 from loushang.harness.session.command_controller import (
     SessionCommandGenerationRegistry,
@@ -40,6 +42,8 @@ from loushang.harness.session.command_controller import (
 from loushang.harness.session.tool_owner_binding import (
     DeferredToolRegistrationSlot,
     SessionToolRegistrationPort,
+    stage_workspace_tool_scope,
+    workspace_options_from_capture,
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
 from loushang.harness.workspace.generation_bindings import (
@@ -142,7 +146,11 @@ class _CodingBaseGeneration:
         self.scope.rollback_commit()
 
     async def dispose(self) -> None:
-        await _registrations.dispose_registration_generation(self)
+        if self.operation_set is not None:
+            self.operation_set.invalidate(_STALE_WORKSPACE_GENERATION)
+        report = await self.scope.dispose()
+        if report.has_failures:
+            raise _generation_disposal_error(self.kind)
 
     def retirement_receipt(
         self,
@@ -192,7 +200,7 @@ class CodingBaseToolOwner:
         if not callable(getattr(registration, "stage_runtime_tool", None)):
             raise TypeError("Coding base Tool owner registration port is invalid")
         self._bound = True
-        return _registrations.bind_registration_owner(
+        return _bind_registration_owner(
             self.admission,
             self.authority_gate,
             stage=lambda captures: self._stage(captures, registration=registration),
@@ -206,8 +214,30 @@ class CodingBaseToolOwner:
         *,
         registration: CodingBaseToolRegistrationPort,
     ) -> _CodingBaseGeneration:
-        return _registrations.stage_workspace_tools(
-            self, captures, registration=registration, label=_TOOL_LABEL
+        options, operation_set = self._options_from_capture(captures)
+        tool_names = _tool_identities(self.admission.contribution_id)
+        scope = RegistrationScope(
+            product_contribution_registration_owner(self.admission, self.scope_id)
+        )
+        source_info = _CodingBaseSourceInfo(
+            plugin_id=self.admission.plugin_id,
+            contribution_id=self.admission.contribution_id,
+            admission_fingerprint=self.admission.fingerprint,
+        )
+        stage_workspace_tool_scope(
+            scope,
+            operation_set,
+            tool_names,
+            registration=registration,
+            source_info=source_info,
+            build_definitions=lambda: create_coding_builtin_tool_definitions(
+                options=options
+            ),
+            label=_TOOL_LABEL,
+            failed_generation_message=_FAILED_WORKSPACE_GENERATION,
+        )
+        return _CodingBaseGeneration(
+            scope=scope, kind="tool", operation_set=operation_set
         )
 
     def _options_from_capture(
@@ -223,8 +253,11 @@ class CodingBaseToolOwner:
             or capture.entry.requirement != _WORKSPACE_REQUIREMENT
         ):
             raise ValueError("Coding base Tool owner received another Consumer")
-        return _registrations.workspace_options_from_capture(
-            self, capture, label=_TOOL_LABEL
+        return workspace_options_from_capture(
+            self.options,
+            capture,
+            label=_TOOL_LABEL,
+            stale_message=_STALE_WORKSPACE_GENERATION,
         )
 
     async def _dispose(self, value: object) -> None:
@@ -261,7 +294,7 @@ class CodingBaseCommandOwner:
         if not isinstance(registry, SessionCommandGenerationRegistry):
             raise TypeError("Coding base Command registration port is invalid")
         self._bound = True
-        return _registrations.bind_registration_owner(
+        return _bind_registration_owner(
             self.admission,
             self.authority_gate,
             stage=lambda captures: self._stage(captures, registry=registry),
@@ -275,14 +308,53 @@ class CodingBaseCommandOwner:
         *,
         registry: SessionCommandGenerationRegistry,
     ) -> _CodingBaseGeneration:
-        return _registrations.stage_commands(
-            self, captures, registry=registry, label=_COMMAND_LABEL
+        if captures:
+            raise ValueError(f"{_COMMAND_LABEL} owner declares no Consumers")
+        scope = registry.stage_standard_pack_scope(
+            self.admission,
+            scope_id=self.scope_id,
+            pack_id=_COMMAND_CATALOG_ID,
+            expected_names=_COMMAND_NAMES,
+            label=_COMMAND_LABEL,
         )
+        return _CodingBaseGeneration(scope=scope, kind="command")
 
     async def _dispose(self, value: object) -> None:
         if not isinstance(value, _CodingBaseGeneration) or value.kind != "command":
             raise TypeError("Coding base Command owner received a foreign generation")
         await value.dispose()
+
+
+def _bind_registration_owner(
+    admission: OwnerContributionAdmissionRecord,
+    authority_gate: SessionCapabilityOwnerAuthorityGate,
+    *,
+    stage: OwnerGenerationStage,
+    dispose: OwnerGenerationDispose,
+    label: str,
+) -> SessionCapabilityOwnerGenerationBinding:
+    """Hand the staged scope to the existing capability Graph lifecycle."""
+
+    def require_generation(value: object) -> _CodingBaseGeneration:
+        if not isinstance(value, _CodingBaseGeneration):
+            raise TypeError(f"{label} owner received a foreign generation")
+        return value
+
+    return SessionCapabilityOwnerGenerationBinding(
+        owner_id=admission.owner_id,
+        contribution_kind=admission.contribution_kind,
+        plugin_id=admission.plugin_id,
+        contribution_id=admission.contribution_id,
+        admission_fingerprint=admission.fingerprint,
+        authority_gate=authority_gate,
+        stage=stage,
+        dispose=dispose,
+        retirement_receipt=lambda value: require_generation(value).retirement_receipt(
+            contribution_id=admission.contribution_id,
+        ),
+        commit=lambda value: require_generation(value).commit(),
+        rollback_commit=lambda value: require_generation(value).rollback_commit(),
+    )
 
 
 def _generation_disposal_error(kind: str) -> CodingBaseOwnerError:

@@ -46,6 +46,7 @@ from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
+    RegistrationOwner,
 )
 
 SessionCompositionChange = Literal["no_change", "restart_required"]
@@ -422,6 +423,17 @@ class SessionCapabilityConsumerCapture:
             raise TypeError("Session Consumer capture requires a facet set")
         if self.facets.requirement != self.entry.requirement:
             raise ValueError("Session Consumer capture does not match its entry")
+
+
+def product_contribution_registration_owner(
+    admission: OwnerContributionAdmissionRecord, scope_id: str
+) -> RegistrationOwner:
+    return RegistrationOwner(
+        owner_kind="product",
+        owner_id=admission.owner_id,
+        runtime_id=f"{scope_id}:{admission.plugin_id}:{admission.contribution_id}",
+        generation=admission.candidate.instance_revision_ref.revision,
+    )
 
 
 OwnerGenerationStage: TypeAlias = Callable[

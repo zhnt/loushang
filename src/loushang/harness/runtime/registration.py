@@ -568,6 +568,20 @@ class RegistrationScope:
             await self.dispose()
 
 
+def rollback_registration_scope(
+    scope: RegistrationScope,
+    error: BaseException,
+    *,
+    incomplete_note: str,
+) -> None:
+    if scope.state == "committed":
+        scope.rollback_commit()
+    if scope.state == "open":
+        rollback = scope.rollback_admission()
+        if rollback.has_failures:
+            error.add_note(incomplete_note)
+
+
 def registration_scope_retirement_receipt(
     scope: RegistrationScope,
     *,

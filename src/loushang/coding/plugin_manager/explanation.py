@@ -9,9 +9,6 @@ from dataclasses import replace as replace
 from pathlib import Path
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID as CODING_PRODUCT_ID
-from loushang.coding.harness.plugin_management import (
-    operation_explanation as _evidence_programs,
-)
 from loushang.coding.package.epoch_layout import (
     coding_fenced_product_exists as coding_fenced_product_exists,
 )
@@ -34,14 +31,8 @@ from loushang.coding.plugin_manager.operation_guidance import (
 from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationRequestV1,
     PluginOperationExplanationV1,
+    observe_partial_handoff_desired_commit,
 )
-
-_OWNER_EVIDENCE_PROGRAM_VALUES = {
-    "value_001": "Plugin operation explanation requires a typed request",
-    "value_002": "plugin_explanation_scope_mismatch",
-    "value_003": "plugin_explanation_platform_unsupported",
-    "value_004": "plugin_explanation_product_not_fenced",
-}
 
 
 class CodingPluginOperationExplanationError(RuntimeError):
@@ -58,7 +49,47 @@ class CodingPluginOperationExplanationQuery:
     def explain_plugin_operation(
         self, request: PluginOperationExplanationRequestV1
     ) -> PluginOperationExplanationV1:
-        return _evidence_programs.explain_operation(self, request)
+        if self.workspace_guard is not None:
+            self.workspace_guard()
+        if not isinstance(request, PluginOperationExplanationRequestV1):
+            raise TypeError('Plugin operation explanation requires a typed request')
+        if (
+            request.product_id != CODING_PRODUCT_ID
+            or request.scope_id != self.layout.scope_id
+        ):
+            raise CodingPluginOperationExplanationError(
+                code='plugin_explanation_scope_mismatch'
+            )
+        if os.name != "posix":
+            raise CodingPluginOperationExplanationError(
+                code='plugin_explanation_platform_unsupported'
+            )
+        if not coding_fenced_product_exists(self.layout):
+            raise CodingPluginOperationExplanationError(
+                code='plugin_explanation_product_not_fenced'
+            )
+        explanation = explain_coding_fenced_plugin_operation(
+            self.layout,
+            request.operation_id,
+            correlation_id=request.correlation_id,
+            workspace_guard=self.workspace_guard,
+        )
+        explanation = observe_partial_handoff_desired_commit(
+            explanation,
+            operation_id=request.operation_id,
+            read_handoff=lambda operation_id: read_coding_fenced_package_handoff(
+                self.layout, operation_id
+            ),
+            read_commit=lambda handoff: read_coding_fenced_handoff_desired_commit(
+                self.layout, handoff
+            ),
+        )
+        if self.workspace_guard is not None:
+            self.workspace_guard()
+        guidance = project_coding_plugin_operation_guidance(explanation.to_dict())
+        repair = guidance["repairCommand"]
+        assert repair is None or isinstance(repair, str)
+        return replace(explanation, repair_command=repair)
 
 
 def bind_coding_plugin_operation_explanation_query(

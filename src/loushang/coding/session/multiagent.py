@@ -8,7 +8,6 @@ from pathlib import Path
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import Message
 from loushang.coding.control.sandbox import coding_workspace_execution_profile
-from loushang.coding.harness.session.subagent_construction import SubagentConstruction
 from loushang.coding.prompt.defaults import CODING_KERNEL_SYSTEM_PROMPT
 from loushang.coding.resources.tool_authority import CODING_EXACT_OWNER_TOOL_NAMES
 from loushang.coding.resources.tool_pack import coding_platform_tool_names
@@ -32,7 +31,10 @@ from loushang.harness.session.multiagent import (
     SessionSubagentRequest,
     bind_agent_session_multiagent,
 )
-from loushang.harness.session.subagent import AgentSessionSubagentFactory
+from loushang.harness.session.subagent import (
+    AgentSessionSubagentFactory,
+    SubagentConstruction,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 _RuntimeBuilder = Callable[..., AgentSessionRuntime]

@@ -642,12 +642,10 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
     }
     relocated_consumers = {
         Path('src/loushang/coding/package/worker_preparation_inputs.py'),
-        # The pending hosts retain the nominal receipt types at their public
-        # paths. Their existing preparation operations run in staging.
-        Path("src/loushang/coding/harness/worker/pending_session.py"),
         Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
         Path("src/loushang/harness/session/_worker_operator_query.py"),
         Path("src/loushang/harness/session/_worker_provider.py"),
+        Path("src/loushang/harness/session/composition_evidence.py"),
         *lifecycle_consumers,
     }
     consumers: set[Path] = set()

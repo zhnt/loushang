@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.package_product import (
-    legacy_operation_evidence as _programs,
+from loushang.harness.package_product._legacy_management_evidence import (
+    classify_management_members,
 )
 from loushang.harness.plugin_management.retirement_sets import (
     RetirementCaptureFields,
@@ -18,40 +18,6 @@ from loushang.harness.plugin_management.service import (
 from .legacy_desired_evidence import CodingLegacyDesiredEvidenceV1
 
 _MAX_OPERATION_BYTES = 2 * 1024 * 1024
-_SIMPLE_DESIRED_MEMBERS = ("desired-state.jsonl",)
-_SERVICE_DESIRED_MEMBERS = (
-    "desired-state.jsonl",
-    "desired-state.jsonl.lock",
-    "management-operations.jsonl",
-    "management-operations.jsonl.lock",
-)
-_SERVICE_INSTANCE_MEMBERS = (
-    "retirement-intents.jsonl.lock",
-    "retirement-sets.jsonl.lock",
-)
-_SERVICE_RETIRED_INSTANCE_MEMBERS = (
-    "retirement-intents.jsonl",
-    "retirement-intents.jsonl.lock",
-    "retirement-sets.jsonl",
-    "retirement-sets.jsonl.lock",
-)
-_SERVICE_RETIRED_RUNTIME_INSTANCE_MEMBERS = (
-    "instance-runtime.jsonl",
-    "instance-runtime.jsonl.lock",
-    "instance-runtime.security-acceptances.jsonl.lock",
-    *_SERVICE_RETIRED_INSTANCE_MEMBERS,
-)
-_LOCK_HISTORY_MEMBERS = {
-    ("package-lock.json",),
-    ("package-lock.json", "package-lock.json.lock"),
-}
-
-
-_LEGACY_EVIDENCE_VALUES = {
-    "value_001": "Coding old management journal shape is unsupported",
-    "value_002": "Coding old Package binding shape is invalid",
-    "value_003": "Coding old Package lock shape is unsupported",
-}
 
 
 class CodingLegacyOperationEvidenceError(ValueError):
@@ -69,13 +35,15 @@ def classify_coding_legacy_management_members(
 ) -> bool:
     """Identify only the simple or exact Service shape without retirement rows."""
 
-    return _programs.classify_management_members(
+    return classify_management_members(
         desired_members=desired_members,
         instance_members=instance_members,
         lock_members=lock_members,
         has_binding=has_binding,
         allow_retirement=allow_retirement,
         allow_retired_runtime=allow_retired_runtime,
+        error_type=CodingLegacyOperationEvidenceError,
+        label="Coding old",
     )
 
 

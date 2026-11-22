@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -43,6 +44,108 @@ from ._owner_evidence import EventT, FamilyT, _OwnerGenerationEvidenceLedger
 from ._owner_lease import _acquire_session_owner_lease, _SessionOwnerLease
 
 Owners = tuple[tuple[str, tuple[str, ...]], ...]
+
+
+def normalize_owner_contributions(
+    values: Owners, *, product_label: str
+) -> Owners:
+    if not isinstance(values, tuple):
+        raise TypeError(
+            f"{product_label} owner contributions must be a tuple"
+        )
+    normalized: list[tuple[str, tuple[str, ...]]] = []
+    for owner_reference, contribution_ids in values:
+        owner = _holder_nonempty(owner_reference, name="Owner reference")
+        if (
+            not isinstance(contribution_ids, tuple)
+            or not contribution_ids
+            or any(
+                not isinstance(item, str) or not item or item.strip() != item
+                for item in contribution_ids
+            )
+        ):
+            raise ValueError("Owner contribution ids must be non-empty strings")
+        canonical_ids = tuple(sorted(set(contribution_ids)))
+        normalized.append((owner, canonical_ids))
+    canonical = tuple(sorted(normalized))
+    if len({owner for owner, _items in canonical}) != len(canonical):
+        raise ValueError(f"{product_label} owner references must be unique")
+    return canonical
+
+
+def encode_holder_reference(
+    session_id: str,
+    lease_attempt_id: str,
+    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
+    startup_id: str,
+    *,
+    prefix: str,
+) -> str:
+    payload = {
+        "leaseAttemptId": _holder_nonempty(lease_attempt_id, name="Lease attempt id"),
+        "owners": [
+            {
+                "contributionIds": list(contribution_ids),
+                "ownerReference": owner_reference,
+            }
+            for owner_reference, contribution_ids in owner_contributions
+        ],
+        "sessionId": _holder_nonempty(session_id, name="Session id"),
+        "startupId": _holder_nonempty(startup_id, name="Startup id"),
+    }
+    return prefix + json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def decode_holder_evidence(
+    holder_reference: str,
+    *,
+    prefix: str,
+    product_label: str,
+) -> tuple[str, Owners] | None:
+    if not holder_reference.startswith(prefix):
+        # V1 and foreign holder references contain no process epoch.  Preserve
+        # them fail-closed because inactivity cannot be proven.
+        return None
+    payload = json.loads(
+        holder_reference[len(prefix) :]
+    )
+    if not isinstance(payload, dict) or set(payload) != {
+        "leaseAttemptId",
+        "owners",
+        "sessionId",
+        "startupId",
+    }:
+        raise ValueError("invalid Session holder fields")
+    _holder_nonempty(payload["leaseAttemptId"], name="Lease attempt id")
+    _holder_nonempty(payload["sessionId"], name="Session id")
+    startup_id = _holder_nonempty(payload["startupId"], name="Startup id")
+    owners = payload["owners"]
+    if not isinstance(owners, list):
+        raise ValueError("owners must be an array")
+    values = tuple(
+        (
+            item["ownerReference"],
+            tuple(item["contributionIds"]),
+        )
+        for item in owners
+        if isinstance(item, dict)
+        and set(item) == {"contributionIds", "ownerReference"}
+        and isinstance(item["contributionIds"], list)
+    )
+    if len(values) != len(owners):
+        raise ValueError("invalid owner entry")
+    return startup_id, normalize_owner_contributions(values, product_label=product_label)
+
+
+def _holder_nonempty(value: str, *, name: str) -> str:
+    if not isinstance(value, str) or not value or value.strip() != value:
+        raise ValueError(f"{name} must be non-empty")
+    return value
 
 
 class _LifecycleRoots(Protocol):

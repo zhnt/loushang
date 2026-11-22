@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding.harness.package_product import (
-    legacy_adoption_observation as _programs,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager as SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
     _LegacyAdoptionSelection as _LegacyAdoptionSelection,
+)
+from loushang.harness.package_product._legacy_local_migration import (
+    match_legacy_replay_source,
 )
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1 as PluginInstallationKeyV1,
@@ -40,6 +40,7 @@ from .legacy_local_acceptance import (
 )
 from .legacy_local_installation import _enable_operation_id as _enable_operation_id
 from .legacy_local_installation import _install_operation_id as _install_operation_id
+from .legacy_review import _reviewed_disabled_ids
 from .legacy_skill_cutover_admission import (
     require_coding_fenced_single_legacy_skill_snapshot as require_coding_fenced_single_legacy_skill_snapshot,
 )
@@ -57,17 +58,6 @@ from .product_runtime import (
 )
 
 _BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
-
-
-_LEGACY_PROGRAM_VALUES = {
-    "value_001": "skill",
-    "value_002": "prompt",
-    "value_003": "theme",
-    "value_004": "Unsupported legacy Resource type",
-    "value_005": "handoff.jsonl",
-    "value_006": "Coding legacy adoption handoff changed",
-    "value_007": "coding",
-}
 
 
 def coding_legacy_local_skill_adoption_settled(
@@ -96,9 +86,94 @@ def coding_legacy_local_data_adoption_settled(
 ) -> bool:
     """Check one typed old local adoption without mutating Product state."""
 
-    return _programs.adoption_settled(
-        lifecycle, plugin_id=plugin_id, workspace=workspace, resource_kind=resource_kind
+    if resource_kind not in {
+        "skill",
+        "prompt",
+        "theme",
+    }:
+        raise ValueError("Unsupported legacy Resource type")
+
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    runtime = PackageProductPosixFencedRuntimeOwner.open(
+        **epoch.fenced_runtime_open_kwargs(), read_only=True
     )
+    try:
+        require_coding_fenced_single_legacy_skill_snapshot(
+            lifecycle, runtime, plugin_id=plugin_id
+        )
+        accepted = reopen_coding_legacy_installed_local_acceptance(
+            lifecycle,
+            runtime,
+            plugin_id=plugin_id,
+            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+        )
+        source_consumed = (
+            False
+            if accepted is None or accepted.resource_kind != resource_kind
+            else coding_accepted_legacy_local_source_consumed(
+                lifecycle,
+                runtime,
+                accepted,
+                SettingsManager(
+                    global_settings_path=default_global_settings_path(),
+                    project_settings_path=default_project_settings_path(workspace),
+                ),
+            )
+        )
+    finally:
+        runtime.close()
+    if accepted is None or not source_consumed:
+        return False
+
+    with CodingFencedProductReadOnlyPreviewOwner.open(lifecycle) as preview:
+        trust_class = trust_class_for_legacy_data_resource(resource_kind)
+        matches, bound = match_legacy_replay_source(
+            preview.policy.bindings,
+            accepted,
+            plugin_id=plugin_id,
+            trust_classes=(trust_class,),
+            expected_trust=trust_class,
+        )
+        if not matches or bound is None:
+            return False
+        handoffs = PackageRetentionHandoffJournal(
+            epoch.control_root / "product-state" / "handoff.jsonl"
+        )
+        desired = preview.selected_manifests.root_reader.desired_state
+        disabled_builtins = _reviewed_disabled_ids(accepted.review)
+        selection = _LegacyAdoptionSelection(
+            key=PluginInstallationKeyV1(
+                product_id="coding",
+                installation_scope="workspace",
+                scope_id=lifecycle.scope_id,
+                plugin_id=plugin_id,
+            ),
+            source_identity=bound.source_identity,
+            install_operation_id=_install_operation_id(
+                accepted.review.store_id, accepted.acceptance_id
+            ),
+            enable_operation_id=(
+                _enable_operation_id(accepted.review.store_id, accepted.acceptance_id)
+                if accepted.review.desired_state == "installed_enabled"
+                else None
+            ),
+            builtin_ids=_BUILTINS,
+            disabled_builtin_ids=frozenset(disabled_builtins),
+            removed_builtin_operations={
+                name: accepted.review.removed_builtin_operation_id(name)
+                for name in _BUILTINS
+                if name in accepted.review.removed_builtin_ids
+            },
+        )
+        return selection.settled(
+            desired,
+            preview.epoch_runtime,
+            handoffs,
+            preview.policy.bindings,
+            store_id=epoch.store_id,
+            bootstrap_policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+            handoff_error="Coding legacy adoption handoff changed",
+        )
 
 
 __all__ = [

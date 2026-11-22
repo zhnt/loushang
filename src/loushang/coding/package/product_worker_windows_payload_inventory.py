@@ -12,8 +12,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._worker_windows_attempt import (
+    is_windows_product,
     read_windows_product_worker_attempts,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (

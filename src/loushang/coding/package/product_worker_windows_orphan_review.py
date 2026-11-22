@@ -10,12 +10,12 @@ import os
 from dataclasses import dataclass
 from typing import cast
 
-from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_recovery import (
     repair_windows_product_worker_clean_exit_orphan,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_orphan_runtime,
+    is_windows_product,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,

@@ -1,0 +1,428 @@
+"""Read Session composition evidence and resolve capability mount intent."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable, Iterable, Mapping
+from copy import deepcopy
+from hashlib import sha256
+from re import fullmatch
+from typing import TYPE_CHECKING, TypeGuard, cast
+
+from loushang.foundation.json import JSONValue
+from loushang.harness.config.agent import CapabilityMountMode
+from loushang.harness.plugin_management.current_preview import (
+    plugin_package_revision_fingerprint,
+)
+from loushang.harness.resources._catalog_records import (
+    ResourceCatalogSnapshot,
+    fingerprint_catalog_value,
+)
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
+    from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
+    from loushang.harness.transcript.product_session import ProductTranscriptSession
+    from loushang.harness.worker.product_activation import (
+        ProductWorkerActivationReceiptV1,
+    )
+
+_IDENTITY_FIELDS = {"version", "setId", "planFingerprint"}
+_MOUNT_MODES = frozenset({"disabled", "on_demand", "always"})
+
+
+def composition_plan_fingerprint(document: object, *, digest_domain: bytes) -> str:
+    """Encode the deployed composition fingerprint with its original JSON codec."""
+    payload = json.dumps(
+        document, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return sha256(digest_domain + payload).hexdigest()
+
+
+def composition_identity_fields(
+    set_id: str, plan_fingerprint: str
+) -> dict[str, JSONValue]:
+    return {"version": 1, "setId": set_id, "planFingerprint": plan_fingerprint}
+
+
+def composition_receipt_matches(
+    receipt: Mapping[str, object], set_id: str, plan_fingerprint: str
+) -> bool:
+    return not (
+        receipt["setId"] != set_id or receipt["planFingerprint"] != plan_fingerprint
+    )
+
+
+def read_composition_header(
+    metadata: Mapping[str, object], *, header_key: str, label: str
+) -> tuple[str, str] | None:
+    if header_key not in metadata:
+        return None
+    raw = metadata.get(header_key)
+    if not isinstance(raw, dict) or set(raw) != _IDENTITY_FIELDS:
+        raise ValueError(f"{label} composition provenance is malformed")
+    if raw.get("version") != 1 or type(raw.get("version")) is not int:
+        raise ValueError(f"{label} composition provenance version is invalid")
+    set_id, fingerprint = raw.get("setId"), raw.get("planFingerprint")
+    if not _nonempty_text(set_id) or not _digest(fingerprint):
+        raise ValueError(f"{label} composition provenance identity is invalid")
+    return set_id, fingerprint
+
+
+def read_composition_receipt(
+    entries: Iterable[object],
+    *,
+    extension_type: str,
+    label: str,
+    require_current: Callable[[str, str], None] | None = None,
+) -> dict[str, object] | None:
+    """Validate one owned receipt without resolving a current composition by default."""
+    from loushang.harness.transcript.types import ExtensionData
+
+    found: dict[str, object] | None = None
+    for entry in entries:
+        payload = getattr(entry, "payload", None)
+        if (
+            not isinstance(payload, ExtensionData)
+            or payload.extension_type != extension_type
+        ):
+            continue
+        if found is not None or not isinstance(payload.data, dict):
+            raise ValueError(f"{label} composition startup provenance is malformed")
+        found = _validate_startup_record(
+            payload.data, label=label, require_current=require_current
+        )
+    return found
+
+
+def _validate_startup_record(
+    raw: dict[str, JSONValue],
+    *,
+    label: str,
+    require_current: Callable[[str, str], None] | None,
+) -> dict[str, object]:
+    from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+
+    receipt_label = f"{label} composition startup"
+    keys = _IDENTITY_FIELDS | {
+        "productPolicyRevision",
+        "catalogSelectionFingerprint",
+        "selectedRevisions",
+        "ownerGenerations",
+    }
+    if (
+        set(raw) not in (keys, keys | {"workerSelection"})
+        or type(raw["version"]) is not int
+        or raw["version"] != 1
+    ):
+        raise ValueError(f"{receipt_label} provenance is malformed")
+    set_id, fingerprint = raw["setId"], raw["planFingerprint"]
+    if not _nonempty_text(set_id) or not _digest(fingerprint):
+        raise ValueError(f"{receipt_label} identity is malformed")
+    if require_current is not None:
+        require_current(set_id, fingerprint)
+    policy = raw["productPolicyRevision"]
+    if policy is not None and not _nonempty_text(policy):
+        raise ValueError(f"{receipt_label} policy is malformed")
+    catalog = raw["catalogSelectionFingerprint"]
+    if catalog is not None and not _digest(catalog):
+        raise ValueError(f"{receipt_label} Catalog evidence is malformed")
+    revisions = raw["selectedRevisions"]
+    if not isinstance(revisions, list):
+        raise ValueError(f"{receipt_label} revisions are malformed")
+    revision_ids: list[str] = []
+    for item in revisions:
+        if not isinstance(item, dict) or set(item) != {
+            "pluginId",
+            "packageRevisionFingerprint",
+            "instanceRevisionRef",
+        }:
+            raise ValueError(f"{receipt_label} revision is malformed")
+        plugin_id = item["pluginId"]
+        if not _nonempty_text(plugin_id) or not _digest(
+            item["packageRevisionFingerprint"]
+        ):
+            raise ValueError(f"{receipt_label} revision identity is malformed")
+        try:
+            instance = PluginInstanceRevisionRef.from_dict(item["instanceRevisionRef"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{receipt_label} Instance revision is malformed") from exc
+        if instance.plugin_id != plugin_id:
+            raise ValueError(f"{receipt_label} revision ids differ")
+        revision_ids.append(plugin_id)
+    if revision_ids != sorted(set(revision_ids)):
+        raise ValueError(f"{receipt_label} revisions are not canonical")
+    if "workerSelection" in raw:
+        worker = raw["workerSelection"]
+        if not isinstance(worker, dict) or set(worker) != {
+            "pluginId",
+            "receiptFingerprint",
+            "productPolicyRevision",
+            "nativeProfileId",
+            "selectedLocatorRevision",
+            "selectedLocatorFingerprint",
+            "workerConfigurationFingerprint",
+        }:
+            raise ValueError(f"{label} Worker startup evidence is malformed")
+        if (
+            not isinstance(worker["pluginId"], str)
+            or worker["pluginId"] not in revision_ids
+            or not _digest(worker["receiptFingerprint"])
+            or not _digest(worker["workerConfigurationFingerprint"])
+            or not _digest(worker["selectedLocatorFingerprint"])
+            or any(
+                not _nonempty_text(worker[key])
+                for key in (
+                    "productPolicyRevision",
+                    "nativeProfileId",
+                    "selectedLocatorRevision",
+                )
+            )
+        ):
+            raise ValueError(f"{label} Worker startup identity is malformed")
+    generations = raw["ownerGenerations"]
+    if not isinstance(generations, list):
+        raise ValueError(f"{receipt_label} owner generations are malformed")
+    generation_keys: list[tuple[str, str]] = []
+    for item in generations:
+        if not isinstance(item, dict) or set(item) != {
+            "ownerReference",
+            "ownerGenerationReference",
+            "contributionIds",
+        }:
+            raise ValueError(f"{receipt_label} owner generation is malformed")
+        owner, generation, contributions = (
+            item["ownerReference"],
+            item["ownerGenerationReference"],
+            item["contributionIds"],
+        )
+        if (
+            not _nonempty_text(owner)
+            or not _nonempty_text(generation)
+            or not isinstance(contributions, list)
+            or not contributions
+            or any(not _nonempty_text(value) for value in contributions)
+        ):
+            raise ValueError(f"{receipt_label} owner identity is malformed")
+        values = [str(value) for value in contributions]
+        if values != sorted(set(values)):
+            raise ValueError(f"{receipt_label} contributions are not canonical")
+        generation_keys.append((owner, generation))
+    if generation_keys != sorted(set(generation_keys)):
+        raise ValueError(f"{receipt_label} owner generations are not canonical")
+    return deepcopy(dict[str, object](raw))
+
+
+def _nonempty_text(value: object) -> TypeGuard[str]:
+    return isinstance(value, str) and bool(value)
+
+
+def _digest(value: object) -> TypeGuard[str]:
+    return isinstance(value, str) and fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def configured_mount_mode(
+    settings_manager: object | None, capability: str, default: CapabilityMountMode
+) -> CapabilityMountMode:
+    """Read one mode from the existing Settings owner with its Product default."""
+    if settings_manager is None:
+        return default
+    get_settings = getattr(settings_manager, "get_settings", None)
+    if not callable(get_settings):
+        return default
+    configured = getattr(get_settings(), "capabilities", {})
+    if not isinstance(configured, Mapping):
+        return default
+    mode = configured.get(capability, default)
+    return mode if mode in _MOUNT_MODES else default
+
+
+def parse_mount(value: str) -> tuple[str, CapabilityMountMode]:
+    """Parse the existing command-line capability mount syntax."""
+    capability, separator, mode = value.partition("=")
+    capability = capability.strip()
+    mode = mode.strip()
+    if not separator or not capability:
+        raise ValueError("expected CAPABILITY=disabled|on_demand|always")
+    if mode not in _MOUNT_MODES:
+        raise ValueError("mount mode must be disabled, on_demand, or always")
+    return capability, cast(CapabilityMountMode, mode)
+
+
+def should_defer_mount(
+    plugin_id: str,
+    *,
+    enabled: bool,
+    mode: CapabilityMountMode,
+    has_history: bool,
+    startup: Mapping[str, object] | None,
+    legacy_disabled: bool,
+) -> bool:
+    """Defer a fresh on-demand mount when history has no eager selection."""
+    if not enabled or mode != "on_demand" or legacy_disabled:
+        return False
+    if not has_history:
+        return True
+    if startup is None:
+        return False
+    return not any(
+        item["pluginId"] == plugin_id
+        for item in cast(list[dict[str, object]], startup["selectedRevisions"])
+    )
+
+
+
+def composition_manifest_revision_evidence(
+    selected: Iterable[PackageProductSelectedPluginManifestV1],
+) -> list[dict[str, object]]:
+    """Project selected manifests with their existing Package fingerprints."""
+    return [
+        {
+            "pluginId": item.manifest.name,
+            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
+                item.snapshot.package_revision
+            ),
+            "instanceRevisionRef": item.snapshot.instance_revision_ref.to_dict(),
+        }
+        for item in selected
+    ]
+
+
+def composition_generation_evidence(
+    receipts: Iterable[OwnerGenerationRetirementReceipt],
+) -> list[dict[str, object]]:
+    """Project the ordered live generations without changing their ownership."""
+    return sorted(
+        (
+            {
+                "ownerReference": receipt.owner_reference,
+                "ownerGenerationReference": receipt.owner_generation_reference,
+                "contributionIds": list(receipt.contribution_ids),
+            }
+            for receipt in receipts
+        ),
+        key=lambda item: (
+            str(item["ownerReference"]),
+            str(item["ownerGenerationReference"]),
+        ),
+    )
+
+def catalog_composition_selection_fingerprint(
+    catalog_snapshot: object | None, *, catalog_schema: str
+) -> str | None:
+    """Fingerprint the currently projected Catalog selections."""
+    return (
+        fingerprint_catalog_value(
+            catalog_schema,
+            {
+                "activationPolicyFingerprint": (
+                    catalog_snapshot.activation_policy_fingerprint
+                ),
+                "mergePolicyRevision": catalog_snapshot.merge_policy_revision,
+                "effectiveEntries": [
+                    {
+                        "identity": item.identity.to_payload(),
+                        "modelInvocable": item.model_invocable,
+                        "candidates": [
+                            {
+                                "canonicalName": candidate.canonical_name,
+                                "description": candidate.description,
+                                "mediaType": candidate.media_type,
+                                "sourceClass": candidate.source_class,
+                                "sourceRootOrder": candidate.source_root_order,
+                                "expectedContentDigest": candidate.expected_content_digest,
+                                "expectedContentLength": candidate.expected_content_length,
+                                "invocationPolicy": candidate.invocation_policy.to_payload(),
+                            }
+                            for candidate in sorted(
+                                (
+                                    catalog_snapshot.candidate_by_fingerprint(
+                                        fingerprint
+                                    )
+                                    for fingerprint in item.candidate_fingerprints
+                                ),
+                                key=lambda candidate: (
+                                    candidate.canonical_name,
+                                    candidate.source_class,
+                                    candidate.expected_content_digest or "",
+                                ),
+                            )
+                        ],
+                    }
+                    for item in catalog_snapshot.effective_entries
+                ],
+            },
+        )
+        if isinstance(catalog_snapshot, ResourceCatalogSnapshot)
+        else None
+    )
+
+def worker_composition_selection_evidence(
+    worker_receipt: ProductWorkerActivationReceiptV1 | None,
+) -> dict[str, object] | None:
+    """Project the ordered Worker activation facts already selected by the caller."""
+    return (
+        {
+            "pluginId": worker_receipt.policy.plugin_id,
+            "receiptFingerprint": worker_receipt.fingerprint,
+            "productPolicyRevision": worker_receipt.policy.product_policy_revision,
+            "nativeProfileId": worker_receipt.policy.native_profile_id,
+            "selectedLocatorRevision": worker_receipt.policy.selected_locator_revision,
+            "selectedLocatorFingerprint": (
+                worker_receipt.policy.selected_locator_fingerprint
+            ),
+            "workerConfigurationFingerprint": (
+                worker_receipt.policy.worker_configuration_fingerprint
+            ),
+        }
+        if worker_receipt is not None
+        else None
+    )
+
+async def publish_composition_startup(
+    transcript: ProductTranscriptSession,
+    *,
+    set_id: str,
+    existing_only: bool,
+    had_entries_at_construction: Callable[[], bool],
+
+    build_current_receipt: Callable[[], dict[str, object]],
+    mark_prepared: Callable[[], None],
+    header_key: str,
+    extension_type: str,
+    label: str,
+) -> None:
+    """Correlate sealed history under the caller's existing startup lock."""
+    identity = read_composition_header(
+        transcript.get_header().metadata, header_key=header_key, label=label
+    )
+    if identity is None or identity[0] != set_id:
+        raise ValueError(f"{label} composition startup changed its pinned set")
+    set_id, plan_fingerprint = identity
+    existing = read_composition_receipt(
+        transcript.get_entries(), extension_type=extension_type, label=label
+    )
+    if existing is not None:
+        if (
+            existing.get("setId") != set_id
+            or existing.get("planFingerprint") != plan_fingerprint
+        ):
+            raise ValueError(f"{label} composition startup differs from its header")
+        if not existing_only:
+            mark_prepared()
+        return
+    startup_data = build_current_receipt()
+    if had_entries_at_construction():
+        raise ValueError(
+            f"{label} has input without startup composition evidence; "
+            "create a new Session"
+        )
+    if existing_only:
+        return
+    await transcript.append_custom_entry(
+        extension_type,
+        startup_data,
+    )
+    mark_prepared()

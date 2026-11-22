@@ -9,7 +9,6 @@ from loushang.coding.composition.base_product import CodingBaseProductSessionAss
 from loushang.coding.composition.provenance import (
     historical_startup_composition_record as historical_startup_composition_record,
 )
-from loushang.coding.harness.worker import session_selection as _session_programs
 from loushang.coding.session.manager import SessionManager
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION as MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -91,16 +90,6 @@ _PROVIDER_ELIGIBILITY_DURATION = 300000
 _PROVIDER_ADMISSION_DURATION = 180000
 
 
-_WORKER_SESSION_PROGRAM_VALUES = {
-    "value_001": "Coding Worker ordinary Product inputs are invalid",
-    "value_002": "coding_worker_ordinary_transcript_not_materialized",
-    "value_003": "coding_worker_ordinary_product_scope_changed",
-    "value_004": "coding_worker_ordinary_startup_provenance_missing",
-    "value_005": "coding_worker_ordinary_candidate_not_allowed",
-    "value_006": "coding_worker_ordinary_",
-}
-
-
 def prepare_coding_product_worker_ordinary_binding(
     *,
     product_owner: (
@@ -119,14 +108,186 @@ def prepare_coding_product_worker_ordinary_binding(
     one only during async preparation and owns its subsequent cleanup.
     """
 
-    return _session_programs.prepare_worker_session(
-        product_owner=product_owner,
+    if (
+        type(product_owner)
+        not in (
+            PosixLocalWheelProductSessionOwner,
+            WindowsLocalWheelProductSessionOwner,
+        )
+        or not isinstance(runtime, PackageProductRuntimeBindingV1)
+        or not isinstance(session_manager, SessionManager)
+        or not isinstance(ordinary, CodingBaseProductSessionAssembly)
+        or not isinstance(plugin_id, str)
+        or not plugin_id
+        or plugin_id != plugin_id.strip()
+        or not callable(clock)
+        or (
+            resume_parent_context is not None
+            and type(resume_parent_context) is not ResumeEffectParentContextV1
+        )
+    ):
+        raise TypeError('Coding Worker ordinary Product inputs are invalid')
+    if not session_manager.is_persisted():
+        raise CodingWorkerOrdinaryBootstrapError(
+            'coding_worker_ordinary_transcript_not_materialized'
+        )
+    base_context = ordinary.session_inputs.product_composition.authority_context
+    if (
+        runtime.session_id != session_manager.get_header().conversation_id
+        or ordinary.compilation.plan.context.scope_id != f"session:{runtime.session_id}"
+        or base_context.product_policy_revision
+        != ordinary.compilation.plan.context.policy_revision
+    ):
+        raise CodingWorkerOrdinaryBootstrapError(
+            'coding_worker_ordinary_product_scope_changed'
+        )
+    existing_startup = historical_startup_composition_record(
+        session_manager.get_entries()
+    )
+    if existing_startup is None and session_manager.get_entries():
+        raise CodingWorkerOrdinaryBootstrapError(
+            'coding_worker_ordinary_startup_provenance_missing'
+        )
+    transcript_directory = AgentTranscriptDirectoryRuntime(
+        session_dir=session_manager.get_session_dir()
+    )
+    receipt_owner: (
+        CodingWorkerProductReceiptOwner
+        | CodingWindowsWorkerProductReceiptOwner
+    )
+    if type(product_owner) is WindowsLocalWheelProductSessionOwner:
+        receipt_owner = (
+            open_coding_windows_product_selected_worker_receipt_owner(
+                product_owner=product_owner,
+                runtime=runtime,
+                plugin_id=plugin_id,
+                transcript_directory=transcript_directory,
+                session_manager=session_manager,
+                active_session=True,
+            )
+        )
+    else:
+        assert type(product_owner) is PosixLocalWheelProductSessionOwner
+        receipt_owner = open_coding_product_selected_worker_receipt_owner(
+            product_owner=product_owner,
+            runtime=runtime,
+            plugin_id=plugin_id,
+            transcript_directory=transcript_directory,
+            session_manager=session_manager,
+            active_session=True,
+        )
+    receipt = receipt_owner.issue()
+    if receipt is None:
+        raise CodingWorkerOrdinaryBootstrapError(
+            'coding_worker_ordinary_candidate_not_allowed'
+        )
+    resume_settlement = (
+        CodingWorkerResumeSettlementBinding(
+            receipt=receipt,
+            context=resume_parent_context,
+        )
+        if resume_parent_context is not None
+        else None
+    )
+    selected_worker = capture_worker_startup_selection(
         runtime=runtime,
-        session_manager=session_manager,
         plugin_id=plugin_id,
-        ordinary=ordinary,
-        clock=clock,
-        resume_parent_context=resume_parent_context,
+        receipt=receipt,
+        existing_startup=existing_startup,
+        max_files=_STARTUP_MAX_FILES,
+        max_total_bytes=_STARTUP_MAX_BYTES,
+        failure=lambda code: CodingWorkerOrdinaryBootstrapError(
+            'coding_worker_ordinary_' + code
+        ),
+    )
+    base_policy = CodingWorkerBaseCompositionPolicyBinding(
+        base=ordinary.compilation,
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+    )
+    provider_owner = coding_worker_query_owner_authority()
+    provider = coding_worker_query_capability_provider(plugin_id)
+    candidate = prepare_coding_selected_worker_provider_candidate(
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+        definition=CODING_WORKER_QUERY_DEFINITION,
+        provider=provider,
+        base_policy_binding=base_policy,
+    )
+    evaluated_at = base_context.evaluated_at
+    resolved = _WORKER_SESSION_COMPOSITION.select_provider(
+        owner=provider_owner,
+        candidate=candidate,
+        definition=CODING_WORKER_QUERY_DEFINITION,
+        provider_id=lambda: provider.provider_id,
+        policy_revision=lambda: base_policy.policy_revision,
+        evaluated_at=evaluated_at,
+        eligibility_duration=_PROVIDER_ELIGIBILITY_DURATION,
+        admission_duration=_PROVIDER_ADMISSION_DURATION,
+    )
+    if type(product_owner) is WindowsLocalWheelProductSessionOwner:
+        assert type(receipt_owner) is CodingWindowsWorkerProductReceiptOwner
+        pending_windows = plan_coding_windows_product_worker_pending_launch(
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            attempt_id=secrets.token_hex(16),
+        )
+        worker = prepare_coding_windows_product_worker_pending_session_inputs(
+            resolved_providers=resolved,
+            provider_owner=provider_owner,
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            pending_launch=pending_windows,
+            evaluated_at=evaluated_at,
+            clock=clock,
+            base_policy_binding=base_policy,
+            resume_parent_context=resume_parent_context,
+            resume_settlement=resume_settlement,
+        )
+    else:
+        assert type(receipt_owner) is CodingWorkerProductReceiptOwner
+        pending_linux = plan_coding_product_worker_pending_launch(
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            attempt_id=secrets.token_hex(16),
+        )
+        worker = prepare_coding_product_worker_pending_session_inputs(
+            resolved_providers=resolved,
+            provider_owner=provider_owner,
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            pending_launch=pending_linux,
+            evaluated_at=evaluated_at,
+            clock=clock,
+            base_policy_binding=base_policy,
+            resume_parent_context=resume_parent_context,
+            resume_settlement=resume_settlement,
+        )
+    definitions = {
+        item.capability_id: item
+        for item in (
+            MODEL_INPUT_CAPABILITY_DEFINITION,
+            WORKSPACE_CAPABILITY_DEFINITION,
+            CODING_WORKER_QUERY_DEFINITION,
+            *(
+                entry.definition
+                for entry in ordinary.session_inputs.resolved_providers.entries
+            ),
+        )
+    }
+    combined = compose_coding_product_worker_with_ordinary_session(
+        ordinary=ordinary.session_inputs,
+        worker=worker,
+        definitions=tuple(definitions.values()),
+        workspace_binding=ordinary.workspace_binding,
+    )
+    return CodingProductWorkerOrdinarySessionBinding(
+        ordinary=ordinary.session_inputs,
+        combined=combined,
+        workspace_binding=ordinary.workspace_binding,
+        selected_worker_manifest=selected_worker,
+        activation_receipt=receipt,
+        resume_settlement=resume_settlement,
     )
 
 

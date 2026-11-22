@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import os
 
-from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendInstalledMethods,
 )
 from loushang.harness.package_product._worker_product_authority import (
     _WindowsWorkerProductOptInAuthority,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )

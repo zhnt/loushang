@@ -420,7 +420,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         active = self._active
         if active is not None:
             return await active.lookup_resume_input(query)
-        from loushang.coding.harness.session.activation_history import (
+        from loushang.coding.resume.activation_projection_v2 import (
             observe_latest_bound_input,
         )
         from loushang.coding.resume.input_lookup import (
@@ -479,14 +479,14 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         from loushang.coding.composition.product_capability_plugins import (
             coding_session_plugin_state_relative_path,
         )
-        from loushang.coding.harness.session.first_input_activation import (
-            bind_first_input_settlement,
-            build_first_input_attempt,
-            require_first_input_attempt,
-        )
         from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
         from loushang.coding.resume.continuation import (
             prepare_coding_resume_continuation,
+        )
+        from loushang.coding.resume.first_input import (
+            bind_first_input_settlement,
+            build_first_input_attempt,
+            require_first_input_attempt,
         )
         from loushang.coding.resume.plugin_effects import (
             resume_capability_plugins_required as _resume_capability_plugins_required,

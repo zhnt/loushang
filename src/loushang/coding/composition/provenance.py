@@ -9,12 +9,12 @@ from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
     resolve_coding_composition_set,
 )
-from loushang.coding.harness.session.composition_receipt import (
+from loushang.foundation.json import JSONValue
+from loushang.harness.session.composition_evidence import (
     composition_identity_fields,
     read_composition_header,
     read_composition_receipt,
 )
-from loushang.foundation.json import JSONValue
 
 CODING_COMPOSITION_HEADER_KEY = "codingCompositionSetV1"
 CODING_COMPOSITION_STARTUP_TYPE = "coding.composition-startup/v1"

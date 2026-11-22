@@ -5,9 +5,12 @@ from __future__ import annotations
 import os as os
 from pathlib import Path
 
-from loushang.coding.harness.package_product import legacy_builtin_adoption as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._plugin_bootstrap import (
+    bootstrap_reviewed_product_plugins,
+    replay_reviewed_removals,
+)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
@@ -24,6 +27,7 @@ from .legacy_builtin_acceptance import (
 from .legacy_builtin_acceptance import (
     accept_coding_first_b_builtin_only as accept_coding_first_b_builtin_only,
 )
+from .legacy_review import _reviewed_disabled_ids
 from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
@@ -35,13 +39,6 @@ _BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
 
 
 _REMOVAL_LABEL = "Coding removed builtin Product"
-
-_LEGACY_ADOPTION_VALUES = {
-    "value_001": "Windows builtin migration candidate must be explicit",
-    "value_002": "Windows builtin migration candidate is not admitted",
-    "value_003": "Windows builtin migration candidate requires Windows",
-    "value_004": "Coding builtin-only Product",
-}
 
 
 def adopt_coding_first_b_builtin_only(
@@ -56,15 +53,57 @@ def adopt_coding_first_b_builtin_only(
 ) -> CodingLegacyBuiltinOnlyAcceptanceV1:
     """Accept the old review once and seed only its builtin Product choices."""
 
-    return _programs.adopt_builtin_snapshot(
+    if type(windows_candidate) is not bool:
+        raise TypeError("Windows builtin migration candidate must be explicit")
+    if os.name == "nt" and not windows_candidate:
+        raise RuntimeError("Windows builtin migration candidate is not admitted")
+    if os.name != "nt" and windows_candidate:
+        raise ValueError("Windows builtin migration candidate requires Windows")
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    epoch_owner_type = (
+        PackageProductWindowsFencedRuntimeOwner
+        if os.name == "nt"
+        else PackageProductPosixFencedRuntimeOwner
+    )
+    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
+    try:
+        receipt = accept_coding_first_b_builtin_only(
+            lifecycle,
+            epoch_runtime,
+            settings_manager=settings_manager,
+            accepted_review_id=accepted_review_id,
+        )
+    finally:
+        epoch_runtime.close()
+    owner = open_coding_fenced_product_application_owner(
         lifecycle,
-        settings_manager,
         workspace=workspace,
-        accepted_review_id=accepted_review_id,
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
         windows_candidate=windows_candidate,
     )
+    try:
+        product = owner.runtime_owner.product_owner
+        disabled = _reviewed_disabled_ids(receipt.review)
+        replay_reviewed_removals(
+            product,
+            receipt.review.removed_builtin_ids,
+            product_id=_CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
+            operation_id_for=receipt.review.removed_builtin_operation_id,
+            error_prefix=_REMOVAL_LABEL,
+        )
+        bootstrap_reviewed_product_plugins(
+            product,
+            _BUILTINS,
+            disabled_ids=disabled,
+            removed_ids=receipt.review.removed_builtin_ids,
+            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+            strict_history=True,
+            history_label="Coding builtin-only Product",
+        )
+        return receipt
+    finally:
+        owner.close()
 
 
 __all__ = ["adopt_coding_first_b_builtin_only"]
