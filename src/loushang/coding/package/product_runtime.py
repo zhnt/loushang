@@ -35,12 +35,10 @@ from loushang.harness.package_product._application_runtime import (
     OrdinaryProductSessionOwner,
     SourceCatalogIdentity,
     bind_fenced_product_session_owner,
-    fenced_source_catalog_roots,
     fenced_source_catalog_scope,
     handoff_product_open,
     hold_accepted_product_adoption,
     open_fenced_product_management_state,
-    product_management_paths_match,
     require_current_product_admission,
     require_product_owner_for_factory,
 )
@@ -1149,67 +1147,30 @@ def _open_coding_product_runtime(
     _require_runtime_owner(lifecycle, epoch_runtime)
     if not isinstance(state, CodingPackageProductStateOwners):
         raise TypeError("Coding Package Product state owners are required")
-    if (
-        not isinstance(workspace, Path)
-        or not workspace.is_absolute()
-        or ".." in workspace.parts
-        or workspace != workspace.resolve(strict=True)
-    ):
-        raise ValueError("Coding Product workspace is not canonical")
-    scope_id = _workspace_scope_id(workspace)
-    if lifecycle.scope_id != scope_id:
-        raise ValueError("Coding Product workspace scope changed")
-    if not isinstance(runtime_version, str) or not runtime_version:
-        raise ValueError("Coding Product runtime version is required")
-    if type(runtime_protocol_epoch) is not int or runtime_protocol_epoch < 1:
-        raise ValueError("Coding Product runtime protocol epoch is invalid")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if not matches_epoch_layout(epoch_runtime, epoch):
-        raise ValueError("Coding Package Product workspace authority changed")
-    state_root = epoch_runtime.prepare_product_state_root()
-    if (
-        state.state_root != state_root
-        or not product_management_paths_match(
-            state_root,
-            gc_gate=state.gc_gate,
-            desired_state=state.desired_state,
-            management=state.management,
-            gc_bindings=state.gc_bindings,
-        )
-        or state.worker_opt_in.path != state_root / "worker-opt-in.jsonl"
-        or state.private_data_confirmation.path
-        != state_root / "private-data-confirmations.jsonl"
-        or state.private_data_deletion.path
-        != state_root / "private-data-deletions.jsonl"
-    ):
-        raise ValueError("Coding Package Product state authority changed")
-    roots = fenced_source_catalog_roots(
-        epoch_runtime,
-        scope_id=scope_id,
-        no_namespace="Coding Package Product root is not fenced",
-        state_root=state_root,
-    )
-    policy, host_inputs = _compose_coding_product_source_policy(
-        lifecycle,
-        epoch_runtime,
-        roots,
-        include_capabilities=include_capabilities,
-        include_worker_candidates=include_worker_candidates,
-    )
     session_owner = bind_fenced_product_session_owner(
         epoch_runtime,
         workspace=workspace,
         state_root=state.state_root,
-        plugin_store_root=(
-            epoch.epoch_root(roots.identity["namespace_id"])
-            if isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner)
-            else None
+        scope_id=lifecycle.scope_id,
+        workspace_scope=_workspace_scope_id,
+        resolve_epoch=partial(resolve_coding_package_epoch_layout, lifecycle),
+        additional_state_paths=(
+            (journal.path, name)
+            for journal, name in (
+                (state.worker_opt_in, "worker-opt-in.jsonl"),
+                (state.private_data_confirmation, "private-data-confirmations.jsonl"),
+                (state.private_data_deletion, "private-data-deletions.jsonl"),
+            )
         ),
-        policy=policy,
-        host_inputs=host_inputs,
-        root_store_identity=f"coding-product-root-store:{epoch.store_id}",
-        dependency_store_identity=f"coding-product-dependency-store:{epoch.store_id}",
-        recovery_identity=f"coding-product-recovery:{epoch.store_id}",
+        compose_sources=partial(
+            _compose_coding_product_source_policy,
+            lifecycle,
+            epoch_runtime,
+            include_capabilities=include_capabilities,
+            include_worker_candidates=include_worker_candidates,
+        ),
+        identity_prefix="coding-product",
+        product_label="Coding",
         management=state.management,
         desired_state=state.desired_state,
         gc_bindings=state.gc_bindings,

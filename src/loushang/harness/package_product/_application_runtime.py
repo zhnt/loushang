@@ -82,7 +82,12 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from ._legacy_runtime import _FencedRuntime, legacy_product_fence_exists
+from ._legacy_runtime import (
+    _FencedRuntime,
+    _LegacyEpoch,
+    legacy_product_fence_exists,
+    matches_epoch_layout,
+)
 from .product_local_wheel_runtime import (
     READ_ONLY_PRODUCT_JOURNAL_POLICY,
     PosixLocalWheelProductHostInputs,
@@ -624,41 +629,103 @@ def product_management_paths_match(
 
 class _SessionOwnerFields(TypedDict):
     workspace: Path
-    policy: PackageProductLocalWheelPolicy
-    root_store_identity: str
-    dependency_store_identity: str
     management: PluginManagementService
     desired_state: PluginDesiredStateLedger
     gc_bindings: PluginPackageGcBindingJournal
     gc_gate: PluginPackageGcReservationJournal
     actor_id: str
     desired_policy_revision: str
-    recovery_identity: str
     runtime_version: str
     runtime_protocol_epoch: int
+
+
+class _SessionEpochLayout(_LegacyEpoch, Protocol):
+    def epoch_root(self, namespace_id: str) -> Path: ...
 
 
 def bind_fenced_product_session_owner(
     epoch_runtime: _FencedRuntime,
     *,
     state_root: Path,
-    plugin_store_root: Path | None,
-    host_inputs: PosixLocalWheelProductHostInputs,
+    scope_id: str,
+    workspace_scope: Callable[[Path], str],
+    resolve_epoch: Callable[[], _SessionEpochLayout],
+    additional_state_paths: Iterable[tuple[Path, str]],
+    compose_sources: Callable[
+        [FencedSourceCatalogRoots],
+        tuple[PackageProductLocalWheelPolicy, PosixLocalWheelProductHostInputs],
+    ],
+    identity_prefix: str,
+    product_label: str,
     **fields: Unpack[_SessionOwnerFields],
 ) -> _ProductSessionOwner:
+    """Validate one fenced workspace before publishing and binding its Sources."""
+    label = f"{product_label} Product"
+    package_label = f"{product_label} Package Product"
+    workspace = fields["workspace"]
+    if (
+        not isinstance(workspace, Path)
+        or not workspace.is_absolute()
+        or ".." in workspace.parts
+        or workspace != workspace.resolve(strict=True)
+    ):
+        raise ValueError(f"{label} workspace is not canonical")
+    if workspace_scope(workspace) != scope_id:
+        raise ValueError(f"{label} workspace scope changed")
+    runtime_version = fields["runtime_version"]
+    if not isinstance(runtime_version, str) or not runtime_version:
+        raise ValueError(f"{label} runtime version is required")
+    protocol_epoch = fields["runtime_protocol_epoch"]
+    if type(protocol_epoch) is not int or protocol_epoch < 1:
+        raise ValueError(f"{label} runtime protocol epoch is invalid")
+    epoch = resolve_epoch()
+    if not matches_epoch_layout(epoch_runtime, epoch):
+        raise ValueError(f"{package_label} workspace authority changed")
+    current_root = epoch_runtime.prepare_product_state_root()
+    if (
+        state_root != current_root
+        or not product_management_paths_match(
+            current_root,
+            gc_gate=fields["gc_gate"],
+            desired_state=fields["desired_state"],
+            management=fields["management"],
+            gc_bindings=fields["gc_bindings"],
+        )
+        or any(path != current_root / name for path, name in additional_state_paths)
+    ):
+        raise ValueError(f"{package_label} state authority changed")
+    roots = fenced_source_catalog_roots(
+        epoch_runtime,
+        scope_id=scope_id,
+        no_namespace=f"{package_label} root is not fenced",
+        state_root=current_root,
+    )
+    policy, host_inputs = compose_sources(roots)
+    root_store_identity = f"{identity_prefix}-root-store:{epoch.store_id}"
+    dependency_store_identity = f"{identity_prefix}-dependency-store:{epoch.store_id}"
+    recovery_identity = f"{identity_prefix}-recovery:{epoch.store_id}"
     if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
         return WindowsLocalWheelProductSessionOwner(
-            epoch_runtime=epoch_runtime, host_inputs=host_inputs, **fields
+            epoch_runtime=epoch_runtime,
+            host_inputs=host_inputs,
+            policy=policy,
+            root_store_identity=root_store_identity,
+            dependency_store_identity=dependency_store_identity,
+            recovery_identity=recovery_identity,
+            **fields,
         )
-    assert plugin_store_root is not None
     return PosixLocalWheelProductSessionOwner(
         epoch_runtime=epoch_runtime,
         state_root=state_root,
-        plugin_store_root=plugin_store_root,
+        plugin_store_root=epoch.epoch_root(roots.identity["namespace_id"]),
+        policy=policy,
         environment=host_inputs.environment,
         acquisition_budgets=host_inputs.acquisition_budgets,
         inspection_budgets=host_inputs.inspection_budgets,
         closure_budgets=host_inputs.closure_budgets,
+        root_store_identity=root_store_identity,
+        dependency_store_identity=dependency_store_identity,
+        recovery_identity=recovery_identity,
         **fields,
     )
 
