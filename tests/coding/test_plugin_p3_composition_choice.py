@@ -141,10 +141,11 @@ def test_preview_uses_start_precedence_and_separates_requested_plan(
     )
     monkeypatch.setattr(
         application,
-        "format_plugin_current_preview",
-        lambda _query, request: json.dumps(
-            {"compositionSetId": request.composition_set_id, "compiledPluginIds": []}
-        ),
+        "project_plugin_current_preview",
+        lambda _query, request: {
+            "compositionSetId": request.composition_set_id,
+            "compiledPluginIds": [],
+        },
     )
     out, err = StringIO(), StringIO()
     result = application._run_coding_current_preview_cli(
@@ -180,8 +181,8 @@ def test_preview_rejects_settings_drift_before_publishing(
     )
     monkeypatch.setattr(
         application,
-        "format_plugin_current_preview",
-        lambda _query, _request: json.dumps({"compiledPluginIds": []}),
+        "project_plugin_current_preview",
+        lambda _query, _request: {"compiledPluginIds": []},
     )
     out, err = StringIO(), StringIO()
     result = application._run_coding_current_preview_cli(

@@ -81,6 +81,44 @@ class CliPhaseResult(Generic[ResultT]):
         return cls(exit_code=exit_code)
 
 
+def cli_options_match_defaults(
+    args: AgentCliArgs, defaults: AgentCliArgs, *operation_fields: str
+) -> bool:
+    """Compare parsed CLI values after removing a standalone operation's inputs."""
+    return replace(
+        args, **{field: getattr(defaults, field) for field in operation_fields}
+    ) == defaults
+
+
+def run_guarded_cli_operation(
+    operation: Callable[[], CliPhaseResult[ResultT]],
+    *,
+    workspace_guard: Callable[[], None],
+    stderr: TextIO,
+    coded_errors: tuple[type[Exception], ...],
+    unavailable_code: str,
+    value_error_codes: tuple[str, ...] = (),
+) -> CliPhaseResult[ResultT]:
+    """Check the original workspace before execution and before publishing a value."""
+    try:
+        workspace_guard()
+        result = operation()
+        if result.exit_code is None:
+            workspace_guard()
+        return result
+    except Exception as error:
+        if isinstance(error, coded_errors):
+            code = getattr(error, "code")
+        else:
+            code = unavailable_code
+            if value_error_codes and isinstance(error, ValueError):
+                message = str(error)
+                if message in value_error_codes:
+                    code = message
+        stderr.write(f"Error: {code}\n")
+        return CliPhaseResult.exit(1)
+
+
 @dataclass(frozen=True, slots=True)
 class CliBootstrapContext(Generic[ArgsT]):
     raw_argv: tuple[str, ...]

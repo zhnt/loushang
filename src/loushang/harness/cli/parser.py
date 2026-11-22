@@ -14,6 +14,28 @@ from loushang.harness.cli.types import (
 )
 
 
+def root_option_requested(
+    argv: Sequence[str], profile: CliProfile, options: Sequence[str]
+) -> bool:
+    """Find explicit root options before the positional delimiter."""
+    value_flags = {
+        flag
+        for spec in profile.root_arguments
+        if spec.action in {"store", "append"}
+        for flag in spec.flags
+    }
+    tokens = iter(argv)
+    for token in tokens:
+        if token == "--":
+            break
+        option, equals, _ = token.partition("=")
+        if option in options:
+            return True
+        if not equals and option in value_flags:
+            next(tokens, None)
+    return False
+
+
 def build_parser(
     profile: CliProfile,
     *,

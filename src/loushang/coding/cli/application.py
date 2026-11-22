@@ -6,12 +6,11 @@ import inspect
 import json
 import os
 import platform
-import stat
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, TextIO, cast
+from typing import Any, Literal, TextIO, cast
 
 from loushang.ai.model import (
     model_selection_ref,
@@ -29,12 +28,9 @@ from loushang.coding.cli.apphost import (
 from loushang.coding.cli.args import (
     CliArgs,
     ExtensionFlag,
-    current_preview_option_requested,
     help_text,
-    local_discovery_option_requested,
     parse_args,
-    plugin_explanation_option_requested,
-    plugin_repair_option_requested,
+    plugin_management_option_requested,
     removed_legacy_resource_option,
 )
 from loushang.coding.cli.composition_choice import resolve_cli_composition_choice
@@ -103,7 +99,6 @@ from loushang.coding.plugin_manager.binding import (
 )
 from loushang.coding.plugin_manager.explanation import (
     CodingPluginOperationExplanationError,
-    bind_coding_plugin_operation_explanation_query,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
@@ -178,6 +173,10 @@ from loushang.harness.cli import (
 from loushang.harness.cli import (
     format_cli_error as _format_cli_error,
 )
+from loushang.harness.cli.application import (
+    cli_options_match_defaults,
+    run_guarded_cli_operation,
+)
 from loushang.harness.cli.plugin_explanation import (
     format_plugin_operation_explanation,
 )
@@ -185,7 +184,6 @@ from loushang.harness.cli.plugin_listing import (
     format_plugin_records,
     list_plugin_records,
 )
-from loushang.harness.cli.plugin_preview import format_plugin_current_preview
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.continuity import consume_prepared_activation
 from loushang.harness.diagnostics.observability_runtime import (
@@ -200,13 +198,11 @@ from loushang.harness.machine_resources import (
 )
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
+    project_plugin_current_preview,
 )
 from loushang.harness.plugin_management.desired_command import (
     PluginDesiredCommandRepairError,
-)
-from loushang.harness.plugin_management.operation_explanation import (
-    PluginOperationExplanationRequestV1,
-    project_plugin_operation_explanation,
+    PluginDesiredRepairResultV1,
 )
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.resources.packages import (
@@ -225,6 +221,7 @@ from loushang.harness.transcript import (
     SessionDiscoverySource,
     session_origin_from_resource_id,
 )
+from loushang.harness.workspace.paths import capture_workspace_directory_identity
 from loushang.harnesstui.continuity import run_continuity_picker
 from loushang.harnesstui.conversation.agent_binding import (
     run_agent_mode,
@@ -642,12 +639,7 @@ async def run_cli(
             except (OSError, RuntimeError, ValueError) as error:
                 resolved_stderr.write(f"Error: {error}\n")
                 return 1
-    if (
-        current_preview_option_requested(raw_argv)
-        or local_discovery_option_requested(raw_argv)
-        or plugin_explanation_option_requested(raw_argv)
-        or plugin_repair_option_requested(raw_argv)
-    ):
+    if plugin_management_option_requested(raw_argv):
         parsed = _parse_application_args(raw_argv, resolved_stderr, None, False)
         if parsed.args is None:
             return parsed.exit_code or 2
@@ -659,48 +651,32 @@ async def run_cli(
             project_root = (
                 Path(cwd or args.cwd or Path.cwd()).expanduser().resolve(strict=True)
             )
-            workspace_stat = project_root.lstat()
-            if not stat.S_ISDIR(workspace_stat.st_mode):
-                raise ValueError("Coding management workspace is unavailable")
             workspace_client = open_coding_plugin_management_read_client(
                 project_root,
-                expected_workspace_identity=(
-                    workspace_stat.st_dev,
-                    workspace_stat.st_ino,
+                expected_workspace_identity=capture_workspace_directory_identity(
+                    project_root, unavailable="Coding management workspace is unavailable"
                 ),
             )
-        except CodingPluginManagementReadSdkError as error:
+        except (OSError, RuntimeError, ValueError) as error:
+            if isinstance(error, CodingPluginManagementReadSdkError):
+                code = error.code
+            elif args.discover_local_plugins:
+                code = "local_discovery_workspace_unavailable"
+            elif args.repair_plugin_desired_operation is not None:
+                code = "plugin_repair_workspace_unavailable"
+            elif args.explain_plugin_operation is not None:
+                code = "plugin_explanation_workspace_unavailable"
+            else:
+                code = "plugin_preview_workspace_unavailable"
             if args.discover_local_plugins:
                 (stdout or sys.stdout).write(
                     format_coding_local_discovery(
-                        blocked_coding_local_discovery(error.code),
+                        blocked_coding_local_discovery(code),
                         args.discover_local_plugins_format,
                     )
                 )
-                return 1
-            resolved_stderr.write(f"Error: {error.code}\n")
-            return 1
-        except (OSError, RuntimeError, ValueError):
-            if args.discover_local_plugins:
-                (stdout or sys.stdout).write(
-                    format_coding_local_discovery(
-                        blocked_coding_local_discovery(
-                            "local_discovery_workspace_unavailable"
-                        ),
-                        args.discover_local_plugins_format,
-                    )
-                )
-                return 1
-            code = (
-                "plugin_repair_workspace_unavailable"
-                if args.repair_plugin_desired_operation is not None
-                else (
-                    "plugin_explanation_workspace_unavailable"
-                    if args.explain_plugin_operation is not None
-                    else "plugin_preview_workspace_unavailable"
-                )
-            )
-            resolved_stderr.write(f"Error: {code}\n")
+            else:
+                resolved_stderr.write(f"Error: {code}\n")
             return 1
         if args.repair_plugin_desired_operation is not None:
             return _run_coding_plugin_desired_repair_cli(
@@ -720,8 +696,7 @@ async def run_cli(
         if args.explain_plugin_operation is not None:
             return _run_coding_plugin_operation_explanation_cli(
                 args,
-                project_root=project_root,
-                workspace_guard=workspace_client.assert_workspace_current,
+                client=workspace_client,
                 stdout=stdout or sys.stdout,
                 stderr=resolved_stderr,
             )
@@ -1101,19 +1076,10 @@ def _run_coding_local_discovery_cli(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    baseline = parse_args([])
-    if (
-        replace(
-            args,
-            cwd=None,
-            discover_local_plugins=False,
-            discover_local_plugins_format=baseline.discover_local_plugins_format,
-            discover_local_query=baseline.discover_local_query,
-            discover_local_kind=baseline.discover_local_kind,
-            discover_local_source=baseline.discover_local_source,
-            discover_local_limit=baseline.discover_local_limit,
-        )
-        != baseline
+    if not cli_options_match_defaults(
+        args, parse_args([]), "cwd", "discover_local_plugins",
+        "discover_local_plugins_format", "discover_local_query",
+        "discover_local_kind", "discover_local_source", "discover_local_limit",
     ):
         stderr.write("Error: local_discovery_operation_conflict\n")
         return 2
@@ -1129,18 +1095,15 @@ def _run_coding_local_discovery_cli(
             format_coding_local_discovery(document, args.discover_local_plugins_format)
         )
         return 1 if document["disposition"] == "blocked" else 0
-    except CodingPluginManagementReadSdkError as error:
-        stdout.write(
-            format_coding_local_discovery(
-                blocked_coding_local_discovery(error.code),
-                args.discover_local_plugins_format,
-            )
+    except (OSError, RuntimeError, ValueError) as error:
+        code = (
+            error.code
+            if isinstance(error, CodingPluginManagementReadSdkError)
+            else "local_discovery_unavailable"
         )
-        return 1
-    except (OSError, RuntimeError, ValueError):
         stdout.write(
             format_coding_local_discovery(
-                blocked_coding_local_discovery("local_discovery_unavailable"),
+                blocked_coding_local_discovery(code),
                 args.discover_local_plugins_format,
             )
         )
@@ -1155,21 +1118,14 @@ def _run_coding_current_preview_cli(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    baseline = parse_args([])
-    if (
-        replace(
-            args,
-            cwd=None,
-            preview_current_plugins=False,
-            composition_set=baseline.composition_set,
-            preview_composition_set=baseline.preview_composition_set,
-        )
-        != baseline
+    if not cli_options_match_defaults(
+        args, parse_args([]), "cwd", "preview_current_plugins",
+        "composition_set", "preview_composition_set",
     ):
         stderr.write("Error: plugin_preview_operation_conflict\n")
         return 2
-    try:
-        workspace_guard()
+
+    def project() -> CliPhaseResult[str]:
         layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
         query = bind_coding_current_preview_query(
             project_root, workspace_guard=workspace_guard
@@ -1181,21 +1137,19 @@ def _run_coding_current_preview_cli(
             and args.preview_composition_set != args.composition_set
         ):
             stderr.write("Error: plugin_preview_composition_conflict\n")
-            return 2
+            return CliPhaseResult.exit(2)
         selected_set = resolve_cli_composition_choice(
             args.preview_composition_set or args.composition_set,
             configured_capabilities,
         )
-        projected = json.loads(
-            format_plugin_current_preview(
-                query,
-                PluginCurrentPreviewRequestV1(
-                    correlation_id="cli:preview-current-plugins",
-                    product_id=CODING_PRODUCT_ID,
-                    scope_id=layout.scope_id,
-                    composition_set_id=selected_set,
-                ),
-            )
+        projected = project_plugin_current_preview(
+            query,
+            PluginCurrentPreviewRequestV1(
+                correlation_id="cli:preview-current-plugins",
+                product_id=CODING_PRODUCT_ID,
+                scope_id=layout.scope_id,
+                composition_set_id=selected_set,
+            ),
         )
         plan = resolve_coding_composition_set(selected_set)
         projected["requestedComposition"] = {
@@ -1206,30 +1160,30 @@ def _run_coding_current_preview_cli(
         document = json.dumps(projected, ensure_ascii=False, sort_keys=True) + "\n"
         if query.configured_capabilities() != configured_capabilities:
             raise CodingCurrentPreviewError(code="plugin_preview_settings_stale")
-        workspace_guard()
-    except CodingPluginManagementReadSdkError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except CodingCurrentPreviewError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except Exception:
-        stderr.write("Error: plugin_preview_unavailable\n")
-        return 1
-    stdout.write(document)
+        return CliPhaseResult.continue_with(document)
+
+    result = run_guarded_cli_operation(
+        project,
+        workspace_guard=workspace_guard,
+        stderr=stderr,
+        coded_errors=(CodingPluginManagementReadSdkError, CodingCurrentPreviewError),
+        unavailable_code="plugin_preview_unavailable",
+    )
+    if result.exit_code is not None:
+        return result.exit_code
+    assert result.value is not None
+    stdout.write(result.value)
     return 0
 
 
 def _run_coding_plugin_operation_explanation_cli(
     args: CliArgs,
     *,
-    project_root: Path,
-    workspace_guard: Callable[[], None],
+    client: CodingPluginManagementReadClientV1,
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    baseline = parse_args([])
-    if replace(args, cwd=None, explain_plugin_operation=None) != baseline:
+    if not cli_options_match_defaults(args, parse_args([]), "cwd", "explain_plugin_operation"):
         stderr.write("Error: plugin_explanation_operation_conflict\n")
         return 2
     operation_id = args.explain_plugin_operation
@@ -1237,25 +1191,10 @@ def _run_coding_plugin_operation_explanation_cli(
         stderr.write("Error: plugin_explanation_invalid_operation\n")
         return 2
     try:
-        workspace_guard()
-        layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
-        request = PluginOperationExplanationRequestV1(
-            correlation_id="cli:explain-plugin-operation",
-            product_id=CODING_PRODUCT_ID,
-            scope_id=layout.scope_id,
-            operation_id=operation_id,
+        document = client.explain_operation(
+            operation_id, correlation_id="cli:explain-plugin-operation"
         )
-        document = project_plugin_operation_explanation(
-            bind_coding_plugin_operation_explanation_query(
-                project_root, workspace_guard=workspace_guard
-            ),
-            request,
-        )
-        workspace_guard()
-    except CodingPluginManagementReadSdkError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except CodingPluginOperationExplanationError as error:
+    except (CodingPluginManagementReadSdkError, CodingPluginOperationExplanationError) as error:
         stderr.write(f"Error: {error.code}\n")
         return 1
     except Exception:
@@ -1273,14 +1212,8 @@ def _run_coding_plugin_desired_repair_cli(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    baseline = parse_args([])
-    if (
-        replace(
-            args,
-            cwd=None,
-            repair_plugin_desired_operation=None,
-        )
-        != baseline
+    if not cli_options_match_defaults(
+        args, parse_args([]), "cwd", "repair_plugin_desired_operation"
     ):
         stderr.write("Error: plugin_repair_operation_conflict\n")
         return 2
@@ -1288,35 +1221,31 @@ def _run_coding_plugin_desired_repair_cli(
     if operation_id is None or not operation_id or operation_id != operation_id.strip():
         stderr.write("Error: plugin_repair_invalid_operation\n")
         return 2
-    try:
-        workspace_guard()
+
+    def repair() -> CliPhaseResult[PluginDesiredRepairResultV1]:
         layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
-        result = repair_coding_fenced_cli_desired_operation(
-            layout,
-            operation_id,
-            workspace=project_root,
-            workspace_guard=workspace_guard,
-            correlation_id="cli:repair-plugin-desired-operation",
+        return CliPhaseResult.continue_with(
+            repair_coding_fenced_cli_desired_operation(
+                layout,
+                operation_id,
+                workspace=project_root,
+                workspace_guard=workspace_guard,
+                correlation_id="cli:repair-plugin-desired-operation",
+            )
         )
-        workspace_guard()
-    except CodingPluginManagementReadSdkError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except PluginDesiredCommandRepairError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except ValueError as error:
-        if str(error) == "coding_product_not_fenced":
-            stderr.write("Error: coding_product_not_fenced\n")
-            return 1
-        if str(error) == "coding_management_workspace_changed":
-            stderr.write("Error: coding_management_workspace_changed\n")
-            return 1
-        stderr.write("Error: plugin_repair_unavailable\n")
-        return 1
-    except Exception:
-        stderr.write("Error: plugin_repair_unavailable\n")
-        return 1
+
+    outcome = run_guarded_cli_operation(
+        repair,
+        workspace_guard=workspace_guard,
+        stderr=stderr,
+        coded_errors=(CodingPluginManagementReadSdkError, PluginDesiredCommandRepairError),
+        unavailable_code="plugin_repair_unavailable",
+        value_error_codes=("coding_product_not_fenced", "coding_management_workspace_changed"),
+    )
+    if outcome.exit_code is not None:
+        return outcome.exit_code
+    result = outcome.value
+    assert result is not None
     stdout.write(json.dumps(result.to_dict(), sort_keys=True) + "\n")
     if result.result is None:
         return 1
@@ -1351,26 +1280,21 @@ async def _run_coding_pre_runtime_operation(
             context.stderr.write(f"Error: {error}\n")
             return 1
     if coding_fenced_product_exists(layout):
-        if args.install_packages:
-            return route_coding_fenced_data_wheels(
-                layout,
-                action="install",
-                workspace=context.project_root,
-                sources=args.install_packages,
-                scope=args.package_scope,
-                stdout=context.stdout,
-                stderr=context.stderr,
-            )
-        if args.update_packages:
-            return route_coding_fenced_data_wheels(
-                layout,
-                action="update",
-                workspace=context.project_root,
-                sources=args.update_packages,
-                scope=args.package_scope,
-                stdout=context.stdout,
-                stderr=context.stderr,
-            )
+        changes: tuple[tuple[Literal["install", "update"], Sequence[str]], ...] = (
+            ("install", args.install_packages),
+            ("update", args.update_packages),
+        )
+        for action, sources in changes:
+            if sources:
+                return route_coding_fenced_data_wheels(
+                    layout,
+                    action=action,
+                    workspace=context.project_root,
+                    sources=sources,
+                    scope=args.package_scope,
+                    stdout=context.stdout,
+                    stderr=context.stderr,
+                )
         if args.uninstall_packages:
             return uninstall_coding_fenced_data_wheels(
                 layout,
