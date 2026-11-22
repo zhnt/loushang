@@ -133,7 +133,6 @@ _DEFAULT_APPROVAL_SOURCE = "coding-capability-plugin-product-policy"
 _DEFAULT_APPROVAL_TTL_MS = 300_000
 _DEFAULT_DEFINITION_ENTRYPOINT = "definition.py:declare"
 _PLUGIN_IDS = CODING_CAPABILITY_PLUGIN_IDS
-_FAILURE_CUSTODIAN_ATTRIBUTE = "_coding_capability_plugin_cleanup_custodian"
 _RESUME_PLUGIN_LABEL = "Coding Resume Plugin"
 _DEFINITION_OWNER = "harness.plugin-execution"
 _ACTIVATION_OWNER = "harness.plugin-activation"
@@ -325,6 +324,7 @@ class CodingCapabilityPluginCleanupCustodian(_PreparationFailureCleanup):
     """Retryable owner for a preparation that failed after acquiring evidence."""
 
     _cleanup_label = "Coding Capability"
+    _failure_attribute = "_coding_capability_plugin_cleanup_custodian"
 
     runtime: PluginRuntimeResolution = field(repr=False)
     management_leases: Mapping[str, CodingPluginSessionLease] = field(repr=False)
@@ -353,22 +353,7 @@ def coding_capability_plugin_failure_custodian(
 ) -> CodingCapabilityPluginCleanupCustodian | None:
     """Recover a retryable preparation cleanup owner from an exception chain."""
 
-    current: BaseException | None = error
-    seen: set[int] = set()
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        custodian = getattr(current, _FAILURE_CUSTODIAN_ATTRIBUTE, None)
-        if isinstance(custodian, CodingCapabilityPluginCleanupCustodian):
-            return custodian
-        current = current.__cause__ or current.__context__
-    return None
-
-
-def _attach_failure_custodian(
-    error: BaseException,
-    custodian: CodingCapabilityPluginCleanupCustodian,
-) -> None:
-    setattr(error, _FAILURE_CUSTODIAN_ATTRIBUTE, custodian)
+    return CodingCapabilityPluginCleanupCustodian.retained_on(error)
 
 
 @dataclass(frozen=True, slots=True)
@@ -813,11 +798,10 @@ def _resolve_managed_capability_plugins(
             (f"tools.{spec.capability.capability_id}", (spec.tool_contribution_id,)),
         ),
         errors=_MANAGED_ASSEMBLY_ERRORS,
-        attach_failure=lambda error, runtime, leases: _attach_failure_custodian(
-            error,
+        attach_failure=lambda error, runtime, leases: (
             CodingCapabilityPluginCleanupCustodian(
                 runtime=runtime, management_leases=leases
-            ),
+            ).retain_on(error)
         ),
     )
 
@@ -869,6 +853,7 @@ def prepare_coding_capability_plugin_composition(
     resolved_state_root = Path(state_root).expanduser().resolve()
     scope_id = f"session:{session_id.strip()}"
 
+    acquired_runtime: PluginRuntimeResolution | None = None
     try:
         resolved_state_root.mkdir(parents=True, exist_ok=True)
         runtime, selected_configurations, management_leases = (
@@ -887,24 +872,7 @@ def prepare_coding_capability_plugin_composition(
                 'No requested Coding Capability Plugin is management-enabled.',
                 code='coding_capability_plugins_management_disabled',
             )
-    except BaseException as error:
-        custodian = coding_capability_plugin_failure_custodian(error)
-        if custodian is None:
-            custodian = CodingCapabilityPluginCleanupCustodian(
-                runtime=PluginRuntimeResolution((), (), ()),
-                management_leases={},
-            )
-        custodian.adopt_cleanup_callbacks(
-            management_state_cleanup=management_state_cleanup,
-            state_cleanup=state_cleanup,
-            private_state_cleanup=private_state_cleanup,
-        )
-        if not custodian.close_after_failed_preparation(
-            error, cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: "
-        ):
-            _attach_failure_custodian(error, custodian)
-        raise
-    try:
+        acquired_runtime = runtime
         resolved_product_seed = coding_product_plan_seed or (
             coding_base_plugin_assembly.plan_seed
             if coding_base_plugin_assembly is not None
@@ -936,17 +904,26 @@ def prepare_coding_capability_plugin_composition(
         preparation.private_state_cleanup = private_state_cleanup
         return preparation
     except BaseException as error:
-        custodian = CodingCapabilityPluginCleanupCustodian(
-            runtime=runtime,
-            management_leases=dict(management_leases),
+        custodian: CodingCapabilityPluginCleanupCustodian | None
+        if acquired_runtime is not None:
+            custodian = CodingCapabilityPluginCleanupCustodian(
+                runtime=acquired_runtime,
+                management_leases=dict(management_leases),
+            )
+        else:
+            custodian = coding_capability_plugin_failure_custodian(error)
+            if custodian is None:
+                custodian = CodingCapabilityPluginCleanupCustodian(
+                    runtime=PluginRuntimeResolution((), (), ()),
+                    management_leases={},
+                )
+        custodian.finish_failed_preparation(
+            error,
+            cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: ",
             management_state_cleanup=management_state_cleanup,
             state_cleanup=state_cleanup,
             private_state_cleanup=private_state_cleanup,
         )
-        if not custodian.close_after_failed_preparation(
-            error, cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: "
-        ):
-            _attach_failure_custodian(error, custodian)
         raise
 
 
