@@ -24,7 +24,6 @@ from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshot
 from loushang.harness.plugin_management.private_data_backup import (
     preview_posix_restore_target,
     read_deleted_restore_source,
-    require_deleted_archive_receipt,
     restore_private_archive,
     verify_posix_restored_target,
 )
@@ -32,7 +31,6 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionReceiptV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages._file_consumption import closing_descriptor
 
 from .installation_private_data import (
     coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
@@ -47,12 +45,8 @@ from .private_data_backup import (
     _digest as _digest,
 )
 from .private_data_backup import (
-    _open_private_path,
     _private_io,
     _verify_files,
-)
-from .private_data_backup import (
-    _read_manifest as _read_manifest,
 )
 from .private_data_backup import (
     _write_or_verify_file as _write_or_verify_file,
@@ -193,49 +187,34 @@ class CodingArchPrivateDataRestoreOwner:
                 self.product.desired_state.snapshot(),
                 expected_plan=expected_plan,
             )
-            backup_parent = _backup_parent(self.layout, key)
-            with closing_descriptor(
-                _open_private_path(self.layout.private_data_base, backup_parent)
-            ) as backup_parent_fd:
-                receipt, source = _read_manifest(backup_parent_fd, backup_id)
-                deletion_receipt = require_deleted_archive_receipt(
-                    receipt,
-                    backup_id,
-                    key,
-                    deletion_events=deletion.events,
-                    installation_error="Coding Arch restore Installation changed",
-                    deletion_error="Coding Arch restore lacks completed deletion",
-                )
-                if expected_plan is not None and (
-                    expected_plan.source_target_id != source.target_id
-                    or expected_plan.deletion_receipt_id != deletion_receipt.receipt_id
-                ):
-                    raise ValueError("Coding Arch restore plan evidence changed")
-                return restore_private_archive(
-                    backup_parent_fd,
-                    backup_id,
-                    key,
-                    source,
-                    receipt,
-                    deletion_receipt,
-                    target=target,
-                    private_base=self.layout.private_data_base,
-                    io=_private_io,
-                    codec=_archive_codec,
-                    expected_target_state=(
-                        None if expected_plan is None else expected_plan.target_state
-                    ),
-                    stage_prefix=_RESTORE_STAGE_PREFIX,
-                    stage_suffix=_RESTORE_STAGE_SUFFIX,
-                    prepare=_prepare_private_tree,
-                    verify_files=lambda fd, source: _verify_files(fd, source),
-                    write_file_factory=lambda: _write_or_verify_file,
-                    journal_factory=lambda: CodingArchPrivateDataRestoreJournal(
-                        self.product.state_root
-                    ),
-                    identity_for=restore_id_for,
-                    result_factory=CodingArchPrivateDataRestoreResultV1,
-                )
+            return restore_private_archive(
+                self.layout.private_data_base,
+                _backup_parent(self.layout, key),
+                backup_id,
+                key,
+                deletion_events=deletion.events,
+                expected_archive=(
+                    None
+                    if expected_plan is None
+                    else (expected_plan.source_target_id, expected_plan.deletion_receipt_id)
+                ),
+                target=target,
+                io=_private_io,
+                codec=_archive_codec,
+                expected_target_state=(
+                    None if expected_plan is None else expected_plan.target_state
+                ),
+                stage_prefix=_RESTORE_STAGE_PREFIX,
+                stage_suffix=_RESTORE_STAGE_SUFFIX,
+                prepare=_prepare_private_tree,
+                verify_files=lambda fd, source: _verify_files(fd, source),
+                write_file_factory=lambda: _write_or_verify_file,
+                journal_factory=lambda: CodingArchPrivateDataRestoreJournal(
+                    self.product.state_root
+                ),
+                identity_for=restore_id_for,
+                result_factory=CodingArchPrivateDataRestoreResultV1,
+            )
 
 
 def _admit_restore(

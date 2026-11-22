@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Literal, NamedTuple, Protocol, TypedDict, TypeVar, Unpack, cast
 
 from loushang.harness.journal import JournalLoadPolicy
-from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
+from loushang.harness.plugin_management.assembly import (
+    PluginDesiredStateBindings,
+    bind_plugin_desired_state,
+)
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
@@ -51,6 +54,7 @@ _GC_RESERVATIONS_NAME = "gc-reservations.jsonl"
 _GC_BINDINGS_NAME = "gc-bindings.jsonl"
 _DESIRED_NAME = "desired-state.jsonl"
 _MANAGEMENT_NAME = "management-operations.jsonl"
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 _ProductSessionOwner = (
     PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
 )
@@ -150,33 +154,45 @@ def open_fenced_product_management_state(
     )
 
 
+def private_product_state_identity(
+    state_root: Path, *, unsafe_message: str
+) -> tuple[int, int]:
+    metadata = state_root.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+        or metadata.st_uid != os.geteuid()
+    ):
+        raise ValueError(unsafe_message)
+    return metadata.st_dev, metadata.st_ino
+
+
+def bind_read_only_product_desired_state(state_root: Path) -> PluginDesiredStateBindings:
+    return bind_plugin_desired_state(
+        state_root / _GC_RESERVATIONS_NAME,
+        state_root / _DESIRED_NAME,
+        load_policy=_READ_ONLY_LOAD_POLICY,
+    )
+
+
 def open_read_only_product_management_state(
     state_root: Path,
 ) -> tuple[PluginDesiredStateLedger, PluginManagementService, JournalLoadPolicy]:
     """Open existing state and operation authorities with strict read policies."""
 
     try:
-        state_metadata = state_root.lstat()
+        private_product_state_identity(
+            state_root, unsafe_message="Fenced Product management state is unsafe"
+        )
     except FileNotFoundError as exc:
         raise ValueError("Fenced Product management state is absent") from exc
-    if (
-        not stat.S_ISDIR(state_metadata.st_mode)
-        or stat.S_IMODE(state_metadata.st_mode) & 0o077
-        or state_metadata.st_uid != os.geteuid()
-    ):
-        raise ValueError("Fenced Product management state is unsafe")
-    load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
-    desired = bind_plugin_desired_state(
-        state_root / _GC_RESERVATIONS_NAME,
-        state_root / _DESIRED_NAME,
-        load_policy=load_policy,
-    ).desired
+    desired = bind_read_only_product_desired_state(state_root).desired
     management = PluginManagementService(
         desired_state=desired,
         operation_journal_path=state_root / _MANAGEMENT_NAME,
-        load_policy=load_policy,
+        load_policy=_READ_ONLY_LOAD_POLICY,
     )
-    return desired, management, load_policy
+    return desired, management, _READ_ONLY_LOAD_POLICY
 
 
 def read_fenced_product_desired_transition(
@@ -187,7 +203,7 @@ def read_fenced_product_desired_transition(
 
     desired = PluginDesiredStateLedger(
         runtime.control_root / "product-state" / _DESIRED_NAME,
-        load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+        load_policy=_READ_ONLY_LOAD_POLICY,
     )
     _snapshot, transitions = desired.capture_read_only()
     matches = [
