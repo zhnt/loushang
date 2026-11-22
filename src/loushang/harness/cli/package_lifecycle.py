@@ -5,17 +5,26 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import secrets
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal, Protocol, TextIO, TypeVar
 from uuid import uuid4
 
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleAction,
+    PackageProductLifecycleRecordV1,
     canonicalize_package_product_scope,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product._application_runtime import (
+        FencedOrdinaryProductApplication,
+    )
 
 _OPERATOR_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
 
@@ -35,12 +44,21 @@ def package_operator_error_code(error: Exception, *, fallback: str) -> str:
 
 
 def write_package_operator_result(
-    document: dict[str, object], *, compact: bool = False
+    document: dict[str, object],
+    *,
+    compact: bool = False,
+    stream: TextIO | None = None,
+    ensure_ascii: bool = True,
+    sort_keys: bool = True,
 ) -> int:
     encoded = json.dumps(
-        document, sort_keys=True, separators=(",", ":") if compact else None
+        document,
+        ensure_ascii=ensure_ascii,
+        sort_keys=sort_keys,
+        separators=(",", ":") if compact else None,
     )
-    sys.stdout.write(encoded + "\n")
+    output = sys.stdout if stream is None else stream
+    output.write(encoded + "\n")
     return 0
 
 
@@ -62,6 +80,75 @@ def run_package_operator_command(
         sys.stderr.write(f"{refused}: {reason}\n")
         return 1
     return write_package_operator_result(document, compact=compact)
+
+
+class _AdmittedPackageWheel(Protocol):
+    @property
+    def wheel_filename(self) -> str: ...
+
+
+_WheelT = TypeVar("_WheelT", bound=_AdmittedPackageWheel)
+
+
+def run_fenced_package_changes(
+    sources: Sequence[str],
+    *,
+    action: Literal["install", "update"],
+    admit_source: Callable[[Path], _WheelT],
+    open_application: Callable[[], FencedOrdinaryProductApplication],
+    product_id: str,
+    operation_prefix: str,
+    runtime_prefix: str,
+    on_success: Callable[[_WheelT, PackageProductLifecycleRecordV1], None],
+    on_failure: Callable[[str, str], None],
+    on_unstarted: Callable[[Exception], None],
+) -> int:
+    """Admit the batch, then settle each routed operation within its own runtime."""
+    from loushang.harness.package_product._plugin_bootstrap import (
+        _product_plugin_runtime,
+        route_project_package,
+    )
+
+    operation_id: str | None = None
+    try:
+        admitted = tuple(admit_source(Path(raw)) for raw in sources)
+        with closing(open_application()) as owner:
+            product = owner.runtime_owner.product_owner
+            for wheel in admitted:
+                operation_id = f"{operation_prefix}{action}:{secrets.token_hex(16)}"
+                with _product_plugin_runtime(
+                    product,
+                    product_id=product_id,
+                    session_id=f"{runtime_prefix}{secrets.token_hex(16)}",
+                ) as runtime:
+                    outcome = route_project_package(
+                        runtime,
+                        operation_id=operation_id,
+                        action=action,
+                        source=str(
+                            owner.epoch_runtime.control_root
+                            / "product-sources"
+                            / wheel.wheel_filename
+                        ),
+                        entrypoint="cli",
+                    )
+                record = outcome.record
+                if not outcome.handled or record is None:
+                    raise RuntimeError(f"Package Product {action} was not handled")
+                if record.lifecycle == "failed":
+                    on_failure(operation_id, record.failure_code or "package_operation_failed")
+                    return 1
+                on_success(wheel, record)
+            return 0
+    except (OSError, RuntimeError, ValueError) as error:
+        if operation_id is None:
+            on_unstarted(error)
+        else:
+            on_failure(
+                operation_id,
+                package_operator_error_code(error, fallback="package_operation_incomplete"),
+            )
+        return 1
 
 
 class PackageLifecycleError(RuntimeError):

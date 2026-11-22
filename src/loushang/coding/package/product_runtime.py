@@ -40,7 +40,6 @@ from loushang.harness.package_product._application_runtime import (
     handoff_product_open,
     hold_accepted_product_adoption,
     open_fenced_product_management_state,
-    prepare_product_state_for_recovery,
     product_management_paths_match,
     require_current_product_admission,
     require_product_owner_for_factory,
@@ -254,25 +253,18 @@ def open_coding_package_product_state(
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     if not matches_epoch_layout(epoch_runtime, epoch):
         raise ValueError("Coding Package Product workspace authority changed")
-    state_root, gate = prepare_product_state_for_recovery(
+    state_root, gate, desired, management, bindings = open_fenced_product_management_state(
         epoch_runtime,
+        validate_topology=partial(
+            ensure_coding_product_backup_types,
+            scope_id=lifecycle.scope_id,
+            epoch_runtime=epoch_runtime,
+            before_load=before_recovery,
+            require_current_admission=require_current_admission,
+        ),
         before_recovery=before_recovery,
         require_current_admission=require_current_admission,
         label="Coding Product",
-    )
-    ensure_coding_product_backup_types(
-        state_root=state_root,
-        scope_id=lifecycle.scope_id,
-        epoch_runtime=epoch_runtime,
-        gc_gate=gate,
-        before_load=before_recovery,
-        require_current_admission=require_current_admission,
-    )
-    desired, management, bindings = open_fenced_product_management_state(
-        state_root,
-        gate,
-        before_recovery=before_recovery,
-        require_current_admission=require_current_admission,
     )
     worker_opt_in = CodingWorkerOptInJournal(
         state_root / "worker-opt-in.jsonl",

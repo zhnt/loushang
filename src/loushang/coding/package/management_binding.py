@@ -11,7 +11,7 @@ from typing import Literal
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._application_runtime import (
     FencedProductManagementApplication,
-    private_product_state_identity,
+    fenced_source_catalog_roots,
     verify_handoff_desired_commit,
 )
 from loushang.harness.plugin_management import (
@@ -168,7 +168,21 @@ class _ProductCliOwner(FencedProductManagementApplication):
         *,
         read_only: bool,
     ) -> _ProductSources:
-        return _product_sources(self.layout, runtime, desired, read_only=read_only)
+        roots = fenced_source_catalog_roots(
+            runtime,
+            scope_id=self.layout.scope_id,
+            no_namespace="Fenced Product Source namespace is unavailable",
+            read_only=read_only,
+            require_existing_source=True,
+        )
+        return _ProductSources(
+            CodingExternalDataWheelCatalog(
+                roots.state_root / "external-data-wheel-bindings.jsonl",
+                **roots.identity,
+                read_only=read_only,
+            ),
+            desired,
+        )
 
     def _backup_retention(
         self, runtime: PackageProductPosixFencedRuntimeOwner
@@ -190,40 +204,6 @@ class _ProductSources:
             verify_record=self.catalog.verify_record,
             verification_error=CodingExternalDataWheelError,
         )
-
-
-def _product_sources(
-    layout: CodingPluginLifecycleStateLayout,
-    runtime: PackageProductPosixFencedRuntimeOwner,
-    desired_state: PluginDesiredStateLedger,
-    *,
-    read_only: bool = False,
-) -> _ProductSources:
-    switch = runtime.cutover_result.switch_receipt
-    if switch is None:
-        raise ValueError("Fenced Product Source namespace is unavailable")
-    source_root = runtime.control_root / "product-sources"
-    try:
-        private_product_state_identity(
-            source_root, unsafe_message="Fenced Product Source root is unsafe"
-        )
-    except FileNotFoundError as exc:
-        raise ValueError("Fenced Product Source root is absent") from exc
-    if not read_only:
-        runtime.prepare_product_source_root()
-    return _ProductSources(
-        CodingExternalDataWheelCatalog(
-            runtime.control_root
-            / "product-state"
-            / "external-data-wheel-bindings.jsonl",
-            source_root=source_root,
-            store_id=runtime.registry.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=layout.scope_id,
-            read_only=read_only,
-        ),
-        desired_state,
-    )
 
 
 def build_coding_fenced_product_management_cli_ports(

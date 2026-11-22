@@ -133,30 +133,6 @@ def require_current_product_admission(
         )
 
 
-def prepare_product_state_for_recovery(
-    epoch: _FencedRuntime,
-    *,
-    before_recovery: Callable[[], None] | None,
-    require_current_admission: Callable[[], None] | None,
-    label: str,
-) -> tuple[Path, PluginPackageGcReservationJournal]:
-    require_current_product_admission(require_current_admission, label=label)
-    if before_recovery is not None:
-        before_recovery()
-    state_root = epoch.prepare_product_state_root()
-    require_current_product_admission(require_current_admission, label=label)
-    if before_recovery is not None:
-        before_recovery()
-    metadata = state_root.lstat()
-    epoch.assert_current()
-    gate = PluginPackageGcReservationJournal(
-        state_root / _GC_RESERVATIONS_NAME,
-        parent_identity=(metadata.st_dev, metadata.st_ino),
-    )
-    require_current_product_admission(require_current_admission, label=label)
-    return state_root, gate
-
-
 class SourceCatalogIdentity(TypedDict):
     source_root: Path
     store_id: str
@@ -176,12 +152,28 @@ def fenced_source_catalog_roots(
     no_namespace: str,
     state_root: Path | None = None,
     read_only: bool = False,
+    require_existing_source: bool = False,
 ) -> FencedSourceCatalogRoots:
     """Bind one native fence to its Catalog and controlled Source roots."""
     switch = runtime.cutover_result.switch_receipt
     if switch is None:
         raise ValueError(no_namespace)
-    if read_only:
+    if require_existing_source:
+        # Management ports observe a previously established Source authority.
+        # A write port may prepare it only after that observation succeeds.
+        if not isinstance(runtime, PackageProductPosixFencedRuntimeOwner):
+            raise TypeError("Existing Product Source catalog requires a POSIX epoch")
+        source_root = runtime.control_root / "product-sources"
+        try:
+            private_product_state_identity(
+                source_root, unsafe_message="Fenced Product Source root is unsafe"
+            )
+        except FileNotFoundError as exc:
+            raise ValueError("Fenced Product Source root is absent") from exc
+        if not read_only:
+            runtime.prepare_product_source_root()
+        state_root = runtime.control_root / "product-state"
+    elif read_only:
         if not isinstance(runtime, PackageProductPosixFencedRuntimeOwner):
             raise TypeError("Read-only Product Source catalog requires a POSIX epoch")
         runtime.require_existing_product_state_root()
@@ -214,18 +206,41 @@ def fenced_source_catalog_scope(
 
 
 class FencedProductManagementState(NamedTuple):
+    state_root: Path
+    gc_gate: PluginPackageGcReservationJournal
     desired_state: PluginDesiredStateLedger
     management: PluginManagementService
     gc_bindings: PluginPackageGcBindingJournal
 
 
+class _ValidateProductTopology(Protocol):
+    def __call__(self, *, state_root: Path, gc_gate: PluginPackageGcReservationJournal) -> None: ...
+
+
 def open_fenced_product_management_state(
-    state_root: Path,
-    gate: PluginPackageGcReservationJournal,
+    epoch: _FencedRuntime,
     *,
+    validate_topology: _ValidateProductTopology,
     before_recovery: Callable[[], None] | None,
     require_current_admission: Callable[[], None] | None,
+    label: str,
 ) -> FencedProductManagementState:
+    """Establish private state and verify its topology before management replay."""
+    require_current_product_admission(require_current_admission, label=label)
+    if before_recovery is not None:
+        before_recovery()
+    state_root = epoch.prepare_product_state_root()
+    require_current_product_admission(require_current_admission, label=label)
+    if before_recovery is not None:
+        before_recovery()
+    metadata = state_root.lstat()
+    epoch.assert_current()
+    gate = PluginPackageGcReservationJournal(
+        state_root / _GC_RESERVATIONS_NAME,
+        parent_identity=(metadata.st_dev, metadata.st_ino),
+    )
+    require_current_product_admission(require_current_admission, label=label)
+    validate_topology(state_root=state_root, gc_gate=gate)
     desired = PluginDesiredStateLedger(state_root / _DESIRED_NAME, gc_gate=gate)
     management = PluginManagementService(
         desired_state=desired, operation_journal_path=state_root / _MANAGEMENT_NAME
@@ -235,6 +250,8 @@ def open_fenced_product_management_state(
         require_current_admission=require_current_admission,
     )
     return FencedProductManagementState(
+        state_root,
+        gate,
         desired,
         management,
         PluginPackageGcBindingJournal(state_root / _GC_BINDINGS_NAME),
