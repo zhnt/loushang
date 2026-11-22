@@ -174,15 +174,11 @@ class LegacyReviewWireSelections(NamedTuple):
                 return value in ("installed_disabled", "installed_enabled")
             return type(value) is str
 
-        disabled = _review_wire_list(document, "disabledPlugins", required, disabled_error)
-        if any(
-            type(item) is not dict
-            or set(item) != {"scope", "pluginId"}
-            or item["scope"] not in ("global", "project")
-            or not plugin_id_is_text(item["pluginId"])
-            for item in disabled
-        ):
-            raise disabled_error
+        disabled = read_legacy_disabled_plugins(
+            _review_wire_list(document, "disabledPlugins", required, disabled_error),
+            plugin_id_is_text=plugin_id_is_text,
+            error=disabled_error,
+        )
         intent = _review_wire_list(document, "builtinIntent", required, intent_error)
         if any(
             type(item) is not dict
@@ -222,6 +218,26 @@ def _review_wire_list(
     return value
 
 
+def read_legacy_disabled_plugins(
+    value: object, *, plugin_id_is_text: Callable[[object], bool], error: ValueError,
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or any(
+        type(item) is not dict
+        or set(item) != {"scope", "pluginId"}
+        or item["scope"] not in ("global", "project")
+        or not plugin_id_is_text(item["pluginId"])
+        for item in value
+    ):
+        raise error
+    return value
+
+
+def legacy_disabled_plugins_wire(
+    disables: Sequence[_LegacyScopedDisable],
+) -> list[dict[str, str]]:
+    return [{"scope": item.scope, "pluginId": item.plugin_id} for item in disables]
+
+
 def legacy_review_selection_wire(
     disables: Sequence[_LegacyScopedDisable],
     builtin_intent: Sequence[_LegacyBuiltinIntent],
@@ -231,9 +247,7 @@ def legacy_review_selection_wire(
 ) -> dict[str, object]:
     document: dict[str, object] = {}
     if include_empty or disables:
-        document["disabledPlugins"] = [
-            {"scope": item.scope, "pluginId": item.plugin_id} for item in disables
-        ]
+        document["disabledPlugins"] = legacy_disabled_plugins_wire(disables)
     if include_empty or builtin_intent:
         document["builtinIntent"] = [
             {"pluginId": item.plugin_id, "desiredState": item.desired_state}

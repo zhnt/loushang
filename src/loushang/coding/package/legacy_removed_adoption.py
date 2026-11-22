@@ -8,11 +8,9 @@ from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.package_product._application_runtime import (
-    hold_accepted_product_adoption,
-)
 from loushang.harness.package_product._plugin_bootstrap import (
-    replay_reviewed_product_plugins,
+    ReviewedPluginChoices,
+    adopt_reviewed_product_plugins,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -56,7 +54,7 @@ def adopt_coding_first_b_removed_local(
     """Write the accepted absent choices and bootstrap current builtin choices."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    with hold_accepted_product_adoption(
+    return adopt_reviewed_product_plugins(
         open_epoch=lambda: PackageProductPosixFencedRuntimeOwner.open(
             **epoch.fenced_runtime_open_kwargs()
         ),
@@ -72,25 +70,24 @@ def adopt_coding_first_b_removed_local(
             runtime_version=runtime_version,
             runtime_protocol_epoch=runtime_protocol_epoch,
         ),
-    ) as (receipt, owner):
-        product = owner.runtime_owner.product_owner
-        removed_ids = {
-            *(item.plugin_id for item in receipt.review.removed_local),
-            *receipt.review.removed_builtin_ids,
-        }
-        disabled = _reviewed_disabled_ids(receipt.review)
-        replay_reviewed_product_plugins(
-            product,
-            _CODING_BUILTIN_PLUGIN_IDS,
-            disabled_ids=disabled,
-            removed_ids=sorted(removed_ids),
-            operation_id_for=partial(_removed_operation_id, receipt),
-            removal_label=_REMOVAL_LABEL,
-            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-            strict_history=True,
-            history_label="Coding builtin-only Product",
-        )
-        return receipt
+        reviewed_choices=_removed_choices,
+        plugin_ids=_CODING_BUILTIN_PLUGIN_IDS,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+        removal_label=_REMOVAL_LABEL,
+        history_label="Coding builtin-only Product",
+    )
+
+
+def _removed_choices(receipt: CodingLegacyRemovedAcceptanceV1) -> ReviewedPluginChoices:
+    removed_ids = {
+        *(item.plugin_id for item in receipt.review.removed_local),
+        *receipt.review.removed_builtin_ids,
+    }
+    return ReviewedPluginChoices(
+        disabled_ids=_reviewed_disabled_ids(receipt.review),
+        removed_ids=sorted(removed_ids),
+        operation_id_for=partial(_removed_operation_id, receipt),
+    )
 
 
 def _removed_operation_id(

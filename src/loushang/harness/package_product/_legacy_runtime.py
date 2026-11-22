@@ -64,6 +64,29 @@ class FencedRuntimeOpenKwargs(TypedDict):
     epochs_root_name: str
 
 
+class LegacyReviewFenceIdentity(TypedDict):
+    store_id: str
+    namespace_id: str
+    first_fence_id: str
+    snapshot_receipt_id: str
+
+
+def legacy_review_fence_identity(
+    runtime: _FencedRuntime, *, missing: ValueError,
+) -> LegacyReviewFenceIdentity:
+    """Project the native first-cutover receipts used by review records."""
+    result = runtime.cutover_result
+    fence, switch = result.fence, result.switch_receipt
+    if fence is None or switch is None:
+        raise missing
+    return LegacyReviewFenceIdentity(
+        store_id=fence.store_id,
+        namespace_id=switch.namespace_id,
+        first_fence_id=fence.fence_id,
+        snapshot_receipt_id=fence.request.snapshot_receipt_id,
+    )
+
+
 def open_native_fenced_product_epoch(
     *,
     windows: bool | None = None,

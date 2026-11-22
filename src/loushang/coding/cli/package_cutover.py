@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 from collections.abc import Callable, Sequence
+from contextlib import closing
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -95,15 +96,13 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_runtime import (
     inspect_fresh_product_epoch,
     legacy_product_fence_exists,
+    open_native_fenced_product_epoch,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackagePosixEpochCutoverResultV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
-)
-from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    PackageProductWindowsFencedRuntimeOwner,
 )
 
 _WINDOWS_CANDIDATE_ROUTE_ADMITTED = True
@@ -216,7 +215,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.backup_status:
             document = inspect_coding_package_cutover_backup(lifecycle).to_dict()
             return write_package_operator_result(document)
-        if os.name == "nt":
+        windows = os.name == "nt"
+        if windows:
             if (
                 not args.windows_candidate
                 or not _WINDOWS_CANDIDATE_ROUTE_ADMITTED
@@ -241,21 +241,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise RuntimeError(
                     "Windows Coding Product write CLI requires an admitted candidate"
                 )
-            if (
-                args.review_legacy_builtin_only
-                or args.prepare_legacy_builtin_review
-                or args.adopt_legacy_builtin_review is not None
-            ):
-                document = _run_windows_builtin_candidate(
-                    lifecycle,
-                    workspace=workspace,
-                    prepare_review=args.prepare_legacy_builtin_review,
-                    accepted_review_id=args.adopt_legacy_builtin_review,
-                )
-            else:
-                document = _run_windows_fresh_candidate(lifecycle, workspace=workspace)
-            return write_package_operator_result(document)
-        if args.windows_candidate:
+        elif args.windows_candidate:
             raise ValueError("Windows Product candidate requires Windows")
         review_routes = (
             (
@@ -298,6 +284,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                         else None
                     ),
                 )
+            if windows:
+                # The Windows gate admits only the builtin review route.
+                with closing(open_native_fenced_product_epoch(
+                    windows=True, **epoch.fenced_runtime_open_kwargs()
+                )) as windows_owner:
+                    document = review_coding_first_b_builtin_only(
+                        lifecycle, windows_owner, settings_manager=settings
+                    ).to_dict()
+                return write_package_operator_result(document)
             with PackageProductPosixFencedRuntimeOwner.open(
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
             ) as owner:
@@ -349,11 +344,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.adopt_legacy_disabled_review,
                 bootstrap_coding_accepted_disabled_only_product_plugins,
             ),
-            (args.adopt_legacy_builtin_review, adopt_coding_first_b_builtin_only),
+            (
+                args.adopt_legacy_builtin_review,
+                partial(adopt_coding_first_b_builtin_only, windows_candidate=True)
+                if windows else adopt_coding_first_b_builtin_only,
+            ),
             (args.adopt_legacy_removed_review, adopt_coding_first_b_removed_local),
         )
         for accepted_review_id, adopt_review in adoption_routes:
-            if not accepted_review_id:
+            if accepted_review_id is None or (not windows and not accepted_review_id):
                 continue
             receipt = adopt_review(
                 lifecycle,
@@ -416,8 +415,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 lifecycle, workspace=workspace
             )
         settings = _cutover_settings(workspace)
-        runtime_version = version("loushang")
-        if has_fence:
+        if has_fence and windows:
+            result = reopen_coding_package_cutover(lifecycle)
+            _require_cutover_namespace(result, namespace_id)
+            if not inspect_fresh_product_epoch(
+                epoch.fenced_runtime_open_kwargs(),
+                windows=True,
+                verify_snapshot=partial(is_coding_fresh_first_b_snapshot, lifecycle),
+            ):
+                raise RuntimeError("Coding Product fence is not a fresh cutover")
+            if result.disposition != "fenced":
+                raise RuntimeError("Coding Product fence was not committed")
+            bootstrap_coding_builtin_product_plugins(
+                lifecycle,
+                settings,
+                workspace=workspace,
+                runtime_version=version("loushang"),
+                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                windows_candidate=True,
+            )
+        elif has_fence:
+            runtime_version = version("loushang")
             result = reopen_coding_package_cutover(lifecycle)
             _require_cutover_namespace(result, namespace_id)
             read_owner = PackageProductPosixFencedRuntimeOwner.open(
@@ -528,8 +546,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 settings,
                 workspace=workspace,
                 namespace_id=namespace_id,
-                runtime_version=runtime_version,
+                runtime_version=version("loushang"),
                 runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                windows_candidate=windows,
             )
             result = cutover.attempt.result
         if result.disposition != "fenced":
@@ -626,107 +645,6 @@ def _require_disabled_only_preflight(
     package = resolve_coding_package_pre_b_store_members(lifecycle)
     if any(state.domain_members().values()) or any(package.domain_members().values()):
         raise RuntimeError("Coding old Plugin state needs a separate migration")
-
-
-def _run_windows_builtin_candidate(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    *,
-    workspace: Path,
-    prepare_review: bool,
-    accepted_review_id: str | None,
-) -> dict[str, object]:
-    """Exercise the reviewed builtin-only Windows migration behind its gate."""
-
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    settings = _cutover_settings(workspace)
-    if accepted_review_id is not None:
-        receipt = adopt_coding_first_b_builtin_only(
-            lifecycle,
-            settings,
-            workspace=workspace,
-            accepted_review_id=accepted_review_id,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            windows_candidate=True,
-        )
-        return {
-            "disposition": "adopted",
-            "acceptanceId": receipt.acceptance_id,
-            "reviewId": receipt.review.review_id,
-        }
-    if prepare_review:
-        namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-        _prepare_review_cutover(
-            lifecycle,
-            settings,
-            epoch,
-            namespace_id,
-            snapshot_admission=lambda preparation, snapshot: (
-                admit_coding_builtin_only_snapshot(lifecycle, preparation, snapshot)
-            ),
-        )
-    owner = PackageProductWindowsFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
-    )
-    try:
-        review = review_coding_first_b_builtin_only(
-            lifecycle, owner, settings_manager=settings
-        )
-        return review.to_dict()
-    finally:
-        owner.close()
-
-
-def _run_windows_fresh_candidate(
-    lifecycle: CodingPluginLifecycleStateLayout, *, workspace: Path
-) -> dict[str, object]:
-    """Retry the exact fresh first-B Product route under explicit selection."""
-
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-    if not legacy_product_fence_exists(epoch.control_root):
-        bootstrap_complete = True
-        require_fresh_coding_product_inputs_without_writes(
-            lifecycle, workspace=workspace
-        )
-        settings = _cutover_settings(workspace)
-        prepared = cutover_and_bootstrap_coding_package_product(
-            lifecycle,
-            settings,
-            workspace=workspace,
-            namespace_id=namespace_id,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            windows_candidate=True,
-        )
-        result = prepared.attempt.result
-    else:
-        bootstrap_complete = False
-        settings = _cutover_settings(workspace)
-        result = reopen_coding_package_cutover(lifecycle)
-        _require_cutover_namespace(result, namespace_id)
-        if not inspect_fresh_product_epoch(
-            epoch.fenced_runtime_open_kwargs(),
-            windows=True,
-            verify_snapshot=partial(is_coding_fresh_first_b_snapshot, lifecycle),
-        ):
-            raise RuntimeError("Coding Product fence is not a fresh cutover")
-    if result.disposition != "fenced":
-        raise RuntimeError("Coding Product fence was not committed")
-    if not bootstrap_complete:
-        bootstrap_coding_builtin_product_plugins(
-            lifecycle,
-            settings,
-            workspace=workspace,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            windows_candidate=True,
-        )
-    return {
-        "disposition": "fenced",
-        "namespaceId": namespace_id,
-        "storeId": epoch.store_id,
-    }
 
 
 if __name__ == "__main__":

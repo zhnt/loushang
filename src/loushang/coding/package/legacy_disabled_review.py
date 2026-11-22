@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path as Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.package_product._legacy_inventory import legacy_record_digest
+from loushang.harness.package_product._legacy_inventory import (
+    LEGACY_REVIEW_DIGEST,
+    legacy_disabled_plugins_wire,
+    legacy_record_digest,
+    read_legacy_disabled_plugins,
+)
 from loushang.harness.package_product._legacy_runtime import (
+    legacy_review_fence_identity,
     require_legacy_snapshot_members,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -37,9 +42,6 @@ _OLD_STATE_DOMAINS: tuple[CodingLegacyInventoryDomain, ...] = (
     "lock_history",
     "store_bytes",
 )
-_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-
-
 _LEGACY_RECORD_VALUES = {
     "value_001": "Coding disabled-only review record is invalid",
     "value_002": "Coding disabled-only review entries are invalid",
@@ -83,10 +85,7 @@ class CodingLegacyDisabledOnlyReviewV1:
             "snapshotReceiptId": self.snapshot_receipt_id,
             "sourceProjectionDigest": self.source_projection_digest,
             "reviewVersion": self.review_version,
-            "disabledPlugins": [
-                {"scope": item.scope, "pluginId": item.plugin_id}
-                for item in self.disabled_plugins
-            ],
+            "disabledPlugins": legacy_disabled_plugins_wire(self.disabled_plugins),
         }
 
     def to_dict(self) -> dict[str, object]:
@@ -106,16 +105,11 @@ class CodingLegacyDisabledOnlyReviewV1:
             "disabledPlugins",
         }:
             raise ValueError(_LEGACY_RECORD_VALUES["value_001"])
-        disabled = value["disabledPlugins"]
-        if not isinstance(disabled, list) or any(
-            type(item) is not dict
-            or set(item) != {"scope", "pluginId"}
-            or item["scope"] not in ("global", "project")
-            or not isinstance(item["pluginId"], str)
-            or not item["pluginId"]
-            for item in disabled
-        ):
-            raise ValueError(_LEGACY_RECORD_VALUES["value_002"])
+        disabled = read_legacy_disabled_plugins(
+            value["disabledPlugins"],
+            plugin_id_is_text=lambda item: isinstance(item, str) and bool(item),
+            error=ValueError(_LEGACY_RECORD_VALUES["value_002"]),
+        )
         for name in (
             "namespaceId",
             "firstFenceId",
@@ -125,7 +119,7 @@ class CodingLegacyDisabledOnlyReviewV1:
         ):
             if (
                 not isinstance(value[name], str)
-                or _SHA256.fullmatch(value[name]) is None
+                or LEGACY_REVIEW_DIGEST.fullmatch(value[name]) is None
             ):
                 raise ValueError(_LEGACY_RECORD_VALUES["value_006"])
         for name in ("storeId", "scopeId"):
@@ -170,10 +164,10 @@ def review_coding_first_b_disabled_only(
         raise CodingLegacyDisabledOnlyReviewError(
             "Coding legacy settings paths are unavailable"
         )
-    fence = epoch_runtime.cutover_result.fence
-    switch = epoch_runtime.cutover_result.switch_receipt
-    if fence is None or switch is None:
-        raise CodingLegacyDisabledOnlyReviewError("Coding first-B fence is unavailable")
+    identity = legacy_review_fence_identity(
+        epoch_runtime,
+        missing=CodingLegacyDisabledOnlyReviewError("Coding first-B fence is unavailable"),
+    )
     source = read_coding_legacy_source_evidence(
         lifecycle,
         epoch_runtime,
@@ -196,11 +190,8 @@ def review_coding_first_b_disabled_only(
     )
     epoch_runtime.assert_current()
     return CodingLegacyDisabledOnlyReviewV1(
-        store_id=fence.store_id,
-        namespace_id=switch.namespace_id,
+        **identity,
         scope_id=lifecycle.scope_id,
-        first_fence_id=fence.fence_id,
-        snapshot_receipt_id=fence.request.snapshot_receipt_id,
         source_projection_digest=source.projection_digest,
         disabled_plugins=source.classification.disabled_plugins,
     )

@@ -18,6 +18,9 @@ from loushang.harness.package_product._legacy_inventory import (
     read_legacy_builtin_admission,
     valid_legacy_builtin_intent,
 )
+from loushang.harness.package_product._legacy_runtime import (
+    legacy_review_fence_identity,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
@@ -281,12 +284,12 @@ def review_coding_first_b_builtin_only(
 ) -> CodingLegacyBuiltinOnlyReviewV1:
     """Review only the authenticated snapshot and exact old builtin intent."""
 
-    fence = epoch_runtime.cutover_result.fence
-    switch = epoch_runtime.cutover_result.switch_receipt
     global_path = settings_manager.global_settings_path
     project_path = settings_manager.project_settings_path
-    if fence is None or switch is None:
-        raise CodingLegacyBuiltinOnlyReviewError("Coding first-B fence is missing")
+    identity = legacy_review_fence_identity(
+        epoch_runtime,
+        missing=CodingLegacyBuiltinOnlyReviewError("Coding first-B fence is missing"),
+    )
     if not isinstance(global_path, Path) or not isinstance(project_path, Path):
         raise CodingLegacyBuiltinOnlyReviewError(
             "Coding legacy settings paths are unavailable"
@@ -316,11 +319,8 @@ def review_coding_first_b_builtin_only(
     _require_builtin_only_inventory(inventory)
     epoch_runtime.assert_current()
     return CodingLegacyBuiltinOnlyReviewV1(
-        store_id=fence.store_id,
-        namespace_id=switch.namespace_id,
+        **identity,
         scope_id=lifecycle.scope_id,
-        first_fence_id=fence.fence_id,
-        snapshot_receipt_id=fence.request.snapshot_receipt_id,
         source_projection_digest=source.projection_digest,
         desired_journal_digest=inventory.desired_journal_digest or "",
         disabled_plugins=source.classification.disabled_plugins,

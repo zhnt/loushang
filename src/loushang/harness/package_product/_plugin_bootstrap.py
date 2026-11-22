@@ -7,6 +7,7 @@ from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import NamedTuple, TypeVar
 
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
@@ -24,6 +25,11 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleOutcomeV1,
 )
 
+from ._application_runtime import (
+    FencedOrdinaryProductApplication,
+    hold_accepted_product_adoption,
+)
+from ._legacy_runtime import _FencedRuntime
 from .product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
@@ -448,3 +454,46 @@ def replay_reviewed_product_plugins(
             policy=policy,
             enable=plugin_id not in disabled_ids,
         )
+
+
+class ReviewedPluginChoices(NamedTuple):
+    disabled_ids: Collection[str]
+    removed_ids: Collection[str]
+    operation_id_for: Callable[[str], str]
+
+
+_EpochT = TypeVar("_EpochT", bound=_FencedRuntime)
+_ReceiptT = TypeVar("_ReceiptT")
+
+
+def adopt_reviewed_product_plugins(
+    *,
+    open_epoch: Callable[[], _EpochT],
+    accept_review: Callable[[_EpochT], _ReceiptT],
+    open_application: Callable[[], FencedOrdinaryProductApplication],
+    reviewed_choices: Callable[[_ReceiptT], ReviewedPluginChoices],
+    plugin_ids: tuple[str, ...],
+    policy: _PluginBootstrapPolicy,
+    removal_label: str,
+    history_label: str,
+) -> _ReceiptT:
+    """Commit acceptance and replay the exact reviewed choices against scoped history."""
+    with hold_accepted_product_adoption(
+        open_epoch=open_epoch,
+        accept_review=accept_review,
+        open_application=open_application,
+    ) as (receipt, application):
+        product = application.runtime_owner.product_owner
+        choices = reviewed_choices(receipt)
+        replay_reviewed_product_plugins(
+            product,
+            plugin_ids,
+            disabled_ids=choices.disabled_ids,
+            removed_ids=choices.removed_ids,
+            operation_id_for=choices.operation_id_for,
+            removal_label=removal_label,
+            policy=policy,
+            strict_history=True,
+            history_label=history_label,
+        )
+        return receipt

@@ -15,6 +15,9 @@ from loushang.harness.package_product._legacy_removed_review import (
     LegacyRemovalReviewRecord,
     LegacyRemovalSnapshot,
 )
+from loushang.harness.package_product._legacy_runtime import (
+    legacy_review_fence_identity,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
@@ -207,10 +210,10 @@ def review_coding_first_b_removed_local(
 ) -> CodingLegacyRemovedReviewV1:
     """Project one authenticated old removal set without Product mutation."""
 
-    fence = epoch_runtime.cutover_result.fence
-    switch = epoch_runtime.cutover_result.switch_receipt
-    if fence is None or switch is None:
-        raise CodingLegacyRemovedReviewError("Coding first-B fence is missing")
+    identity = legacy_review_fence_identity(
+        epoch_runtime,
+        missing=CodingLegacyRemovedReviewError("Coding first-B fence is missing"),
+    )
     capture = LegacyRemovalSnapshot.after_fence(
         _snapshot_reader(lifecycle, epoch_runtime),
         source_member=_PROJECTION_NAME,
@@ -249,11 +252,8 @@ def review_coding_first_b_removed_local(
     )
     epoch_runtime.assert_current()
     return CodingLegacyRemovedReviewV1(
-        store_id=fence.store_id,
-        namespace_id=switch.namespace_id,
+        **identity,
         scope_id=lifecycle.scope_id,
-        first_fence_id=fence.fence_id,
-        snapshot_receipt_id=fence.request.snapshot_receipt_id,
         source_projection_digest=source.projection_digest,
         lockfile_digest=facts.removed[0].binding.lockfile_digest,
         desired_journal_digest=facts.desired_digest,
