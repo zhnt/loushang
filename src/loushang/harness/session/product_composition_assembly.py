@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from itertools import chain
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loushang.harness.capabilities import (
@@ -639,6 +640,30 @@ class ProductPluginPlanSeed:
     bindings: tuple[PluginSourceBinding, ...]
     owner_bindings: tuple[ProductContributionOwnerBinding, ...]
 
+    @classmethod
+    def from_package_bindings(
+        cls,
+        plan: PluginSelectionPlanV2,
+        package_bindings: Iterable[tuple[PublishedPluginPackage, PluginSourceBinding]],
+        *,
+        owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+        extend_seed: ProductPluginPlanSeed | None = None,
+    ) -> ProductPluginPlanSeed:
+        """Bind the plan to ordered exact package evidence and its Product owners."""
+        if extend_seed is not None:
+            package_bindings = chain(
+                zip(extend_seed.packages, extend_seed.bindings, strict=True),
+                package_bindings,
+            )
+            owner_bindings = (*extend_seed.owner_bindings, *owner_bindings)
+        ordered = sorted(package_bindings, key=lambda pair: pair[0].manifest.name)
+        return cls(
+            plan=plan,
+            packages=tuple(package for package, _ in ordered),
+            bindings=tuple(binding for _, binding in ordered),
+            owner_bindings=owner_bindings,
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.plan, PluginSelectionPlanV2):
             raise TypeError("Product Plugin seed plan is invalid")
@@ -861,6 +886,38 @@ class ProductPluginCompositionAssemblyRequest:
         compare=False,
     )
     prebound_providers: tuple[CapabilityBundleProvider, ...] = ()
+
+    @classmethod
+    def for_agent_session(
+        cls,
+        seed: ProductPluginSelectionSeed,
+        *,
+        provider_definitions: tuple[CapabilityDefinition, ...] = (),
+        provider_owner_bindings: tuple[ProductCapabilityProviderOwnerBinding, ...] = (),
+        select_capability_providers: ProductCapabilityProviderSelector = lambda _: (),
+        owner_candidates: tuple[OwnerContributionCandidateEnvelope, ...] | None = None,
+    ) -> ProductPluginCompositionAssemblyRequest:
+        """Compile Plugin contributions against the standard Agent host capabilities."""
+
+        host_definitions = (
+            MODEL_INPUT_CAPABILITY_DEFINITION,
+            WORKSPACE_CAPABILITY_DEFINITION,
+        )
+        return cls(
+            contribution_request=ProductCompositionAssemblyRequest(
+                selection=seed.selection,
+                owner_bindings=seed.owner_bindings,
+                owner_candidates=owner_candidates,
+                mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+                definitions=(*host_definitions, *provider_definitions),
+            ),
+            provider_owner_bindings=provider_owner_bindings,
+            provider_roots=tuple(
+                sorted(item.capability_id for item in provider_owner_bindings)
+            ),
+            host_capability_ids=tuple(item.capability_id for item in host_definitions),
+            select_capability_providers=select_capability_providers,
+        )
 
     def __post_init__(self) -> None:
         if not isinstance(

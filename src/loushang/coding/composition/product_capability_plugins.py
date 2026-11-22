@@ -24,18 +24,7 @@ from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginCompositionPreparation,
     CodingResumePluginParents,
     _capability_configuration_entries,
-)
-from loushang.coding.composition.capability_plugins import (
-    _assembly_request as _assembly_request,
-)
-from loushang.coding.composition.capability_plugins import (
-    _bind_default_approval_request_to_plan as _bind_default_approval_request_to_plan,
-)
-from loushang.coding.composition.capability_plugins import (
-    _finalize_selection as _finalize_selection,
-)
-from loushang.coding.composition.capability_plugins import (
-    _provider_owner_authorities as _provider_owner_authorities,
+    _prepare_capability_plugin_plan,
 )
 from loushang.coding.composition.capability_plugins import (
     _read_clock as _read_clock,
@@ -63,11 +52,9 @@ from loushang.coding.package.product_revisions import (
 from loushang.coding.package.product_revisions import (
     open_coding_product_capability_resolution as open_coding_product_capability_resolution,
 )
-from loushang.coding.resources.catalog import (
-    complete_coding_package_plugin_selection_seed as complete_coding_package_plugin_selection_seed,
-)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
+    OwnerContributionCandidateEnvelope,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -82,9 +69,6 @@ from loushang.harness.package_product._selected_plugin_revisions import (
 from loushang.harness.package_product._selected_plugin_revisions import (
     selected_runtime_recheck as selected_runtime_recheck,
 )
-from loushang.harness.package_product._selected_plugin_revisions import (
-    validate_preparation_lineage,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
@@ -95,16 +79,16 @@ from loushang.harness.resources.packages._private_tree_windows import (
     prepare_private_windows_directory_chain,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
-from loushang.harness.resources.plugins.selection import PluginSourceTrustSnapshotV1
+from loushang.harness.resources.plugins.selection import (
+    PluginSelection,
+    PluginSourceTrustSnapshotV1,
+)
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
     build_product_plugin_selection_plan,
     project_product_owner_candidates,
-)
-from loushang.harness.session.product_composition_assembly import (
-    prepare_product_plugin_composition as prepare_product_plugin_composition,
 )
 
 _MAX_FILES = 64
@@ -363,69 +347,49 @@ def _prepare_fenced_capabilities(
             tool_authority=tool_authority,
             base_compilation=base_compilation,
         )
-        request = _bind_default_approval_request_to_plan(
-            create_coding_capability_plugin_composition_request(
-                clock=clock,
-                plugin_ids=plugin_ids,
-                product_policy_revision=product_policy_revision,
-                source_trust_policy_revision=next(iter(trust_revisions)),
-            ),
-            seed,
-        )
-        selection = _finalize_selection(
-            seed,
-            request=request,
-            scope_id=scope_id,
-            state_root=root,
+        request = create_coding_capability_plugin_composition_request(
             clock=clock,
-            resume_parents=resume_parents,
-        )
-        provider_authorities = _provider_owner_authorities(plugin_ids)
-        selected_seed = complete_coding_package_plugin_selection_seed(
-            seed, selection=selection
+            plugin_ids=plugin_ids,
+            product_policy_revision=product_policy_revision,
+            source_trust_policy_revision=next(iter(trust_revisions)),
         )
         external_selected = (
             tuple(by_id[item] for item in external_data_plugin_ids)
             if base is not None
             else ()
         )
-        owner_candidates = (
-            project_product_owner_candidates(
+        def project_store_owners(
+            selection: PluginSelection,
+        ) -> tuple[OwnerContributionCandidateEnvelope, ...] | None:
+            if base is None:
+                return None
+            return project_product_owner_candidates(
                 selection,
                 selected_manifests=(base, *external_selected),
                 selection_changed="Coding Product base owner changed Store selection",
             )
-            if base is not None
-            else None
-        )
-        product = prepare_product_plugin_composition(
-            _assembly_request(
-                selected_seed,
-                provider_authorities=provider_authorities,
-                owner_candidates=owner_candidates,
-            ),
-            evaluated_at=_read_clock(clock),
-        )
-        capability_preparation = CodingCapabilityPluginCompositionPreparation(
-            request=request,
+
+        capability_preparation = _prepare_capability_plugin_plan(
+            request,
+            seed,
             runtime=runtime,
-            selection=selection,
-            product=product,
-            provider_owner_authorities=provider_authorities,
-            tool_owner_authority=tool_authority,
-            scope_id=scope_id,
+            plugin_ids=plugin_ids,
+            tool_authority=tool_authority,
             state_root=root,
-            selection_recheck=selected_runtime_recheck(runtime),
+            clock=clock,
             resume_parents=resume_parents,
+            project_store_owners=project_store_owners,
         )
+        capability_preparation.selection_recheck = selected_runtime_recheck(runtime)
         if base_compilation is None:
             return capability_preparation
         assert base is not None
+        product = capability_preparation.product
         combined_base = replace(
             base_compilation,
-            plan=selection.plan,
+            plan=capability_preparation.selection.plan,
             product_composition=product.product_composition,
-            owner_bindings=selected_seed.owner_bindings,
+            owner_bindings=product.request.contribution_request.owner_bindings,
             resource_bodies=_resource_bodies(
                 base,
                 product.product_composition,
@@ -440,13 +404,6 @@ def _prepare_fenced_capabilities(
             base_compilation=combined_base,
             capability_preparation=capability_preparation,
         )
-
-
-def _validate_product_lineage(
-    runtime: PluginRuntimeResolution,
-    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
-) -> None:
-    validate_preparation_lineage(runtime, selected, label="Coding Product Capability")
 
 
 def _product_plan_seed(
@@ -497,10 +454,9 @@ def _product_plan_seed(
         allowed_authority_ceiling=("filesystem", "process"),
         base=base_plan,
     )
-    return ProductPluginPlanSeed(
-        plan=plan,
-        packages=tuple(package for package, _ in pairs),
-        bindings=tuple(binding for _, binding in pairs),
+    return ProductPluginPlanSeed.from_package_bindings(
+        plan,
+        pairs,
         owner_bindings=(
             *base_owner_bindings,
             ProductContributionOwnerBinding(authority=tool_authority),

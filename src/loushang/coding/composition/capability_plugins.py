@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from itertools import chain
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -58,7 +57,6 @@ from loushang.harness.approval.plugin_execution import (
     PluginExecutionJournalError as PluginExecutionJournalError,
 )
 from loushang.harness.capabilities import (
-    MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
@@ -109,7 +107,6 @@ from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
 from loushang.harness.session.plugin_lifecycle._publication import _OwnerLeaseSet
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
-    ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginCompositionAssembly,
     ProductPluginCompositionAssemblyRequest,
@@ -925,42 +922,20 @@ def prepare_coding_capability_plugin_composition(
             coding_product_plan_seed=resolved_product_seed,
             tool_authority=tool_authority,
         )
-        request = _bind_default_approval_request_to_plan(request, plan_seed)
-        selection = _finalize_selection(
+        preparation = _prepare_capability_plugin_plan(
+            request,
             plan_seed,
-            request=request,
-            scope_id=scope_id,
+            runtime=runtime,
+            plugin_ids=frozenset(selected_configurations),
+            tool_authority=tool_authority,
             state_root=resolved_state_root,
             clock=clock,
         )
-        selection_seed = complete_coding_package_plugin_selection_seed(
-            plan_seed,
-            selection=selection,
-        )
-        provider_authorities = _provider_owner_authorities(
-            frozenset(selected_configurations)
-        )
-        product = prepare_product_plugin_composition(
-            _assembly_request(
-                selection_seed,
-                provider_authorities=provider_authorities,
-            ),
-            evaluated_at=_read_clock(clock),
-        )
-        return CodingCapabilityPluginCompositionPreparation(
-            request=request,
-            runtime=runtime,
-            selection=selection,
-            product=product,
-            provider_owner_authorities=provider_authorities,
-            tool_owner_authority=tool_authority,
-            scope_id=scope_id,
-            state_root=resolved_state_root,
-            management_leases=management_leases,
-            management_state_cleanup=management_state_cleanup,
-            state_cleanup=state_cleanup,
-            private_state_cleanup=private_state_cleanup,
-        )
+        preparation.management_leases = management_leases
+        preparation.management_state_cleanup = management_state_cleanup
+        preparation.state_cleanup = state_cleanup
+        preparation.private_state_cleanup = private_state_cleanup
+        return preparation
     except BaseException as error:
         custodian = CodingCapabilityPluginCleanupCustodian(
             runtime=runtime,
@@ -974,6 +949,64 @@ def prepare_coding_capability_plugin_composition(
         ):
             _attach_failure_custodian(error, custodian)
         raise
+
+
+def _prepare_capability_plugin_plan(
+    request: CodingCapabilityPluginCompositionRequest,
+    seed: ProductPluginPlanSeed,
+    *,
+    runtime: PluginRuntimeResolution,
+    plugin_ids: frozenset[str],
+    tool_authority: OwnerContributionAuthority,
+    state_root: Path,
+    clock: Callable[[], int],
+    resume_parents: CodingResumePluginParents | None = None,
+    project_store_owners: Callable[
+        [PluginSelection], tuple[OwnerContributionCandidateEnvelope, ...] | None
+    ] | None = None,
+) -> CodingCapabilityPluginCompositionPreparation:
+    request = _bind_default_approval_request_to_plan(request, seed)
+    scope_id = seed.plan.context.scope_id
+    selection = _finalize_selection(
+        seed,
+        request=request,
+        scope_id=scope_id,
+        state_root=state_root,
+        clock=clock,
+        resume_parents=resume_parents,
+    )
+    # Fenced composition validates Provider policy before Catalog owners.
+    provider_authorities = (
+        _provider_owner_authorities(plugin_ids)
+        if project_store_owners is not None
+        else None
+    )
+    selected_seed = complete_coding_package_plugin_selection_seed(
+        seed, selection=selection
+    )
+    if provider_authorities is None:
+        provider_authorities = _provider_owner_authorities(plugin_ids)
+    product = prepare_product_plugin_composition(
+        _assembly_request(
+            selected_seed,
+            provider_authorities=provider_authorities,
+            owner_candidates=(
+                project_store_owners(selection) if project_store_owners is not None else None
+            ),
+        ),
+        evaluated_at=_read_clock(clock),
+    )
+    return CodingCapabilityPluginCompositionPreparation(
+        request=request,
+        runtime=runtime,
+        selection=selection,
+        product=product,
+        provider_owner_authorities=provider_authorities,
+        tool_owner_authority=tool_authority,
+        scope_id=scope_id,
+        state_root=state_root,
+        resume_parents=resume_parents,
+    )
 
 
 def _build_tool_owners(
@@ -1197,30 +1230,11 @@ def _prepare_selection_plan_seed(
         extend_base_selection=True,
         allowed_authority_ceiling=("filesystem", "process"),
     )
-    base_pairs = (
-        ()
-        if coding_product_plan_seed is None
-        else zip(
-            coding_product_plan_seed.packages,
-            coding_product_plan_seed.bindings,
-            strict=True,
-        )
-    )
-    all_package_bindings = sorted(
-        chain(base_pairs, package_bindings), key=lambda pair: pair[0].manifest.name
-    )
-    return ProductPluginPlanSeed(
-        plan=plan,
-        packages=tuple(item[0] for item in all_package_bindings),
-        bindings=tuple(item[1] for item in all_package_bindings),
-        owner_bindings=(
-            *(
-                coding_product_plan_seed.owner_bindings
-                if coding_product_plan_seed is not None
-                else ()
-            ),
-            ProductContributionOwnerBinding(authority=tool_authority),
-        ),
+    return ProductPluginPlanSeed.from_package_bindings(
+        plan,
+        package_bindings,
+        owner_bindings=(ProductContributionOwnerBinding(authority=tool_authority),),
+        extend_seed=coding_product_plan_seed,
     )
 
 
@@ -1245,37 +1259,21 @@ def _assembly_request(
             == provider_authorities[item.capability_id].policy.allowed_provider_ids[0]
         )
 
-    return ProductPluginCompositionAssemblyRequest(
-        contribution_request=ProductCompositionAssemblyRequest(
-            selection=selection_seed.selection,
-            owner_bindings=selection_seed.owner_bindings,
-            owner_candidates=owner_candidates,
-            mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-            definitions=(
-                MODEL_INPUT_CAPABILITY_DEFINITION,
-                WORKSPACE_CAPABILITY_DEFINITION,
-                *tuple(
-                    spec.capability
-                    for spec in ordered_coding_capability_plugin_specs(
-                        set(selection_seed.selection.plan.selected_plugin_ids)
-                        & _PLUGIN_IDS
-                    )
-                    if spec.capability.capability_id in provider_authorities
-                ),
-            ),
+    return ProductPluginCompositionAssemblyRequest.for_agent_session(
+        selection_seed,
+        provider_definitions=tuple(
+            spec.capability
+            for spec in ordered_coding_capability_plugin_specs(
+                set(selection_seed.selection.plan.selected_plugin_ids) & _PLUGIN_IDS
+            )
+            if spec.capability.capability_id in provider_authorities
         ),
         provider_owner_bindings=tuple(
-            ProductCapabilityProviderOwnerBinding(
-                authority=authority,
-            )
+            ProductCapabilityProviderOwnerBinding(authority=authority)
             for _capability_id, authority in sorted(provider_authorities.items())
         ),
-        provider_roots=tuple(sorted(provider_authorities)),
-        host_capability_ids=(
-            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
-        ),
         select_capability_providers=select,
+        owner_candidates=owner_candidates,
     )
 
 

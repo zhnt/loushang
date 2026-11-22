@@ -20,10 +20,6 @@ from loushang.coding.plugin_manager.lifecycle import (
 )
 from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.coding.resources.tool_pack import coding_workspace_tool_profile
-from loushang.harness.capabilities import (
-    MODEL_INPUT_CAPABILITY_DEFINITION,
-    WORKSPACE_CAPABILITY_DEFINITION,
-)
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
@@ -66,7 +62,6 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
 from loushang.harness.session.product_composition_assembly import (
-    ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginCompositionAssembly,
     ProductPluginCompositionAssemblyRequest,
@@ -392,29 +387,10 @@ def prepare_coding_base_plugin_session(
     seed = selection_seed
     if _PLUGIN_ID not in seed.selection.plan.selected_plugin_ids:
         raise ValueError("Coding base Session selection omits coding.base")
-    contribution_request = ProductCompositionAssemblyRequest(
-        selection=seed.selection,
-        owner_bindings=seed.owner_bindings,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-        ),
-    )
-    request = ProductPluginCompositionAssemblyRequest(
-        contribution_request=contribution_request,
-        provider_owner_bindings=(),
-        provider_roots=(),
-        host_capability_ids=(
-            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
-        ),
-        select_capability_providers=lambda _admissions: (),
-    )
     return CodingBasePluginSessionPreparation(
         base=assembly,
         product=prepare_product_plugin_composition(
-            request,
+            ProductPluginCompositionAssemblyRequest.for_agent_session(seed),
             evaluated_at=evaluated_at,
         ),
     )
