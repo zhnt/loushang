@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
@@ -44,7 +45,13 @@ from loushang.harness.resources.activation import (
     SkillActivationRuntime,
 )
 from loushang.harness.resources.loader import ResourceLoader
-from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.catalog_diagnostics import (
+    record_package_lockfile_diagnostics,
+)
+from loushang.harness.resources.packages.materializer import (
+    GitPackageMaterializerBackend,
+    PackageMaterializer,
+)
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
     PackageProductLifecycleMode,
@@ -80,6 +87,9 @@ from loushang.harness.session.legacy_side_question import LegacySideQuestionBind
 from loushang.harness.session.model_resolution import (
     resolve_session_model,
     scoped_models_from_patterns,
+)
+from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+    share_startup_cleanup,
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -984,6 +994,111 @@ def require_catalog_receipt(
         raise admission_failure(("catalog_receipt_unavailable",))
     return receipt
 
+
+class _ManagedStartupLayout(Protocol):
+    @property
+    def package_install_root(self) -> Path: ...
+    @property
+    def package_lockfile(self) -> Path: ...
+    @property
+    def plugin_revision_root(self) -> Path: ...
+
+
+class _ManagedStartupLifecycle(Protocol):
+    def complete_startup_recovery(self) -> None: ...
+    def release_owned_process_startup_lease(self) -> None: ...
+
+
+_LayoutT = TypeVar("_LayoutT", bound=_ManagedStartupLayout)
+_LifecycleT = TypeVar("_LifecycleT", bound=_ManagedStartupLifecycle)
+_MaterializerT = TypeVar("_MaterializerT", bound=PackageMaterializer)
+_PrimaryT = TypeVar("_PrimaryT")
+_Cleanup = Callable[[], None]
+
+
+def prepare_managed_plugin_startup(
+    *,
+    resolve_layout: Callable[[str | None], _LayoutT],
+    build_lifecycle: Callable[[_LayoutT], _LifecycleT],
+    materializer_type: type[_MaterializerT],
+    package_materializer: _MaterializerT | None,
+    resolved_package_materializer: _MaterializerT | None,
+    ephemeral_prefix: str | None,
+    prepare_primary: Callable[[_LifecycleT, _MaterializerT, _Cleanup | None], _PrimaryT] | None,
+    needs_eager: bool,
+    needs_deferred: bool,
+    diagnostics_service: DiagnosticsService,
+    session_id: str,
+    authority_mismatch: Callable[[], Exception],
+    record_failure: Callable[[BaseException], None],
+    directory_factory: Callable[..., ExplicitTemporaryDirectory],
+) -> tuple[_LifecycleT, _MaterializerT, _PrimaryT | None, _Cleanup | None, _Cleanup | None]:
+    """Hand off the original startup lease and temporary root, or recover both."""
+    ephemeral = directory_factory(prefix=ephemeral_prefix) if ephemeral_prefix is not None else None
+    lifecycle = None
+    materializer = None
+    recorded_diagnostics: list[dict[str, object]] = []
+    primary_cleanup = eager_cleanup = deferred_cleanup = None
+    record_diagnostics = partial(
+        record_package_lockfile_diagnostics,
+        diagnostics_service=diagnostics_service,
+        session_id=session_id,
+    )
+    try:
+        layout = resolve_layout(ephemeral.name if ephemeral is not None else None)
+        if (
+            ephemeral is None
+            and package_materializer is not None
+            and not package_materializer.uses_storage_authority(
+                install_root=layout.package_install_root,
+                lockfile_path=layout.package_lockfile,
+                plugin_revision_root=layout.plugin_revision_root,
+            )
+        ):
+            raise authority_mismatch()
+        lifecycle = build_lifecycle(layout)
+        materializer = package_materializer or materializer_type(
+            install_root=layout.package_install_root,
+            lockfile_path=layout.package_lockfile,
+            plugin_revision_root=layout.plugin_revision_root,
+            backend=GitPackageMaterializerBackend(),
+        )
+        if materializer is not resolved_package_materializer:
+            recorded_diagnostics = materializer.get_lockfile_diagnostics()
+            record_diagnostics(recorded_diagnostics)
+        if ephemeral is not None:
+            primary_cleanup, eager_cleanup, deferred_cleanup = share_startup_cleanup(
+                lifecycle.release_owned_process_startup_lease,
+                ephemeral.cleanup,
+                primary=prepare_primary is not None,
+                eager=needs_eager,
+                deferred=needs_deferred,
+            )
+        lifecycle.complete_startup_recovery()
+        primary = (
+            prepare_primary(lifecycle, materializer, primary_cleanup)
+            if prepare_primary is not None
+            else None
+        )
+    except BaseException as error:
+        record_failure(error)
+        if materializer is not None:
+            record_diagnostics(
+                [
+                    diagnostic
+                    for diagnostic in materializer.get_lockfile_diagnostics()
+                    if diagnostic not in recorded_diagnostics
+                ]
+            )
+        for cleanup in (primary_cleanup, eager_cleanup, deferred_cleanup):
+            if cleanup is not None:
+                cleanup()
+        if lifecycle is not None:
+            lifecycle.release_owned_process_startup_lease()
+        if eager_cleanup is None and primary_cleanup is None and ephemeral is not None:
+            ephemeral.cleanup()
+        raise
+    return lifecycle, materializer, primary, eager_cleanup, deferred_cleanup
 
 @dataclass(slots=True)
 class PreparationRootCustody(Generic[_PreparationT]):
