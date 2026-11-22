@@ -7,7 +7,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from loushang.coding.harness.plugin_management import support_evidence as _programs
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.plugin_manager.operation_guidance import (
     coding_desired_repair_command as coding_desired_repair_command,
 )
@@ -20,29 +20,12 @@ from loushang.harness.plugin_management.records import (
 from loushang.harness.plugin_management.records import (
     PluginPackageRevisionRefV1 as PluginPackageRevisionRefV1,
 )
+from loushang.harness.plugin_management.support_evidence import (
+    project_plugin_support_evidence,
+)
 from loushang.harness.resources.plugins.selection import (
     PluginInstanceRevisionRef as PluginInstanceRevisionRef,
 )
-
-_RUNTIME_PROGRAM_VALUES = {
-    "value_001": "coding",
-    "value_002": "Plugin support owner projection version is unsupported",
-    "value_003": "Plugin support requires Coding's partial Product preview",
-    "value_004": "Plugin support Desired State revision is invalid",
-    "value_005": "Plugin support owner fields are invalid",
-    "value_006": "Plugin support scope is invalid",
-    "value_007": "Plugin support Catalog receipt is invalid",
-    "value_008": "Plugin support Product disposition is invalid",
-    "value_009": "Plugin support Catalog selection is invalid",
-    "value_010": "Plugin support Catalog selection changed Product scope",
-    "value_011": "Plugin support admission is invalid",
-    "value_012": "Plugin support Installation is invalid",
-    "value_013": "Plugin support Installation changed Product scope",
-    "value_014": "Plugin support Management operations are invalid",
-    "value_015": "Plugin support Management operation is invalid",
-    "value_016": "Plugin support Instance revision is invalid",
-    "value_017": "Plugin support Package revision is invalid",
-}
 
 
 def project_coding_plugin_support_status(
@@ -53,8 +36,13 @@ def project_coding_plugin_support_status(
 ) -> dict[str, object]:
     """Join existing owner reads without claiming a live Session consumer."""
 
-    return _programs.project_support_evidence(
-        management, preview, correlation_id=correlation_id
+    return project_plugin_support_evidence(
+        management,
+        preview,
+        correlation_id=correlation_id,
+        product_id=CODING_PRODUCT_ID,
+        product_label="Coding",
+        repair_command=coding_desired_repair_command,
     )
 
 

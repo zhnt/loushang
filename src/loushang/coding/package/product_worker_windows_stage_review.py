@@ -10,10 +10,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from loushang.coding.harness.worker.windows_admission import (
-    is_attempt_id,
-    is_windows_product,
-)
 from loushang.foundation.windows_private_acl import (
     WindowsPrivateDirectoryAcl as WindowsPrivateDirectoryAcl,
 )
@@ -25,6 +21,8 @@ from loushang.harness.package_product._worker_windows_attempt import (
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_stage,
+    is_attempt_id,
+    is_windows_product,
     review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (

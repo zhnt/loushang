@@ -9,12 +9,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.harness.package_product._windows_worker_history import (
     publish_windows_product_worker_checkpoint,
     read_current_windows_product_worker_checkpoint_under_guard,
     read_windows_product_worker_checkpoint,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )

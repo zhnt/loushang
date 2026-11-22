@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 
-from loushang.coding.harness.worker.windows_admission import is_windows_product
 from loushang.coding.package.worker_history_access import _CodingWindowsHistoryAccess
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )

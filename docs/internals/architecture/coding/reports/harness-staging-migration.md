@@ -756,6 +756,32 @@ All 100 existing Linux cases pass, covering V1/V2 continuation formats,
 prepared-operation custody, first input, runtime restart and the acyclic
 Harness graph. Three scoped sources pass mypy. Native Windows remains pending.
 
+### Plugin Support Evidence And Worker Session Preparation
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `plugin_management/preview_snapshot` and `support_read` | Formal Plugin Management owns revision rechecks and the preview read sequence. Formal Config reads the bounded existing settings leaf without following a replacement. Coding retains workspace admission, disabled resource policy and response identity. |
+| `plugin_management/support_evidence` | The formal support projector joins borrowed resource, Package and operation evidence. Coding renders the action allowed for its actor. |
+| `worker/operator_query` and `session_selection` | Coding applies selected-workspace and Product Profile policy and calls the formal Worker query and selected activation paths directly. |
+| `worker/pending_session` and `windows_admission` | The formal Session provider prepares the pending input, checks the native attempt and owns activation. The formal Package Product owner verifies exact Windows attempt identity. Coding retains the original wire inputs, approval and currentness decisions. |
+| `worker/__init__` | The staging namespace exits with its implementations. |
+
+Support retires 610 staged lines, adds 172 Coding Product and 389 formal
+Harness lines and reduces production by 49 lines. Worker retires 518 staged
+lines, adds 358 Coding Product and 36 formal Harness lines and reduces
+production by 124 lines. The combined reduction is 173 system production
+lines for the batch and 1,236 against baseline. Staging has 26 files and
+3,526 lines. Hosting, other production code and scripts have no changes.
+Existing Worker architecture assertions name the current exact import owners
+and have four fewer test lines.
+
+The support candidate passes 28 Linux cases for preview, support, discovery,
+stale scope and the acyclic graph. Worker passes 39 selected Linux behavior
+and boundary cases with eight host-runtime routes skipped. The affected C50,
+C51 and C54 architecture checks pass after aligning their exact locations to
+the relocated startup receipt type and Worker entrypoints. Scoped mypy passes
+on five Support and seven Worker files. Native Windows remains pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

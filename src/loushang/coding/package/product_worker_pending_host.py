@@ -5,8 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from loushang.coding.harness.worker.pending_session import (
-    PendingWorkerSessionPolicy,
+from loushang.coding.package.worker_preparation_inputs import (
     prepare_pending_provider,
     prepare_pending_session_inputs,
 )
@@ -17,6 +16,7 @@ from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProviderSet,
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
+from loushang.harness.session._worker_provider import PendingWorkerSessionPolicy
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )

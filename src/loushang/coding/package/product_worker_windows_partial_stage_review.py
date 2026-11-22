@@ -10,15 +10,13 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from loushang.coding.harness.worker.windows_admission import (
-    is_attempt_id,
-    is_windows_product,
-)
 from loushang.harness.package_product._windows_worker_recovery import (
     review_windows_product_worker_partial_stage,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_partial_stage,
+    is_attempt_id,
+    is_windows_product,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
