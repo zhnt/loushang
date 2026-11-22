@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
     PluginPackageRevisionRefV1,
@@ -26,6 +27,9 @@ if TYPE_CHECKING:
         PackageProductSelectedRootSnapshotV1,
     )
     from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
+    from loushang.harness.resources.packages.product_local_wheel_policy import (
+        PackageProductLocalWheelPolicy,
+    )
     from loushang.harness.resources.types import ResourceBundle
 
 
@@ -257,6 +261,46 @@ class PluginCurrentPreviewQueryPort(Protocol):
     def preview_current(
         self, request: PluginCurrentPreviewRequestV1
     ) -> PluginCurrentCompositionPreviewV1: ...
+
+
+def project_current_selection_evidence(
+    policy: PackageProductLocalWheelPolicy,
+    desired_snapshot: PluginDesiredStateSnapshotV1,
+    requested_plugin_ids: tuple[str, ...],
+    *,
+    executable_trust_classes: frozenset[str],
+    excluded_plugin_id: str,
+) -> tuple[set[str], set[str]]:
+    """Find requested executable selections and the evidence still required."""
+
+    if not isinstance(desired_snapshot, PluginDesiredStateSnapshotV1):
+        raise TypeError("Product preview Desired State snapshot is required")
+    desired_selected_ids = {
+        item.installation_key.plugin_id
+        for item in desired_snapshot.installations
+        if item.installation_key.product_id == policy.product_id
+        and item.installation_key.scope_id == policy.project_scope_id
+        and item.selection.desired_state == "installed_enabled"
+    }
+    selected_ids = desired_selected_ids & set(requested_plugin_ids)
+    binding_ids = {item.plugin_id for item in policy.bindings}
+    executable = {
+        item.plugin_id
+        for item in policy.bindings
+        if item.plugin_id in selected_ids
+        and item.source_trust_class in executable_trust_classes
+        and item.plugin_id != excluded_plugin_id
+    }
+    gaps = {
+        "disabled_skill_settings",
+        "session_invocation_options",
+        "exact_catalog_generation",
+    }
+    if desired_selected_ids - binding_ids:
+        gaps.add("product_binding_for_selected_plugin")
+    if executable:
+        gaps.add("capability_authorized_preflight")
+    return executable, gaps
 
 
 def project_plugin_current_preview(

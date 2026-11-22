@@ -24,6 +24,7 @@ from typing import ClassVar, Never, Protocol, cast
 from packaging.markers import default_environment
 from packaging.tags import sys_tags
 
+from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.package_product.product_local_wheel_inventory import (
     PackageProductLocalWheelInventory,
 )
@@ -56,6 +57,7 @@ from loushang.harness.package_product.product_worker_wheel_admission import (
 from loushang.harness.plugin_authoring.resource_item import (
     ResourceItemDeclarationPayload,
 )
+from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -132,6 +134,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
     PosixPackageDependencyMaterializationStore,
     PosixPackageDependencyReadOnlyStore,
     PosixPackagePluginRootMaterializationStore,
+    PosixPackagePluginRootReadOnlyStore,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.product_retention import (
     PackageProductRetentionSettlementOwner,
@@ -546,6 +549,42 @@ def _admit_external_data_only_candidate(
         raise PackageProductCandidateRejected(
             "External data Wheel declaration is unsupported"
         ) from exc
+
+
+def bind_read_only_local_wheel_manifests(
+    runtime: PackageProductPosixFencedRuntimeOwner,
+    *,
+    policy: PackageProductLocalWheelPolicy,
+    plugin_store_root: Path,
+    root_store_identity: str,
+) -> tuple[_LocalWheelSelectedManifestReader, PluginPackageGcReservationJournal]:
+    """Bind exact selected manifests without allowing journal repair or activation."""
+
+    state_root = runtime.control_root / "product-state"
+    desired = bind_plugin_desired_state(
+        state_root / "gc-reservations.jsonl",
+        state_root / "desired-state.jsonl",
+        load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+    )
+    settlements = PackageStoreSettlementJournal(state_root / "root-settlements.jsonl")
+    roots = PackageProductSelectedRootReader(
+        product_id=policy.product_id,
+        scope_id=policy.project_scope_id,
+        installation_scope="workspace",
+        desired_state=desired.desired,
+        bindings=PluginPackageGcBindingJournal(state_root / "gc-bindings.jsonl"),
+        committed_sets=PackageCommittedSetJournal(state_root / "committed-sets.jsonl"),
+        root_settlements=settlements,
+        root_store=PosixPackagePluginRootReadOnlyStore(
+            plugin_store_root,
+            store_identity=root_store_identity,
+            settlement_journal=settlements,
+        ),
+        gc_gate=desired.gc_reservations,
+    )
+    return _LocalWheelSelectedManifestReader(
+        policy=policy, root_reader=roots, read_only=True
+    ), desired.gc_reservations
 
 
 @dataclass(frozen=True, slots=True)

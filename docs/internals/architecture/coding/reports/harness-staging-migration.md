@@ -602,6 +602,23 @@ custody cases. Native Windows verification remains pending.
 | `builtin_sources` | 48 | Exact built-in Wheel source access and Product selection. |
 | `__init__` | 1 | Package marker, removable when the staged owner files exit. |
 
+### Read-Only Package Product And Worker Preview
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `preview` | The POSIX epoch owner verifies the existing private state root. Package Product binds its selected-manifest reader to strict journals and the read-only materialized-root store. The Worker candidate owner verifies artifact and admission identity. Coding selects the source catalogs and authorizes candidate reads. |
+| `resource_preview` | The existing Plugin Management preview projects exact selection and resource evidence. Coding retains its composition set, base/extension policy, resource inputs and the blocked or successful Product presentation. |
+
+The batch removes 417 staging lines and adds 215 Coding Product lines and
+149 formal Harness lines. Hosting and other production code have no changes.
+The batch reduces system production Python by 53 lines, down 432 from
+baseline. Staging has 66 files and 12,290 lines. No test or script source
+changes are included. The existing projection compatibility probe keeps
+its original evidence and failure sequence. The selected Linux suite
+reports 28 passed and seven platform cases skipped. It covers the workspace
+replacement guard, selected data and dependency sources, Worker read-only
+evidence and the existing Catalog and dependency boundaries.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected
