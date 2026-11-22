@@ -1804,58 +1804,64 @@ def _prepare_catalog_plugin_plan_seed(
     )
 
 
-def extend_product_data_selection_plan(
-    original: PluginSelectionPlanV2,
+SelectedProductDataDeclaration = tuple[
+    "PackageProductSelectedPluginManifestV1",
+    PluginContributionReservation,
+    PluginDeclaration,
+]
+
+
+def build_product_data_selection_plan(
     external: tuple[PackageProductSelectedPluginManifestV1, ...],
+    *,
+    declarations: tuple[SelectedProductDataDeclaration, ...],
+    product_id: str,
+    scope_id: str,
+    policy_revision: str,
+    base: PluginSelectionPlanV2 | None = None,
 ) -> PluginSelectionPlanV2:
-    """Extend a Product plan with verified data declarations and exact Store facts."""
-    return PluginSelectionPlanV2.from_selected_entries(
-        context=PluginPreflightContextV1(
-            product_id=original.context.product_id,
-            scope_id=original.context.scope_id,
-            policy_revision=original.context.policy_revision,
-            instance_revision_refs=tuple(
-                sorted(
-                    (
-                        *original.context.instance_revision_refs,
-                        *(item.snapshot.instance_revision_ref for item in external),
-                    ),
-                    key=lambda item: item.plugin_id,
-                )
-            ),
-        ),
-        selected_plugin_ids=tuple(
+    """Build a data plan from verified Store facts and the Product's selected entries."""
+    instance_refs = tuple(item.snapshot.instance_revision_ref for item in external)
+    plugin_ids = tuple(item.manifest.name for item in external)
+    trust = tuple(
+        item.source_trust_snapshot
+        for item in external
+        if item.source_trust_snapshot is not None
+    )
+    if base is not None:
+        instance_refs = tuple(
             sorted(
-                (
-                    *original.selected_plugin_ids,
-                    *(item.manifest.name for item in external),
-                )
-            )
-        ),
-        source_trust_snapshots=tuple(
-            sorted(
-                (
-                    *original.source_trust_snapshots,
-                    *(
-                        item.source_trust_snapshot
-                        for item in external
-                        if item.source_trust_snapshot is not None
-                    ),
-                ),
+                (*base.context.instance_revision_refs, *instance_refs),
                 key=lambda item: item.plugin_id,
             )
+        )
+        plugin_ids = tuple(sorted((*base.selected_plugin_ids, *plugin_ids)))
+        trust = tuple(
+            sorted(
+                (*base.source_trust_snapshots, *trust), key=lambda item: item.plugin_id
+            )
+        )
+    return PluginSelectionPlanV2.from_selected_entries(
+        context=PluginPreflightContextV1(
+            product_id=product_id,
+            scope_id=scope_id,
+            policy_revision=policy_revision,
+            instance_revision_refs=instance_refs,
         ),
+        selected_plugin_ids=plugin_ids,
+        source_trust_snapshots=trust,
         additions=(
             PluginEffectiveConfigurationEntry(
                 plugin_id=item.manifest.name,
                 contribution_id=reservation.contribution_id,
                 configuration=reservation.configuration,
             )
-            for item in external
-            for reservation, _ in item.verified_data_only_declarations()
+            for item, reservation, _ in declarations
         ),
-        base=original,
-        allowed_authority_ceiling=original.allowed_authority_ceiling,
+        base=base,
+        allowed_authority_ceiling=()
+        if base is None
+        else base.allowed_authority_ceiling,
     )
 
 

@@ -548,17 +548,82 @@ def observe_requested_plugins(
 def require_current_manifests(
     runtime: PackageProductRuntimeBindingV1,
     manifests: tuple[PackageProductSelectedPluginManifestV1, ...],
-    reason: str,
-    admission_failure: ProductAdmissionFailure,
+    reason: str = "",
+    admission_failure: ProductAdmissionFailure | None = None,
 ) -> None:
-    for manifest in manifests:
-        try:
+    try:
+        for manifest in manifests:
             runtime.assert_selected_plugin_manifest_current(manifest)
+    except (
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeReadError,
+    ) as exc:
+        if admission_failure is None:
+            raise
+        raise admission_failure((reason,)) from exc
+
+
+def require_current_catalog_selection(
+    runtime: PackageProductRuntimeBindingV1 | None,
+    *,
+    capability_selections: tuple[PackageProductPluginDesiredSelectionV1, ...],
+    disabled_base: PackageProductPluginDesiredSelectionV1 | None,
+    disabled_base_data: tuple[PackageProductSelectedPluginManifestV1, ...],
+    selected_base: PackageProductSelectedPluginManifestV1 | None,
+    selected_capabilities: tuple[PackageProductSelectedPluginManifestV1, ...],
+    selected_resources: tuple[PackageProductSelectedPluginManifestV1, ...],
+    product_label: str,
+    refresh_failure: ProductAdmissionFailure | None = None,
+) -> None:
+    """Recheck the pinned startup evidence and refresh-specific Store membership."""
+
+    def require_runtime(role: str) -> PackageProductRuntimeBindingV1:
+        if runtime is None:
+            raise RuntimeError(f"{product_label} Product {role} runtime is unavailable")
+        return runtime
+
+    if capability_selections:
+        owner = require_runtime("Capability")
+        try:
+            for selection in capability_selections:
+                owner.assert_plugin_desired_selection_current(selection)
         except (
             PackageProductRuntimeActivationError,
             PackageProductRuntimeReadError,
         ) as exc:
-            raise admission_failure((reason,)) from exc
+            if refresh_failure is None:
+                raise
+            raise refresh_failure(
+                ("product_capability_selection_refresh_requires_restart",)
+            ) from exc
+    if disabled_base is not None:
+        owner = require_runtime("disabled-base")
+        try:
+            owner.assert_plugin_desired_selection_current(disabled_base)
+            if refresh_failure is not None:
+                current_ids = owner.selected_external_data_plugin_ids()
+                if current_ids != tuple(
+                    item.manifest.name for item in disabled_base_data
+                ):
+                    raise RuntimeError("Product external data selection changed")
+            require_current_manifests(owner, disabled_base_data)
+        except RuntimeError as exc:
+            if refresh_failure is None:
+                raise
+            raise refresh_failure(
+                ("product_disabled_base_refresh_requires_restart",)
+            ) from exc
+    if selected_base is not None and refresh_failure is not None:
+        owner = require_runtime("base")
+        for manifests, reason in (
+            ((selected_base,), "product_selected_base_refresh_requires_restart"),
+            (
+                selected_capabilities,
+                "product_selected_capability_refresh_requires_restart",
+            ),
+            (selected_resources, "product_selected_resource_refresh_requires_restart"),
+        ):
+            require_current_manifests(owner, manifests, reason, refresh_failure)
 
 
 def capture_selected_manifests(

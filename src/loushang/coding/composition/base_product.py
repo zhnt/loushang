@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from dataclasses import replace as replace
 from hashlib import sha256
+from itertools import chain
 from typing import TYPE_CHECKING, Literal
 
 from loushang.coding.composition.base_plugin import (
@@ -92,11 +93,12 @@ from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding as ProductContributionOwnerBinding,
 )
 from loushang.harness.session.product_composition_assembly import (
-    _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
+    SelectedProductDataDeclaration,
+    build_product_data_selection_plan,
+    prepare_product_selected_contribution_candidate,
 )
 from loushang.harness.session.product_composition_assembly import (
-    extend_product_data_selection_plan,
-    prepare_product_selected_contribution_candidate,
+    _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
 
@@ -366,17 +368,8 @@ def compile_coding_base_product_selection(
         include_theme="resources.theme" in owners,
         include_command="commands.session" in owners,
     )
-    product_composition = _assemble_product_contribution_candidates(
-        plan=plan,
-        candidates=candidates,
-        owner_bindings=owner_bindings,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-        ),
-        select_optional_requirements=lambda _preview: (),
-        evaluated_at=evaluated_at,
+    product_composition = _compile_coding_resource_candidates(
+        plan, candidates, owner_bindings, evaluated_at=evaluated_at
     )
     return CodingBaseProductCompilation(
         plan=plan,
@@ -400,88 +393,50 @@ def extend_coding_base_product_data_resources(
 
     if not external:
         return base
-    if base.plan.selected_plugin_ids != (
-        CODING_BASE_PLUGIN_ID,
-    ):
+    if base.plan.selected_plugin_ids != (CODING_BASE_PLUGIN_ID,):
         raise ValueError("External data extension requires the base-only plan")
     if tuple(sorted(item.manifest.name for item in external)) != tuple(
         item.manifest.name for item in external
     ):
         raise ValueError("External data selections must be sorted and unique")
-    external_owners: set[str] = set()
-    for selected in external:
-        trust = selected.source_trust_snapshot
-        pairs = selected.verified_data_only_declarations()
-        if trust is None or _external_selection_rejected(trust, pairs):
-            raise ValueError("External Product data Resource selection changed")
-        external_owners.add(pairs[0][0].owner)
-    plan = extend_product_data_selection_plan(
-        base.plan,
+    declarations = _capture_external_resource_declarations(external, standalone=False)
+    plan = build_product_data_selection_plan(
         external,
+        declarations=declarations,
+        product_id=base.plan.context.product_id,
+        scope_id=base.plan.context.scope_id,
+        policy_revision=base.plan.context.policy_revision,
+        base=base.plan,
+    )
+    base_declarations = (
+        (base.selected_manifest, reservation, declaration)
+        for reservation, declaration in base.selected_manifest.verified_data_only_declarations()
     )
     candidates = tuple(
         _candidate(selected, plan, reservation, declaration)
-        for selected in (base.selected_manifest, *external)
-        for reservation, declaration in selected.verified_data_only_declarations()
-        if PluginContributionRef(
-            selected.manifest.name, reservation.contribution_id
-        )
+        for selected, reservation, declaration in chain(base_declarations, declarations)
+        if PluginContributionRef(selected.manifest.name, reservation.contribution_id)
         in plan.selected_contributions
     )
-    bindings = list(base.owner_bindings)
-    missing_owners = external_owners - {item.owner_key[0] for item in bindings}
-    if missing_owners:
-        bindings.extend(
-            _owner_bindings(
-                include_tools=False,
-                include_prompt="resources.prompt" in missing_owners,
-                include_skill="resources.skill" in missing_owners,
-                include_theme="resources.theme" in missing_owners,
-                include_command=False,
-            )
+    builtin_owners = {
+        item.owner_id for item in candidates if item.plugin_id == CODING_BASE_PLUGIN_ID
+    }
+    trust_by_owner = {
+        reservation.owner: (
+            ("host-equivalent-local", *EXTERNAL_DATA_TRUST_CLASSES_ORDERED)
+            if reservation.owner in builtin_owners
+            else EXTERNAL_DATA_TRUST_CLASSES_ORDERED
         )
+        for _, reservation, _ in declarations
+    }
     owners = tuple(
         sorted(
-            (
-                ProductContributionOwnerBinding(
-                    authority=OwnerContributionAuthority(
-                        replace(
-                            binding.authority.policy,
-                            allowed_source_trust_classes=(
-                                (
-                                    "host-equivalent-local",
-                                    *EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
-                                )
-                                if any(
-                                    item.plugin_id
-                                    == CODING_BASE_PLUGIN_ID
-                                    and item.owner_id == binding.owner_key[0]
-                                    for item in candidates
-                                )
-                                else (*EXTERNAL_DATA_TRUST_CLASSES_ORDERED,)
-                            ),
-                        )
-                    ),
-                    admission_ttl_seconds=binding.admission_ttl_seconds,
-                )
-                if binding.owner_key[0] in external_owners
-                else binding
-                for binding in bindings
-            ),
+            _bind_coding_external_resource_owners(base.owner_bindings, trust_by_owner),
             key=lambda binding: binding.owner_key,
         )
     )
-    composition = _assemble_product_contribution_candidates(
-        plan=plan,
-        candidates=candidates,
-        owner_bindings=owners,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-        ),
-        select_optional_requirements=lambda _preview: (),
-        evaluated_at=evaluated_at,
+    composition = _compile_coding_resource_candidates(
+        plan, candidates, owners, evaluated_at=evaluated_at
     )
     return replace(
         base,
@@ -492,6 +447,83 @@ def extend_coding_base_product_data_resources(
             base.selected_manifest, composition, external_selected=external
         ),
         selected_external_data_manifests=external,
+    )
+
+
+def _capture_external_resource_declarations(
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+    *,
+    standalone: bool,
+) -> tuple[SelectedProductDataDeclaration, ...]:
+    captured: list[SelectedProductDataDeclaration] = []
+    for item in selected:
+        trust = item.source_trust_snapshot
+        declarations = item.verified_data_only_declarations()
+        if standalone:
+            if (
+                not isinstance(trust, PluginSourceTrustSnapshotV1)
+                or _external_selection_rejected(trust, declarations)
+                or item.snapshot.installation_key.plugin_id != item.manifest.name
+                or item.snapshot.instance_revision_ref.plugin_id != item.manifest.name
+            ):
+                raise ValueError("Product external data Resource selection changed")
+        elif trust is None or _external_selection_rejected(trust, declarations):
+            raise ValueError("External Product data Resource selection changed")
+        ((reservation, declaration),) = declarations
+        captured.append((item, reservation, declaration))
+    return tuple(captured)
+
+
+def _bind_coding_external_resource_owners(
+    bindings: tuple[ProductContributionOwnerBinding, ...],
+    trust_by_owner: Mapping[str, tuple[str, ...]],
+) -> tuple[ProductContributionOwnerBinding, ...]:
+    missing = trust_by_owner.keys() - {item.owner_key[0] for item in bindings}
+    if missing:
+        bindings = (
+            *bindings,
+            *_owner_bindings(
+                include_tools=False,
+                include_prompt="resources.prompt" in missing,
+                include_skill="resources.skill" in missing,
+                include_theme="resources.theme" in missing,
+                include_command=False,
+            ),
+        )
+    return tuple(
+        ProductContributionOwnerBinding(
+            authority=OwnerContributionAuthority(
+                replace(
+                    binding.authority.policy,
+                    allowed_source_trust_classes=trust_by_owner[binding.owner_key[0]],
+                )
+            ),
+            admission_ttl_seconds=binding.admission_ttl_seconds,
+        )
+        if binding.owner_key[0] in trust_by_owner
+        else binding
+        for binding in bindings
+    )
+
+
+def _compile_coding_resource_candidates(
+    plan: PluginSelectionPlanV2,
+    candidates: tuple[OwnerContributionCandidateEnvelope, ...],
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+    *,
+    evaluated_at: int,
+) -> ProductCompositionCompilation:
+    return _assemble_product_contribution_candidates(
+        plan=plan,
+        candidates=candidates,
+        owner_bindings=owner_bindings,
+        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        definitions=(
+            MODEL_INPUT_CAPABILITY_DEFINITION,
+            WORKSPACE_CAPABILITY_DEFINITION,
+        ),
+        select_optional_requirements=lambda _preview: (),
+        evaluated_at=evaluated_at,
     )
 
 

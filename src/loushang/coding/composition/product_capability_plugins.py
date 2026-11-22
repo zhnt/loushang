@@ -10,10 +10,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
-from loushang.coding.composition.base_plugin import _owner_bindings
 from loushang.coding.composition.base_product import (
     CodingBaseProductCompilation,
     CodingBaseProductSessionAssembly,
+    _bind_coding_external_resource_owners,
 )
 from loushang.coding.composition.base_product import (
     _resource_bodies as _resource_bodies,
@@ -565,38 +565,12 @@ def _builtin_data_owner_bindings(
             and admission.owner_id in external_trust_by_owner
         ):
             external_trust_by_owner[admission.owner_id].add("host-equivalent-local")
-    missing_data_owners = external_trust_by_owner.keys() - {
-        item.owner_key[0] for item in base_compilation.owner_bindings
-    }
-    initial_owner_bindings = (
-        *base_compilation.owner_bindings,
-        *(
-            _owner_bindings(
-                include_tools=False,
-                include_prompt="resources.prompt" in missing_data_owners,
-                include_skill="resources.skill" in missing_data_owners,
-                include_theme="resources.theme" in missing_data_owners,
-                include_command=False,
-            )
-            if missing_data_owners
-            else ()
-        ),
-    )
-    base_owner_bindings = tuple(
-        ProductContributionOwnerBinding(
-            authority=OwnerContributionAuthority(
-                replace(
-                    binding.authority.policy,
-                    allowed_source_trust_classes=tuple(
-                        sorted(external_trust_by_owner[binding.owner_key[0]])
-                    ),
-                )
-            ),
-            admission_ttl_seconds=binding.admission_ttl_seconds,
-        )
-        if binding.owner_key[0] in external_trust_by_owner
-        else binding
-        for binding in initial_owner_bindings
+    base_owner_bindings = _bind_coding_external_resource_owners(
+        base_compilation.owner_bindings,
+        {
+            owner: tuple(sorted(classes))
+            for owner, classes in external_trust_by_owner.items()
+        },
     )
     return selected_data_ids, base_owner_bindings
 
