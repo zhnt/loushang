@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -102,7 +101,6 @@ from loushang.harness.transcript._resume_continuation import (
     _ResumePendingInput,
     _ResumeProjector,
 )
-from loushang.harness.transcript._resume_records import restore_verified_branch
 from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_file,
     load_agent_transcript_header,
@@ -111,27 +109,6 @@ from loushang.harness.transcript.product_session import (
     _ApplicationProductTranscriptSession,
 )
 from loushang.harness.transcript.types import ExtensionData
-
-
-@dataclass(slots=True)
-class _PendingResumeFirstInput:
-    expected_message: UserMessage
-    expected_message_digest: str
-    prepare_binding: Callable[
-        [UserMessage], CodingRuntimeBindingV1 | CodingRuntimeBindingV2
-    ]
-    created_at: datetime
-    original_leaf_id: str | None
-    commit_parent_id: str
-    attempt_id: str
-    attempt: CodingActivationAttemptV1
-    revision: int
-    ancestry_digest: str
-    lock: asyncio.Lock
-    expected_metadata: dict[str, JSONValue] | None = None
-    prepared_record: AgentTranscriptRecord | None = None
-    outcome_unknown: bool = False
-
 
 _RESUME_WRITER_LABEL = "Coding Resume Writer"
 _RESUME_WRITER_CAPABILITIES = frozenset({"coding.resume-continuation/v2"})
@@ -338,7 +315,6 @@ class SessionManager(
     _resume_messages = _CodingResumeMessages()
     _resume_records = _CodingResumeRecords()
     _resume_history = _CodingResumeHistory()
-    _resume_pending_type = _PendingResumeFirstInput
     _resume_recovery_error = CodingResumeRecoveryRequired
     _resume_label = "Coding Resume"
 
@@ -432,21 +408,15 @@ class SessionManager(
         # Historical identity must still match. Epoch equality belongs to the new binding.
         _validate_coding_restored_header(context.header, binding, False)
 
-        def prepare(manager: Self) -> None:
-            manager._resume_runtime_publication_pending = True
-            restore_verified_branch(
-                manager,
-                records=history.records,
-                selected_leaf_id=history.selected_leaf_id,
-                selected_records=history.selected_records,
-                stale=lambda: ResumePlanStaleError(f"{label} history changed during acquisition"),
-            )
-            manager._resume_writer_plan = plan
-
-        return await cls._construct_product(
+        return await cls._restore_verified_resume_writer(
             factory,
-            partial(factory._construct_owned, context, binding, restore=True),
-            prepare_owned=prepare,
+            context,
+            binding,
+            plan=plan,
+            records=history.records,
+            selected_leaf_id=history.selected_leaf_id,
+            selected_records=history.selected_records,
+            stale_error=ResumePlanStaleError,
         )
 
     def _require_resume_bootstrap_composition(

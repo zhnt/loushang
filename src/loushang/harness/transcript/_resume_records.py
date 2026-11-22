@@ -24,7 +24,6 @@ from loushang.harness.transcript.writer import AgentTranscriptRecordFactory
 
 if TYPE_CHECKING:
     from loushang.harness.transcript._resume_continuation import _ResumeIntentRead
-    from loushang.harness.transcript.session import AgentTranscriptSession
 
 
 def make_resume_record(
@@ -273,26 +272,6 @@ def finish_history_scan(
             return complete.value
         if matches is not None and match is not None:
             matches.append(match)
-
-
-def restore_verified_branch(
-    transcript: AgentTranscriptSession,
-    *,
-    records: tuple[AgentTranscriptRecord, ...],
-    selected_leaf_id: str | None,
-    selected_records: tuple[AgentTranscriptRecord, ...],
-    stale: Callable[[], Exception],
-) -> None:
-    """Select the verified leaf on an already acquired Writer."""
-    if tuple(transcript.get_entries()) != records:
-        raise stale()
-    if selected_leaf_id is not None:
-        transcript.branch(selected_leaf_id)
-    if (
-        transcript.leaf_id != selected_leaf_id
-        or tuple(transcript.get_active_entries()) != selected_records
-    ):
-        raise stale()
 
 
 def select_input_record(
