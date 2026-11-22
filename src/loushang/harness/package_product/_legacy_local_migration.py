@@ -52,6 +52,7 @@ from loushang.harness.plugin_management.records import (
     PluginDesiredStateMutationV1,
     PluginDesiredStateTransitionV1,
     PluginInstallationKeyV1,
+    PluginInstallationStateV1,
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources.packages._private_receipts_windows import (
@@ -649,6 +650,9 @@ class _ConfiguredSource(Protocol):
 
 class _AcceptedReview(Protocol):
     @property
+    def store_id(self) -> str: ...
+
+    @property
     def plugin_id(self) -> str: ...
     @property
     def review_id(self) -> str: ...
@@ -1048,31 +1052,6 @@ class _SourceConsumptionProtocol:
             os.close(descriptor)
 
 
-def resolve_legacy_accepted_source(
-    product: _ProductOwner,
-    *,
-    plugin_id: str,
-    source_trust_class: str,
-    artifact_digest: str,
-    wheel_filename: str,
-    error_type: type[Exception],
-) -> PackageProductLocalWheelBindingV1:
-    """Resolve one exact approved policy binding for install or enable."""
-    sources = tuple(
-        binding
-        for binding in product.policy.bindings
-        if binding.plugin_id == plugin_id
-        and binding.source_trust_class == source_trust_class
-        and binding.artifact_digest == artifact_digest
-        and Path(binding.source_identity).name == wheel_filename
-    )
-    if len(sources) != 1:
-        raise error_type(
-            "Legacy local Installation has no exact Product Source binding"
-        )
-    return sources[0]
-
-
 def match_legacy_replay_source(
     bindings: Sequence[PackageProductLocalWheelBindingV1],
     accepted: _AcceptedSource,
@@ -1100,6 +1079,25 @@ def match_legacy_replay_source(
     return True, candidate
 
 
+@dataclass(frozen=True, slots=True)
+class _LegacyLocalInstallPolicy:
+    product_id: str
+    install_prefix: str
+    enable_prefix: str
+    session_prefix: str
+    error_type: type[Exception]
+
+    def install_operation_id(self, store_id: str, acceptance_id: str) -> str:
+        return self.install_prefix + self._operation_digest(store_id, acceptance_id)
+
+    def enable_operation_id(self, store_id: str, acceptance_id: str) -> str:
+        return self.enable_prefix + self._operation_digest(store_id, acceptance_id)
+
+    @staticmethod
+    def _operation_digest(store_id: str, acceptance_id: str) -> str:
+        return sha256(f"{store_id}\0{acceptance_id}".encode()).hexdigest()
+
+
 @dataclass(frozen=True)
 class _LegacyLocalInstallation:
     """Replay one approved source through the existing Product Desired owner.
@@ -1116,13 +1114,85 @@ class _LegacyLocalInstallation:
     error_type: type[Exception]
     session_id_prefix: str
 
-    def install(self, *, allow_enabled: bool) -> tuple[str, PluginPackageRevisionRefV1]:
-        product, key, operation_id, plugin_id = (
-            self.product,
-            self.key,
-            self.install_operation_id,
-            self.key.plugin_id,
+    @classmethod
+    def from_accepted_source(
+        cls,
+        product: _ProductOwner,
+        accepted: _AcceptedSource,
+        *,
+        scope_id: str,
+        plugin_id: str,
+        source_trust_class: str,
+        policy: _LegacyLocalInstallPolicy,
+    ) -> _LegacyLocalInstallation:
+        review = accepted.review
+        sources = tuple(
+            binding
+            for binding in product.policy.bindings
+            if binding.plugin_id == plugin_id
+            and binding.source_trust_class == source_trust_class
+            and binding.artifact_digest == review.wheel_artifact_digest
+            and Path(binding.source_identity).name == review.wheel_filename
         )
+        if len(sources) != 1:
+            raise policy.error_type(
+                "Legacy local Installation has no exact Product Source binding"
+            )
+        key = PluginInstallationKeyV1(
+            product_id=policy.product_id,
+            installation_scope="workspace",
+            scope_id=scope_id,
+            plugin_id=plugin_id,
+        )
+        return cls(
+            product=product,
+            key=key,
+            source_identity=sources[0].source_identity,
+            install_operation_id=policy.install_operation_id(
+                review.store_id, accepted.acceptance_id
+            ),
+            enable_operation_id=policy.enable_operation_id(
+                review.store_id, accepted.acceptance_id
+            ),
+            error_type=policy.error_type,
+            session_id_prefix=policy.session_prefix,
+        )
+
+    def _settled_install_command(self) -> str:
+        command_id = self.product.settled_install_command_id(
+            operation_id=self.install_operation_id, plugin_id=self.key.plugin_id
+        )
+        if command_id is None:
+            raise self.error_type("Legacy local Product install handoff is not settled")
+        return command_id
+
+    def _require_selected_revision(
+        self, selected: PluginInstallationStateV1
+    ) -> PluginPackageRevisionRefV1:
+        revision = selected.selection.package_revision
+        if (
+            selected.selection.desired_state in {"installed_disabled", "installed_enabled"}
+            and revision is not None
+            and revision.package_source_identity == self.source_identity
+        ):
+            return revision
+        raise self.error_type("Legacy local Product Installation selection changed")
+
+    def _matches_enablement(
+        self,
+        transitions: tuple[PluginDesiredStateJournalTransition, ...],
+        selected: PluginInstallationStateV1,
+    ) -> bool:
+        return (
+            len(transitions) == 2
+            and isinstance(transitions[1], PluginDesiredStateTransitionV1)
+            and transitions[1].mutation.operation_id == self.enable_operation_id
+            and transitions[1].mutation.actor_id == self.product.actor_id
+            and transitions[1].committed_state == selected
+        )
+
+    def install(self, *, allow_enabled: bool) -> tuple[str, PluginPackageRevisionRefV1]:
+        product, key = self.product, self.key
         initial = product.desired_state.snapshot()
         prior_state = next(
             (item for item in initial.installations if item.installation_key == key),
@@ -1137,73 +1207,31 @@ class _LegacyLocalInstallation:
             )
         if prior_state is None:
             self.route_install()
-        command_id = product.settled_install_command_id(
-            operation_id=operation_id, plugin_id=plugin_id
-        )
-        if command_id is None:
-            raise self.error_type("Legacy local Product install handoff is not settled")
+        command_id = self._settled_install_command()
         selected = product.desired_state.snapshot().installation(key)
-        if (
-            selected.selection.desired_state
-            not in {"installed_disabled", "installed_enabled"}
-            or selected.selection.package_revision is None
-            or selected.selection.package_revision.package_source_identity
-            != self.source_identity
-        ):
-            raise self.error_type("Legacy local Product Installation selection changed")
-        transitions = self._install_history(
-            command_id, selected.selection.package_revision
-        )
+        revision = self._require_selected_revision(selected)
+        transitions = self._install_history(command_id, revision)
         if selected.selection.desired_state == "installed_disabled":
             if len(transitions) != 1 or transitions[0].committed_state != selected:
                 raise self.error_type(
                     "Legacy local Product disablement was independently changed"
                 )
-        elif (
-            not allow_enabled
-            or len(transitions) != 2
-            or not isinstance(transitions[1], PluginDesiredStateTransitionV1)
-            or transitions[1].mutation.operation_id != self.enable_operation_id
-            or transitions[1].mutation.actor_id != product.actor_id
-            or transitions[1].committed_state != selected
-        ):
+        elif not allow_enabled or not self._matches_enablement(transitions, selected):
             raise self.error_type(
                 "Legacy local Product enablement was independently changed"
             )
-        return command_id, selected.selection.package_revision
+        return command_id, revision
 
     def enable(self) -> tuple[str, PluginPackageRevisionRefV1]:
-        product, key, install_id, plugin_id = (
-            self.product,
-            self.key,
-            self.install_operation_id,
-            self.key.plugin_id,
-        )
-        install_command_id = product.settled_install_command_id(
-            operation_id=install_id, plugin_id=plugin_id
-        )
-        if install_command_id is None:
-            raise self.error_type("Legacy local Product install handoff is not settled")
+        product, key = self.product, self.key
+        install_command_id = self._settled_install_command()
         snapshot = product.desired_state.snapshot()
         selected = snapshot.installation(key)
-        revision = selected.selection.package_revision
-        if (
-            revision is None
-            or revision.package_source_identity != self.source_identity
-            or selected.selection.desired_state
-            not in {"installed_disabled", "installed_enabled"}
-        ):
-            raise self.error_type("Legacy local Product Installation selection changed")
+        revision = self._require_selected_revision(selected)
         enable_id = self.enable_operation_id
         transitions = self._install_history(install_command_id, revision)
         if selected.selection.desired_state == "installed_enabled":
-            if (
-                len(transitions) != 2
-                or not isinstance(transitions[1], PluginDesiredStateTransitionV1)
-                or transitions[1].mutation.operation_id != enable_id
-                or transitions[1].mutation.actor_id != product.actor_id
-                or transitions[1].committed_state != selected
-            ):
+            if not self._matches_enablement(transitions, selected):
                 raise self.error_type(
                     "Legacy local Product enablement was independently changed"
                 )
@@ -1241,11 +1269,7 @@ class _LegacyLocalInstallation:
             if transition.mutation.installation_key == key
         )
         if (
-            len(final_transitions) != 2
-            or not isinstance(final_transitions[1], PluginDesiredStateTransitionV1)
-            or final_transitions[1].mutation.operation_id != enable_id
-            or final_transitions[1].mutation.actor_id != product.actor_id
-            or final_transitions[1].committed_state != selected
+            not self._matches_enablement(final_transitions, selected)
             or product.desired_state.snapshot().installation(key) != selected
         ):
             raise self.error_type("Legacy local Product enablement was superseded")
