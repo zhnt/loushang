@@ -725,7 +725,7 @@ Coding intent-matching policy. Native Windows remains pending.
 
 | Retired staged module | Current owner and retained policy |
 | --- | --- |
-| `configured_continuity` | Formal Plugin Management joins actual and historical Source identities, reopens selected revisions, reconciles installed Instances, and releases unused revision handles. Formal Continuity keeps its Hub publication and generation. Coding supplies its scope, compatibility choices, approval policy and error identity. |
+| `configured_continuity` | Formal Session joins actual and historical Source identities, reopens selected revisions, reconciles installed Instances, and releases unused revision handles. Formal Continuity keeps its Hub publication and generation. Coding supplies its scope, compatibility choices, approval policy and error identity. |
 | `local_discovery` | Formal Plugin Management joins read-only management, support and native Catalog evidence, then checks drift, sorts, filters and reports truncation. Coding retains the declared roots, selected resource and artifact policies, workspace admission and exact CLI output. |
 
 The batch removes 1,272 staging lines and adds 587 Coding Product and 766
@@ -735,10 +735,9 @@ by 881 lines against baseline. Hosting, other production code and scripts
 have no changes. Staging has 36 files and 5,418 lines.
 
 The Linux candidate passes 61 Continuity lifecycle, local discovery and
-existing architecture cases. Moving the installed selection helper to
-its Plugin Management owner resolved the dependency-cycle finding. The
-three affected restart, exact source inventory and no-cycle cases pass
-after the correction. Native Windows remains pending.
+existing architecture cases. The first dependency check caught a reverse
+edge from Continuity core to Plugin Management. The final host-gated owner
+is Session Plugin Lifecycle. Native Windows remains pending.
 
 ### Resume Transaction And Retained Runtime
 
@@ -879,7 +878,7 @@ literal Coding module destinations. It reaches 1,052 local modules from all
 source API comparison covers 396 existing Coding exports in changed files.
 Their measured function signatures and annotated class field and dataclass
 shapes match the baseline. Ruff passes on all changed Python and mypy passes
-on all 158 changed production Python modules. Test source is down 82 lines.
+on all 158 changed production Python modules. Test source is down 76 lines.
 
 The final focused Linux run passes all 203 existing cases for Resume planning,
 permission, native journal settlement, first input, indexed Continuity,
@@ -896,6 +895,14 @@ The exact effect inventory now points to managed Plugin preparation's live
 Product entry. The default-dark Worker inventory follows the startup receipt
 type into its formal evidence module. All 49 PLC9B contract cases and all nine
 Worker default-dark cases pass after those inventory corrections.
+
+The installed Continuity selection and Instance admission chain lives in the
+formal Session Plugin Lifecycle host. This keeps its Instance ledger effects
+on the host side of the existing management boundary. The package inventory
+also records the existing POSIX fence owner's bounded state-root observation.
+The two affected boundary checks, the effect inventory and cycle checks pass.
+The Continuity bootstrapping routes and their named fault injection pass after
+tracking the current host module. There is no production line delta.
 
 ## Validation And Commit Rhythm
 

@@ -94,12 +94,6 @@ from loushang.harness.plugin_management import (
     PluginManagementService,
     PluginPackageLifecycleLedger,
 )
-from loushang.harness.plugin_management._continuity_installed_plugins import (
-    publish_continuity_runtime,
-    reconcile_enabled_continuity_instances,
-    resolve_installed_continuity_sources,
-    retain_enabled_continuity_runtime,
-)
 from loushang.harness.plugin_management.continuity_adapter import (
     PluginContinuitySecurityRetirementJournal,
     PluginInstanceLedgerContinuityFamilyAuthority,
@@ -129,6 +123,12 @@ from loushang.harness.resources.plugins import (
     is_remote_plugin_source,
 )
 from loushang.harness.resources.plugins.import_realm import PluginImportRealm
+from loushang.harness.session.plugin_lifecycle._continuity_installed_plugins import (
+    publish_continuity_runtime,
+    reconcile_enabled_continuity_instances,
+    resolve_installed_continuity_sources,
+    retain_enabled_continuity_runtime,
+)
 
 _PRODUCT_POLICY_REVISION = "coding-continuity-production-1"
 _OWNER_POLICY_REVISION = "coding-continuity-owner-1"

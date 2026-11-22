@@ -766,6 +766,12 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         {"path_read": 1},
     ),
     (
+        "resources/packages/product_epoch_guard.py",
+        "PackageProductPosixFencedRuntimeOwner.require_existing_product_state_root",
+        "PackageProductPosixFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
         "resources/packages/product_pre_b_snapshot.py",
         "PackageProductPreBSnapshotOwner.cutover_from_legacy",
         "PackageProductPreBSnapshotOwner",
