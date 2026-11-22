@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, cast
@@ -87,9 +87,7 @@ from loushang.harness.resources.plugins.authority import (
     PluginRuntimeResolution,
 )
 from loushang.harness.resources.plugins.selection import (
-    PluginContributionRef,
     PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
     PluginPreflightContextV1,
@@ -97,6 +95,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
+from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 from loushang.harness.session._cleanup import run_cleanup_steps
@@ -1132,6 +1131,24 @@ def _finalize_selection(
     )
 
 
+def _capability_configuration_entries(
+    packages: Iterable[PublishedPluginPackage],
+    configurations: Mapping[str, CodingCapabilityPluginConfig],
+) -> Iterator[PluginEffectiveConfigurationEntry]:
+    for package in packages:
+        plugin_id = package.manifest.name
+        for contribution in package.contribution_index.items:
+            yield PluginEffectiveConfigurationEntry(
+                plugin_id=plugin_id,
+                contribution_id=contribution.contribution_id,
+                configuration=(
+                    configurations[plugin_id].to_dict()
+                    if contribution.kind == "capability_provider"
+                    else {}
+                ),
+            )
+
+
 def _prepare_selection_plan_seed(
     runtime: PluginRuntimeResolution,
     *,
@@ -1152,14 +1169,8 @@ def _prepare_selection_plan_seed(
         base_plan.context.instance_revision_refs if base_plan is not None else ()
     )
     base_plugin_ids = base_plan.selected_plugin_ids if base_plan is not None else ()
-    base_contributions = (
-        base_plan.selected_contributions if base_plan is not None else ()
-    )
     base_trust = base_plan.source_trust_snapshots if base_plan is not None else ()
-    base_config_entries = (
-        base_plan.effective_configuration_set.entries if base_plan is not None else ()
-    )
-    plan = PluginSelectionPlanV2(
+    plan = PluginSelectionPlanV2.from_selected_entries(
         context=PluginPreflightContextV1(
             product_id=CODING_PRODUCT_ID,
             scope_id=scope_id,
@@ -1190,21 +1201,6 @@ def _prepare_selection_plan_seed(
             ),
         ),
         selected_plugin_ids=tuple(sorted((*base_plugin_ids, *configurations.keys()))),
-        selected_contributions=tuple(
-            sorted(
-                (
-                    *base_contributions,
-                    *tuple(
-                        PluginContributionRef(
-                            package.manifest.name,
-                            item.contribution_id,
-                        )
-                        for package, _binding in package_bindings
-                        for item in package.contribution_index.items
-                    ),
-                )
-            )
-        ),
         source_trust_snapshots=tuple(
             sorted(
                 (
@@ -1223,29 +1219,10 @@ def _prepare_selection_plan_seed(
                 key=lambda item: (item.plugin_id, item.package_source_identity),
             )
         ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        *base_config_entries,
-                        *tuple(
-                            PluginEffectiveConfigurationEntry(
-                                plugin_id=package.manifest.name,
-                                contribution_id=item.contribution_id,
-                                configuration=(
-                                    configurations[package.manifest.name].to_dict()
-                                    if item.kind == "capability_provider"
-                                    else {}
-                                ),
-                            )
-                            for package, _binding in package_bindings
-                            for item in package.contribution_index.items
-                        ),
-                    ),
-                    key=lambda item: (item.plugin_id, item.contribution_id),
-                )
-            )
+        additions=_capability_configuration_entries(
+            (package for package, _ in package_bindings), configurations
         ),
+        base=base_plan,
         allowed_authority_ceiling=("filesystem", "process"),
     )
     all_package_bindings = tuple(

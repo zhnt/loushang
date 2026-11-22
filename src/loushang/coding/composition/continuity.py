@@ -106,9 +106,7 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
 )
 from loushang.harness.resources.plugins import (
-    PluginContributionRef,
     PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
     PluginPreflightContextV1,
@@ -621,7 +619,7 @@ def _finalize_selection(
             key=lambda pair: (pair[0].manifest.name, pair[1].contribution_id),
         )
     )
-    plan = PluginSelectionPlanV2(
+    plan = PluginSelectionPlanV2.from_selected_entries(
         context=PluginPreflightContextV1(
             product_id=CODING_EXPERIENCE_ID,
             scope_id=layout.scope_id,
@@ -629,23 +627,17 @@ def _finalize_selection(
             instance_revision_refs=instance_refs,
         ),
         selected_plugin_ids=tuple(package.manifest.name for package in packages),
-        selected_contributions=tuple(
-            PluginContributionRef(package.manifest.name, item.contribution_id)
-            for package, item in contributions
-        ),
         source_trust_snapshots=tuple(
             _configured_source_trust(package, bindings[package.manifest.name])
             for package in packages
         ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                PluginEffectiveConfigurationEntry(
-                    plugin_id=package.manifest.name,
-                    contribution_id=item.contribution_id,
-                    configuration=item.configuration,
-                )
-                for package, item in contributions
+        additions=(
+            PluginEffectiveConfigurationEntry(
+                plugin_id=package.manifest.name,
+                contribution_id=item.contribution_id,
+                configuration=item.configuration,
             )
+            for package, item in contributions
         ),
         allowed_authority_ceiling=_AUTHORITY_CEILING,
     )

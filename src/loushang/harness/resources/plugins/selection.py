@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 import threading
 import weakref
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -324,6 +324,40 @@ class PluginSelectionPlanV2:
     effective_configuration_set: PluginEffectiveConfigurationSetV1
     allowed_authority_ceiling: tuple[str, ...]
     plan_version: int = PLUGIN_SELECTION_PLAN_VERSION
+
+    @classmethod
+    def from_selected_entries(
+        cls,
+        context: PluginPreflightContextV1,
+        *,
+        selected_plugin_ids: tuple[str, ...],
+        source_trust_snapshots: tuple[PluginSourceTrustSnapshotV1, ...],
+        additions: Iterable[PluginEffectiveConfigurationEntry],
+        allowed_authority_ceiling: tuple[str, ...],
+        base: PluginSelectionPlanV2 | None = None,
+    ) -> PluginSelectionPlanV2:
+        """Select every added entry while retaining a base plan's partial selection."""
+
+        entries = tuple(additions)
+        base_refs = () if base is None else base.selected_contributions
+        base_entries = () if base is None else base.effective_configuration_set.entries
+        return cls(
+            context=context,
+            selected_plugin_ids=selected_plugin_ids,
+            selected_contributions=tuple(
+                sorted((*base_refs, *(item.ref for item in entries)))
+            ),
+            source_trust_snapshots=source_trust_snapshots,
+            effective_configuration_set=PluginEffectiveConfigurationSetV1(
+                entries=tuple(
+                    sorted(
+                        (*base_entries, *entries),
+                        key=lambda item: (item.plugin_id, item.contribution_id),
+                    )
+                ),
+            ),
+            allowed_authority_ceiling=allowed_authority_ceiling,
+        )
 
     def __post_init__(self) -> None:
         _require_exact_version(

@@ -1777,7 +1777,7 @@ def extend_product_data_selection_plan(
     external: tuple[PackageProductSelectedPluginManifestV1, ...],
 ) -> PluginSelectionPlanV2:
     """Extend a Product plan with verified data declarations and exact Store facts."""
-    return PluginSelectionPlanV2(
+    return PluginSelectionPlanV2.from_selected_entries(
         context=PluginPreflightContextV1(
             product_id=original.context.product_id,
             scope_id=original.context.scope_id,
@@ -1800,20 +1800,6 @@ def extend_product_data_selection_plan(
                 )
             )
         ),
-        selected_contributions=tuple(
-            sorted(
-                (
-                    *original.selected_contributions,
-                    *(
-                        PluginContributionRef(
-                            item.manifest.name, reservation.contribution_id
-                        )
-                        for item in external
-                        for reservation, _ in item.verified_data_only_declarations()
-                    ),
-                )
-            )
-        ),
         source_trust_snapshots=tuple(
             sorted(
                 (
@@ -1827,25 +1813,16 @@ def extend_product_data_selection_plan(
                 key=lambda item: item.plugin_id,
             )
         ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        *original.effective_configuration_set.entries,
-                        *(
-                            PluginEffectiveConfigurationEntry(
-                                plugin_id=item.manifest.name,
-                                contribution_id=reservation.contribution_id,
-                                configuration=reservation.configuration,
-                            )
-                            for item in external
-                            for reservation, _ in item.verified_data_only_declarations()
-                        ),
-                    ),
-                    key=lambda item: (item.plugin_id, item.contribution_id),
-                )
+        additions=(
+            PluginEffectiveConfigurationEntry(
+                plugin_id=item.manifest.name,
+                contribution_id=reservation.contribution_id,
+                configuration=reservation.configuration,
             )
+            for item in external
+            for reservation, _ in item.verified_data_only_declarations()
         ),
+        base=original,
         allowed_authority_ceiling=original.allowed_authority_ceiling,
     )
 

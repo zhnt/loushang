@@ -162,7 +162,7 @@ def compile_coding_external_data_product_selection(
             ]
         )
     ).hexdigest()
-    plan = PluginSelectionPlanV2(
+    plan = PluginSelectionPlanV2.from_selected_entries(
         context=PluginPreflightContextV1(
             product_id=CODING_PRODUCT_ID,
             scope_id=f"session:{session_id.strip()}",
@@ -174,29 +174,14 @@ def compile_coding_external_data_product_selection(
             ),
         ),
         selected_plugin_ids=tuple(item.manifest.name for item in selected),
-        selected_contributions=tuple(
-            sorted(
-                PluginContributionRef(
-                    item.manifest.name, reservation.contribution_id
-                )
-                for item, reservation, _ in pairs
-            )
-        ),
         source_trust_snapshots=tuple(trusts),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        PluginEffectiveConfigurationEntry(
-                            plugin_id=item.manifest.name,
-                            contribution_id=reservation.contribution_id,
-                            configuration=reservation.configuration,
-                        )
-                        for item, reservation, _ in pairs
-                    ),
-                    key=lambda entry: (entry.plugin_id, entry.contribution_id),
-                )
+        additions=(
+            PluginEffectiveConfigurationEntry(
+                plugin_id=item.manifest.name,
+                contribution_id=reservation.contribution_id,
+                configuration=reservation.configuration,
             )
+            for item, reservation, _ in pairs
         ),
         allowed_authority_ceiling=(),
     )

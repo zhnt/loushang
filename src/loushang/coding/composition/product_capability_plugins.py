@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -22,6 +22,7 @@ from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionPreparation,
     CodingResumePluginParents,
+    _capability_configuration_entries,
 )
 from loushang.coding.composition.capability_plugins import (
     _assembly_request as _assembly_request,
@@ -100,14 +101,12 @@ from loushang.harness.resources.plugins.contribution_types import (
     PLUGIN_OWNER_CONTRIBUTION_KINDS,
 )
 from loushang.harness.resources.plugins.selection import (
-    PluginContributionRef,
-    PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
     PluginPreflightContextV1,
     PluginSelection,
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
+from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
@@ -457,6 +456,38 @@ def _validate_product_lineage(
     validate_preparation_lineage(runtime, selected, label="Coding Product Capability")
 
 
+def _fenced_selection_plan(
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+    packages: Iterable[PublishedPluginPackage],
+    *,
+    configurations: Mapping[str, CodingCapabilityPluginConfig],
+    product_id: str,
+    scope_id: str,
+    policy_revision: str,
+    base: PluginSelectionPlanV2 | None = None,
+) -> PluginSelectionPlanV2:
+    by_id = {item.manifest.name: item for item in selected}
+    selected_ids = tuple(sorted(by_id))
+    return PluginSelectionPlanV2.from_selected_entries(
+        PluginPreflightContextV1(
+            product_id=product_id,
+            scope_id=scope_id,
+            policy_revision=policy_revision,
+            instance_revision_refs=tuple(
+                by_id[plugin_id].snapshot.instance_revision_ref
+                for plugin_id in selected_ids
+            ),
+        ),
+        selected_plugin_ids=selected_ids,
+        source_trust_snapshots=tuple(
+            _required_trust(by_id[plugin_id]) for plugin_id in selected_ids
+        ),
+        additions=_capability_configuration_entries(packages, configurations),
+        allowed_authority_ceiling=("filesystem", "process"),
+        base=base,
+    )
+
+
 def _product_plan_seed(
     runtime: PluginRuntimeResolution,
     selected: tuple[PackageProductSelectedPluginManifestV1, ...],
@@ -466,55 +497,19 @@ def _product_plan_seed(
     product_policy_revision: str,
     tool_authority: OwnerContributionAuthority,
 ) -> ProductPluginPlanSeed:
-    by_id = {item.manifest.name: item for item in selected}
     pairs = tuple(
         sorted(
             zip(runtime.packages, runtime.bindings, strict=True),
             key=lambda item: item[0].manifest.name,
         )
     )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id="coding",
-            scope_id=scope_id,
-            policy_revision=product_policy_revision,
-            instance_revision_refs=tuple(
-                by_id[plugin_id].snapshot.instance_revision_ref
-                for plugin_id in sorted(by_id)
-            ),
-        ),
-        selected_plugin_ids=tuple(sorted(by_id)),
-        selected_contributions=tuple(
-            sorted(
-                PluginContributionRef(package.manifest.name, item.contribution_id)
-                for package, _ in pairs
-                for item in package.contribution_index.items
-            )
-        ),
-        source_trust_snapshots=tuple(
-            _required_trust(by_id[plugin_id]) for plugin_id in sorted(by_id)
-        ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        PluginEffectiveConfigurationEntry(
-                            plugin_id=package.manifest.name,
-                            contribution_id=item.contribution_id,
-                            configuration=(
-                                configurations[package.manifest.name].to_dict()
-                                if item.kind == "capability_provider"
-                                else {}
-                            ),
-                        )
-                        for package, _ in pairs
-                        for item in package.contribution_index.items
-                    ),
-                    key=lambda item: (item.plugin_id, item.contribution_id),
-                )
-            ),
-        ),
-        allowed_authority_ceiling=("filesystem", "process"),
+    plan = _fenced_selection_plan(
+        selected,
+        (package for package, _ in pairs),
+        configurations=configurations,
+        product_id="coding",
+        scope_id=scope_id,
+        policy_revision=product_policy_revision,
     )
     return ProductPluginPlanSeed(
         plan=plan,
@@ -532,7 +527,6 @@ def _builtin_plan_seed(
     configurations: Mapping[str, CodingCapabilityPluginConfig],
     tool_authority: OwnerContributionAuthority,
 ) -> ProductPluginPlanSeed:
-    by_id = {item.manifest.name: item for item in selected}
     pairs = tuple(
         sorted(
             zip(runtime.packages, runtime.bindings, strict=True),
@@ -613,62 +607,19 @@ def _builtin_plan_seed(
         else binding
         for binding in initial_owner_bindings
     )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id=base_plan.context.product_id,
-            scope_id=base_plan.context.scope_id,
-            policy_revision=base_plan.context.policy_revision,
-            instance_revision_refs=tuple(
-                by_id[plugin_id].snapshot.instance_revision_ref
-                for plugin_id in sorted(by_id)
-            ),
+    plan = _fenced_selection_plan(
+        selected,
+        (
+            package
+            for package, _ in pairs
+            if package.manifest.name in configurations
+            or package.manifest.name in selected_data_ids
         ),
-        selected_plugin_ids=tuple(sorted(by_id)),
-        selected_contributions=tuple(
-            sorted(
-                (
-                    *base_plan.selected_contributions,
-                    *(
-                        PluginContributionRef(
-                            package.manifest.name, item.contribution_id
-                        )
-                        for package, _ in pairs
-                        if package.manifest.name in configurations
-                        or package.manifest.name in selected_data_ids
-                        for item in package.contribution_index.items
-                    ),
-                )
-            )
-        ),
-        source_trust_snapshots=tuple(
-            _required_trust(by_id[plugin_id]) for plugin_id in sorted(by_id)
-        ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        *base_plan.effective_configuration_set.entries,
-                        *(
-                            PluginEffectiveConfigurationEntry(
-                                plugin_id=package.manifest.name,
-                                contribution_id=item.contribution_id,
-                                configuration=(
-                                    configurations[package.manifest.name].to_dict()
-                                    if item.kind == "capability_provider"
-                                    else {}
-                                ),
-                            )
-                            for package, _ in pairs
-                            if package.manifest.name in configurations
-                            or package.manifest.name in selected_data_ids
-                            for item in package.contribution_index.items
-                        ),
-                    ),
-                    key=lambda item: (item.plugin_id, item.contribution_id),
-                )
-            ),
-        ),
-        allowed_authority_ceiling=("filesystem", "process"),
+        configurations=configurations,
+        product_id=base_plan.context.product_id,
+        scope_id=base_plan.context.scope_id,
+        policy_revision=base_plan.context.policy_revision,
+        base=base_plan,
     )
     return ProductPluginPlanSeed(
         plan=plan,
