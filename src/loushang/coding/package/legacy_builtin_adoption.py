@@ -7,6 +7,9 @@ from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._application_runtime import (
+    hold_accepted_product_adoption,
+)
 from loushang.harness.package_product._plugin_bootstrap import (
     replay_reviewed_product_plugins,
 )
@@ -64,24 +67,22 @@ def adopt_coding_first_b_builtin_only(
         if os.name == "nt"
         else PackageProductPosixFencedRuntimeOwner
     )
-    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
-    try:
-        receipt = accept_coding_first_b_builtin_only(
+    with hold_accepted_product_adoption(
+        open_epoch=lambda: epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs()),
+        accept_review=lambda epoch_runtime: accept_coding_first_b_builtin_only(
             lifecycle,
             epoch_runtime,
             settings_manager=settings_manager,
             accepted_review_id=accepted_review_id,
-        )
-    finally:
-        epoch_runtime.close()
-    owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-        windows_candidate=windows_candidate,
-    )
-    try:
+        ),
+        open_application=lambda: open_coding_fenced_product_application_owner(
+            lifecycle,
+            workspace=workspace,
+            runtime_version=runtime_version,
+            runtime_protocol_epoch=runtime_protocol_epoch,
+            windows_candidate=windows_candidate,
+        ),
+    ) as (receipt, owner):
         product = owner.runtime_owner.product_owner
         disabled = _reviewed_disabled_ids(receipt.review)
         replay_reviewed_product_plugins(
@@ -96,8 +97,6 @@ def adopt_coding_first_b_builtin_only(
             history_label="Coding builtin-only Product",
         )
         return receipt
-    finally:
-        owner.close()
 
 
 __all__ = ["adopt_coding_first_b_builtin_only"]

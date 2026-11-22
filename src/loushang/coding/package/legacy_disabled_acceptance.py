@@ -68,6 +68,11 @@ _acceptance_journal = _FirstAcceptanceJournal(
     posix_read_error_type=CodingLegacyDisabledOnlyAcceptanceError,
     posix_read_label="Disabled-only Product",
     untouched_message="Disabled-only adoption requires an untouched Product Desired State",
+    create=CodingLegacyDisabledOnlyAcceptanceV1.create,
+    changed_review="Disabled-only review ID changed",
+    accept_conflict="Disabled-only Product acceptance conflicts with prior review",
+    read_conflict="Disabled-only Product acceptance conflicts with first-B review",
+    empty_is_missing=False,
 )
 
 
@@ -80,19 +85,13 @@ def accept_coding_first_b_disabled_only(
 ) -> CodingLegacyDisabledOnlyAcceptanceV1:
     """Persist exactly one operator-selected review before any Desired mutation."""
 
-    review = review_coding_first_b_disabled_only(
-        lifecycle, epoch_runtime, settings_manager=settings_manager
-    )
     return _acceptance_journal.accept_review(
         epoch_runtime,
         accepted_review_id=accepted_review_id,
-        review=review,
-        create=CodingLegacyDisabledOnlyAcceptanceV1.create,
-        expected_store_id=lambda: (
-            resolve_coding_package_epoch_layout(lifecycle).store_id
+        review=lambda: review_coding_first_b_disabled_only(
+            lifecycle, epoch_runtime, settings_manager=settings_manager
         ),
-        changed_review="Disabled-only review ID changed",
-        conflict_message="Disabled-only Product acceptance conflicts with prior review",
+        expected_store_id=lambda: resolve_coding_package_epoch_layout(lifecycle).store_id,
     )
 
 
@@ -110,9 +109,6 @@ def read_coding_first_b_disabled_only_acceptance(
         review=lambda: review_coding_first_b_disabled_only(
             lifecycle, epoch_runtime, settings_manager=settings_manager
         ),
-        create=CodingLegacyDisabledOnlyAcceptanceV1.create,
-        conflict_message="Disabled-only Product acceptance conflicts with first-B review",
-        empty_is_missing=False,
     )
 
 

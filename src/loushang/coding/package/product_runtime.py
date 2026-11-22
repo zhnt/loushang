@@ -30,6 +30,7 @@ from loushang.harness.package_product._application_runtime import (
     LegacyProductWorkspace,
     bind_fenced_product_session_owner,
     fenced_source_catalog_scope,
+    hold_accepted_product_adoption,
     open_fenced_product_management_state,
     prepare_product_state_for_recovery,
     product_management_paths_match,
@@ -905,33 +906,29 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
     """Install builtins from an explicitly accepted, fenced Source snapshot."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
-    )
-    try:
-        receipt = accept_coding_first_b_disabled_only(
+    with hold_accepted_product_adoption(
+        open_epoch=lambda: PackageProductPosixFencedRuntimeOwner.open(
+            **epoch.fenced_runtime_open_kwargs()
+        ),
+        accept_review=lambda epoch_runtime: accept_coding_first_b_disabled_only(
             lifecycle,
             epoch_runtime,
             settings_manager=settings_manager,
             accepted_review_id=accepted_review_id,
-        )
-    finally:
-        epoch_runtime.close()
-    disabled = {item.plugin_id for item in receipt.review.disabled_plugins}
-    owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-    )
-    try:
+        ),
+        open_application=lambda: open_coding_fenced_product_application_owner(
+            lifecycle,
+            workspace=workspace,
+            runtime_version=runtime_version,
+            runtime_protocol_epoch=runtime_protocol_epoch,
+        ),
+    ) as (receipt, owner):
+        disabled = {item.plugin_id for item in receipt.review.disabled_plugins}
         for plugin_id in _CODING_BUILTIN_PLUGIN_IDS:
             _bootstrap_coding_builtin_plugin(
                 owner, plugin_id, enable=plugin_id not in disabled
             )
         return receipt
-    finally:
-        owner.close()
 
 
 def require_fresh_coding_product_inputs(

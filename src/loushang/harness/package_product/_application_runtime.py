@@ -606,7 +606,23 @@ class _FencedProductApplication(Protocol):
 
 
 _ApplicationT = TypeVar("_ApplicationT", bound=_FencedProductApplication)
+_FencedRuntimeT = TypeVar("_FencedRuntimeT", bound=_FencedRuntime)
+_ReceiptT = TypeVar("_ReceiptT")
 _SettingsT = TypeVar("_SettingsT")
+
+
+@contextmanager
+def hold_accepted_product_adoption(
+    *,
+    open_epoch: Callable[[], _FencedRuntimeT],
+    accept_review: Callable[[_FencedRuntimeT], _ReceiptT],
+    open_application: Callable[[], _ApplicationT],
+) -> Iterator[tuple[_ReceiptT, _ApplicationT]]:
+    """Commit approval and release its epoch before opening the adoption owner."""
+    with closing(open_epoch()) as epoch:
+        receipt = accept_review(epoch)
+    with closing(open_application()) as application:
+        yield receipt, application
 
 
 def close_product_applications(

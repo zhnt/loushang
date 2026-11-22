@@ -8,6 +8,9 @@ from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._application_runtime import (
+    hold_accepted_product_adoption,
+)
 from loushang.harness.package_product._plugin_bootstrap import (
     replay_reviewed_product_plugins,
 )
@@ -53,25 +56,23 @@ def adopt_coding_first_b_removed_local(
     """Write the accepted absent choices and bootstrap current builtin choices."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
-    )
-    try:
-        receipt = accept_coding_first_b_removed_local(
+    with hold_accepted_product_adoption(
+        open_epoch=lambda: PackageProductPosixFencedRuntimeOwner.open(
+            **epoch.fenced_runtime_open_kwargs()
+        ),
+        accept_review=lambda epoch_runtime: accept_coding_first_b_removed_local(
             lifecycle,
             epoch_runtime,
             settings_manager=settings_manager,
             accepted_review_id=accepted_review_id,
-        )
-    finally:
-        epoch_runtime.close()
-    owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-    )
-    try:
+        ),
+        open_application=lambda: open_coding_fenced_product_application_owner(
+            lifecycle,
+            workspace=workspace,
+            runtime_version=runtime_version,
+            runtime_protocol_epoch=runtime_protocol_epoch,
+        ),
+    ) as (receipt, owner):
         product = owner.runtime_owner.product_owner
         removed_ids = {
             *(item.plugin_id for item in receipt.review.removed_local),
@@ -90,8 +91,6 @@ def adopt_coding_first_b_removed_local(
             history_label="Coding builtin-only Product",
         )
         return receipt
-    finally:
-        owner.close()
 
 
 def _removed_operation_id(

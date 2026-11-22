@@ -197,7 +197,7 @@ class _FirstAcceptanceRecord(Generic[_FirstReviewT]):
 
 
 @dataclass(frozen=True)
-class _FirstAcceptanceJournal(Generic[RecordT]):
+class _FirstAcceptanceJournal(Generic[_FirstReviewT, RecordT]):
     """One frozen first-adoption receipt, committed before any Desired mutation.
 
     Products supply the authenticated record and original diagnostic profile.
@@ -212,57 +212,57 @@ class _FirstAcceptanceJournal(Generic[RecordT]):
     posix_read_error_type: type[Exception]
     posix_read_label: str
     untouched_message: str
+    create: Callable[[_FirstReviewT], RecordT]
+    changed_review: str
+    accept_conflict: str
+    read_conflict: str
     windows_receipts: WindowsPrivateReceiptIO | None = None
     windows_untouched_message: str = ""
     postcheck: Literal["separate", "combined"] = "separate"
     check_replay_epoch: bool = False
+    check_epoch_before_read: bool = False
+    empty_is_missing: bool = True
 
     def accept_review(
         self,
         runtime: _FencedRuntime,
         *,
         accepted_review_id: str,
-        review: _FirstReviewT,
-        create: Callable[[_FirstReviewT], RecordT],
+        review: Callable[[], _FirstReviewT],
         expected_store_id: Callable[[], str],
-        changed_review: str,
-        conflict_message: str,
     ) -> RecordT:
-        if accepted_review_id != review.review_id:
-            raise self.error_type(changed_review)
-        proposed = create(review)
+        authenticated = review()
+        if accepted_review_id != authenticated.review_id:
+            raise self.error_type(self.changed_review)
+        proposed = self.create(authenticated)
         self._require_store(runtime, expected_store_id())
-        return self.accept(runtime, proposed, conflict_message=conflict_message)
+        return self.accept(runtime, proposed)
 
     def read_acceptance(
         self,
         runtime: _FencedRuntime,
         *,
         expected_store_id: str,
-        review: Callable[[], ReviewT],
-        create: Callable[[ReviewT], RecordT],
-        conflict_message: str,
-        check_epoch_before_read: bool = False,
-        empty_is_missing: bool = True,
+        review: Callable[[], _FirstReviewT],
     ) -> RecordT | None:
         self._require_store(runtime, expected_store_id)
-        if check_epoch_before_read:
+        if self.check_epoch_before_read:
             runtime.assert_current()
         path = runtime.control_root / "product-state" / self.filename
-        if check_epoch_before_read:
+        if self.check_epoch_before_read:
             records = self.records(
                 path,
                 windows=isinstance(runtime, PackageProductWindowsFencedRuntimeOwner),
             )
         else:
             records = self.records(path)
-        if records is None or (empty_is_missing and not records):
-            if check_epoch_before_read:
+        if records is None or (self.empty_is_missing and not records):
+            if self.check_epoch_before_read:
                 runtime.assert_current()
             return None
         current_review = review()
-        if len(records) != 1 or records[0] != create(current_review):
-            raise self.error_type(conflict_message)
+        if len(records) != 1 or records[0] != self.create(current_review):
+            raise self.error_type(self.read_conflict)
         runtime.assert_current()
         return records[0]
 
@@ -277,8 +277,6 @@ class _FirstAcceptanceJournal(Generic[RecordT]):
             | PackageProductWindowsFencedRuntimeOwner
         ),
         proposed: RecordT,
-        *,
-        conflict_message: str,
     ) -> RecordT:
         path = epoch_runtime.prepare_product_state_root() / self.filename
         windows = isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
@@ -289,7 +287,7 @@ class _FirstAcceptanceJournal(Generic[RecordT]):
             )
             if records:
                 if len(records) != 1 or records[0] != proposed:
-                    raise self.error_type(conflict_message)
+                    raise self.error_type(self.accept_conflict)
                 if self.check_replay_epoch:
                     epoch_runtime.assert_current()
                 return records[0]
