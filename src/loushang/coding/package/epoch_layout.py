@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from loushang.coding.harness.package_product.legacy_members import (
-    inspect_domain_members,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    inspect_legacy_product_domain_members,
+)
 
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _LIFECYCLE_JOURNAL_DOMAINS = {
@@ -27,7 +27,9 @@ _LIFECYCLE_JOURNAL_DOMAINS = {
 }
 _LIFECYCLE_MEMBER_DOMAINS = {
     **{name: (domain,) for name, domain in _LIFECYCLE_JOURNAL_DOMAINS.items()},
-    **{f"{name}.lock": (domain,) for name, domain in _LIFECYCLE_JOURNAL_DOMAINS.items()},
+    **{
+        f"{name}.lock": (domain,) for name, domain in _LIFECYCLE_JOURNAL_DOMAINS.items()
+    },
     "enablement-migration.jsonl.migration.lock": ("enablement_state",),
     "lifecycle-coordination.lock": ("desired_state",),
     "process-startups": ("instance_state",),
@@ -140,9 +142,10 @@ class CodingPackagePreBStoreMembersV1:
         )
         if self.lock_history != expected_lock:
             raise ValueError("Coding Package lock history mapping is invalid")
-        if self.store_bytes != tuple(sorted(set(self.store_bytes))) or not set(
-            self.store_bytes
-        ) <= _PACKAGE_DIRECTORY_MEMBERS:
+        if (
+            self.store_bytes != tuple(sorted(set(self.store_bytes)))
+            or not set(self.store_bytes) <= _PACKAGE_DIRECTORY_MEMBERS
+        ):
             raise ValueError("Coding Package Store member mapping is invalid")
 
     def domain_members(self) -> dict[str, tuple[str, ...]]:
@@ -207,7 +210,7 @@ def resolve_coding_lifecycle_pre_b_members(
     )
     if any(path != root / name for path, name in expected_journals):
         raise ValueError("Coding pre-B lifecycle paths are not canonical")
-    members = inspect_domain_members(
+    members = inspect_legacy_product_domain_members(
         root,
         domains_by_member=_LIFECYCLE_MEMBER_DOMAINS,
         directory_members=_LIFECYCLE_DIRECTORY_MEMBERS,
@@ -228,7 +231,7 @@ def resolve_coding_package_pre_b_store_members(
 
     resolve_coding_package_epoch_layout(lifecycle)
     root = lifecycle.package_root
-    members = inspect_domain_members(
+    members = inspect_legacy_product_domain_members(
         root,
         domains_by_member=_PACKAGE_MEMBER_DOMAINS,
         directory_members=_PACKAGE_DIRECTORY_MEMBERS,
@@ -291,4 +294,6 @@ def coding_fenced_product_exists(layout: CodingPluginLifecycleStateLayout) -> bo
 
 
 # Preserve the deployed callable/pickle route after moving its implementation.
-coding_fenced_product_exists.__module__ = "loushang.coding.package_product_management_cli"
+coding_fenced_product_exists.__module__ = (
+    "loushang.coding.package_product_management_cli"
+)

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Set
+from collections.abc import Callable, Mapping, Set
+from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Generic, Literal, NamedTuple, Protocol, TypeVar
@@ -14,6 +15,7 @@ from loushang.harness.package_product._legacy_binding_evidence import (
 )
 from loushang.harness.package_product._legacy_management_evidence import (
     LEGACY_DESIRED_CAPTURE_MAX_BYTES,
+    SERVICE_LOCK_MARKERS,
     LegacyManagementCapturePaths,
     classify_management_members,
     decode_legacy_desired_evidence,
@@ -24,6 +26,7 @@ from loushang.harness.package_product._legacy_management_evidence import (
 from loushang.harness.package_product._legacy_runtime import (
     _FencedRuntime,
     _LegacyFirstSnapshot,
+    require_legacy_snapshot_members,
 )
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
@@ -33,9 +36,18 @@ from loushang.harness.plugin_management.records import PluginPackageRevisionRefV
 from loushang.harness.plugin_management.retirement import (
     inspect_removed_installation_epoch,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackageEpochCutoverSnapshotReceiptV1,
+)
 from loushang.harness.resources.packages.product_legacy_source_wheel import (
     _LegacyWheelValues,
     _reacquire_legacy_local_plugin_wheel,
+)
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    PackageProductPreBSnapshotOwner,
+)
+from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
+    PackageProductWindowsPreBSnapshotOwner,
 )
 from loushang.harness.resources.plugins.dependencies import PluginDependencyClosureLock
 
@@ -89,6 +101,105 @@ class LegacyInventoryEvidence(NamedTuple):
     snapshot_receipt_id: str
     inventory: LegacyInventoryFacts[LegacyLocalBindingEvidence]
     desired_journal_digest: str | None
+
+
+def classify_legacy_builtin_snapshot(
+    list_members: Callable[..., tuple[str, ...] | None],
+    expected: Mapping[str, tuple[str, ...]],
+    *,
+    shape_error: Exception,
+    operation_error: type[ValueError],
+    label: str,
+) -> bool:
+    require_legacy_snapshot_members(list_members, expected, error=shape_error)
+    return classify_management_members(
+        desired_members=list_members(domain="desired_state") or (),
+        instance_members=list_members(domain="instance_state") or (),
+        lock_members=(),
+        has_binding=False,
+        allow_retirement=False,
+        allow_retired_runtime=False,
+        error_type=operation_error,
+        label=f"{label} old",
+    )
+
+
+def read_legacy_builtin_admission(
+    owner: PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner,
+    snapshot: PackageEpochCutoverSnapshotReceiptV1,
+    *,
+    expected: Mapping[str, tuple[str, ...]],
+    desired_path: Path,
+    management_paths: LegacyManagementCapturePaths,
+    product_id: str,
+    scope_id: str,
+    builtin_ids: Set[str],
+    review_error: type[ValueError],
+    inventory_error: type[ValueError],
+    desired_error: type[ValueError],
+    operation_error: type[ValueError],
+    label: str,
+) -> tuple[LegacyInventoryFacts[LegacyLocalBindingEvidence], str]:
+    """Check exact builtin Desired and management evidence before the first fence."""
+    receipt_id = snapshot.receipt_id
+    evidence = owner.snapshot(receipt_id)
+    shape_error = review_error(f"{label} old snapshot is not builtin-only")
+    if evidence is None or evidence.snapshot != snapshot:
+        raise shape_error
+    has_operations = classify_legacy_builtin_snapshot(
+        partial(owner.list_domain_members, receipt_id),
+        expected,
+        shape_error=shape_error,
+        operation_error=operation_error,
+        label=label,
+    )
+    read = partial(owner.read_regular_member, receipt_id)
+    raw = read(domain="desired_state", member_name=_DESIRED_JOURNAL)
+    if raw is None:
+        raise review_error(f"{label} old Desired State is missing")
+    desired, digest, transitions = decode_legacy_desired_evidence(
+        raw,
+        path=desired_path,
+        product_id=product_id,
+        scope_id=scope_id,
+        maximum_bytes=LEGACY_DESIRED_CAPTURE_MAX_BYTES,
+        error_type=desired_error,
+        label=f"{label} legacy",
+    )
+    if has_operations:
+        require_empty_lock_markers(
+            read,
+            SERVICE_LOCK_MARKERS,
+            error_type=review_error,
+            message=f"{label} old management lock changed",
+        )
+        read_settled_management_history(
+            read,
+            paths=management_paths,
+            instance_members=(),
+            desired_snapshot=desired,
+            desired_transitions=transitions,
+            error_type=review_error,
+            missing_messages=(
+                f"{label} old management operations are missing",
+                f"{label} old retirement journals are missing",
+                f"{label} old Instance runtime evidence is missing",
+            ),
+            operation_error=operation_error,
+            operation_label=f"{label} old",
+            instance_error=review_error,
+        )
+    if not isinstance(scope_id, str) or not scope_id.startswith("workspace:"):
+        raise ValueError(f"{label} legacy workspace scope is invalid")
+    return classify_legacy_installations(
+        (),
+        desired,
+        product_id=product_id,
+        scope_id=scope_id,
+        builtin_ids=builtin_ids,
+        error_type=inventory_error,
+        label=f"{label} legacy",
+    ), digest
 
 
 def read_legacy_installation_inventory(

@@ -6,6 +6,7 @@ import json as json
 import re
 from dataclasses import dataclass, field, fields
 from hashlib import sha256
+from typing import TYPE_CHECKING
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_local_review import (
@@ -60,6 +61,11 @@ from .legacy_snapshot_member import (
     read_coding_first_b_snapshot_member as read_coding_first_b_snapshot_member,
 )
 from .source_snapshot import _PROJECTION_NAME
+
+if TYPE_CHECKING:
+    from .legacy_builtin_review import CodingLegacyBuiltinOnlyReviewV1
+    from .legacy_removed_review import CodingLegacyRemovedReviewV1
+
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
@@ -402,6 +408,20 @@ def _review_builtin_intent(
         tuple(CodingLegacyBuiltinIntentV1(*item) for item in inventory.builtin_intent),
         tuple(item for item in inventory.removed_plugin_ids if item in _BUILTINS),
     )
+
+
+def _reviewed_disabled_ids(
+    review: CodingLegacyBuiltinOnlyReviewV1
+    | CodingLegacyLocalAdoptionReviewV1
+    | CodingLegacyRemovedReviewV1,
+) -> set[str]:
+    disabled = {item.plugin_id for item in review.disabled_plugins}
+    disabled.update(
+        item.plugin_id
+        for item in review.builtin_intent
+        if item.desired_state == "installed_disabled"
+    )
+    return disabled
 
 
 __all__ = [

@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_management_evidence import (
     LEGACY_MANAGEMENT_CAPTURE_MAX_BYTES,
     LegacyManagementCapturePaths,
-    read_settled_management_history,
 )
 from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeInventorySnapshotV1,
@@ -17,7 +14,6 @@ from loushang.harness.plugin_management.instance_runtime import (
 
 from .legacy_desired_evidence import CodingLegacyDesiredEvidenceV1
 from .legacy_operation_evidence import (
-    CodingLegacyOperationEvidenceError,
     CodingLegacyRetirementCaptureV1,
 )
 
@@ -36,33 +32,6 @@ def _management_capture_paths(
         lifecycle.retirement_intents,
         lifecycle.retirement_sets,
         lifecycle.instance_runtime,
-    )
-
-
-def _read_management_history(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    instance_members: tuple[str, ...],
-    desired: CodingLegacyDesiredEvidenceV1,
-    read_member: Callable[..., bytes | None],
-    *,
-    error_type: type[ValueError],
-    missing_messages: tuple[str, str, str],
-    operation_maximum_bytes: int | None = LEGACY_MANAGEMENT_CAPTURE_MAX_BYTES,
-    retain_operation_digest: bool = False,
-) -> str | None:
-    return read_settled_management_history(
-        read_member,
-        paths=_management_capture_paths(lifecycle),
-        instance_members=instance_members,
-        desired_snapshot=desired.snapshot,
-        desired_transitions=desired.transitions,
-        error_type=error_type,
-        missing_messages=missing_messages,
-        operation_error=CodingLegacyOperationEvidenceError,
-        operation_label="Coding old",
-        instance_error=CodingLegacyInstanceEvidenceError,
-        operation_maximum_bytes=operation_maximum_bytes,
-        retain_operation_digest=retain_operation_digest,
     )
 
 

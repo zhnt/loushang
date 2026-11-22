@@ -6,7 +6,7 @@ import os
 import stat
 import sys
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,14 +33,20 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackagePosixEpochCutoverResultV1,
+    PackageProductPreBSnapshotOwner,
+    PackageProductPreBSnapshotSharedMemberV1,
+    prepare_legacy_product_cutover_root,
     read_posix_product_pre_b_snapshot,
+    reopen_posix_product_cutover,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
+    PackageProductWindowsPreBSnapshotOwner,
     PackageWindowsEpochCutoverResultV1,
     read_windows_product_pre_b_snapshot,
+    reopen_windows_product_cutover,
 )
 
 _FencedRuntime = (
@@ -135,6 +141,74 @@ class _LegacyFirstSnapshot:
             entry_count=evidence.snapshot.entry_count,
             byte_count=evidence.snapshot.byte_count,
         )
+
+
+def require_legacy_snapshot_members(
+    list_members: Callable[..., tuple[str, ...] | None],
+    expected: Mapping[str, tuple[str, ...]],
+    *,
+    error: Exception,
+) -> None:
+    """Check observed membership in order, without treating absence as empty."""
+    if any(list_members(domain=domain) != names for domain, names in expected.items()):
+        raise error
+
+
+def prepare_legacy_product_cutover_roots(
+    roots: Iterable[tuple[Path, Path]], *, label: str
+) -> None:
+    """Prepare declared roots in order through the native private owner."""
+    windows = os.name == "nt"
+    for root, private_base in roots:
+        prepare_legacy_product_cutover_root(
+            root, private_base=private_base, windows=windows, label=label
+        )
+
+
+def bind_legacy_pre_b_snapshot_owner(
+    snapshot_root: Path,
+    *,
+    store_id: str,
+    domain_roots: Mapping[str, Path],
+    domain_members: Mapping[str, tuple[str, ...] | None],
+    legacy_root_pointer_name: str,
+    shared_members: tuple[PackageProductPreBSnapshotSharedMemberV1, ...],
+) -> PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner:
+    owner_type = (
+        PackageProductWindowsPreBSnapshotOwner
+        if os.name == "nt"
+        else PackageProductPreBSnapshotOwner
+    )
+    return owner_type(
+        snapshot_root,
+        store_id=store_id,
+        domain_roots=domain_roots,
+        domain_members=domain_members,
+        legacy_root_pointer_name=legacy_root_pointer_name,
+        shared_members=shared_members,
+    )
+
+
+def reopen_legacy_product_cutover(
+    *,
+    authority_root: Path,
+    control_root: Path,
+    store_id: str,
+    epochs_root_name: str,
+    read_only: bool,
+) -> PackagePosixEpochCutoverResultV1:
+    reopen = (
+        reopen_windows_product_cutover
+        if os.name == "nt"
+        else reopen_posix_product_cutover
+    )
+    return reopen(
+        authority_root=authority_root,
+        control_root=control_root,
+        store_id=store_id,
+        epochs_root_name=epochs_root_name,
+        read_only=read_only,
+    )
 
 
 class _LegacyStateRoots(Protocol):

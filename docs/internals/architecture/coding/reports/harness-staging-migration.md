@@ -552,6 +552,56 @@ The batch passed 41 Linux behavior cases and all 63 existing architecture
 cases. The behavior cases include reopening an accepted Prompt after the
 original Source has disappeared and the exact install and enable guards.
 
+### Reviewed Adoption, First-Fence Receipts And Admission
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `legacy_source_consumption` | Formal Package Product joins frozen settings ordering and digests to approved sources and owns durable consume/replay. Coding matches its historic settings keys once and supplies its scope policy. |
+| `legacy_adoption` | Formal Package Product verifies exact prior source bindings, installs the approved Wheel and replays builtin removals. Coding sequences operator-selected local adoption and Resource enablement. |
+| `legacy_adoption_observation` | The formal source binding comparison and existing read-only Desired and handoff owner prove settlement. Coding supplies the selected Resource, approvals, paths and historical operation IDs. |
+| `legacy_builtin_adoption` | Formal Package Product replays reviewed tombstones and bootstrap. Coding retains builtin selection and the explicit platform candidate check. |
+| `legacy_removed_adoption` | The shared tombstone replay and bootstrap owner execute the approved removal set. Coding chooses its sorted removals and preserves existing operation IDs. |
+| `reviewed_plugin_adoption` | The replay loop lives in formal bootstrap. The unified Product interpretation of reviewed disable choices lives with the Coding review records. |
+| `first_snapshot_acceptance` | The existing formal first-acceptance journal checks the review and Store, writes the receipt and reopens it through the original native read path. Coding supplies the old codecs and explicit approval. |
+| `legacy_builtin_review` | Formal Package Product checks exact old membership, frozen Desired and settled management history. Coding supplies builtin eligibility and preserves its review record. |
+| `legacy_disabled_review` | The shared snapshot member check proves old state is absent. Coding interprets scoped disable settings and preserves its review format. |
+| `legacy_members` | Resources inventories actual member names once and places them in the declared domains. Coding supplies its deployed domain mapping. |
+| `legacy_snapshot_scope` | Formal Package Product prepares ordered native roots, binds the native snapshot owner and reopens the durable fence. Coding supplies storage geometry, scoped settings custody and the freshness and admission decisions. |
+| `legacy_data_admission` | Formal Package Product verifies old binding and Desired state, retired and removed histories, exact live Wheel recapture before fencing and frozen sources after fencing. Coding selects the supported Resource, accepted source set and refusal codes. |
+
+This batch retires 12 more staging files. Against the original main
+baseline the task has 68 staged Python files and 12,707 lines,
+down 28 files and 4,518 lines. Coding Product adds 2,030 lines and formal
+Harness adds 2,109. Hosting and other production code have no changes and
+production Python decreases by 379 lines. The source inventory finds 53
+staging files with absolute imports from another Coding component.
+
+The contained validation worktree passed 21 cases covering frozen admission,
+multi-source refusal, mixed active and removed replay and the Harness import
+direction. It passed 3 settings consumption and replay cases and all 5 CLI
+reruns of cases first exercised from outside the editable source root.
+The preceding checkpoints passed 47 adoption and architecture cases,
+90 review, receipt and architecture cases, and 105 cutover and settings
+custody cases. Native Windows verification remains pending.
+
+### Remaining Package Product Staging After Legacy
+
+| Staged module | Lines | Current boundary to resolve |
+| --- | ---: | --- |
+| `application_runtime` | 725 | Product state and runtime opening, workspace selection and resume reconciliation. The formal runtime owners already execute session factories. |
+| `startup` | 303 | Fresh cutover selection, existing fence verification and builtin bootstrap retry. Keep Product eligibility and reuse the formal fence and bootstrap owners. |
+| `management` | 286 | Application and read scopes, source inspection, Desired handoff and repair dispatch. Preserve the existing read/repair permission split. |
+| `resource_preview` | 220 | Read-only resource projection over the selected manifest and candidate sources. Keep Coding resource admission. |
+| `preview` | 197 | Fenced preview owner, exact Worker candidate evidence and private-directory observation. |
+| `worker_source_record` | 165 | Worker source validation and historical record codec. |
+| `package_change` | 133 | Package command execution and failed-change observation. Keep the Coding CLI presentation and approval decisions. |
+| `dependency_source_record` | 91 | Dependency Wheel identity and historical binding records. |
+| `source_admission` | 89 | Inert and Worker source capture past the Product admission policy. |
+| `data_source_record` | 73 | Data Wheel binding checks and record construction. |
+| `repair` | 65 | Product repair command and presentation over the existing authority. |
+| `builtin_sources` | 48 | Exact built-in Wheel source access and Product selection. |
+| `__init__` | 1 | Package marker, removable when the staged owner files exit. |
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

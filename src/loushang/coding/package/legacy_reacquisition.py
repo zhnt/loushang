@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_inventory import (
-    reacquire_legacy_bound_wheel,
     reacquire_legacy_inventory_source,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -70,20 +69,6 @@ def reacquire_coding_legacy_installed_local_source(
     inventory = _project_inventory_evidence(evidence)
     return CodingLegacyReacquiredInstallationV1(
         inventory, inventory.inventory.active_local[position], wheel
-    )
-
-
-def _reacquire_bound_wheel(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    installation: CodingLegacyLocalInstallationV1,
-    *,
-    staging_prefix: str,
-) -> CodingLegacyLocalWheelCandidateV1:
-    return reacquire_legacy_bound_wheel(
-        installation.binding,
-        legacy_package_root=lifecycle.package_root,
-        staging_prefix=staging_prefix,
-        result_factory=_new_wheel_candidate,
     )
 
 
