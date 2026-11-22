@@ -72,6 +72,9 @@ from loushang.harness.resources.packages.product_contract import (
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    _LegacyLocalWheelFields,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
 )
@@ -82,6 +85,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
+from ._legacy_inventory import _BindingHead
 from ._plugin_bootstrap import (
     _PluginBootstrapPolicy,
     _product_plugin_runtime,
@@ -455,12 +459,66 @@ class _AcceptedReview(Protocol):
     @property
     def configured_plugin_source_scope(self) -> str | None: ...
 
+    @property
+    def desired_state(self) -> str: ...
+
+    @property
+    def legacy_binding_digest(self) -> str: ...
+
+    @property
+    def source_content_digest(self) -> str: ...
+
+    @property
+    def manifest_digest(self) -> str: ...
+
+    @property
+    def dependency_lock_digest(self) -> str: ...
+
+    @property
+    def wheel_filename(self) -> str: ...
+
+    @property
+    def wheel_artifact_digest(self) -> str: ...
+
 
 class _AcceptedSource(Protocol):
     @property
     def acceptance_id(self) -> str: ...
     @property
     def review(self) -> _AcceptedReview: ...
+
+    @property
+    def resource_kind(self) -> str: ...
+
+
+def verify_accepted_legacy_wheel(
+    accepted: _AcceptedSource,
+    binding: _BindingHead,
+    wheel: _LegacyLocalWheelFields,
+    *,
+    desired_state: str,
+    inspected_kind: str,
+    error_type: type[Exception],
+) -> None:
+    """Prove that the live artifact still matches the approved selection."""
+    review = accepted.review
+    if (
+        inspected_kind != accepted.resource_kind
+        or desired_state != review.desired_state
+        or binding.plugin_id != review.plugin_id
+        or binding.source_identity != review.legacy_source_identity
+        or binding.binding_digest != review.legacy_binding_digest
+        or binding.content_digest != review.source_content_digest
+        or binding.manifest_digest != review.manifest_digest
+        or binding.dependency_lock.digest != review.dependency_lock_digest
+        or wheel.plugin_id != review.plugin_id
+        or wheel.original_source_identity != review.legacy_source_identity
+        or wheel.source_content_digest != review.source_content_digest
+        or wheel.manifest_digest != review.manifest_digest
+        or wheel.filename != review.wheel_filename
+        or wheel.artifact_digest != review.wheel_artifact_digest
+    ):
+        raise error_type("Legacy local Source differs from accepted review")
 
 
 @dataclass(frozen=True, slots=True)
@@ -752,6 +810,31 @@ class _SourceConsumptionProtocol:
                     yield target
         finally:
             os.close(descriptor)
+
+
+def resolve_legacy_accepted_source(
+    product: _ProductOwner,
+    *,
+    plugin_id: str,
+    source_trust_class: str,
+    artifact_digest: str,
+    wheel_filename: str,
+    error_type: type[Exception],
+) -> PackageProductLocalWheelBindingV1:
+    """Resolve one exact approved policy binding for install or enable."""
+    sources = tuple(
+        binding
+        for binding in product.policy.bindings
+        if binding.plugin_id == plugin_id
+        and binding.source_trust_class == source_trust_class
+        and binding.artifact_digest == artifact_digest
+        and Path(binding.source_identity).name == wheel_filename
+    )
+    if len(sources) != 1:
+        raise error_type(
+            "Legacy local Installation has no exact Product Source binding"
+        )
+    return sources[0]
 
 
 @dataclass(frozen=True)

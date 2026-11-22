@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from loushang.coding.harness.package_product.epoch_identity import matches_epoch_layout
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_runtime import matches_epoch_layout
 from loushang.harness.package_product._private_data_custody import (
     windows_private_data_read_fence,
 )
@@ -101,7 +101,8 @@ class CodingWindowsArchPrivateDataReadPreview:
     ) -> CodingArchPrivateDataTargetSnapshotV1:
         root = coding_arch_installation_private_data_root(self.layout, key)
         state_root = (
-            resolve_coding_package_epoch_layout(self.layout).control_root / "product-state"
+            resolve_coding_package_epoch_layout(self.layout).control_root
+            / "product-state"
         )
         with self._offline():
             return read_windows_private_target(
@@ -115,10 +116,14 @@ class CodingWindowsArchPrivateDataReadPreview:
             )
 
     def _offline(self) -> AbstractContextManager[None]:
-        return windows_private_data_read_fence(self.product, label="Windows Coding Arch")
+        return windows_private_data_read_fence(
+            self.product, label="Windows Coding Arch"
+        )
 
 
-def _absent_windows_target_snapshot(root: Path) -> CodingArchPrivateDataTargetSnapshotV1:
+def _absent_windows_target_snapshot(
+    root: Path,
+) -> CodingArchPrivateDataTargetSnapshotV1:
     return CodingArchPrivateDataTargetSnapshotV1(
         root_path_digest=sha256(os.fsencode(str(root))).hexdigest(),
         root_identity=None,

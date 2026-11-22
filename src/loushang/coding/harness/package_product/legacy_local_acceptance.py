@@ -9,11 +9,11 @@ from __future__ import annotations
 from typing import Literal
 
 from loushang.coding.package import legacy_local_acceptance as _binding
+from loushang.harness.package_product._legacy_runtime import matches_epoch_layout
 from loushang.harness.resources.packages.product_legacy_source_wheel import (
     legacy_source_wheel_prefix,
 )
 
-from .epoch_identity import matches_epoch_layout
 from .legacy_local_review import observe_frozen_local_source
 
 _RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}

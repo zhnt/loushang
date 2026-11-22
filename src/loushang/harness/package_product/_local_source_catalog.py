@@ -807,6 +807,31 @@ class _LegacyLocalSourceCatalog(
     _load_policy: JournalLoadPolicy
     _read_errors: tuple[type[BaseException], ...] = ()
 
+    def publish_accepted_candidate(
+        self,
+        candidate: LegacyCandidateT,
+        *,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+        legacy_source_identity: str,
+        legacy_binding_digest: str,
+        dependency_lock_digest: str,
+        approval_id: str,
+        resource_kind: Literal["skill", "prompt", "theme"],
+    ) -> LegacyRecordT:
+        """Publish inert bytes and settle the authorized catalog binding."""
+        self.publish_candidate(candidate, epoch_runtime=epoch_runtime)
+        committed = self.append(
+            candidate,
+            legacy_source_identity=legacy_source_identity,
+            legacy_binding_digest=legacy_binding_digest,
+            dependency_lock_digest=dependency_lock_digest,
+            approval_id=approval_id,
+            resource_kind=resource_kind,
+        )
+        self._require_accepted_binding(committed)
+        epoch_runtime.assert_current()
+        return committed
+
     def publish_candidate(
         self,
         candidate: LegacyCandidateT,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
@@ -10,6 +11,7 @@ from loushang.harness.package_product._legacy_binding_evidence import (
     LegacyLocalBindingEvidence,
 )
 from loushang.harness.package_product._legacy_inventory import (
+    LegacyInventoryEvidence,
     LegacyInventoryFacts,
     classify_legacy_installations,
     prove_removed_legacy_bindings,
@@ -125,13 +127,23 @@ def read_coding_legacy_installation_inventory(
     epoch_runtime: CodingFencedEpochRuntime,
 ) -> CodingLegacyInstallationInventoryEvidenceV1:
     """Join authenticated old lock and desired state under the current B fence."""
+    return _project_inventory_evidence(
+        _legacy_inventory_query(lifecycle, epoch_runtime)()
+    )
+
+
+def _legacy_inventory_query(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    epoch_runtime: CodingFencedEpochRuntime,
+) -> partial[LegacyInventoryEvidence]:
 
     if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
     if not isinstance(epoch_runtime, CodingFencedEpochRuntime):
         raise TypeError("Fenced Product epoch owner is required")
     epoch_runtime.assert_current()
-    evidence = read_legacy_installation_inventory(
+    return partial(
+        read_legacy_installation_inventory,
         _snapshot_reader(lifecycle, epoch_runtime),
         desired_path=lifecycle.desired_state,
         management_paths=_management_capture_paths(lifecycle),
@@ -145,6 +157,11 @@ def read_coding_legacy_installation_inventory(
         instance_error=CodingLegacyInstanceEvidenceError,
         label="Coding",
     )
+
+
+def _project_inventory_evidence(
+    evidence: LegacyInventoryEvidence,
+) -> CodingLegacyInstallationInventoryEvidenceV1:
     return CodingLegacyInstallationInventoryEvidenceV1(
         first_fence_id=evidence.first_fence_id,
         snapshot_receipt_id=evidence.snapshot_receipt_id,

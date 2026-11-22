@@ -11,7 +11,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.package_product.epoch_identity import matches_epoch_layout
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
 )
@@ -21,6 +20,7 @@ from loushang.coding.plugin_manager.lifecycle import (
 from loushang.harness.package_product._backup_topology import (
     read_posix_private_backup_retention,
 )
+from loushang.harness.package_product._legacy_runtime import matches_epoch_layout
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -107,7 +107,9 @@ class CodingArchPrivateDataBackupOwner:
         with preview._offline():
             state = self.product.desired_state.snapshot().installation(key)
             if state.latest_instance_revision_ref is None:
-                raise ValueError("Coding Arch backup Installation has no Product history")
+                raise ValueError(
+                    "Coding Arch backup Installation has no Product history"
+                )
             source = _capture_target_snapshot(
                 source_root, private_base=self.layout.private_data_base
             )

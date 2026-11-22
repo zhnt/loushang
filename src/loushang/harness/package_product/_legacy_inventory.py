@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Set
+from collections.abc import Callable, Set
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Generic, Literal, NamedTuple, Protocol, TypeVar
 
 from loushang.harness.package_product._legacy_binding_evidence import (
@@ -29,6 +30,13 @@ from loushang.harness.plugin_management.records import PluginPackageRevisionRefV
 from loushang.harness.plugin_management.retirement import (
     inspect_removed_installation_epoch,
 )
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
+)
+from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    _LegacyWheelValues,
+    _reacquire_legacy_local_plugin_wheel,
+)
 from loushang.harness.resources.plugins.dependencies import PluginDependencyClosureLock
 
 _InstalledState = Literal["installed_disabled", "installed_enabled"]
@@ -46,11 +54,18 @@ class _BindingHead(Protocol):
     def lockfile_digest(self) -> str: ...
     @property
     def content_digest(self) -> str: ...
+
+    @property
+    def manifest_digest(self) -> str: ...
+
+    @property
+    def binding_digest(self) -> str: ...
     @property
     def dependency_lock(self) -> PluginDependencyClosureLock: ...
 
 
 _BindingT = TypeVar("_BindingT", bound=_BindingHead)
+_WheelT = TypeVar("_WheelT")
 
 
 class LegacyInventoryFacts(NamedTuple, Generic[_BindingT]):
@@ -210,6 +225,63 @@ def _matches_binding(
         and package.package_content_digest == binding.content_digest
         and package.dependency_lock_digest == binding.dependency_lock.digest
     )
+
+
+def reacquire_legacy_bound_wheel(
+    binding: _BindingHead,
+    *,
+    legacy_package_root: Path,
+    staging_prefix: str,
+    result_factory: Callable[[_LegacyWheelValues], _WheelT],
+) -> _WheelT:
+    """Use disposable staging while the original Source is recaptured."""
+    with TemporaryDirectory(prefix=staging_prefix) as staging:
+        return _reacquire_legacy_local_plugin_wheel(
+            Path(binding.source_identity.removeprefix("local:")),
+            legacy_package_root=legacy_package_root,
+            staging_parent=Path(staging),
+            plugin_id=binding.plugin_id,
+            expected_source_identity=binding.source_identity,
+            expected_content_digest=binding.content_digest,
+            expected_manifest_digest=binding.manifest_digest,
+            expected_dependency_lock=binding.dependency_lock,
+            result_factory=result_factory,
+        )
+
+
+def reacquire_legacy_inventory_source(
+    read_inventory: Callable[[], LegacyInventoryEvidence],
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    *,
+    legacy_package_root: Path,
+    plugin_id: str,
+    staging_prefix: str,
+    error_type: type[ValueError],
+    label: str,
+    result_factory: Callable[[_LegacyWheelValues], _WheelT],
+) -> tuple[LegacyInventoryEvidence, int, _WheelT]:
+    """Rebuild a live Source against the same inventory before and after capture."""
+    inventory = read_inventory()
+    for position, (binding, _, _) in enumerate(inventory.inventory.active_local):
+        if binding.plugin_id == plugin_id:
+            break
+    else:
+        raise error_type(f"{label} legacy Plugin is not an installed local candidate")
+    if not binding.source_identity.startswith("local:/"):
+        raise error_type(f"{label} legacy local Source changed")
+    wheel = reacquire_legacy_bound_wheel(
+        binding,
+        legacy_package_root=legacy_package_root,
+        staging_prefix=staging_prefix,
+        result_factory=result_factory,
+    )
+    epoch_runtime.assert_current()
+    if read_inventory() != inventory:
+        raise error_type(
+            f"{label} legacy Installation snapshot changed during Source reacquisition"
+        )
+    epoch_runtime.assert_current()
+    return inventory, position, wheel
 
 
 def classify_legacy_installations(

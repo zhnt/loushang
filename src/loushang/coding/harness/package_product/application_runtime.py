@@ -11,8 +11,8 @@ from contextlib import contextmanager
 from typing import cast
 
 from loushang.coding.package import product_runtime as _binding
+from loushang.harness.package_product._legacy_runtime import matches_epoch_layout
 
-from .epoch_identity import matches_epoch_layout
 from .startup import retry_fresh_bootstrap
 
 

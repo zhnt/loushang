@@ -501,6 +501,35 @@ the CLI. All 14 existing PLC9 baseline and acyclic dependency checks passed.
 The formal removal proof loaded with Coding imports forbidden. No native
 Windows cases ran.
 
+### Approved Local Source Publication And Installation
+
+| Retired staged module | Current disposition |
+| --- | --- |
+| `epoch_identity` | Formal Package Product matches the store and control root to the established epoch layout. Ordinary startup, acceptance, application open and private-data callers share this check. |
+| `legacy_local_wheel` | Resources owns input validation, bounded original Source capture and Wheel construction. Coding constructs its nominal candidate inside the existing custody scope. |
+| `legacy_reacquisition` | Formal Package Product selects the exact first-fence Installation, holds disposable staging for Resources, rereads the same inventory and verifies the runtime. The pre-fence data admission also uses its bound-Wheel capture. |
+| `legacy_binding` | Formal Package Product compares the approved identity and exact Wheel against the reacquired evidence. Its existing Source catalog owns publication, journal append and recheck. Coding opens the accepted receipt and supplies kind and trust policy. |
+| `legacy_binding_records` | The existing Coding record and catalog keep the nominal codec, compatibility versions and authorization. Creation reuses the same wire-field mapping as decoding. |
+| `legacy_installation` | The existing formal Installation owner executes install and enable. It resolves the same unique approved binding for both. Coding supplies authority, operation IDs and public receipts. |
+
+The catalog retains its original publication and journal lock order. Installed
+state and enablement replay continue through the formal Desired owner and its
+existing transition checks. The review and acceptance policy and its remaining
+frozen-evidence coordination stay within the current Goal.
+
+The batch removes 656 staging lines and adds 313 Coding Product and 207 Harness
+production lines. Hosting and other production code have no changes. The
+system decreases by 136 production Python lines for this batch and 112
+cumulatively. Staging now holds 82 files and 15,042 lines, down 14 files and
+2,183 lines from the baseline. Tests and scripts have no source changes in
+this batch.
+
+The final source candidate passed 69 Linux cases covering frozen inventory,
+reviewed Source binding, install and enable replay, Wheel custody failures
+and Harness dependency direction. Five formal modules loaded with Coding
+imports forbidden. The task worktree sources match that candidate byte for
+byte. Native Windows coverage for the epoch identity callers is pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

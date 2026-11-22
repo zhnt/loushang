@@ -7,8 +7,7 @@ explicit intermediate Code dependencies; no parallel state or effect owner.
 from __future__ import annotations
 
 from loushang.coding.package import product_runtime as _binding
-
-from .epoch_identity import matches_epoch_layout
+from loushang.harness.package_product._legacy_runtime import matches_epoch_layout
 
 
 def legacy_state_requires_migration(

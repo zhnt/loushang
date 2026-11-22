@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path as Path
-from tempfile import TemporaryDirectory as TemporaryDirectory
 
-from loushang.coding.harness.package_product import legacy_reacquisition as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_inventory import (
+    reacquire_legacy_bound_wheel,
+    reacquire_legacy_inventory_source,
+)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -15,6 +16,8 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from .legacy_installation_inventory import (
     CodingLegacyInstallationInventoryEvidenceV1,
     CodingLegacyLocalInstallationV1,
+    _legacy_inventory_query,
+    _project_inventory_evidence,
 )
 from .legacy_installation_inventory import (
     CodingLegacyInventoryError as CodingLegacyInventoryError,
@@ -24,17 +27,11 @@ from .legacy_installation_inventory import (
 )
 from .legacy_local_wheel import (
     CodingLegacyLocalWheelCandidateV1,
+    _new_wheel_candidate,
 )
 from .legacy_local_wheel import (
     reacquire_coding_legacy_local_plugin_wheel as reacquire_coding_legacy_local_plugin_wheel,
 )
-
-_LEGACY_ADOPTION_VALUES = {
-    "value_001": "Coding legacy Plugin identity is required",
-    "value_002": "Coding legacy Plugin is not an installed local candidate",
-    "value_003": "Coding legacy local Source changed",
-    "value_004": "Coding legacy Installation snapshot changed during Source reacquisition",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +55,35 @@ def reacquire_coding_legacy_installed_local_source(
     the Wheel. An operator approval and Product transaction remain separate.
     """
 
-    return _programs.reacquire_installed_source(
-        lifecycle, epoch_runtime, plugin_id=plugin_id
+    if not isinstance(plugin_id, str) or not plugin_id:
+        raise ValueError("Coding legacy Plugin identity is required")
+    evidence, position, wheel = reacquire_legacy_inventory_source(
+        _legacy_inventory_query(lifecycle, epoch_runtime),
+        epoch_runtime,
+        legacy_package_root=lifecycle.package_root,
+        plugin_id=plugin_id,
+        staging_prefix="loushang-legacy-review-",
+        error_type=CodingLegacyInventoryError,
+        label="Coding",
+        result_factory=_new_wheel_candidate,
+    )
+    inventory = _project_inventory_evidence(evidence)
+    return CodingLegacyReacquiredInstallationV1(
+        inventory, inventory.inventory.active_local[position], wheel
+    )
+
+
+def _reacquire_bound_wheel(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    installation: CodingLegacyLocalInstallationV1,
+    *,
+    staging_prefix: str,
+) -> CodingLegacyLocalWheelCandidateV1:
+    return reacquire_legacy_bound_wheel(
+        installation.binding,
+        legacy_package_root=lifecycle.package_root,
+        staging_prefix=staging_prefix,
+        result_factory=_new_wheel_candidate,
     )
 
 

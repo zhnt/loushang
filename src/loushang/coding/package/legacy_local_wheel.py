@@ -2,27 +2,15 @@
 
 from __future__ import annotations
 
-import os as os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.package_product import legacy_local_wheel as _programs
 from loushang.harness.resources.packages.product_legacy_source_wheel import (
     _LegacyLocalWheelFields,
+    _LegacyWheelValues,
+    _reacquire_legacy_local_plugin_wheel,
 )
 from loushang.harness.resources.plugins.dependencies import PluginDependencyClosureLock
-
-_SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
-_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-
-
-_LEGACY_ADOPTION_VALUES = {
-    "value_001": "POSIX local Plugin Source reacquisition is required",
-    "value_002": "Legacy Plugin identity is invalid",
-    "value_003": "Legacy Plugin revision evidence is invalid",
-    "value_004": "Legacy Plugin dependency closure is unsupported",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +26,12 @@ class CodingLegacyLocalWheelCandidateV1(_LegacyLocalWheelFields):
     filename: str
     artifact_digest: str
     wheel_bytes: bytes
+
+
+def _new_wheel_candidate(
+    values: _LegacyWheelValues,
+) -> CodingLegacyLocalWheelCandidateV1:
+    return CodingLegacyLocalWheelCandidateV1(*values)
 
 
 def reacquire_coding_legacy_local_plugin_wheel(
@@ -57,7 +51,7 @@ def reacquire_coding_legacy_local_plugin_wheel(
     not authorize the resulting Wheel or commit a Product transaction.
     """
 
-    return _programs.reacquire_local_wheel(
+    return _reacquire_legacy_local_plugin_wheel(
         source_root,
         legacy_package_root=legacy_package_root,
         staging_parent=staging_parent,
@@ -66,6 +60,7 @@ def reacquire_coding_legacy_local_plugin_wheel(
         expected_content_digest=expected_content_digest,
         expected_manifest_digest=expected_manifest_digest,
         expected_dependency_lock=expected_dependency_lock,
+        result_factory=_new_wheel_candidate,
     )
 
 

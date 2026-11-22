@@ -159,6 +159,13 @@ class _LegacyEpoch(Protocol):
     def store_id(self) -> str: ...
 
 
+def matches_epoch_layout(runtime: _FencedRuntime, epoch: _LegacyEpoch) -> bool:
+    return (
+        runtime.registry.store_id == epoch.store_id
+        and runtime.control_root == epoch.control_root
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _LegacyStartupPolicy:
     product_label: str
