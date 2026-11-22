@@ -131,7 +131,6 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
             "loushang.harness.resources._catalog_input_receipt.ResourceCatalogInputReceipt",
         },
     }
-    staged_session = Path("src/loushang/coding/harness/session")
     input_receipt = "loushang.harness.resources._catalog_input_receipt"
     reviewed_catalog_imports[Path("src/loushang/harness/session/bootstrap_construction.py")] = {
         input_receipt,
@@ -141,11 +140,6 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
         input_receipt,
         f"{input_receipt}.ResourceCatalogInputReceipt",
     }
-    for module in ("catalog_adapter.py",):
-        reviewed_catalog_imports[staged_session / module] = {
-            input_receipt,
-            f"{input_receipt}.ResourceCatalogInputReceipt",
-        }
     records = "loushang.harness.resources._catalog_records"
     reviewed_catalog_imports[Path("src/loushang/harness/session/composition_evidence.py")] = {
         records,

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Literal, NoReturn
 
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
@@ -113,11 +114,9 @@ class ProductSelectedResourceInput:
         )
         if self.relative_path != expected_path:
             raise ValueError("Product Resource path changed the admitted locator")
-        root = manifest.root_relative_path.as_posix()
-        captured_path = (
-            self.relative_path if root == "." else f"{root}/{self.relative_path}"
+        body = _captured_store_body(
+            dict(snapshot.files), manifest.root_relative_path.as_posix(), self.relative_path
         )
-        body = dict(snapshot.files).get(captured_path)
         if body is None:
             raise ValueError("Product Resource body is absent from selected Store bytes")
         object.__setattr__(self, "_body", body)
@@ -136,6 +135,63 @@ class ProductSelectedResourceInput:
             "relativePath": self.relative_path,
             "sourceRootOrder": self.source_root_order,
         }
+
+
+
+def _captured_store_body(
+    members: Mapping[str, bytes], root: str, relative_path: str
+) -> bytes | None:
+    captured_path = relative_path if root == "." else f"{root}/{relative_path}"
+    return members.get(captured_path)
+
+
+def capture_selected_resource_bodies(
+    admissions: tuple[OwnerContributionAdmissionRecord, ...],
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+    *,
+    reject: Callable[[Literal["store_provenance", "unsupported_directory", "missing_body"]], Exception],
+) -> Iterator[tuple[OwnerContributionAdmissionRecord, str, bytes]]:
+    """Verify the early composition capture before initial Catalog admission."""
+    by_id = {item.manifest.name: item for item in selected}
+    for admission in admissions:
+        candidate = admission.candidate
+        resource = candidate.contribution
+        selected_root = by_id[admission.plugin_id]
+        snapshot = selected_root.snapshot
+        members = dict(snapshot.files)
+        root = selected_root.manifest.root_relative_path.as_posix()
+        if (
+            not isinstance(resource, ResourceContributionSpec)
+            or candidate.package_content_digest
+            != snapshot.package_revision.package_content_digest
+            or candidate.instance_revision_ref != snapshot.instance_revision_ref
+        ):
+            raise reject("store_provenance")
+        locator = resource.locator
+        if resource.locator_kind == "directory":
+            if resource.resource_kind != "skill":
+                raise reject("unsupported_directory")
+            locator = f"{locator}/SKILL.md"
+        body = _captured_store_body(members, root, locator)
+        if body is None:
+            raise reject("missing_body")
+        yield admission, locator, body
+
+
+def project_selected_resource_inputs(
+    admissions: tuple[OwnerContributionAdmissionRecord, ...],
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+    body_paths: Mapping[str, str],
+) -> tuple[ProductSelectedResourceInput, ...]:
+    by_id = {item.manifest.name: item for item in selected}
+    return tuple(
+        ProductSelectedResourceInput(
+            admission=admission,
+            selected_manifest=by_id[admission.plugin_id],
+            relative_path=body_paths[admission.fingerprint],
+        )
+        for admission in admissions
+    )
 
 
 def product_snapshot_source_policy_fingerprint(

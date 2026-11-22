@@ -14,6 +14,7 @@ from loushang.harness.capabilities.contribution_admission import (
     ResourceContributionSpec,
 )
 from loushang.harness.resource_catalog.product_inputs import (
+    InitialResourceCatalogProductAdapter,
     InitialResourceCatalogProductSelection,
     ProductAdmittedPackageResourceSpec,
     ProductEmbeddedResourceCollectionSpec,
@@ -32,6 +33,65 @@ from loushang.harness.resources.builtin import BuiltInResourcePackage
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
+
+
+def bind_product_catalog_receipt(
+    receipt: ResourceCatalogInputReceipt,
+    *,
+    product_id: str,
+    product_label: str,
+    default_policy_revision: str,
+    product_composition: ProductCompositionCompilation | None,
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None,
+    resolved_admission_now: int,
+    clock: Callable[[], int],
+    include_native_resources: bool,
+    include_package_resources: bool,
+    include_embedded_resources: bool,
+    disabled_skills: Sequence[str],
+    reject: Callable[[Sequence[str]], Exception],
+) -> InitialResourceCatalogProductAdapter:
+    """Join one Product's adopted admissions to the existing loader receipt."""
+    admissions = (
+        tuple(product_composition.resource_admissions)
+        if product_composition is not None
+        else ()
+    )
+    if any(
+        not isinstance(item, OwnerContributionAdmissionRecord) for item in admissions
+    ):
+        raise TypeError(
+            f"{product_label} Product composition Resource admissions are invalid"
+        )
+    product_policy_revision = (
+        product_composition.authority_context.product_policy_revision
+        if product_composition is not None
+        else default_policy_revision
+    )
+    if admissions and (
+        isinstance(resolved_admission_now, bool)
+        or not isinstance(resolved_admission_now, int)
+    ):
+        raise TypeError(
+            f"{product_label} package Resource admissions require an integer time"
+        )
+    return InitialResourceCatalogProductAdapter(
+        _select_loader_catalog_inputs(
+            receipt,
+            product_id=product_id,
+            product_policy_revision=product_policy_revision,
+            product_composition=product_composition,
+            product_snapshot_resources=product_snapshot_resources,
+            admissions=admissions,
+            resolved_admission_now=resolved_admission_now,
+            include_native_resources=include_native_resources,
+            include_package_resources=include_package_resources,
+            include_embedded_resources=include_embedded_resources,
+            disabled_skills=disabled_skills,
+            reject=reject,
+        ),
+        clock=clock,
+    )
 
 
 def _select_loader_catalog_inputs(

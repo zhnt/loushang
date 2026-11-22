@@ -822,6 +822,24 @@ projection, fenced CLI/SDK/RPC, workspace replacement, and the Harness
 dependency graph. Five platform cases are skipped. Eleven scoped sources
 pass mypy. Native Windows remains pending.
 
+### Selected Resources And Initial Catalog Admission
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `resource_composition` | Formal Session extends data selection from verified Store facts. The existing Catalog snapshot owner checks captured provenance and supplies body and admission inputs. Coding retains builtin selection, trusted external owners, precedence and error mapping. |
+| `external_resource_composition` | The external data Product selects trust and declares owner policy. It calls the same formal snapshot input projection and existing contribution compiler as the base Product. |
+| `catalog_adapter` | The existing Catalog input owner performs final receipt admission and creates the adapter. Coding applies receipt ingress, source policy and legacy package selection. |
+
+The batch removes 705 staging lines and adds 391 Coding Product and 194
+formal Harness lines. System production Python decreases by 120 lines for
+the batch and 1,496 against baseline. Staging has 12 files and 1,645 lines.
+Hosting, other production code and scripts have no changes. Catalog source
+assertions track the current owners with 13 fewer test lines.
+
+All 71 existing Linux cases pass for base owners, Catalog, external fenced
+Resources with and without the base Plugin, conflicting resource selection
+and architecture. Six scoped sources pass mypy. Native Windows remains pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

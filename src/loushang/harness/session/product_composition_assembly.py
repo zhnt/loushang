@@ -1772,6 +1772,84 @@ def _prepare_catalog_plugin_plan_seed(
     )
 
 
+def extend_product_data_selection_plan(
+    original: PluginSelectionPlanV2,
+    external: tuple[PackageProductSelectedPluginManifestV1, ...],
+) -> PluginSelectionPlanV2:
+    """Extend a Product plan with verified data declarations and exact Store facts."""
+    return PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id=original.context.product_id,
+            scope_id=original.context.scope_id,
+            policy_revision=original.context.policy_revision,
+            instance_revision_refs=tuple(
+                sorted(
+                    (
+                        *original.context.instance_revision_refs,
+                        *(item.snapshot.instance_revision_ref for item in external),
+                    ),
+                    key=lambda item: item.plugin_id,
+                )
+            ),
+        ),
+        selected_plugin_ids=tuple(
+            sorted(
+                (
+                    *original.selected_plugin_ids,
+                    *(item.manifest.name for item in external),
+                )
+            )
+        ),
+        selected_contributions=tuple(
+            sorted(
+                (
+                    *original.selected_contributions,
+                    *(
+                        PluginContributionRef(
+                            item.manifest.name, reservation.contribution_id
+                        )
+                        for item in external
+                        for reservation, _ in item.verified_data_only_declarations()
+                    ),
+                )
+            )
+        ),
+        source_trust_snapshots=tuple(
+            sorted(
+                (
+                    *original.source_trust_snapshots,
+                    *(
+                        item.source_trust_snapshot
+                        for item in external
+                        if item.source_trust_snapshot is not None
+                    ),
+                ),
+                key=lambda item: item.plugin_id,
+            )
+        ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=tuple(
+                sorted(
+                    (
+                        *original.effective_configuration_set.entries,
+                        *(
+                            PluginEffectiveConfigurationEntry(
+                                plugin_id=item.manifest.name,
+                                contribution_id=reservation.contribution_id,
+                                configuration=reservation.configuration,
+                            )
+                            for item in external
+                            for reservation, _ in item.verified_data_only_declarations()
+                        ),
+                    ),
+                    key=lambda item: (item.plugin_id, item.contribution_id),
+                )
+            )
+        ),
+        allowed_authority_ceiling=original.allowed_authority_ceiling,
+    )
+
+
 def _extend_configured_resource_owner_binding(
     binding: ProductContributionOwnerBinding, *, configured_trust_class: str
 ) -> ProductContributionOwnerBinding:
