@@ -17,32 +17,26 @@ from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker import (
     CapabilityWorkerAuthorityV1,
     CapabilityWorkerBindingV1,
-    HostingManagedWorkerSessionAdapter,
     ManagedWorkerLaunchRequestV1,
     ManagedWorkerSessionLaunchPort,
     ProductWorkerActivationAuthorityPort,
     ProductWorkerActivationPolicyV1,
     ProductWorkerActivationReceiptV1,
     ProductWorkerNativeProfilePort,
-    WorkerBindingError,
-    WorkerHostingActivationV1,
     WorkerSessionOwnerRouter,
     WorkerSupervisor,
 )
 from loushang.harness.worker._native_profile_bridge import (
-    _bind_posix_static_contained_product_worker_profile,
-    _bind_windows_lpac_contained_product_worker_profile,
     _WindowsLpacProductWorkerProfilePlan,
 )
 from loushang.harness.worker._product_attempt_lifecycle import (
+    _bind_selected_worker_components,
     _ProductWorkerAttemptLifecycle,
-    _validate_selected_worker_components,
     _WorkerCleanupPort,
     _WorkerDomainPort,
     _WorkerReadiness,
     _WorkerRecoveryPort,
 )
-from loushang.harness.worker.gated_start import bind_worker_gated_start_release
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
     _fingerprint,
@@ -358,11 +352,32 @@ def bind_coding_product_worker_canary(
         session_discovery=session_discovery,
         validate_product_session=validate_product_session,
     )
-    _validate_selected_worker_components(
+    from loushang.coding.package.product_worker_start_gate import (
+        CodingProductWorkerStartGate,
+        CodingWorkerStartGateError,
+    )
+
+    def require_start_gate(request: ManagedWorkerLaunchRequestV1) -> None:
+        if start_gate is not None and (
+            type(start_gate) is not CodingProductWorkerStartGate
+            or policy.native_profile_id != CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
+            or start_gate.receipt_owner is not authority
+            or start_gate.receipt_fingerprint != receipt.fingerprint
+            or start_gate.attempt_id != request.identity.attempt_id
+            or start_gate.worker_identity_fingerprint != request.identity.fingerprint
+        ):
+            _raise("coding_worker_start_gate_binding_mismatch")
+
+    worker_request, native_profile, coordinator, session_port = _bind_selected_worker_components(
         policy=policy,
         posix_profile_id=CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID,
         windows_profile_id=CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
-        failure=_canary_binding_failure,
+        failure=_canary_native_failure,
+        error_code_prefix="coding_",
+        receipt=receipt,
+        start_gate=start_gate,
+        require_start_gate=require_start_gate,
+        start_gate_error=CodingWorkerStartGateError,
         authority=authority,
         evidence_authority=evidence_authority,
         trusted_evidence_authority_id=trusted_evidence_authority_id,
@@ -386,97 +401,6 @@ def bind_coding_product_worker_canary(
         recovery=recovery,
         host_identity=host_identity,
         boot_identity=boot_identity,
-    )
-    assert worker_request is not None
-    assert authority is not None
-    assert evidence_authority is not None
-    assert trusted_evidence_authority_id is not None
-    assert trusted_evidence_authority_fingerprint is not None
-    assert activation_state_store is not None
-    assert containment_launcher_sha256 is not None
-    assert containment_profile_sha256 is not None
-    from loushang.coding.package.product_worker_start_gate import (
-        CodingProductWorkerStartGate,
-        CodingWorkerStartGateError,
-    )
-
-    if start_gate is not None and (
-        type(start_gate) is not CodingProductWorkerStartGate
-        or policy.native_profile_id != CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
-        or start_gate.receipt_owner is not authority
-        or start_gate.receipt_fingerprint != receipt.fingerprint
-        or start_gate.attempt_id != worker_request.identity.attempt_id
-        or start_gate.worker_identity_fingerprint != worker_request.identity.fingerprint
-    ):
-        _raise("coding_worker_start_gate_binding_mismatch")
-    try:
-        if policy.native_profile_id == CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID:
-            assert containment_launcher_path is not None
-            native_profile = _bind_posix_static_contained_product_worker_profile(
-                receipt=receipt,
-                worker_request=worker_request,
-                native_profile_catalog_revision=policy.native_profile_catalog_revision,
-                launcher_path=containment_launcher_path,
-                launcher_sha256=containment_launcher_sha256,
-                containment_profile_sha256=containment_profile_sha256,
-                start_gate_read_fd=(
-                    None if start_gate is None else start_gate.start_gate_read_fd
-                ),
-            )
-        else:
-            assert windows_lpac_plan is not None
-            assert windows_platform_imports is not None
-            assert native_provisioning_state_store is not None
-            native_profile = _bind_windows_lpac_contained_product_worker_profile(
-                receipt=receipt,
-                worker_request=worker_request,
-                plan=windows_lpac_plan,
-                platform_imports=windows_platform_imports,
-                provisioning_state_store=native_provisioning_state_store,  # type: ignore[arg-type]
-            )
-    except WorkerBindingError as exc:
-        raise CodingProductWorkerCanaryError(
-            "Coding Worker native profile was rejected",
-            code=exc.code,
-        ) from exc
-    except CodingWorkerStartGateError as exc:
-        raise CodingProductWorkerCanaryError(
-            "Coding Worker start gate is unavailable",
-            code=exc.code,
-        ) from exc
-    except (TypeError, ValueError) as exc:
-        raise CodingProductWorkerCanaryError(
-            "Coding Worker native profile configuration was rejected",
-            code="coding_worker_native_profile_configuration_invalid",
-        ) from exc
-    try:
-        coordinator = ProductWorkerActivationCoordinator(
-            authority=authority,
-            evidence_authority=evidence_authority,
-            trusted_evidence_authority_id=trusted_evidence_authority_id,
-            trusted_evidence_authority_fingerprint=(
-                trusted_evidence_authority_fingerprint
-            ),
-            state_store=activation_state_store,
-            restart_budget=restart_budget,
-        )
-    except Exception as exc:
-        raise CodingProductWorkerCanaryError(
-            "Coding Worker activation composition was rejected",
-            code="coding_worker_activation_composition_rejected",
-        ) from exc
-    session_port = WorkerSessionOwnerRouter(
-        current=cast(ManagedWorkerSessionLaunchPort, current_owner),
-        hosting=HostingManagedWorkerSessionAdapter(
-            hosting=hosting,  # type: ignore[arg-type]
-            preparation=native_profile,
-            start_gate=(
-                None
-                if start_gate is None
-                else bind_worker_gated_start_release(start_gate)
-            ),
-        ),
-        activation=WorkerHostingActivationV1(owner="hosting"),
     )
     return CodingProductWorkerCanary(
         policy=policy,
@@ -599,8 +523,8 @@ def _stable_reason(value: object) -> str:
     return f"coding_worker_{value}"
 
 
-def _canary_binding_failure(message: str, reason: str) -> CodingProductWorkerCanaryError:
-    return CodingProductWorkerCanaryError(f"Coding {message}", code=f"coding_{reason}")
+def _canary_native_failure(message: str, code: str) -> CodingProductWorkerCanaryError:
+    return CodingProductWorkerCanaryError(f"Coding {message}", code=code)
 
 
 def _raise(code: str) -> NoReturn:

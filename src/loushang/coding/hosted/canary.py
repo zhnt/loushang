@@ -27,6 +27,13 @@ from loushang.apphost import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
+from loushang.apphost._ownership import (
+    AsyncClose,
+    _ConstructionCloseOwner,
+    _settle_owned_closes,
+    _try_settle_owned_closes,
+)
+from loushang.apphost.integrations.session_product import _BorrowedProfileLease
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted._canary_control import (
     CodingAppHostCanaryControlError,
@@ -48,6 +55,7 @@ from loushang.coding.hosted.product import (
     CodingAppHostProductBindingV1,
     CodingAppHostWorkerAttemptV1,
 )
+from loushang.harness.runtime import await_owned_task
 from loushang.harness.worker import (
     ProductWorkerActivationPolicyV1,
     ProductWorkerActivationReceiptV1,
@@ -419,18 +427,9 @@ class _NativeCanaryAttempt:
         async with self._close_lock:
             if self._closed:
                 return
-            failures: list[BaseException] = []
-            if self._lease is not None:
-                try:
-                    await self._lease.close()
-                except BaseException as error:
-                    failures.append(error)
-            if self._host is not None:
-                try:
-                    await self._host.close()
-                except BaseException as error:
-                    failures.append(error)
-            if failures:
+            if not await _try_settle_owned_closes(
+                *_canary_close_calls(self._lease, self._host)
+            ):
                 self._failure_code = "coding_apphost_canary_cleanup_incomplete"
                 raise CodingAppHostCanaryError(code=self._failure_code) from None
             self._closed = True
@@ -640,28 +639,9 @@ class _CandidateValidator:
         )
 
 
-class _ProfileLease:
-    __slots__ = ("_binding", "_closed")
-
-    def __init__(self, binding: object) -> None:
-        self._binding = binding
-        self._closed = False
-
-    @property
-    def profile_id(self) -> str:
-        return _PROFILE_ID
-
-    @property
-    def profile_binding(self) -> object:
-        return self._binding
-
-    async def close(self) -> None:
-        self._closed = True
-
-
 class _ProfileFactory:
-    async def bind_profile(self, binding: object) -> _ProfileLease:
-        return _ProfileLease(binding)
+    async def bind_profile(self, binding: object) -> _BorrowedProfileLease:
+        return _BorrowedProfileLease(_PROFILE_ID, binding)
 
 
 class _RollbackControl:
@@ -785,10 +765,18 @@ async def _run_native_canary(
             hosting_transitions=tuple(sink.transitions),
         )
     except asyncio.CancelledError:
-        await _join_canary_cleanup(lease, composition)
+        await _settle_owned_closes(
+            *_canary_close_calls(lease, composition),
+            failure=CodingAppHostCanaryError(
+                code="coding_apphost_canary_cleanup_incomplete"
+            ),
+            join_owned=await_owned_task,
+        )
         raise
     except BaseException as error:
-        cleanup_complete = await _settle_canary_cleanup(lease, composition)
+        cleanup_complete = await _try_settle_owned_closes(
+            *_canary_close_calls(lease, composition)
+        )
         attempt = attempts.attempt
         code = (
             "coding_apphost_canary_cleanup_incomplete"
@@ -935,43 +923,16 @@ async def _read_protocol_line(lease: ProcessLease) -> bytes:
     return bytes(output)
 
 
-async def _settle_canary_cleanup(
-    lease: Any | None,
-    composition: CodingAppHostCompositionV1 | None,
-) -> bool:
-    failures: list[BaseException] = []
-    if lease is not None:
-        try:
-            await lease.close()
-        except BaseException as error:
-            failures.append(error)
-    if composition is not None:
-        try:
-            await composition.close()
-        except BaseException as error:
-            failures.append(error)
-    return not failures
+def _canary_close_calls(
+    *owners: _ConstructionCloseOwner | None,
+) -> tuple[AsyncClose, ...]:
+    def close_owned(owner: _ConstructionCloseOwner) -> AsyncClose:
+        async def close() -> None:
+            await owner.close()
 
+        return close
 
-async def _join_canary_cleanup(
-    lease: Any | None,
-    composition: CodingAppHostCompositionV1 | None,
-) -> None:
-    operation = asyncio.create_task(_settle_canary_cleanup(lease, composition))
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not operation.done():
-        try:
-            await asyncio.shield(operation)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                break
-            cancellation = error
-    cleanup_complete = operation.result()
-    if not cleanup_complete:
-        raise CodingAppHostCanaryError(code="coding_apphost_canary_cleanup_incomplete")
-    if cancellation is not None:
-        raise cancellation
+    return tuple(close_owned(owner) for owner in owners if owner is not None)
 
 
 def _control_report(

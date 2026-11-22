@@ -56,6 +56,7 @@ from loushang.apphost.integrations._canonical_transcript_catalog import (
 )
 from loushang.apphost.integrations.session_control import _validate_foreground_binding
 from loushang.apphost.integrations.session_product import (
+    _BorrowedProfileLease,
     _ForegroundProductFactory,
     _LeasedForegroundBindingMethods,
 )
@@ -231,26 +232,6 @@ class CodingForegroundProductFactoryV1(_ForegroundProductFactory[CodingHostedSes
         super().__init__(factory, session_owner=session_owner)
 
 
-class _HostedProfileLease:
-    __slots__ = ("_binding", "_closed", "_profile_id")
-
-    def __init__(self, profile_id: str, binding: CodingHostedSessionBindingV1) -> None:
-        self._profile_id = profile_id
-        self._binding = binding
-        self._closed = False
-
-    @property
-    def profile_id(self) -> str:
-        return self._profile_id
-
-    @property
-    def profile_binding(self) -> object:
-        return self._binding
-
-    async def close(self) -> None:
-        self._closed = True
-
-
 class CodingHostedProfileFactoryV1:
     """Bind the borrowed foreground Session view to one AppHost profile lease."""
 
@@ -274,7 +255,7 @@ class CodingHostedProfileFactoryV1:
 
         if type(binding) is CodingRealHostedSessionV1 and binding.execution_claimed:
             raise RuntimeError("Coding Session already has an execution owner")
-        return _HostedProfileLease(
+        return _BorrowedProfileLease(
             self._profile_id,
             cast(CodingHostedSessionBindingV1, binding),
         )

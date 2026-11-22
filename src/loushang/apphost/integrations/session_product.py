@@ -61,6 +61,28 @@ class _SessionCatalogOwner(Protocol):
     async def close(self) -> None: ...
 
 
+class _BorrowedProfileLease:
+    """Detach a profile view while its runtime retains Session ownership."""
+
+    __slots__ = ("_binding", "_closed", "_profile_id")
+
+    def __init__(self, profile_id: str, binding: object) -> None:
+        self._profile_id = profile_id
+        self._binding = binding
+        self._closed = False
+
+    @property
+    def profile_id(self) -> str:
+        return self._profile_id
+
+    @property
+    def profile_binding(self) -> object:
+        return self._binding
+
+    async def close(self) -> None:
+        self._closed = True
+
+
 class _LeasedForegroundBindingMethods(Generic[SnapshotT, EventT]):
     """Own the profile lease and the exact Session that it was issued for."""
 

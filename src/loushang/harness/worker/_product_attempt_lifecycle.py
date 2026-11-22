@@ -12,9 +12,14 @@ from collections.abc import Callable
 from contextlib import suppress
 from typing import Generic, Literal, NoReturn, Protocol, TypeVar, cast
 
+from loushang.hosting.contracts import ChildSessionHostingPort
+
 from ._native_profile_bridge import (
     ProductWorkerNativeProfilePort,
+    _bind_posix_static_contained_product_worker_profile,
+    _bind_windows_lpac_contained_product_worker_profile,
     _WindowsLpacProductWorkerProfilePlan,
+    _WindowsLpacProvisioningStateStore,
 )
 from .capability_query import (
     CapabilityQueryWorkerAdapter,
@@ -23,8 +28,10 @@ from .capability_query import (
     CapabilityWorkerBindingV1,
     bind_capability_query_worker_adapter,
 )
-from .contracts import ManagedWorkerLaunchRequestV1
-from .owner_selection import WorkerSessionOwnerRouter
+from .contracts import ManagedWorkerLaunchRequestV1, WorkerBindingError
+from .gated_start import _ProductGatePort, bind_worker_gated_start_release
+from .hosting_adapter import HostingManagedWorkerSessionAdapter
+from .owner_selection import WorkerHostingActivationV1, WorkerSessionOwnerRouter
 from .product_activation import (
     ProductWorkerActivationAuthorityPort,
     ProductWorkerActivationCoordinator,
@@ -49,10 +56,9 @@ class _LifecycleStatus(Protocol):
 _StatusT = TypeVar("_StatusT", bound=_LifecycleStatus)
 
 
-class _StartGatePort(Protocol):
+class _StartGatePort(_ProductGatePort, Protocol):
     @property
     def start_gate_read_fd(self) -> int: ...
-    def close(self) -> None: ...
 
 
 class _WorkerDomainPort(Protocol):
@@ -137,12 +143,17 @@ def _require_worker_composition_digest(
         )
 
 
-def _validate_selected_worker_components(
+def _bind_selected_worker_components(
     *,
     policy: ProductWorkerActivationPolicyV1,
     posix_profile_id: str,
     windows_profile_id: str,
     failure: Callable[[str, str], RuntimeError],
+    error_code_prefix: str,
+    receipt: ProductWorkerActivationReceiptV1,
+    start_gate: _StartGatePort | None,
+    require_start_gate: Callable[[ManagedWorkerLaunchRequestV1], None],
+    start_gate_error: type[RuntimeError],
     authority: ProductWorkerActivationAuthorityPort | None,
     evidence_authority: object | None,
     trusted_evidence_authority_id: str | None,
@@ -166,16 +177,24 @@ def _validate_selected_worker_components(
     recovery: _WorkerRecoveryPort | None,
     host_identity: str | None,
     boot_identity: str | None,
-) -> None:
-    """Validate the selected native attempt before binding any profile or authority."""
+) -> tuple[
+    ManagedWorkerLaunchRequestV1,
+    ProductWorkerNativeProfilePort,
+    ProductWorkerActivationCoordinator,
+    WorkerSessionOwnerRouter,
+]:
+    """Validate and bind the native profile, activation authority and exact route."""
+
+    def binding_failure(message: str, reason: str) -> RuntimeError:
+        return failure(message, error_code_prefix + reason)
 
     def reject(reason: str) -> NoReturn:
-        raise failure("Worker canary composition was rejected", reason)
+        raise binding_failure("Worker canary composition was rejected", reason)
 
     if policy.native_profile_id not in (posix_profile_id, windows_profile_id):
         reject("worker_native_profile_unsupported")
-    _require_worker_machine_identity(host_identity, name="host identity", failure=failure)
-    _require_worker_machine_identity(boot_identity, name="boot identity", failure=failure)
+    _require_worker_machine_identity(host_identity, name="host identity", failure=binding_failure)
+    _require_worker_machine_identity(boot_identity, name="boot identity", failure=binding_failure)
     if authority is None or any(
         not callable(getattr(authority, name, None))
         for name in (
@@ -204,12 +223,12 @@ def _validate_selected_worker_components(
     _require_worker_machine_identity(
         trusted_evidence_authority_id,
         name="cleanup evidence authority identity",
-        failure=failure,
+        failure=binding_failure,
     )
     _require_worker_composition_digest(
         trusted_evidence_authority_fingerprint,
         name="cleanup evidence authority fingerprint",
-        failure=failure,
+        failure=binding_failure,
     )
     if activation_state_store is None or any(
         not callable(getattr(activation_state_store, name, None))
@@ -229,12 +248,12 @@ def _validate_selected_worker_components(
     _require_worker_composition_digest(
         containment_launcher_sha256,
         name="containment launcher digest",
-        failure=failure,
+        failure=binding_failure,
     )
     _require_worker_composition_digest(
         containment_profile_sha256,
         name="containment profile digest",
-        failure=failure,
+        failure=binding_failure,
     )
     if policy.native_profile_id == posix_profile_id:
         if (
@@ -302,6 +321,77 @@ def _validate_selected_worker_components(
         or capability_binding.authority.product_policy_revision != policy.product_policy_revision
     ):
         reject("worker_capability_binding_mismatch")
+
+    require_start_gate(request)
+    assert trusted_evidence_authority_id is not None
+    assert trusted_evidence_authority_fingerprint is not None
+    assert containment_launcher_sha256 is not None
+    assert containment_profile_sha256 is not None
+    try:
+        if policy.native_profile_id == posix_profile_id:
+            assert containment_launcher_path is not None
+            native_profile = _bind_posix_static_contained_product_worker_profile(
+                receipt=receipt,
+                worker_request=request,
+                native_profile_catalog_revision=policy.native_profile_catalog_revision,
+                launcher_path=containment_launcher_path,
+                launcher_sha256=containment_launcher_sha256,
+                containment_profile_sha256=containment_profile_sha256,
+                start_gate_read_fd=(
+                    None if start_gate is None else start_gate.start_gate_read_fd
+                ),
+            )
+        else:
+            assert windows_lpac_plan is not None
+            assert windows_platform_imports is not None
+            native_profile = _bind_windows_lpac_contained_product_worker_profile(
+                receipt=receipt,
+                worker_request=request,
+                plan=windows_lpac_plan,
+                platform_imports=windows_platform_imports,
+                provisioning_state_store=cast(
+                    _WindowsLpacProvisioningStateStore, native_provisioning_state_store
+                ),
+            )
+    except WorkerBindingError as exc:
+        raise failure("Worker native profile was rejected", exc.code) from exc
+    except start_gate_error as exc:
+        raise failure("Worker start gate is unavailable", getattr(exc, "code")) from exc
+    except (TypeError, ValueError) as exc:
+        raise binding_failure(
+            "Worker native profile configuration was rejected",
+            "worker_native_profile_configuration_invalid",
+        ) from exc
+    try:
+        coordinator = ProductWorkerActivationCoordinator(
+            authority=authority,
+            evidence_authority=evidence_authority,
+            trusted_evidence_authority_id=trusted_evidence_authority_id,
+            trusted_evidence_authority_fingerprint=(
+                trusted_evidence_authority_fingerprint
+            ),
+            state_store=activation_state_store,
+            restart_budget=restart_budget,
+        )
+    except Exception as exc:
+        raise binding_failure(
+            "Worker activation composition was rejected",
+            "worker_activation_composition_rejected",
+        ) from exc
+    session_port = WorkerSessionOwnerRouter(
+        current=cast(ManagedWorkerSessionLaunchPort, current_owner),
+        hosting=HostingManagedWorkerSessionAdapter(
+            hosting=cast(ChildSessionHostingPort, hosting),
+            preparation=native_profile,
+            start_gate=(
+                None
+                if start_gate is None
+                else bind_worker_gated_start_release(start_gate)
+            ),
+        ),
+        activation=WorkerHostingActivationV1(owner="hosting"),
+    )
+    return request, native_profile, coordinator, session_port
 
 
 class _ActivationAdmissionLease(Protocol):

@@ -249,6 +249,17 @@ async def _settle_failed_product_construction(
     )
 
 
+async def _try_settle_owned_closes(*closes: AsyncClose) -> bool:
+    """Attempt every close in order and report whether all owners settled."""
+    complete = True
+    for close in closes:
+        try:
+            await close()
+        except BaseException:
+            complete = False
+    return complete
+
+
 async def _settle_owned_closes(
     *closes: AsyncClose,
     failure: RuntimeError,
@@ -256,13 +267,7 @@ async def _settle_owned_closes(
 ) -> None:
     """Attempt every close in order, including when an earlier owner fails."""
     async def settle() -> None:
-        failed = False
-        for close in closes:
-            try:
-                await close()
-            except BaseException:
-                failed = True
-        if failed:
+        if not await _try_settle_owned_closes(*closes):
             raise failure from None
 
     task = asyncio.create_task(settle())
