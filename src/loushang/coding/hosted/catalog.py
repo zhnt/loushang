@@ -12,6 +12,7 @@ import os
 import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -194,6 +195,28 @@ class _Record:
     operation_id: str
     header: ConversationHeader
     compatible: bool = True
+
+
+def _coding_hosted_record(
+    scope: CodingHostedScopeV1,
+    path: Path,
+    revision: str,
+    header: ConversationHeader,
+    identity: SessionIdentityV1,
+    compatibility: str,
+    operation: str,
+    *,
+    compatible: bool = True,
+) -> _Record:
+    envelope = SessionIdentityEnvelopeV1(
+        "coding", compatibility, identity.continuity_id, identity.session_id,
+        "coding.jsonl", identity.session_id,
+    )
+    projection = SessionIdentityProjectionV1(
+        SessionCandidateRefV1(scope.source_id, identity.session_id, revision),
+        scope.discovery_scope, SessionCandidateMode.CANONICAL, envelope,
+    )
+    return _Record(projection, identity, scope, path, operation, header, compatible)
 
 
 class CodingHostedCandidateBindingV1:
@@ -497,28 +520,15 @@ class CodingHostedSessionCatalogV1(
         header: ConversationHeader,
     ) -> _Record | None:
         scope = cast(CodingHostedScopeV1, scope)
-        before = revision
         raw = header.metadata.get(_METADATA_KEY)
         if raw is None:
             return None
         identity, compatibility, operation = _hosted_header_identity(
             header, scope=scope.scope, fingerprint=scope.fingerprint
         )
-        envelope = SessionIdentityEnvelopeV1(
-            "coding",
-            compatibility,
-            identity.continuity_id,
-            identity.session_id,
-            "coding.jsonl",
-            identity.session_id,
+        return _coding_hosted_record(
+            scope, path, revision, header, identity, compatibility, operation
         )
-        projection = SessionIdentityProjectionV1(
-            SessionCandidateRefV1(scope.source_id, identity.session_id, before),
-            scope.discovery_scope,
-            SessionCandidateMode.CANONICAL,
-            envelope,
-        )
-        return _Record(projection, identity, scope, path, operation, header)
 
     def _new_header_metadata(
         self,
@@ -666,11 +676,9 @@ class CodingHostedSessionCatalogV1(
         self._accepting()
         async with self._lock:
             self._accepting()
-            record = self._records.get(reference)
-            if record is None or _revision(record.path) != reference.revision:
-                raise CodingHostedCatalogError()
+            record = self._require_current_discovered_record(reference)
             preview = inspect_coding_resume_header(record.header)
-            if _revision(record.path) != reference.revision:
+            if self._source_revision(record.path) != reference.revision:
                 raise CodingHostedCatalogError()
             return preview
 
@@ -680,25 +688,19 @@ class CodingHostedSessionCatalogV1(
     ) -> CodingResumeHistoryPreview:
         """Read bounded history from a discovered candidate without claiming it."""
 
-        self._accepting()
-        async with self._lock:
-            self._accepting()
-            record = self._records.get(reference)
-            if record is None or _revision(record.path) != reference.revision:
-                raise CodingHostedCatalogError()
-        preview = await settled_io(
-            read_coding_resume_snapshot, record.path, max_bytes=max_bytes,
-            selected_leaf_id=selected_leaf_id,
+        return await self._read_discovered_history(
+            reference,
+            partial(
+                read_coding_resume_snapshot,
+                max_bytes=max_bytes,
+                selected_leaf_id=selected_leaf_id,
+            ),
+            lambda history, revision, header: (
+                hashlib.sha256(history.source_fingerprint.encode()).hexdigest()
+                == revision
+                and history.header_preview.header == header
+            ),
         )
-        self._accepting()
-        if (
-            _revision(record.path) != reference.revision
-            or hashlib.sha256(preview.source_fingerprint.encode()).hexdigest()
-            != reference.revision
-            or preview.header_preview.header != record.header
-        ):
-            raise CodingHostedCatalogError()
-        return preview
 
     async def open_history_binding(
         self, reference: SessionCandidateRefV1, *, max_bytes: int,
@@ -718,10 +720,7 @@ class CodingHostedSessionCatalogV1(
         )
         async with self._lock:
             self._accepting()
-            record = self._records.get(reference)
-            if record is None or _revision(record.path) != reference.revision:
-                raise CodingHostedCatalogError()
-            identity = record.identity
+            identity = self._require_current_discovered_record(reference).identity
         return CodingHostedHistoryBindingV1(identity, preview)
 
     async def preview_resume_model_outcome(
@@ -753,9 +752,7 @@ class CodingHostedSessionCatalogV1(
         try:
             async with self._lock:
                 self._accepting()
-                record = self._records.get(reference)
-                if record is None or _revision(record.path) != reference.revision:
-                    raise CodingHostedCatalogError()
+                record = self._require_current_discovered_record(reference)
                 return _Candidate(record, CodingHostedHistoryCandidateBindingV1(
                     record,
                     binding,

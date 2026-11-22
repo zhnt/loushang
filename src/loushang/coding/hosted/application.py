@@ -27,12 +27,9 @@ from loushang.apphost import (
     ProfileLeaseV1,
     ProfileRegistrationV1,
     SessionBindingKeyV1,
-    SessionCandidateMode,
     SessionCreateRequestV1,
     SessionDiscoveryScope,
     SessionIdentityCatalogPortV1,
-    SessionIdentityEnvelopeV1,
-    SessionIdentityProjectionV1,
 )
 from loushang.apphost import (
     OpenedProductCandidateV1 as OpenedProductCandidateV1,
@@ -40,20 +37,28 @@ from loushang.apphost import (
 from loushang.apphost import (
     ScopedProductRuntimeV1 as ScopedProductRuntimeV1,
 )
-from loushang.apphost._ownership import _settle_failed_product_construction
+from loushang.apphost._ownership import (
+    _settle_failed_product_construction,
+    _settle_owned_closes,
+)
 from loushang.apphost.application import (
     HostedApplicationActivationV1,
     HostedApplicationRequestV1,
     HostedApplicationRuntimeV1,
     _method_descriptor,
-    _observe_background_result,
     create_hosted_application_runtime,
 )
-from loushang.apphost.application import (
-    _phase_task_failed as _void_task_needs_retry,
+from loushang.apphost.integrations._canonical_transcript_catalog import (
+    canonical_resume_reference,
+)
+from loushang.apphost.integrations._canonical_transcript_catalog import (
+    session_identity_matches_open as _identity_matches_open,
 )
 from loushang.apphost.integrations.session_control import _validate_foreground_binding
-from loushang.apphost.integrations.session_product import _ForegroundProductFactory
+from loushang.apphost.integrations.session_product import (
+    _ForegroundProductFactory,
+    _LeasedForegroundBindingMethods,
+)
 from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionOpenSpecV1,
@@ -275,7 +280,11 @@ class CodingHostedProfileFactoryV1:
         )
 
 
-class _LeasedCodingHostedBinding:
+class _LeasedCodingHostedBinding(
+    _LeasedForegroundBindingMethods[
+        CodingHostedSnapshotProjectionV1, CodingHostedEventProjectionV1
+    ]
+):
     """Give AppService exact profile-detach and binding-close authority."""
 
     __slots__ = (
@@ -307,43 +316,6 @@ class _LeasedCodingHostedBinding:
         self._runtime_closed = False
         self._close_lock = asyncio.Lock()
         self._close_task: asyncio.Task[None] | None = None
-
-    @property
-    def identity(self) -> SessionIdentityV1:
-        return self._binding.identity if self._identity is None else self._identity
-
-    @property
-    def control(self):  # type: ignore[no-untyped-def]
-        return self._binding.control
-
-    def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
-        return self._binding.project_snapshot()
-
-    def project_event(self, event: object) -> CodingHostedEventProjectionV1 | None:
-        return self._binding.project_event(event)  # type: ignore[arg-type]
-
-    async def respond_interaction(self, interaction_id: str, outcome: str) -> bool:
-        return await self._binding.respond_interaction(interaction_id, outcome)
-
-    async def close(self) -> None:
-        async with self._close_lock:
-            if self._runtime_closed:
-                return
-            task = self._close_task
-            if task is None or _void_task_needs_retry(task):
-                task = asyncio.create_task(self._close_once())
-                task.add_done_callback(_observe_background_result)
-                self._close_task = task
-        await await_owned_task(task)
-
-    async def _close_once(self) -> None:
-        if not self._lease_closed:
-            await self._lease.close()
-            self._lease_closed = True
-        if not self._runtime_closed:
-            await self._runtime.close_session(self._lease.binding_key)
-            self._runtime_closed = True
-
 
 class CodingAppHostHostedSessionResolverV1:
     """Resolve G11 Session requests exclusively through canonical AppHost routes."""
@@ -469,7 +441,13 @@ class CodingAppHostHostedSessionResolverV1:
             if wrapper is not None:
                 await wrapper.close()
             else:
-                await _close_rejected_lease(self._runtime, lease)
+                runtime = self._runtime
+                await _settle_owned_closes(
+                    lambda: lease.close(),
+                    lambda: runtime.close_session(lease.binding_key),
+                    failure=RuntimeError("coding_foreground_cleanup_incomplete"),
+                    join_owned=await_owned_task,
+                )
             self._method_used = False
             raise
 
@@ -505,32 +483,17 @@ class CodingAppHostHostedSessionResolverV1:
             projections = await catalog.list_identities(
                 (scope,), limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
             )
-        if (
-            not isinstance(projections, tuple)
-            or len(projections) > CODING_HOSTED_APPLICATION_MAX_CANDIDATES
-            or any(type(item) is not SessionIdentityProjectionV1 for item in projections)
-        ):
-            raise ValueError("Coding hosted candidate catalog is invalid")
-        same_session = tuple(
-            item
-            for item in projections
-            if item.scope is scope
-            and item.mode is SessionCandidateMode.CANONICAL
-            and type(item.envelope) is SessionIdentityEnvelopeV1
-            and item.envelope.session_id == request.session_id
+        reference = canonical_resume_reference(
+            request,
+            projections,
+            scope=scope,
+            limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
+            missing_is_authoritative=self._scopes is not None,
+            label="Coding",
         )
-        matching = tuple(
-            item
-            for item in same_session
-            if _envelope_matches(request, item.envelope)
-        )
-        if not same_session and self._scopes is not None:
-            raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.MISSING)
-        if len(same_session) != 1 or len(matching) != 1:
-            raise ValueError("Coding hosted Session candidate is unavailable")
         return await self._runtime.attach_resume(
             product_id=CODING_PRODUCT_ID,
-            reference=matching[0].reference,
+            reference=reference,
             profile_id=self._profile_id,
         )
 
@@ -652,26 +615,6 @@ def _coding_hosted_application_request(
     )
 
 
-async def _close_rejected_lease(
-    runtime: AppHostRuntimeV1,
-    lease: AppHostSessionLeaseV1,
-) -> None:
-    async def settle() -> None:
-        failures: list[BaseException] = []
-        try:
-            await lease.close()
-        except BaseException as error:
-            failures.append(error)
-        try:
-            await runtime.close_session(lease.binding_key)
-        except BaseException as error:
-            failures.append(error)
-        if failures:
-            raise RuntimeError("coding_foreground_cleanup_incomplete") from None
-
-    await await_owned_task(asyncio.create_task(settle()))
-
-
 def _validate_hosted_binding(
     binding: object,
     key: SessionBindingKeyV1,
@@ -698,31 +641,6 @@ def _require_managed_selection(
         HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint) for scope in sessions.scopes
     ):
         raise ValueError("managed selection requires the exact owned canonical catalog and scopes")
-
-
-def _identity_matches_open(
-    request: SessionOpenSpecV1,
-    identity: SessionIdentityV1,
-) -> bool:
-    return (
-        identity.product_id == request.product_id
-        and identity.continuity_id == request.continuity_id
-        and identity.scope is request.scope
-        and identity.scope_fingerprint == request.scope_fingerprint
-        and (request.session_id is None or identity.session_id == request.session_id)
-    )
-
-
-def _envelope_matches(
-    request: SessionOpenSpecV1,
-    envelope: SessionIdentityEnvelopeV1 | None,
-) -> bool:
-    return (
-        type(envelope) is SessionIdentityEnvelopeV1
-        and envelope.product_id == request.product_id
-        and envelope.continuity_id == request.continuity_id
-        and envelope.session_id == request.session_id
-    )
 
 
 def _apphost_scope(scope: SessionScopeV1) -> SessionDiscoveryScope:

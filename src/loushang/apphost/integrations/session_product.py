@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
 from loushang.apphost.application import (
     _method_descriptor,
@@ -18,16 +18,22 @@ from loushang.apphost.application import (
     _phase_task_failed as _void_task_needs_retry,
 )
 from loushang.apphost.contracts import (
+    AppHostSessionLeaseV1,
     OpenedProductCandidateV1,
     ProductProfileBindingV1,
     ScopedProductRuntimeV1,
     SessionBindingKeyV1,
 )
-from loushang.apphost.runtime import _BoundProfileView
+from loushang.apphost.runtime import AppHostRuntimeV1, _BoundProfileView
+from loushang.appserver.protocol import SessionIdentityV1
+from loushang.harness.events import RuntimeEvent
 from loushang.harness.runtime import await_owned_task
 from loushang.harness.runtime._owned_tasks import _UnpublishedProductOwners
+from loushang.harness.session import SessionControlPort
 
 from .session_control import (
+    EventT,
+    SnapshotT,
     _EventProjection,
     _HostedBinding,
     _SnapshotProjection,
@@ -53,6 +59,58 @@ class _SessionFactory(Protocol[BindingCo]):
 class _SessionCatalogOwner(Protocol):
     def fence(self) -> None: ...
     async def close(self) -> None: ...
+
+
+class _LeasedForegroundBindingMethods(Generic[SnapshotT, EventT]):
+    """Own the profile lease and the exact Session that it was issued for."""
+
+    if not TYPE_CHECKING:
+        __slots__ = ()
+
+    _binding: _HostedBinding[SnapshotT, EventT]
+    _close_lock: asyncio.Lock
+    _close_task: asyncio.Task[None] | None
+    _identity: SessionIdentityV1 | None
+    _lease: AppHostSessionLeaseV1
+    _lease_closed: bool
+    _runtime: AppHostRuntimeV1
+    _runtime_closed: bool
+
+    @property
+    def identity(self) -> SessionIdentityV1:
+        return self._binding.identity if self._identity is None else self._identity
+
+    @property
+    def control(self) -> SessionControlPort | None:
+        return self._binding.control
+
+    def project_snapshot(self) -> SnapshotT:
+        return self._binding.project_snapshot()
+
+    def project_event(self, event: RuntimeEvent[object]) -> EventT | None:
+        return self._binding.project_event(event)
+
+    async def respond_interaction(self, interaction_id: str, outcome: str) -> bool:
+        return await self._binding.respond_interaction(interaction_id, outcome)
+
+    async def close(self) -> None:
+        async with self._close_lock:
+            if self._runtime_closed:
+                return
+            task = self._close_task
+            if task is None or _void_task_needs_retry(task):
+                task = asyncio.create_task(self._close_once())
+                task.add_done_callback(_observe_background_result)
+                self._close_task = task
+        await await_owned_task(task)
+
+    async def _close_once(self) -> None:
+        if not self._lease_closed:
+            await self._lease.close()
+            self._lease_closed = True
+        if not self._runtime_closed:
+            await self._runtime.close_session(self._lease.binding_key)
+            self._runtime_closed = True
 
 
 class _ForegroundSessionOwner(Generic[BindingT]):

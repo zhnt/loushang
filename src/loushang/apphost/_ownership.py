@@ -239,24 +239,30 @@ async def _settle_failed_product_construction(
     join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
 ) -> None:
     """Release the most complete Host owner, then the unpublished Product."""
+    outer_owner = runtime if runtime is not None else catalog
+    close_outer = () if outer_owner is None else (lambda: outer_owner.close(),)
+    await _settle_owned_closes(
+        *close_outer,
+        lambda: product_factory.close(),
+        failure=failure,
+        join_owned=join_owned,
+    )
 
+
+async def _settle_owned_closes(
+    *closes: AsyncClose,
+    failure: RuntimeError,
+    join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
+) -> None:
+    """Attempt every close in order, including when an earlier owner fails."""
     async def settle() -> None:
-        failures: list[BaseException] = []
-        if runtime is not None:
+        failed = False
+        for close in closes:
             try:
-                await runtime.close()
-            except BaseException as error:
-                failures.append(error)
-        elif catalog is not None:
-            try:
-                await catalog.close()
-            except BaseException as error:
-                failures.append(error)
-        try:
-            await product_factory.close()
-        except BaseException as error:
-            failures.append(error)
-        if failures:
+                await close()
+            except BaseException:
+                failed = True
+        if failed:
             raise failure from None
 
     task = asyncio.create_task(settle())

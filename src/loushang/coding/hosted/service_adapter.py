@@ -11,6 +11,9 @@ from typing import Protocol, cast
 
 from loushang.ai.model import ModelSelection
 from loushang.apphost import SessionDiscoveryScope, SessionIdentityEnvelopeV1
+from loushang.apphost.integrations._canonical_transcript_catalog import (
+    session_identity_matches_open,
+)
 from loushang.apphost.integrations.session_control import _SessionServiceAdapter
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -212,15 +215,7 @@ class CodingHostedSessionResolverV1:
                 await asyncio.shield(task)
             raise
 
-    @staticmethod
-    def _matches(request: SessionOpenSpecV1, identity: SessionIdentityV1) -> bool:
-        return (
-            identity.product_id == request.product_id
-            and identity.continuity_id == request.continuity_id
-            and identity.scope is request.scope
-            and identity.scope_fingerprint == request.scope_fingerprint
-            and (request.session_id is None or identity.session_id == request.session_id)
-        )
+    _matches = staticmethod(session_identity_matches_open)
 
 
 __all__ = [

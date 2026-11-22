@@ -17,12 +17,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
-from loushang.apphost import (
-    SessionCandidateMode,
-    SessionCandidateRefV1,
-    SessionIdentityEnvelopeV1,
-    SessionIdentityProjectionV1,
-)
 from loushang.apphost.integrations._canonical_transcript_catalog import (
     CanonicalTranscriptScope,
     _ManagedCanonicalTranscriptCatalogMethods,
@@ -38,6 +32,7 @@ from loushang.coding.hosted.catalog import (
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
     _Candidate,
+    _coding_hosted_record,
     _hosted_header_identity,
     _Record,
     _scope_fingerprint,
@@ -179,21 +174,10 @@ class CodingManagedSessionCatalogV1(
             )
         except (TypeError, ValueError):
             compatible = False
-        envelope = SessionIdentityEnvelopeV1(
-            "coding",
-            compatibility,
-            identity.continuity_id,
-            identity.session_id,
-            "coding.jsonl",
-            identity.session_id,
+        return _coding_hosted_record(
+            scope, path, before, header, identity, compatibility, operation,
+            compatible=compatible,
         )
-        projection = SessionIdentityProjectionV1(
-            SessionCandidateRefV1(scope.source_id, identity.session_id, before),
-            scope.discovery_scope,
-            SessionCandidateMode.CANONICAL,
-            envelope,
-        )
-        return _Record(projection, identity, scope, path, operation, header, compatible)
 
     def _record_available(self, record: _Record) -> bool:
         return self._record_compatible(record) and record.header.metadata.get("cwd") == str(record.scope.cwd)

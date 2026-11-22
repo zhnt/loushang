@@ -18,11 +18,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from loushang.apphost.contracts import (
+    SessionCandidateMode,
     SessionCandidateRefV1,
     SessionCreateIntentV1,
     SessionCreateRequestV1,
     SessionDiscoveryScope,
     SessionIdentityCatalogPortV1,
+    SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
 from loushang.apphost.workspace_registry import WorkspaceRegistrationError
@@ -33,11 +35,16 @@ from loushang.appserver.protocol import (
     SessionCompatibilityV1,
     SessionDiscoveryCandidateV1,
     SessionIdentityV1,
+    SessionOpenSpecV1,
     SessionScopeV1,
 )
 from loushang.appservice.discovery_ports import (
     HostedSessionDiscoveryScopeV1,
     HostedSessionDiscoverySnapshotV1,
+)
+from loushang.appservice.ports import (
+    HostedSessionResolutionErrorV1,
+    HostedSessionResolutionFailureV1,
 )
 from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import ConversationHeader
@@ -90,6 +97,55 @@ class CanonicalTranscriptScope(Protocol):
     def source_id(self) -> str: ...
 
 
+def canonical_resume_reference(
+    request: SessionOpenSpecV1,
+    projections: tuple[SessionIdentityProjectionV1, ...],
+    *,
+    scope: SessionDiscoveryScope,
+    limit: int,
+    missing_is_authoritative: bool,
+    label: str,
+) -> SessionCandidateRefV1:
+    """Require a unique canonical candidate for the requested Session."""
+    if (
+        not isinstance(projections, tuple)
+        or len(projections) > limit
+        or any(type(item) is not SessionIdentityProjectionV1 for item in projections)
+    ):
+        raise ValueError(f"{label} hosted candidate catalog is invalid")
+    same_session = tuple(
+        item for item in projections
+        if item.scope is scope
+        and item.mode is SessionCandidateMode.CANONICAL
+        and type(item.envelope) is SessionIdentityEnvelopeV1
+        and item.envelope.session_id == request.session_id
+    )
+    if not same_session and missing_is_authoritative:
+        raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.MISSING)
+    if len(same_session) == 1:
+        [candidate] = same_session
+        envelope = candidate.envelope
+        assert type(envelope) is SessionIdentityEnvelopeV1
+        if (
+            envelope.product_id == request.product_id
+            and envelope.continuity_id == request.continuity_id
+        ):
+            return candidate.reference
+    raise ValueError(f"{label} hosted Session candidate is unavailable")
+
+
+def session_identity_matches_open(
+    request: SessionOpenSpecV1, identity: SessionIdentityV1
+) -> bool:
+    return (
+        identity.product_id == request.product_id
+        and identity.continuity_id == request.continuity_id
+        and identity.scope is request.scope
+        and identity.scope_fingerprint == request.scope_fingerprint
+        and (request.session_id is None or identity.session_id == request.session_id)
+    )
+
+
 class CanonicalTranscriptRecord(Protocol):
     @property
     def projection(self) -> SessionIdentityProjectionV1: ...
@@ -115,6 +171,7 @@ BindingInputT = TypeVar("BindingInputT")
 ProductBindingT = TypeVar("ProductBindingT")
 BindingT = TypeVar("BindingT", bound=_AsyncBinding)
 ClaimedT = TypeVar("ClaimedT")
+HistoryT = TypeVar("HistoryT")
 
 
 class _CanonicalTranscriptCatalogMethods(
@@ -232,6 +289,35 @@ class _CanonicalTranscriptCatalogMethods(
             error=self._catalog_error,
         )
         return self._project_catalog_record(scope, path, revision, header)
+
+    def _require_current_discovered_record(
+        self, reference: SessionCandidateRefV1
+    ) -> RecordT:
+        """Resolve a history reference in the caller's locked catalog view."""
+        record = self._records.get(reference)
+        if record is None or self._source_revision(record.path) != reference.revision:
+            raise self._catalog_error()
+        return record
+
+    async def _read_discovered_history(
+        self,
+        reference: SessionCandidateRefV1,
+        read: Callable[[Path], HistoryT],
+        matches_source: Callable[[HistoryT, str, ConversationHeader], bool],
+    ) -> HistoryT:
+        """Observe the exact discovered history without acquiring a Writer."""
+        self._accepting()
+        async with self._lock:
+            self._accepting()
+            record = self._require_current_discovered_record(reference)
+        history = await settled_io(read, record.path)
+        self._accepting()
+        if (
+            self._source_revision(record.path) != reference.revision
+            or not matches_source(history, reference.revision, record.header)
+        ):
+            raise self._catalog_error()
+        return history
 
     async def _open_legacy_record(self, record: RecordT) -> CandidateT:
         revision = self._source_revision
