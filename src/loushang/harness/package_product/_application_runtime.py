@@ -49,6 +49,9 @@ from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationProjector,
     PluginOperationExplanationV1,
 )
+from loushang.harness.plugin_management.operations import (
+    PluginManagementOperationEventV1,
+)
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
 )
@@ -245,6 +248,22 @@ def open_read_only_product_management_state(
     return desired, management, _READ_ONLY_LOAD_POLICY
 
 
+class PackageChangeFailureEvidence(NamedTuple):
+    stage: str
+    committed_revision: dict[str, object] | None
+    desired_inventory_revision: int | None
+    handoff_receipt_id: str | None
+    handoff_evidence: str
+    join_status: str
+
+
+class PackageRemovalFailureEvidence(NamedTuple):
+    operation_status: str
+    actor_id: str | None
+    pending_operation: bool
+    committed_revision: int | None
+
+
 class FencedProductManagementApplication(ABC):
     """Scope management and Package evidence to one POSIX Product epoch per call."""
 
@@ -367,6 +386,79 @@ class FencedProductManagementApplication(ABC):
         runtime, _ = self.open(read_only=True)
         with closing(runtime):
             return read_fenced_product_desired_transition(runtime, operation_id)
+
+    def observe_package_change_failure(
+        self, operation_id: str
+    ) -> PackageChangeFailureEvidence:
+        """Observe the last provable A2 stage through read-only owner calls."""
+        stage = "unknown"
+        committed_revision: dict[str, object] | None = None
+        inventory_revision: int | None = None
+        receipt_id: str | None = None
+        try:
+            handoff = self.read_package_handoff(operation_id)
+            if handoff is not None:
+                stage = handoff.state
+                receipt_id = handoff.receipt_id
+                desired_commit = verify_handoff_desired_commit(
+                    handoff, read_transition=self.read_desired_transition
+                )
+                if desired_commit is not None:
+                    inventory_revision, committed_revision, _ = desired_commit
+                    if handoff.state == "dependency_pinned":
+                        stage = "desired_committed"
+        except (OSError, RuntimeError, ValueError):
+            pass
+        try:
+            explanation = self.explain_plugin_operation(
+                operation_id, correlation_id=f"cli:failed-package:{operation_id}"
+            )
+            handoff_evidence: str = explanation.handoff_evidence
+            join_status: str = explanation.join_status
+        except (OSError, RuntimeError, ValueError):
+            handoff_evidence = "not_checked"
+            join_status = "not_checked"
+        return PackageChangeFailureEvidence(
+            stage,
+            committed_revision,
+            inventory_revision,
+            receipt_id,
+            handoff_evidence,
+            join_status,
+        )
+
+    def observe_package_removal_failure(
+        self,
+        ports: PluginManagementApplicationPorts,
+        operation_id: str,
+        *,
+        pending_operation: bool,
+    ) -> PackageRemovalFailureEvidence:
+        """Observe a removal command and its Desired commit independently."""
+        operation_status = "unknown"
+        actor_id: str | None = None
+        committed_revision: int | None = None
+        try:
+            observed = ports.commands.operation(
+                operation_id, correlation_id=f"cli:failed-uninstall:{operation_id}"
+            )
+            if observed is not None and isinstance(
+                observed.operation, PluginManagementOperationEventV1
+            ):
+                operation_status = observed.operation.status
+                actor_id = observed.operation.command.mutation.actor_id
+                pending_operation = operation_status != "terminal"
+        except (OSError, RuntimeError, ValueError):
+            pass
+        try:
+            transition = self.read_desired_transition(operation_id)
+            if transition is not None and transition.mutation.desired_state == "absent":
+                committed_revision = transition.inventory_revision
+        except (OSError, RuntimeError, ValueError):
+            pass
+        return PackageRemovalFailureEvidence(
+            operation_status, actor_id, pending_operation, committed_revision
+        )
 
 
 @dataclass(frozen=True, slots=True)

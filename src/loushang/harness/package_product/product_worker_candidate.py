@@ -31,7 +31,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductEntrypoint,
-    PackageProductLifecycleIntentV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -58,7 +57,7 @@ from loushang.harness.worker.package_candidate import (
     verify_worker_package_candidate,
 )
 
-from ._plugin_bootstrap import _product_plugin_runtime
+from ._plugin_bootstrap import _product_plugin_runtime, route_project_package
 from .product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductSessionOwner,
@@ -534,13 +533,11 @@ def _run_worker_candidate_lifecycle(
     with _product_plugin_runtime(
         product, product_id=product_id, session_id=session_id
     ) as runtime:
-        routed = runtime.lifecycle.route(
-            PackageProductLifecycleIntentV1(
-                operation_id=operation_id,
-                action=action,
-                source=binding.source_identity,
-                scope="project",
-            ),
+        routed = route_project_package(
+            runtime,
+            operation_id=operation_id,
+            action=action,
+            source=binding.source_identity,
             entrypoint=entrypoint,
         )
         if (

@@ -3,93 +3,49 @@
 from __future__ import annotations
 
 import json
-import re as re
-import secrets as secrets
+import secrets
 from collections.abc import Sequence
 from functools import partial
-from hashlib import sha256 as sha256
-from importlib.metadata import version as version
+from hashlib import sha256
+from importlib.metadata import version
 from pathlib import Path
 from typing import Literal, TextIO
 
-from loushang.coding.composition.plan import CODING_PRODUCT_ID as CODING_PRODUCT_ID
-from loushang.coding.package.management_binding import (
-    CODING_CLI_MANAGEMENT_ACTOR_ID,
-)
-from loushang.coding.package.management_binding import (
-    CODING_CLI_MANAGEMENT_POLICY_REVISION as CODING_CLI_MANAGEMENT_POLICY_REVISION,
-)
-from loushang.coding.package.management_binding import (
-    build_coding_fenced_product_management_cli_ports as build_coding_fenced_product_management_cli_ports,
-)
-from loushang.coding.package.management_binding import (
-    explain_coding_fenced_plugin_operation as explain_coding_fenced_plugin_operation,
-)
-from loushang.coding.package.management_binding import (
-    read_coding_fenced_desired_transition as read_coding_fenced_desired_transition,
-)
-from loushang.coding.package.management_binding import (
-    read_coding_fenced_handoff_desired_commit as read_coding_fenced_handoff_desired_commit,
-)
-from loushang.coding.package.management_binding import (
-    read_coding_fenced_package_handoff as read_coding_fenced_package_handoff,
-)
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.cli.package_lifecycle import package_operator_error_code
 from loushang.harness.package_product._plugin_bootstrap import (
-    _product_plugin_runtime as _product_plugin_runtime,
-)
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeBindingV1 as PackageProductRuntimeBindingV1,
-)
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeRequestV1 as PackageProductRuntimeRequestV1,
-)
-from loushang.harness.plugin_management import (
-    PluginDesiredStateMutationV1 as PluginDesiredStateMutationV1,
-)
-from loushang.harness.plugin_management import (
-    PluginManagementApplicationCommandV1 as PluginManagementApplicationCommandV1,
-)
-from loushang.harness.plugin_management import (
-    PluginManagementCommandV1 as PluginManagementCommandV1,
-)
-from loushang.harness.plugin_management import (
-    PluginManagementOperationEventV1 as PluginManagementOperationEventV1,
-)
-from loushang.harness.plugin_management import (
-    PluginManagementQueryV1 as PluginManagementQueryV1,
+    _product_plugin_runtime,
+    route_project_package,
 )
 from loushang.harness.plugin_management.application import (
-    PluginManagementApplicationPorts,
     PluginManagementInstallationViewV1,
+    PluginManagementQueryV1,
 )
 from loushang.harness.plugin_management.desired_command import (
     PluginPackageRemovalAttempt,
     remove_installed_plugin_package,
 )
 from loushang.harness.resources.packages.product_contract import (
-    PackageProductLifecycleIntentV1 as PackageProductLifecycleIntentV1,
-)
-from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleRecordV1,
 )
 
 from .external_data_wheel import CodingExternalDataWheelBindingV1
-from .product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH as CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+from .management_binding import (
+    CODING_CLI_MANAGEMENT_ACTOR_ID,
+    CODING_CLI_MANAGEMENT_POLICY_REVISION,
+    _ProductCliOwner,
 )
 from .product_runtime import (
-    admit_coding_external_data_wheel as admit_coding_external_data_wheel,
-)
-from .product_runtime import (
-    open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
+    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    admit_coding_external_data_wheel,
+    open_coding_fenced_product_application_owner,
 )
 
 _PACKAGE_DISTRIBUTION = "loushang"
 _PACKAGE_OPERATION_PREFIX = "coding-external-"
 _PACKAGE_RUNTIME_PREFIX = "coding-external-cli:"
 _PACKAGE_SOURCE_DIRECTORY = "product-sources"
-_PACKAGE_SCOPE: Literal["project"] = "project"
 _PACKAGE_ENTRYPOINT: Literal["cli"] = "cli"
 
 
@@ -154,16 +110,14 @@ def _change_packages(
                     product_id=CODING_PRODUCT_ID,
                     session_id=runtime_id,
                 ) as runtime:
-                    outcome = runtime.lifecycle.route(
-                        PackageProductLifecycleIntentV1(
-                            operation_id=operation_id,
-                            action=action,
-                            source=str(
-                                owner.epoch_runtime.control_root
-                                / _PACKAGE_SOURCE_DIRECTORY
-                                / record.wheel_filename
-                            ),
-                            scope=_PACKAGE_SCOPE,
+                    outcome = route_project_package(
+                        runtime,
+                        operation_id=operation_id,
+                        action=action,
+                        source=str(
+                            owner.epoch_runtime.control_root
+                            / _PACKAGE_SOURCE_DIRECTORY
+                            / record.wheel_filename
                         ),
                         entrypoint=_PACKAGE_ENTRYPOINT,
                     )
@@ -187,62 +141,16 @@ def _change_packages(
         if current_operation_id is None:
             _write_cli_error(stderr, error)
         else:
-            code = getattr(error, "code", None)
             _write_package_failure(
                 layout,
                 workspace=workspace,
                 operation_id=current_operation_id,
-                error_code=(
-                    code
-                    if isinstance(code, str)
-                    and re.fullmatch(r"[a-z][a-z0-9_]{1,127}", code)
-                    else "package_operation_incomplete"
+                error_code=package_operator_error_code(
+                    error, fallback="package_operation_incomplete"
                 ),
                 stderr=stderr,
             )
         return 1
-
-
-def _observe_failed_change(
-    layout: CodingPluginLifecycleStateLayout,
-    operation_id: str,
-) -> tuple[str, dict[str, object] | None, int | None, str | None, str, str]:
-    """Observe recorded progress without retrying or inferring a rollback."""
-    stage = "unknown"
-    committed_revision: dict[str, object] | None = None
-    desired_inventory_revision: int | None = None
-    handoff_receipt_id: str | None = None
-    try:
-        handoff = read_coding_fenced_package_handoff(layout, operation_id)
-        if handoff is not None:
-            stage = handoff.state
-            handoff_receipt_id = handoff.receipt_id
-            desired_commit = read_coding_fenced_handoff_desired_commit(layout, handoff)
-            if desired_commit is not None:
-                desired_inventory_revision, committed_revision, _source = desired_commit
-                if handoff.state == "dependency_pinned":
-                    stage = "desired_committed"
-    except (OSError, RuntimeError, ValueError):
-        pass
-    try:
-        explanation = explain_coding_fenced_plugin_operation(
-            layout,
-            operation_id,
-            correlation_id=f"cli:failed-package:{operation_id}",
-        )
-        handoff_evidence: str = explanation.handoff_evidence
-        join_status: str = explanation.join_status
-    except (OSError, RuntimeError, ValueError):
-        handoff_evidence = "not_checked"
-        join_status = "not_checked"
-    return (
-        stage,
-        committed_revision,
-        desired_inventory_revision,
-        handoff_receipt_id,
-        handoff_evidence,
-        join_status,
-    )
 
 
 def _write_package_success(
@@ -291,7 +199,7 @@ def _write_package_failure(
         handoff_receipt_id,
         handoff_evidence,
         join_status,
-    ) = _observe_failed_change(layout, operation_id)
+    ) = _ProductCliOwner(layout).observe_package_change_failure(operation_id)
     next_commands = [
         ["loushang", "--explain-plugin-operation", operation_id],
         ["loushang", "--list-plugins", "--list-plugins-format", "json"],
@@ -456,7 +364,8 @@ def uninstall_coding_fenced_data_wheels(
             "Error: Fenced Product uninstall requires --package-scope project\n"
         )
         return 1
-    ports = build_coding_fenced_product_management_cli_ports(layout)
+    application = _ProductCliOwner(layout)
+    ports = application.bind_ports()
     attempt = PluginPackageRemovalAttempt()
     try:
         for plugin_id in plugin_ids:
@@ -491,7 +400,21 @@ def uninstall_coding_fenced_data_wheels(
             )
         return 0
     except (OSError, RuntimeError, ValueError) as error:
-        _report_uninstall_failure(stderr, layout, ports, attempt, error)
+        operation_id = attempt.operation_id
+        if operation_id is None:
+            _write_cli_error(stderr, error)
+        else:
+            details = application.observe_package_removal_failure(
+                ports, operation_id, pending_operation=attempt.pending
+            )
+            _write_uninstall_failure(
+                stderr,
+                current_operation_id=operation_id,
+                operation_status=details.operation_status,
+                actor_id=details.actor_id,
+                pending_operation=details.pending_operation,
+                committed_revision=details.committed_revision,
+            )
         return 1
 
 
@@ -500,55 +423,6 @@ def _uninstall_operation_id(scope_id: str, plugin_id: str, revision: int) -> str
         f"{_REMOVAL_ID_DOMAIN}{scope_id}:{plugin_id}:{revision}".encode()
     ).hexdigest()
     return f"cli-product-uninstall:{identity}"
-
-
-def _report_uninstall_failure(
-    stderr: TextIO,
-    layout: CodingPluginLifecycleStateLayout,
-    ports: PluginManagementApplicationPorts,
-    attempt: PluginPackageRemovalAttempt,
-    error: BaseException,
-) -> None:
-    current_operation_id = attempt.operation_id
-    pending_operation = attempt.pending
-    if current_operation_id is None:
-        _write_cli_error(stderr, error)
-        return
-    operation_status = "unknown"
-    actor_id: str | None = None
-    committed_revision: int | None = None
-    try:
-        observed = ports.commands.operation(
-            current_operation_id,
-            correlation_id=f"cli:failed-uninstall:{current_operation_id}",
-        )
-        if observed is not None and isinstance(
-            observed.operation, PluginManagementOperationEventV1
-        ):
-            operation_status = observed.operation.status
-            actor_id = observed.operation.command.mutation.actor_id
-            pending_operation = observed.operation.status != "terminal"
-    except (OSError, RuntimeError, ValueError):
-        pass
-    try:
-        transition = read_coding_fenced_desired_transition(
-            layout, current_operation_id
-        )
-        if (
-            transition is not None
-            and transition.mutation.desired_state == "absent"
-        ):
-            committed_revision = transition.inventory_revision
-    except (OSError, RuntimeError, ValueError):
-        pass
-    _write_uninstall_failure(
-        stderr,
-        current_operation_id=current_operation_id,
-        operation_status=operation_status,
-        actor_id=actor_id,
-        pending_operation=pending_operation,
-        committed_revision=committed_revision,
-    )
 
 
 __all__ = [

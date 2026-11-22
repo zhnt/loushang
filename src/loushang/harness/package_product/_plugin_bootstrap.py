@@ -18,7 +18,10 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
 )
 from loushang.harness.resources.packages.product_contract import (
+    PackageProductEntrypoint,
+    PackageProductLifecycleAction,
     PackageProductLifecycleIntentV1,
+    PackageProductLifecycleOutcomeV1,
 )
 
 from .product_local_wheel_runtime import (
@@ -57,6 +60,22 @@ def _product_plugin_runtime(
             factory.dispose_unbound_runtime()
         else:
             binding.dispose_runtime()
+
+
+def route_project_package(
+    runtime: PackageProductRuntimeBindingV1,
+    *,
+    operation_id: str,
+    action: PackageProductLifecycleAction,
+    source: str,
+    entrypoint: PackageProductEntrypoint,
+) -> PackageProductLifecycleOutcomeV1:
+    return runtime.lifecycle.route(
+        PackageProductLifecycleIntentV1(
+            operation_id=operation_id, action=action, source=source, scope="project"
+        ),
+        entrypoint=entrypoint,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,13 +217,11 @@ def bootstrap_product_plugin(
                 for item in product.policy.bindings
                 if item.plugin_id == plugin_id
             )
-            outcome = binding.lifecycle.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id=operation_id,
-                    action="install",
-                    source=source,
-                    scope="project",
-                ),
+            outcome = route_project_package(
+                binding,
+                operation_id=operation_id,
+                action="install",
+                source=source,
                 entrypoint="startup",
             )
             if (

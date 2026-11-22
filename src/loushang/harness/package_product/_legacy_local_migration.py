@@ -64,9 +64,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff impo
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
     _PinnedWindowsAuthority,
 )
-from loushang.harness.resources.packages.product_contract import (
-    PackageProductLifecycleIntentV1,
-)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -89,6 +86,7 @@ from ._plugin_bootstrap import (
     _PluginBootstrapPolicy,
     _product_plugin_runtime,
     _ProductOwner,
+    route_project_package,
 )
 
 RecordT = TypeVar("RecordT")
@@ -1300,13 +1298,11 @@ class _LegacyLocalInstallation:
         with _product_plugin_runtime(
             self.product, product_id=self.key.product_id, session_id=session_id
         ) as binding:
-            outcome = binding.lifecycle.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id=self.install_operation_id,
-                    action="install",
-                    source=self.source_identity,
-                    scope="project",
-                ),
+            outcome = route_project_package(
+                binding,
+                operation_id=self.install_operation_id,
+                action="install",
+                source=self.source_identity,
                 entrypoint="operations",
             )
             if (
