@@ -7,7 +7,6 @@ occurred, and it grants no filesystem mutation authority by itself.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 from loushang.foundation.windows_private_acl import (
@@ -15,15 +14,13 @@ from loushang.foundation.windows_private_acl import (
 )
 from loushang.harness.package_product._windows_worker_recovery import (
     review_windows_product_worker_complete_stage_under_guard,
+    review_windows_product_worker_stage_offline,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     CapturedWindowsWorkerStage as _CapturedStageBytesV1,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_stage,
-    is_attempt_id,
-    is_windows_product,
-    review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -41,9 +38,6 @@ from .product_worker_windows_recovery_inventory import (
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
 )
 
-_MARKER = "worker-payload.json"
-_MAX_MARKER_BYTES = 1024
-_MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 _READ_CHUNK = 1024 * 1024
 _DIRECTORY_ATTRIBUTES = 0x00000010 | 0x00000020 | 0x00002000
 _FILE_ATTRIBUTES = 0x00000020 | 0x00000080 | 0x00002000
@@ -76,25 +70,19 @@ class CodingWindowsWorkerStageReviewV1(_WindowsCompleteStageReviewMethods):
     executable_identity: FileIdentity
     executable_digest: str
 
-    @classmethod
-    def _payload_maximum(cls) -> int:
-        return _MAX_PAYLOAD_BYTES
-
 
 def review_coding_windows_product_worker_complete_stage(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWindowsWorkerStageReviewV1:
     """Review one retained, cleanly stopped stage under offline Product locks."""
 
-    if not is_windows_product(product, "coding", os.name) or not is_attempt_id(
-        attempt_id
-    ):
-        raise OSError("Windows Worker stage review requires a Product owner")
-    return review_windows_product_worker_offline(
+    return review_windows_product_worker_stage_offline(
         product,
-        active_error=lambda: CodingWindowsWorkerStageReviewError(
-            "coding_worker_stage_review_runtime_active"
-        ),
+        product_id="coding",
+        attempt_id=attempt_id,
+        role="stage",
+        error_type=CodingWindowsWorkerStageReviewError,
+        error_prefix="coding_worker_stage_review",
         review=lambda quiescence: _review_complete_stage_under_gc_guard(
             product,
             attempt_id=attempt_id,
@@ -143,9 +131,7 @@ def _capture_stage_bytes(
         expected_stage=expected_stage,
         intent=intent,
         inspection=_inspection(),
-        marker_name=_MARKER,
-        max_marker_bytes=_MAX_MARKER_BYTES,
-        max_payload_bytes=_MAX_PAYLOAD_BYTES,
+        max_payload_bytes=CodingWindowsWorkerStageReviewV1._payload_maximum(),
         error_type=CodingWindowsWorkerStageReviewError,
         error_prefix="coding_worker_stage_review",
         result_factory=lambda captured: captured,
@@ -164,7 +150,7 @@ def _inspection() -> WindowsStageInspection:
         CodingWindowsWorkerLaunchIntentV1,
         CodingWindowsWorkerStageReviewError,
         "coding_worker_stage_review",
-        _MAX_PAYLOAD_BYTES,
+        CodingWindowsWorkerStageReviewV1._payload_maximum(),
         _READ_CHUNK,
         _DIRECTORY_ATTRIBUTES,
         _FILE_ATTRIBUTES,
