@@ -1015,11 +1015,7 @@ def _create_agent_session(
         custody=preparation_custody,
         source_policy=resource_catalog_source_policy,
     )
-    capture_catalog_manifests = partial(
-        capture_selected_manifests,
-        max_files=_CATALOG_MANIFEST_MAX_FILES,
-        max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
-    )
+
     def prepare_capability_roots(
         state_prefix: str, private_prefix: str, *, arch_enabled: bool
     ) -> Path:
@@ -1475,13 +1471,15 @@ def _create_agent_session(
                     product_external_data_compilation
                 ),
                 coding_selected_capability_manifests=(
-                    capture_catalog_manifests(
-                        product_base_runtime,
+                    capture_selected_manifests(
+                        product_base_runtime.capture_selected_plugin_manifest_for,
                         (
                             selection.installation_key.plugin_id
                             for selection in product_capability_desired_selections
                             if selection.desired_state == "installed_enabled"
                         ),
+                        max_files=_CATALOG_MANIFEST_MAX_FILES,
+                        max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
                     )
                     if product_base_compilation is None
                     and product_base_runtime is not None
