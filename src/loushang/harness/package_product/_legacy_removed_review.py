@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Set
 from dataclasses import dataclass
 from functools import partial
-from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, Self, cast
 
@@ -19,9 +18,11 @@ from loushang.harness.package_product._legacy_inventory import (
     LEGACY_REVIEW_ID,
     LegacyInventoryFacts,
     LegacyRemovedBinding,
+    LegacyReviewWireSelections,
     _LegacyBuiltinIntent,
     _LegacyScopedDisable,
     classify_legacy_installations,
+    legacy_record_digest,
     legacy_review_selection_wire,
     prove_removed_legacy_bindings,
     valid_legacy_disable_selections,
@@ -42,9 +43,6 @@ from loushang.harness.resources.packages.plugin_lifecycle._record_schema import 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackageProductPreBSnapshotOwner,
@@ -300,11 +298,7 @@ class LegacyRemovalReviewRecord:
             )
         ):
             raise self._error_type("Old local removal review is invalid")
-        object.__setattr__(
-            self,
-            "review_id",
-            sha256(canonical_json_bytes(self._identity())).hexdigest(),
-        )
+        object.__setattr__(self, "review_id", legacy_record_digest(self._identity()))
 
     def _identity(self) -> dict[str, object]:
         identity = {
@@ -370,19 +364,12 @@ class LegacyRemovalReviewRecord:
             or ("retainedStoreRoots" in value and not retained_store)
         ):
             raise cls._error_type("Old local removal entries are invalid")
+        selections = LegacyReviewWireSelections(disabled, builtins, removed_builtin)
         create: Callable[..., Self] = cls
         try:
             review = create(
                 **_REVIEW_SCHEMA.decode(dict, value),
-                disabled_plugins=tuple(
-                    cls._disable_type(item["scope"], item["pluginId"])
-                    for item in disabled
-                ),
-                builtin_intent=tuple(
-                    cls._builtin_intent_type(item["pluginId"], item["desiredState"])
-                    for item in builtins
-                ),
-                removed_builtin_ids=tuple(removed_builtin),
+                **selections.decode(cls._disable_type, cls._builtin_intent_type),
                 removed_local=tuple(
                     cls._entry_type.from_dict(item) for item in removed_local
                 ),

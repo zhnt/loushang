@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path as Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_inventory import (
+    LegacyReviewWireSelections,
     classify_legacy_builtin_snapshot,
+    legacy_record_digest,
+    legacy_review_scalar_schema,
     legacy_review_selection_wire,
     read_legacy_builtin_admission,
     valid_legacy_builtin_intent,
-)
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
@@ -138,11 +138,7 @@ class CodingLegacyBuiltinOnlyReviewV1:
             or not (self.builtin_intent or self.removed_builtin_ids)
         ):
             raise CodingLegacyBuiltinOnlyReviewError("Builtin-only review is invalid")
-        object.__setattr__(
-            self,
-            "review_id",
-            sha256(canonical_json_bytes(self._identity())).hexdigest(),
-        )
+        object.__setattr__(self, "review_id", legacy_record_digest(self._identity()))
 
     def _identity(self) -> dict[str, object]:
         return {
@@ -172,45 +168,15 @@ class CodingLegacyBuiltinOnlyReviewV1:
             raise CodingLegacyBuiltinOnlyReviewError(
                 "Builtin-only review record is invalid"
             )
-        disabled = value["disabledPlugins"]
-        intent = value["builtinIntent"]
-        removed = value["removedBuiltinIds"]
-        if (
-            not isinstance(disabled, list)
-            or any(
-                type(item) is not dict
-                or set(item) != {"scope", "pluginId"}
-                or item["scope"] not in ("global", "project")
-                or type(item["pluginId"]) is not str
-                for item in disabled
-            )
-            or not isinstance(intent, list)
-            or any(
-                type(item) is not dict
-                or set(item) != {"pluginId", "desiredState"}
-                or type(item["pluginId"]) is not str
-                or item["desiredState"]
-                not in ("installed_disabled", "installed_enabled")
-                for item in intent
-            )
-            or not isinstance(removed, list)
-            or any(type(item) is not str for item in removed)
-        ):
-            raise CodingLegacyBuiltinOnlyReviewError(
-                "Builtin-only review entries are invalid"
-            )
+        error = CodingLegacyBuiltinOnlyReviewError("Builtin-only review entries are invalid")
+        selections = LegacyReviewWireSelections.read(
+            value, required=True, disabled_error=error, intent_error=error, removed_error=error,
+        )
+        create: Callable[..., CodingLegacyBuiltinOnlyReviewV1] = cls
         try:
-            review = cls(
+            review = create(
                 **_REVIEW_SCHEMA.decode(dict, value),
-                disabled_plugins=tuple(
-                    CodingScopedLegacyDisableV1(item["scope"], item["pluginId"])
-                    for item in disabled
-                ),
-                builtin_intent=tuple(
-                    CodingLegacyBuiltinIntentV1(item["pluginId"], item["desiredState"])
-                    for item in intent
-                ),
-                removed_builtin_ids=tuple(removed),
+                **selections.decode(CodingScopedLegacyDisableV1, CodingLegacyBuiltinIntentV1),
                 review_version=value["reviewVersion"],
             )
         except (TypeError, ValueError, KeyError) as exc:
@@ -234,20 +200,13 @@ class CodingLegacyBuiltinOnlyReviewV1:
         )
 
 
-_REVIEW_SCHEMA = RecordSchema(
-    lambda value: value,
-    tuple(
-        RecordField(item.name)
-        for item in fields(CodingLegacyBuiltinOnlyReviewV1)
-        if item.name
-        not in {
-            "disabled_plugins",
-            "builtin_intent",
-            "removed_builtin_ids",
-            "review_version",
-            "review_id",
-        }
-    ),
+_REVIEW_SCHEMA = legacy_review_scalar_schema(
+    CodingLegacyBuiltinOnlyReviewV1,
+    "disabled_plugins",
+    "builtin_intent",
+    "removed_builtin_ids",
+    "review_version",
+    "review_id",
 )
 
 

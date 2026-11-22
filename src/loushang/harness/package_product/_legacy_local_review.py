@@ -6,17 +6,30 @@ import json
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
-from typing import NamedTuple, TypedDict
+from re import Pattern
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, Self, TypedDict
 
 from loushang.harness.package_product._legacy_binding_evidence import (
     LegacyLocalBindingEvidence,
 )
 from loushang.harness.package_product._legacy_inventory import (
+    LEGACY_REVIEW_DIGEST,
+    LEGACY_REVIEW_ID,
     LegacyInventoryEvidence,
+    LegacyReviewWireSelections,
     _InstalledState,
+    _LegacyBuiltinIntent,
+    _LegacyScopedDisable,
+    legacy_record_digest,
+    legacy_review_selection_wire,
     reacquire_legacy_inventory_source,
+    valid_legacy_builtin_intent,
+    valid_legacy_disable_selections,
 )
 from loushang.harness.package_product._legacy_runtime import _LegacyFirstSnapshot
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceReceiptV1,
 )
@@ -52,6 +65,132 @@ class LegacyLocalReviewEvidence(NamedTuple):
     identity: LegacyLocalReviewIdentity
     inventory: LegacyInventoryEvidence
     source_projection: object
+
+
+_LOCAL_REVIEW_DIGEST_FIELDS = (
+    "namespace_id", "first_fence_id", "snapshot_receipt_id", "legacy_root_identity",
+    "legacy_state_evidence_id", "legacy_state_digest", "legacy_binding_digest",
+    "legacy_lockfile_digest", "legacy_desired_journal_digest", "source_content_digest",
+    "manifest_digest", "dependency_lock_digest", "wheel_artifact_digest",
+)
+_OPTIONAL_LOCAL_REVIEW_WIRE_KEYS = {
+    "disabledPlugins", "builtinIntent", "removedBuiltinIds", "configuredPluginSourceScope",
+}
+
+
+class LegacyLocalReviewRecord:
+    """Authenticate and encode one snapshot-bound review over Product data."""
+
+    __slots__ = ()
+    _review_label: ClassVar[str]
+    _wheel_name: ClassVar[Pattern[str]]
+    _builtin_ids: ClassVar[frozenset[str]]
+    _disable_type: ClassVar[type[_LegacyScopedDisable]]
+    _builtin_intent_type: ClassVar[type[_LegacyBuiltinIntent]]
+    _schema: ClassVar[RecordSchema]
+
+    if TYPE_CHECKING:
+        store_id: str
+        scope_id: str
+        plugin_id: str
+        desired_state: _InstalledState
+        legacy_entry_count: int
+        legacy_byte_count: int
+        legacy_source_identity: str
+        wheel_filename: str
+        policy_revision: str
+        disabled_plugins: tuple[_LegacyScopedDisable, ...]
+        builtin_intent: tuple[_LegacyBuiltinIntent, ...]
+        removed_builtin_ids: tuple[str, ...]
+        configured_plugin_source_scope: str | None
+        review_id: str
+
+    def __post_init__(self) -> None:
+        label = self._review_label
+        if any(
+            type(value) is not str or LEGACY_REVIEW_DIGEST.fullmatch(value) is None
+            for value in (getattr(self, field) for field in _LOCAL_REVIEW_DIGEST_FIELDS)
+        ):
+            raise ValueError(f"{label} digest is invalid")
+        if any(
+            type(value) is not int or value < 0
+            for value in (self.legacy_entry_count, self.legacy_byte_count)
+        ):
+            raise ValueError(f"{label} count is invalid")
+        if (
+            type(self.store_id) is not str
+            or LEGACY_REVIEW_ID.fullmatch(self.store_id) is None
+            or type(self.scope_id) is not str
+            or not self.scope_id.startswith("workspace:")
+            or type(self.plugin_id) is not str
+            or LEGACY_REVIEW_ID.fullmatch(self.plugin_id) is None
+            or self.desired_state not in ("installed_disabled", "installed_enabled")
+            or type(self.legacy_source_identity) is not str
+            or not self.legacy_source_identity.startswith("local:/")
+            or type(self.wheel_filename) is not str
+            or self._wheel_name.fullmatch(self.wheel_filename) is None
+            or type(self.policy_revision) is not str
+            or LEGACY_REVIEW_ID.fullmatch(self.policy_revision) is None
+        ):
+            raise ValueError(f"{label} authority is invalid")
+        if not valid_legacy_disable_selections(self.disabled_plugins, self._disable_type):
+            raise ValueError(f"{label} disabled Plugins are invalid")
+        if not valid_legacy_builtin_intent(
+            self.builtin_intent, self._builtin_ids, intent_type=self._builtin_intent_type,
+        ):
+            raise ValueError(f"{label} builtin intent is invalid")
+        if (
+            any(type(item) is not str or item not in self._builtin_ids
+                for item in self.removed_builtin_ids)
+            or self.removed_builtin_ids != tuple(sorted(set(self.removed_builtin_ids)))
+            or set(self.removed_builtin_ids).intersection(
+                item.plugin_id for item in self.builtin_intent
+            )
+        ):
+            raise ValueError(f"{label} removed builtin IDs are invalid")
+        if self.configured_plugin_source_scope not in (None, "global", "project"):
+            raise ValueError(f"{label} configured Source scope is invalid")
+        object.__setattr__(self, "review_id", legacy_record_digest(self._identity_dict()))
+
+    def _identity_dict(self) -> dict[str, object]:
+        identity = self._schema.encode(self)
+        identity.update(legacy_review_selection_wire(
+            self.disabled_plugins, self.builtin_intent, self.removed_builtin_ids,
+            include_empty=False,
+        ))
+        if self.configured_plugin_source_scope is not None:
+            identity["configuredPluginSourceScope"] = self.configured_plugin_source_scope
+        return identity
+
+    def to_dict(self) -> dict[str, object]:
+        return {"reviewId": self.review_id, **self._identity_dict()}
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        label = cls._review_label
+        keys = cls._schema.keys | {"reviewId"}
+        allowed = keys | _OPTIONAL_LOCAL_REVIEW_WIRE_KEYS
+        if type(value) is not dict or not keys <= value.keys() <= allowed:
+            raise ValueError(f"{label} record is invalid")
+        selections = LegacyReviewWireSelections.read(
+            value,
+            required=False,
+            disabled_error=ValueError(f"{label} disabled Plugins are invalid"),
+            intent_error=ValueError(f"{label} builtin intent is invalid"),
+            removed_error=ValueError(f"{label} removed builtin IDs are invalid"),
+        )
+        scalar_keys = keys - {"legacyEntryCount", "legacyByteCount"}
+        if any(type(value[key]) is not str for key in scalar_keys):
+            raise ValueError(f"{label} record is invalid")
+        create: Callable[..., Self] = cls
+        review = create(
+            **cls._schema.decode(dict, value),
+            **selections.decode(cls._disable_type, cls._builtin_intent_type),
+            configured_plugin_source_scope=value.get("configuredPluginSourceScope"),
+        )
+        if value["reviewId"] != review.review_id:
+            raise ValueError(f"{label} identity changed")
+        return review
 
 
 def _read_evidence(

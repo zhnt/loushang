@@ -1,13 +1,15 @@
-"""Cross-check captured legacy lock and Desired-state facts."""
+"""Authenticate legacy inventory facts and shared review values."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence, Set
+from dataclasses import fields
 from functools import partial
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Generic, Literal, NamedTuple, Protocol, TypeVar
+from typing import Any, Generic, Literal, NamedTuple, Protocol, TypeVar
 
 from loushang.harness.package_product._legacy_binding_evidence import (
     LEGACY_BINDING_CAPTURE_MAX_BYTES,
@@ -37,8 +39,15 @@ from loushang.harness.plugin_management.records import PluginPackageRevisionRefV
 from loushang.harness.plugin_management.retirement import (
     inspect_removed_installation_epoch,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_legacy_source_wheel import (
     _LegacyWheelValues,
@@ -129,6 +138,88 @@ class _LegacyBuiltinIntent(Protocol):
 
     @property
     def desired_state(self) -> str: ...
+
+
+def legacy_review_scalar_schema(record_type: type, *excluded: str) -> RecordSchema:
+    names = (member.name for member in fields(record_type) if member.name not in excluded)
+    return RecordSchema(lambda value: value, tuple(RecordField(name) for name in names))
+
+
+def legacy_record_digest(document: dict[str, object]) -> str:
+    return sha256(canonical_json_bytes(document)).hexdigest()
+
+
+class LegacyReviewWireSelections(NamedTuple):
+    disabled: list[dict[str, Any]]
+    intent: list[dict[str, Any]]
+    removed: list[str]
+
+    @classmethod
+    def read(
+        cls,
+        document: dict[str, Any],
+        *,
+        required: bool,
+        disabled_error: ValueError,
+        intent_error: ValueError,
+        removed_error: ValueError,
+    ) -> LegacyReviewWireSelections:
+        """Read required builtin lists or local lists omitted when empty."""
+
+        def plugin_id_is_text(value: object) -> bool:
+            return type(value) is str if required else isinstance(value, str)
+
+        def desired_state_is_valid(value: object) -> bool:
+            if required:
+                return value in ("installed_disabled", "installed_enabled")
+            return type(value) is str
+
+        disabled = _review_wire_list(document, "disabledPlugins", required, disabled_error)
+        if any(
+            type(item) is not dict
+            or set(item) != {"scope", "pluginId"}
+            or item["scope"] not in ("global", "project")
+            or not plugin_id_is_text(item["pluginId"])
+            for item in disabled
+        ):
+            raise disabled_error
+        intent = _review_wire_list(document, "builtinIntent", required, intent_error)
+        if any(
+            type(item) is not dict
+            or set(item) != {"pluginId", "desiredState"}
+            or type(item["pluginId"]) is not str
+            or not desired_state_is_valid(item["desiredState"])
+            for item in intent
+        ):
+            raise intent_error
+        removed = _review_wire_list(document, "removedBuiltinIds", required, removed_error)
+        if any(type(item) is not str for item in removed):
+            raise removed_error
+        return cls(disabled, intent, removed)
+
+    def decode(
+        self,
+        disable_type: type[_LegacyScopedDisable],
+        intent_type: type[_LegacyBuiltinIntent],
+    ) -> dict[str, object]:
+        return {
+            "disabled_plugins": tuple(
+                disable_type(item["scope"], item["pluginId"]) for item in self.disabled
+            ),
+            "builtin_intent": tuple(
+                intent_type(item["pluginId"], item["desiredState"]) for item in self.intent
+            ),
+            "removed_builtin_ids": tuple(self.removed),
+        }
+
+
+def _review_wire_list(
+    document: dict[str, Any], key: str, required: bool, error: ValueError
+) -> list[Any]:
+    value = document[key] if required else document.get(key, [])
+    if not isinstance(value, list) or (not required and key in document and not value):
+        raise error
+    return value
 
 
 def legacy_review_selection_wire(

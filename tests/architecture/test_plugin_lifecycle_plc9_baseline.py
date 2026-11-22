@@ -79,6 +79,8 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/harness/config/agent/_settings_patch.py"),
     Path("src/loushang/harness/config/agent/manager.py"),
     Path("src/loushang/harness/config/agent/types.py"),
+    Path("src/loushang/harness/package_product/_legacy_inventory.py"),
+    Path("src/loushang/harness/package_product/_legacy_local_review.py"),
     Path("src/loushang/harness/package_product/_legacy_removed_review.py"),
     Path("src/loushang/harness/resources/packages/catalog.py"),
     Path("src/loushang/harness/resources/packages/projection.py"),
@@ -258,10 +260,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         ): 1,
         (
             Path("src/loushang/coding/package/legacy_builtin_review.py"),
-            "CodingLegacyBuiltinOnlyReviewV1.from_dict",
-        ): 1,
-        (
-            Path("src/loushang/coding/package/legacy_builtin_review.py"),
             "admit_coding_builtin_only_snapshot",
         ): 1,
         (
@@ -298,7 +296,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         ): 3,
         (
             Path("src/loushang/coding/package/legacy_local_acceptance.py"),
-            "CodingLegacyLocalAcceptanceV1.create",
+            "CodingLegacyLocalAcceptanceV1._check_review",
         ): 1,
         (
             Path("src/loushang/coding/package/legacy_local_acceptance.py"),
@@ -313,6 +311,22 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "CodingLegacyRemovedReviewV1",
         ): 1,
         (
+            Path("src/loushang/harness/package_product/_legacy_inventory.py"),
+            "LegacyReviewWireSelections.decode",
+        ): 1,
+        (
+            Path("src/loushang/harness/package_product/_legacy_local_review.py"),
+            "LegacyLocalReviewRecord",
+        ): 1,
+        (
+            Path("src/loushang/harness/package_product/_legacy_local_review.py"),
+            "LegacyLocalReviewRecord.__post_init__",
+        ): 1,
+        (
+            Path("src/loushang/harness/package_product/_legacy_local_review.py"),
+            "LegacyLocalReviewRecord._identity_dict",
+        ): 1,
+        (
             Path("src/loushang/harness/package_product/_legacy_removed_review.py"),
             "LegacyRemovalReviewRecord",
         ): 1,
@@ -325,10 +339,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "LegacyRemovalReviewRecord._identity",
         ): 1,
         (
-            Path("src/loushang/harness/package_product/_legacy_removed_review.py"),
-            "LegacyRemovalReviewRecord.from_dict",
-        ): 1,
-        (
             Path("src/loushang/coding/package/legacy_removed_review.py"),
             "admit_coding_removed_local_snapshot",
         ): 1,
@@ -339,18 +349,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         (
             Path("src/loushang/coding/package/legacy_review.py"),
             "CodingLegacyLocalAdoptionReviewV1",
-        ): 1,
-        (
-            Path("src/loushang/coding/package/legacy_review.py"),
-            "CodingLegacyLocalAdoptionReviewV1.__post_init__",
-        ): 1,
-        (
-            Path("src/loushang/coding/package/legacy_review.py"),
-            "CodingLegacyLocalAdoptionReviewV1._identity_dict",
-        ): 1,
-        (
-            Path("src/loushang/coding/package/legacy_review.py"),
-            "CodingLegacyLocalAdoptionReviewV1.from_dict",
         ): 1,
         (
             Path("src/loushang/coding/package/legacy_review.py"),

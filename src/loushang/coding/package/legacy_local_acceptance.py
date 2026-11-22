@@ -13,12 +13,11 @@ from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal import (
-    FunctionalJournalRecordCodec,
-)
-from loushang.harness.journal import (
     JournalCodecError as JournalCodecError,
 )
 from loushang.harness.package_product._legacy_local_migration import (
+    LegacyLocalAcceptanceRecord,
+    _FirstAcceptanceEnvelope,
     _LocalAcceptanceProtocol,
 )
 from loushang.harness.package_product._legacy_local_review import (
@@ -56,7 +55,6 @@ from .legacy_review import (
 from .legacy_snapshot_member import _snapshot_reader
 from .source_snapshot import _PROJECTION_NAME
 
-_RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
 _MAX_ACCEPTANCE_BYTES = 1024 * 1024
 _MAX_DESIRED_BYTES = 32 * 1024 * 1024
 
@@ -71,100 +69,31 @@ class CodingLegacyLocalAcceptanceError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingLegacyLocalAcceptanceV1:
+class CodingLegacyLocalAcceptanceV1(
+    LegacyLocalAcceptanceRecord[CodingLegacyLocalAdoptionReviewV1]
+):
     review: CodingLegacyLocalAdoptionReviewV1
     acceptance_id: str
     acceptance_version: int = 1
     resource_kind: Literal["skill", "prompt", "theme"] = "skill"
 
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(self.review, CodingLegacyLocalAdoptionReviewV1)
-            or type(self.acceptance_version) is not int
-            or _RESOURCE_KIND_VERSION.get(self.resource_kind) != self.acceptance_version
-        ):
-            raise ValueError(f"{_ACCEPTANCE_LABEL} acceptance record is invalid")
-        if self.acceptance_id != _acceptance_id(
-            self.review, self.acceptance_version, self.resource_kind
-        ):
-            raise ValueError(f"{_ACCEPTANCE_LABEL} acceptance identity changed")
+    _label = _ACCEPTANCE_LABEL
+    _review_type = CodingLegacyLocalAdoptionReviewV1
+    _review_required = f"{_ACCEPTANCE_LABEL} review is required"
+    _envelope = _FirstAcceptanceEnvelope(
+        invalid_message=f"Invalid {_ACCEPTANCE_LABEL} acceptance",
+        invalid_code=_ACCEPTANCE_CODEC_ERROR_CODE,
+        version_error=f"Unsupported {_ACCEPTANCE_LABEL} acceptance version",
+        identity_error=f"{_ACCEPTANCE_LABEL} acceptance identity changed",
+    )
 
     @classmethod
-    def create(
-        cls,
-        review: CodingLegacyLocalAdoptionReviewV1,
-        *,
-        resource_kind: Literal["skill", "prompt", "theme"] = "skill",
-    ) -> CodingLegacyLocalAcceptanceV1:
-        if not isinstance(review, CodingLegacyLocalAdoptionReviewV1):
-            raise TypeError(f"{_ACCEPTANCE_LABEL} review is required")
+    def _check_review(cls, review: CodingLegacyLocalAdoptionReviewV1) -> None:
         if any(item.plugin_id not in _BUILTINS for item in review.disabled_plugins):
             raise ValueError("Legacy local adoption supports built-in disables only")
-        acceptance_version = _RESOURCE_KIND_VERSION.get(resource_kind)
-        if acceptance_version is None:
-            raise ValueError("Unsupported legacy local Resource type")
-        return cls(
-            review,
-            _acceptance_id(review, acceptance_version, resource_kind),
-            acceptance_version=acceptance_version,
-            resource_kind=resource_kind,
-        )
-
-    def to_dict(self) -> dict[str, object]:
-        record: dict[str, object] = {
-            "acceptanceId": self.acceptance_id,
-            "acceptanceVersion": self.acceptance_version,
-            "review": self.review.to_dict(),
-        }
-        if self.acceptance_version >= 2:
-            record["resourceKind"] = self.resource_kind
-        return record
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingLegacyLocalAcceptanceV1:
-        if type(value) is not dict or set(value) not in (
-            {"acceptanceId", "acceptanceVersion", "review"},
-            {"acceptanceId", "acceptanceVersion", "review", "resourceKind"},
-        ):
-            raise JournalCodecError(
-                f"Invalid {_ACCEPTANCE_LABEL} acceptance",
-                code=_ACCEPTANCE_CODEC_ERROR_CODE,
-            )
-        try:
-            if type(value["acceptanceVersion"]) is not int:
-                raise ValueError(f"Unsupported {_ACCEPTANCE_LABEL} acceptance version")
-            resource_kind: Literal["skill", "prompt", "theme"]
-            if value["acceptanceVersion"] == 1 and "resourceKind" not in value:
-                resource_kind = "skill"
-            elif (
-                value["acceptanceVersion"] == 2
-                and value.get("resourceKind") == "prompt"
-            ):
-                resource_kind = "prompt"
-            elif (
-                value["acceptanceVersion"] == 3 and value.get("resourceKind") == "theme"
-            ):
-                resource_kind = "theme"
-            else:
-                raise ValueError(f"Unsupported {_ACCEPTANCE_LABEL} acceptance type")
-            record = cls.create(
-                CodingLegacyLocalAdoptionReviewV1.from_dict(value["review"]),
-                resource_kind=resource_kind,
-            )
-            if record.acceptance_id != value["acceptanceId"]:
-                raise ValueError(f"{_ACCEPTANCE_LABEL} acceptance identity changed")
-            return record
-        except (TypeError, ValueError) as exc:
-            raise JournalCodecError(
-                f"Invalid {_ACCEPTANCE_LABEL} acceptance",
-                code=_ACCEPTANCE_CODEC_ERROR_CODE,
-            ) from exc
 
 
-_CODEC = FunctionalJournalRecordCodec(
-    encoder=CodingLegacyLocalAcceptanceV1.to_dict,
-    decoder=CodingLegacyLocalAcceptanceV1.from_dict,
-)
+_CODEC = CodingLegacyLocalAcceptanceV1._record_codec()
 
 
 def accept_coding_legacy_installed_local_review(
@@ -326,21 +255,6 @@ def _require_frozen_review(
         != (None if configured is None else configured.scope)
     ):
         raise _acceptance_error("acceptance changed first-B evidence")
-
-
-def _acceptance_id(
-    review: CodingLegacyLocalAdoptionReviewV1,
-    acceptance_version: int,
-    resource_kind: Literal["skill", "prompt", "theme"],
-) -> str:
-    identity = {
-        "acceptanceVersion": acceptance_version,
-        "reviewId": review.review_id,
-        "pluginId": review.plugin_id,
-    }
-    if acceptance_version >= 2:
-        identity["resourceKind"] = resource_kind
-    return sha256(canonical_json_bytes(identity)).hexdigest()
 
 
 def _require_live_resource_kind(

@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from hashlib import sha256
 from pathlib import Path as Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._legacy_inventory import legacy_record_digest
 from loushang.harness.package_product._legacy_runtime import (
     require_legacy_snapshot_members,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -75,11 +72,7 @@ class CodingLegacyDisabledOnlyReviewV1:
             raise ValueError("Disabled-only review requires scoped disabled Plugins")
         if self.review_version != 1:
             raise ValueError("Unsupported disabled-only review version")
-        object.__setattr__(
-            self,
-            "review_id",
-            sha256(canonical_json_bytes(self._identity_dict())).hexdigest(),
-        )
+        object.__setattr__(self, "review_id", legacy_record_digest(self._identity_dict()))
 
     def _identity_dict(self) -> dict[str, object]:
         return {

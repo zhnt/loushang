@@ -16,7 +16,7 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
+from typing import Any, ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
 
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -57,9 +57,6 @@ from loushang.harness.plugin_management.records import (
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
 )
@@ -85,7 +82,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from ._legacy_inventory import _BindingHead
+from ._legacy_inventory import _BindingHead, legacy_record_digest
 from ._legacy_runtime import _FencedRuntime
 from ._plugin_bootstrap import (
     _PluginBootstrapPolicy,
@@ -95,6 +92,7 @@ from ._plugin_bootstrap import (
 
 RecordT = TypeVar("RecordT")
 ReviewT = TypeVar("ReviewT")
+_ACCEPTANCE_FIELDS = {"acceptanceId", "acceptanceVersion", "review"}
 
 
 @dataclass(frozen=True)
@@ -108,9 +106,15 @@ class _FirstAcceptanceEnvelope:
 
     @staticmethod
     def identity(review_id: str) -> str:
-        return sha256(
-            canonical_json_bytes({"acceptanceVersion": 1, "reviewId": review_id})
-        ).hexdigest()
+        return legacy_record_digest({"acceptanceVersion": 1, "reviewId": review_id})
+
+    def _document(
+        self, value: object, *, optional: frozenset[str] = frozenset()
+    ) -> dict[str, Any]:
+        allowed = _ACCEPTANCE_FIELDS | optional
+        if type(value) is not dict or not _ACCEPTANCE_FIELDS <= value.keys() <= allowed:
+            raise JournalCodecError(self.invalid_message, code=self.invalid_code)
+        return value
 
     def decode(
         self,
@@ -118,20 +122,21 @@ class _FirstAcceptanceEnvelope:
         review_decoder: Callable[[object], ReviewT],
         create: Callable[[ReviewT], RecordT],
     ) -> RecordT:
-        if type(value) is not dict or set(value) != {
-            "acceptanceId",
-            "acceptanceVersion",
-            "review",
-        }:
-            raise JournalCodecError(self.invalid_message, code=self.invalid_code)
-        try:
-            if (
-                type(value["acceptanceVersion"]) is not int
-                or value["acceptanceVersion"] != 1
-            ):
+        document = self._document(value)
+
+        def propose() -> RecordT:
+            if type(document["acceptanceVersion"]) is not int or document["acceptanceVersion"] != 1:
                 raise ValueError(self.version_error)
-            record = create(review_decoder(value["review"]))
-            if getattr(record, "acceptance_id") != value["acceptanceId"]:
+            return create(review_decoder(document["review"]))
+
+        return self._decode_proposal(document, propose)
+
+    def _decode_proposal(
+        self, document: dict[str, Any], propose: Callable[[], RecordT]
+    ) -> RecordT:
+        try:
+            record = propose()
+            if getattr(record, "acceptance_id") != document["acceptanceId"]:
                 raise ValueError(self.identity_error)
             return record
         except (TypeError, ValueError) as exc:
@@ -193,6 +198,92 @@ class _FirstAcceptanceRecord(Generic[_FirstReviewT]):
     @classmethod
     def _record_codec(cls) -> FunctionalJournalRecordCodec[Self]:
         return FunctionalJournalRecordCodec(encoder=cls.to_dict, decoder=cls.from_dict)
+
+
+class _LocalAcceptanceReview(_FirstAcceptanceReview, Protocol):
+    @property
+    def plugin_id(self) -> str: ...
+
+
+_LocalReviewT = TypeVar("_LocalReviewT", bound=_LocalAcceptanceReview)
+_LegacyResourceKind = Literal["skill", "prompt", "theme"]
+_RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
+
+
+class LegacyLocalAcceptanceRecord(_FirstAcceptanceRecord[_LocalReviewT]):
+    """Keep the three local receipt versions with the shared first-fence codec."""
+
+    __slots__ = ()
+    resource_kind: _LegacyResourceKind
+    _label: ClassVar[str]
+
+    def __post_init__(self) -> None:
+        review_type = cast(type[_LocalReviewT], self._review_type)
+        if (
+            not isinstance(self.review, review_type)
+            or type(self.acceptance_version) is not int
+            or _RESOURCE_KIND_VERSION.get(self.resource_kind) != self.acceptance_version
+        ):
+            raise ValueError(f"{self._label} acceptance record is invalid")
+        if self.acceptance_id != self._identity(
+            self.review, self.acceptance_version, self.resource_kind
+        ):
+            raise ValueError(self._envelope.identity_error)
+
+    @staticmethod
+    def _identity(review: _LocalAcceptanceReview, version: int, kind: _LegacyResourceKind) -> str:
+        identity: dict[str, object] = {
+            "acceptanceVersion": version,
+            "reviewId": review.review_id,
+            "pluginId": review.plugin_id,
+        }
+        if version >= 2:
+            identity["resourceKind"] = kind
+        return legacy_record_digest(identity)
+
+    @classmethod
+    def create(cls, review: _LocalReviewT, *, resource_kind: _LegacyResourceKind = "skill") -> Self:
+        review_type = cast(type[_LocalReviewT], cls._review_type)
+        if not isinstance(review, review_type):
+            raise TypeError(cls._review_required)
+        cls._check_review(review)
+        version = _RESOURCE_KIND_VERSION.get(resource_kind)
+        if version is None:
+            raise ValueError("Unsupported legacy local Resource type")
+        create: Callable[..., Self] = cls
+        return create(
+            review, cls._identity(review, version, resource_kind),
+            acceptance_version=version, resource_kind=resource_kind,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        document = super().to_dict()
+        if self.acceptance_version >= 2:
+            document["resourceKind"] = self.resource_kind
+        return document
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        document = cls._envelope._document(value, optional=frozenset({"resourceKind"}))
+
+        def propose(record_type: type[Self] = cls) -> Self:
+            version = document["acceptanceVersion"]
+            if type(version) is not int:
+                raise ValueError(cls._envelope.version_error)
+            wire_kind = document.get("resourceKind")
+            kind: _LegacyResourceKind
+            if version == 1 and "resourceKind" not in document:
+                kind = "skill"
+            elif version == 2 and wire_kind == "prompt":
+                kind = "prompt"
+            elif version == 3 and wire_kind == "theme":
+                kind = "theme"
+            else:
+                raise ValueError(f"Unsupported {cls._label} acceptance type")
+            review_type = cast(type[_LocalReviewT], cls._review_type)
+            return record_type.create(review_type.from_dict(document["review"]), resource_kind=kind)
+
+        return cls._envelope._decode_proposal(document, propose)
 
 
 @dataclass(frozen=True)
