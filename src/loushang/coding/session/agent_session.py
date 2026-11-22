@@ -55,7 +55,6 @@ from loushang.coding.composition.runtime_admission import (
     resolve_coding_capability_profile,
 )
 from loushang.coding.composition.sets import CodingCompositionSetPlan
-from loushang.coding.harness.session.tool_selection import default_tool_names
 from loushang.coding.lsp._deferred_generation import (
     CodingDeferredLspGeneration,
     dormant_lsp_tool_infos,
@@ -173,6 +172,7 @@ from loushang.harness.session.resource_refresh_gate import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.tools.workspace.selection import default_tool_names
 from loushang.harness.transcript import (
     BranchSummaryOutput,
     CompactionPreparation,

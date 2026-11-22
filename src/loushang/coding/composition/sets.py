@@ -16,10 +16,10 @@ from loushang.coding.composition.capabilities import (
     CODING_ARCH_CAPABILITY,
     CODING_LSP_CAPABILITY,
 )
-from loushang.coding.harness.session.composition_history import (
+from loushang.harness.config.agent import CapabilityMountMode
+from loushang.harness.session.composition_evidence import (
     composition_plan_fingerprint,
 )
-from loushang.harness.config.agent import CapabilityMountMode
 
 CODING_COMPOSITION_SET_PLAN_VERSION = 1
 CODING_KERNEL_PROMPT_REVISION = "coding-kernel-prompt-v1"

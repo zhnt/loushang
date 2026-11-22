@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
+from hashlib import sha256
 from re import fullmatch
 from typing import TYPE_CHECKING, TypeGuard, cast
 
@@ -29,6 +31,14 @@ if TYPE_CHECKING:
 
 _IDENTITY_FIELDS = {"version", "setId", "planFingerprint"}
 _MOUNT_MODES = frozenset({"disabled", "on_demand", "always"})
+
+
+def composition_plan_fingerprint(document: object, *, digest_domain: bytes) -> str:
+    """Encode the deployed composition fingerprint with its original JSON codec."""
+    payload = json.dumps(
+        document, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return sha256(digest_domain + payload).hexdigest()
 
 
 def composition_identity_fields(

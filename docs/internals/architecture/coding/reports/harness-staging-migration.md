@@ -782,6 +782,24 @@ C51 and C54 architecture checks pass after aligning their exact locations to
 the relocated startup receipt type and Worker entrypoints. Scoped mypy passes
 on five Support and seven Worker files. Native Windows remains pending.
 
+### Session Profile, Tool Selection And Child Construction
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `extension_profiles` | Formal Session resolves admitted declarations, prepares implementations and checks provider graph refresh. Coding supplies its Runtime Plan and allowed slots. |
+| `tool_selection` | The formal Workspace Tools owner resolves native names and profiles, filters exact-owner tools and orders registered peers. |
+| `subagent_construction` | The existing formal child factory module owns delegated input selection and runtime construction. Coding supplies roles, writable workspace ceilings, Profile and runtime builder. |
+| `composition_history` | Formal Session encodes composition fingerprints. Coding Resume interprets its own historical comparison and retains its result type. |
+
+The batch removes 536 staging lines and adds 42 Coding Product and 475
+formal Harness lines. System production Python decreases by 19 lines for
+the batch and 1,255 against baseline. Staging has 22 files and 2,990 lines.
+Hosting, other production code, scripts and test source have no changes.
+
+All 85 existing Linux cases for Resume comparison, composition sets,
+extension refresh, Profile capability binding, Tool Pack, subagents and
+architecture pass. Ten scoped sources pass mypy. Native Windows remains pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

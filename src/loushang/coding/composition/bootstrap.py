@@ -102,7 +102,6 @@ from loushang.coding.control.settings_store import (
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
 from loushang.coding.harness.session.resume_cleanup import discard_candidate
-from loushang.coding.harness.session.tool_selection import initial_tool_names
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_CAPABILITY_DEFINITION,
@@ -269,6 +268,7 @@ from loushang.harness.session.product_composition_assembly import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.tools.workspace.selection import initial_tool_names
 from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
