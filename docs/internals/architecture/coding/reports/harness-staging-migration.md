@@ -615,9 +615,28 @@ The batch reduces system production Python by 53 lines, down 432 from
 baseline. Staging has 66 files and 12,290 lines. No test or script source
 changes are included. The existing projection compatibility probe keeps
 its original evidence and failure sequence. The selected Linux suite
-reports 28 passed and seven platform cases skipped. It covers the workspace
+reports 28 passed and seven host-runtime cases skipped. It covers the workspace
 replacement guard, selected data and dependency sources, Worker read-only
 evidence and the existing Catalog and dependency boundaries.
+
+### Fenced Package Startup And Runtime
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `application_runtime` | Formal Package Product owns state preparation, the scope and admission rechecks around management recovery, binding and rechecking the native Session owner, the read-only resume epoch fingerprint, and application closure. Coding chooses the workspace, source admission, supported Product route and desired configuration. |
+| `startup` | Formal Package Product reads and proves the empty fresh Source snapshot under the selected fence, and reuses the existing built-in admission and recovery owner. Coding determines whether the selected platform and workspace may enter the fresh or Legacy route. |
+
+The batch retires 1,028 staging lines and adds 580 Coding Product lines and
+321 formal Harness lines. This reduces system production Python by 127
+lines, down 559 cumulatively. Hosting, other production code and scripts
+have no changes. Staging has 64 files and 11,262 lines. Package Product
+staging holds 951 lines. Existing architecture expectations follow the
+same Desired journal and bootstrap exception boundaries.
+
+All 97 selected Linux startup, workspace compatibility, Resume continuation,
+bootstrap fault-order and architecture cases pass. The seven source paths
+that hold the change and updated inventory were applied from that candidate.
+Native Windows startup and Resume are pending.
 
 ## Validation And Commit Rhythm
 

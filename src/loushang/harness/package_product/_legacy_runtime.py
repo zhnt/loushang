@@ -143,6 +143,40 @@ class _LegacyFirstSnapshot:
         )
 
 
+def read_fresh_product_source_snapshot(
+    reader: _LegacyFirstSnapshot,
+    *,
+    namespace_id: str,
+    source_member: str,
+    maximum_bytes: int,
+    label: str,
+) -> bytes | None:
+    """Read fresh settings evidence only from the matching, empty first fence."""
+    fence = reader.runtime.cutover_result.fence
+    if fence is None or fence.request.namespace_id != namespace_id:
+        return None
+    for domain in (
+        "binding_history",
+        "desired_state",
+        "enablement_state",
+        "instance_state",
+        "lock_history",
+        "store_bytes",
+    ):
+        if reader.list_members(domain=domain):
+            return None
+    if reader.list_members(domain="source_configuration") != (source_member,):
+        raise RuntimeError(f"{label} fresh Product snapshot is incomplete")
+    raw = reader.read_member(
+        domain="source_configuration",
+        member_name=source_member,
+        maximum_bytes=maximum_bytes,
+    )
+    if raw is None:
+        raise RuntimeError(f"{label} fresh Product snapshot is unavailable")
+    return raw
+
+
 def require_legacy_snapshot_members(
     list_members: Callable[..., tuple[str, ...] | None],
     expected: Mapping[str, tuple[str, ...]],

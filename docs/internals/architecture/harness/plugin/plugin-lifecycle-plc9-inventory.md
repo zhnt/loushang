@@ -1410,9 +1410,9 @@ The listed scopes track the corresponding Product settings references.
 | `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.from_dict` | `src/loushang/coding/package/legacy_removed_review.py::CodingLegacyRemovedReviewV1.from_dict` | 1 |
 | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.__post_init__` | 3 |
 | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.from_dict` | `src/loushang/coding/package/legacy_review.py::CodingLegacyLocalAdoptionReviewV1.from_dict` | 1 |
-| `src/loushang/coding/package/product_runtime.py::bootstrap_coding_accepted_disabled_only_product_plugins` | `src/loushang/coding/harness/package_product/startup.py::bootstrap_accepted_disabled_plugins` | 1 |
-| `src/loushang/coding/package/product_runtime.py::is_coding_fresh_first_b_snapshot` | `src/loushang/coding/harness/package_product/startup.py::is_fresh_snapshot` | 1 |
+| `src/loushang/coding/package/product_runtime.py::bootstrap_coding_accepted_disabled_only_product_plugins` | `src/loushang/coding/package/product_runtime.py::bootstrap_coding_accepted_disabled_only_product_plugins` | 1 |
+| `src/loushang/coding/package/product_runtime.py::is_coding_fresh_first_b_snapshot` | `src/loushang/coding/package/product_runtime.py::is_coding_fresh_first_b_snapshot` | 1 |
 
 Fresh-state ledger construction is now held by
-`src/loushang/coding/harness/package_product/application_runtime.py::open_product_state`.
+`src/loushang/harness/package_product/_application_runtime.py::open_fenced_product_management_state`.
 The management service remains the sole Desired State writer.

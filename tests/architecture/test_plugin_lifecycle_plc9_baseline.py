@@ -65,7 +65,6 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/cli/package_cutover.py"),
     Path("src/loushang/coding/composition/bootstrap.py"),
     Path("src/loushang/coding/composition/continuity.py"),
-    Path("src/loushang/coding/harness/package_product/startup.py"),
     Path("src/loushang/coding/harness/session/configured_continuity.py"),
     Path("src/loushang/coding/package/legacy_builtin_review.py"),
     Path("src/loushang/coding/package/legacy_classification.py"),
@@ -133,8 +132,8 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             "require_fresh_coding_product_inputs",
         ): 1,
         (
-            Path("src/loushang/coding/harness/package_product/startup.py"),
-            "is_fresh_snapshot",
+            Path("src/loushang/coding/package/product_runtime.py"),
+            "is_coding_fresh_first_b_snapshot",
         ): 1,
         # ARD-008: read effective legacy settings before selecting a storage owner.
         (
@@ -364,8 +363,8 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "review_coding_legacy_installed_local_source",
         ): 2,
         (
-            Path("src/loushang/coding/harness/package_product/startup.py"),
-            "bootstrap_accepted_disabled_plugins",
+            Path("src/loushang/coding/package/product_runtime.py"),
+            "bootstrap_coding_accepted_disabled_only_product_plugins",
         ): 1,
     }
 )
@@ -1088,8 +1087,8 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
         # Fresh B state is opened only behind the fenced Coding Product owner;
         # the management service remains the sole desired-state mutation site.
         (
-            Path("src/loushang/coding/harness/package_product/application_runtime.py"),
-            "open_product_state",
+            Path("src/loushang/harness/package_product/_application_runtime.py"),
+            "open_fenced_product_management_state",
         ),
         # P1 transition-status reads keep the CLI on the same read-only ledger.
         (
