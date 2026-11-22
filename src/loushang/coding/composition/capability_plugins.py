@@ -19,7 +19,6 @@ from loushang.coding.composition.dependency_grants import (
     coding_plugin_distribution_evidence_resolver,
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
-from loushang.coding.harness.session import plugin_resume as _resume_effects
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
@@ -36,7 +35,11 @@ from loushang.coding.resume.activation_attempt_v2 import (
     CodingActivationAttemptV2,
     CodingResumeEffectOwnerV1,
 )
-from loushang.harness.approval._plugin_resume_parents import _PluginResumeParentMethods
+from loushang.coding.resume.plugin_effects import _require_resume_effect_owners
+from loushang.harness.approval._plugin_resume_parents import (
+    _PluginResumeParentMethods,
+    plugin_resume_journals,
+)
 from loushang.harness.approval.plugin_activation import (
     ContributionActivationApprovalSubject,
     PluginActivationDecisionJournal,
@@ -137,6 +140,8 @@ _DEFAULT_DEFINITION_ENTRYPOINT = "definition.py:declare"
 _PLUGIN_IDS = CODING_CAPABILITY_PLUGIN_IDS
 _FAILURE_CUSTODIAN_ATTRIBUTE = "_coding_capability_plugin_cleanup_custodian"
 _RESUME_PLUGIN_LABEL = "Coding Resume Plugin"
+_DEFINITION_OWNER = "harness.plugin-execution"
+_ACTIVATION_OWNER = "harness.plugin-activation"
 _DEFINITION_DECISIONS_FILENAME = "definition-decisions.jsonl"
 _ACTIVATION_DECISIONS_FILENAME = "activation-decisions.jsonl"
 
@@ -214,8 +219,16 @@ class CodingResumePluginParents(_PluginResumeParentMethods):
     def _journals(
         self, *, session_id: str, state_root: Path, clock: Callable[[], int]
     ) -> tuple[PluginExecutionDecisionJournal, PluginActivationDecisionJournal]:
-        return _resume_effects.journals_for_parents(
-            self, session_id=session_id, state_root=state_root, clock=clock
+        if self.definition.session_id != session_id:
+            raise ValueError(
+                f"{_RESUME_PLUGIN_LABEL} parents belong to another Session"
+            )
+        return plugin_resume_journals(
+            session_id,
+            state_root / _DEFINITION_DECISIONS_FILENAME,
+            state_root / _ACTIVATION_DECISIONS_FILENAME,
+            clock=clock,
+            require_resume_context=True,
         )
 
     def _sealed_parent_error(
@@ -237,8 +250,33 @@ def prepare_coding_resume_plugin_effect_owners(
 ) -> tuple[CodingResumeEffectOwnerV1, ...]:
     """Freeze the two original Plugin journal lookup obligations without I/O."""
 
-    return _resume_effects.prepare_effect_owners(
-        session_id=session_id, state_root=state_root, product_id=CODING_PRODUCT_ID
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError(f"{_RESUME_PLUGIN_LABEL} owner Session id is invalid")
+    if not isinstance(state_root, Path) or not state_root.is_absolute():
+        raise ValueError(f"{_RESUME_PLUGIN_LABEL} owner state root is invalid")
+    definition, activation = plugin_resume_journals(
+        session_id,
+        state_root / _DEFINITION_DECISIONS_FILENAME,
+        state_root / _ACTIVATION_DECISIONS_FILENAME,
+    )
+    return tuple(
+        sorted(
+            (
+                CodingResumeEffectOwnerV1(
+                    _DEFINITION_OWNER,
+                    definition.resume_parent_scope_digest(product_id=CODING_PRODUCT_ID),
+                    definition.resume_parent_contract_digest,
+                    ("declaration",),
+                ),
+                CodingResumeEffectOwnerV1(
+                    _ACTIVATION_OWNER,
+                    activation.resume_parent_scope_digest(product_id=CODING_PRODUCT_ID),
+                    activation.resume_parent_contract_digest,
+                    ("activation",),
+                ),
+            ),
+            key=lambda owner: owner.identity,
+        )
     )
 
 
@@ -259,13 +297,31 @@ def require_coding_resume_plugin_effect_settlement(
     names the current Product-selected first-party package revisions.
     """
 
-    return _resume_effects.require_resume_effect_settlement(
+    if type(attempt) is not CodingActivationAttemptV2:
+        raise TypeError(
+            f"{_RESUME_PLUGIN_LABEL} settlement requires an exact v2 intent"
+        )
+    if not isinstance(receipt, Mapping):
+        raise TypeError(
+            f"{_RESUME_PLUGIN_LABEL} settlement requires a current receipt"
+        )
+    owners = {owner.owner_id: owner for owner in attempt.effect_owners}
+    _require_resume_effect_owners(
         attempt,
+        set(owners),
+        {_DEFINITION_OWNER, _ACTIVATION_OWNER} | allowed_external_owner_ids,
+    )
+    parents = CodingResumePluginParents(
+        definition=attempt.parent_context(owners[_DEFINITION_OWNER]),
+        activation=attempt.parent_context(owners[_ACTIVATION_OWNER]),
+    )
+    parents.require_settled_revisions(
         receipt,
+        session_id=attempt.session_id,
         state_root=state_root,
         clock=clock,
-        allowed_external_owner_ids=allowed_external_owner_ids,
         capability_plugin_ids=CODING_CAPABILITY_PLUGIN_IDS,
+        unsettled=lambda: CodingResumeRecoveryRequired("input.effect_settlement_unknown"),
     )
 
 

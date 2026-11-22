@@ -840,6 +840,52 @@ All 71 existing Linux cases pass for base owners, Catalog, external fenced
 Resources with and without the base Plugin, conflicting resource selection
 and architecture. Six scoped sources pass mypy. Native Windows remains pending.
 
+### Session Index, Resume Admission And Plugin Uninstall
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `session/continuity_history` | Formal Continuity owns cached target identity, index refresh, current source verification, prepared restore and deletion sequencing. Coding retains its provider identity, display and native Resume preview selection. |
+| `session/activation_plan` and `session/resume_planning` | Formal Session validates ordered owner references and fingerprints bounded Plan bytes. The existing Harness planning slot owns asynchronous work. Coding validates its composition and native history, selects Resource inputs and retains the Plan and error types. |
+| `session/approval_confirmation` | Formal Session captures the native execution scope using the existing profile and transcript codec. Coding binds its hosted or embedded subject, confirmation policies and exact approval request. |
+| `session/first_input_activation` and `session/resume_cleanup` | Coding selects its intent, proves the admitted effect set and maps cleanup debt to its original owner and factory fence. Existing formal Session owners settle the receipt and dispose borrowed resource lifetimes. |
+| `session/plugin_resume` | Formal Approval reopens the original journal pair and verifies selected revisions against both sealed memberships. Coding supplies Product paths, the exact V2 intent, expected owners and failure identity. |
+| `plugin_management/owner_evidence_record` | Formal Session uses one canonical owner-generation payload and digest. Coding preserves the historical nominal record, codec identity, wire fields and validation precedence. |
+| `plugin_management/package_removal` | Formal Plugin Management submits and retries exact CAS removal and reads post-mutation evidence. Coding retains operation ID policy, fenced CLI admission and success/failure output. |
+| `__init__.py` in the root, `package_product`, `plugin_management`, `session` and `worker` | All five former package markers exit with the staging layer. |
+
+The final batch removes all 1,645 remaining staging lines. Coding Product
+adds 771 lines and formal Harness adds 640 lines. The completed batch reduces
+system production Python by 234 lines. Its existing tests move fault and
+instrumentation sites to their actual owners.
+
+| Production Python under `src/loushang` | Baseline `db196bf1e` | Candidate | Delta |
+| --- | ---: | ---: | ---: |
+| Coding Product | 88,730 | 97,451 | +8,721 |
+| `coding.harness` | 17,225 | 0 | −17,225 |
+| All Coding | 105,955 | 97,451 | −8,504 |
+| Formal Harness | 381,216 | 387,990 | +6,774 |
+| Hosting | 14,235 | 14,235 | 0 |
+| Other production Python | 154,018 | 154,018 | 0 |
+| System production Python | 655,424 | 653,694 | −1,730 |
+
+Physical line counts include comments and blank lines in tracked Python.
+The original staging files either move to a formal mechanism owner, return
+to an existing Product owner or retire after a shared implementation takes
+over. Coding imports no staging module and the staging namespace exits.
+
+The import audit follows relative and absolute source imports and checks
+literal Coding module destinations. It reaches 1,052 local modules from all
+925 formal Harness source modules and finds zero Coding destinations. The
+source API comparison covers 396 existing Coding exports in changed files.
+Their measured function signatures and annotated class field and dataclass
+shapes match the baseline. Ruff passes on all changed Python and mypy passes
+on all 158 changed production Python modules. Test source is down 83 lines.
+
+The final focused Linux run passes all 203 existing cases for Resume planning,
+permission, native journal settlement, first input, indexed Continuity,
+owner-generation evidence, public Plugin removal and import direction. The
+earlier isolated Continuity run passes 104 cases with one platform skip.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

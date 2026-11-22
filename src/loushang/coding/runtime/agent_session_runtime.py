@@ -11,13 +11,13 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
-from loushang.coding.harness.session.resume_cleanup import discard_candidate
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.resume._cleanup import (
     CodingResumeContinuationCleanupFailure as CodingResumeContinuationCleanupFailure,
 )
+from loushang.coding.resume._cleanup import discard_candidate
 from loushang.coding.resume._cleanup import (
     retain_resume_cleanup_failure as retain_resume_cleanup_failure,
 )

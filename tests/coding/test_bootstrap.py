@@ -959,8 +959,8 @@ def test_full_session_execution_changes_files_commands_and_processes_immediately
 
 def test_full_keeps_required_workspace_containment_at_bootstrap(tmp_path: Path, monkeypatch) -> None:
     import loushang.coding.composition.bootstrap as bootstrap
+    from loushang.coding.composition import workspace_bootstrap
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.harness.session import workspace_bootstrap
     from loushang.coding.session.manager import SessionManager
     from loushang.harness.sandbox import SandboxSettings
 

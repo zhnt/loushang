@@ -1092,24 +1092,8 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
         ),
     }
     assembly = Path("src/loushang/harness/plugin_management/assembly.py")
-    cli = Path("src/loushang/coding/package/management_binding.py")
-    legacy_sites = other_sites | {
-        (assembly, "bind_plugin_management_core"),
-        (cli, "_ProductCliOwner.open"),
-        (
-            Path("src/loushang/coding/harness/package_product/preview.py"),
-            "open_preview",
-        ),
-        (
-            Path("src/loushang/coding/harness/plugin_management/private_data_read.py"),
-            "open_read_scope",
-        ),
-    }
     shared_sites = other_sites | {(assembly, "bind_plugin_desired_state")}
-    assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") in (
-        legacy_sites,
-        shared_sites,
-    )
+    assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") == shared_sites
 
     synthetic_path = Path("src/loushang/example/rogue_writer.py")
     synthetic_source = """

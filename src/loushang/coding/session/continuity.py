@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import os
-from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, Protocol
+from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from loushang.ai.types import AssistantMessage, UserMessage
-from loushang.coding.harness.session import continuity_history
 from loushang.coding.resume.history import (
     read_coding_resume_header as read_coding_resume_header,
 )
@@ -40,8 +38,6 @@ from loushang.harness.continuity import (
     ContinuityTarget,
     ExperienceComposition,
     ExperienceDescriptor,
-    ProviderPage,
-    ProviderQuery,
     build_continuity_hub,
     compose_experience_continuity,
 )
@@ -57,6 +53,12 @@ from loushang.harness.continuity._payload_staging import (
 )
 from loushang.harness.continuity._payload_staging import (
     _PrivateContinuityPayload as _PrivateContinuityPayload,
+)
+from loushang.harness.continuity._session_index import (
+    _IndexedSessionContinuity,
+    _IndexedSessionRuntime,
+    _PreparedIndexedSession,
+    canonical_session_directory,
 )
 from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginGeneration,
@@ -88,13 +90,21 @@ from loushang.harness.runtime import (
 from loushang.harness.transcript import (
     SessionAssetHealthSummary,
     SessionIndexPage,
-    SessionQuery,
     SessionSummary,
     assistant_message_text,
     session_summary_authority_is_current,
     session_summary_revision,
     user_message_text,
 )
+from loushang.harness.transcript.jsonl_file import AgentTranscriptFileError
+
+if TYPE_CHECKING:
+    from loushang.coding.resume.history import (
+        CodingResumeHeaderPreview,
+        CodingResumeHistoryPreview,
+        CodingResumeRecentPage,
+    )
+
 
 CODING_CONTINUITY_PROVIDER_ID = "coding.sessions"
 CODING_CONTINUITY_IMPLEMENTATION = "coding.session_continuity"
@@ -103,16 +113,6 @@ CODING_EXPERIENCE_ID = "coding"
 
 _MAX_PREVIEW_CACHE = 256
 _INDEX_REQUIRES_MESSAGES = True
-_STALE_SUMMARY_MESSAGE = "The selected Coding session summary is stale."
-_CHANGED_SINCE_LISTING_MESSAGE = (
-    "The selected Coding session changed after it was listed."
-)
-_UNLISTED_SUMMARY_MESSAGE = (
-    "The selected Coding session is no longer in this query snapshot."
-)
-_CHANGED_DURING_PREPARATION_MESSAGE = (
-    "The selected Coding session changed while it was being prepared."
-)
 _INDEX_STATUS_DIAGNOSTICS = {
     "expired": (
         "coding_continuity_snapshot_expired",
@@ -131,30 +131,7 @@ _MAX_CODING_CONTINUITY_IMPORT_BYTES = 64 * 1024 * 1024
 _RUNTIME_BINDING_ATTRIBUTE = "_loushang_coding_continuity"
 
 
-class CodingContinuityRuntimePort(Protocol):
-    session_dir: Path
-
-    def try_query_session_index_page(
-        self,
-        query: SessionQuery | None = None,
-        *,
-        cursor: str | None = None,
-        limit: int = 25,
-        ignore_authority: str | Path | None = None,
-    ) -> SessionIndexPage: ...
-
-    def request_session_index_refresh(self, *, all_sessions: bool = False) -> None: ...
-
-    def request_session_index_repair(self) -> None: ...
-
-    def request_bounded_session_index_refresh(self) -> None: ...
-
-    def get_current_session(self) -> object | None: ...
-
-    def get_current_session_ref(self) -> str | None: ...
-
-    async def delete_session(self, session_id: str | Path) -> bool: ...
-
+class CodingContinuityRuntimePort(_IndexedSessionRuntime, Protocol):
     async def prepare_restore_session_operation(
         self,
         session_id: str | Path,
@@ -164,12 +141,9 @@ class CodingContinuityRuntimePort(Protocol):
     ) -> CodingPreparedSessionOperation: ...
 
 
-class CodingPreparedSessionOperation(Protocol):
-    async def consume(self) -> object: ...
+class CodingPreparedSessionOperation(_PreparedIndexedSession, Protocol):
+    pass
 
-    async def abort(self) -> None: ...
-
-    async def close(self) -> None: ...
 
 
 class CodingContinuityActivationBridge:
@@ -240,8 +214,15 @@ class ConflictedContinuityTargetError(RuntimeError):
     """Raised when one Session identity has different discovered authorities."""
 
 
-class CodingContinuityProvider:
+class CodingContinuityProvider(_IndexedSessionContinuity):
     """Adapt Agent transcript summaries without leaking Coding UI or Git facts."""
+
+    _provider_id = CODING_CONTINUITY_PROVIDER_ID
+    _product_label = "Coding"
+    _max_preview_cache = _MAX_PREVIEW_CACHE
+    _requires_messages = _INDEX_REQUIRES_MESSAGES
+    _stale_target_error = StaleContinuityTargetError
+    _index_status_diagnostics = _INDEX_STATUS_DIAGNOSTICS
 
     def __init__(
         self,
@@ -250,13 +231,20 @@ class CodingContinuityProvider:
         cwd: str | Path | None = None,
         all_sessions: bool = False,
     ) -> None:
-        self._runtime = runtime
-        self._cwd = continuity_history.canonical_directory(cwd)
-        self._all_sessions = all_sessions
-        self._index_refresh_requested = False
-        self._preview_items: OrderedDict[str, IndexedProjection[SessionSummary]] = (
-            OrderedDict()
+        super().__init__(
+            runtime,
+            cwd=cwd,
+            all_sessions=all_sessions,
         )
+
+    def _summarize(self, indexed: IndexedProjection[SessionSummary]) -> ContinuitySummary:
+        return _continuity_summary(indexed)
+
+    def _discovery_diagnostics(self, page: SessionIndexPage) -> list[ContinuityDiagnostic]:
+        return _session_index_discovery_diagnostics(page)
+
+    def _require_summary_allowed(self, summary: SessionSummary, *, deleting: bool) -> None:
+        _require_unconflicted_summary(summary, deleting=deleting)
 
     @property
     def descriptor(self) -> ContinuityProviderDescriptor:
@@ -273,11 +261,8 @@ class CodingContinuityProvider:
             profile_version=1,
         )
 
-    async def query(self, request: ProviderQuery) -> ProviderPage:
-        return await continuity_history.query_index(self, request)
-
     async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
-        indexed = continuity_history.cached_target(self, target)
+        indexed = self._cached_target(target)
         summary = indexed.projection
         history_changed = False
         history_text: str | None = None
@@ -310,7 +295,7 @@ class CodingContinuityProvider:
             if discovery.conflicts:
                 rows.append(("Conflicting copies", str(len(discovery.conflicts))))
         if summary.session_file is not None:
-            observed = await continuity_history.read_history_preview(
+            observed = await _read_history_preview(
                 self._runtime,
                 summary.session_file,
                 session_id=summary.session_id,
@@ -428,23 +413,6 @@ class CodingContinuityProvider:
             stale=revision != target.revision or history_changed,
         )
 
-    async def resolve_history_source(
-        self,
-        target: ContinuityTarget,
-    ) -> str | Path:
-        """Resolve one current native transcript without preparing a Session."""
-
-        return await continuity_history.resolve_listed_history(self, target)
-
-    async def prepare(
-        self,
-        target: ContinuityTarget,
-    ) -> CallbackPreparedActivationLease:
-        return await continuity_history.prepare_listed_session(self, target)
-
-    async def delete(self, target: ContinuityTarget) -> bool:
-        return await continuity_history.delete_listed_session(self, target)
-
 
 @dataclass
 class CodingContinuityComposition(_ContinuityCompositionLifetime):
@@ -534,7 +502,7 @@ def bind_coding_continuity(
         binding=binding,
         binder=binder,
         hub=build_continuity_hub(composition),
-        binding_cwd=continuity_history.canonical_directory(cwd),
+        binding_cwd=canonical_session_directory(cwd),
         all_sessions=all_sessions,
     )
     _retain_coding_continuity(runtime, result)
@@ -646,7 +614,7 @@ async def bind_coding_plugin_continuity(
         hub=publication.hub,
         plugin_publication=publication,
         owned_cleanup=owned_cleanup,
-        binding_cwd=continuity_history.canonical_directory(cwd),
+        binding_cwd=canonical_session_directory(cwd),
         all_sessions=all_sessions,
     )
     if getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None) is not reservation:
@@ -786,6 +754,71 @@ def _require_runtime(value: object | None) -> CodingContinuityRuntimePort:
     if value is None:
         raise TypeError("Coding continuity requires a Product session runtime")
     return value  # type: ignore[return-value]
+
+
+@dataclass(frozen=True, slots=True)
+class _HistoryPreview:
+    header: CodingResumeHeaderPreview | None = None
+    snapshot: CodingResumeHistoryPreview | None = None
+    recent: CodingResumeRecentPage | None = None
+    changed: bool = False
+
+
+async def _read_history_preview(
+    runtime: object,
+    path: Path,
+    *,
+    session_id: str,
+    authority_fingerprint: str | None,
+    max_bytes: int,
+) -> _HistoryPreview:
+    # Keep each native read owned through completion even if the preview is cancelled.
+    try:
+        header = await settled_io(read_coding_resume_header, path)
+    except (OSError, ValueError):
+        return _HistoryPreview()
+    if header.header.conversation_id != session_id:
+        return _HistoryPreview(changed=True)
+
+    def matches(evidence: CodingResumeHistoryPreview | CodingResumeRecentPage) -> bool:
+        return evidence.header_preview.header == header.header and (
+            authority_fingerprint is None
+            or evidence.source_fingerprint == authority_fingerprint
+        )
+
+    try:
+        from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
+
+        if isinstance(runtime, AgentSessionRuntime):
+            snapshot = await AgentSessionRuntime.preview_resume_history(
+                runtime, path, max_bytes=max_bytes
+            )
+        else:
+            snapshot = await settled_io(
+                read_coding_resume_snapshot, path, max_bytes=max_bytes
+            )
+    except AgentTranscriptFileError as error:
+        if error.code != "session_file_too_large":
+            return _HistoryPreview(header=header)
+        try:
+            if isinstance(runtime, AgentSessionRuntime):
+                recent = await AgentSessionRuntime.preview_resume_recent_page(
+                    runtime, path
+                )
+            else:
+                recent = await settled_io(read_coding_resume_recent_page, path)
+        except (OSError, ValueError):
+            return _HistoryPreview(header=header)
+        if not recent.records:
+            return _HistoryPreview(header=header)
+        if not matches(recent):
+            return _HistoryPreview(header=header, changed=True)
+        return _HistoryPreview(header=header, recent=recent)
+    except (OSError, ValueError):
+        return _HistoryPreview(header=header)
+    if not matches(snapshot):
+        return _HistoryPreview(header=header, changed=True)
+    return _HistoryPreview(header=header, snapshot=snapshot)
 
 
 def _session_index_discovery_diagnostics(

@@ -6,13 +6,13 @@ import json
 import re as re
 import secrets as secrets
 from collections.abc import Sequence
+from functools import partial
 from hashlib import sha256 as sha256
 from importlib.metadata import version as version
 from pathlib import Path
 from typing import Literal, TextIO
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID as CODING_PRODUCT_ID
-from loushang.coding.harness.plugin_management import package_removal as _removal
 from loushang.coding.package.management_binding import (
     CODING_CLI_MANAGEMENT_ACTOR_ID,
 )
@@ -60,7 +60,12 @@ from loushang.harness.plugin_management import (
     PluginManagementQueryV1 as PluginManagementQueryV1,
 )
 from loushang.harness.plugin_management.application import (
+    PluginManagementApplicationPorts,
     PluginManagementInstallationViewV1,
+)
+from loushang.harness.plugin_management.desired_command import (
+    PluginPackageRemovalAttempt,
+    remove_installed_plugin_package,
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1 as PackageProductLifecycleIntentV1,
@@ -451,8 +456,98 @@ def uninstall_coding_fenced_data_wheels(
             "Error: Fenced Product uninstall requires --package-scope project\n"
         )
         return 1
-    return _removal.remove_packages(
-        layout, workspace=workspace, plugin_ids=plugin_ids, stdout=stdout, stderr=stderr
+    ports = build_coding_fenced_product_management_cli_ports(layout)
+    attempt = PluginPackageRemovalAttempt()
+    try:
+        for plugin_id in plugin_ids:
+            attempt = PluginPackageRemovalAttempt()
+            correlation_id = f"cli:uninstall-package:{plugin_id}"
+            installed = remove_installed_plugin_package(
+                ports,
+                attempt,
+                query=PluginManagementQueryV1(
+                    correlation_id=f"{correlation_id}:query",
+                    product_id=CODING_PRODUCT_ID,
+                    installation_scope=_REMOVAL_SCOPE,
+                    scope_id=layout.scope_id,
+                    plugin_ids=(plugin_id,),
+                ),
+                correlation_id=correlation_id,
+                actor_id=CODING_CLI_MANAGEMENT_ACTOR_ID,
+                policy_revision=CODING_CLI_MANAGEMENT_POLICY_REVISION,
+                max_attempts=_REMOVAL_MAX_ATTEMPTS,
+                operation_id_for_revision=partial(
+                    _uninstall_operation_id, layout.scope_id, plugin_id
+                ),
+            )
+            operation_id = attempt.operation_id
+            assert operation_id is not None
+            _write_uninstall_success(
+                stdout,
+                workspace=workspace,
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                installed=installed,
+            )
+        return 0
+    except (OSError, RuntimeError, ValueError) as error:
+        _report_uninstall_failure(stderr, layout, ports, attempt, error)
+        return 1
+
+
+def _uninstall_operation_id(scope_id: str, plugin_id: str, revision: int) -> str:
+    identity = sha256(
+        f"{_REMOVAL_ID_DOMAIN}{scope_id}:{plugin_id}:{revision}".encode()
+    ).hexdigest()
+    return f"cli-product-uninstall:{identity}"
+
+
+def _report_uninstall_failure(
+    stderr: TextIO,
+    layout: CodingPluginLifecycleStateLayout,
+    ports: PluginManagementApplicationPorts,
+    attempt: PluginPackageRemovalAttempt,
+    error: BaseException,
+) -> None:
+    current_operation_id = attempt.operation_id
+    pending_operation = attempt.pending
+    if current_operation_id is None:
+        _write_cli_error(stderr, error)
+        return
+    operation_status = "unknown"
+    actor_id: str | None = None
+    committed_revision: int | None = None
+    try:
+        observed = ports.commands.operation(
+            current_operation_id,
+            correlation_id=f"cli:failed-uninstall:{current_operation_id}",
+        )
+        if observed is not None and isinstance(
+            observed.operation, PluginManagementOperationEventV1
+        ):
+            operation_status = observed.operation.status
+            actor_id = observed.operation.command.mutation.actor_id
+            pending_operation = observed.operation.status != "terminal"
+    except (OSError, RuntimeError, ValueError):
+        pass
+    try:
+        transition = read_coding_fenced_desired_transition(
+            layout, current_operation_id
+        )
+        if (
+            transition is not None
+            and transition.mutation.desired_state == "absent"
+        ):
+            committed_revision = transition.inventory_revision
+    except (OSError, RuntimeError, ValueError):
+        pass
+    _write_uninstall_failure(
+        stderr,
+        current_operation_id=current_operation_id,
+        operation_status=operation_status,
+        actor_id=actor_id,
+        pending_operation=pending_operation,
+        committed_revision=committed_revision,
     )
 
 

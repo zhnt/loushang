@@ -8,19 +8,81 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import replace
+from hashlib import sha256
 from typing import ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.types import ImagePart, UserMessage
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    execution_profile_expansion_codes,
+)
 from loushang.harness.transcript._resume_continuation import _ResumeIntentRead
+from loushang.harness.transcript._resume_records import canonical_binding_bytes
 
 from .agent_product import AgentProductSession
 
 IntentT = TypeVar("IntentT", bound=_ResumeIntentRead)
 IntentCo = TypeVar("IntentCo", bound=_ResumeIntentRead, covariant=True)
+
+
+
+class _ActivationOwnerRef(Protocol):
+    @property
+    def owner_id(self) -> str: ...
+
+
+_RefT = TypeVar("_RefT", bound=_ActivationOwnerRef)
+
+
+def checked_activation_plan_owner_refs(
+    refs: Sequence[_RefT],
+    ref_type: type[_RefT],
+    *,
+    type_error: str,
+    order_error: str,
+    budget: tuple[int, str] | None = None,
+) -> tuple[_RefT, ...]:
+    items = tuple(refs)
+    if budget is not None and len(items) > budget[0]:
+        raise ValueError(budget[1])
+    if any(not isinstance(item, ref_type) for item in items):
+        raise TypeError(type_error)
+    if items != tuple(sorted(items, key=lambda item: item.owner_id)) or len(
+        {item.owner_id for item in items}
+    ) != len(items):
+        raise ValueError(order_error)
+    return items
+
+
+def activation_plan_fingerprint(
+    identity: object, *, digest_domain: bytes, name: str, max_bytes: int
+) -> str:
+    encoded = canonical_binding_bytes(identity, name=name)
+    if len(encoded) > max_bytes:
+        raise ValueError("activation Plan exceeds its byte budget")
+    return sha256(digest_domain + encoded).hexdigest()
+
+
+def resume_execution_scope(
+    profile: EffectiveExecutionProfile, *, name: str, max_bytes: int, digest_domain: bytes
+) -> tuple[dict[str, object], str]:
+    execution_profile_expansion_codes(profile, None)  # Native type/root budget.
+    document: dict[str, object] = {
+        "readableRoots": sorted(str(root) for root in profile.readable_roots),
+        "writableRoots": sorted(str(root) for root in profile.writable_roots),
+        "deniedRoots": sorted(str(root) for root in profile.denied_roots),
+        "network": profile.network,
+        "policyCode": profile.policy_code,
+        "approvalActionId": profile.approval_action_id,
+    }
+    encoded = canonical_binding_bytes(document, name=name)
+    if len(encoded) > max_bytes:
+        raise ValueError(f"{name} exceeds its byte budget")
+    return document, sha256(digest_domain + encoded).hexdigest()
 
 
 class _ResumeRuntimeCandidate(Protocol[IntentCo]):

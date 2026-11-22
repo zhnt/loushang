@@ -101,7 +101,6 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
-from loushang.coding.harness.session.resume_cleanup import discard_candidate
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_CAPABILITY_DEFINITION,
@@ -165,6 +164,7 @@ from loushang.coding.resources.tool_authority import (
     CODING_LSP_EXACT_OWNER_TOOL_NAMES,
 )
 from loushang.coding.resources.tool_pack import coding_default_active_tool_names
+from loushang.coding.resume._cleanup import discard_candidate
 from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession

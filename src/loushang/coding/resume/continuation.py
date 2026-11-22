@@ -34,13 +34,13 @@ from loushang.coding.composition.product_capability_plugins import (
 from loushang.coding.composition.sets import (
     resolve_coding_composition_set as resolve_coding_composition_set,
 )
-from loushang.coding.harness.session.resume_cleanup import discard_candidate
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.resume._cleanup import (
     CodingResumeContinuationCleanupFailure as CodingResumeContinuationCleanupFailure,
 )
+from loushang.coding.resume._cleanup import discard_candidate
 from loushang.coding.resume._cleanup import (
     retain_resume_cleanup_failure as retain_resume_cleanup_failure,
 )

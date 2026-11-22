@@ -538,7 +538,7 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_property,
 ) -> None:
     import loushang.coding.composition.bootstrap as bootstrap_module
-    import loushang.coding.harness.session.package_catalog as package_catalog_module
+    import loushang.coding.composition.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as hosted_module
     import loushang.coding.package.product_runtime as product_runtime_module
     from loushang.harness.capabilities.component_runtime import (
@@ -1005,7 +1005,7 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
     monkeypatch: pytest.MonkeyPatch,
     record_property,
 ) -> None:
-    import loushang.coding.harness.session.package_catalog as package_catalog_module
+    import loushang.coding.composition.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as module
     import loushang.coding.package.product_runtime as product_runtime_module
 
