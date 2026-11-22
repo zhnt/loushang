@@ -11,7 +11,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.session.continuity as coding_continuity_module
 from loushang.coding.session.continuity import (
     CodingContinuityComposition,
     bind_coding_plugin_continuity,
@@ -34,6 +33,7 @@ from loushang.harness.capabilities.owner_component_host import (
 from loushang.harness.continuity import (
     ContinuityPreview,
     ContinuityQuery,
+    _binding_lifetime,
     consume_prepared_activation,
 )
 from loushang.harness.continuity.plugin_declaration import (
@@ -774,12 +774,12 @@ async def _failed_publication_cleanup_stays_runtime_owned_for_retry(
         raise ValueError("duplicate Provider metadata")
 
     monkeypatch.setattr(
-        coding_continuity_module,
+        _binding_lifetime,
         "construct_continuity_plugin_generation",
         construct,
     )
     monkeypatch.setattr(
-        coding_continuity_module,
+        _binding_lifetime,
         "publish_continuity_plugin_generation",
         publish,
     )
@@ -839,7 +839,7 @@ async def _cancelled_coding_plugin_bind_removes_cleaned_reservation(
         raise AssertionError("unreachable")
 
     monkeypatch.setattr(
-        coding_continuity_module,
+        _binding_lifetime,
         "construct_continuity_plugin_generation",
         block_construction,
     )

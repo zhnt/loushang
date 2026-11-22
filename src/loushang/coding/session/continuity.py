@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
@@ -44,8 +45,7 @@ from loushang.harness.continuity import (
 from loushang.harness.continuity._binding_lifetime import (
     _ContinuityBindingReservationLifetime,
     _ContinuityCompositionLifetime,
-    delete_runtime_binding_if,
-    retry_bound_continuity_reservation,
+    bind_continuity_plugin_generation,
     shutdown_bound_continuity,
 )
 from loushang.harness.continuity._payload_staging import (
@@ -58,13 +58,9 @@ from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginGeneration,
     ContinuityPluginGenerationAuthority,
     ContinuityPluginInstanceFamilyAuthority,
-    ContinuityPluginLifecycleError,
     ContinuityPluginPendingCleanup,
     ContinuityPluginPublication,
     ResolvedContinuityPluginSelection,
-    construct_continuity_plugin_generation,
-    publish_continuity_plugin_generation,
-    publish_continuity_plugin_generation_with_mutations,
 )
 from loushang.harness.conversation import IndexedProjection
 from loushang.harness.journal._owned_io import settled_io
@@ -544,84 +540,44 @@ async def bind_coding_plugin_continuity(
     reservation = _CodingContinuityBindingReservation(
         generation_authority=generation_authority,
     )
-    try:
-        setattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, reservation)
-    except (AttributeError, TypeError) as exc:
-        raise RuntimeError(
-            "Plugin continuity runtime must retain its sealed binding"
-        ) from exc
-    generation = None
-    try:
-        binder, binding, base = _compose_coding_continuity_base(
+    return await bind_continuity_plugin_generation(
+        runtime,
+        reservation,
+        binding_attribute=_RUNTIME_BINDING_ATTRIBUTE,
+        generation_authority=generation_authority,
+        resolved_plugins=resolved_plugins,
+        component_host=component_host,
+        activation_decision_ids=activation_decision_ids,
+        instance_family_authority=instance_family_authority,
+        deletion_authority=deletion_authority,
+        compose_base=lambda: _compose_coding_continuity_base(
             runtime,
             cwd=cwd,
             all_sessions=all_sessions,
             layers=layer_values,
             grants=tuple(grants),
             implementations=tuple(implementations),
-        )
-        reservation.binder = binder
-        reservation.binding = binding
-        generation = await construct_continuity_plugin_generation(
-            resolved_plugins,
-            component_host=component_host,
-            activation_decision_ids=activation_decision_ids,
-            instance_family_authority=instance_family_authority,
-            generation_authority=generation_authority,
-        )
-        reservation.generation = generation
-        activation_bridge = CodingContinuityActivationBridge(
+        ),
+        create_activation_bridge=partial(
+            CodingContinuityActivationBridge,
             runtime,
             temporary_root=temporary_root,
             fallback_cwd=fallback_cwd,
-        )
-        if deletion_authority is None:
-            publication = publish_continuity_plugin_generation(
-                base,
-                generation,
-                activation_bridge=activation_bridge,
+        ),
+        make_composition=lambda binder, binding, publication: (
+            CodingContinuityComposition(
+                binding=binding,
+                binder=binder,
+                hub=publication.hub,
+                plugin_publication=publication,
+                owned_cleanup=owned_cleanup,
+                binding_cwd=canonical_session_directory(cwd),
+                all_sessions=all_sessions,
             )
-        else:
-            publication = await publish_continuity_plugin_generation_with_mutations(
-                base,
-                generation,
-                activation_bridge=activation_bridge,
-                deletion_authority=deletion_authority,
-            )
-    except BaseException as error:
-        if (
-            isinstance(error, ContinuityPluginLifecycleError)
-            and error.pending_cleanup is not None
-        ):
-            reservation.construction_cleanup = error.pending_cleanup
-        cleanup_codes = await _retry_coding_continuity_reservation_atomic(
-            runtime,
-            reservation,
-        )
-        if cleanup_codes:
-            cleanup_error = ContinuityPluginLifecycleError(
-                "Coding continuity binding cleanup remains retryable.",
-                code="coding_continuity_binding_cleanup_retryable",
-            )
-            for code in cleanup_codes:
-                cleanup_error.add_note(code)
-            raise cleanup_error from error
-        _delete_runtime_binding_if(runtime, reservation)
-        raise
-    result = CodingContinuityComposition(
-        binding=binding,
-        binder=binder,
-        hub=publication.hub,
-        plugin_publication=publication,
-        owned_cleanup=owned_cleanup,
-        binding_cwd=canonical_session_directory(cwd),
-        all_sessions=all_sessions,
+        ),
+        label="Coding continuity",
+        cleanup_error_code="coding_continuity_binding_cleanup_retryable",
     )
-    if getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None) is not reservation:
-        raise RuntimeError("Coding continuity binding reservation was replaced")
-    setattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, result)
-    result.runtime_owned = True
-    return result
 
 
 def _compose_coding_continuity_base(
@@ -709,15 +665,6 @@ _supports_continuity_directory_handles = (
 )
 
 
-async def _retry_coding_continuity_reservation_atomic(
-    runtime: object,
-    reservation: _CodingContinuityBindingReservation,
-) -> tuple[str, ...]:
-    return await retry_bound_continuity_reservation(
-        runtime, reservation, binding_attribute=_RUNTIME_BINDING_ATTRIBUTE
-    )
-
-
 async def shutdown_coding_continuity(runtime: object) -> None:
     await shutdown_bound_continuity(
         runtime,
@@ -742,12 +689,6 @@ def supports_coding_continuity_secure_staging() -> bool:
     """Report whether portable Plugin payloads can be staged safely."""
 
     return _supports_continuity_directory_handles()
-
-
-def _delete_runtime_binding_if(runtime: object, expected: object) -> None:
-    delete_runtime_binding_if(
-        runtime, expected, binding_attribute=_RUNTIME_BINDING_ATTRIBUTE
-    )
 
 
 def _require_runtime(value: object | None) -> CodingContinuityRuntimePort:
@@ -899,7 +840,11 @@ def _require_unconflicted_summary(
             "sources. Select an exact path or resolve the conflict before resume."
         )
 
-    if deleting and summary.discovery is not None and summary.discovery.mode != "canonical":
+    if (
+        deleting
+        and summary.discovery is not None
+        and summary.discovery.mode != "canonical"
+    ):
         raise RuntimeError(
             "Compatibility Sessions are read-only; resume them before deletion."
         )

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from time import time_ns
-from typing import Literal, Protocol
+from typing import Literal, NoReturn, Protocol
 
 from loushang.coding.composition.dependency_grants import (
     coding_plugin_distribution_evidence_resolver as coding_plugin_distribution_evidence_resolver,
@@ -75,7 +75,6 @@ from loushang.harness.continuity.plugin_runtime import (
     resolve_continuity_plugin_selection as resolve_continuity_plugin_selection,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionAuthority,
@@ -98,7 +97,6 @@ from loushang.harness.resources.plugins import (
     PluginEffectiveConfigurationEntry,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
-    PluginPreflightContextV1,
     PluginPreflightDeniedOutcome,
     PluginRuntimeResolution,
     PluginSelection,
@@ -108,9 +106,11 @@ from loushang.harness.resources.plugins import (
     PublishedPluginPackage,
     is_remote_plugin_source,
 )
-from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.session.plugin_lifecycle._continuity_installed_plugins import (
     hold_installed_continuity_runtime,
+)
+from loushang.harness.session.product_composition_assembly import (
+    build_product_plugin_selection_plan,
 )
 
 _PRODUCT_POLICY_REVISION = "coding-continuity-production-1"
@@ -308,14 +308,9 @@ async def bind_coding_configured_continuity(
                 retryable=False,
             )
     except BaseException as error:
-        if not isinstance(error, Exception):
-            raise
-        stable_code = _record_bootstrap_failure(
+        _raise_bootstrap_failure(
             runtime, diagnostics_service, error, configured_source_count=0
         )
-        if isinstance(error, CodingContinuityBootstrapError):
-            raise
-        raise CodingContinuityBootstrapError(code=stable_code) from None
 
     configured_count = len(sources)
     common_layout: CodingPluginLifecycleStateLayout | None = None
@@ -423,8 +418,6 @@ async def bind_coding_configured_continuity(
             existing is None or existing.plugin_publication is None
         ):
             release_early_startup_lease()
-        if not isinstance(error, Exception):
-            raise
         if (
             isinstance(error, CodingContinuityBootstrapError)
             and error.code == _CONTINUITY_ALREADY_BOUND
@@ -432,15 +425,9 @@ async def bind_coding_configured_continuity(
             # The already-published composition remains healthy.  Reject the
             # conflicting rebind without overwriting its ready status.
             raise
-        stable_code = _record_bootstrap_failure(
-            runtime,
-            diagnostics_service,
-            error,
-            configured_source_count=configured_count,
+        _raise_bootstrap_failure(
+            runtime, diagnostics_service, error, configured_source_count=configured_count
         )
-        if isinstance(error, CodingContinuityBootstrapError):
-            raise
-        raise CodingContinuityBootstrapError(code=stable_code) from None
 
     lifecycle_started = False
     try:
@@ -517,17 +504,9 @@ async def bind_coding_configured_continuity(
     except BaseException as error:
         if not lifecycle_started and compatibility is None:
             release_early_startup_lease()
-        if not isinstance(error, Exception):
-            raise
-        stable_code = _record_bootstrap_failure(
-            runtime,
-            diagnostics_service,
-            error,
-            configured_source_count=configured_count,
+        _raise_bootstrap_failure(
+            runtime, diagnostics_service, error, configured_source_count=configured_count
         )
-        if isinstance(error, CodingContinuityBootstrapError):
-            raise
-        raise CodingContinuityBootstrapError(code=stable_code) from None
 
 
 def _finalize_selection(
@@ -550,15 +529,13 @@ def _finalize_selection(
             key=lambda pair: (pair[0].manifest.name, pair[1].contribution_id),
         )
     )
-    plan = PluginSelectionPlanV2.from_selected_entries(
-        context=PluginPreflightContextV1(
-            product_id=CODING_EXPERIENCE_ID,
-            scope_id=layout.scope_id,
-            policy_revision=_PRODUCT_POLICY_REVISION,
-            instance_revision_refs=instance_refs,
-        ),
-        selected_plugin_ids=tuple(package.manifest.name for package in packages),
-        source_trust_snapshots=tuple(
+    plan = build_product_plugin_selection_plan(
+        product_id=CODING_EXPERIENCE_ID,
+        scope_id=layout.scope_id,
+        policy_revision=_PRODUCT_POLICY_REVISION,
+        instance_refs=instance_refs,
+        plugin_ids=tuple(package.manifest.name for package in packages),
+        source_trust=(
             _configured_source_trust(package, bindings[package.manifest.name])
             for package in packages
         ),
@@ -578,15 +555,11 @@ def _finalize_selection(
         scope_id=layout.scope_id,
         clock=clock,
     )
-    host = PluginDeclarationHost(
-        execution_evaluator=PluginDefinitionEvaluator(
-            decision_journal=journal,
-            import_realm=PluginImportRealm(),
-            clock=clock,
-            distribution_evidence_resolver=(
-                coding_plugin_distribution_evidence_resolver()
-            ),
-        )
+    host = PluginDeclarationHost.for_definition_journal(
+        journal,
+        clock=clock,
+        distribution_evidence_resolver=coding_plugin_distribution_evidence_resolver,
+        resume_parent_context=lambda: None,
     )
 
     def approve(subject: PluginExecutionApprovalSubject) -> None:
@@ -1006,13 +979,15 @@ def _record_failed_status(
             )
 
 
-def _record_bootstrap_failure(
+def _raise_bootstrap_failure(
     runtime: CodingContinuityRuntimePort,
     diagnostics_service: DiagnosticsService | None,
-    error: Exception,
+    error: BaseException,
     *,
     configured_source_count: int,
-) -> str:
+) -> NoReturn:
+    if not isinstance(error, Exception):
+        raise error
     code = _stable_error_code(error)
     _record_failed_status(
         runtime,
@@ -1021,7 +996,9 @@ def _record_bootstrap_failure(
         configured_source_count=configured_source_count,
         retryable=error.retryable if isinstance(error, CodingContinuityBootstrapError) else True,
     )
-    return code
+    if isinstance(error, CodingContinuityBootstrapError):
+        raise error
+    raise CodingContinuityBootstrapError(code=code) from None
 
 
 def _stable_error_code(error: BaseException) -> str:
