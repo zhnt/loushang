@@ -198,6 +198,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
+    dispose_unbound_factory_after_failure,
 )
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
@@ -1764,21 +1765,6 @@ def _create_agent_session(
 
 
 
-def _dispose_unbound_package_product_runtime(
-    factory: PackageProductRuntimeFactoryPort | None, error: BaseException
-) -> None:
-    """Retire Product authority that was not transferred to a Session."""
-
-    if factory is None:
-        return
-    dispose = getattr(factory, "dispose_unbound_runtime", None)
-    if callable(dispose):
-        try:
-            dispose()
-        except BaseException:
-            error.add_note("Package Product runtime cleanup also failed")
-
-
 def _select_direct_coding_product_factory(
     manager: SessionManager,
     *,
@@ -1892,7 +1878,7 @@ async def _create_resume_agent_session(
                 session, error, cleanup_note="Coding Resume candidate cleanup also failed: "
             )
         else:
-            _dispose_unbound_package_product_runtime(selected_factory, error)
+            dispose_unbound_factory_after_failure(selected_factory, error)
         raise
 
 
@@ -2052,7 +2038,7 @@ def _create_agent_session_with_model_policy(
             lsp_read_text=lsp_read_text,
         )
     except BaseException as error:
-        _dispose_unbound_package_product_runtime(selected_factory, error)
+        dispose_unbound_factory_after_failure(selected_factory, error)
         raise
 
 
@@ -2092,7 +2078,7 @@ def create_agent_session_from_services(
             else None
         )
     except BaseException as error:
-        _dispose_unbound_package_product_runtime(package_product_runtime_factory, error)
+        dispose_unbound_factory_after_failure(package_product_runtime_factory, error)
         raise
     return create_agent_session_result(
         session_manager=session_manager,
@@ -2159,7 +2145,7 @@ def create_agent_session_result(
     try:
         resolved_services = services or create_services()
     except BaseException as error:
-        _dispose_unbound_package_product_runtime(package_product_runtime_factory, error)
+        dispose_unbound_factory_after_failure(package_product_runtime_factory, error)
         raise
     session = create_agent_session(
         session_manager=session_manager,
@@ -2283,7 +2269,7 @@ def _borrow_application_coding_product_factory(
             ),
         ):
             error = TypeError("Coding Worker requires Product selection")
-            _dispose_unbound_package_product_runtime(factory, error)
+            dispose_unbound_factory_after_failure(factory, error)
             raise error
         selected_factory = CodingApplicationWorkerProductRuntimeFactory(
             factory=factory,
@@ -2306,7 +2292,7 @@ def _build_with_package_product_selection(
     try:
         return build(selected_factory)
     except BaseException as error:
-        _dispose_unbound_package_product_runtime(selected_factory, error)
+        dispose_unbound_factory_after_failure(selected_factory, error)
         raise
 
 

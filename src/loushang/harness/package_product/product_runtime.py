@@ -1624,14 +1624,14 @@ def activate_package_product_runtime(
             "Package Product runtime factory failed",
             code="package_product_runtime_factory_failed",
         )
-        _dispose_unbound_factory_after_failure(factory, failure)
+        dispose_unbound_factory_after_failure(factory, failure)
         raise failure from error
     if not isinstance(binding, PackageProductRuntimeBindingV1):
         failure = PackageProductRuntimeActivationError(
             "Package Product runtime factory returned an invalid binding",
             code="package_product_runtime_binding_invalid",
         )
-        _dispose_unbound_factory_after_failure(factory, failure)
+        dispose_unbound_factory_after_failure(factory, failure)
         raise failure
     if binding.product_id != request.product_id:
         failure = PackageProductRuntimeActivationError(
@@ -1656,9 +1656,12 @@ def _dispose_after_failure(
         failure.add_note("Package Product runtime cleanup also failed")
 
 
-def _dispose_unbound_factory_after_failure(
-    factory: PackageProductRuntimeFactoryPort, failure: BaseException
+def dispose_unbound_factory_after_failure(
+    factory: PackageProductRuntimeFactoryPort | None, failure: BaseException
 ) -> None:
+    """Preserve the failure while releasing an untransferred factory lease."""
+    if factory is None:
+        return
     dispose = getattr(factory, "dispose_unbound_runtime", None)
     if callable(dispose):
         try:
