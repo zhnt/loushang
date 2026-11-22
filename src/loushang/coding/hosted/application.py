@@ -581,7 +581,13 @@ async def create_coding_foreground_hosted_application(
             )
         )
     except BaseException:
-        await _settle_failed_construction(runtime, catalog, product_factory)
+        await _settle_failed_product_construction(
+            runtime,
+            catalog,
+            product_factory,
+            failure=RuntimeError("coding_foreground_cleanup_incomplete"),
+            join_owned=await_owned_task,
+        )
         raise
 
 
@@ -643,20 +649,6 @@ def _coding_hosted_application_request(
         execution=request.execution,
         managed_mux=request.managed_mux,
         workspaces=request.workspaces,
-    )
-
-
-async def _settle_failed_construction(
-    runtime: AppHostRuntimeV1 | None,
-    catalog: AppHostCatalogV1 | None,
-    product_factory: CodingForegroundProductFactoryV1,
-) -> None:
-    await _settle_failed_product_construction(
-        runtime,
-        catalog,
-        product_factory,
-        error_code="coding_foreground_cleanup_incomplete",
-        join_owned=await_owned_task,
     )
 
 

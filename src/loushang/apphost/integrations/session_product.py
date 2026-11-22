@@ -25,6 +25,7 @@ from loushang.apphost.contracts import (
 )
 from loushang.apphost.runtime import _BoundProfileView
 from loushang.harness.runtime import await_owned_task
+from loushang.harness.runtime._owned_tasks import _UnpublishedProductOwners
 
 from .session_control import (
     _EventProjection,
@@ -120,9 +121,8 @@ class _ForegroundProductFactory(Generic[BindingT]):
     _product_label: str
 
     __slots__ = (
-        "_active",
         "_create_session",
-        "_debt",
+        "_unpublished",
         "_session_factory",
         "_session_owner",
     )
@@ -141,8 +141,7 @@ class _ForegroundProductFactory(Generic[BindingT]):
             )
         self._create_session = factory.create_session
         self._session_factory = factory
-        self._active: set[_ForegroundSessionOwner[BindingT]] = set()
-        self._debt: set[_ForegroundSessionOwner[BindingT]] = set()
+        self._unpublished = _UnpublishedProductOwners[_ForegroundSessionOwner[BindingT]]()
         self._session_owner = session_owner
 
     async def create_runtime(
@@ -171,29 +170,22 @@ class _ForegroundProductFactory(Generic[BindingT]):
             raise RuntimeError(
                 f"{self._product_id}_foreground_session_unowned"
             ) from None
-        self._active.add(owner)
+        self._unpublished.adopt(owner)
         try:
             _validate_foreground_binding(owner.binding, key, label=self._product_label)
         except BaseException:
-            await self._settle_unpublished(owner)
+            await self._unpublished.abort(
+                owner, failure=RuntimeError(f"{self._product_id}_foreground_cleanup_incomplete")
+            )
             raise RuntimeError(
                 f"{self._product_id}_foreground_session_invalid"
             ) from None
-        self._active.discard(owner)
+        self._unpublished.publish(owner)
         owner._publish()
         return owner
 
     async def settle_pending_cleanup(self) -> None:
-        debt = tuple(self._debt)
-        if debt:
-            results = await asyncio.gather(
-                *(owner.close() for owner in debt),
-                return_exceptions=True,
-            )
-            for owner, result in zip(debt, results, strict=True):
-                if result is None:
-                    self._debt.discard(owner)
-        if self._debt or self._active:
+        if not await self._unpublished.retry_cleanup() or self._unpublished.active:
             raise RuntimeError(f"{self._product_id}_foreground_cleanup_incomplete")
 
     async def close(self) -> None:
@@ -220,24 +212,5 @@ class _ForegroundProductFactory(Generic[BindingT]):
                 failures.append(error)
         if failures:
             raise failures[0]
-
-    async def _settle_unpublished(
-        self, owner: _ForegroundSessionOwner[BindingT]
-    ) -> None:
-        try:
-            await owner.close()
-        except asyncio.CancelledError:
-            self._active.discard(owner)
-            self._debt.discard(owner)
-            raise
-        except BaseException:
-            self._active.discard(owner)
-            self._debt.add(owner)
-            raise RuntimeError(
-                f"{self._product_id}_foreground_cleanup_incomplete"
-            ) from None
-        self._active.discard(owner)
-        self._debt.discard(owner)
-
 
 __all__: list[str] = []

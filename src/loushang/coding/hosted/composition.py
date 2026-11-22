@@ -24,6 +24,7 @@ from loushang.apphost import (
     SessionCreateRequestV1,
     SessionIdentityCatalogPortV1,
 )
+from loushang.apphost._ownership import _settle_failed_product_construction
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted.product import (
     CodingAppHostProductFactoryV1,
@@ -479,47 +480,21 @@ async def create_coding_apphost_composition(
             shutdown_budget=request.shutdown_budget,
             _construction_token=_CONSTRUCTION_TOKEN,
         )
-    except asyncio.CancelledError:
-        await _join_failed_construction_cleanup(catalog, product_factory)
-        raise
-    except Exception as error:
-        try:
-            await _join_failed_construction_cleanup(catalog, product_factory)
-        except CodingAppHostCompositionError:
+    except (asyncio.CancelledError, Exception) as error:
+        await _settle_failed_product_construction(
+            None,
+            catalog,
+            product_factory,
+            failure=CodingAppHostCompositionError(
+                code="coding_apphost_composition_cleanup_incomplete"
+            ),
+            join_owned=_await_owned_task,
+        )
+        if isinstance(error, asyncio.CancelledError):
             raise
         raise CodingAppHostCompositionError(
             code="coding_apphost_composition_unavailable"
         ) from error
-
-
-async def _settle_failed_construction(
-    catalog: AppHostCatalogV1 | None,
-    product_factory: CodingAppHostProductFactoryV1,
-) -> None:
-    failures: list[BaseException] = []
-    if catalog is not None:
-        try:
-            await catalog.close()
-        except BaseException as error:
-            failures.append(error)
-    try:
-        await product_factory.close()
-    except BaseException as error:
-        failures.append(error)
-    if failures:
-        raise CodingAppHostCompositionError(
-            code="coding_apphost_composition_cleanup_incomplete"
-        ) from None
-
-
-async def _join_failed_construction_cleanup(
-    catalog: AppHostCatalogV1 | None,
-    product_factory: CodingAppHostProductFactoryV1,
-) -> None:
-    operation = asyncio.create_task(
-        _settle_failed_construction(catalog, product_factory)
-    )
-    await _await_owned_task(operation)
 
 
 def _require_opaque(value: object, *, name: str) -> None:

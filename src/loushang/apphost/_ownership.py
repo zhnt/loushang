@@ -235,9 +235,10 @@ async def _settle_failed_product_construction(
     catalog: AppHostCatalogV1 | None,
     product_factory: _ConstructionCloseOwner,
     *,
-    error_code: str,
+    failure: RuntimeError,
     join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
 ) -> None:
+    """Release the most complete Host owner, then the unpublished Product."""
 
     async def settle() -> None:
         failures: list[BaseException] = []
@@ -256,7 +257,7 @@ async def _settle_failed_product_construction(
         except BaseException as error:
             failures.append(error)
         if failures:
-            raise RuntimeError(error_code) from None
+            raise failure from None
 
     task = asyncio.create_task(settle())
     await join_owned(task)
