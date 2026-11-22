@@ -844,7 +844,7 @@ and architecture. Six scoped sources pass mypy. Native Windows remains pending.
 
 | Retired staged module | Current owner and retained policy |
 | --- | --- |
-| `session/continuity_history` | Formal Continuity owns cached target identity, index refresh, current source verification, prepared restore and deletion sequencing. Coding retains its provider identity, display and native Resume preview selection. |
+| `session/continuity_history` | The formal Session adapter owns cached target identity, index refresh, current source verification, prepared restore and deletion sequencing. Coding retains its provider identity, display and native Resume preview selection. |
 | `session/activation_plan` and `session/resume_planning` | Formal Session validates ordered owner references and fingerprints bounded Plan bytes. The existing Harness planning slot owns asynchronous work. Coding validates its composition and native history, selects Resource inputs and retains the Plan and error types. |
 | `session/approval_confirmation` | Formal Session captures the native execution scope using the existing profile and transcript codec. Coding binds its hosted or embedded subject, confirmation policies and exact approval request. |
 | `session/first_input_activation` and `session/resume_cleanup` | Coding selects its intent, proves the admitted effect set and maps cleanup debt to its original owner and factory fence. Existing formal Session owners settle the receipt and dispose borrowed resource lifetimes. |
@@ -885,6 +885,12 @@ The final focused Linux run passes all 203 existing cases for Resume planning,
 permission, native journal settlement, first input, indexed Continuity,
 owner-generation evidence, public Plugin removal and import direction. The
 earlier isolated Continuity run passes 104 cases with one platform skip.
+
+The cumulative boundary suite caught the location of the native index adapter
+and the child construction type import. The native adapter now lives with
+formal Session, and child construction imports the defining services module.
+All 42 affected boundary and Continuity cases pass after these corrections.
+The corrections have zero production line delta.
 
 ## Validation And Commit Rhythm
 

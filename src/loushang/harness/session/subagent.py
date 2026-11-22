@@ -47,7 +47,7 @@ from loushang.harness.tools.workspace.selection import (
 )
 
 if TYPE_CHECKING:
-    from loushang.harness.session import BootstrapServices
+    from loushang.harness.session.bootstrap_services import BootstrapServices
 
 
 class ChildSessionRuntime(Protocol):

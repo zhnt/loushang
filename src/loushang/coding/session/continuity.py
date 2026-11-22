@@ -54,12 +54,6 @@ from loushang.harness.continuity._payload_staging import (
 from loushang.harness.continuity._payload_staging import (
     _PrivateContinuityPayload as _PrivateContinuityPayload,
 )
-from loushang.harness.continuity._session_index import (
-    _IndexedSessionContinuity,
-    _IndexedSessionRuntime,
-    _PreparedIndexedSession,
-    canonical_session_directory,
-)
 from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginGeneration,
     ContinuityPluginGenerationAuthority,
@@ -86,6 +80,12 @@ from loushang.harness.runtime import (
     RuntimeProfileLayer,
     RuntimeProfileLayerGrant,
     RuntimeProfileResolver,
+)
+from loushang.harness.session._continuity_index import (
+    _IndexedSessionContinuity,
+    _IndexedSessionRuntime,
+    _PreparedIndexedSession,
+    canonical_session_directory,
 )
 from loushang.harness.transcript import (
     SessionAssetHealthSummary,
