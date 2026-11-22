@@ -8,17 +8,23 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 from uuid import uuid4
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.ai.types import AssistantMessage
 from loushang.apphost.application import _method_descriptor
-from loushang.apphost.contracts import SessionBindingKeyV1
+from loushang.apphost.contracts import (
+    SessionBindingKeyV1,
+    SessionCandidateMode,
+    SessionCandidateRefV1,
+    SessionDiscoveryScope,
+    SessionIdentityEnvelopeV1,
+    SessionIdentityProjectionV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -29,6 +35,7 @@ from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionModelChoiceV1,
     SessionModelsV1,
+    SessionOpenSpecV1,
     SessionSnapshotV1,
     SessionSubmissionModeV1,
     SessionThinkingV1,
@@ -47,6 +54,10 @@ from loushang.appservice.execution_contract import (
     InterruptModeV1,
 )
 from loushang.appservice.execution_guard import ExecutionControlV1, ExecutionGuardV1
+from loushang.appservice.ports import (
+    HostedSessionResolutionErrorV1,
+    HostedSessionResolutionFailureV1,
+)
 from loushang.foundation._owned_tasks import (
     _observe_task_result,
     _task_failed_or_cancelled,
@@ -608,6 +619,43 @@ def _require_hosted_binding(binding: object, *, label: str) -> None:
 __all__: list[str] = []
 
 
+def canonical_resume_reference(
+    request: SessionOpenSpecV1,
+    projections: tuple[SessionIdentityProjectionV1, ...],
+    *,
+    scope: SessionDiscoveryScope,
+    limit: int,
+    missing_is_authoritative: bool,
+    label: str,
+) -> SessionCandidateRefV1:
+    """Require a unique canonical candidate for the requested Session."""
+    if (
+        not isinstance(projections, tuple)
+        or len(projections) > limit
+        or any(type(item) is not SessionIdentityProjectionV1 for item in projections)
+    ):
+        raise ValueError(f"{label} hosted candidate catalog is invalid")
+    same_session = tuple(
+        item for item in projections
+        if item.scope is scope
+        and item.mode is SessionCandidateMode.CANONICAL
+        and type(item.envelope) is SessionIdentityEnvelopeV1
+        and item.envelope.session_id == request.session_id
+    )
+    if not same_session and missing_is_authoritative:
+        raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.MISSING)
+    if len(same_session) == 1:
+        [candidate] = same_session
+        envelope = candidate.envelope
+        assert type(envelope) is SessionIdentityEnvelopeV1
+        if (
+            envelope.product_id == request.product_id
+            and envelope.continuity_id == request.continuity_id
+        ):
+            return candidate.reference
+    raise ValueError(f"{label} hosted Session candidate is unavailable")
+
+
 def _validate_foreground_binding(
     binding: object,
     key: SessionBindingKeyV1,
@@ -1036,74 +1084,3 @@ class _DeferredSessionControl(Generic[_HostedBindingT]):
         if self._delegate is None:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return self._delegate
-
-
-# Presentation aliases are independent of the existing approval broker authority.
-class _HostedApprovalPresentation:
-    _interactions: dict[str, str]
-    _approval_action: ClassVar[str]
-    _approval_limit: ClassVar[Callable[[], int]]
-    _approval_text_limit: ClassVar[Callable[[], int]]
-    _approval_id: ClassVar[Callable[[], str]]
-    _approval_publish_rollback: ClassVar[bool]
-
-    def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
-        raise NotImplementedError
-
-    async def _present_approval(self, request: dict[str, object]) -> None:
-        action_id = request.get("action_id")
-        if (
-            not isinstance(action_id, str)
-            or len(self._interactions) >= type(self)._approval_limit()
-        ):
-            raise RuntimeError("hosted_approval_unavailable")
-        text = "\n".join(
-            (
-                str(request.get("action", self._approval_action)),
-                str(request.get("risk", "")),
-                json.dumps(
-                    request.get("arguments", {}), ensure_ascii=False, sort_keys=True
-                ),
-            )
-        )
-        if len(text) > type(self)._approval_text_limit():
-            raise RuntimeError("hosted_approval_too_large")
-        interaction_id = type(self)._approval_id()
-        self._interactions[interaction_id] = action_id
-        if self._approval_publish_rollback:
-            try:
-                await self._publish_approval(interaction_id, text)
-            except BaseException:
-                self._interactions.pop(interaction_id, None)
-                raise
-        else:
-            await self._publish_approval(interaction_id, text)
-
-    async def _publish_approval(self, interaction_id: str, text: str) -> None:
-        # Resolve the real dispatcher only after inserting the original alias.
-        await self._approval_dispatcher()(
-            cast(
-                RuntimeEvent[object],
-                {
-                    "type": "tool_approval_requested",
-                    "hosted_presentation": True,
-                    "interaction_id": interaction_id,
-                    "text": text,
-                },
-            )
-        )
-
-    async def _dismiss_approval(self, action_id: str) -> None:
-        for interaction_id, pending in tuple(self._interactions.items()):
-            if pending == action_id:
-                self._interactions.pop(interaction_id, None)
-                await self._approval_dispatcher()(
-                    cast(
-                        RuntimeEvent[object],
-                        {
-                            "type": "tool_approval_resolved",
-                            "hosted_presentation": True,
-                            "interaction_id": interaction_id,
-                        },
-                    )
-                )

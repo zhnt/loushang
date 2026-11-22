@@ -49,12 +49,12 @@ from loushang.apphost.application import (
     create_hosted_application_runtime,
 )
 from loushang.apphost.integrations._canonical_transcript_catalog import (
-    canonical_resume_reference,
-)
-from loushang.apphost.integrations._canonical_transcript_catalog import (
     session_identity_matches_open as _identity_matches_open,
 )
-from loushang.apphost.integrations.session_control import _validate_foreground_binding
+from loushang.apphost.integrations.session_control import (
+    _validate_foreground_binding,
+    canonical_resume_reference,
+)
 from loushang.apphost.integrations.session_product import (
     _BorrowedProfileLease,
     _ForegroundProductFactory,

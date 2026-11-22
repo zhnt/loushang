@@ -16,9 +16,12 @@ from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
+from loushang.apphost.integrations._session_projection import (
+    _HostedApprovalPresentation,
+    _project_hosted_approval,
+)
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
-    _HostedApprovalPresentation,
     _HostedResumeInputExecutionWork,
 )
 from loushang.appserver.execution.model import InteractiveGoalRecoveryV1
@@ -46,8 +49,6 @@ from loushang.coding.hosted.service_adapter import (
     CodingHostedSnapshotProjectionV1,
 )
 from loushang.coding.hosted.session import (
-    _MAX_INTERACTIONS,
-    _TEXT_LIMIT,
     CodingRealHostedSessionV1,
     _resolve_hosted_saved_model,
 )
@@ -131,9 +132,6 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     """One AppHost binding from detached history through first activation."""
 
     _approval_action = "Resume approval"
-    _approval_limit = staticmethod(lambda: _MAX_INTERACTIONS)
-    _approval_text_limit = staticmethod(lambda: _TEXT_LIMIT)
-    _approval_id = staticmethod(lambda: token_hex(16))
     _approval_publish_rollback = False
 
     def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
@@ -401,17 +399,11 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         active = self._active
         if active is not None:
             return active.project_event(event)
-        if payload is not None and payload.get("hosted_presentation") is True:
-            kind = payload.get("type")
-            if kind in {"tool_approval_requested", "tool_approval_resolved"}:
-                return CodingHostedEventProjectionV1(
-                    SessionEventKindV1.INTERACTION_REQUESTED
-                    if kind == "tool_approval_requested"
-                    else SessionEventKindV1.INTERACTION_DISMISSED,
-                    cast(str | None, payload.get("text")),
-                    cast(str, payload["interaction_id"]),
-                )
-        return None
+        return (
+            None if payload is None else _project_hosted_approval(
+                payload, CodingHostedEventProjectionV1,
+            )
+        )
 
     async def lookup_resume_input(
         self, query: CodingResumeInputLookupQueryV1,

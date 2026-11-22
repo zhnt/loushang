@@ -19,13 +19,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from loushang.apphost.contracts import (
-    SessionCandidateMode,
     SessionCandidateRefV1,
     SessionCreateIntentV1,
     SessionCreateRequestV1,
     SessionDiscoveryScope,
     SessionIdentityCatalogPortV1,
-    SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
 from loushang.apphost.workspace_registry import WorkspaceRegistrationError
@@ -42,10 +40,6 @@ from loushang.appserver.protocol import (
 from loushang.appservice.discovery_ports import (
     HostedSessionDiscoveryScopeV1,
     HostedSessionDiscoverySnapshotV1,
-)
-from loushang.appservice.ports import (
-    HostedSessionResolutionErrorV1,
-    HostedSessionResolutionFailureV1,
 )
 from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import ConversationHeader
@@ -96,43 +90,6 @@ class CanonicalTranscriptScope(Protocol):
     def fingerprint(self) -> str: ...
     @property
     def source_id(self) -> str: ...
-
-
-def canonical_resume_reference(
-    request: SessionOpenSpecV1,
-    projections: tuple[SessionIdentityProjectionV1, ...],
-    *,
-    scope: SessionDiscoveryScope,
-    limit: int,
-    missing_is_authoritative: bool,
-    label: str,
-) -> SessionCandidateRefV1:
-    """Require a unique canonical candidate for the requested Session."""
-    if (
-        not isinstance(projections, tuple)
-        or len(projections) > limit
-        or any(type(item) is not SessionIdentityProjectionV1 for item in projections)
-    ):
-        raise ValueError(f"{label} hosted candidate catalog is invalid")
-    same_session = tuple(
-        item for item in projections
-        if item.scope is scope
-        and item.mode is SessionCandidateMode.CANONICAL
-        and type(item.envelope) is SessionIdentityEnvelopeV1
-        and item.envelope.session_id == request.session_id
-    )
-    if not same_session and missing_is_authoritative:
-        raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.MISSING)
-    if len(same_session) == 1:
-        [candidate] = same_session
-        envelope = candidate.envelope
-        assert type(envelope) is SessionIdentityEnvelopeV1
-        if (
-            envelope.product_id == request.product_id
-            and envelope.continuity_id == request.continuity_id
-        ):
-            return candidate.reference
-    raise ValueError(f"{label} hosted Session candidate is unavailable")
 
 
 def session_identity_matches_open(
