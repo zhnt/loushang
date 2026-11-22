@@ -118,6 +118,7 @@ from loushang.hosting.windows_backend_material import (
     verify_windows_backend_material_expectation,
 )
 
+from ._worker_history_access import windows_product_worker_quiescence
 from ._worker_product_authority import _WindowsWorkerProductReceiptAuthority
 from .product_worker_candidate import (
     ProductWorkerSelectedPayloadFacts,
@@ -1605,12 +1606,9 @@ def windows_product_worker_offline_write(
     active_message: str,
 ) -> Iterator[PackageWindowsRuntimeQuiescenceV1]:
     """Hold Package quiescence then writable GC for an admitted mutation."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise active_error(active_message)
+    with windows_product_worker_quiescence(
+        product, active_error=active_error, active_message=active_message
+    ) as (_, quiescence):
         with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             yield quiescence

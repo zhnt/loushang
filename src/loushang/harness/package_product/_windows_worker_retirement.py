@@ -228,6 +228,29 @@ class WindowsProductWorkerCompleteStageRetirement(
             self.inspection(), self.records.error_type, self.error_prefix
         )
 
+    def review_for_retry(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        attempt_id: str,
+        *,
+        review_current: Callable[[], _ReviewT],
+        retry_error: type[RuntimeError],
+        retry_code: str,
+    ) -> _ReviewT:
+        """Reopen a durable retirement review only after a matching live refusal."""
+        try:
+            return review_current()
+        except retry_error as error:
+            if getattr(error, "code", None) != retry_code:
+                raise
+            with product.gc_gate.guard():
+                product.assert_root_gc_authority_current()
+                retained = self.records.read_start(product, attempt_id)
+                product.assert_root_gc_authority_current()
+            if retained is None:
+                raise
+            return retained
+
     def retire(
         self,
         product: WindowsLocalWheelProductSessionOwner,

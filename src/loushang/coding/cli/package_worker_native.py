@@ -8,14 +8,12 @@ import os
 import sys
 from collections.abc import Sequence
 from functools import partial
-from hashlib import sha256
 from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
 
 from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
-    CodingWorkerCandidateReadEvidenceV1,
 )
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
@@ -36,7 +34,6 @@ from loushang.coding.package.product_worker_native_install import (
 from loushang.coding.package.product_worker_operator_query import (
     query_coding_product_worker,
 )
-from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInDecisionV1
 from loushang.coding.package.product_worker_opt_in_owner import (
     CodingWorkerProductOptInOwner,
 )
@@ -76,20 +73,14 @@ from loushang.harness.cli.worker_candidate import (
     execute_worker_candidate_capture,
     execute_worker_candidate_change,
     execute_worker_candidate_opt_in,
-    worker_candidate_opt_in_document,
+    read_worker_candidate_status,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.plugin_management.package_product import (
-    PackageProductRuntimeReadError,
-)
 from loushang.harness.resources.packages._file_consumption import (
     closing_descriptor,
     read_exact_bounded_file,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 
 _MAX_WHEEL_BYTES = 4 * 1024 * 1024
@@ -248,74 +239,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
 
-def _candidate_status_document(
-    decision: CodingWorkerOptInDecisionV1 | None,
-) -> dict[str, object]:
-    return worker_candidate_opt_in_document(
-        decision, ordinary_session_routing="python_sdk_explicit_linux"
-    )
-
-
 def _read_candidate_status_document(
     owner: CodingFencedProductReadOnlyPreviewOwner, plugin_id: str
 ) -> dict[str, object]:
-    """Join read-only selection and opt-in observations as partial evidence."""
-
-    before = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
-    decision_before = owner.worker_opt_in_decision(plugin_id)
-    selection: dict[str, object] = {"stage": "not_selected"}
-    evidence: CodingWorkerCandidateReadEvidenceV1 | None = None
-    if before.desired_state == "installed_enabled":
-        try:
-            evidence = owner.selected_worker_candidate_evidence(plugin_id)
-        except PackageProductRuntimeReadError as error:
-            if error.code != "package_product_root_not_selected":
-                raise
-            selection = {"stage": "blocked", "reasonCode": error.code}
-        else:
-            selected = evidence.candidate
-            selection = {
-                "stage": "observed_in_read",
-                "pluginVersion": selected.plugin_version,
-                "executableDigest": selected.executable_digest,
-            }
-    after = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
-    decision_after = owner.worker_opt_in_decision(plugin_id)
-    stale = (
-        before.inventory_revision != after.inventory_revision
-        or decision_before != decision_after
+    return read_worker_candidate_status(
+        owner, plugin_id, ordinary_session_routing="python_sdk_explicit_linux"
     )
-    if stale:
-        selection = {"stage": "stale_evidence"}
-        alignment = "stale_evidence"
-    elif selection["stage"] == "blocked":
-        alignment = "blocked"
-    elif evidence is None:
-        alignment = "not_selected"
-    elif decision_after is None or decision_after.action != "allow":
-        alignment = "not_allowed"
-    else:
-        opt_in = decision_after.opt_in
-        candidate = evidence.candidate
-        alignment = (
-            "identity_match_in_read"
-            if opt_in is not None
-            and opt_in.plugin_id == candidate.plugin_id
-            and opt_in.contribution_id == candidate.contribution_id
-            and opt_in.owner_id == candidate.owner_id
-            and opt_in.artifact_digest == evidence.artifact_digest
-            and opt_in.native_platform == evidence.native_platform
-            else "identity_mismatch"
-        )
-    return {
-        **_candidate_status_document(decision_after),
-        "candidateStatusVersion": 2,
-        "snapshotStatus": "stale_evidence" if stale else "partial_evidence",
-        "desiredInventoryRevision": after.inventory_revision,
-        "candidateSelection": selection,
-        "candidateOptInAlignment": alignment,
-        "productUse": "not_checked",
-    }
 
 
 _PAYLOAD_REPAIRS: dict[
@@ -574,27 +503,11 @@ def _gated_review_id(
     fence = product.epoch_runtime.cutover_result.fence
     if fence is None:
         raise ValueError("Coding Worker Product fence is unavailable")
-    return sha256(
-        canonical_json_bytes(
-            {
-                "reviewVersion": 1,
-                "productScopeId": product.policy.project_scope_id,
-                "storeRootIdentity": fence.fenced_root_identity,
-                "attemptId": gated.attempt_id,
-                "gateRecord": (
-                    None if gated.gate_record is None else gated.gate_record.to_dict()
-                ),
-                "attemptRecord": (
-                    None
-                    if gated.attempt_record is None
-                    else gated.attempt_record.to_dict()
-                ),
-                "nativeClosureCurrent": gated.native_closure_current,
-                "groupStatus": gated.group_status,
-                "planId": plan.fingerprint,
-            }
-        )
-    ).hexdigest()
+    return gated.payload_settlement_review_id(
+        product_scope_id=product.policy.project_scope_id,
+        store_root_identity=fence.fenced_root_identity,
+        plan=plan,
+    )
 
 
 def _read_wheel(path: Path) -> bytes:

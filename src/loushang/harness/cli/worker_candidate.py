@@ -11,16 +11,24 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.package_product.product_runtime import (
+    PackageProductSelectedManifestReadPort,
+)
 from loushang.harness.package_product.product_worker_candidate import (
+    ProductWorkerOptInFacts,
     _capture_worker_candidate_installations,
     _change_worker_candidate_lifecycle,
     _install_worker_candidate,
     _update_worker_candidate,
     _worker_candidate_revision_matches,
 )
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWorkerAdmissionV1,
 )
+from loushang.harness.worker.package_candidate import WorkerPackageCandidateV1
 
 _CHANGE_ACTIONS = (
     "candidate-install",
@@ -138,6 +146,106 @@ def worker_candidate_opt_in_document(
     if ordinary_session_routing is not None:
         document["ordinarySessionRouting"] = ordinary_session_routing
     return document
+
+
+class _CandidateSelectionEvidence(Protocol):
+    @property
+    def candidate(self) -> WorkerPackageCandidateV1: ...
+    @property
+    def artifact_digest(self) -> str: ...
+    @property
+    def native_platform(self) -> str: ...
+
+
+class _CandidateStatusDecision(_WorkerCandidateRecord, Protocol):
+    @property
+    def action(self) -> str: ...
+    @property
+    def opt_in(self) -> ProductWorkerOptInFacts | None: ...
+
+
+class _CandidateStatusReader(Protocol):
+    @property
+    def selected_manifests(self) -> PackageProductSelectedManifestReadPort: ...
+
+    def worker_opt_in_decision(self, plugin_id: str) -> _CandidateStatusDecision | None: ...
+
+    def selected_worker_candidate_evidence(self, plugin_id: str) -> _CandidateSelectionEvidence: ...
+
+
+def worker_candidate_selection_document(
+    candidate: WorkerPackageCandidateV1, *, artifact_digest: str | None = None,
+) -> dict[str, object]:
+    document: dict[str, object] = {"stage": "observed_in_read"}
+    if artifact_digest is not None:
+        document["pluginId"] = candidate.plugin_id
+    document["pluginVersion"] = candidate.plugin_version
+    if artifact_digest is not None:
+        document["artifactDigest"] = artifact_digest
+    document["executableDigest"] = candidate.executable_digest
+    return document
+
+
+def read_worker_candidate_status(
+    owner: _CandidateStatusReader,
+    plugin_id: str,
+    *,
+    ordinary_session_routing: str | None,
+) -> dict[str, object]:
+    """Join read-only selection and opt-in observations as partial evidence."""
+
+    before = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
+    decision_before = owner.worker_opt_in_decision(plugin_id)
+    selection: dict[str, object] = {"stage": "not_selected"}
+    evidence: _CandidateSelectionEvidence | None = None
+    if before.desired_state == "installed_enabled":
+        try:
+            evidence = owner.selected_worker_candidate_evidence(plugin_id)
+        except PackageProductRuntimeReadError as error:
+            if error.code != "package_product_root_not_selected":
+                raise
+            selection = {"stage": "blocked", "reasonCode": error.code}
+        else:
+            selection = worker_candidate_selection_document(evidence.candidate)
+    after = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
+    decision_after = owner.worker_opt_in_decision(plugin_id)
+    stale = (
+        before.inventory_revision != after.inventory_revision
+        or decision_before != decision_after
+    )
+    if stale:
+        selection = {"stage": "stale_evidence"}
+        alignment = "stale_evidence"
+    elif selection["stage"] == "blocked":
+        alignment = "blocked"
+    elif evidence is None:
+        alignment = "not_selected"
+    elif decision_after is None or decision_after.action != "allow":
+        alignment = "not_allowed"
+    else:
+        opt_in = decision_after.opt_in
+        candidate = evidence.candidate
+        alignment = (
+            "identity_match_in_read"
+            if opt_in is not None
+            and opt_in.plugin_id == candidate.plugin_id
+            and opt_in.contribution_id == candidate.contribution_id
+            and opt_in.owner_id == candidate.owner_id
+            and opt_in.artifact_digest == evidence.artifact_digest
+            and opt_in.native_platform == evidence.native_platform
+            else "identity_mismatch"
+        )
+    return {
+        **worker_candidate_opt_in_document(
+            decision_after, ordinary_session_routing=ordinary_session_routing
+        ),
+        "candidateStatusVersion": 2,
+        "snapshotStatus": "stale_evidence" if stale else "partial_evidence",
+        "desiredInventoryRevision": after.inventory_revision,
+        "candidateSelection": selection,
+        "candidateOptInAlignment": alignment,
+        "productUse": "not_checked",
+    }
 
 
 def execute_worker_candidate_opt_in(

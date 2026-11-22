@@ -110,6 +110,7 @@ _operations = WindowsProductWorkerCompleteStageRetirement(
 
 
 _require_completed_retirement_under_gc_guard = _operations.require_completed
+_review_for_retry = _operations.review_for_retry
 _remove_remaining_stage = _operations.remove_remaining
 _retirement = _operations.physical
 _inspect_retirement_attempt_ids_under_gc_guard = _operations.inspect_attempt_ids

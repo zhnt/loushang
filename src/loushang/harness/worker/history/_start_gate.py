@@ -450,6 +450,30 @@ class GatedRecoveryReviewMethods:
         "unknown",
     ]
 
+    def _review_facts(self) -> dict[str, object]:
+        return {
+            "attemptId": self.attempt_id,
+            "gateRecord": None if self.gate_record is None else self.gate_record.to_dict(),
+            "attemptRecord": None if self.attempt_record is None else self.attempt_record.to_dict(),
+            "nativeClosureCurrent": self.native_closure_current,
+            "groupStatus": self.group_status,
+        }
+
+    def payload_settlement_review_id(
+        self, *, product_scope_id: str, store_root_identity: str, plan: PayloadPlan,
+    ) -> str:
+        return sha256(
+            canonical_json_bytes(
+                {
+                    "reviewVersion": 1,
+                    "productScopeId": product_scope_id,
+                    "storeRootIdentity": store_root_identity,
+                    **self._review_facts(),
+                    "planId": plan.fingerprint,
+                }
+            )
+        ).hexdigest()
+
     @property
     def same_boot_settlement_candidate(self) -> bool:
         return (
@@ -496,15 +520,7 @@ class OrphanGatedRecoveryReviewMethods:
             canonical_json_bytes(
                 {
                     "reviewVersion": 1,
-                    "attemptId": gated.attempt_id,
-                    "gateRecord": None
-                    if gated.gate_record is None
-                    else gated.gate_record.to_dict(),
-                    "attemptRecord": None
-                    if gated.attempt_record is None
-                    else gated.attempt_record.to_dict(),
-                    "nativeClosureCurrent": gated.native_closure_current,
-                    "groupStatus": gated.group_status,
+                    **gated._review_facts(),
                     "receiptRecord": None
                     if self.receipt_record is None
                     else self.receipt_record.to_dict(),

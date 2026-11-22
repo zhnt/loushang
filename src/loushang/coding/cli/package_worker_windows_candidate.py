@@ -41,9 +41,7 @@ from loushang.coding.package.product_worker_windows_recovery_inventory import (
     inspect_coding_windows_product_worker_recovery_inventory,
 )
 from loushang.coding.package.product_worker_windows_stage_retirement import (
-    _read_review as read_coding_windows_worker_stage_retirement_review,
-)
-from loushang.coding.package.product_worker_windows_stage_retirement import (
+    _review_for_retry,
     retire_coding_windows_product_worker_complete_stage,
 )
 from loushang.coding.package.product_worker_windows_stage_review import (
@@ -66,6 +64,7 @@ from loushang.harness.cli.worker_candidate import (
     execute_worker_candidate_capture,
     execute_worker_candidate_change,
     execute_worker_candidate_opt_in,
+    worker_candidate_selection_document,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -269,32 +268,24 @@ def _execute(
             ]
         }
     if args.action in {"review-normal", "retire-normal"}:
-        try:
-            stage_review = review_coding_windows_product_worker_complete_stage(
-                product, attempt_id=args.attempt_id
-            )
-        except CodingWindowsWorkerStageReviewError as error:
-            if (
-                args.action != "retire-normal"
-                or error.code != "coding_worker_stage_review_settlement_unverified"
-            ):
-                raise
-            with product.gc_gate.guard():
-                product.assert_root_gc_authority_current()
-                resumed_review = read_coding_windows_worker_stage_retirement_review(
-                    product, args.attempt_id
-                )
-                product.assert_root_gc_authority_current()
-            if resumed_review is None:
-                raise
-            stage_review = resumed_review
+        review_current = partial(
+            review_coding_windows_product_worker_complete_stage,
+            product, attempt_id=args.attempt_id,
+        )
         if args.action == "review-normal":
+            stage_review = review_current()
             return {
                 "normalStageReview": {
                     "attemptId": stage_review.attempt_id,
                     "reviewId": stage_review.fingerprint,
                 }
             }
+        stage_review = _review_for_retry(
+            product, args.attempt_id,
+            review_current=review_current,
+            retry_error=CodingWindowsWorkerStageReviewError,
+            retry_code="coding_worker_stage_review_settlement_unverified",
+        )
         if args.review_id != stage_review.fingerprint:
             raise ValueError("Windows Worker normal stage review changed")
         receipt = retire_coding_windows_product_worker_complete_stage(
@@ -362,13 +353,9 @@ def _read_candidate_selection(
         label="Windows Worker",
     )
     return {
-        "candidateSelection": {
-            "stage": "observed_in_read",
-            "pluginId": candidate.plugin_id,
-            "pluginVersion": candidate.plugin_version,
-            "artifactDigest": artifact_digest,
-            "executableDigest": candidate.executable_digest,
-        },
+        "candidateSelection": worker_candidate_selection_document(
+            candidate, artifact_digest=artifact_digest,
+        ),
         "productUse": "not_checked",
     }
 

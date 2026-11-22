@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -18,6 +19,9 @@ from loushang.harness.package_product._windows_worker_references import (
     _WindowsProductHistorySemanticFacts,
     capture_windows_product_worker_desired_history,
     windows_worker_desired_history_digest,
+)
+from loushang.harness.package_product._worker_history_access import (
+    windows_product_worker_quiescence,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -99,6 +103,18 @@ class ReviewWindowsCheckpoint(Protocol[_CheckpointT_co]):
     ) -> _CheckpointT_co: ...
 
 
+def _read_pending_history_publication(
+    io: WindowsPrivateReceiptIO, path: Path, *, name: str, maximum_bytes: int,
+) -> tuple[bytes | None, bytes | None]:
+    published = io.read_private_receipt(
+        path, maximum_bytes=maximum_bytes, allow_unpublished_stage=True,
+    )
+    staged = io.read_private_receipt(
+        path.with_name(name + ".stage"), maximum_bytes=maximum_bytes,
+    )
+    return published, staged
+
+
 def prepare_windows_product_worker_history(
     product: WindowsLocalWheelProductSessionOwner,
     *,
@@ -108,25 +124,17 @@ def prepare_windows_product_worker_history(
     name: str,
 ) -> _PreparationT:
     """Complete the original preparation transaction under unchanged guards."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker history runtime remains active")
+    with windows_product_worker_quiescence(
+        product, active_message="Windows Worker history runtime remains active"
+    ) as (registry, quiescence):
         product.assert_root_gc_authority_current()
         with product.gc_gate.guard(require_write=True):
             gc_snapshot = product.gc_gate.snapshot()
             if gc_snapshot.active:
                 raise ValueError("Windows Worker history GC reservation remains")
             path = product.state_root / name
-            published = io.read_private_receipt(
-                path,
-                maximum_bytes=record_type._wire_maximum(),
-                allow_unpublished_stage=True,
-            )
-            staged = io.read_private_receipt(
-                path.with_name(name + ".stage"),
+            published, staged = _read_pending_history_publication(
+                io, path, name=name,
                 maximum_bytes=record_type._wire_maximum(),
             )
             if staged is not None:
@@ -168,12 +176,9 @@ def read_windows_product_worker_checkpoint(
     name: str,
 ) -> _CheckpointT:
     """Use existing proof and IO owners without granting an authority switch."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker checkpoint runtime remains active")
+    with windows_product_worker_quiescence(
+        product, active_message="Windows Worker checkpoint runtime remains active"
+    ) as (_, quiescence):
         product.assert_root_gc_authority_current()
         with product.gc_gate.guard(require_write=True):
             published = io.read_private_receipt(
@@ -210,23 +215,15 @@ def publish_windows_product_worker_checkpoint(
     name: str,
 ) -> _CheckpointT:
     """Use existing proof and IO owners without granting an authority switch."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker checkpoint runtime remains active")
+    with windows_product_worker_quiescence(
+        product, active_message="Windows Worker checkpoint runtime remains active"
+    ) as (_, quiescence):
         product.assert_root_gc_authority_current()
         with product.gc_gate.guard(require_write=True):
             gc_snapshot = product.gc_gate.snapshot()
             path = product.state_root / name
-            published = io.read_private_receipt(
-                path,
-                maximum_bytes=record_type._wire_maximum(),
-                allow_unpublished_stage=True,
-            )
-            staged = io.read_private_receipt(
-                path.with_name(name + ".stage"),
+            published, staged = _read_pending_history_publication(
+                io, path, name=name,
                 maximum_bytes=record_type._wire_maximum(),
             )
             for raw in (published, staged):
@@ -438,12 +435,9 @@ class WindowsProductWorkerHistorySources(
         self._require_product(product)
         snapshot_type = self.snapshot_type
         settlement_type = self.settlement_type
-        registry = product.epoch_runtime.registry
-        with registry.exclusive_runtime_quiescence(
-            store_id=registry.store_id
-        ) as quiescence:
-            if quiescence.active_runtime_lease_ids:
-                raise ValueError("Windows Worker history runtime remains active")
+        with windows_product_worker_quiescence(
+            product, active_message="Windows Worker history runtime remains active"
+        ) as (registry, quiescence):
             product.assert_root_gc_authority_current()
             with product.gc_gate.guard(require_write=True):
                 snapshot = capture_windows_product_worker_sources_under_guard(
@@ -462,12 +456,9 @@ class WindowsProductWorkerHistorySources(
     ) -> _SemanticRecordT:
         """Join settled source bytes and retained semantics without publication."""
         self._require_product(product)
-        registry = product.epoch_runtime.registry
-        with registry.exclusive_runtime_quiescence(
-            store_id=registry.store_id
-        ) as quiescence:
-            if quiescence.active_runtime_lease_ids:
-                raise ValueError("Windows Worker history runtime remains active")
+        with windows_product_worker_quiescence(
+            product, active_message="Windows Worker history runtime remains active"
+        ) as (registry, quiescence):
             product.assert_root_gc_authority_current()
             with product.gc_gate.read_snapshot_guard() as gc_snapshot:
                 if gc_snapshot.active:
@@ -659,12 +650,9 @@ def review_windows_product_worker_package_references(
     *,
     review_under_guard: ReviewWindowsReferences[_ReferenceT],
 ) -> _ReferenceT:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker Package runtime remains active")
+    with windows_product_worker_quiescence(
+        product, active_message="Windows Worker Package runtime remains active"
+    ) as (_, quiescence):
         product.assert_root_gc_authority_current()
         with product.gc_gate.read_snapshot_guard() as gc_snapshot:
             review, _, _ = review_under_guard(
@@ -716,12 +704,9 @@ def capture_windows_product_worker_persisted_history(
     read_under_guard: ReadWindowsPersistedBases[_PersistedT],
     require_cutover: bool,
 ) -> tuple[_PersistedT, _WindowsHistoryCutoverMethods | None]:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker persisted bases runtime remains active")
+    with windows_product_worker_quiescence(
+        product, active_message="Windows Worker persisted bases runtime remains active"
+    ):
         product.assert_root_gc_authority_current()
         with product.gc_gate.guard(require_write=True):
             with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
@@ -740,12 +725,9 @@ def review_windows_product_worker_history_cutover_candidate(
     review_checkpoint: ReviewWindowsCheckpoint[_WindowsHistoryCheckpointMethods],
 ) -> _CutoverT:
     """Reprove both old sources and retained bases; no marker writer is borrowed."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker cutover runtime remains active")
+    with windows_product_worker_quiescence(
+        product, active_message="Windows Worker cutover runtime remains active"
+    ) as (_, quiescence):
         product.assert_root_gc_authority_current()
         with product.gc_gate.guard(require_write=True):
             gc_snapshot = product.gc_gate.snapshot()
@@ -791,12 +773,9 @@ def guard_windows_product_worker_history_bases(
     The old sources remain authoritative. This operation owns guard/retry/IO
     custody, and grants neither a history cutover nor source retirement.
     """
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker bases runtime remains active")
+    with windows_product_worker_quiescence(
+        product, active_message="Windows Worker bases runtime remains active"
+    ) as (_, quiescence):
         product.assert_root_gc_authority_current()
         with product.gc_gate.guard(require_write=True):
             checkpoint_path = product.state_root / checkpoint_name

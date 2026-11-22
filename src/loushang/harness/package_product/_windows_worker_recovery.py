@@ -111,6 +111,7 @@ from ._windows_worker_history import (
     ObserveWindowsWorkerBackup,
     ReadWindowsOfflineRecovery,
 )
+from ._worker_history_access import windows_product_worker_quiescence
 from ._worker_product_authority import (
     ClosedProductWorkerCrashRecoveryAuthority,
     _WindowsWorkerProductReceiptAuthority,
@@ -585,12 +586,9 @@ def read_windows_product_worker_offline_recovery(
     active_error: type[RuntimeError],
     active_code: str,
 ) -> _RecoveryFacts:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise active_error(active_code)
+    with windows_product_worker_quiescence(
+        product, active_error=active_error, active_message=active_code
+    ) as (registry, quiescence):
         with product.gc_gate.read_snapshot_guard() as gc_snapshot:
             return read_under_guard(
                 product,
