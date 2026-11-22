@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import stat
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -13,6 +12,7 @@ from typing import Literal
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._application_runtime import (
     open_read_only_product_management_state,
+    private_product_state_identity,
     read_fenced_product_desired_transition,
     verify_handoff_desired_commit,
 )
@@ -276,15 +276,11 @@ def _product_sources(
         raise ValueError("Fenced Product Source namespace is unavailable")
     source_root = runtime.control_root / "product-sources"
     try:
-        source_metadata = source_root.lstat()
+        private_product_state_identity(
+            source_root, unsafe_message="Fenced Product Source root is unsafe"
+        )
     except FileNotFoundError as exc:
         raise ValueError("Fenced Product Source root is absent") from exc
-    if (
-        not stat.S_ISDIR(source_metadata.st_mode)
-        or stat.S_IMODE(source_metadata.st_mode) & 0o077
-        or source_metadata.st_uid != os.geteuid()
-    ):
-        raise ValueError("Fenced Product Source root is unsafe")
     if not read_only:
         runtime.prepare_product_source_root()
     return _ProductSources(

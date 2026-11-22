@@ -562,14 +562,14 @@ def require_current_manifests(
 
 
 def capture_selected_manifests(
-    runtime: PackageProductRuntimeBindingV1,
+    capture: Callable[..., PackageProductSelectedPluginManifestV1],
     plugin_ids: Iterable[str],
     *,
     max_files: int,
     max_total_bytes: int,
 ) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
     return tuple(
-        runtime.capture_selected_plugin_manifest_for(
+        capture(
             plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
         )
         for plugin_id in plugin_ids

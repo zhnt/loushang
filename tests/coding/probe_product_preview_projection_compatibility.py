@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding.package.product_preview as code
+import loushang.harness.plugin_management.current_preview as preview_owner
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
@@ -334,13 +335,13 @@ def observe(case, monkeypatch, tmp_path):
             SimpleNamespace(plugin_id="sample"),
         ),
     )
-    original_evidence = code._selection_evidence
+    original_evidence = preview_owner.project_current_selection_evidence
 
-    def evidence(*args):
+    def evidence(*args, **kwargs):
         trace.append(["evidence"])
         if case == "after-read-failure":
             raise RuntimeError("later evidence must not run")
-        return original_evidence(*args)
+        return original_evidence(*args, **kwargs)
 
     def compile_base(*args, **kwargs):
         trace.append(["compile"])
@@ -385,7 +386,7 @@ def observe(case, monkeypatch, tmp_path):
     monkeypatch.setattr(
         code, "build_coding_initial_resource_catalog_adapter", build_adapter
     )
-    monkeypatch.setattr(code, "_selection_evidence", evidence)
+    monkeypatch.setattr(preview_owner, "project_current_selection_evidence", evidence)
     monkeypatch.setattr(code, "time", SimpleNamespace(time=clock, time_ns=clock_ns))
     old_getattr = VerifiedPluginResourceOrigin.__getattribute__
 

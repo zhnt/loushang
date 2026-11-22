@@ -22,13 +22,23 @@ from loushang.harness.resources._catalog_records import NativeHostOrigin
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 if TYPE_CHECKING:
+    from loushang.harness.capabilities.consumer_requirements import (
+        ProductCompositionCompilation,
+    )
     from loushang.harness.capabilities.contribution_admission import (
         OwnerContributionAdmissionRecord,
     )
+    from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
     from loushang.harness.plugin_management.package_product import (
         PackageProductSelectedRootSnapshotV1,
     )
+    from loushang.harness.resource_catalog.bootstrap_projection import (
+        ResourceCatalogBootstrapResult,
+    )
     from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
+    from loushang.harness.resources.packages.product_epoch_guard import (
+        PackageProductPosixFencedRuntimeOwner,
+    )
     from loushang.harness.resources.packages.product_local_wheel_policy import (
         PackageProductLocalWheelPolicy,
     )
@@ -441,6 +451,113 @@ def project_current_product_resource_facts(
         )
     )
     return admissions, catalog_resources
+
+
+class _PreviewedComposition(Protocol):
+    @property
+    def product_composition(self) -> ProductCompositionCompilation: ...
+
+
+class _PreviewCompositionFailure(Protocol):
+    @property
+    def code(self) -> str: ...
+
+
+def observe_current_product_composition(
+    policy: PackageProductLocalWheelPolicy,
+    desired: PluginDesiredStateLedger,
+    before: PluginDesiredStateSnapshotV1,
+    *,
+    epoch: PackageProductPosixFencedRuntimeOwner,
+    requested_plugin_ids: tuple[str, ...],
+    executable_trust_classes: frozenset[str],
+    excluded_plugin_id: str,
+    observe_clock: Callable[[], int],
+    composition_set_id: str,
+    disabled_skills_known: bool,
+    compiled_plugin_ids: tuple[str, ...],
+    catalog_result: ResourceCatalogBootstrapResult | None = None,
+    product_inputs: tuple[_CurrentProductResourceInput, ...] = (),
+    compiled: _PreviewedComposition | None = None,
+    blocker: _PreviewCompositionFailure | None = None,
+) -> PluginCurrentCompositionPreviewV1:
+    """Project one preview against the same Desired and epoch authorities."""
+    from loushang.harness.capabilities.consumer_requirements import (
+        ProductCompositionError,
+    )
+
+    bundle = catalog = None
+    selections: list[PluginCurrentResourceSelectionV1] = []
+    if catalog_result is not None:
+        bundle, catalog = catalog_result.bundle, catalog_result.catalog
+        selections = project_current_product_resource_selections(
+            catalog, product_inputs
+        )
+    after, _ = desired.capture_read_only()
+    epoch.assert_current()
+    executable, gaps = project_current_selection_evidence(
+        policy,
+        before,
+        requested_plugin_ids,
+        executable_trust_classes=executable_trust_classes,
+        excluded_plugin_id=excluded_plugin_id,
+    )
+    if disabled_skills_known:
+        gaps.discard("disabled_skill_settings")
+    if blocker is not None:
+        gaps.add("resource_catalog_not_reached")
+    if before.inventory_revision != after.inventory_revision:
+        gaps.add("stale_snapshot")
+    admissions, catalog_resources = (
+        project_current_product_resource_facts(
+            compiled.product_composition.resource_admissions
+            if compiled is not None
+            else (),
+            bundle,
+        )
+        if bundle is not None
+        else ((), ())
+    )
+    return PluginCurrentCompositionPreviewV1(
+        product_id=policy.product_id,
+        scope_id=policy.project_scope_id,
+        composition_set_id=composition_set_id,
+        observed_at_unix_ns=observe_clock(),
+        desired_inventory_revision=before.inventory_revision,
+        product_policy_revision=policy.policy_revision,
+        product_authority_revision=policy.authority_revision,
+        compiled_plugin_ids=compiled_plugin_ids,
+        admitted_resources=admissions,
+        catalog_resources=catalog_resources,
+        catalog_diagnostic_codes=(
+            tuple(sorted({item.code for item in bundle.diagnostics}))
+            if bundle is not None
+            else ()
+        ),
+        catalog_generation=catalog.catalog_generation if catalog is not None else None,
+        catalog_snapshot_fingerprint=(
+            catalog.snapshot_fingerprint if catalog is not None else None
+        ),
+        selected_resources=tuple(
+            sorted(
+                selections,
+                key=lambda item: (
+                    item.installation_key.plugin_id,
+                    item.contribution_id,
+                ),
+            )
+        ),
+        requires_authorized_preflight=tuple(sorted(executable)),
+        evidence_gaps=tuple(sorted(gaps)),
+        disposition="blocked" if blocker is not None else "projected",
+        blocking_owner="product_composition" if blocker is not None else None,
+        blocking_code=blocker.code if blocker is not None else None,
+        blocking_admission_fingerprints=(
+            blocker.admission_fingerprints
+            if isinstance(blocker, ProductCompositionError)
+            else ()
+        ),
+    )
 
 
 __all__ = [

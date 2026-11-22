@@ -361,7 +361,7 @@ class InitialCatalogHandoff:
             if external_ids:
                 external = compile_coding_external_data_product_selection(
                     capture_selected_manifests(
-                        runtime,
+                        runtime.capture_selected_plugin_manifest_for,
                         external_ids,
                         max_files=max_files,
                         max_total_bytes=max_total_bytes,
@@ -437,7 +437,7 @@ class InitialCatalogHandoff:
                 base = extend_coding_base_product_data_resources(
                     base,
                     capture_selected_manifests(
-                        runtime,
+                        runtime.capture_selected_plugin_manifest_for,
                         external_ids,
                         max_files=max_files,
                         max_total_bytes=max_total_bytes,
