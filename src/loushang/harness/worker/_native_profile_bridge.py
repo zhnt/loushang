@@ -34,6 +34,9 @@ from .product_activation import (
     ProductWorkerActivationPolicyV1,
     ProductWorkerActivationReceiptV1,
 )
+from .product_activation import (
+    _fingerprint as _document_fingerprint,
+)
 
 _POSIX_CONTAINED_PROFILE_ID = "posix-static-contained-elf-v1"
 _POSIX_QUERY_CONTAINED_PROFILE_ID = "posix-static-query-contained-elf-v1"
@@ -1811,20 +1814,6 @@ def _json_copy(value: object) -> object:
         raise ValueError("Worker native provisioning state is not JSON") from error
 
 
-def _document_fingerprint(domain: str, document: Mapping[str, object]) -> str:
-    encoded = json.dumps(
-        document,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    digest = hashlib.sha256()
-    digest.update(domain.encode("ascii"))
-    digest.update(len(encoded).to_bytes(8, "big"))
-    digest.update(encoded)
-    return digest.hexdigest()
-
-
 def _domain_values_fingerprint(domain: str, values: tuple[str, ...]) -> str:
     digest = hashlib.sha256()
     digest.update(domain.encode("ascii"))
@@ -1845,28 +1834,9 @@ def _require_exact_binding(
     if not isinstance(worker_request, ManagedWorkerLaunchRequestV1):
         raise TypeError("Worker native profile requires a managed Worker request")
     policy = receipt.policy
-    identity = worker_request.identity
-    expected = (
-        policy.product_id,
-        policy.product_scope_id,
-        policy.plugin_id,
-        policy.plugin_revision_digest,
-        policy.contribution_id,
-        policy.owner_selection_generation,
-        policy.declaration_fingerprint,
-        policy.worker_configuration_fingerprint,
-    )
-    actual = (
-        identity.product_id,
-        identity.scope_id,
-        identity.plugin_id,
-        identity.plugin_revision_digest,
-        identity.contribution_id,
-        identity.owner_generation,
-        identity.declaration_fingerprint,
-        identity.worker_configuration_fingerprint,
-    )
-    if expected != actual:
+    if not ProductWorkerActivationPolicyV1._matches_launch_identity(
+        policy, worker_request.identity
+    ):
         raise WorkerBindingError(
             "Worker native receipt targets a different request",
             code="worker_native_receipt_mismatch",

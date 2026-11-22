@@ -8,10 +8,8 @@ it never imports Hosting or manufactures native material.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import TYPE_CHECKING, Literal, NoReturn, Protocol, cast
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
@@ -38,6 +36,7 @@ from loushang.harness.worker._native_profile_bridge import (
 )
 from loushang.harness.worker._product_attempt_lifecycle import (
     _ProductWorkerAttemptLifecycle,
+    _validate_selected_worker_components,
     _WorkerCleanupPort,
     _WorkerDomainPort,
     _WorkerReadiness,
@@ -46,6 +45,7 @@ from loushang.harness.worker._product_attempt_lifecycle import (
 from loushang.harness.worker.gated_start import bind_worker_gated_start_release
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
+    _fingerprint,
 )
 
 if TYPE_CHECKING:
@@ -348,29 +348,7 @@ def bind_coding_product_worker_canary(
         readiness: CodingWorkerCanaryReadiness = (
             "unavailable" if policy.effective_required else "degraded"
         )
-        return CodingProductWorkerCanary(
-            policy=policy,
-            receipt=None,
-            coordinator=None,
-            supervisor=None,
-            request=None,
-            session_port=None,
-            native_profile=None,
-            capability_binding=None,
-            capability_authority_reader=None,
-            domain=None,
-            cleanup=None,
-            recovery=None,
-            host_identity=None,
-            boot_identity=None,
-            status=CodingProductWorkerCanaryStatusV1(
-                code=code,
-                readiness=readiness,
-                required=policy.effective_required,
-                requested_owner="hosting",
-                effective_owner="current",
-            ),
-        )
+        return _current_canary(code=code, policy=policy, readiness=readiness)
     if not isinstance(receipt, ProductWorkerActivationReceiptV1) or (
         receipt.policy != policy
     ):
@@ -380,9 +358,11 @@ def bind_coding_product_worker_canary(
         session_discovery=session_discovery,
         validate_product_session=validate_product_session,
     )
-    _validate_selected_components(
+    _validate_selected_worker_components(
         policy=policy,
-        receipt=receipt,
+        posix_profile_id=CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID,
+        windows_profile_id=CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
+        failure=_canary_binding_failure,
         authority=authority,
         evidence_authority=evidence_authority,
         trusted_evidence_authority_id=trusted_evidence_authority_id,
@@ -534,28 +514,23 @@ def coding_product_worker_session_fingerprint(
 
     if not isinstance(discovery, SessionDiscoveryMetadata):
         raise TypeError("Coding Worker canary requires Session discovery metadata")
-    encoded = json.dumps(
-        discovery.to_dict(),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    digest = sha256()
-    digest.update(b"loushang.coding-product-worker-session/v1")
-    digest.update(len(encoded).to_bytes(8, "big"))
-    digest.update(encoded)
-    return digest.hexdigest()
+    return _fingerprint(
+        "loushang.coding-product-worker-session/v1", discovery.to_dict()
+    )
 
 
 def _current_canary(
     *,
     code: str,
     policy: ProductWorkerActivationPolicyV1 | None = None,
+    readiness: CodingWorkerCanaryReadiness = "current",
 ) -> CodingProductWorkerCanary:
     required = False if policy is None else policy.effective_required
     requested_owner: Literal["current", "hosting"] = (
         "current" if policy is None else policy.requested_owner
     )
+    if readiness != "current":
+        requested_owner = "hosting"
     return CodingProductWorkerCanary(
         policy=policy,
         receipt=None,
@@ -573,7 +548,7 @@ def _current_canary(
         boot_identity=None,
         status=CodingProductWorkerCanaryStatusV1(
             code=code,
-            readiness="current",
+            readiness=readiness,
             required=required,
             requested_owner=requested_owner,
             effective_owner="current",
@@ -618,216 +593,14 @@ def _validate_session(
         _raise("coding_worker_session_locator_changed")
 
 
-def _validate_selected_components(
-    *,
-    policy: ProductWorkerActivationPolicyV1,
-    receipt: ProductWorkerActivationReceiptV1,
-    authority: ProductWorkerActivationAuthorityPort | None,
-    evidence_authority: object | None,
-    trusted_evidence_authority_id: str | None,
-    trusted_evidence_authority_fingerprint: str | None,
-    activation_state_store: object | None,
-    restart_budget: int,
-    supervisor: WorkerSupervisor | None,
-    request: ManagedWorkerLaunchRequestV1 | None,
-    current_owner: ManagedWorkerSessionLaunchPort | None,
-    hosting: object | None,
-    containment_launcher_path: str | None,
-    containment_launcher_sha256: str | None,
-    containment_profile_sha256: str | None,
-    windows_lpac_plan: _WindowsLpacProductWorkerProfilePlan | None,
-    windows_platform_imports: tuple[str, ...] | None,
-    native_provisioning_state_store: object | None,
-    capability_binding: CapabilityWorkerBindingV1 | None,
-    capability_authority_reader: Callable[[], CapabilityWorkerAuthorityV1] | None,
-    domain: CodingProductWorkerCanaryDomainPort | None,
-    cleanup: CodingProductWorkerCleanupPort | None,
-    recovery: CodingProductWorkerRecoveryPort | None,
-    host_identity: str | None,
-    boot_identity: str | None,
-) -> None:
-    if policy.native_profile_id not in CODING_PRODUCT_WORKER_NATIVE_PROFILE_IDS:
-        _raise("coding_worker_native_profile_unsupported")
-    _require_opaque(host_identity, name="host identity")
-    _require_opaque(boot_identity, name="boot identity")
-    if authority is None or any(
-        not callable(getattr(authority, name, None))
-        for name in (
-            "serialized_admission",
-            "current_witness",
-            "latch_kill_switch",
-        )
-    ):
-        _raise("coding_worker_composition_incomplete")
-    if evidence_authority is None or any(
-        not callable(getattr(evidence_authority, name, None))
-        for name in (
-            "verify_tree_settlement",
-            "verify_changed_boot_absence",
-            "verify_registered_lease_expired",
-        )
-    ):
-        _raise("coding_worker_composition_incomplete")
-    if (
-        policy.native_profile_id == CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID
-        and not callable(
-            getattr(evidence_authority, "verify_native_containment_settlement", None)
-        )
-    ):
-        _raise("coding_worker_composition_incomplete")
-    _require_opaque(
-        trusted_evidence_authority_id,
-        name="cleanup evidence authority identity",
-    )
-    _require_sha256(
-        trusted_evidence_authority_fingerprint,
-        name="cleanup evidence authority fingerprint",
-    )
-    if activation_state_store is None or any(
-        not callable(getattr(activation_state_store, name, None))
-        for name in ("load", "compare_and_swap")
-    ):
-        _raise("coding_worker_composition_incomplete")
-    if type(restart_budget) is not int or restart_budget < 0:
-        _raise("coding_worker_composition_incomplete")
-    if not isinstance(supervisor, WorkerSupervisor):
-        _raise("coding_worker_composition_incomplete")
-    if not isinstance(request, ManagedWorkerLaunchRequestV1):
-        _raise("coding_worker_composition_incomplete")
-    if supervisor.identity != request.identity:
-        _raise("coding_worker_supervisor_identity_mismatch")
-    if not callable(getattr(current_owner, "start", None)) or hosting is None:
-        _raise("coding_worker_composition_incomplete")
-    _require_sha256(
-        containment_launcher_sha256,
-        name="containment launcher digest",
-    )
-    _require_sha256(
-        containment_profile_sha256,
-        name="containment profile digest",
-    )
-    if policy.native_profile_id == CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID:
-        if (
-            not isinstance(containment_launcher_path, str)
-            or not containment_launcher_path
-            or windows_lpac_plan is not None
-            or windows_platform_imports is not None
-            or native_provisioning_state_store is not None
-        ):
-            _raise("coding_worker_composition_incomplete")
-    elif (
-        containment_launcher_path is not None
-        or type(windows_lpac_plan) is not _WindowsLpacProductWorkerProfilePlan
-        or not isinstance(windows_platform_imports, tuple)
-        or not windows_platform_imports
-        or any(
-            not isinstance(name, str) or not name for name in windows_platform_imports
-        )
-        or native_provisioning_state_store is None
-        or any(
-            not callable(getattr(native_provisioning_state_store, name, None))
-            for name in ("load", "compare_and_swap")
-        )
-        or native_provisioning_state_store is activation_state_store
-    ):
-        _raise("coding_worker_composition_incomplete")
-    if (
-        policy.native_profile_id == CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID
-        and cast(
-            _WindowsLpacProductWorkerProfilePlan,
-            windows_lpac_plan,
-        ).containment_profile_sha256
-        != containment_profile_sha256
-    ):
-        _raise("coding_worker_native_provisioning_fingerprint_mismatch")
-    if not isinstance(capability_binding, CapabilityWorkerBindingV1) or not callable(
-        capability_authority_reader
-    ):
-        _raise("coding_worker_composition_incomplete")
-    for owner, methods in (
-        (
-            domain,
-            (
-                "publish",
-                "fence_attempt",
-                "revoke_and_drain",
-                "settle_readiness",
-                "issue_current",
-            ),
-        ),
-        (cleanup, ("settle",)),
-        (recovery, ("recover",)),
-    ):
-        if owner is None or any(
-            not callable(getattr(owner, method, None)) for method in methods
-        ):
-            _raise("coding_worker_composition_incomplete")
-    identity = request.identity
-    expected = (
-        policy.product_id,
-        policy.product_scope_id,
-        policy.plugin_id,
-        policy.plugin_revision_digest,
-        policy.contribution_id,
-        policy.declaration_fingerprint,
-        policy.worker_configuration_fingerprint,
-        policy.owner_selection_generation,
-    )
-    actual = (
-        identity.product_id,
-        identity.scope_id,
-        identity.plugin_id,
-        identity.plugin_revision_digest,
-        identity.contribution_id,
-        identity.declaration_fingerprint,
-        identity.worker_configuration_fingerprint,
-        identity.owner_generation,
-    )
-    if expected != actual:
-        _raise("coding_worker_request_identity_mismatch")
-    binding_authority = capability_binding.authority
-    if (
-        capability_binding.plugin_id != identity.plugin_id
-        or capability_binding.contribution_id != identity.contribution_id
-        or capability_binding.product_id != identity.product_id
-        or capability_binding.scope_id != identity.scope_id
-        or binding_authority.plugin_revision_digest != identity.plugin_revision_digest
-        or binding_authority.declaration_fingerprint != identity.declaration_fingerprint
-        or binding_authority.owner_generation != identity.owner_generation
-        or binding_authority.product_policy_revision != policy.product_policy_revision
-    ):
-        _raise("coding_worker_capability_binding_mismatch")
-
-
 def _stable_reason(value: object) -> str:
     if not isinstance(value, str) or not value:
         return "coding_worker_activation_rejected"
     return f"coding_worker_{value}"
 
 
-def _require_opaque(value: object, *, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or not value
-        or len(value.encode("utf-8")) > 128
-        or any(character.isspace() for character in value)
-    ):
-        raise CodingProductWorkerCanaryError(
-            f"Coding Worker {name} is invalid",
-            code="coding_worker_machine_identity_invalid",
-        )
-
-
-def _require_sha256(value: object, *, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in "0123456789abcdef" for character in value)
-    ):
-        raise CodingProductWorkerCanaryError(
-            f"Coding Worker {name} is invalid",
-            code="coding_worker_composition_digest_invalid",
-        )
+def _canary_binding_failure(message: str, reason: str) -> CodingProductWorkerCanaryError:
+    return CodingProductWorkerCanaryError(f"Coding {message}", code=f"coding_{reason}")
 
 
 def _raise(code: str) -> NoReturn:

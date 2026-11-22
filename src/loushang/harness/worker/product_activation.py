@@ -19,9 +19,12 @@ from dataclasses import dataclass
 from enum import Enum
 from hashlib import sha256
 from types import TracebackType
-from typing import Literal, Protocol, Self, cast
+from typing import TYPE_CHECKING, Literal, Protocol, Self, cast
 
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
+
+if TYPE_CHECKING:
+    from .contracts import WorkerLaunchIdentityV1
 
 PRODUCT_WORKER_ACTIVATION_POLICY_VERSION = 1
 PRODUCT_WORKER_ACTIVATION_RECEIPT_VERSION = 1
@@ -212,6 +215,28 @@ class ProductWorkerActivationPolicyV1:
     @property
     def fingerprint(self) -> str:
         return _fingerprint(_POLICY_DOMAIN, self.to_dict())
+
+    def _matches_launch_identity(self, identity: WorkerLaunchIdentityV1) -> bool:
+        """Compare the selection facts shared by a receipt and a native request."""
+        return (
+            self.product_id,
+            self.product_scope_id,
+            self.plugin_id,
+            self.plugin_revision_digest,
+            self.contribution_id,
+            self.owner_selection_generation,
+            self.declaration_fingerprint,
+            self.worker_configuration_fingerprint,
+        ) == (
+            identity.product_id,
+            identity.scope_id,
+            identity.plugin_id,
+            identity.plugin_revision_digest,
+            identity.contribution_id,
+            identity.owner_generation,
+            identity.declaration_fingerprint,
+            identity.worker_configuration_fingerprint,
+        )
 
     @staticmethod
     def native_policy_closure_fingerprint(
