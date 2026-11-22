@@ -740,6 +740,22 @@ its Plugin Management owner resolved the dependency-cycle finding. The
 three affected restart, exact source inventory and no-cycle cases pass
 after the correction. Native Windows remains pending.
 
+### Resume Transaction And Retained Runtime
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `continuation_transaction` | Formal Session Resume runs the prepare, stage, commit, observe and publish sequence under the existing Writer operation scope. Coding chooses the effect owner and preserves its intent, codec, binding and uncertain-outcome handling. |
+| `retained_continuation` | Coding's runtime admits the retained selection and calls the existing Harness lifecycle candidate operations directly. The lifecycle still settles release on abort and attaches the original failure. |
+
+The batch removes 764 staging lines and adds 502 Coding Product and 80
+formal Harness lines. System production Python decreases by 182 lines for
+the batch and 1,063 against baseline. Staging has 34 files and 4,654 lines.
+Hosting, other production code, scripts and test source have no changes.
+
+All 100 existing Linux cases pass, covering V1/V2 continuation formats,
+prepared-operation custody, first input, runtime restart and the acyclic
+Harness graph. Three scoped sources pass mypy. Native Windows remains pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

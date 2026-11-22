@@ -7,10 +7,11 @@ only the fixed local program, never historical admission or a second runtime.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import replace
-from typing import ClassVar, Generic, Protocol, TypeVar
+from typing import ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.types import ImagePart, UserMessage
@@ -483,3 +484,82 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
         finally:
             if original_options is not None:
                 self.agent.call_options = original_options
+
+
+def require_resume_owner_check(
+    check: Callable[[], None], *, invalid_return: str
+) -> None:
+    result = cast(Callable[[], object], check)()
+    if result is not None:
+        if inspect.iscoroutine(result):
+            result.close()
+        raise TypeError(invalid_return)
+
+
+async def commit_prepared_resume_input(
+    session: _ResumeContinuationSession[IntentT],
+    *,
+    transcript_lifecycle: _ResumeTranscriptLifecycle,
+    attempt: IntentT,
+    receipt: Mapping[str, object],
+    text: str,
+    images: list[ImagePart] | None,
+    require_current_admission: Callable[[IntentT], None],
+    require_current_epoch_settlement: Callable[[IntentT, Mapping[str, object]], None],
+    stage_input: Callable[[UserMessage], None],
+    observe_commit: Callable[[str], None],
+    record_phase: Callable[[str], None],
+    invalid_check_return: str,
+    missing_candidate: str,
+) -> str:
+    """Keep preflight and publication on the original graph and durable Writer."""
+
+    def current() -> None:
+        require_resume_owner_check(
+            lambda: require_current_admission(attempt),
+            invalid_return=invalid_check_return,
+        )
+
+    def settled() -> None:
+        with transcript_lifecycle.sync_operation_scope():
+            current()
+            candidate = session._resume_candidate
+            if candidate is None:
+                raise RuntimeError(missing_candidate)
+            session._require_resume_candidate(candidate)
+            current()
+            session._require_resume_worker_effect_settlement(attempt)
+            current()
+            require_resume_owner_check(
+                lambda: require_current_epoch_settlement(attempt, receipt),
+                invalid_return=invalid_check_return,
+            )
+            current()
+            session._require_resume_candidate(candidate)
+            current()
+
+    settled()
+    record_phase("input_preparation")
+    message = await session._prepare_resume_first_user_input(
+        text,
+        images=images,
+        attempt_id=attempt.attempt_id,
+        require_current_admission=require_current_admission,
+    )
+    settled()
+    stage_input(message)
+    record_phase("input_commit")
+    record_id = await session._commit_resume_first_user_input(
+        message,
+        attempt_id=attempt.attempt_id,
+        require_current_admission=require_current_admission,
+    )
+    observe_commit(record_id)
+    record_phase("runtime_publication")
+    await session._publish_resume_runtime(
+        attempt_id=attempt.attempt_id,
+        input_record_id=record_id,
+        require_current_admission=require_current_admission,
+        require_current_epoch_settlement=require_current_epoch_settlement,
+    )
+    return record_id
