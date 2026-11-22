@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, Generic, Literal, Protocol, TypeVar, cast
 
 import loushang.harness.worker.payload._recovery as _recovery
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -1425,6 +1425,9 @@ _PayloadResultT = TypeVar("_PayloadResultT")
 _PayloadPlanT = TypeVar("_PayloadPlanT", bound=PayloadPlan)
 _EmptyPlanT = TypeVar("_EmptyPlanT", bound=EmptyPayloadPlan)
 _UnmarkedReviewT = TypeVar("_UnmarkedReviewT", bound=PayloadReview)
+_ReviewedPayloadT = TypeVar(
+    "_ReviewedPayloadT", bound=PayloadPlan | EmptyPayloadPlan | PayloadReview
+)
 _PayloadReviewT = TypeVar("_PayloadReviewT")
 _PosixLeaseT = TypeVar(
     "_PosixLeaseT", bound=_MaterializedPayload[ProductWorkerNativeLaunchMaterialFacts]
@@ -1789,6 +1792,41 @@ class PosixProductWorkerPayloadCustody(
                 supervisor=lambda: self.supervisor(product),
             ),
         )
+
+    def repair_reviewed(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        stage: Literal["complete", "empty", "unmarked"],
+        attempt_id: str,
+        expected_fingerprint: str,
+        stale_error: Callable[[str], Exception],
+    ) -> _PayloadPlanT | _EmptyPlanT | _UnmarkedReviewT:
+        """Replay an exact repair or recheck its current preview, then settle."""
+
+        def require_review(plan: _ReviewedPayloadT) -> _ReviewedPayloadT:
+            if plan.fingerprint != expected_fingerprint:
+                raise stale_error(self.error_prefix + "_debt_plan_stale")
+            return plan
+
+        if stage == "complete":
+            complete = self.read_complete_intent(product, attempt_id=attempt_id)
+            if complete is None:
+                complete = self.preview_complete(product, attempt_id=attempt_id)
+            return self.repair_complete(product, expected_plan=require_review(complete))
+        if stage == "empty":
+            empty = self.reopen_empty(product, attempt_id=attempt_id)
+            if empty is None:
+                empty = self.preview_empty(product, attempt_id=attempt_id)
+            return self.repair_empty(product, expected_plan=require_review(empty))
+        if stage == "unmarked":
+            unmarked = self.read_unmarked_intent(product, attempt_id=attempt_id) or (
+                self.review_unmarked(product, attempt_id=attempt_id)
+            )
+            return self.repair_unmarked(
+                product, expected_review=require_review(unmarked)
+            )
+        raise ValueError("Worker payload stage kind is unsupported")
 
     @contextmanager
     def offline(

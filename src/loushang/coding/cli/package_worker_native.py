@@ -46,12 +46,7 @@ from loushang.coding.package.product_worker_payload import (
     CodingWorkerPayloadDebtPlanV1,
     preview_coding_product_worker_empty_payload_debt,
     preview_coding_product_worker_payload_debt,
-    read_coding_product_worker_payload_repair_intent,
-    read_coding_product_worker_unmarked_payload_repair_intent,
-    reopen_coding_product_worker_empty_payload_repair,
-    repair_coding_product_worker_empty_payload_debt,
-    repair_coding_product_worker_payload_debt,
-    repair_coding_product_worker_unmarked_payload_debt,
+    repair_reviewed_coding_product_worker_payload,
     review_coding_product_worker_unmarked_payload_debt,
 )
 from loushang.coding.package.product_worker_registered_recovery import (
@@ -377,6 +372,19 @@ def _read_candidate_status_document(
     }
 
 
+_PAYLOAD_REPAIRS: dict[
+    str, tuple[Literal["complete", "empty", "unmarked"], str, str]
+] = {
+    "repair-payload-debt": ("complete", "payloadDebtRepair", "planId"),
+    "repair-empty-payload-debt": ("empty", "emptyPayloadDebtRepair", "planId"),
+    "repair-unmarked-payload-debt": (
+        "unmarked",
+        "unmarkedPayloadDebtRepair",
+        "reviewId",
+    ),
+}
+
+
 def _execute(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
@@ -617,38 +625,21 @@ def _execute(
             product, expected_review=gated, expected_plan=plan
         )
         return {"gatedAttemptSettlement": settled.to_dict()}
-    if args.action == "repair-payload-debt":
-        prior_payload = read_coding_product_worker_payload_repair_intent(
-            product, attempt_id=args.attempt_id
-        )
-        if prior_payload is not None:
-            if args.plan_id != prior_payload.fingerprint:
-                raise CodingWorkerGatedRecoveryError(
-                    "coding_worker_payload_debt_plan_stale"
-                )
-            repaired_payload_prior = repair_coding_product_worker_payload_debt(
-                product, expected_plan=prior_payload
-            )
-            return {
-                "payloadDebtRepair": {
-                    "attemptId": repaired_payload_prior.attempt_id,
-                    "planId": repaired_payload_prior.fingerprint,
-                }
-            }
-        plan = preview_coding_product_worker_payload_debt(
-            product, attempt_id=args.attempt_id
-        )
-        if args.plan_id != plan.fingerprint:
-            raise CodingWorkerGatedRecoveryError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        repaired_plan = repair_coding_product_worker_payload_debt(
-            product, expected_plan=plan
+    if args.action in _PAYLOAD_REPAIRS:
+        stage, response, identifier = _PAYLOAD_REPAIRS[args.action]
+        repaired_payload = repair_reviewed_coding_product_worker_payload(
+            product,
+            stage=stage,
+            attempt_id=args.attempt_id,
+            expected_fingerprint=(
+                args.review_id if stage == "unmarked" else args.plan_id
+            ),
+            stale_error=CodingWorkerGatedRecoveryError,
         )
         return {
-            "payloadDebtRepair": {
-                "attemptId": repaired_plan.attempt_id,
-                "planId": repaired_plan.fingerprint,
+            response: {
+                "attemptId": repaired_payload.attempt_id,
+                identifier: repaired_payload.fingerprint,
             }
         }
     if args.action == "settle-crashed-c5":
@@ -674,81 +665,25 @@ def _execute(
                 "noEffect": registered_settled.no_effect,
             }
         }
-    if args.action in {"review-unmarked-payload-debt", "repair-unmarked-payload-debt"}:
-        prior_unmarked = (
-            read_coding_product_worker_unmarked_payload_repair_intent(
-                product, attempt_id=args.attempt_id
-            )
-            if args.action == "repair-unmarked-payload-debt"
-            else None
-        )
-        unmarked_review = (
-            prior_unmarked
-            or review_coding_product_worker_unmarked_payload_debt(
-                product, attempt_id=args.attempt_id
-            )
-        )
-        if args.action == "review-unmarked-payload-debt":
-            return {
-                "unmarkedPayloadDebtReview": {
-                    "attemptId": unmarked_review.attempt_id,
-                    "reviewId": unmarked_review.fingerprint,
-                    "members": [member.to_dict() for member in unmarked_review.members],
-                }
-            }
-        if args.review_id != unmarked_review.fingerprint:
-            raise CodingWorkerGatedRecoveryError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        unmarked_repaired = repair_coding_product_worker_unmarked_payload_debt(
-            product, expected_review=unmarked_review
+    if args.action == "review-unmarked-payload-debt":
+        unmarked_review = review_coding_product_worker_unmarked_payload_debt(
+            product, attempt_id=args.attempt_id
         )
         return {
-            "unmarkedPayloadDebtRepair": {
-                "attemptId": unmarked_repaired.attempt_id,
-                "reviewId": unmarked_repaired.fingerprint,
+            "unmarkedPayloadDebtReview": {
+                "attemptId": unmarked_review.attempt_id,
+                "reviewId": unmarked_review.fingerprint,
+                "members": [member.to_dict() for member in unmarked_review.members],
             }
         }
-    if args.action in {"review-empty-payload-debt", "repair-empty-payload-debt"}:
-        if args.action == "repair-empty-payload-debt":
-            prior_empty = reopen_coding_product_worker_empty_payload_repair(
-                product, attempt_id=args.attempt_id
-            )
-            if prior_empty is not None:
-                if args.plan_id != prior_empty.fingerprint:
-                    raise CodingWorkerGatedRecoveryError(
-                        "coding_worker_payload_debt_plan_stale"
-                    )
-                repaired_empty_prior = repair_coding_product_worker_empty_payload_debt(
-                    product, expected_plan=prior_empty
-                )
-                return {
-                    "emptyPayloadDebtRepair": {
-                        "attemptId": repaired_empty_prior.attempt_id,
-                        "planId": repaired_empty_prior.fingerprint,
-                    }
-                }
+    if args.action == "review-empty-payload-debt":
         empty_plan = preview_coding_product_worker_empty_payload_debt(
             product, attempt_id=args.attempt_id
         )
-        if args.action == "review-empty-payload-debt":
-            return {
-                "emptyPayloadDebtReview": {
-                    "attemptId": empty_plan.attempt_id,
-                    "planId": empty_plan.fingerprint,
-                }
-            }
-        if args.plan_id != empty_plan.fingerprint:
-            raise CodingWorkerGatedRecoveryError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        repaired_empty = repair_coding_product_worker_empty_payload_debt(
-            product, expected_plan=empty_plan
-        )
         return {
-            "emptyPayloadDebtRepair": {
-                "attemptId": repaired_empty.attempt_id,
-                "planId": repaired_empty.fingerprint,
+            "emptyPayloadDebtReview": {
+                "attemptId": empty_plan.attempt_id,
+                "planId": empty_plan.fingerprint,
             }
         }
     owner = CodingWorkerNativeApprovalJournal(product)
