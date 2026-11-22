@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import replace
 from unicodedata import category
@@ -12,11 +11,12 @@ from loushang.agent import Agent
 from loushang.ai.model import OpenAIResponsesConfig
 from loushang.ai.options import RetryOptions
 from loushang.ai.types import AssistantMessage
-from loushang.apphost.integrations.session_control import _HostedAgentExecutionWork
+from loushang.apphost.integrations.session_control import _HostedPromptExecutionWork
 from loushang.appserver.protocol import SessionSnapshotRequestV1
 from loushang.appservice.client_scope import ScopedAppServicePortV1
-from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
-from loushang.appservice.execution_guard import ExecutionControlV1
+from loushang.appservice.execution_contract import (
+    ExecutionStatusV1 as ExecutionStatusV1,
+)
 from loushang.coding.resume import subject as _resume_subject
 from loushang.coding.session.agent_session import AgentSession
 from loushang.harness.transcript import assistant_message_text
@@ -48,47 +48,9 @@ def current_coding_hosted_resume_submission_id() -> str | None:
     return ScopedAppServicePortV1.current_resume_submission_id()
 
 
+class CodingExecutionWorkV1(_HostedPromptExecutionWork):
+    session: AgentSession
 
-
-class CodingExecutionWorkV1(_HostedAgentExecutionWork):
-    def __init__(
-        self, session: AgentSession, text: str, cancel_requested: Callable[[], bool],
-        *,
-        start_title: Callable[[], None] | None = None,
-        wait_for_title: Callable[[], Awaitable[None]] | None = None,
-    ) -> None:
-        self.session = session
-        self.text = text
-        self._cancel_requested = cancel_requested
-        self._interrupted = False
-        self._start_title = start_title
-        self._wait_for_title = wait_for_title
-        self._agent_outcome: ExecutionOutcomeV1 | None = None
-        self._unsubscribe: Callable[[], None] | None = None
-        self._unbind_turn: Callable[[], None] | None = None
-
-    async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
-        try:
-            if self._wait_for_title is not None:
-                await self._wait_for_title()
-            self._checkpoint()
-            return await self._execute_hosted_prompt(control)
-        except asyncio.CancelledError:
-            self._interrupted = True
-            self._abort_hosted_prompt()
-            raise
-        finally:
-            self._clear_turn()
-
-    async def settle(self) -> None:
-        await self._settle_hosted_prompt()
-        if (
-            self._start_title is not None and not self._cancel_requested()
-            and self._agent_outcome is not None
-            and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
-        ):
-            start_title, self._start_title = self._start_title, None
-            start_title()
 
 _TITLE_PROMPT = """Write a short session title for the first user message below.
 Describe the topic in the user's language. For greetings use a short greeting topic.

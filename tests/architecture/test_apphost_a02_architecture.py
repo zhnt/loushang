@@ -172,7 +172,14 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
                 if path == Path('src/loushang/coding/hosted/resume.py')
                 else set()
             )
-        ) <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
+        ) <= {
+            execution_work,
+            execution_work + (
+                "._HostedResumeInputExecutionWork"
+                if path == Path('src/loushang/coding/hosted/resume.py')
+                else "._HostedPromptExecutionWork"
+            ),
+        }
     }
     assert apphost_consumers - optional_execution_consumers == {
         Path('src/loushang/coding/hosted/client_settings.py'),

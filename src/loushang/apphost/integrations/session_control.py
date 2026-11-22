@@ -57,6 +57,7 @@ from loushang.harness.session import (
     SessionOperationRuntime,
     SessionPromptRequest,
 )
+from loushang.harness.session._cleanup import SessionConstructionCleanup
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
     get_session_model_selection,
@@ -112,6 +113,9 @@ class _HostedBinding(Protocol[SnapshotCo, EventCo]):
     def project_event(self, event: RuntimeEvent[object]) -> EventCo | None: ...
     async def respond_interaction(self, interaction_id: str, outcome: str) -> bool: ...
     async def close(self) -> None: ...
+
+
+_HostedBindingT = TypeVar("_HostedBindingT", bound=_HostedBinding[Any, Any])
 
 
 class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
@@ -694,6 +698,13 @@ class _HostedAgentExecutionWork:
     _unsubscribe: Callable[[], None] | None
     _unbind_turn: Callable[[], None] | None
 
+    def __init__(self, cancel_requested: Callable[[], bool]) -> None:
+        self._cancel_requested = cancel_requested
+        self._interrupted = False
+        self._agent_outcome = None
+        self._unsubscribe = None
+        self._unbind_turn = None
+
     def _outcome_observer(self) -> Callable[[AgentEvent, AbortSignal], None]:
         def observe(event: AgentEvent, _signal: AbortSignal) -> None:
             if event["type"] == "agent_end":
@@ -707,10 +718,7 @@ class _HostedAgentExecutionWork:
     async def _execute_hosted_prompt(
         self, control: ExecutionControlV1
     ) -> ExecutionOutcomeV1:
-        self._unsubscribe = self.session.agent.subscribe(self._outcome_observer())
-        self._unbind_turn = control.bind_turn_interrupt(
-            lambda: self.session.abort() if self.session.is_streaming else False
-        )
+        self._bind_agent_turn(control, self.session)
         result = await self.session.execute_prompt(
             self.text, source="appservice", check_cancelled=self._checkpoint
         )
@@ -737,10 +745,7 @@ class _HostedAgentExecutionWork:
         attempt_id: str,
         input_record_id: str,
     ) -> ExecutionOutcomeV1:
-        self._unsubscribe = session.agent.subscribe(self._outcome_observer())
-        self._unbind_turn = control.bind_turn_interrupt(
-            lambda: session.abort() if session.is_streaming else False
-        )
+        self._bind_agent_turn(control, session)
         await session._run_published_resume_input(
             attempt_id=attempt_id,
             input_record_id=input_record_id,
@@ -749,11 +754,15 @@ class _HostedAgentExecutionWork:
             ExecutionStatusV1.FAILED, error_code="missing_agent_outcome"
         )
 
-    async def _settle_hosted_prompt(self) -> None:
-        await self.session.settle_execution(interrupted=self._interrupted)
-        self._retire_subscription()
+    def _bind_agent_turn(
+        self, control: ExecutionControlV1, session: AgentProductSession
+    ) -> None:
+        self._unsubscribe = session.agent.subscribe(self._outcome_observer())
+        self._unbind_turn = control.bind_turn_interrupt(
+            lambda: session.abort() if session.is_streaming else False
+        )
 
-    async def _settle_published_input(
+    async def _settle_session(
         self, session: AgentProductSession | None
     ) -> None:
         if session is not None:
@@ -781,6 +790,94 @@ class _HostedAgentExecutionWork:
         if self._cancel_requested():
             raise asyncio.CancelledError
 
+    def _agent_succeeded(self) -> bool:
+        return (
+            not self._cancel_requested()
+            and self._agent_outcome is not None
+            and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
+        )
+
+
+class _HostedPromptExecutionWork(_HostedAgentExecutionWork):
+    def __init__(
+        self,
+        session: AgentProductSession,
+        text: str,
+        cancel_requested: Callable[[], bool],
+        *,
+        start_title: Callable[[], None] | None = None,
+        wait_for_title: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        super().__init__(cancel_requested)
+        self.session = session
+        self.text = text
+        self._start_title = start_title
+        self._wait_for_title = wait_for_title
+
+    async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
+        try:
+            if self._wait_for_title is not None:
+                await self._wait_for_title()
+            self._checkpoint()
+            return await self._execute_hosted_prompt(control)
+        except asyncio.CancelledError:
+            self._interrupted = True
+            self._abort_hosted_prompt()
+            raise
+        finally:
+            self._clear_turn()
+
+    async def settle(self) -> None:
+        await self._settle_session(self.session)
+        if self._start_title is not None and self._agent_succeeded():
+            start_title, self._start_title = self._start_title, None
+            start_title()
+
+
+class _PublishedResumeInput(Protocol):
+    @property
+    def session(self) -> _ResumeContinuationSession[Any]: ...
+    @property
+    def attempt_id(self) -> str: ...
+    @property
+    def input_record_id(self) -> str: ...
+
+
+class _HostedResumeInputExecutionWork(_HostedAgentExecutionWork):
+    def __init__(
+        self,
+        cancel_requested: Callable[[], bool],
+        *,
+        activate: Callable[[], Awaitable[_PublishedResumeInput]],
+        on_success: Callable[[], None],
+    ) -> None:
+        super().__init__(cancel_requested)
+        self._activate = activate
+        self._on_success = on_success
+        self._session: _ResumeContinuationSession[Any] | None = None
+
+    async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
+        if self._cancel_requested():
+            return ExecutionOutcomeV1(ExecutionStatusV1.INTERRUPTED)
+        try:
+            activated = await self._activate()
+            self._session = activated.session
+            return await self._execute_published_input(
+                control, self._session, activated.attempt_id, activated.input_record_id
+            )
+        except asyncio.CancelledError:
+            self._interrupted = True
+            if self._session is not None:
+                self._session.abort()
+            raise
+        finally:
+            self._clear_turn()
+
+    async def settle(self) -> None:
+        await self._settle_session(self._session)
+        if self._agent_succeeded():
+            self._on_success()
+
 
 def _assistant_outcome(message: AssistantMessage) -> ExecutionOutcomeV1:
     if message.stop_reason == "aborted":
@@ -792,7 +889,7 @@ def _assistant_outcome(message: AssistantMessage) -> ExecutionOutcomeV1:
     return ExecutionOutcomeV1(ExecutionStatusV1.SUCCEEDED)
 
 
-class _DeferredSessionControl:
+class _DeferredSessionControl(Generic[_HostedBindingT]):
     """Keep one control identity across deferred subscription and activation."""
 
     def __init__(
@@ -807,6 +904,47 @@ class _DeferredSessionControl:
         self._closed = False
         self._closed_message = closed_message
         self._invalid_activation = invalid_activation
+        self._resume_handoff_failed = False
+        self._resume_handoff_cleanup: SessionConstructionCleanup | None = None
+        self.resume_binding: _HostedBindingT | None = None
+
+    @property
+    def resume_handoff_failed(self) -> bool:
+        return self._resume_handoff_failed
+
+    async def complete_resume_handoff(
+        self,
+        session: AgentProductSession,
+        *,
+        close_history: Callable[[], Awaitable[None]],
+        bind: Callable[[], _HostedBindingT],
+        committed_input_event: RuntimeEvent[object],
+    ) -> None:
+        """Deliver one prepared Session through the original deferred control."""
+        try:
+            await close_history()
+            binding = bind()
+            self.activate(cast(SessionControlPort, binding.control))
+        except BaseException as error:
+            self._resume_handoff_failed = True
+            self._resume_handoff_cleanup = SessionConstructionCleanup(session)
+            try:
+                await self.settle_resume_handoff()
+            except BaseException as cleanup_error:
+                with suppress(BaseException):
+                    BaseException.add_note(
+                        error, f"Hosted Resume Session cleanup also failed: {cleanup_error!r}"
+                    )
+            raise
+        self.resume_binding = binding
+        # The live binding owns the Session before readers observe the input.
+        await self.emit(committed_input_event)
+
+    async def settle_resume_handoff(self) -> None:
+        cleanup = self._resume_handoff_cleanup
+        if cleanup is not None:
+            await cleanup.retry_cleanup()
+            self._resume_handoff_cleanup = None
 
     @property
     def session_id(self) -> str:

@@ -707,7 +707,14 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                 if path == Path('src/loushang/coding/hosted/resume.py')
                 else set()
             )
-        ) <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
+        ) <= {
+            execution_work,
+            execution_work + (
+                "._HostedResumeInputExecutionWork"
+                if path == Path('src/loushang/coding/hosted/resume.py')
+                else "._HostedPromptExecutionWork"
+            ),
+        }
     }
     assert reverse_apphost_consumers - optional_execution_consumers == {
         Path('src/loushang/coding/hosted/client_settings.py'),
