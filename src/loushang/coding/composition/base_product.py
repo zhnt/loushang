@@ -66,6 +66,7 @@ from loushang.harness.resource_catalog.product_snapshot_source import (
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
     PluginDeclaration,
+    admits_single_data_resource,
 )
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef as PluginContributionRef,
@@ -94,6 +95,7 @@ from loushang.harness.session.product_composition_assembly import (
 )
 from loushang.harness.session.product_composition_assembly import (
     SelectedProductDataDeclaration,
+    _rebind_resource_owner_trust,
     build_product_data_selection_plan,
     prepare_product_selected_contribution_candidate,
     project_selected_product_data_candidates,
@@ -442,20 +444,35 @@ def _capture_external_resource_declarations(
     *,
     standalone: bool,
 ) -> tuple[SelectedProductDataDeclaration, ...]:
+    invalid = (
+        "Product external data Resource selection changed"
+        if standalone
+        else "External Product data Resource selection changed"
+    )
     captured: list[SelectedProductDataDeclaration] = []
     for item in selected:
         trust = item.source_trust_snapshot
         declarations = item.verified_data_only_declarations()
-        if standalone:
-            if (
-                not isinstance(trust, PluginSourceTrustSnapshotV1)
-                or _external_selection_rejected(trust, declarations)
-                or item.snapshot.installation_key.plugin_id != item.manifest.name
-                or item.snapshot.instance_revision_ref.plugin_id != item.manifest.name
-            ):
-                raise ValueError("Product external data Resource selection changed")
-        elif trust is None or _external_selection_rejected(trust, declarations):
-            raise ValueError("External Product data Resource selection changed")
+        if (
+            trust is None
+            or (standalone and not isinstance(trust, PluginSourceTrustSnapshotV1))
+            or not trust.trusted
+            or not admits_single_data_resource(
+                declarations,
+                trust.source_trust_class,
+                trust_classes=EXTERNAL_DATA_TRUST_CLASSES,
+                resource_owners=_EXTERNAL_RESOURCE_OWNERS,
+                permits_owner=permits_external_data_owner,
+            )
+            or (
+                standalone
+                and (
+                    item.snapshot.installation_key.plugin_id != item.manifest.name
+                    or item.snapshot.instance_revision_ref.plugin_id != item.manifest.name
+                )
+            )
+        ):
+            raise ValueError(invalid)
         ((reservation, declaration),) = declarations
         captured.append((item, reservation, declaration))
     return tuple(captured)
@@ -478,15 +495,7 @@ def _bind_coding_external_resource_owners(
             ),
         )
     return tuple(
-        ProductContributionOwnerBinding(
-            authority=OwnerContributionAuthority(
-                replace(
-                    binding.authority.policy,
-                    allowed_source_trust_classes=trust_by_owner[binding.owner_key[0]],
-                )
-            ),
-            admission_ttl_seconds=binding.admission_ttl_seconds,
-        )
+        _rebind_resource_owner_trust(binding, trust_by_owner[binding.owner_key[0]])
         if binding.owner_key[0] in trust_by_owner
         else binding
         for binding in bindings
@@ -533,25 +542,6 @@ def _resource_bodies(
             ((selected,) if selected is not None else ()) + external_selected,
             reject=_resource_capture_error,
         )
-    )
-
-
-def _external_selection_rejected(
-    trust: PluginSourceTrustSnapshotV1,
-    declarations: tuple[
-        tuple[PluginContributionReservation, PluginDeclaration], ...
-    ],
-) -> bool:
-    """Apply the same admission constraints after each path classifies trust."""
-    return (
-        not trust.trusted
-        or trust.source_trust_class not in EXTERNAL_DATA_TRUST_CLASSES
-        or len(declarations) != 1
-        or not permits_external_data_owner(
-            trust.source_trust_class, declarations[0][0].owner
-        )
-        or declarations[0][0].kind != "resource_item"
-        or declarations[0][0].owner not in _EXTERNAL_RESOURCE_OWNERS
     )
 
 

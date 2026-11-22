@@ -2009,16 +2009,28 @@ def _extend_configured_resource_owner_binding(
     policy = binding.authority.policy
     if configured_trust_class in policy.allowed_source_trust_classes:
         return binding
+    return _rebind_resource_owner_trust(
+        binding,
+        tuple(sorted((*policy.allowed_source_trust_classes, configured_trust_class))),
+        policy_revision=f"{policy.policy_revision}+configured-resources",
+    )
+
+
+def _rebind_resource_owner_trust(
+    binding: ProductContributionOwnerBinding,
+    trust_classes: tuple[str, ...],
+    *,
+    policy_revision: str | None = None,
+) -> ProductContributionOwnerBinding:
+    policy = binding.authority.policy
     return ProductContributionOwnerBinding(
         authority=OwnerContributionAuthority(
             replace(
                 policy,
-                policy_revision=f"{policy.policy_revision}+configured-resources",
-                allowed_source_trust_classes=tuple(
-                    sorted(
-                        (*policy.allowed_source_trust_classes, configured_trust_class)
-                    )
+                policy_revision=(
+                    policy.policy_revision if policy_revision is None else policy_revision
                 ),
+                allowed_source_trust_classes=trust_classes,
             )
         ),
         admission_ttl_seconds=binding.admission_ttl_seconds,

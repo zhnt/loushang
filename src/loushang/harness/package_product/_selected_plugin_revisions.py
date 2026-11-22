@@ -34,6 +34,9 @@ from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source 
     resolve_installed_product_root,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
+from loushang.harness.resources.plugins.declarations import (
+    admits_single_data_resource,
+)
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
     PluginPythonDistributionLock,
@@ -389,15 +392,13 @@ def _validate_external_data_selection(
         or trust is None
         or (not trust.trusted)
         or (trust.plugin_id != plugin_id)
-        or (trust.source_trust_class not in policy.external_trust_classes)
-        or (len(pairs) != 1)
-        or (
-            not policy.permits_external_owner(
-                trust.source_trust_class, pairs[0][0].owner
-            )
+        or not admits_single_data_resource(
+            pairs,
+            trust.source_trust_class,
+            trust_classes=policy.external_trust_classes,
+            resource_owners=policy.external_resource_owners,
+            permits_owner=policy.permits_external_owner,
         )
-        or (pairs[0][0].kind != "resource_item")
-        or (pairs[0][0].owner not in policy.external_resource_owners)
     ):
         raise ValueError(
             f"{policy.product_label} external data selection is not admissible"
