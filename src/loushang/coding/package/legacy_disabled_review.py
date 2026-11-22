@@ -12,9 +12,11 @@ from loushang.harness.package_product._legacy_inventory import (
     LEGACY_REVIEW_DIGEST,
     legacy_disabled_plugins_wire,
     legacy_record_digest,
+    legacy_review_scalar_schema,
     read_legacy_disabled_plugins,
 )
 from loushang.harness.package_product._legacy_runtime import (
+    LEGACY_PRODUCT_STATE_DOMAINS,
     legacy_review_fence_identity,
     require_legacy_snapshot_members,
 )
@@ -24,7 +26,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 
 from .legacy_classification import CodingScopedLegacyDisableV1
 from .legacy_snapshot_member import (
-    CodingLegacyInventoryDomain,
     _snapshot_reader,
 )
 from .legacy_snapshot_member import (
@@ -34,14 +35,6 @@ from .legacy_source_evidence import (
     read_coding_legacy_source_evidence as read_coding_legacy_source_evidence,
 )
 
-_OLD_STATE_DOMAINS: tuple[CodingLegacyInventoryDomain, ...] = (
-    "binding_history",
-    "desired_state",
-    "enablement_state",
-    "instance_state",
-    "lock_history",
-    "store_bytes",
-)
 _LEGACY_RECORD_VALUES = {
     "value_001": "Coding disabled-only review record is invalid",
     "value_002": "Coding disabled-only review entries are invalid",
@@ -78,13 +71,7 @@ class CodingLegacyDisabledOnlyReviewV1:
 
     def _identity_dict(self) -> dict[str, object]:
         return {
-            "storeId": self.store_id,
-            "namespaceId": self.namespace_id,
-            "scopeId": self.scope_id,
-            "firstFenceId": self.first_fence_id,
-            "snapshotReceiptId": self.snapshot_receipt_id,
-            "sourceProjectionDigest": self.source_projection_digest,
-            "reviewVersion": self.review_version,
+            **_REVIEW_SCHEMA.encode(self),
             "disabledPlugins": legacy_disabled_plugins_wire(self.disabled_plugins),
         }
 
@@ -93,15 +80,8 @@ class CodingLegacyDisabledOnlyReviewV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyDisabledOnlyReviewV1:
-        if type(value) is not dict or set(value) != {
+        if type(value) is not dict or set(value) != _REVIEW_SCHEMA.keys | {
             "reviewId",
-            "storeId",
-            "namespaceId",
-            "scopeId",
-            "firstFenceId",
-            "snapshotReceiptId",
-            "sourceProjectionDigest",
-            "reviewVersion",
             "disabledPlugins",
         }:
             raise ValueError(_LEGACY_RECORD_VALUES["value_001"])
@@ -148,6 +128,11 @@ class CodingLegacyDisabledOnlyReviewV1:
         return review
 
 
+_REVIEW_SCHEMA = legacy_review_scalar_schema(
+    CodingLegacyDisabledOnlyReviewV1, "disabled_plugins", "review_id"
+)
+
+
 def review_coding_first_b_disabled_only(
     lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
@@ -183,7 +168,7 @@ def review_coding_first_b_disabled_only(
         )
     require_legacy_snapshot_members(
         _snapshot_reader(lifecycle, epoch_runtime).list_members,
-        dict.fromkeys(_OLD_STATE_DOMAINS, ()),
+        dict.fromkeys(LEGACY_PRODUCT_STATE_DOMAINS, ()),
         error=CodingLegacyDisabledOnlyReviewError(
             "Coding first-B snapshot contains old Plugin state"
         ),

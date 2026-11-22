@@ -10,7 +10,7 @@ from contextlib import closing
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict, overload
 
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
@@ -98,14 +98,47 @@ from loushang.harness.package_product._legacy_runtime import (
     legacy_product_fence_exists,
     open_native_fenced_product_epoch,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
-    PackagePosixEpochCutoverResultV1,
-)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
 _WINDOWS_CANDIDATE_ROUTE_ADMITTED = True
+
+
+_LegacyResourceKind = Literal["skill", "prompt", "theme"]
+_LEGACY_DATA_ROUTES: tuple[tuple[_LegacyResourceKind, str], ...] = (
+    ("skill", "Skill"),
+    ("prompt", "Prompt"),
+    ("theme", "Theme"),
+)
+
+
+class _ReplayOptions(TypedDict):
+    workspace: Path
+    runtime_version: str
+    runtime_protocol_epoch: int
+
+
+@overload
+def _selected_local_action(
+    args: argparse.Namespace, action: Literal["prepare"]
+) -> tuple[_LegacyResourceKind, str] | None: ...
+
+
+@overload
+def _selected_local_action(
+    args: argparse.Namespace, action: Literal["adopt"]
+) -> tuple[_LegacyResourceKind, list[str]] | None: ...
+
+
+def _selected_local_action(
+    args: argparse.Namespace, action: Literal["prepare", "adopt"]
+) -> tuple[_LegacyResourceKind, str | list[str]] | None:
+    for kind, _ in _LEGACY_DATA_ROUTES:
+        selection = getattr(args, f"{action}_legacy_local_{kind}_review")
+        if selection is not None:
+            return kind, selection
+    return None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -157,21 +190,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="fence an eligible old local removal set and return its review",
     )
-    read_actions.add_argument(
-        "--prepare-legacy-local-skill-review",
-        metavar="PLUGIN_ID",
-        help="fence eligible old local Skills and review one Plugin",
-    )
-    read_actions.add_argument(
-        "--prepare-legacy-local-prompt-review",
-        metavar="PLUGIN_ID",
-        help="fence eligible old local Prompts and review one Plugin",
-    )
-    read_actions.add_argument(
-        "--prepare-legacy-local-theme-review",
-        metavar="PLUGIN_ID",
-        help="fence eligible old local Themes and review one Plugin",
-    )
+    for kind, label in _LEGACY_DATA_ROUTES:
+        read_actions.add_argument(
+            f"--prepare-legacy-local-{kind}-review",
+            metavar="PLUGIN_ID",
+            help=f"fence eligible old local {label}s and review one Plugin",
+        )
     read_actions.add_argument(
         "--adopt-legacy-disabled-review",
         metavar="REVIEW_ID",
@@ -187,24 +211,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="REVIEW_ID",
         help="accept one reviewed old local removal set into Product",
     )
-    read_actions.add_argument(
-        "--adopt-legacy-local-skill-review",
-        nargs=2,
-        metavar=("PLUGIN_ID", "REVIEW_ID"),
-        help="accept a reviewed old local Skill and complete its Product adoption",
-    )
-    read_actions.add_argument(
-        "--adopt-legacy-local-prompt-review",
-        nargs=2,
-        metavar=("PLUGIN_ID", "REVIEW_ID"),
-        help="accept a reviewed old local Prompt and complete its Product adoption",
-    )
-    read_actions.add_argument(
-        "--adopt-legacy-local-theme-review",
-        nargs=2,
-        metavar=("PLUGIN_ID", "REVIEW_ID"),
-        help="accept a reviewed old local Theme and complete its Product adoption",
-    )
+    for kind, label in _LEGACY_DATA_ROUTES:
+        read_actions.add_argument(
+            f"--adopt-legacy-local-{kind}-review",
+            nargs=2,
+            metavar=("PLUGIN_ID", "REVIEW_ID"),
+            help=f"accept a reviewed old local {label} and complete its Product adoption",
+        )
     args = parser.parse_args(argv)
     try:
         workspace = package_operator_workspace(
@@ -216,6 +229,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             document = inspect_coding_package_cutover_backup(lifecycle).to_dict()
             return write_package_operator_result(document)
         windows = os.name == "nt"
+        local_prepare = _selected_local_action(args, "prepare")
+        local_adopt = _selected_local_action(args, "adopt")
         if windows:
             if (
                 not args.windows_candidate
@@ -227,14 +242,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         args.review_legacy_local_plugin is not None,
                         args.prepare_legacy_disabled_review,
                         args.prepare_legacy_removed_review,
-                        args.prepare_legacy_local_skill_review is not None,
-                        args.prepare_legacy_local_prompt_review is not None,
-                        args.prepare_legacy_local_theme_review is not None,
+                        local_prepare is not None,
                         args.adopt_legacy_disabled_review is not None,
                         args.adopt_legacy_removed_review is not None,
-                        args.adopt_legacy_local_skill_review is not None,
-                        args.adopt_legacy_local_prompt_review is not None,
-                        args.adopt_legacy_local_theme_review is not None,
+                        local_adopt is not None,
                     )
                 )
             ):
@@ -299,17 +310,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 review = project_review(lifecycle, owner, settings_manager=settings)
             return write_package_operator_result(review.to_dict())
 
-        review_plugin_id = args.review_legacy_local_plugin
-        prepare_kind: Literal["skill", "prompt", "theme"] | None = None
-        if args.prepare_legacy_local_theme_review:
-            review_plugin_id = args.prepare_legacy_local_theme_review
-            prepare_kind = "theme"
-        elif args.prepare_legacy_local_prompt_review:
-            review_plugin_id = args.prepare_legacy_local_prompt_review
-            prepare_kind = "prompt"
-        elif args.prepare_legacy_local_skill_review:
-            review_plugin_id = args.prepare_legacy_local_skill_review
-            prepare_kind = "skill"
+        prepare_kind, review_plugin_id = (
+            local_prepare
+            if local_prepare is not None
+            else (None, args.review_legacy_local_plugin)
+        )
         if review_plugin_id:
             if prepare_kind is not None:
                 _prepare_review_cutover(
@@ -369,16 +374,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "reviewId": receipt.review.review_id,
                 },
             )
-        if (
-            args.adopt_legacy_local_skill_review
-            or args.adopt_legacy_local_prompt_review
-            or args.adopt_legacy_local_theme_review
-        ):
-            plugin_id, review_id = (
-                args.adopt_legacy_local_theme_review
-                or args.adopt_legacy_local_prompt_review
-                or args.adopt_legacy_local_skill_review
-            )
+        if local_adopt is not None:
+            resource_kind, selected_ids = local_adopt
+            plugin_id, review_id = selected_ids
             adopted = adopt_coding_legacy_local_data_review(
                 lifecycle,
                 workspace=workspace,
@@ -386,13 +384,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 accepted_review_id=review_id,
                 runtime_version=version("loushang"),
                 runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                resource_kind=(
-                    "theme"
-                    if args.adopt_legacy_local_theme_review
-                    else "prompt"
-                    if args.adopt_legacy_local_prompt_review
-                    else "skill"
-                ),
+                resource_kind=resource_kind,
             )
             return write_package_operator_result(
                 {
@@ -415,9 +407,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 lifecycle, workspace=workspace
             )
         settings = _cutover_settings(workspace)
+        if has_fence:
+            # Preserve the POSIX version lookup before opening the existing fence.
+            if not windows:
+                runtime_version = version("loushang")
+            result = reopen_coding_package_cutover(
+                lifecycle, expected_namespace=namespace_id
+            )
         if has_fence and windows:
-            result = reopen_coding_package_cutover(lifecycle)
-            _require_cutover_namespace(result, namespace_id)
             if not inspect_fresh_product_epoch(
                 epoch.fenced_runtime_open_kwargs(),
                 windows=True,
@@ -435,13 +432,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 windows_candidate=True,
             )
         elif has_fence:
-            runtime_version = version("loushang")
-            result = reopen_coding_package_cutover(lifecycle)
-            _require_cutover_namespace(result, namespace_id)
-            read_owner = PackageProductPosixFencedRuntimeOwner.open(
-                **epoch.fenced_runtime_open_kwargs(), read_only=True
+            replay_options = _ReplayOptions(
+                workspace=workspace,
+                runtime_version=runtime_version,
+                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             )
-            try:
+            with PackageProductPosixFencedRuntimeOwner.open(
+                **epoch.fenced_runtime_open_kwargs(), read_only=True
+            ) as read_owner:
                 legacy_inventory = read_coding_legacy_installation_inventory(
                     lifecycle, read_owner
                 ).inventory
@@ -482,8 +480,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     read_owner,
                     settings_manager=settings,
                 )
-            finally:
-                read_owner.close()
             pending_removals = bool(legacy_inventory.unselected_source_identities)
             if pending_removals and removed_acceptance is None:
                 raise RuntimeError(
@@ -493,10 +489,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 adopt_coding_first_b_removed_local(
                     lifecycle,
                     settings,
-                    workspace=workspace,
                     accepted_review_id=removed_acceptance.review.review_id,
-                    runtime_version=runtime_version,
-                    runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                    **replay_options,
                 )
             if local:
                 if not all(
@@ -518,27 +512,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                     adopt_coding_first_b_builtin_only(
                         lifecycle,
                         settings,
-                        workspace=workspace,
                         accepted_review_id=builtin_acceptance.review.review_id,
-                        runtime_version=runtime_version,
-                        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                        **replay_options,
                     )
                 elif acceptance is not None:
                     bootstrap_coding_accepted_disabled_only_product_plugins(
                         lifecycle,
                         settings,
-                        workspace=workspace,
                         accepted_review_id=acceptance.review.review_id,
-                        runtime_version=runtime_version,
-                        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                        **replay_options,
                     )
                 else:
                     bootstrap_coding_builtin_product_plugins(
                         lifecycle,
                         settings,
-                        workspace=workspace,
-                        runtime_version=runtime_version,
-                        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                        **replay_options,
                     )
         else:
             cutover = cutover_and_bootstrap_coding_package_product(
@@ -600,18 +588,7 @@ def _prepare_review_cutover(
         if prepared.attempt.result.disposition != "fenced":
             raise RuntimeError("Coding Product fence was not committed")
     else:
-        reopened = reopen_coding_package_cutover(lifecycle)
-        _require_cutover_namespace(reopened, namespace_id)
-
-
-def _require_cutover_namespace(
-    result: PackagePosixEpochCutoverResultV1, namespace_id: str
-) -> None:
-    if (
-        result.switch_receipt is None
-        or result.switch_receipt.namespace_id != namespace_id
-    ):
-        raise RuntimeError("Coding Product fence belongs to another cutover")
+        reopen_coding_package_cutover(lifecycle, expected_namespace=namespace_id)
 
 
 def _require_disabled_only_preflight(

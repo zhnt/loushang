@@ -213,6 +213,16 @@ class _LegacyFirstSnapshot:
         )
 
 
+LEGACY_PRODUCT_STATE_DOMAINS = (
+    "binding_history",
+    "desired_state",
+    "enablement_state",
+    "instance_state",
+    "lock_history",
+    "store_bytes",
+)
+
+
 def read_fresh_product_source_snapshot(
     reader: _LegacyFirstSnapshot,
     *,
@@ -225,14 +235,7 @@ def read_fresh_product_source_snapshot(
     fence = reader.runtime.cutover_result.fence
     if fence is None or fence.request.namespace_id != namespace_id:
         return None
-    for domain in (
-        "binding_history",
-        "desired_state",
-        "enablement_state",
-        "instance_state",
-        "lock_history",
-        "store_bytes",
-    ):
+    for domain in LEGACY_PRODUCT_STATE_DOMAINS:
         if reader.list_members(domain=domain):
             return None
     if reader.list_members(domain="source_configuration") != (source_member,):
@@ -324,6 +327,8 @@ def bind_legacy_pre_b_snapshot_owner(
 def reopen_legacy_product_cutover(
     *,
     read_only: bool,
+    expected_namespace: str | None = None,
+    label: str = "Package Product",
     **roots: Unpack[FencedRuntimeOpenKwargs],
 ) -> PackagePosixEpochCutoverResultV1:
     reopen = (
@@ -331,7 +336,13 @@ def reopen_legacy_product_cutover(
         if os.name == "nt"
         else reopen_posix_product_cutover
     )
-    return reopen(**roots, read_only=read_only)
+    result = reopen(**roots, read_only=read_only)
+    switch = result.switch_receipt
+    if expected_namespace is not None and (
+        switch is None or switch.namespace_id != expected_namespace
+    ):
+        raise RuntimeError(f"{label} fence belongs to another cutover")
+    return result
 
 
 class _LegacyStateRoots(Protocol):

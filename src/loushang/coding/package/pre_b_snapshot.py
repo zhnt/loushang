@@ -235,12 +235,16 @@ def reopen_coding_package_cutover(
     lifecycle: CodingPluginLifecycleStateLayout,
     *,
     read_only: bool = False,
+    expected_namespace: str | None = None,
 ) -> PackagePosixEpochCutoverResultV1:
     """Reopen the current B root without reading legacy Coding Source state."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     return reopen_legacy_product_cutover(
-        **epoch.fenced_runtime_open_kwargs(), read_only=read_only
+        **epoch.fenced_runtime_open_kwargs(),
+        read_only=read_only,
+        expected_namespace=expected_namespace,
+        label="Coding Product",
     )
 
 
