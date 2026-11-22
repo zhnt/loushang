@@ -281,12 +281,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package/product_worker_start_gate_base_v2.py": {
         "loushang.harness.worker.history._start_gate"
     },
-    CODING_ROOT / 'package/worker_preparation_inputs.py': {
-        "loushang.harness.worker._ordinary_prepare",
-        'loushang.harness.worker.capability_query',
-        'loushang.harness.worker.contracts',
-        'loushang.harness.worker.product_activation',
-    },
     CODING_ROOT / 'package/product_worker_windows_checkpoint.py': {
         'loushang.harness.worker.history._base_codec',
         'loushang.harness.worker.history._windows_checkpoint',

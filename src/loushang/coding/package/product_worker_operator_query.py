@@ -43,25 +43,21 @@ from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
-from .product_worker_capability import CodingProductWorkerCapabilityAuthority
-from .product_worker_provider import (
-    coding_worker_query_capability_provider,
-    prepare_coding_selected_worker_provider_candidate,
+from .product_worker_capability import (
+    CodingProductWorkerCapabilityAuthority,
+    _bind_query_authority,
 )
 from .product_worker_query_consumer import (
     CODING_WORKER_QUERY_CAPABILITY_ID,
-    CODING_WORKER_QUERY_DEFINITION,
     CODING_WORKER_QUERY_FACET_ID,
     CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
-    CODING_WORKER_QUERY_PROVIDER_ID,
     bind_coding_worker_query_consumer,
-    bind_coding_worker_query_facet_owner,
     coding_worker_query_owner_authority,
     validate_coding_worker_query_symbol,
 )
 from .product_worker_receipt import open_coding_product_selected_worker_receipt_owner
 from .product_worker_session_composition import (
-    _WORKER_SESSION_COMPOSITION,
+    _resolve_selected_worker_query,
     prepare_coding_product_worker_session_inputs,
 )
 
@@ -101,17 +97,12 @@ class _CodingOperatorQueryPolicy:
             owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
             revocation_epoch=0,
         )
-        facet_owner = bind_coding_worker_query_facet_owner(
-            binding=binding,
-            provider_owner=owner,
-            current_owner_snapshot=owner.snapshot,
-        )
-        authority = CodingProductWorkerCapabilityAuthority(
+        authority = _bind_query_authority(
             receipt_owner=self.receipt_owner,
             receipt=self.receipt,
             request=request,
             binding=binding,
-            owner_policy=facet_owner,
+            provider_owner=owner,
         )
         return owner, authority
 
@@ -124,21 +115,12 @@ class _CodingOperatorQueryPolicy:
         admitted: CapabilityWorkerAdmissionV1,
         release_attempt: Callable[[], Awaitable[None]],
     ) -> SessionCapabilityCompositionInputs:
-        provider = coding_worker_query_capability_provider(self.plugin_id)
-        candidate = prepare_coding_selected_worker_provider_candidate(
+        resolved, now = _resolve_selected_worker_query(
+            owner=owner,
             receipt_owner=self.receipt_owner,
             receipt=self.receipt,
-            definition=CODING_WORKER_QUERY_DEFINITION,
-            provider=provider,
-        )
-        now = int(time.time())
-        resolved = _WORKER_SESSION_COMPOSITION.select_provider(
-            owner=owner,
-            candidate=candidate,
-            definition=CODING_WORKER_QUERY_DEFINITION,
-            provider_id=lambda: CODING_WORKER_QUERY_PROVIDER_ID,
-            policy_revision=lambda: self.receipt.policy.product_policy_revision,
-            evaluated_at=now,
+            plugin_id=self.plugin_id,
+            clock=lambda: int(time.time()),
             eligibility_duration=300,
             admission_duration=180,
         )

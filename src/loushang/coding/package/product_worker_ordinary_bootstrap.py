@@ -36,12 +36,6 @@ from .product_worker_pending_host import (
 from .product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding as CodingWorkerBaseCompositionPolicyBinding,
 )
-from .product_worker_provider import (
-    coding_worker_query_capability_provider as coding_worker_query_capability_provider,
-)
-from .product_worker_provider import (
-    prepare_coding_selected_worker_provider_candidate as prepare_coding_selected_worker_provider_candidate,
-)
 from .product_worker_query_consumer import (
     CODING_WORKER_QUERY_DEFINITION as CODING_WORKER_QUERY_DEFINITION,
 )
@@ -62,6 +56,7 @@ from .product_worker_session_composition import (
 )
 from .product_worker_session_composition import (
     CodingProductWorkerOrdinarySessionBinding,
+    _resolve_selected_worker_query,
 )
 from .product_worker_windows_payload import (
     plan_coding_windows_product_worker_pending_launch as plan_coding_windows_product_worker_pending_launch,
@@ -168,24 +163,15 @@ def prepare_coding_product_worker_ordinary_binding(
         receipt=receipt,
     )
     provider_owner = coding_worker_query_owner_authority()
-    provider = coding_worker_query_capability_provider(plugin_id)
-    candidate = prepare_coding_selected_worker_provider_candidate(
+    resolved, evaluated_at = _resolve_selected_worker_query(
+        owner=provider_owner,
         receipt_owner=receipt_owner,
         receipt=receipt,
-        definition=CODING_WORKER_QUERY_DEFINITION,
-        provider=provider,
-        base_policy_binding=base_policy,
-    )
-    evaluated_at = base_context.evaluated_at
-    resolved = _WORKER_SESSION_COMPOSITION.select_provider(
-        owner=provider_owner,
-        candidate=candidate,
-        definition=CODING_WORKER_QUERY_DEFINITION,
-        provider_id=lambda: provider.provider_id,
-        policy_revision=lambda: base_policy.policy_revision,
-        evaluated_at=evaluated_at,
+        plugin_id=plugin_id,
+        clock=lambda: base_context.evaluated_at,
         eligibility_duration=_PROVIDER_ELIGIBILITY_DURATION,
         admission_duration=_PROVIDER_ADMISSION_DURATION,
+        base_policy_binding=base_policy,
     )
     prepare_pending: Callable[..., SessionCapabilityCompositionInputs]
     if type(product_owner) is WindowsLocalWheelProductSessionOwner:

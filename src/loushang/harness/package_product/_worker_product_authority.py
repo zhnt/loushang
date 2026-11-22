@@ -100,6 +100,7 @@ from loushang.harness.worker.history._opt_in_store import OptInJournal
 from loushang.harness.worker.history._receipt_store import ReceiptHistory
 from loushang.harness.worker.history._receipts import (
     _ReceiptRecordMethods,
+    is_receipt_fingerprint,
     latest_receipt_record,
 )
 from loushang.harness.worker.history._rooted_supervisor import WorkerHistoryAccess
@@ -1411,6 +1412,8 @@ class _WindowsWorkerProductReceiptAuthority(
         *,
         receipt_fingerprint: str,
     ) -> R | None:
+        if not is_receipt_fingerprint(receipt_fingerprint):
+            raise ValueError(f"{cls._receipt_factory_label} receipt lookup is invalid")
         with product.gc_gate.guard():
             product.assert_root_gc_authority_current()
             journal = cls._receipt_journal_factory(

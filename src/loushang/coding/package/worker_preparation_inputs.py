@@ -6,17 +6,14 @@ constructors. No per-attempt source or activation object is created here.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Coroutine
-from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, ClassVar, cast
 
 from loushang.coding.package.product_worker_activation_state import (
     open_coding_product_worker_activation_state_store,
     open_coding_windows_product_worker_activation_state_store,
 )
 from loushang.coding.package.product_worker_capability import (
-    CodingProductWorkerCapabilityAuthority,
+    _bind_query_authority,
 )
 from loushang.coding.package.product_worker_cleanup_evidence import (
     CodingPosixWorkerCleanupEvidenceAuthority,
@@ -28,18 +25,15 @@ from loushang.coding.package.product_worker_payload import (
 )
 from loushang.coding.package.product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding,
-    prepare_coding_selected_worker_provider_candidate,
 )
 from loushang.coding.package.product_worker_provider_host import (
     CodingPreparedWorkerProvider,
-    _read_coding_worker_provider_inputs,
 )
 from loushang.coding.package.product_worker_query_consumer import (
     CODING_WORKER_QUERY_CAPABILITY_ID,
     CODING_WORKER_QUERY_DEFINITION,
     CODING_WORKER_QUERY_FACET_ID,
     CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
-    bind_coding_worker_query_facet_owner,
     coding_worker_query_owner_authority,
 )
 from loushang.coding.package.product_worker_receipt import (
@@ -74,108 +68,9 @@ from loushang.coding.package.product_worker_windows_receipt import (
 from loushang.coding.package.product_worker_windows_supervisor_journal import (
     open_coding_windows_product_worker_supervisor_journal,
 )
-from loushang.harness.capabilities.provider_admission import (
-    CapabilityProviderCandidateEnvelope,
-    CapabilityProviderOwnerAuthority,
-)
-from loushang.harness.capabilities.provider_selection import (
-    ResolvedCapabilityProvider,
-)
 from loushang.harness.session._worker_provider import (
-    PendingWorkerSessionPolicy,
     _prepare_pending_worker_session_inputs,
-    _QueryAuthority,
 )
-from loushang.harness.worker._ordinary_prepare import (
-    _NativeWorkerAttempt,
-)
-from loushang.harness.worker.capability_query import (
-    CapabilityQueryWorkerAdapter,
-    CapabilityWorkerAdmissionV1,
-    CapabilityWorkerBindingV1,
-)
-from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
-from loushang.harness.worker.product_activation import (
-    ProductWorkerActivationReceiptV1,
-)
-
-if TYPE_CHECKING:
-    from loushang.coding.package.product_worker_pending_host import (
-        CodingProductWorkerPendingHost,
-    )
-    from loushang.coding.package.product_worker_windows_pending_host import (
-        CodingWindowsProductWorkerPendingHost,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class _CodingWorkerProviderPolicy:
-    receipt_owner: (
-        CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
-    )
-    receipt: ProductWorkerActivationReceiptV1
-    binding: CapabilityWorkerBindingV1
-    provider_owner: CapabilityProviderOwnerAuthority
-    clock: Callable[[], int]
-    base_policy_binding: CodingWorkerBaseCompositionPolicyBinding
-    capability_id: ClassVar[str] = CODING_WORKER_QUERY_CAPABILITY_ID
-    facet_id: ClassVar[str] = CODING_WORKER_QUERY_FACET_ID
-
-    def bind_authority(
-        self, request: ManagedWorkerLaunchRequestV1
-    ) -> CodingProductWorkerCapabilityAuthority:
-        facet_owner = bind_coding_worker_query_facet_owner(
-            binding=self.binding,
-            provider_owner=self.provider_owner,
-            current_owner_snapshot=self.provider_owner.snapshot,
-        )
-        return CodingProductWorkerCapabilityAuthority(
-            receipt_owner=self.receipt_owner,
-            receipt=self.receipt,
-            request=request,
-            binding=self.binding,
-            owner_policy=facet_owner,
-        )
-
-    def capture(
-        self,
-        *,
-        resolved: ResolvedCapabilityProvider,
-        capability_authority: _QueryAuthority,
-        adapter: CapabilityQueryWorkerAdapter,
-        worker_admission: CapabilityWorkerAdmissionV1,
-        graph_generation: int,
-        release_attempt: Callable[[], Awaitable[None]],
-        on_graph_publication: Callable[[], None],
-    ) -> tuple[CapabilityProviderCandidateEnvelope, CapabilityWorkerBindingV1]:
-        return _read_coding_worker_provider_inputs(
-            resolved=resolved,
-            receipt_owner=self.receipt_owner,
-            receipt=self.receipt,
-            capability_authority=cast(
-                CodingProductWorkerCapabilityAuthority, capability_authority
-            ),
-            adapter=adapter,
-            worker_admission=worker_admission,
-            graph_generation=graph_generation,
-            clock=self.clock,
-            release_attempt=release_attempt,
-            base_policy_binding=self.base_policy_binding,
-            renewing_provider_owner=self.provider_owner,
-            on_graph_publication=on_graph_publication,
-        )
-
-    def read_candidate(
-        self, resolved: ResolvedCapabilityProvider
-    ) -> CapabilityProviderCandidateEnvelope:
-        return prepare_coding_selected_worker_provider_candidate(
-            receipt_owner=self.receipt_owner,
-            receipt=self.receipt,
-            definition=resolved.definition,
-            provider=resolved.provider,
-            base_policy_binding=self.base_policy_binding,
-        )
-
 
 # Native preparation borrows the actual Receipt owner and existing components.
 # These are complete operation/constructor bindings, not another source object.
@@ -218,55 +113,13 @@ CodingWindowsWorkerProductReceiptOwner._worker_provisioning_factory = staticmeth
 )
 
 
-async def prepare_pending_provider(
-    host: CodingProductWorkerPendingHost | CodingWindowsProductWorkerPendingHost,
-    graph_generation: int,
-    *,
-    policy: PendingWorkerSessionPolicy,
-    native_prepare: Callable[..., Coroutine[None, None, _NativeWorkerAttempt]],
-    require_recovered: Callable[[], None] | None = None,
-) -> CodingPreparedWorkerProvider:
-    """Check the original preconditions and pass one native operation to the graph."""
-    if type(graph_generation) is not int or graph_generation < 1:
-        raise TypeError(policy.invalid_generation)
-    if require_recovered is not None or host.base_policy_binding is not None:
-        host.base_policy_binding.assert_current()
-    if require_recovered is not None:
-        require_recovered()
-    return await CodingPreparedWorkerProvider._prepare_native(
-        prepare_native=partial(
-            native_prepare,
-            launch_source=host.receipt_owner,
-            activation=host.receipt_owner,
-            pending_launch=host.pending_launch,
-            receipt=host.receipt,
-            resume_parent_context=host.resume_parent_context,
-            resume_settlement=host.resume_settlement,
-            failure=policy.failure,
-            parent_failure=_parent_failure,
-            failure_code_prefix=policy.error_prefix,
-            task_name_prefix=policy.task_name_prefix,
-            cleanup_note=policy.cleanup_note,
-            correlation_id=policy.correlation_id,
-        ),
-        policy=_CodingWorkerProviderPolicy(
-            host.receipt_owner,
-            host.receipt,
-            host.binding,
-            host.provider_owner,
-            host.clock,
-            host.base_policy_binding,
-        ),
-        receipt=host.receipt,
-        resolved_providers=host.resolved_providers,
-        expected_admission=host.expected_admission,
-        graph_generation=graph_generation,
-        clock=host.clock,
-        base_policy_binding=host.base_policy_binding,
-        renewing_provider_owner=host.provider_owner,
-        pending_failure=policy.failure,
-        cleanup_note=policy.cleanup_note,
-    )
+prepare_pending_provider = partial(
+    CodingPreparedWorkerProvider._prepare_pending,
+    bind_authority=_bind_query_authority,
+    capability_id=CODING_WORKER_QUERY_CAPABILITY_ID,
+    facet_id=CODING_WORKER_QUERY_FACET_ID,
+    parent_failure=_parent_failure,
+)
 
 
 prepare_pending_session_inputs = partial(
