@@ -1116,6 +1116,42 @@ class ProductPluginCompositionPreparation:
         )
 
 
+def project_product_owner_candidates(
+    selection: PluginSelection,
+    *,
+    selected_manifests: tuple[PackageProductSelectedPluginManifestV1, ...] = (),
+    selection_changed: str = "Product owner changed Store selection",
+) -> tuple[OwnerContributionCandidateEnvelope, ...]:
+    """Project exact owner candidates and preserve available Product Store locks."""
+    snapshots = {item.manifest.name: item.snapshot for item in selected_manifests}
+    candidates = tuple(
+        prepare_owner_contribution_candidate(selection, item)
+        for item in selection.candidates
+        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
+    )
+    if not snapshots:
+        return candidates
+    projected: list[OwnerContributionCandidateEnvelope] = []
+    for candidate in candidates:
+        snapshot = snapshots.get(candidate.plugin_id)
+        if snapshot is not None:
+            if (
+                candidate.product_id != snapshot.installation_key.product_id
+                or candidate.instance_revision_ref != snapshot.instance_revision_ref
+                or candidate.package_content_digest
+                != snapshot.package_revision.package_content_digest
+                or candidate.package_source_identity
+                != snapshot.package_revision.package_source_identity
+            ):
+                raise ValueError(selection_changed)
+            candidate = replace(
+                candidate,
+                dependency_lock_digest=snapshot.package_revision.dependency_lock_digest,
+            )
+        projected.append(candidate)
+    return tuple(projected)
+
+
 def assemble_product_composition(
     request: ProductCompositionAssemblyRequest,
     *,
@@ -1131,11 +1167,7 @@ def assemble_product_composition(
         raise ValueError("Product composition evaluation time cannot be negative")
 
     selection = request.selection
-    candidates = tuple(
-        prepare_owner_contribution_candidate(selection, item)
-        for item in selection.candidates
-        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
-    )
+    candidates = project_product_owner_candidates(selection)
     if request.owner_candidates is not None:
         projected = request.owner_candidates
         if len(projected) != len(candidates) or any(
@@ -1903,13 +1935,7 @@ def _complete_catalog_plugin_selection_seed(
         raise ValueError(
             f"{product_label} package Product selection does not match its plan"
         )
-    candidates = tuple(
-        (
-            prepare_owner_contribution_candidate(selection, item)
-            for item in selection.candidates
-            if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
-        )
-    )
+    candidates = project_product_owner_candidates(selection)
     return _complete_product_plugin_selection_seed(
         seed,
         selection=selection,
