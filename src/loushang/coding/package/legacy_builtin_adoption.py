@@ -8,8 +8,7 @@ from pathlib import Path
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
-    bootstrap_reviewed_product_plugins,
-    replay_reviewed_removals,
+    replay_reviewed_product_plugins,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -32,11 +31,11 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
+    _CODING_BUILTIN_PLUGIN_IDS,
+)
+from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
-
-_BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
-
 
 _REMOVAL_LABEL = "Coding removed builtin Product"
 
@@ -85,18 +84,13 @@ def adopt_coding_first_b_builtin_only(
     try:
         product = owner.runtime_owner.product_owner
         disabled = _reviewed_disabled_ids(receipt.review)
-        replay_reviewed_removals(
+        replay_reviewed_product_plugins(
             product,
-            receipt.review.removed_builtin_ids,
-            product_id=_CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
-            operation_id_for=receipt.review.removed_builtin_operation_id,
-            error_prefix=_REMOVAL_LABEL,
-        )
-        bootstrap_reviewed_product_plugins(
-            product,
-            _BUILTINS,
+            _CODING_BUILTIN_PLUGIN_IDS,
             disabled_ids=disabled,
             removed_ids=receipt.review.removed_builtin_ids,
+            operation_id_for=receipt.review.removed_builtin_operation_id,
+            removal_label=_REMOVAL_LABEL,
             policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             strict_history=True,
             history_label="Coding builtin-only Product",

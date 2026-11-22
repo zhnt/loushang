@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -296,27 +296,6 @@ def preserve_removed_product_plugin(
         raise RuntimeError(f"{error_prefix} tombstone refused")
 
 
-def replay_reviewed_removals(
-    product: _ProductOwner,
-    plugin_ids: Iterable[str],
-    *,
-    product_id: str,
-    operation_id_for: Callable[[str], str],
-    error_prefix: str,
-) -> None:
-    """Replay each reviewed removal in the caller's order."""
-    for plugin_id in plugin_ids:
-        key = PluginInstallationKeyV1(
-            product_id=product_id,
-            installation_scope="workspace",
-            scope_id=product.policy.project_scope_id,
-            plugin_id=plugin_id,
-        )
-        preserve_removed_product_plugin(
-            product, key, operation_id_for(plugin_id), error_prefix=error_prefix
-        )
-
-
 def _require_reviewed_bootstrap_history(
     product: _ProductOwner,
     plugin_id: str,
@@ -359,22 +338,35 @@ def _require_reviewed_bootstrap_history(
             raise RuntimeError(f"{history_label} enable history changed")
 
 
-def bootstrap_reviewed_product_plugins(
+def replay_reviewed_product_plugins(
     product: _ProductOwner,
     plugin_ids: tuple[str, ...],
     *,
     disabled_ids: Collection[str],
     removed_ids: Collection[str],
+    operation_id_for: Callable[[str], str],
+    removal_label: str,
     policy: _PluginBootstrapPolicy,
     strict_history: bool,
     history_label: str = "Product",
 ) -> None:
-    """Replay reviewed builtin choices through the original bootstrap owner.
+    """Replay reviewed removals before applying the remaining builtin choices.
 
     Strict first-adoption paths validate exact scoped history. Active-local
     continuation retains its older plugin-only history selection and yields
     to subsequent operator choices. Products choose the supported mode.
     """
+    for plugin_id in removed_ids:
+        removal_key = PluginInstallationKeyV1(
+            product_id=policy.product_id,
+            installation_scope="workspace",
+            scope_id=product.policy.project_scope_id,
+            plugin_id=plugin_id,
+        )
+        preserve_removed_product_plugin(
+            product, removal_key, operation_id_for(plugin_id), error_prefix=removal_label
+        )
+
     for plugin_id in plugin_ids:
         if plugin_id in removed_ids:
             continue

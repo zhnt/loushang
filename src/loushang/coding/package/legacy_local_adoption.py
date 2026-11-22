@@ -12,8 +12,7 @@ from loushang.harness.package_product._legacy_local_migration import (
     match_legacy_replay_source,
 )
 from loushang.harness.package_product._plugin_bootstrap import (
-    bootstrap_reviewed_product_plugins,
-    replay_reviewed_removals,
+    replay_reviewed_product_plugins,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -77,6 +76,9 @@ from .legacy_source_consumption import (
 )
 from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
+)
+from .product_runtime import (
+    _CODING_BUILTIN_PLUGIN_IDS,
 )
 from .product_runtime import (
     CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
@@ -266,22 +268,13 @@ def adopt_coding_legacy_local_data_review(
     try:
         disabled_builtins = _reviewed_disabled_ids(acceptance.review)
         product = product_owner.runtime_owner.product_owner
-        replay_reviewed_removals(
+        replay_reviewed_product_plugins(
             product,
-            acceptance.review.removed_builtin_ids,
-            product_id=_CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
-            operation_id_for=acceptance.review.removed_builtin_operation_id,
-            error_prefix=_REMOVAL_LABEL,
-        )
-        bootstrap_reviewed_product_plugins(
-            product,
-            (
-                "coding.base",
-                "coding.lsp.default",
-                "coding.arch.default",
-            ),
+            _CODING_BUILTIN_PLUGIN_IDS,
             disabled_ids=disabled_builtins,
             removed_ids=acceptance.review.removed_builtin_ids,
+            operation_id_for=acceptance.review.removed_builtin_operation_id,
+            removal_label=_REMOVAL_LABEL,
             policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             strict_history=False,
         )

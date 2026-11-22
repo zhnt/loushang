@@ -9,8 +9,7 @@ from pathlib import Path
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
-    bootstrap_reviewed_product_plugins,
-    replay_reviewed_removals,
+    replay_reviewed_product_plugins,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -33,11 +32,11 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
+    _CODING_BUILTIN_PLUGIN_IDS,
+)
+from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
-
-_BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
-
 
 _REMOVAL_LABEL = "Coding removed local Product"
 
@@ -78,19 +77,14 @@ def adopt_coding_first_b_removed_local(
             *(item.plugin_id for item in receipt.review.removed_local),
             *receipt.review.removed_builtin_ids,
         }
-        replay_reviewed_removals(
-            product,
-            sorted(removed_ids),
-            product_id=_CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
-            operation_id_for=partial(_removed_operation_id, receipt),
-            error_prefix=_REMOVAL_LABEL,
-        )
         disabled = _reviewed_disabled_ids(receipt.review)
-        bootstrap_reviewed_product_plugins(
+        replay_reviewed_product_plugins(
             product,
-            _BUILTINS,
+            _CODING_BUILTIN_PLUGIN_IDS,
             disabled_ids=disabled,
-            removed_ids=removed_ids,
+            removed_ids=sorted(removed_ids),
+            operation_id_for=partial(_removed_operation_id, receipt),
+            removal_label=_REMOVAL_LABEL,
             policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             strict_history=True,
             history_label="Coding builtin-only Product",
