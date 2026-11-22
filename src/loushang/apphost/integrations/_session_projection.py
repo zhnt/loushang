@@ -79,23 +79,7 @@ class _HostedConversationProjection(Generic[EventT]):
                         SessionEventKindV1.ASSISTANT_DELTA, _bounded(delta),
                         truncated=len(delta) > _TEXT_LIMIT,
                     )
-        return _project_hosted_approval(payload, self._event)
-
-
-def _project_hosted_approval(
-    payload: Mapping[str, object], event_factory: _EventFactory[EventT],
-) -> EventT | None:
-    kind = payload.get("type")
-    if payload.get("hosted_presentation") is True and kind in {
-        "tool_approval_requested", "tool_approval_resolved",
-    }:
-        return event_factory(
-            SessionEventKindV1.INTERACTION_REQUESTED if kind == "tool_approval_requested"
-            else SessionEventKindV1.INTERACTION_DISMISSED,
-            cast(str | None, payload.get("text")),
-            cast(str, payload["interaction_id"]),
-        )
-    return None
+        return _HostedApprovalPresentation._project_approval_event(payload, self._event)
 
 
 def _hosted_transcript_window(
@@ -184,6 +168,22 @@ class _HostedApprovalPresentation:
     _interactions: dict[str, str]
     _approval_action: str
     _approval_publish_rollback: bool
+
+    @staticmethod
+    def _project_approval_event(
+        payload: Mapping[str, object], event_factory: _EventFactory[EventT],
+    ) -> EventT | None:
+        kind = payload.get("type")
+        if payload.get("hosted_presentation") is True and kind in {
+            "tool_approval_requested", "tool_approval_resolved",
+        }:
+            return event_factory(
+                SessionEventKindV1.INTERACTION_REQUESTED if kind == "tool_approval_requested"
+                else SessionEventKindV1.INTERACTION_DISMISSED,
+                cast(str | None, payload.get("text")),
+                cast(str, payload["interaction_id"]),
+            )
+        return None
 
     def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
         raise NotImplementedError

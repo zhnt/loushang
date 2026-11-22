@@ -15,7 +15,6 @@ from loushang.apphost import (
     AdmissionIdentityV1,
     AppHostAdmissionSubjectKind,
     AppHostCatalogInputV1,
-    AppHostCatalogV1,
     AppHostRuntimeV1,
     AppHostSessionLeaseV1,
     AppHostShutdownBudgetV1,
@@ -38,7 +37,7 @@ from loushang.apphost import (
     ScopedProductRuntimeV1 as ScopedProductRuntimeV1,
 )
 from loushang.apphost._ownership import (
-    _settle_failed_product_construction,
+    _construct_product_apphost,
     _settle_owned_closes,
 )
 from loushang.apphost.application import (
@@ -493,18 +492,16 @@ async def create_coding_foreground_hosted_application(
     if type(request.sessions) is CodingWorkspaceCatalog:
         await request.sessions.load()
     product_factory = CodingForegroundProductFactoryV1(request.session_factory, session_owner=request.session_owner)
-    catalog: AppHostCatalogV1 | None = None
-    runtime: AppHostRuntimeV1 | None = None
-    try:
+
+    def catalog_input() -> AppHostCatalogInputV1:
         product, profile = _coding_hosted_registrations(request, product_factory)
-        catalog = await AppHostCatalogV1.admit(
-            AppHostCatalogInputV1(
-                generation_id=request.generation_id,
-                products=(product,),
-                profiles=(profile,),
-            )
+        return AppHostCatalogInputV1(
+            generation_id=request.generation_id,
+            products=(product,),
+            profiles=(profile,),
         )
-        runtime = AppHostRuntimeV1(catalog, request.sessions)
+
+    def bind(runtime: AppHostRuntimeV1) -> HostedApplicationRuntimeV1:
         resolver = CodingAppHostHostedSessionResolverV1(
             runtime=runtime,
             sessions=request.sessions,
@@ -524,15 +521,15 @@ async def create_coding_foreground_hosted_application(
                 resolver=resolver,
             )
         )
-    except BaseException:
-        await _settle_failed_product_construction(
-            runtime,
-            catalog,
-            product_factory,
-            failure=RuntimeError("coding_foreground_cleanup_incomplete"),
-            join_owned=await_owned_task,
-        )
-        raise
+
+    return await _construct_product_apphost(
+        catalog_input,
+        request.sessions,
+        product_factory,
+        bind,
+        cleanup_failure=RuntimeError("coding_foreground_cleanup_incomplete"),
+        join_owned=await_owned_task,
+    )
 
 
 def _coding_hosted_registrations(

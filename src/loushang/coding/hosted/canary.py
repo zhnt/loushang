@@ -33,6 +33,7 @@ from loushang.apphost._ownership import (
     _settle_owned_closes,
     _try_settle_owned_closes,
 )
+from loushang.apphost.catalog import _InstalledAdmissionSource
 from loushang.apphost.integrations.session_product import _BorrowedProfileLease
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted._canary_control import (
@@ -485,31 +486,6 @@ class _AttemptFactory:
         return attempt
 
 
-class _AdmissionPin:
-    __slots__ = ("_closed", "_identity")
-
-    def __init__(self, identity: AdmissionIdentityV1) -> None:
-        self._identity = identity
-        self._closed = False
-
-    @property
-    def identity(self) -> AdmissionIdentityV1:
-        return self._identity
-
-    async def close(self) -> None:
-        self._closed = True
-
-
-class _AdmissionSource:
-    __slots__ = ("_identity",)
-
-    def __init__(self, identity: AdmissionIdentityV1) -> None:
-        self._identity = identity
-
-    async def acquire_pin(self) -> _AdmissionPin:
-        return _AdmissionPin(self._identity)
-
-
 class _ClaimedCandidate:
     __slots__ = ("_reference",)
 
@@ -835,7 +811,7 @@ async def _create_canary_composition(
             generation_id=generation_id,
             product_version="g10-canary-v1",
             compatibility_id=_COMPATIBILITY_ID,
-            product_admission_source=_AdmissionSource(product_identity),
+            product_admission_source=_InstalledAdmissionSource(product_identity),
             candidate_validator=_CandidateValidator(),
             attempt_factory=attempts,
             profiles=(
@@ -843,7 +819,7 @@ async def _create_canary_composition(
                     descriptor=ProfileDescriptorV1(_PROFILE_ID, "1.0"),
                     factory=_ProfileFactory(),
                     admission_identity=profile_identity,
-                    admission_source=_AdmissionSource(profile_identity),
+                    admission_source=_InstalledAdmissionSource(profile_identity),
                 ),
             ),
             sessions=_EphemeralSessions(candidate),

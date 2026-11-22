@@ -12,7 +12,6 @@ from typing import Literal, Protocol, cast
 from loushang.apphost import (
     AdmissionGenerationSourceV1,
     AppHostCatalogInputV1,
-    AppHostCatalogV1,
     AppHostRuntimeV1,
     AppHostSessionLeaseV1,
     AppHostShutdownBudgetV1,
@@ -24,7 +23,11 @@ from loushang.apphost import (
     SessionCreateRequestV1,
     SessionIdentityCatalogPortV1,
 )
-from loushang.apphost._ownership import _settle_failed_product_construction
+from loushang.apphost._ownership import (
+    _construct_product_apphost,
+    _method_descriptor,
+    _report_task_needs_retry,
+)
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted.product import (
     CodingAppHostProductFactoryV1,
@@ -344,15 +347,7 @@ class CodingAppHostCompositionV1:
             effective_mode: CodingAppHostSettlementMode = (
                 "rollback" if mode == "rollback" else requested_mode
             )
-            retry = task is None or (
-                task.done()
-                and (
-                    task.cancelled()
-                    or task.exception() is not None
-                    or not task.result().completed
-                )
-            )
-            if retry:
+            if task is None or _report_task_needs_retry(task):
                 task = asyncio.create_task(self._settle_once(effective_mode))
                 task.add_done_callback(_observe_background_result)
                 self._control_task = task
@@ -451,8 +446,8 @@ async def create_coding_apphost_composition(
     if type(request) is not CodingAppHostCompositionRequestV1:
         raise TypeError("Coding AppHost composition request is invalid")
     product_factory = CodingAppHostProductFactoryV1(request.attempt_factory)
-    catalog: AppHostCatalogV1 | None = None
-    try:
+
+    def catalog_input() -> AppHostCatalogInputV1:
         product = coding_apphost_product_registration(
             generation_id=request.generation_id,
             product_version=request.product_version,
@@ -464,13 +459,13 @@ async def create_coding_apphost_composition(
             candidate_validator=request.candidate_validator,
             product_factory=product_factory,
         )
-        catalog_input = AppHostCatalogInputV1(
+        return AppHostCatalogInputV1(
             generation_id=request.generation_id,
             products=(product,),
             profiles=request.profiles,
         )
-        catalog = await AppHostCatalogV1.admit(catalog_input)
-        runtime = AppHostRuntimeV1(catalog, request.sessions)
+
+    def bind(runtime: AppHostRuntimeV1) -> CodingAppHostCompositionV1:
         return CodingAppHostCompositionV1(
             activation=request.activation,
             generation_id=request.generation_id,
@@ -480,21 +475,22 @@ async def create_coding_apphost_composition(
             shutdown_budget=request.shutdown_budget,
             _construction_token=_CONSTRUCTION_TOKEN,
         )
-    except (asyncio.CancelledError, Exception) as error:
-        await _settle_failed_product_construction(
-            None,
-            catalog,
-            product_factory,
-            failure=CodingAppHostCompositionError(
-                code="coding_apphost_composition_cleanup_incomplete"
-            ),
-            join_owned=_await_owned_task,
-        )
-        if isinstance(error, asyncio.CancelledError):
-            raise
-        raise CodingAppHostCompositionError(
+
+    return await _construct_product_apphost(
+        catalog_input,
+        request.sessions,
+        product_factory,
+        bind,
+        cleanup_failure=CodingAppHostCompositionError(
+            code="coding_apphost_composition_cleanup_incomplete"
+        ),
+        construction_failure=CodingAppHostCompositionError(
             code="coding_apphost_composition_unavailable"
-        ) from error
+        ),
+        close_runtime_on_failure=False,
+        join_owned=_await_owned_task,
+        caught=(asyncio.CancelledError, Exception),
+    )
 
 
 def _require_opaque(value: object, *, name: str) -> None:
@@ -505,13 +501,6 @@ def _require_opaque(value: object, *, name: str) -> None:
         or any(character.isspace() for character in value)
     ):
         raise ValueError(f"Coding AppHost {name} is invalid")
-
-
-def _method_descriptor(value: object, name: str) -> object:
-    descriptor = inspect.getattr_static(type(value), name, None)
-    if isinstance(descriptor, (classmethod, staticmethod)):
-        return descriptor.__func__
-    return descriptor
 
 
 def _require_async_method(value: object, name: str) -> None:

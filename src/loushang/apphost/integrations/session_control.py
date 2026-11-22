@@ -25,6 +25,9 @@ from loushang.apphost.contracts import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
+from loushang.apphost.integrations._session_projection import (
+    _HostedApprovalPresentation as _HostedApprovalPresentation,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,

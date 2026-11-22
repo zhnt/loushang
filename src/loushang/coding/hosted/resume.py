@@ -16,12 +16,9 @@ from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
-from loushang.apphost.integrations._session_projection import (
-    _HostedApprovalPresentation,
-    _project_hosted_approval,
-)
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
+    _HostedApprovalPresentation,
     _HostedResumeInputExecutionWork,
 )
 from loushang.appserver.execution.model import InteractiveGoalRecoveryV1
@@ -407,7 +404,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         if active is not None:
             return active.project_event(event)
         return (
-            None if payload is None else _project_hosted_approval(
+            None if payload is None else self._project_approval_event(
                 payload, CodingHostedEventProjectionV1,
             )
         )

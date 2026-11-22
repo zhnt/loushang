@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
 from .errors import CleanupIncompleteError
 
 if TYPE_CHECKING:
     from .catalog import AppHostCatalogV1
+    from .contracts import AppHostCatalogInputV1
     from .runtime import AppHostRuntimeV1
 
 AsyncClose = Callable[[], Awaitable[None]]
@@ -230,6 +231,44 @@ class _ConstructionCloseOwner(Protocol):
     async def close(self) -> None: ...
 
 
+_ConstructedT = TypeVar("_ConstructedT")
+
+
+async def _construct_product_apphost(
+    catalog_input: Callable[[], AppHostCatalogInputV1],
+    sessions: object,
+    product_factory: _ConstructionCloseOwner,
+    bind: Callable[[AppHostRuntimeV1], _ConstructedT],
+    *,
+    cleanup_failure: RuntimeError,
+    join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
+    construction_failure: RuntimeError | None = None,
+    close_runtime_on_failure: bool = True,
+    caught: tuple[type[BaseException], ...] = (BaseException,),
+) -> _ConstructedT:
+    """Hold upstream owners until the Product has successfully bound its Host."""
+    from .catalog import AppHostCatalogV1
+    from .runtime import AppHostRuntimeV1
+
+    catalog = None
+    runtime = None
+    try:
+        catalog = await AppHostCatalogV1.admit(catalog_input())
+        runtime = AppHostRuntimeV1(catalog, sessions)
+        return bind(runtime)
+    except caught as error:
+        await _settle_failed_product_construction(
+            runtime if close_runtime_on_failure else None,
+            catalog,
+            product_factory,
+            failure=cleanup_failure,
+            join_owned=join_owned,
+        )
+        if construction_failure is not None and isinstance(error, Exception):
+            raise construction_failure from error
+        raise
+
+
 async def _settle_failed_product_construction(
     runtime: AppHostRuntimeV1 | None,
     catalog: AppHostCatalogV1 | None,
@@ -272,6 +311,27 @@ async def _settle_owned_closes(
 
     task = asyncio.create_task(settle())
     await join_owned(task)
+
+
+class _CompletionReport(Protocol):
+    @property
+    def completed(self) -> bool: ...
+
+
+_ReportT = TypeVar("_ReportT", bound=_CompletionReport)
+
+
+def _report_task_needs_retry(task: asyncio.Task[_ReportT]) -> bool:
+    return task.done() and (
+        task.cancelled() or task.exception() is not None or not task.result().completed
+    )
+
+
+def _method_descriptor(value: object, name: str) -> object:
+    descriptor = inspect.getattr_static(type(value), name, None)
+    if isinstance(descriptor, (classmethod, staticmethod)):
+        return descriptor.__func__
+    return descriptor
 
 
 __all__: list[str] = []
