@@ -18,9 +18,6 @@ CLI_TOGGLES = Path("src/loushang/harness/cli/resource_toggles.py")
 CLI_PROFILE = Path("src/loushang/harness/cli/profile.py")
 CODING_BINDING = Path("src/loushang/coding/plugin_manager/binding.py")
 CODING_COMPATIBILITY = Path("src/loushang/coding/plugin_manager/enablement_compatibility.py")
-CODING_ENABLEMENT_PROJECTION = Path(
-    "src/loushang/coding/harness/plugin_management/enablement_projection.py"
-)
 CODING_BOOTSTRAP = Path('src/loushang/coding/composition/bootstrap.py')
 CODING_CONTINUITY = Path('src/loushang/coding/composition/continuity.py')
 SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
@@ -209,9 +206,9 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "build_coding_plugin_management_application(" in adapter
     assert "bind_coding_plugin_enablement_compatibility(" in adapter
     assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
-    projection = _source(CODING_ENABLEMENT_PROJECTION)
-    assert "_lifecycle_programs.reconcile(" in compatibility
-    assert "with _binding._capture_existing_plugin_enablement_state(" in projection
+    projection = _source(CODING_COMPATIBILITY)
+    assert "def reconcile(self) -> None:" in projection
+    assert "with _capture_existing_plugin_enablement_state(" in projection
     assert "journal_file_lock_at(" in capture
     assert "_read_private_state_file(" in capture
     assert "_capture_existing_plugin_enablement_state_portable(" in capture

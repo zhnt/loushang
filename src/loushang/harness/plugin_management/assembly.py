@@ -10,7 +10,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal, Protocol, TypeVar
 
 from loushang.harness.journal import JournalLoadPolicy, journal_file_lock
+from loushang.harness.plugin_management.application import (
+    PluginManagementApplicationPorts,
+    PluginManagementCommandApplication,
+    PluginManagementReadModelProjector,
+    PluginSourceProjectionSourcePort,
+)
 from loushang.harness.plugin_management.enablement_migration import (
+    PLUGIN_ENABLEMENT_MIGRATION_EPOCH,
     PluginEnablementMigrationCoordinator,
     PluginEnablementMigrationJournal,
     plugin_enablement_legacy_input_fingerprint,
@@ -135,6 +142,48 @@ def bind_plugin_management_core(
         management=management,
         migration_journal=migration_journal,
         load_policy=load_policy,
+    )
+
+
+def prepare_plugin_management_runtime(
+    core: PluginManagementCoreBindings, *, runtime_version: str, read_only: bool = False
+) -> None:
+    core.migration_journal.assert_runtime_compatible(
+        supported_migration_epoch=PLUGIN_ENABLEMENT_MIGRATION_EPOCH,
+        runtime_version=runtime_version,
+    )
+    if not read_only:
+        core.management.recover()
+
+
+def bind_plugin_enablement_migrations(
+    core: PluginManagementCoreBindings, *, runtime_version: str
+) -> PluginEnablementMigrationCoordinator:
+    return PluginEnablementMigrationCoordinator(
+        journal=core.migration_journal,
+        desired_state=core.desired,
+        commands=PluginManagementCommandApplication(core.management),
+        runtime_version=runtime_version,
+    )
+
+
+def bind_plugin_management_application_ports(
+    core: PluginManagementCoreBindings,
+    runtime: PluginRuntimeLedgerBindings,
+    *,
+    source: PluginSourceProjectionSourcePort | None,
+) -> PluginManagementApplicationPorts:
+    return PluginManagementApplicationPorts(
+        commands=PluginManagementCommandApplication(core.management),
+        queries=PluginManagementReadModelProjector(
+            desired_state=core.desired,
+            operations=core.management,
+            migrations=core.migration_journal,
+            source=source,
+            instances=runtime.instances,
+            packages=runtime.packages,
+            retirement=core.retirement_sets,
+        ),
     )
 
 

@@ -800,6 +800,28 @@ All 85 existing Linux cases for Resume comparison, composition sets,
 extension refresh, Profile capability binding, Tool Pack, subagents and
 architecture pass. Ten scoped sources pass mypy. Native Windows remains pending.
 
+### Plugin Management Assembly And Product Scope
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `command_admission` and `session_scope` | The original Coding SDK command and RPC owners enforce their workspace witness and route admission. Formal Workspace and Plugin Management supply the directory identity primitives and the common ports. |
+| `dependency_grants` | Formal Package materialization verifies exact source identities. Coding selects reserved IDs, distribution and rejection codes. |
+| `enablement_projection` and `membership_evidence` | The existing formal projector and Session membership owner share captured downgrade projection and the exact holder codec. Coding retains the scope, historical prefix, configuration publication and errors. |
+| `lifecycle_binding` | Formal Plugin Management binds ledgers and ports and validates migration compatibility before optional writable recovery. Coding binds paths and borrows/transfers the startup lease. |
+| `operation_explanation` | Formal Plugin Management verifies that a partially observed handoff names the same Desired command and reads its commit evidence. Coding retains the platform and workspace checks and action rendering. |
+
+The batch removes 640 staging lines and adds 275 Coding Product and 244
+formal Harness lines. System production Python decreases by 121 lines for
+the batch and 1,376 against baseline. Staging has 15 files and 2,350 lines.
+Hosting, other production code and scripts have no changes. The existing
+architecture assertion follows the compatibility writer, with three fewer
+test lines.
+
+The Linux candidate passes 178 existing cases, including lifecycle, legacy
+projection, fenced CLI/SDK/RPC, workspace replacement, and the Harness
+dependency graph. Five platform cases are skipped. Eleven scoped sources
+pass mypy. Native Windows remains pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

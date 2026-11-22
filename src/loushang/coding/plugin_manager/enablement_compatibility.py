@@ -6,9 +6,6 @@ from contextlib import nullcontext as nullcontext
 from dataclasses import dataclass, field
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID as CODING_PRODUCT_ID
-from loushang.coding.harness.plugin_management import (
-    enablement_projection as _lifecycle_programs,
-)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     project_coding_plugin_enablement_compatibility,
@@ -40,13 +37,6 @@ _COMPATIBILITY_CACHE_ATTRIBUTE = (
 )
 
 
-_LIFECYCLE_PROGRAM_VALUES = {
-    "value_001": "Coding Plugin lifecycle coordination evidence disappeared",
-    "value_002": "coding_plugin_compatibility_coordination_missing",
-    "value_003": "Legacy Plugin enablement is read-only after migration acceptance",
-    "value_004": "plugin_enablement_legacy_mutation_rejected",
-}
-
 
 class CodingPluginEnablementCompatibilityError(RuntimeError):
     """Stable failure to establish the minimum fence-aware runtime."""
@@ -66,10 +56,60 @@ class CodingPluginEnablementCompatibilityWriter:
     def reconcile(self) -> None:
         """Publish the latest canonical view under the Product coordination lock."""
 
-        return _lifecycle_programs.reconcile(self)
+        defer = getattr(
+            self._registry.settings_manager,
+            "defer_plugin_enablement_compatibility_notifications",
+            None,
+        )
+        notifications = defer() if callable(defer) else nullcontext()
+        with notifications:
+            try:
+                with _capture_existing_plugin_enablement_state(
+                    self.layout
+                ) as capture:
+                    if capture is None:
+                        return
+                    projection, migrated = (
+                        project_coding_plugin_enablement_compatibility(
+                            self.layout,
+                            _capture=capture,
+                        )
+                    )
+                    if not migrated:
+                        return
+                    compatibility = LegacyPluginCompatibilityProjectionV1(
+                        disabled_plugin_ids=projection.disabled_plugin_ids,
+                        migrated_plugin_ids=tuple(sorted(migrated)),
+                        desired_inventory_revision=projection.desired_inventory_revision,
+                        migration_journal_revision=(projection.migration_journal_revision),
+                    )
+                self._registry.publish(self, compatibility)
+            except FileNotFoundError:
+                raise CodingPluginEnablementCompatibilityError(
+                    'Coding Plugin lifecycle coordination evidence disappeared',
+                    code='coding_plugin_compatibility_coordination_missing',
+                )
 
     def _assert_legacy_mutation_allowed(self, plugin_id: str) -> None:
-        return _lifecycle_programs.assert_legacy_mutation_allowed(self, plugin_id)
+        key = PluginInstallationKeyV1(
+            product_id=CODING_PRODUCT_ID,
+            installation_scope="workspace",
+            scope_id=self.layout.scope_id,
+            plugin_id=plugin_id,
+        )
+        with _capture_existing_plugin_enablement_state(self.layout) as capture:
+            if capture is None:
+                return
+            snapshots = decode_plugin_enablement_migration_snapshots(
+                capture.migration_raw,
+                path=self.layout.enablement_migration,
+            )
+            if any(item.request.installation_key == key for item in snapshots):
+                raise PluginEnablementMigrationError(
+                    'Legacy Plugin enablement is read-only after migration acceptance',
+                    code='plugin_enablement_legacy_mutation_rejected',
+                    path=self.layout.enablement_migration,
+                )
 
 
 class _CodingPluginEnablementCompatibilityRegistry(
