@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from importlib.metadata import version as version
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.plugin_manager.owner_generations import (
@@ -63,7 +63,6 @@ from loushang.harness.plugin_management import (
     decode_plugin_enablement_migration_snapshots as decode_plugin_enablement_migration_snapshots,
 )
 from loushang.harness.plugin_management.assembly import (
-    PluginManagementCoreBindings,
     _FirstPartyDefaultBootstrap,
     _FirstPartyDefaultPolicy,
     _gc_writer_epoch_ready,
@@ -726,28 +725,88 @@ def build_coding_plugin_lifecycle(
 ) -> CodingPluginLifecycle:
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError(_LAYOUT_REQUIRED)
-    resolved_startup_id = startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID
-    owns_process_startup_lease = _hold_process_startup_lease(
-        layout, startup_id=resolved_startup_id
+    return cast(
+        CodingPluginLifecycle,
+        _assemble_legacy_plugin_management(
+            layout,
+            startup_id=startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID,
+            mode="lifecycle",
+            security_acceptances=security_acceptances,
+        ),
+    )
+
+
+def build_coding_plugin_management_application(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    source: PluginSourceProjectionSourcePort | None = None,
+    read_only: bool = False,
+) -> PluginManagementApplicationPorts:
+    """Bind management ports with pre-fence startup admission on write routes."""
+
+    if not isinstance(layout, CodingPluginLifecycleStateLayout):
+        raise TypeError(_LAYOUT_REQUIRED)
+    return cast(
+        PluginManagementApplicationPorts,
+        _assemble_legacy_plugin_management(
+            layout,
+            startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
+            mode="queries" if read_only else "commands",
+            source=source,
+        ),
+    )
+
+
+def _assemble_legacy_plugin_management(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    startup_id: str,
+    mode: Literal["lifecycle", "commands", "queries"],
+    source: PluginSourceProjectionSourcePort | None = None,
+    security_acceptances: PluginInstanceSecurityRetirementJournal | None = None,
+) -> CodingPluginLifecycle | PluginManagementApplicationPorts:
+    read_only = mode == "queries"
+    owns_process_startup_lease = (
+        not read_only
+        and (mode == "lifecycle" or sys.platform.startswith("linux") or os.name == "nt")
+        and _hold_process_startup_lease(layout, startup_id=startup_id)
     )
     try:
-        if not owns_process_startup_lease:
+        if not read_only and not owns_process_startup_lease:
             _prepare_private_state_layout(layout)
-        core = _bind_management_core(layout)
-        prepare_plugin_management_runtime(core, runtime_version=version("loushang"))
-        migrations = bind_plugin_enablement_migrations(
-            core, runtime_version=version("loushang")
+        core = bind_plugin_management_core(
+            gc_reservations_path=layout.package_gc_reservations,
+            desired_state_path=layout.desired_state,
+            operation_journal_path=layout.management_operations,
+            retirement_intents_path=layout.retirement_intents,
+            retirement_sets_path=layout.retirement_sets,
+            migration_journal_path=layout.enablement_migration,
+            load_policy=(
+                JournalLoadPolicy(partial_tail="raise", create_lock=False)
+                if read_only
+                else None
+            ),
+        )
+        prepare_plugin_management_runtime(
+            core, runtime_version=version("loushang"), read_only=read_only
+        )
+        migrations = (
+            bind_plugin_enablement_migrations(core, runtime_version=version("loushang"))
+            if mode == "lifecycle"
+            else None
         )
         runtime = bind_plugin_runtime_ledgers(
             core,
             instance_runtime_path=layout.instance_runtime,
             package_lifecycle_path=layout.package_lifecycle,
-            startup_id=resolved_startup_id,
+            startup_id=startup_id,
             security_acceptances=security_acceptances,
         )
+        if migrations is None:
+            return bind_plugin_management_application_ports(core, runtime, source=source)
         return CodingPluginLifecycle(
             layout=layout,
-            startup_id=resolved_startup_id,
+            startup_id=startup_id,
             desired=core.desired,
             management=core.management,
             enablement_migrations=migrations,
@@ -763,70 +822,8 @@ def build_coding_plugin_lifecycle(
         )
     except BaseException:
         if owns_process_startup_lease:
-            _release_process_startup_lease(layout, startup_id=resolved_startup_id)
+            _release_process_startup_lease(layout, startup_id=startup_id)
         raise
-
-
-def build_coding_plugin_management_application(
-    layout: CodingPluginLifecycleStateLayout,
-    *,
-    source: PluginSourceProjectionSourcePort | None = None,
-    read_only: bool = False,
-) -> PluginManagementApplicationPorts:
-    """Compose command/query ports without acquiring a Product runtime lease."""
-
-    if not isinstance(layout, CodingPluginLifecycleStateLayout):
-        raise TypeError(_LAYOUT_REQUIRED)
-    owns_process_startup_lease = (
-        not read_only
-        and (sys.platform.startswith("linux") or os.name == "nt")
-        and _hold_process_startup_lease(
-            layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
-        )
-    )
-    try:
-        if not read_only and not owns_process_startup_lease:
-            _prepare_private_state_layout(layout)
-        core = _bind_management_core(
-            layout,
-            load_policy=(
-                JournalLoadPolicy(partial_tail="raise", create_lock=False)
-                if read_only
-                else None
-            ),
-        )
-        prepare_plugin_management_runtime(
-            core, runtime_version=version("loushang"), read_only=read_only
-        )
-        runtime = bind_plugin_runtime_ledgers(
-            core,
-            instance_runtime_path=layout.instance_runtime,
-            package_lifecycle_path=layout.package_lifecycle,
-            startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
-        )
-        return bind_plugin_management_application_ports(core, runtime, source=source)
-    except BaseException:
-        if owns_process_startup_lease:
-            _release_process_startup_lease(
-                layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
-            )
-        raise
-
-
-def _bind_management_core(
-    layout: CodingPluginLifecycleStateLayout,
-    *,
-    load_policy: JournalLoadPolicy | None = None,
-) -> PluginManagementCoreBindings:
-    return bind_plugin_management_core(
-        gc_reservations_path=layout.package_gc_reservations,
-        desired_state_path=layout.desired_state,
-        operation_journal_path=layout.management_operations,
-        retirement_intents_path=layout.retirement_intents,
-        retirement_sets_path=layout.retirement_sets,
-        migration_journal_path=layout.enablement_migration,
-        load_policy=load_policy,
-    )
 
 
 def project_coding_plugin_enablement_compatibility(
