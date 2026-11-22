@@ -156,14 +156,6 @@ class CodingHostedSessionV1(
         return await _lookup_coding_resume_input(self._binding, query)
 
 
-    def _observe_projection(
-        self, projection: CodingHostedEventProjectionV1, event: SessionEventV1
-    ) -> None:
-        """Synchronous Product observation before optional delivery listeners."""
-
-
-
-
 def coding_hosted_identity_from_envelope(
     envelope: SessionIdentityEnvelopeV1,
     *,

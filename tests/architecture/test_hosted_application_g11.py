@@ -210,7 +210,10 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
                        if isinstance(node, ast.ImportFrom)
                        and node.module and node.module.startswith("loushang.apphost")]
     assert [(node.module, [alias.name for alias in node.names])
-            for node in apphost_imports] == [("loushang.apphost", ["SessionBindingKeyV1"])]
+            for node in apphost_imports] == [
+        ("loushang.apphost", ["SessionBindingKeyV1"]),
+        ("loushang.apphost.integrations.session_control", ["_ExecutionSessionServiceAdapter"]),
+    ]
     # The foreground owner may select the optional adapter, but only within
     # its explicit execution branch. Default construction must not import it.
     composition = ast.parse(_read(Path('src/loushang/coding/hosted/application.py')))

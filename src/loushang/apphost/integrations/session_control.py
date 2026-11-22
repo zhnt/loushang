@@ -12,6 +12,7 @@ import json
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
+from uuid import uuid4
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
@@ -20,6 +21,7 @@ from loushang.apphost.application import _method_descriptor
 from loushang.apphost.contracts import SessionBindingKeyV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
+    AppFailureV1,
     AppServiceError,
     InteractionOutcomeV1,
     SessionEventKindV1,
@@ -34,8 +36,21 @@ from loushang.appserver.protocol import (
     UserChoicePromptV1,
 )
 from loushang.appservice import HostedSessionEventListenerV1
-from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
-from loushang.appservice.execution_guard import ExecutionControlV1
+from loushang.appservice.execution_contract import (
+    ExecutionContentEventV1,
+    ExecutionObservationV1,
+    ExecutionOutcomeV1,
+    ExecutionRequestV1,
+    ExecutionSourceSnapshotV1,
+    ExecutionStateV1,
+    ExecutionStatusV1,
+    InterruptModeV1,
+)
+from loushang.appservice.execution_guard import ExecutionControlV1, ExecutionGuardV1
+from loushang.foundation._owned_tasks import (
+    _observe_task_result,
+    _task_failed_or_cancelled,
+)
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import (
     SessionControlPort,
@@ -67,6 +82,8 @@ class _SnapshotProjection(Protocol):
     def records(self) -> tuple[TranscriptRecordV1, ...]: ...
     @property
     def user_choice(self) -> UserChoicePromptV1 | None: ...
+    @property
+    def truncated(self) -> bool: ...
 
 
 class _EventProjection(Protocol):
@@ -76,6 +93,8 @@ class _EventProjection(Protocol):
     def text(self) -> str | None: ...
     @property
     def interaction_id(self) -> str | None: ...
+    @property
+    def truncated(self) -> bool: ...
 
 
 SnapshotT = TypeVar("SnapshotT", bound=_SnapshotProjection)
@@ -383,6 +402,176 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
     @classmethod
     def _require_binding(cls, binding: object) -> None:
         _require_hosted_binding(binding, label=cls._product_label)
+
+
+class _ExecutionSessionServiceAdapter(_SessionServiceAdapter[SnapshotT, EventT]):
+    """Publish and settle the optional execution stream on one Hosted Session."""
+
+    _legacy_turns = True
+
+    if TYPE_CHECKING:
+        def start_execution(self, request: ExecutionRequestV1) -> None: ...
+
+    def __init__(
+        self,
+        binding: _HostedBinding[SnapshotT, EventT],
+        *,
+        execution_submission: bool = False,
+    ) -> None:
+        self._content: set[Callable[[ExecutionContentEventV1], None]] = set()
+        self._draft = ""
+        self._truncated = False
+        self._closing = False
+        self._execution_close_task: asyncio.Task[None] | None = None
+        super().__init__(binding, execution_submission=execution_submission)
+
+    def _start_execution_observation(self, source: _HostedBinding[SnapshotT, EventT]) -> None:
+        self._projection = source.project_snapshot()
+        self._guard = ExecutionGuardV1(source_cursor=self._complete_source)
+
+    @property
+    def execution_state(self) -> ExecutionStateV1 | None:
+        return self._guard.state
+
+    async def wait_execution(self, execution_id: str) -> ExecutionOutcomeV1:
+        return await self._guard.wait(execution_id)
+
+    def subscribe_execution_observation(
+        self, listener: Callable[[ExecutionObservationV1], None]
+    ) -> Callable[[], None]:
+        self._require_open()
+        return self._guard.subscribe_observation(listener)
+
+    def interrupt_execution(self, execution_id: str, mode: InterruptModeV1) -> bool:
+        if mode is not InterruptModeV1.WHOLE_EXECUTION:
+            self._require_legacy_turns()
+        self._require_open()
+        return self._guard.interrupt(execution_id, mode)
+
+    async def retry_execution_settlement(self, execution_id: str) -> None:
+        await self._guard.retry_settlement(execution_id)
+
+    async def start_turn(self, text: str) -> None:
+        self._require_legacy_turns()
+        execution_id = "legacy-" + uuid4().hex
+        self.start_execution(ExecutionRequestV1(execution_id, text))
+        outcome = await self.wait_execution(execution_id)
+        if isinstance(outcome.legacy_result, AppFailureV1):
+            raise AppServiceError(outcome.legacy_result.code)
+
+    def steer_turn(self, text: str) -> None:
+        self._require_legacy_turns()
+        super().steer_turn(text)
+
+    def follow_up_turn(self, text: str) -> None:
+        self._require_legacy_turns()
+        super().follow_up_turn(text)
+
+    def interrupt_turn(self) -> bool:
+        self._require_legacy_turns()
+        self._require_open()
+        state = self._guard.state
+        return state is not None and self._guard.interrupt(
+            state.execution_id, InterruptModeV1.LEGACY_TURN_ONLY
+        )
+
+    def _require_legacy_turns(self) -> None:
+        if not self._legacy_turns:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
+    async def snapshot_execution(self) -> ExecutionSourceSnapshotV1:
+        self._require_open()
+        projection, observation = self._projection, self._guard.observation
+        return ExecutionSourceSnapshotV1(
+            source=SessionSnapshotV1(
+                identity=self.identity,
+                title=projection.title,
+                cursor=self._cursor,
+                revision=projection.revision,
+                running=observation.status is ExecutionStatusV1.RUNNING,
+                records=projection.records,
+                user_choice=projection.user_choice,
+            ),
+            observation=observation,
+            draft=self._draft
+            if observation.status is ExecutionStatusV1.RUNNING
+            else "",
+            truncated=self._truncated or projection.truncated,
+        )
+
+    def subscribe_execution_content(
+        self, listener: Callable[[ExecutionContentEventV1], None]
+    ) -> Callable[[], None]:
+        self._require_open()
+        if not callable(listener):
+            raise TypeError("execution content listener must be callable")
+        self._content.add(listener)
+        return lambda: self._content.discard(listener)
+
+    def _observe_projection(
+        self, projection: EventT, event: SessionEventV1
+    ) -> None:
+        self._projection = self._binding.project_snapshot()
+        if event.kind is SessionEventKindV1.ASSISTANT_DELTA:
+            text = self._draft + (event.text or "")
+            self._truncated |= len(text) > 16_384 or projection.truncated
+            self._draft = text[:16_384]
+        elif event.kind in {
+            SessionEventKindV1.ASSISTANT_MESSAGE,
+            SessionEventKindV1.TURN_STARTED,
+            SessionEventKindV1.TURN_COMPLETED,
+            SessionEventKindV1.TURN_INTERRUPTED,
+        }:
+            self._draft = ""
+            self._truncated = False
+        observation = self._guard.observation
+        envelope = ExecutionContentEventV1(
+            event,
+            observation.execution_id
+            if observation.status is ExecutionStatusV1.RUNNING
+            else None,
+        )
+        for listener in tuple(self._content):
+            try:
+                listener(envelope)
+            except Exception:
+                self._content.discard(listener)
+
+    def _complete_source(self) -> int:
+        self._projection = self._binding.project_snapshot()
+        self._draft = ""
+        self._truncated = False
+        return self._cursor
+
+    async def close(self) -> None:
+        self._closing = True
+        task = self._execution_close_task
+        if task is None or _task_failed_or_cancelled(task):
+            task = asyncio.create_task(self._close_execution())
+            task.add_done_callback(_observe_task_result)
+            self._execution_close_task = task
+        await asyncio.shield(task)
+
+    async def _close_execution(self) -> None:
+        state = self._guard.state
+        if state is not None and not state.status.terminal:
+            self._guard.interrupt(state.execution_id, InterruptModeV1.WHOLE_EXECUTION)
+            await self._guard.retry_settlement(state.execution_id)
+        await self._dispose_execution_resources()
+        await super().close()
+        self._content.clear()
+        self._release_execution_resources()
+
+    async def _dispose_execution_resources(self) -> None:
+        """Close Product work after invocation settlement and before closing the Session."""
+
+    def _release_execution_resources(self) -> None:
+        """Drop retained Product work references after the Session closes successfully."""
+
+    def _require_open(self) -> None:
+        super()._require_open()
+        if self._closing:
+            raise RuntimeError(f"{self._product_id}_hosted_session_closed")
 
 
 def _require_hosted_binding(binding: object, *, label: str) -> None:
