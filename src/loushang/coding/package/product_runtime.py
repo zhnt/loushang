@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import inspect
 import json as json
 import os as os
 import sys as sys
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from importlib.metadata import version as version
 from pathlib import Path
-from threading import Lock, RLock
+from threading import Lock
 from typing import Literal, TypedDict, cast
 
 from loushang.coding.plugin_manager.lifecycle import (
@@ -28,10 +26,10 @@ from loushang.coding.resume.activation_attempt_v2 import CodingResumeEffectOwner
 from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._application_runtime import (
+    FencedProductApplicationSelection,
+    LegacyProductWorkspace,
     bind_fenced_product_session_owner,
-    close_product_applications,
     fenced_source_catalog_scope,
-    fingerprint_product_resume_epoch,
     open_fenced_product_management_state,
     prepare_product_state_for_recovery,
     product_management_paths_match,
@@ -381,8 +379,13 @@ def _repair_windows_ordinary_coding_orphan_runtime_leases(
     )
 
 
-class CodingFencedProductApplicationSelection:
+class CodingFencedProductApplicationSelection(
+    FencedProductApplicationSelection[CodingFencedProductApplicationOwner, SettingsManager]
+):
     """Preserve existing storage; select B for fresh or already fenced workspaces."""
+
+    _application_label = "Coding"
+    _resume_epoch_domain = _RESUME_EPOCH_DOMAIN
 
     def __init__(
         self,
@@ -398,12 +401,7 @@ class CodingFencedProductApplicationSelection:
             raise TypeError("Coding Worker candidate selection must be explicit")
         self._windows_candidate = windows_candidate
         self._worker_candidates = worker_candidates
-        self._owners: dict[Path, CodingFencedProductApplicationOwner] = {}
-        self._legacy_workspaces: dict[Path, CodingPluginLifecycleStateLayout] = {}
-        self._retained_owners: list[CodingFencedProductApplicationOwner] = []
-        self._lock = RLock()
-        self._selection_in_progress = False
-        self._fenced = False
+        super().__init__()
 
     def factory_for_session(
         self,
@@ -434,74 +432,12 @@ class CodingFencedProductApplicationSelection:
         require_current_admission: Callable[[], None],
         settings_manager: SettingsManager | None = None,
     ) -> str:
-        """Select original workspace storage without creating a Session lease.
-
-        This may retain compatible storage or initialize/recover Product state.
-        It is an admitted activation step, never a history read or background
-        Plan operation.
-        Caller authority and effect settlement remain original-owner inputs.
-        """
-
-        if not isinstance(workspace, Path) or not workspace.is_absolute():
-            raise ValueError("Coding Resume requires a canonical absolute workspace")
-        if workspace != workspace.resolve(strict=True):
-            raise ValueError("Coding Resume requires a canonical absolute workspace")
-        if not callable(require_current_admission) or inspect.iscoroutinefunction(
-            require_current_admission
-        ):
-            raise TypeError("Coding Resume requires a synchronous current owner check")
-
-        def current() -> None:
-            result = cast(Callable[[], object], require_current_admission)()
-            if result is not None:
-                if inspect.iscoroutine(result):
-                    result.close()
-                raise TypeError("Coding Resume owner check must return None")
-            if self._fenced:
-                raise RuntimeError("Coding Product application is closing")
-
-        with self._workspace_selection_scope():
-            current()
-            self._select_workspace(
-                workspace,
-                settings_manager=settings_manager,
-                require_current_admission=current,
-            )
-            current()
-            return self.resume_epoch_fingerprint(workspace)
-
-    def resume_epoch_fingerprint(self, workspace: Path) -> str:
-        """Observe selected native or compatible storage without activating it.
-
-        This is a data dependency, not content proof or effect settlement. An
-        unselected workspace remains unavailable rather than opening a factory.
-        """
-
-        if not isinstance(workspace, Path) or not workspace.is_absolute():
-            raise ValueError("Coding Resume epoch workspace must be canonical")
-        if workspace != workspace.resolve(strict=True):
-            raise ValueError("Coding Resume epoch workspace must be canonical")
-        with self._lock:
-            owner = self._owners.get(workspace)
-            if self._fenced:
-                raise RuntimeError("Coding Resume epoch is unavailable")
-            legacy_roots = None
-            if owner is None:
-                lifecycle = self._legacy_workspaces.get(workspace)
-                if lifecycle is not None:
-                    epoch = resolve_coding_package_epoch_layout(lifecycle)
-                    legacy_roots = (
-                        epoch.control_root,
-                        lifecycle.root,
-                        lifecycle.package_root,
-                    )
-            return fingerprint_product_resume_epoch(
-                workspace,
-                runtime=None if owner is None else owner.epoch_runtime,
-                legacy_roots=legacy_roots,
-                domain=_RESUME_EPOCH_DOMAIN,
-                label="Coding Resume",
-            )
+        """Select original workspace storage before admitting a Session lease."""
+        return self._prepare_resume_epoch(
+            workspace,
+            require_current_admission=require_current_admission,
+            settings_manager=settings_manager,
+        )
 
     def resume_worker_effect_owner(self, workspace: Path) -> CodingResumeEffectOwnerV1:
         """Freeze the selected Product's original Worker C5 obligation."""
@@ -607,46 +543,14 @@ class CodingFencedProductApplicationSelection:
         )
         return expected_data == observed_data and expected_legacy == observed_legacy
 
-    def fence(self) -> None:
-        with self._lock:
-            self._fenced = True
-
-    def close(self) -> None:
-        with self._lock:
-            if self._selection_in_progress:
-                raise RuntimeError("Coding Product workspace selection is in progress")
-            self._fenced = True
-            self._legacy_workspaces.clear()
-            close_product_applications(self._owners, self._retained_owners)
-
-    @contextmanager
-    def _workspace_selection_scope(
-        self,
-    ) -> Iterator[None]:
-        # Admission may observe the current owner without starting a new selection.
-        with self._lock:
-            if self._selection_in_progress:
-                raise RuntimeError("Coding Product workspace selection is in progress")
-            if self._fenced:
-                raise RuntimeError("Coding Product application is closing")
-            self._selection_in_progress = True
-            try:
-                yield
-            finally:
-                self._selection_in_progress = False
-
-    def _select_workspace(
+    def _open_workspace_selection(
         self,
         workspace: Path,
+        owner: CodingFencedProductApplicationOwner | None,
         *,
         settings_manager: SettingsManager | None,
         require_current_admission: Callable[[], None] | None,
-    ) -> CodingFencedProductApplicationOwner | None:
-        """Use the original selection/recovery path while its lock is held."""
-
-        if self._fenced:
-            raise RuntimeError("Coding Product application is closing")
-        owner = self._owners.get(workspace)
+    ) -> CodingFencedProductApplicationOwner | LegacyProductWorkspace:
         if owner is not None and self._external_bindings_current(
             owner,
             lifecycle=resolve_coding_plugin_lifecycle_state_layout(workspace),
@@ -671,8 +575,9 @@ class CodingFencedProductApplicationSelection:
                     settings_manager=settings_manager,
                 ):
                     _require_current_coding_product_admission(require_current_admission)
-                    self._legacy_workspaces[workspace] = lifecycle
-                    return None
+                    return LegacyProductWorkspace(
+                        epoch.control_root, lifecycle.root, lifecycle.package_root
+                    )
                 # A Linux fresh workspace enters B before any ordinary
                 # Session can prepare a legacy Plugin writer. Native
                 # cutover owns the cross-process fence.
@@ -705,7 +610,7 @@ class CodingFencedProductApplicationSelection:
                     require_current_admission=require_current_admission,
                 )
 
-        selected = open_coding_fenced_product_application_owner(
+        return open_coding_fenced_product_application_owner(
             lifecycle,
             workspace=workspace,
             runtime_version=version("loushang"),
@@ -714,12 +619,6 @@ class CodingFencedProductApplicationSelection:
             windows_candidate=self._windows_candidate,
             require_current_admission=require_current_admission,
         )
-        if owner is not None:
-            self._retained_owners.append(owner)
-        self._owners[workspace] = selected
-        if owner is None:
-            self._legacy_workspaces.pop(workspace, None)
-        return selected
 
 
 @dataclass(slots=True)

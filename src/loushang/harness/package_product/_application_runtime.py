@@ -6,11 +6,22 @@ import inspect
 import json
 import os
 import stat
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal, NamedTuple, Protocol, TypedDict, TypeVar, Unpack, cast
+from threading import RLock
+from typing import (
+    Generic,
+    Literal,
+    NamedTuple,
+    Protocol,
+    TypedDict,
+    TypeVar,
+    Unpack,
+    cast,
+)
 
 from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.plugin_management.assembly import (
@@ -65,6 +76,12 @@ def require_synchronous_admission(
 ) -> None:
     if not callable(check) or inspect.iscoroutinefunction(check):
         raise TypeError(invalid_check)
+    _invoke_current_admission(check, invalid_return=invalid_return)
+
+
+def _invoke_current_admission(
+    check: Callable[[], None], *, invalid_return: str
+) -> None:
     result = cast(Callable[[], object], check)()
     if result is not None:
         if inspect.iscoroutine(result):
@@ -404,11 +421,15 @@ def require_product_owner_for_factory(
     return matching[0]
 
 
-class _CloseableApplication(Protocol):
+class _FencedProductApplication(Protocol):
+    @property
+    def epoch_runtime(self) -> _FencedRuntime: ...
+
     def close(self) -> None: ...
 
 
-_ApplicationT = TypeVar("_ApplicationT", bound=_CloseableApplication)
+_ApplicationT = TypeVar("_ApplicationT", bound=_FencedProductApplication)
+_SettingsT = TypeVar("_SettingsT")
 
 
 def close_product_applications(
@@ -432,3 +453,162 @@ def close_product_applications(
             retained.remove(owner)
     if failures:
         raise failures[0]
+
+
+class LegacyProductWorkspace(NamedTuple):
+    control_root: Path
+    state_root: Path
+    package_root: Path
+
+
+class FencedProductApplicationSelection(Generic[_ApplicationT, _SettingsT], ABC):
+    """Own workspace selection, Resume observation and retained epoch lifetimes."""
+
+    _application_label: str
+    _resume_epoch_domain: bytes
+
+    def __init__(self) -> None:
+        self._owners: dict[Path, _ApplicationT] = {}
+        self._legacy_workspaces: dict[Path, LegacyProductWorkspace] = {}
+        self._retained_owners: list[_ApplicationT] = []
+        self._lock = RLock()
+        self._selection_in_progress = False
+        self._fenced = False
+
+    @abstractmethod
+    def _open_workspace_selection(
+        self,
+        workspace: Path,
+        owner: _ApplicationT | None,
+        *,
+        settings_manager: _SettingsT | None,
+        require_current_admission: Callable[[], None] | None,
+    ) -> _ApplicationT | LegacyProductWorkspace:
+        """Apply Product compatibility and opening policy under the selection lock."""
+        raise NotImplementedError
+
+    def _select_workspace(
+        self,
+        workspace: Path,
+        *,
+        settings_manager: _SettingsT | None,
+        require_current_admission: Callable[[], None] | None,
+    ) -> _ApplicationT | None:
+        self._require_open()
+        previous = self._owners.get(workspace)
+        selected = self._open_workspace_selection(
+            workspace,
+            previous,
+            settings_manager=settings_manager,
+            require_current_admission=require_current_admission,
+        )
+        if isinstance(selected, LegacyProductWorkspace):
+            self._legacy_workspaces[workspace] = selected
+            return None
+        if selected is previous:
+            return selected
+        if previous is not None:
+            self._retained_owners.append(previous)
+        else:
+            self._legacy_workspaces.pop(workspace, None)
+        self._owners[workspace] = selected
+        return selected
+
+    def _prepare_resume_epoch(
+        self,
+        workspace: Path,
+        *,
+        require_current_admission: Callable[[], None],
+        settings_manager: _SettingsT | None = None,
+    ) -> str:
+        """Select and recheck original storage before creating any Session lease."""
+        label = self._application_label
+        _require_canonical_resume_workspace(
+            workspace, message=f"{label} Resume requires a canonical absolute workspace"
+        )
+        invalid_check = f"{label} Resume requires a synchronous current owner check"
+        if not callable(require_current_admission) or inspect.iscoroutinefunction(
+            require_current_admission
+        ):
+            raise TypeError(invalid_check)
+
+        def current() -> None:
+            _invoke_current_admission(
+                require_current_admission,
+                invalid_return=f"{label} Resume owner check must return None",
+            )
+            self._require_open()
+
+        with self._workspace_selection_scope():
+            current()
+            self._select_workspace(
+                workspace,
+                settings_manager=settings_manager,
+                require_current_admission=current,
+            )
+            current()
+            return self.resume_epoch_fingerprint(workspace)
+
+    def resume_epoch_fingerprint(self, workspace: Path) -> str:
+        """Observe the selected storage without opening or repairing a Product."""
+        label = f"{self._application_label} Resume"
+        _require_canonical_resume_workspace(
+            workspace, message=f"{label} epoch workspace must be canonical"
+        )
+        with self._lock:
+            owner = self._owners.get(workspace)
+            if self._fenced:
+                raise RuntimeError(f"{label} epoch is unavailable")
+            return fingerprint_product_resume_epoch(
+                workspace,
+                runtime=None if owner is None else owner.epoch_runtime,
+                legacy_roots=self._legacy_workspaces.get(workspace)
+                if owner is None
+                else None,
+                domain=self._resume_epoch_domain,
+                label=label,
+            )
+
+    def fence(self) -> None:
+        with self._lock:
+            self._fenced = True
+
+    def close(self) -> None:
+        with self._lock:
+            self._reject_nested_selection()
+            self._fenced = True
+            self._legacy_workspaces.clear()
+            close_product_applications(self._owners, self._retained_owners)
+
+    @contextmanager
+    def _workspace_selection_scope(self) -> Iterator[None]:
+        # An admission check can observe the owner without nesting selection.
+        with self._lock:
+            self._reject_nested_selection()
+            self._require_open()
+            self._selection_in_progress = True
+            try:
+                yield
+            finally:
+                self._selection_in_progress = False
+
+    def _reject_nested_selection(self) -> None:
+        if self._selection_in_progress:
+            raise RuntimeError(
+                f"{self._application_label} Product workspace selection is in progress"
+            )
+
+    def _require_open(self) -> None:
+        if self._fenced:
+            raise RuntimeError(
+                f"{self._application_label} Product application is closing"
+            )
+
+
+def _require_canonical_resume_workspace(workspace: Path, *, message: str) -> None:
+    if (
+        not isinstance(workspace, Path)
+        or not workspace.is_absolute()
+        or workspace != workspace.resolve(strict=True)
+    ):
+        raise ValueError(message)
