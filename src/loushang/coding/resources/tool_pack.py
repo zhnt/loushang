@@ -12,10 +12,6 @@ from dataclasses import replace
 from typing import Any, cast
 
 from loushang.agent.types import AgentTool
-from loushang.coding.harness.session.tool_selection import (
-    platform_tool_names,
-    platform_tool_profile,
-)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.tools.authoring import ToolContextProvider
@@ -36,6 +32,10 @@ from loushang.harness.tools.workspace.factory import (
     create_profiled_workspace_tools,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.tools.workspace.selection import (
+    platform_tool_names,
+    platform_tool_profile,
+)
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import ToolOperations
 

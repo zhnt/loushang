@@ -6,9 +6,6 @@ import os as os
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.harness.package_product import (
-    first_snapshot_acceptance,
-)
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal import (
@@ -106,13 +103,14 @@ def accept_coding_first_b_disabled_only(
     review = review_coding_first_b_disabled_only(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
-    return first_snapshot_acceptance.accept_review(
+    return _acceptance_journal.accept_review(
         epoch_runtime,
-        _acceptance_journal,
         accepted_review_id=accepted_review_id,
         current_review_id=review.review_id,
         create=lambda: CodingLegacyDisabledOnlyAcceptanceV1.create(review),
-        expected_store_id=lambda: resolve_coding_package_epoch_layout(lifecycle).store_id,
+        expected_store_id=lambda: (
+            resolve_coding_package_epoch_layout(lifecycle).store_id
+        ),
         changed_review="Disabled-only review ID changed",
         conflict_message="Disabled-only Product acceptance conflicts with prior review",
     )
@@ -126,9 +124,8 @@ def read_coding_first_b_disabled_only_acceptance(
 ) -> CodingLegacyDisabledOnlyAcceptanceV1 | None:
     """Read a committed acceptance without creating or repairing Product state."""
 
-    return first_snapshot_acceptance.read_acceptance(
+    return _acceptance_journal.read_acceptance(
         epoch_runtime,
-        _acceptance_journal,
         expected_store_id=resolve_coding_package_epoch_layout(lifecycle).store_id,
         review=lambda: review_coding_first_b_disabled_only(
             lifecycle, epoch_runtime, settings_manager=settings_manager

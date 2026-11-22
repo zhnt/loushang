@@ -10,7 +10,7 @@ import json
 import os
 import secrets
 import stat
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -72,6 +72,9 @@ from loushang.harness.resources.packages.product_contract import (
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    _LegacyLocalWheelFields,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
 )
@@ -82,6 +85,8 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
+from ._legacy_inventory import _BindingHead
+from ._legacy_runtime import _FencedRuntime
 from ._plugin_bootstrap import (
     _PluginBootstrapPolicy,
     _product_plugin_runtime,
@@ -155,6 +160,59 @@ class _FirstAcceptanceJournal(Generic[RecordT]):
     windows_untouched_message: str = ""
     postcheck: Literal["separate", "combined"] = "separate"
     check_replay_epoch: bool = False
+
+    def accept_review(
+        self,
+        runtime: _FencedRuntime,
+        *,
+        accepted_review_id: str,
+        current_review_id: str,
+        create: Callable[[], RecordT],
+        expected_store_id: Callable[[], str],
+        changed_review: str,
+        conflict_message: str,
+    ) -> RecordT:
+        if accepted_review_id != current_review_id:
+            raise self.error_type(changed_review)
+        proposed = create()
+        self._require_store(runtime, expected_store_id())
+        return self.accept(runtime, proposed, conflict_message=conflict_message)
+
+    def read_acceptance(
+        self,
+        runtime: _FencedRuntime,
+        *,
+        expected_store_id: str,
+        review: Callable[[], ReviewT],
+        create: Callable[[ReviewT], RecordT],
+        conflict_message: str,
+        check_epoch_before_read: bool = False,
+        empty_is_missing: bool = True,
+    ) -> RecordT | None:
+        self._require_store(runtime, expected_store_id)
+        if check_epoch_before_read:
+            runtime.assert_current()
+        path = runtime.control_root / "product-state" / self.filename
+        if check_epoch_before_read:
+            records = self.records(
+                path,
+                windows=isinstance(runtime, PackageProductWindowsFencedRuntimeOwner),
+            )
+        else:
+            records = self.records(path)
+        if records is None or (empty_is_missing and not records):
+            if check_epoch_before_read:
+                runtime.assert_current()
+            return None
+        current_review = review()
+        if len(records) != 1 or records[0] != create(current_review):
+            raise self.error_type(conflict_message)
+        runtime.assert_current()
+        return records[0]
+
+    def _require_store(self, runtime: _FencedRuntime, expected_store_id: str) -> None:
+        if runtime.registry.store_id != expected_store_id:
+            raise self.error_type("Product Store changed")
 
     def accept(
         self,
@@ -455,12 +513,66 @@ class _AcceptedReview(Protocol):
     @property
     def configured_plugin_source_scope(self) -> str | None: ...
 
+    @property
+    def desired_state(self) -> str: ...
+
+    @property
+    def legacy_binding_digest(self) -> str: ...
+
+    @property
+    def source_content_digest(self) -> str: ...
+
+    @property
+    def manifest_digest(self) -> str: ...
+
+    @property
+    def dependency_lock_digest(self) -> str: ...
+
+    @property
+    def wheel_filename(self) -> str: ...
+
+    @property
+    def wheel_artifact_digest(self) -> str: ...
+
 
 class _AcceptedSource(Protocol):
     @property
     def acceptance_id(self) -> str: ...
     @property
     def review(self) -> _AcceptedReview: ...
+
+    @property
+    def resource_kind(self) -> str: ...
+
+
+def verify_accepted_legacy_wheel(
+    accepted: _AcceptedSource,
+    binding: _BindingHead,
+    wheel: _LegacyLocalWheelFields,
+    *,
+    desired_state: str,
+    inspected_kind: str,
+    error_type: type[Exception],
+) -> None:
+    """Prove that the live artifact still matches the approved selection."""
+    review = accepted.review
+    if (
+        inspected_kind != accepted.resource_kind
+        or desired_state != review.desired_state
+        or binding.plugin_id != review.plugin_id
+        or binding.source_identity != review.legacy_source_identity
+        or binding.binding_digest != review.legacy_binding_digest
+        or binding.content_digest != review.source_content_digest
+        or binding.manifest_digest != review.manifest_digest
+        or binding.dependency_lock.digest != review.dependency_lock_digest
+        or wheel.plugin_id != review.plugin_id
+        or wheel.original_source_identity != review.legacy_source_identity
+        or wheel.source_content_digest != review.source_content_digest
+        or wheel.manifest_digest != review.manifest_digest
+        or wheel.filename != review.wheel_filename
+        or wheel.artifact_digest != review.wheel_artifact_digest
+    ):
+        raise error_type("Legacy local Source differs from accepted review")
 
 
 @dataclass(frozen=True, slots=True)
@@ -469,6 +581,44 @@ class _FrozenSources:
     by_plugin: Mapping[str, _ConfiguredSource | None]
     ordered_paths: dict[str, tuple[str, ...]]
     raw_digests: dict[str, str]
+
+
+def project_frozen_legacy_sources(
+    acceptance: _AcceptedSource,
+    projection: dict[str, object],
+    *,
+    projection_digest: str,
+    by_plugin: Mapping[str, _ConfiguredSource | None],
+    error_type: type[Exception],
+) -> _FrozenSources:
+    """Join the accepted source, original ordering and locked settings digests."""
+    review = acceptance.review
+    if review.plugin_id not in by_plugin:
+        raise error_type("Accepted Plugin differs from first-fence Installation")
+    configured = by_plugin[review.plugin_id]
+    if (
+        None if configured is None else configured.scope
+    ) != review.configured_plugin_source_scope:
+        raise error_type("Accepted configured Source differs from first fence")
+    scopes = projection["scopes"]
+    assert isinstance(scopes, dict)
+    ordered_paths: dict[str, tuple[str, ...]] = {}
+    raw_digests: dict[str, str] = {}
+    for scope in ("global", "project"):
+        layer = scopes[scope]
+        paths = tuple(layer["sourcePatch"].get("plugin_sources", ()))
+        ordered_paths[scope] = paths
+        if paths:
+            raw_digest = layer["rawSha256"]
+            if not isinstance(raw_digest, str):
+                raise error_type(
+                    "Configured Source settings snapshot has no raw digest"
+                )
+            raw_digests[scope] = raw_digest
+    matched = {item.path for item in by_plugin.values() if item is not None}
+    if matched != set(ordered_paths["global"] + ordered_paths["project"]):
+        raise error_type("Installed Source set differs from configured Sources")
+    return _FrozenSources(projection_digest, by_plugin, ordered_paths, raw_digests)
 
 
 class _SourceConsumptionSettings(Protocol):
@@ -752,6 +902,58 @@ class _SourceConsumptionProtocol:
                     yield target
         finally:
             os.close(descriptor)
+
+
+def resolve_legacy_accepted_source(
+    product: _ProductOwner,
+    *,
+    plugin_id: str,
+    source_trust_class: str,
+    artifact_digest: str,
+    wheel_filename: str,
+    error_type: type[Exception],
+) -> PackageProductLocalWheelBindingV1:
+    """Resolve one exact approved policy binding for install or enable."""
+    sources = tuple(
+        binding
+        for binding in product.policy.bindings
+        if binding.plugin_id == plugin_id
+        and binding.source_trust_class == source_trust_class
+        and binding.artifact_digest == artifact_digest
+        and Path(binding.source_identity).name == wheel_filename
+    )
+    if len(sources) != 1:
+        raise error_type(
+            "Legacy local Installation has no exact Product Source binding"
+        )
+    return sources[0]
+
+
+def match_legacy_replay_source(
+    bindings: Sequence[PackageProductLocalWheelBindingV1],
+    accepted: _AcceptedSource,
+    *,
+    plugin_id: str,
+    trust_classes: Collection[str],
+    expected_trust: str,
+) -> tuple[bool, PackageProductLocalWheelBindingV1 | None]:
+    """Report whether the selected legacy binding is absent or exactly approved."""
+    matches = tuple(
+        item
+        for item in bindings
+        if item.plugin_id == plugin_id and item.source_trust_class in trust_classes
+    )
+    if not matches:
+        return True, None
+    candidate = matches[0]
+    if (
+        len(matches) != 1
+        or candidate.source_trust_class != expected_trust
+        or candidate.artifact_digest != accepted.review.wheel_artifact_digest
+        or Path(candidate.source_identity).name != accepted.review.wheel_filename
+    ):
+        return False, None
+    return True, candidate
 
 
 @dataclass(frozen=True)

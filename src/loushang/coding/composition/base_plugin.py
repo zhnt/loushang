@@ -13,12 +13,6 @@ from loushang.coding.composition.base_owners import (
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.sets import CodingCompositionSetPlan
-from loushang.coding.harness.session.catalog_preparation import (
-    select_resource_plan,
-)
-from loushang.coding.harness.session.registration_authority import (
-    bind_compiled_registration_authority,
-)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
@@ -79,7 +73,9 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginCompositionPreparation,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
+    bind_compiled_registration_authority,
     prepare_product_plugin_composition,
+    select_resource_plan,
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
 

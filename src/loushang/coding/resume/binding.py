@@ -10,15 +10,19 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from loushang.ai.types import UserMessage
 from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
-from loushang.coding.harness.session import resume_records as _records
-from loushang.coding.harness.session.selected_ancestry import SelectedAncestry
 from loushang.foundation.json import JSONValue, require_json_mapping
+from loushang.harness.transcript import _resume_records as _records
+from loushang.harness.transcript._resume_records import SelectedAncestry
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord
+
+if TYPE_CHECKING:
+    from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
+
 
 CODING_RUNTIME_BINDING_METADATA_KEY = "coding.runtimeBindingV1"
 CODING_RUNTIME_BINDING_VERSION = 1
@@ -232,6 +236,25 @@ def inspect_coding_runtime_binding(
         difference_codes=cast(tuple[str, ...], tuple(differences)),
     )
     return CodingRuntimeBindingObservation("known", binding)
+
+
+def matches_intent(
+    binding: CodingRuntimeBindingV1,
+    attempt: CodingActivationAttemptV1,
+    *,
+    check_session: bool,
+) -> bool:
+    """Compare common fields after the caller selects the version and parent."""
+    return not (
+        binding.attempt_id != attempt.attempt_id
+        or binding.input_id != attempt.request_id
+        or (check_session and binding.session_id != attempt.session_id)
+        or binding.original_leaf_id != attempt.original_leaf_id
+        or binding.ancestry_digest != attempt.ancestry_digest
+        or binding.planned_fingerprint != attempt.plan_fingerprint
+        or binding.actual_fingerprint != attempt.epoch_fingerprint
+        or binding.subject_digest != attempt.subject_digest
+    )
 
 
 def freeze_coding_user_input(message: UserMessage) -> UserMessage:

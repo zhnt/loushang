@@ -25,6 +25,42 @@ if TYPE_CHECKING:
     )
 
 
+def read_optional_settings_leaf(
+    path: Path,
+    *,
+    maximum_bytes: int,
+    unsafe_message: str,
+    oversized_message: str,
+) -> bytes | None:
+    """Read one bounded settings file without creating a lock or the path."""
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | os.O_NONBLOCK
+            | os.O_NOFOLLOW
+            | os.O_CLOEXEC,
+        )
+    except FileNotFoundError:
+        return None
+    try:
+        opened = os.fstat(descriptor)
+        visible = path.lstat()
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
+            or opened.st_size > maximum_bytes
+        ):
+            raise ValueError(unsafe_message)
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            body = stream.read(maximum_bytes + 1)
+        if len(body) > maximum_bytes:
+            raise ValueError(oversized_message)
+        return body
+    finally:
+        os.close(descriptor)
+
+
 def _read_stable_json_patch(
     path: Path, *, maximum_bytes: Callable[[], int], label: str
 ) -> tuple[bool, str | None, dict[str, object]]:

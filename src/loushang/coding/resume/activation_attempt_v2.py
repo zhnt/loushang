@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
 
-from loushang.coding.harness.session import resume_records as _records
 from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
 from loushang.foundation.json import JSONValue, dump_json_value
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
+from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript.kinds import EXTENSION_DATA_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord, ExtensionData
 

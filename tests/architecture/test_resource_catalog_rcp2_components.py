@@ -27,14 +27,8 @@ PRODUCT_COMPOSITION_ASSEMBLY_PATH = Path(
 EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
 CODING_SHADOW_ADAPTER_PATH = Path('src/loushang/coding/resources/catalog.py')
-CODING_CATALOG_ADAPTER_PATH = Path(
-    "src/loushang/coding/harness/session/catalog_adapter.py"
-)
 CODING_PACKAGE_CATALOG_PATH = Path(
-    "src/loushang/coding/harness/session/package_catalog.py"
-)
-CODING_REGISTRATION_AUTHORITY_PATH = Path(
-    "src/loushang/coding/harness/session/registration_authority.py"
+    "src/loushang/coding/composition/package_catalog.py"
 )
 CODING_BOOTSTRAP_PATH = Path('src/loushang/coding/composition/bootstrap.py')
 CODING_BASE_PRODUCT_COMPOSITION_PATH = Path(
@@ -147,11 +141,10 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
             allowed.add("loushang.harness.resource_catalog.session_bootstrap")
         if path in {
             CODING_SHADOW_ADAPTER_PATH,
-            CODING_CATALOG_ADAPTER_PATH,
             CODING_PACKAGE_CATALOG_PATH,
         }:
             allowed.add("loushang.harness.resource_catalog.product_inputs")
-        if path == CODING_CATALOG_ADAPTER_PATH:
+        if path == CODING_SHADOW_ADAPTER_PATH:
             # KD009 §12: the existing Catalog owner binds the loader receipt.
             allowed.add("loushang.harness.resource_catalog._loader_inputs")
         if path == ORCHESTRATION_ROOT / "_loader_inputs.py":
@@ -165,7 +158,6 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
             CODING_BASE_PRODUCT_COMPOSITION_PATH,
             CODING_EXTERNAL_DATA_PRODUCT_COMPOSITION_PATH,
             CODING_SHADOW_ADAPTER_PATH,
-            CODING_CATALOG_ADAPTER_PATH,
             CODING_PACKAGE_CATALOG_PATH,
             CODING_BOOTSTRAP_PATH,
         }:
@@ -272,7 +264,6 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
         if "loushang.harness.resource_catalog.product_inputs" in _imported_modules(path)
     } - {ORCHESTRATION_ROOT / "_loader_inputs.py"} == {
         CODING_SHADOW_ADAPTER_PATH,
-        CODING_CATALOG_ADAPTER_PATH,
         CODING_PACKAGE_CATALOG_PATH,
     }
     imports = _imported_modules(PRODUCT_INPUTS_PATH)
@@ -333,9 +324,8 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
         CODING_PRODUCT_CAPABILITY_COMPOSITION_PATH,
         CODING_LSP_PLUGIN_OPT_IN_PATH,
         CODING_SHADOW_ADAPTER_PATH,
-        CODING_CATALOG_ADAPTER_PATH,
         CODING_PACKAGE_CATALOG_PATH,
-        CODING_REGISTRATION_AUTHORITY_PATH,
+        Path("src/loushang/coding/composition/managed_plugin_preparation.py"),
     }
     imports = _imported_modules(PRODUCT_COMPOSITION_ASSEMBLY_PATH)
     assert not imports & {

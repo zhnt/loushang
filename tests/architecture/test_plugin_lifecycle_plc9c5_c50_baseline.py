@@ -888,6 +888,7 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
         Path("src/loushang/harness/session/_worker_operator_query.py"),
         Path("src/loushang/harness/session/_worker_provider.py"),
+        Path("src/loushang/harness/session/composition_evidence.py"),
     }
     assert _literal_string_collection(WORKER_PUBLIC, "__all__") == (
         CURRENT_WORKER_PUBLIC_EXPORTS
@@ -979,7 +980,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,
-        CODING_ROOT / "harness/worker/pending_session.py",
+        CODING_ROOT / "package/worker_preparation_inputs.py",
         CODING_ROOT / "package/product_worker_capability.py",
         CODING_ROOT / "package/product_worker_activation_state_journal.py",
         CODING_ROOT / "package/product_worker_activation_history.py",

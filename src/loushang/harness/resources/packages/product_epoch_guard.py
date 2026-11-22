@@ -187,6 +187,26 @@ class PackageProductPosixFencedRuntimeOwner:
     def control_root(self) -> Path:
         return self._file_io.root
 
+    def require_existing_product_state_root(self) -> None:
+        """Verify the visible private state directory without preparing it."""
+
+        path = self.control_root / "product-state"
+        descriptor = os.open(
+            path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        )
+        try:
+            opened = os.fstat(descriptor)
+            visible = path.lstat()
+            if (
+                not stat.S_ISDIR(opened.st_mode)
+                or stat.S_IMODE(opened.st_mode) & 0o077
+                or opened.st_uid != os.geteuid()
+                or not os.path.samestat(opened, visible)
+            ):
+                raise ValueError("Fenced Product state root is unsafe")
+        finally:
+            os.close(descriptor)
+
     def prepare_product_state_root(self) -> Path:
         """Create the B Product journal root only after the fence is selected."""
 

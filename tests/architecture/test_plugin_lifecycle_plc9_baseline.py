@@ -65,21 +65,13 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/cli/package_cutover.py"),
     Path("src/loushang/coding/composition/bootstrap.py"),
     Path("src/loushang/coding/composition/continuity.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_builtin_review.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_classification.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_disabled_review.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_local_acceptance.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_removed_review.py"),
-    Path("src/loushang/coding/harness/package_product/legacy_source_matching.py"),
-    Path("src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py"),
-    Path("src/loushang/coding/harness/package_product/startup.py"),
-    Path("src/loushang/coding/harness/session/configured_continuity.py"),
     Path("src/loushang/coding/package/legacy_builtin_review.py"),
     Path("src/loushang/coding/package/legacy_classification.py"),
+    Path("src/loushang/coding/package/legacy_configured_source.py"),
     Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
     Path("src/loushang/coding/package/legacy_disabled_review.py"),
     Path("src/loushang/coding/package/legacy_removed_review.py"),
+    Path("src/loushang/coding/package/legacy_local_acceptance.py"),
     Path("src/loushang/coding/package/legacy_review.py"),
     Path("src/loushang/coding/package/product_runtime.py"),
     Path("src/loushang/coding/package/source_snapshot.py"),
@@ -99,7 +91,7 @@ MANIFEST_ENABLED_FILES = {
     Path("src/loushang/coding/composition/capability_plugins.py"),
     Path("src/loushang/coding/composition/product_capability_plugins.py"),
     Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
-    Path("src/loushang/coding/harness/session/configured_continuity.py"),
+    Path("src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py"),
     Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
@@ -126,16 +118,12 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         ): 1,
         (Path("src/loushang/coding/package/legacy_classification.py"), "<module>"): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_classification.py"
-            ),
-            "classify_workspace_evidence",
+            Path("src/loushang/coding/package/legacy_classification.py"),
+            "classify_coding_legacy_workspace",
         ): 3,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_classification.py"
-            ),
-            "classify_source_projection",
+            Path("src/loushang/coding/package/legacy_classification.py"),
+            "classify_coding_legacy_source_configuration",
         ): 2,
         (Path("src/loushang/coding/package/source_snapshot.py"), "<module>"): 1,
         (
@@ -143,8 +131,8 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             "require_fresh_coding_product_inputs",
         ): 1,
         (
-            Path("src/loushang/coding/harness/package_product/startup.py"),
-            "is_fresh_snapshot",
+            Path("src/loushang/coding/package/product_runtime.py"),
+            "is_coding_fresh_first_b_snapshot",
         ): 1,
         # ARD-008: read effective legacy settings before selecting a storage owner.
         (
@@ -166,11 +154,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "bind_coding_configured_continuity",
-        ): 4,
-        (
-            Path("src/loushang/coding/harness/session/configured_continuity.py"),
-            "bind_configured_continuity",
-        ): 5,
+        ): 6,
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "_configured_sources",
@@ -270,38 +254,28 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "CodingLegacyBuiltinOnlyReviewV1",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_builtin_review.py"
-            ),
-            "validate_review",
+            Path("src/loushang/coding/package/legacy_builtin_review.py"),
+            "CodingLegacyBuiltinOnlyReviewV1.__post_init__",
         ): 4,
         (
             Path("src/loushang/coding/package/legacy_builtin_review.py"),
             "CodingLegacyBuiltinOnlyReviewV1._identity",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_builtin_review.py"
-            ),
-            "decode_review",
+            Path("src/loushang/coding/package/legacy_builtin_review.py"),
+            "CodingLegacyBuiltinOnlyReviewV1.from_dict",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_builtin_review.py"
-            ),
-            "admit_builtin_snapshot",
+            Path("src/loushang/coding/package/legacy_builtin_review.py"),
+            "admit_coding_builtin_only_snapshot",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_builtin_review.py"
-            ),
-            "review_builtin_snapshot",
+            Path("src/loushang/coding/package/legacy_builtin_review.py"),
+            "review_coding_first_b_builtin_only",
         ): 2,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_source_matching.py"
-            ),
-            "index_configured_sources",
+            Path("src/loushang/coding/package/legacy_configured_source.py"),
+            "_index_configured_sources",
         ): 2,
         (
             Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
@@ -320,90 +294,72 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "CodingLegacyDisabledOnlyReviewV1._identity_dict",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_disabled_review.py"
-            ),
-            "decode_review",
+            Path("src/loushang/coding/package/legacy_disabled_review.py"),
+            "CodingLegacyDisabledOnlyReviewV1.from_dict",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_disabled_review.py"
-            ),
-            "review_disabled_snapshot",
+            Path("src/loushang/coding/package/legacy_disabled_review.py"),
+            "review_coding_first_b_disabled_only",
         ): 3,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_local_acceptance.py"
-            ),
-            "create_acceptance",
+            Path("src/loushang/coding/package/legacy_local_acceptance.py"),
+            "CodingLegacyLocalAcceptanceV1.create",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_local_acceptance.py"
-            ),
-            "require_frozen_review",
+            Path("src/loushang/coding/package/legacy_local_acceptance.py"),
+            "_require_frozen_review",
         ): 2,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/reviewed_plugin_adoption.py"
-            ),
-            "reviewed_disabled_ids",
+            Path("src/loushang/coding/package/legacy_review.py"),
+            "_reviewed_disabled_ids",
         ): 1,
         (
             Path("src/loushang/coding/package/legacy_removed_review.py"),
             "CodingLegacyRemovedReviewV1",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_removed_review.py"
-            ),
-            "validate_review",
+            Path("src/loushang/coding/package/legacy_removed_review.py"),
+            "CodingLegacyRemovedReviewV1.__post_init__",
         ): 4,
         (
             Path("src/loushang/coding/package/legacy_removed_review.py"),
             "CodingLegacyRemovedReviewV1._identity",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_removed_review.py"
-            ),
-            "decode_review",
+            Path("src/loushang/coding/package/legacy_removed_review.py"),
+            "CodingLegacyRemovedReviewV1.from_dict",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_removed_review.py"
-            ),
-            "admit_removed_snapshot",
+            Path("src/loushang/coding/package/legacy_removed_review.py"),
+            "admit_coding_removed_local_snapshot",
         ): 1,
         (
-            Path(
-                "src/loushang/coding/harness/package_product/legacy_removed_review.py"
-            ),
-            "review_removed_snapshot",
-        ): 3,
+            Path("src/loushang/coding/package/legacy_removed_review.py"),
+            "review_coding_first_b_removed_local",
+        ): 2,
         (
             Path("src/loushang/coding/package/legacy_review.py"),
             "CodingLegacyLocalAdoptionReviewV1",
         ): 1,
         (
-            Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
-            "validate_review",
+            Path("src/loushang/coding/package/legacy_review.py"),
+            "CodingLegacyLocalAdoptionReviewV1.__post_init__",
         ): 3,
         (
             Path("src/loushang/coding/package/legacy_review.py"),
             "CodingLegacyLocalAdoptionReviewV1._identity_dict",
         ): 2,
         (
-            Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
-            "decode_review",
+            Path("src/loushang/coding/package/legacy_review.py"),
+            "CodingLegacyLocalAdoptionReviewV1.from_dict",
         ): 1,
         (
-            Path("src/loushang/coding/harness/package_product/legacy_local_review.py"),
-            "review_local_source",
+            Path("src/loushang/coding/package/legacy_review.py"),
+            "review_coding_legacy_installed_local_source",
         ): 2,
         (
-            Path("src/loushang/coding/harness/package_product/startup.py"),
-            "bootstrap_accepted_disabled_plugins",
+            Path("src/loushang/coding/package/product_runtime.py"),
+            "bootstrap_coding_accepted_disabled_only_product_plugins",
         ): 1,
     }
 )
@@ -426,8 +382,8 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
             "_resolve_managed_capability_plugins",
         ): 1,
         (
-            Path("src/loushang/coding/harness/session/configured_continuity.py"),
-            "_reconcile_enabled_instances",
+            Path("src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py"),
+            "reconcile_enabled_continuity_instances",
         ): 1,
         (
             Path("src/loushang/harness/plugin_management/configured_sources.py"),
@@ -1126,34 +1082,18 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
         # Fresh B state is opened only behind the fenced Coding Product owner;
         # the management service remains the sole desired-state mutation site.
         (
-            Path("src/loushang/coding/harness/package_product/application_runtime.py"),
-            "open_product_state",
+            Path("src/loushang/harness/package_product/_application_runtime.py"),
+            "open_fenced_product_management_state",
         ),
         # P1 transition-status reads keep the CLI on the same read-only ledger.
         (
-            Path("src/loushang/coding/package/management_binding.py"),
-            "read_coding_fenced_desired_transition",
+            Path("src/loushang/harness/package_product/_application_runtime.py"),
+            "read_fenced_product_desired_transition",
         ),
     }
     assembly = Path("src/loushang/harness/plugin_management/assembly.py")
-    cli = Path("src/loushang/coding/package/management_binding.py")
-    legacy_sites = other_sites | {
-        (assembly, "bind_plugin_management_core"),
-        (cli, "_ProductCliOwner.open"),
-        (
-            Path("src/loushang/coding/harness/package_product/preview.py"),
-            "open_preview",
-        ),
-        (
-            Path("src/loushang/coding/harness/plugin_management/private_data_read.py"),
-            "open_read_scope",
-        ),
-    }
     shared_sites = other_sites | {(assembly, "bind_plugin_desired_state")}
-    assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") in (
-        legacy_sites,
-        shared_sites,
-    )
+    assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") == shared_sites
 
     synthetic_path = Path("src/loushang/example/rogue_writer.py")
     synthetic_source = """

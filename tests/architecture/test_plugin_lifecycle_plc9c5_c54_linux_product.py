@@ -14,10 +14,6 @@ CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
 PRODUCT_WORKER_BOUNDED_IMPORTS = {
-    CODING_ROOT / "harness/worker/pending_session.py": {
-        "loushang.harness.worker._ordinary_prepare",
-        "loushang.harness.worker.product_activation",
-    },
     CODING_ROOT / "package/product_worker_windows_native_approval_owner.py": {
         "loushang.harness.worker.history._native_approval",
     },
@@ -286,6 +282,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._start_gate"
     },
     CODING_ROOT / 'package/worker_preparation_inputs.py': {
+        "loushang.harness.worker._ordinary_prepare",
         'loushang.harness.worker.capability_query',
         'loushang.harness.worker.contracts',
         'loushang.harness.worker.product_activation',

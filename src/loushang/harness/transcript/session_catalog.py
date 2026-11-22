@@ -50,6 +50,7 @@ from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
     load_agent_transcript_file,
+    load_agent_transcript_file_with_content_digest,
     load_agent_transcript_header,
 )
 from loushang.harness.transcript.kinds import (
@@ -1442,6 +1443,29 @@ def session_summary_authority_is_current(summary: SessionSummary) -> bool:
     except OSError:
         return False
     return current is not None and current.fingerprint == summary.authority_fingerprint
+
+
+def capture_transcript_history_snapshot(
+    path: str | Path,
+    *,
+    max_bytes: int,
+    expected_source_fingerprint: str | None,
+    label: str,
+) -> tuple[ConversationHeader, list[AgentTranscriptRecord], str, str]:
+    """Read stable full history and keep both identity and byte digest."""
+    source_path = Path(path)
+    source_fingerprint = session_file_authority_fingerprint(source_path)
+    if (
+        expected_source_fingerprint is not None
+        and source_fingerprint != expected_source_fingerprint
+    ):
+        raise ValueError(f"{label} source changed before snapshot")
+    header, records, content_digest = load_agent_transcript_file_with_content_digest(
+        source_path, max_bytes=max_bytes, read_only=True
+    )
+    if session_file_authority_fingerprint(source_path) != source_fingerprint:
+        raise ValueError(f"{label} source changed during snapshot")
+    return header, records, content_digest, source_fingerprint
 
 
 def session_file_authority_fingerprint(path: str | Path) -> str:

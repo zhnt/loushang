@@ -20,14 +20,14 @@ from loushang.coding.composition.capability_plugins import (
 from loushang.coding.composition.product_capability_plugins import (
     coding_session_plugin_state_relative_path,
 )
-from loushang.coding.harness.session.first_input_activation import (
-    bind_first_input_settlement,
-    build_first_input_attempt,
-    require_first_input_attempt,
-)
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
+)
+from loushang.coding.resume.first_input import (
+    bind_first_input_settlement,
+    build_first_input_attempt,
+    require_first_input_attempt,
 )
 from loushang.coding.resume.history import (
     CodingResumeHistoryPreview,

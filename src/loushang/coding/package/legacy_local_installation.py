@@ -7,14 +7,10 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding.harness.package_product import legacy_installation as _programs
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_local_migration import (
     _LegacyLocalInstallation,
-)
-from loushang.harness.package_product.product_local_wheel_runtime import (
-    PosixLocalWheelProductSessionOwner,
-    WindowsLocalWheelProductSessionOwner,
+    resolve_legacy_accepted_source,
 )
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
@@ -86,7 +82,23 @@ def install_coding_accepted_legacy_local_plugin(
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
     try:
-        return _programs.install_accepted_plugin(owner, lifecycle, plugin_id=plugin_id)
+        accepted = _reopen_acceptance(owner, lifecycle, plugin_id)
+        if accepted is None:
+            raise CodingLegacyLocalInstallationError(
+                "Legacy local Installation has no accepted review"
+            )
+        installation = _installation(owner, lifecycle, plugin_id, accepted)
+        command_id, revision = installation.install(
+            allow_enabled=accepted.review.desired_state == "installed_enabled"
+        )
+        owner.epoch_runtime.assert_current()
+        return CodingLegacyLocalInstallReceiptV1(
+            acceptance_id=accepted.acceptance_id,
+            operation_id=installation.install_operation_id,
+            desired_command_id=command_id,
+            plugin_id=plugin_id,
+            package_revision=revision,
+        )
     finally:
         owner.close()
 
@@ -122,13 +134,52 @@ def enable_coding_accepted_legacy_local_data_plugin(
 ) -> CodingLegacyLocalEnablementReceiptV1:
     """Enable one accepted, installed data Resource of the selected type."""
 
-    return _programs.enable_accepted_data_plugin(
+    owner = open_coding_fenced_product_application_owner(
         lifecycle,
         workspace=workspace,
-        plugin_id=plugin_id,
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
-        resource_kind=resource_kind,
+    )
+    try:
+        accepted = _reopen_acceptance(owner, lifecycle, plugin_id)
+        if (
+            accepted is None
+            or accepted.resource_kind != resource_kind
+            or accepted.review.desired_state != "installed_enabled"
+        ):
+            raise CodingLegacyLocalInstallationError(
+                "Legacy local data Resource has no accepted enabled selection"
+            )
+        installation = _installation(owner, lifecycle, plugin_id, accepted)
+        install_command_id, revision = installation.enable()
+        owner.epoch_runtime.assert_current()
+        return CodingLegacyLocalEnablementReceiptV1(
+            acceptance_id=accepted.acceptance_id,
+            install_operation_id=installation.install_operation_id,
+            install_command_id=install_command_id,
+            enable_operation_id=installation.enable_operation_id,
+            plugin_id=plugin_id,
+            package_revision=revision,
+        )
+    finally:
+        owner.close()
+
+
+def _reopen_acceptance(
+    owner: CodingFencedProductApplicationOwner,
+    lifecycle: CodingPluginLifecycleStateLayout,
+    plugin_id: str,
+) -> CodingLegacyLocalAcceptanceV1 | None:
+    runtime = owner.epoch_runtime
+    if not isinstance(runtime, PackageProductPosixFencedRuntimeOwner):
+        raise CodingLegacyLocalInstallationError(
+            "Legacy local migration requires a POSIX Product epoch"
+        )
+    return reopen_coding_legacy_installed_local_acceptance(
+        lifecycle,
+        runtime,
+        plugin_id=plugin_id,
+        policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
     )
 
 
@@ -147,20 +198,37 @@ def _enable_operation_id(store_id: str, acceptance_id: str) -> str:
 
 
 def _installation(
-    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
-    key: PluginInstallationKeyV1,
-    source_identity: str,
+    owner: CodingFencedProductApplicationOwner,
+    lifecycle: CodingPluginLifecycleStateLayout,
+    plugin_id: str,
     accepted: CodingLegacyLocalAcceptanceV1,
-    *,
-    install_operation_id: str,
 ) -> _LegacyLocalInstallation:
+    product = owner.runtime_owner.product_owner
+    review = accepted.review
+    source = resolve_legacy_accepted_source(
+        product,
+        plugin_id=plugin_id,
+        source_trust_class=trust_class_for_legacy_data_resource(accepted.resource_kind),
+        artifact_digest=review.wheel_artifact_digest,
+        wheel_filename=review.wheel_filename,
+        error_type=CodingLegacyLocalInstallationError,
+    )
+    install_operation_id = _install_operation_id(
+        review.store_id, accepted.acceptance_id
+    )
+    key = PluginInstallationKeyV1(
+        product_id=_PRODUCT_ID,
+        installation_scope="workspace",
+        scope_id=lifecycle.scope_id,
+        plugin_id=plugin_id,
+    )
     return _LegacyLocalInstallation(
         product=product,
         key=key,
-        source_identity=source_identity,
+        source_identity=source.source_identity,
         install_operation_id=install_operation_id,
         enable_operation_id=_enable_operation_id(
-            accepted.review.store_id, accepted.acceptance_id
+            review.store_id, accepted.acceptance_id
         ),
         error_type=CodingLegacyLocalInstallationError,
         session_id_prefix="coding-legacy-local:",

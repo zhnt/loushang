@@ -27,11 +27,15 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductEntrypoint,
     PackageProductLifecycleIntentV1,
 )
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
+)
 from loushang.harness.resources.packages.product_handoff import (
     package_product_command_identity,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
+    PackageProductLocalWheelPolicy,
     PackageProductLocalWorkerAdmissionV1,
 )
 from loushang.harness.resources.plugins.declarations import (
@@ -52,6 +56,7 @@ from .product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
+    _LocalWheelSelectedManifestReader,
 )
 from .product_runtime import PackageProductRuntimeRequestV1
 
@@ -198,6 +203,47 @@ def verify_product_selected_worker_candidate(
     ):
         raise WorkerPackageCandidateError("worker_candidate_selection_mismatch")
     return candidate
+
+
+def read_selected_worker_candidate(
+    runtime: PackageProductPosixFencedRuntimeOwner,
+    selected_manifests: _LocalWheelSelectedManifestReader,
+    policy: PackageProductLocalWheelPolicy,
+    plugin_id: str,
+) -> tuple[WorkerPackageCandidateV1, str, WorkerNativeExecutablePlatform]:
+    """Read exact Worker candidate evidence through the caller's fenced owner."""
+
+    runtime.assert_current()
+    selected = selected_manifests.capture_selected_manifest_for_plugin(
+        plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
+    )
+    matches = tuple(
+        binding
+        for binding in policy.bindings
+        if binding.plugin_id == plugin_id
+        and binding.source_trust_class == "local-worker-candidate"
+        and binding.source_identity
+        == selected.snapshot.package_revision.package_source_identity
+        and binding.artifact_digest == selected.snapshot.root_ref.artifact_digest
+        and binding.worker_admission is not None
+    )
+    if len(matches) != 1:
+        raise ValueError("Selected Worker Product binding is unavailable")
+    admission = matches[0].worker_admission
+    assert admission is not None
+    candidate = verify_product_selected_worker_candidate(
+        selected,
+        contribution_id=admission.contribution_id,
+        native_platform=admission.native_platform,
+    )
+    if candidate.owner_id != admission.owner_id:
+        raise ValueError("Selected Worker Product owner changed")
+    runtime.assert_current()
+    return (
+        candidate,
+        selected.snapshot.root_ref.artifact_digest,
+        admission.native_platform,
+    )
 
 
 def _read_product_selected_worker_payload_facts(

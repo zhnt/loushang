@@ -7,7 +7,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from loushang.coding.harness.session import catalog_adapter
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
@@ -22,6 +21,9 @@ from loushang.harness.capabilities.model_input_contracts import (
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+from loushang.harness.resource_catalog._loader_inputs import (
+    bind_product_catalog_receipt,
+)
 from loushang.harness.resource_catalog.product_inputs import (
     InitialResourceCatalogProductAdapter,
 )
@@ -35,12 +37,14 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelection,
 )
 from loushang.harness.session.product_composition_assembly import (
+    ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
     _complete_catalog_plugin_selection_seed,
     _finalize_catalog_plugin_plan_seed,
     _prepare_catalog_plugin_plan_seed,
+    assemble_product_composition,
 )
 
 _CATALOG_PRODUCT_ID = "coding"
@@ -165,7 +169,10 @@ def prepare_coding_initial_resource_catalog_adapter(
 ) -> InitialResourceCatalogProductAdapter:
     """Consume exactly one owner-issued receipt for a Catalog-owned Session."""
 
-    receipt = catalog_adapter.take_initial_receipt(resource_loader)
+    try:
+        receipt = resource_loader._take_initial_resource_catalog_input_receipt()
+    except (AttributeError, RuntimeError) as exc:
+        raise CodingResourceCatalogAdmissionError(("catalog_receipt_unavailable",)) from exc
     return build_coding_initial_resource_catalog_adapter(
         receipt,
         disabled_skills=disabled_skills,
@@ -196,16 +203,96 @@ def build_coding_initial_resource_catalog_adapter(
 ) -> InitialResourceCatalogProductAdapter:
     """Map one exact loader receipt without reparsing its selected Bundle."""
 
-    return catalog_adapter.build_catalog_adapter(
+    product_label = _CATALOG_PRODUCT_LABEL
+    if not isinstance(receipt, ResourceCatalogInputReceipt):
+        raise TypeError(f"{product_label} Resource Catalog requires an input receipt")
+    source_policy = canonical_coding_resource_catalog_source_policy(
+        source_policy
+    )
+    if product_scope_id is not None and (
+        not isinstance(product_scope_id, str) or not product_scope_id.strip()
+    ):
+        raise ValueError(f"{product_label} Resource Catalog Product scope is invalid")
+    resolved_clock = clock or (lambda: int(time.time()))
+    if not callable(resolved_clock):
+        raise TypeError(f"{product_label} Resource Catalog clock is invalid")
+    resolved_admission_now = (
+        resolved_clock() if package_admission_now is None else package_admission_now
+    )
+    if product_composition is not None and not isinstance(
+        product_composition,
+        ProductCompositionCompilation,
+    ):
+        raise TypeError(
+            f"{product_label} Resource Catalog Product composition is invalid"
+        )
+    if product_selection is not None and not isinstance(
+        product_selection,
+        PluginSelection,
+    ):
+        raise TypeError(
+            f"{product_label} Resource Catalog Product selection is invalid"
+        )
+    if product_composition is not None and product_selection is not None:
+        raise ValueError(
+            f"{product_label} Resource Catalog cannot receive both a composition and selection"
+        )
+    if product_snapshot_resources is not None and product_selection is not None:
+        raise ValueError(
+            f"{product_label} Resource Catalog cannot mix Product snapshot and legacy selection"
+        )
+    if product_snapshot_resources is not None and product_composition is None:
+        raise ValueError(
+            f"{product_label} Resource Catalog Product snapshot requires a composition"
+        )
+    if product_selection is not None and not source_policy.include_package_resources:
+        raise ValueError(
+            f"{product_label} Resource Catalog source policy excludes Product package selection"
+        )
+    if product_composition is None and source_policy.include_package_resources:
+        product_composition = _compile_package_composition(
+            receipt, product_scope_id, resolved_admission_now, product_selection
+        )
+    return bind_product_catalog_receipt(
         receipt,
-        product_scope_id=product_scope_id,
-        disabled_skills=disabled_skills,
+        product_id=_CATALOG_PRODUCT_ID,
+        product_label=product_label,
+        default_policy_revision=source_policy.product_policy_revision,
         product_composition=product_composition,
         product_snapshot_resources=product_snapshot_resources,
+        resolved_admission_now=resolved_admission_now,
+        clock=resolved_clock,
+        include_native_resources=source_policy.include_native_resources,
+        include_package_resources=source_policy.include_package_resources,
+        include_embedded_resources=source_policy.include_embedded_resources,
+        disabled_skills=disabled_skills,
+        reject=CodingResourceCatalogAdmissionError,
+    )
+
+
+def _compile_package_composition(
+    receipt: ResourceCatalogInputReceipt,
+    product_scope_id: str | None,
+    evaluated_at: int,
+    product_selection: PluginSelection | None,
+) -> ProductCompositionCompilation | None:
+    plan_seed = prepare_coding_package_plugin_plan_seed(
+        receipt,
+        product_scope_id=product_scope_id,
+        evaluated_at=evaluated_at,
         product_selection=product_selection,
-        package_admission_now=package_admission_now,
-        clock=clock,
-        source_policy=source_policy,
+    )
+    if plan_seed is None:
+        return None
+    seed = finalize_coding_package_plugin_plan_seed(plan_seed)
+    return assemble_product_composition(
+        ProductCompositionAssemblyRequest(
+            selection=seed.selection,
+            owner_bindings=seed.owner_bindings,
+            mandatory_roots=_PACKAGE_CATALOG_REQUIRED_ROOTS,
+            definitions=_PACKAGE_CATALOG_DEFINITIONS,
+        ),
+        evaluated_at=evaluated_at,
     )
 
 

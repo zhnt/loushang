@@ -15,8 +15,9 @@ from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
     resolve_coding_composition_set,
 )
-from loushang.coding.harness.session.composition_history import compare_history
 from loushang.coding.resume.history import CodingResumeHistoryPreview
+
+_ComparisonStatus = Literal["same", "changed", "legacy_unknown", "unavailable"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +48,7 @@ def compare_coding_resume_composition(
         or resolve_coding_composition_set(current.set_id) != current
     ):
         raise ValueError("Coding Resume comparison requires a canonical current set")
-    status, origin, difference_codes, reason_codes = compare_history(
+    status, origin, difference_codes, reason_codes = _compare_history(
         history, current, product_id=CODING_PRODUCT_ID
     )
     return CodingResumeCompositionComparisonV1(
@@ -58,6 +59,45 @@ def compare_coding_resume_composition(
         difference_codes=difference_codes,
         reason_codes=reason_codes,
     )
+
+
+def _compare_history(
+    history: CodingResumeHistoryPreview,
+    current: CodingCompositionSetPlan,
+    *,
+    product_id: str,
+) -> tuple[
+    _ComparisonStatus,
+    CodingCompositionProvenanceV1 | None,
+    tuple[str, ...],
+    tuple[str, ...],
+]:
+    """Classify the selected historical facts in the original precedence order."""
+    origin = history.header_preview.composition
+    status: _ComparisonStatus
+    difference_codes: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    if history.header_preview.product_identity != product_id:
+        status, reason_codes = "unavailable", ("history.identity_unverified",)
+    elif history.provenance_conflict:
+        status, reason_codes = "unavailable", ("history.provenance_conflict",)
+    elif history.selected_ancestry_digest is None:
+        status, reason_codes = "unavailable", ("history.ancestry_invalid",)
+    elif history.binding_status in {"unknown_version", "invalid"}:
+        status = "unavailable"
+        reason_codes = (f"history.binding_{history.binding_status}",)
+    elif history.activation_status != "none":
+        status = "unavailable"
+        reason_codes = (f"history.activation_{history.activation_status}",)
+    elif origin is None:
+        status, difference_codes = "legacy_unknown", ("composition.origin_unknown",)
+    elif origin.set_id != current.set_id:
+        status, difference_codes = "changed", ("composition.set_changed",)
+    elif origin.plan_fingerprint != current.fingerprint:
+        status, difference_codes = "changed", ("composition.definition_changed",)
+    else:
+        status = "same"
+    return status, origin, difference_codes, reason_codes
 
 
 __all__ = [

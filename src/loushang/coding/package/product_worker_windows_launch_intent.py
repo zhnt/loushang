@@ -14,13 +14,11 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loushang.coding.harness.worker.windows_admission import (
-    is_attempt_id,
-    is_windows_product,
-)
 from loushang.harness.package_product._worker_windows_attempt import (
     WindowsProductWorkerIntentRecords,
     inspect_windows_product_worker_launch_intents,
+    is_attempt_id,
+    is_windows_product,
     read_windows_product_worker_launch_intent,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
-from loushang.coding.harness.session.tool_selection import peer_tool_names
 from loushang.coding.lsp.tools import (
     DOCUMENT_OUTLINE_TOOL_NAME,
     INSPECT_SYMBOL_TOOL_NAME,
@@ -12,6 +11,7 @@ from loushang.coding.package.worker_tool_identity import (
     CODING_WORKER_QUERY_TOOL_NAME,
 )
 from loushang.coding.resources.tool_pack import CODING_RESERVED_BASE_TOOL_NAMES
+from loushang.harness.tools.workspace.selection import peer_tool_names
 
 CODING_LSP_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
     DOCUMENT_OUTLINE_TOOL_NAME,

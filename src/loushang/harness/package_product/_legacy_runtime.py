@@ -6,7 +6,7 @@ import os
 import stat
 import sys
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,14 +33,20 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackagePosixEpochCutoverResultV1,
+    PackageProductPreBSnapshotOwner,
+    PackageProductPreBSnapshotSharedMemberV1,
+    prepare_legacy_product_cutover_root,
     read_posix_product_pre_b_snapshot,
+    reopen_posix_product_cutover,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
+    PackageProductWindowsPreBSnapshotOwner,
     PackageWindowsEpochCutoverResultV1,
     read_windows_product_pre_b_snapshot,
+    reopen_windows_product_cutover,
 )
 
 _FencedRuntime = (
@@ -51,45 +57,36 @@ _SnapshotStore = (
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _LegacyFirstSnapshot:
-    """Borrow one fenced runtime to read its authenticated, immutable first snapshot."""
+    """Reauthenticate the first fence and its receipt for each observation."""
 
     runtime: _FencedRuntime
-    snapshots: _SnapshotStore
-    receipt_id: str
-    evidence: PackageOfflineRestoreSnapshotEvidenceV1
+    store_id: str
+    control_root: Path
+    snapshot_root: Path
     error_type: type[Exception]
     label: str
 
-    @classmethod
-    def open(
-        cls,
-        runtime: _FencedRuntime,
-        *,
-        store_id: str,
-        control_root: Path,
-        snapshot_root: Path,
-        error_type: type[Exception],
-        label: str,
-    ) -> _LegacyFirstSnapshot:
+    def _open(self) -> tuple[_SnapshotStore, PackageOfflineRestoreSnapshotEvidenceV1]:
+        runtime = self.runtime
         runtime.assert_current()
         fence = runtime.cutover_result.fence
         if (
-            runtime.registry.store_id != store_id
-            or runtime.control_root != control_root
+            runtime.registry.store_id != self.store_id
+            or runtime.control_root != self.control_root
             or fence is None
-            or fence.store_id != store_id
+            or fence.store_id != self.store_id
             or fence.epoch != 1
             or fence.request.prior_epoch != 0
         ):
-            raise error_type(f"{label} first fence is unsupported")
+            raise self.error_type(f"{self.label} first fence is unsupported")
         snapshot_owner = (
             PackageWindowsEpochSnapshotEvidenceStore
             if isinstance(runtime, PackageProductWindowsFencedRuntimeOwner)
             else PackagePosixEpochSnapshotEvidenceStore
         )
-        snapshots = snapshot_owner(snapshot_root, store_id=store_id)
+        snapshots = snapshot_owner(self.snapshot_root, store_id=self.store_id)
         receipt_id = fence.request.snapshot_receipt_id
         evidence = snapshots.snapshot(receipt_id)
         if (
@@ -98,14 +95,15 @@ class _LegacyFirstSnapshot:
             or evidence.snapshot.legacy_root_identity
             != fence.request.legacy_root_identity
         ):
-            raise error_type(f"{label} snapshot is unavailable")
-        return cls(runtime, snapshots, receipt_id, evidence, error_type, label)
+            raise self.error_type(f"{self.label} snapshot is unavailable")
+        return snapshots, evidence
 
     def read_member(
         self, *, domain: str, member_name: str, maximum_bytes: int
     ) -> bytes | None:
-        raw = self.snapshots.read_regular_member(
-            self.receipt_id,
+        snapshots, evidence = self._open()
+        raw = snapshots.read_regular_member(
+            evidence.snapshot.receipt_id,
             domain=domain,
             member_name=member_name,
             maximum_bytes=maximum_bytes,
@@ -114,7 +112,10 @@ class _LegacyFirstSnapshot:
         return raw
 
     def list_members(self, *, domain: str) -> tuple[str, ...]:
-        members = self.snapshots.list_domain_members(self.receipt_id, domain=domain)
+        snapshots, evidence = self._open()
+        members = snapshots.list_domain_members(
+            evidence.snapshot.receipt_id, domain=domain
+        )
         if members is None:
             raise self.error_type(f"{self.label} snapshot disappeared")
         self.runtime.assert_current()
@@ -123,22 +124,125 @@ class _LegacyFirstSnapshot:
     def observe(
         self, *, store_id: str, legacy_root_identity: str
     ) -> PackageLegacyStateEvidenceV1:
+        _, evidence = self._open()
         fence = self.runtime.cutover_result.fence
         if (
             fence is None
             or store_id != fence.store_id
             or legacy_root_identity != fence.request.legacy_root_identity
-            or self.evidence.snapshot.store_id != store_id
+            or evidence.snapshot.store_id != store_id
         ):
             raise self.error_type(f"{self.label} observation authority changed")
         self.runtime.assert_current()
         return PackageLegacyStateEvidenceV1.create(
             store_id=store_id,
             legacy_root_identity=legacy_root_identity,
-            state_digest=self.evidence.snapshot_tree_digest,
-            entry_count=self.evidence.snapshot.entry_count,
-            byte_count=self.evidence.snapshot.byte_count,
+            state_digest=evidence.snapshot_tree_digest,
+            entry_count=evidence.snapshot.entry_count,
+            byte_count=evidence.snapshot.byte_count,
         )
+
+
+def read_fresh_product_source_snapshot(
+    reader: _LegacyFirstSnapshot,
+    *,
+    namespace_id: str,
+    source_member: str,
+    maximum_bytes: int,
+    label: str,
+) -> bytes | None:
+    """Read fresh settings evidence only from the matching, empty first fence."""
+    fence = reader.runtime.cutover_result.fence
+    if fence is None or fence.request.namespace_id != namespace_id:
+        return None
+    for domain in (
+        "binding_history",
+        "desired_state",
+        "enablement_state",
+        "instance_state",
+        "lock_history",
+        "store_bytes",
+    ):
+        if reader.list_members(domain=domain):
+            return None
+    if reader.list_members(domain="source_configuration") != (source_member,):
+        raise RuntimeError(f"{label} fresh Product snapshot is incomplete")
+    raw = reader.read_member(
+        domain="source_configuration",
+        member_name=source_member,
+        maximum_bytes=maximum_bytes,
+    )
+    if raw is None:
+        raise RuntimeError(f"{label} fresh Product snapshot is unavailable")
+    return raw
+
+
+def require_legacy_snapshot_members(
+    list_members: Callable[..., tuple[str, ...] | None],
+    expected: Mapping[str, tuple[str, ...]],
+    *,
+    error: Exception,
+) -> None:
+    """Check observed membership in order, without treating absence as empty."""
+    if any(list_members(domain=domain) != names for domain, names in expected.items()):
+        raise error
+
+
+def prepare_legacy_product_cutover_roots(
+    roots: Iterable[tuple[Path, Path]], *, label: str
+) -> None:
+    """Prepare declared roots in order through the native private owner."""
+    windows = os.name == "nt"
+    for root, private_base in roots:
+        prepare_legacy_product_cutover_root(
+            root, private_base=private_base, windows=windows, label=label
+        )
+
+
+def bind_legacy_pre_b_snapshot_owner(
+    snapshot_root: Path,
+    *,
+    store_id: str,
+    domain_roots: Mapping[str, Path],
+    domain_members: Mapping[str, tuple[str, ...] | None],
+    legacy_root_pointer_name: str,
+    shared_members: tuple[PackageProductPreBSnapshotSharedMemberV1, ...],
+) -> PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner:
+    owner_type = (
+        PackageProductWindowsPreBSnapshotOwner
+        if os.name == "nt"
+        else PackageProductPreBSnapshotOwner
+    )
+    return owner_type(
+        snapshot_root,
+        store_id=store_id,
+        domain_roots=domain_roots,
+        domain_members=domain_members,
+        legacy_root_pointer_name=legacy_root_pointer_name,
+        shared_members=shared_members,
+    )
+
+
+def reopen_legacy_product_cutover(
+    *,
+    authority_root: Path,
+    control_root: Path,
+    store_id: str,
+    epochs_root_name: str,
+    read_only: bool,
+) -> PackagePosixEpochCutoverResultV1:
+    reopen = (
+        reopen_windows_product_cutover
+        if os.name == "nt"
+        else reopen_posix_product_cutover
+    )
+    return reopen(
+        authority_root=authority_root,
+        control_root=control_root,
+        store_id=store_id,
+        epochs_root_name=epochs_root_name,
+        read_only=read_only,
+    )
 
 
 class _LegacyStateRoots(Protocol):
@@ -161,6 +265,13 @@ class _LegacyEpoch(Protocol):
     def control_root(self) -> Path: ...
     @property
     def store_id(self) -> str: ...
+
+
+def matches_epoch_layout(runtime: _FencedRuntime, epoch: _LegacyEpoch) -> bool:
+    return (
+        runtime.registry.store_id == epoch.store_id
+        and runtime.control_root == epoch.control_root
+    )
 
 
 @dataclass(frozen=True, slots=True)

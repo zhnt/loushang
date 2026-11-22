@@ -4,7 +4,6 @@ import asyncio
 import hashlib
 import secrets
 import sys
-import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
@@ -52,6 +51,18 @@ from loushang.coding.composition.invocation_profile import (
     CodingAgentInvocationProductProfile,
     canonical_coding_agent_invocation_product_profile,
 )
+from loushang.coding.composition.managed_plugin_preparation import (
+    _session_manager_plugin_owner_id,
+    bind_deferred_plugin,
+    prepare_managed_plugins,
+)
+from loushang.coding.composition.package_catalog import (
+    CatalogProductAuthority,
+    InitialCatalogHandoff,
+    construct_catalog_session,
+    prepare_catalog_refresh,
+    prepare_fenced_catalog,
+)
 from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PROFILE,
     CODING_PRODUCT_ID,
@@ -81,32 +92,15 @@ from loushang.coding.composition.sets import (
     infer_coding_composition_set,
     resolve_coding_composition_set,
 )
+from loushang.coding.composition.workspace_bootstrap import (
+    bind_session_workspace,
+    bind_workspace_plugins,
+)
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
-from loushang.coding.harness.session.catalog_preparation import (
-    capture_selected_manifests,
-    require_catalog_receipt,
-)
-from loushang.coding.harness.session.managed_plugin_preparation import (
-    bind_deferred_plugin,
-    prepare_managed_plugins,
-)
-from loushang.coding.harness.session.package_catalog import (
-    CatalogProductAuthority,
-    InitialCatalogHandoff,
-    construct_catalog_session,
-    prepare_catalog_refresh,
-    prepare_fenced_catalog,
-)
-from loushang.coding.harness.session.resume_cleanup import discard_candidate
-from loushang.coding.harness.session.tool_selection import initial_tool_names
-from loushang.coding.harness.session.workspace_bootstrap import (
-    bind_session_workspace,
-    bind_workspace_plugins,
-)
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_CAPABILITY_DEFINITION,
@@ -170,6 +164,7 @@ from loushang.coding.resources.tool_authority import (
     CODING_LSP_EXACT_OWNER_TOOL_NAMES,
 )
 from loushang.coding.resources.tool_pack import coding_default_active_tool_names
+from loushang.coding.resume._cleanup import discard_candidate
 from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
@@ -197,6 +192,9 @@ from loushang.harness.environment import LocalHostEnvironmentProbe
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.package_product._selected_plugin_revisions import (
+    capture_selected_manifests,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductRuntimeFactory,
@@ -259,7 +257,10 @@ from loushang.harness.session._cleanup import (
     retain_session_construction_failure,
     run_cleanup_steps,
 )
-from loushang.harness.session.bootstrap_construction import PreparationRootCustody
+from loushang.harness.session.bootstrap_construction import (
+    PreparationRootCustody,
+    require_catalog_receipt,
+)
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
@@ -267,12 +268,11 @@ from loushang.harness.session.product_composition_assembly import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.tools.workspace.selection import initial_tool_names
 from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
-_SESSION_MANAGER_PLUGIN_OWNER_LOCK = threading.Lock()
-_SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE = "_loushang_coding_plugin_owner_id"
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
@@ -535,13 +535,6 @@ def _resolve_coding_kernel_prompt(plan: CodingCompositionSetPlan) -> str:
     if plan.kernel_prompt_revision != CODING_KERNEL_PROMPT_REVISION:
         raise ValueError("Unsupported Coding Kernel Prompt revision")
     return CODING_KERNEL_SYSTEM_PROMPT
-
-
-_MANAGED_PACKAGE_AUTHORITY_MISMATCH = (
-    "Durable Coding base package storage must use the canonical workspace authority",
-    "coding_base_package_authority_mismatch",
-)
-_MANAGED_PACKAGE_REPLAY_CHECK = "coding_base_exact_replay"
 
 
 class CodingPackageProductLegacyPathError(RuntimeError):
@@ -1735,7 +1728,11 @@ def _create_agent_session(
             session_id=session_id,
             bundle=bundle,
             construct=construct_child_session,
-            unpublished_assembly=capability_plugin_assembly,
+            abort_unpublished=(
+                capability_plugin_assembly.abort_unpublished
+                if capability_plugin_assembly is not None
+                else None
+            ),
             cleanup_label="Coding Capability Plugin assembly cleanup",
         )
         process_session = child_session
@@ -1892,23 +1889,7 @@ def _create_agent_session(
         raise retained from error
 
 
-def _session_manager_plugin_owner_id(session_manager: SessionManager) -> str:
-    with _SESSION_MANAGER_PLUGIN_OWNER_LOCK:
-        owner_id = getattr(
-            session_manager,
-            _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE,
-            None,
-        )
-        if owner_id is None:
-            owner_id = f"session-manager:{secrets.token_hex(16)}"
-            setattr(
-                session_manager,
-                _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE,
-                owner_id,
-            )
-        if not isinstance(owner_id, str) or not owner_id:
-            raise RuntimeError("Coding SessionManager Plugin owner id is invalid")
-        return owner_id
+
 
 
 def _dispose_unbound_package_product_runtime(

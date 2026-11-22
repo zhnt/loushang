@@ -50,9 +50,6 @@ from loushang.coding.composition.capability_specs import (
 from loushang.coding.composition.capability_specs import (
     ordered_coding_capability_plugin_specs as ordered_coding_capability_plugin_specs,
 )
-from loushang.coding.harness.session import (
-    selected_plugin_preparation as _preparation_programs,
-)
 from loushang.coding.package.legacy_data_trust import (
     EXTERNAL_DATA_TRUST_CLASSES,
     permits_external_data_owner,
@@ -121,21 +118,6 @@ from loushang.harness.session.product_composition_assembly import (
 
 _MAX_FILES = 64
 _MAX_BYTES = 1024 * 1024
-
-
-_PLUGIN_PREPARATION_PROGRAM_VALUES = {
-    "value_001": "Coding Product base compilation is invalid",
-    "value_002": "Coding Product Session id is invalid",
-    "value_003": "Coding Product Capability configuration is invalid",
-    "value_004": "Coding Product Capability configuration type is invalid",
-    "value_005": "coding.base",
-    "value_006": "Coding Product Capability",
-    "value_007": "Coding Product base selection changed",
-    "value_008": "Coding Product trust policy changed",
-    "value_009": "Coding Product Capability Session id is invalid",
-    "value_010": "Coding Product Capability policy revision is invalid",
-    "value_011": "Coding Product Capability trust policy changed",
-}
 
 
 def coding_session_plugin_state_relative_path(session_id: str) -> Path:
@@ -238,16 +220,130 @@ def prepare_coding_builtin_product_composition(
 ) -> CodingBuiltinProductCompositionPreparation:
     """Compile all first-party Product selections before binding host Providers."""
 
-    return _preparation_programs.prepare_builtin_plugins(
-        product_runtime,
-        base_compilation=base_compilation,
-        session_id=session_id,
-        configurations=configurations,
-        external_data_plugin_ids=external_data_plugin_ids,
-        state_root=state_root,
-        clock=clock,
-        resume_parents=resume_parents,
-    )
+    if not isinstance(base_compilation, CodingBaseProductCompilation):
+        raise TypeError('Coding Product base compilation is invalid')
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError('Coding Product Session id is invalid')
+    if not isinstance(configurations, Mapping) or not configurations:
+        raise ValueError('Coding Product Capability configuration is invalid')
+    specs = ordered_coding_capability_plugin_specs(configurations)
+    if any(
+        (
+            not isinstance(configurations[spec.plugin_id], spec.configuration_type)
+            for spec in specs
+        )
+    ):
+        raise TypeError('Coding Product Capability configuration type is invalid')
+    _read_clock(clock)
+    root = _prepare_product_approval_state_root(state_root)
+    with SelectedProductPreparationScope(
+        product_runtime=product_runtime,
+        open_runtime=lambda: open_coding_product_builtin_resolution(
+            product_runtime,
+            capability_plugin_ids=tuple((spec.plugin_id for spec in specs)),
+            external_data_plugin_ids=external_data_plugin_ids,
+        ),
+        selection_id=lambda package: package.manifest.name,
+        selection_items=lambda runtime: runtime.packages,
+        maximum_files=lambda: _MAX_FILES,
+        maximum_bytes=lambda: _MAX_BYTES,
+        label='Coding Product Capability',
+    ) as (runtime, selected):
+        by_id = {item.manifest.name: item for item in selected}
+        base = by_id['coding.base']
+        if (
+            base != base_compilation.selected_manifest
+            or base_compilation.plan.selected_plugin_ids
+            != ('coding.base',)
+            or base_compilation.plan.context.scope_id != f"session:{session_id.strip()}"
+        ):
+            raise ValueError('Coding Product base selection changed')
+        trust_revisions = {
+            _required_trust(item).source_trust_policy_revision
+            for item in selected
+        }
+        if len(trust_revisions) != 1:
+            raise ValueError('Coding Product trust policy changed')
+        plugin_ids = frozenset(configurations)
+        scope_id = base_compilation.plan.context.scope_id
+        policy_revision = base_compilation.plan.context.policy_revision
+        tool_authority = _tool_owner_authority(plugin_ids)
+        seed = _builtin_plan_seed(
+            runtime,
+            selected,
+            base_compilation=base_compilation,
+            configurations=configurations,
+            tool_authority=tool_authority,
+        )
+        request = _bind_default_approval_request_to_plan(
+            create_coding_capability_plugin_composition_request(
+                clock=clock,
+                plugin_ids=plugin_ids,
+                product_policy_revision=policy_revision,
+                source_trust_policy_revision=next(iter(trust_revisions)),
+            ),
+            seed,
+        )
+        selection = _finalize_selection(
+            seed,
+            request=request,
+            scope_id=scope_id,
+            state_root=root,
+            clock=clock,
+            resume_parents=resume_parents,
+        )
+        provider_authorities = _provider_owner_authorities(plugin_ids)
+        selected_seed = complete_coding_package_plugin_selection_seed(
+            seed, selection=selection
+        )
+        product = prepare_product_plugin_composition(
+            _assembly_request(
+                selected_seed,
+                provider_authorities=provider_authorities,
+                owner_candidates=_selected_store_owner_candidates(
+                    selection,
+                    base=base,
+                    selected=tuple((by_id[item] for item in external_data_plugin_ids)),
+                ),
+            ),
+            evaluated_at=_read_clock(clock),
+        )
+        recheck_selected_revisions = selected_runtime_recheck(runtime)
+        capability_preparation = CodingCapabilityPluginCompositionPreparation(
+            request=request,
+            runtime=runtime,
+            selection=selection,
+            product=product,
+            provider_owner_authorities=provider_authorities,
+            tool_owner_authority=tool_authority,
+            scope_id=scope_id,
+            state_root=root,
+            selection_recheck=recheck_selected_revisions,
+            resume_parents=resume_parents,
+        )
+        combined_base = replace(
+            base_compilation,
+            plan=selection.plan,
+            product_composition=product.product_composition,
+            owner_bindings=selected_seed.owner_bindings,
+            resource_bodies=_resource_bodies(
+                base,
+                product.product_composition,
+                external_selected=tuple(
+                    (by_id[plugin_id] for plugin_id in external_data_plugin_ids)
+                ),
+            ),
+            selected_capability_manifests=tuple(
+                (by_id[plugin_id] for plugin_id in sorted(plugin_ids))
+            ),
+            selected_external_data_manifests=tuple(
+                (by_id[plugin_id] for plugin_id in external_data_plugin_ids)
+            ),
+        )
+        return CodingBuiltinProductCompositionPreparation(
+            base_compilation=combined_base,
+            capability_preparation=capability_preparation,
+        )
 
 
 def prepare_coding_product_capability_plugin_composition(
@@ -267,15 +363,91 @@ def prepare_coding_product_capability_plugin_composition(
     requires the normal host-Provider binding and Session graph publication.
     """
 
-    return _preparation_programs.prepare_selected_plugins(
-        product_runtime,
-        session_id=session_id,
-        configurations=configurations,
-        state_root=state_root,
-        clock=clock,
-        product_policy_revision=product_policy_revision,
-        resume_parents=resume_parents,
-    )
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError('Coding Product Capability Session id is invalid')
+    if not isinstance(configurations, Mapping) or not configurations:
+        raise ValueError('Coding Product Capability configuration is invalid')
+    specs = ordered_coding_capability_plugin_specs(configurations)
+    if any(
+        (
+            not isinstance(configurations[spec.plugin_id], spec.configuration_type)
+            for spec in specs
+        )
+    ):
+        raise TypeError('Coding Product Capability configuration type is invalid')
+    if not isinstance(product_policy_revision, str) or not product_policy_revision:
+        raise ValueError('Coding Product Capability policy revision is invalid')
+    _read_clock(clock)
+    root = _prepare_product_approval_state_root(state_root)
+    with SelectedProductPreparationScope(
+        product_runtime=product_runtime,
+        open_runtime=lambda: open_coding_product_capability_resolution(
+            product_runtime, plugin_ids=tuple((spec.plugin_id for spec in specs))
+        ),
+        selection_id=lambda spec: spec.plugin_id,
+        selection_items=lambda runtime: specs,
+        maximum_files=lambda: _MAX_FILES,
+        maximum_bytes=lambda: _MAX_BYTES,
+        label='Coding Product Capability',
+    ) as (runtime, selected):
+        trust_revisions = {
+            item.source_trust_snapshot.source_trust_policy_revision
+            for item in selected
+            if item.source_trust_snapshot is not None
+        }
+        if len(trust_revisions) != 1:
+            raise ValueError('Coding Product Capability trust policy changed')
+        plugin_ids = frozenset(configurations)
+        scope_id = f"session:{session_id.strip()}"
+        tool_authority = _tool_owner_authority(plugin_ids)
+        seed = _product_plan_seed(
+            runtime,
+            selected,
+            configurations=configurations,
+            scope_id=scope_id,
+            product_policy_revision=product_policy_revision,
+            tool_authority=tool_authority,
+        )
+        request = _bind_default_approval_request_to_plan(
+            create_coding_capability_plugin_composition_request(
+                clock=clock,
+                plugin_ids=plugin_ids,
+                product_policy_revision=product_policy_revision,
+                source_trust_policy_revision=next(iter(trust_revisions)),
+            ),
+            seed,
+        )
+        selection = _finalize_selection(
+            seed,
+            request=request,
+            scope_id=scope_id,
+            state_root=root,
+            clock=clock,
+            resume_parents=resume_parents,
+        )
+        provider_authorities = _provider_owner_authorities(plugin_ids)
+        product = prepare_product_plugin_composition(
+            _assembly_request(
+                complete_coding_package_plugin_selection_seed(
+                    seed, selection=selection
+                ),
+                provider_authorities=provider_authorities,
+            ),
+            evaluated_at=_read_clock(clock),
+        )
+        recheck_selected_revisions = selected_runtime_recheck(runtime)
+        return CodingCapabilityPluginCompositionPreparation(
+            request=request,
+            runtime=runtime,
+            selection=selection,
+            product=product,
+            provider_owner_authorities=provider_authorities,
+            tool_owner_authority=tool_authority,
+            scope_id=scope_id,
+            state_root=root,
+            selection_recheck=recheck_selected_revisions,
+            resume_parents=resume_parents,
+        )
 
 
 def _validate_product_lineage(

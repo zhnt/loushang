@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from loushang.coding import _plugins as _coding_plugin_sources
-from loushang.coding.harness.plugin_management.dependency_grants import (
+from loushang.harness.resources.packages.materializer import (
     collect_source_identities,
     resolve_exact_source_grant,
 )

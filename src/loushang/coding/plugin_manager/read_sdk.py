@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
-from loushang.coding.harness.plugin_management import support_read as _programs
 from loushang.coding.package.management_binding import (
     build_coding_fenced_product_management_cli_ports as build_coding_fenced_product_management_cli_ports,
 )
@@ -43,15 +42,15 @@ from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationRequestV1,
     project_plugin_operation_explanation,
 )
+from loushang.harness.plugin_management.support_evidence import (
+    recheck_plugin_support_evidence,
+)
 from loushang.harness.workspace.paths import (
     assert_workspace_directory_identity,
+    capture_workspace_directory_identity,
     is_workspace_directory_identity,
+    require_workspace_directory,
 )
-
-_RUNTIME_PROGRAM_VALUES = {
-    "value_001": "Plugin support Desired State revision is invalid",
-    "value_002": "Plugin support Product evidence gaps are invalid",
-}
 
 
 class CodingPluginManagementReadSdkError(RuntimeError):
@@ -85,7 +84,19 @@ class CodingPluginManagementReadClientV1:
         return self.layout.scope_id
 
     def snapshot(self, query: PluginManagementQueryV1) -> PluginManagementProjectionV1:
-        return _programs.read_fenced_snapshot(self, query)
+        if (
+            not isinstance(query, PluginManagementQueryV1)
+            or query.product_id != CODING_PRODUCT_ID
+            or query.installation_scope != "workspace"
+            or query.scope_id != self.layout.scope_id
+        ):
+            raise ValueError("Plugin management read changed workspace scope")
+        self._assert_workspace_identity()
+        projection = build_coding_fenced_product_management_cli_ports(
+            self.layout, workspace_guard=self._assert_workspace_identity
+        ).queries.snapshot(query)
+        self._assert_workspace_identity()
+        return projection
 
     def management_snapshot(
         self,
@@ -140,8 +151,30 @@ class CodingPluginManagementReadClientV1:
     ) -> dict[str, object]:
         """Join management and Product preview without asserting Session use."""
 
-        return _programs.support_status(
-            self, correlation_id=correlation_id, composition_set_id=composition_set_id
+        from loushang.coding.plugin_manager.support_status import (
+            project_coding_plugin_support_status,
+        )
+
+        before = self.management_snapshot(correlation_id=f"{correlation_id}:before")
+        preview = self.preview_current(
+            correlation_id=f"{correlation_id}:preview",
+            composition_set_id=composition_set_id,
+        )
+        after = self.management_snapshot(correlation_id=f"{correlation_id}:after")
+        policy_revision, authority_revision, settings_revision = (
+            bind_coding_current_preview_query(
+                self.workspace, workspace_guard=self._assert_workspace_identity
+            ).owner_revisions()
+        )
+
+        preview = recheck_plugin_support_evidence(
+            before, preview, after,
+            policy_revision=policy_revision,
+            authority_revision=authority_revision,
+            settings_revision=settings_revision,
+        )
+        return project_coding_plugin_support_status(
+            after, preview, correlation_id=correlation_id
         )
 
     def explain_operation(
@@ -186,9 +219,25 @@ def open_coding_plugin_management_read_client(
     *,
     expected_workspace_identity: tuple[int, int] | None = None,
 ) -> CodingPluginManagementReadClientV1:
-    return _programs.open_read_client(
-        workspace, expected_workspace_identity=expected_workspace_identity
+    root = require_workspace_directory(workspace, unavailable="Plugin management workspace is unavailable")
+    identity = capture_workspace_directory_identity(
+        root, unavailable="Plugin management workspace is unavailable"
     )
+    if (
+        expected_workspace_identity is not None
+        and identity != expected_workspace_identity
+    ):
+        raise CodingPluginManagementReadSdkError(
+            "Coding management workspace changed",
+            code="coding_management_workspace_changed",
+        )
+    client = CodingPluginManagementReadClientV1(
+        workspace=root,
+        layout=resolve_coding_plugin_lifecycle_state_layout(root),
+        workspace_identity=identity,
+    )
+    client.assert_workspace_current()
+    return client
 
 
 def bind_coding_plugin_management_rpc_query(

@@ -21,6 +21,7 @@ from loushang.coding.compaction.adapter import (
 from loushang.coding.compaction.adapter import (
     execute_coding_compaction as _execute_coding_compaction,
 )
+from loushang.coding.composition import runtime_selection
 from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssembly,
     CodingBasePluginAssemblyError,
@@ -35,6 +36,9 @@ from loushang.coding.composition.capability_plugins import (
 )
 from loushang.coding.composition.external_data import (
     CodingExternalDataProductCompilation,
+)
+from loushang.coding.composition.owner_binding import (
+    prepare_owner_bindings,
 )
 from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PROFILE,
@@ -51,16 +55,6 @@ from loushang.coding.composition.runtime_admission import (
     resolve_coding_capability_profile,
 )
 from loushang.coding.composition.sets import CodingCompositionSetPlan
-from loushang.coding.harness.session import runtime_selection
-from loushang.coding.harness.session.composition_receipt import (
-    composition_identity_fields,
-    composition_receipt_matches,
-)
-from loushang.coding.harness.session.owner_binding import (
-    prepare_owner_bindings,
-    rollback_unpublished_construction,
-)
-from loushang.coding.harness.session.tool_selection import default_tool_names
 from loushang.coding.lsp._deferred_generation import (
     CodingDeferredLspGeneration,
     dormant_lsp_tool_infos,
@@ -150,8 +144,15 @@ from loushang.harness.session._resume_continuation import (
     _ResumeRuntimeCandidate,
 )
 from loushang.harness.session.bash import UserBashHookResult, UserBashRequest
+from loushang.harness.session.bootstrap_construction import (
+    rollback_unpublished_construction,
+)
 from loushang.harness.session.changelog import read_changelog_for_cwd
 from loushang.harness.session.composition import sleep_for_retry
+from loushang.harness.session.composition_evidence import (
+    composition_identity_fields,
+    composition_receipt_matches,
+)
 from loushang.harness.session.cwd_audit import CwdBoundServicesAudit
 from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.footer import FooterDataProvider
@@ -171,6 +172,7 @@ from loushang.harness.session.resource_refresh_gate import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.tools.workspace.selection import default_tool_names
 from loushang.harness.transcript import (
     BranchSummaryOutput,
     CompactionPreparation,
@@ -898,8 +900,16 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             rollback_unpublished_construction(
                 error,
                 worker_tool_lease=self._coding_worker_turn_tool_lease,
-                capability_assembly=capability_plugin_assembly,
-                base_assembly=coding_base_plugin_assembly,
+                abort_capability=(
+                    capability_plugin_assembly.abort_unpublished
+                    if capability_plugin_assembly is not None
+                    else None
+                ),
+                close_base=(
+                    coding_base_plugin_assembly.close
+                    if coding_base_plugin_assembly is not None
+                    else None
+                ),
                 owned_side_question=locally_created_side_question_binding,
                 owned_runtime=locally_created_capability_runtime,
                 product_label="Coding",

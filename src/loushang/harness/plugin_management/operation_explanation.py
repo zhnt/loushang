@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
 from loushang.harness.plugin_management.application import (
@@ -238,6 +238,40 @@ class PluginOperationExplanationV1:
             "snapshotStatus": self.snapshot_status,
             "explanationVersion": self.explanation_version,
         }
+
+
+
+def observe_partial_handoff_desired_commit(
+    explanation: PluginOperationExplanationV1,
+    *,
+    operation_id: str,
+    read_handoff: Callable[[str], PackageRetentionHandoffReceiptV1 | None],
+    read_commit: Callable[
+        [PackageRetentionHandoffReceiptV1], tuple[int, dict[str, object], Literal["owner_receipt", "verified_transition"]] | None
+    ],
+) -> PluginOperationExplanationV1:
+    """Attach a verified commit from the exact partially settled handoff."""
+    if (
+        explanation.package.status != "observed"
+        or explanation.package.disposition != "committed"
+        or explanation.handoff_evidence != "incomplete"
+        or explanation.join_status != "same_identity"
+    ):
+        return explanation
+    handoff = read_handoff(operation_id)
+    if (
+        handoff is None
+        or handoff.receipt_id != explanation.handoff_receipt_id
+        or handoff.request.desired_request.operation_id != operation_id
+        or handoff.request.desired_request.command_id != explanation.management_operation_id
+        or handoff.request.desired_request.request_fingerprint
+        != explanation.package.request_fingerprint
+    ):
+        return explanation
+    commit = read_commit(handoff)
+    return explanation if commit is None else replace(
+        explanation, desired_commit_evidence=commit[2]
+    )
 
 
 class PluginOperationExplanationProjector:

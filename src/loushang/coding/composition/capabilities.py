@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from loushang.coding.harness.session.composition_receipt import (
+from loushang.harness.config.agent import CapabilityMountMode
+from loushang.harness.session.composition_evidence import (
     configured_mount_mode,
     parse_mount,
     should_defer_mount,
 )
-from loushang.harness.config.agent import CapabilityMountMode
 
 CODING_ARCH_CAPABILITY = "coding.arch"
 CODING_LSP_CAPABILITY = "coding.lsp"

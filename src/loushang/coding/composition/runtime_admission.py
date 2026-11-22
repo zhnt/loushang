@@ -6,11 +6,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from loushang.coding.composition.plan import CODING_CAPABILITY_PLAN
-from loushang.coding.harness.session.extension_profiles import (
-    prepare_extension_profile,
-    require_compatible_declaration_change,
-    require_supported_resource_baseline,
-)
 from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
     stage_resource_composition_candidate,
@@ -24,6 +19,11 @@ from loushang.harness.runtime import (
     SIDE_QUESTION_PROVIDER_SLOT,
     ResolvedRuntimeProfile,
     RuntimeCapabilityImplementation,
+)
+from loushang.harness.session.extension_profiles import (
+    prepare_extension_profile,
+    require_compatible_declaration_change,
+    require_supported_resource_baseline,
 )
 from loushang.harness.session.legacy_side_question import (
     LegacySideQuestionBinding,
