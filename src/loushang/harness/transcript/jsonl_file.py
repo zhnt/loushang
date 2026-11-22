@@ -19,6 +19,11 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, cast
 
+from loushang.foundation.file_identity import file_status_fingerprint
+from loushang.foundation.file_identity import (
+    regular_file_status_no_follow as _status_is_regular_no_follow,
+)
+from loushang.foundation.file_identity import same_file_status as _same_file_status
 from loushang.foundation.json import validate_json_value
 from loushang.harness.conversation import (
     ConversationHeader,
@@ -761,16 +766,6 @@ def _is_directory_no_follow(path: Path) -> bool:
     )
 
 
-def _status_is_regular_no_follow(status: os.stat_result) -> bool:
-    return stat_module.S_ISREG(status.st_mode) and not (
-        stat_module.S_ISLNK(status.st_mode)
-        or bool(
-            getattr(status, "st_file_attributes", 0)
-            & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-        )
-    )
-
-
 def _absolute_path_preserving_leaf(path: str | Path) -> Path:
     absolute = Path(os.path.abspath(Path(path).expanduser()))
     return absolute.parent.resolve(strict=False) / absolute.name
@@ -783,10 +778,7 @@ def _read_stable_regular_file(
     expected_source_fingerprint: str | None = None,
 ) -> bytes:
     before = path.lstat()
-    fingerprint = (
-        f"stat-v1:{before.st_dev}:{before.st_ino}:{before.st_size}:"
-        f"{before.st_mtime_ns}:{before.st_ctime_ns}"
-    )
+    fingerprint = file_status_fingerprint(before)
     if expected_source_fingerprint is not None and fingerprint != expected_source_fingerprint:
         raise OSError("transcript source identity changed before import")
     if not _status_is_regular_no_follow(before):
@@ -909,22 +901,6 @@ def _open_file_no_follow(path: Path, *, flags: int) -> tuple[int, int]:
             _close_read_descriptors(-1, parent, primary=exc)
             raise
     return os.open(path, flags), -1
-
-
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
 
 
 def _reject_json_constant(token: str) -> NoReturn:

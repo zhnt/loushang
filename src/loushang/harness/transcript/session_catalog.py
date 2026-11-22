@@ -21,6 +21,13 @@ from typing import Any, Generic, Literal, TypeVar, cast
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
+from loushang.foundation.file_identity import (
+    file_status_fingerprint as _status_fingerprint,
+)
+from loushang.foundation.file_identity import same_file_status as _same_file_status
+from loushang.foundation.file_identity import (
+    status_is_link_or_reparse as _status_is_link_or_reparse,
+)
 from loushang.foundation.observability import get_log
 from loushang.harness.conversation import (
     ConversationCatalog,
@@ -1556,20 +1563,6 @@ def _bounded_candidate(path: Path) -> _BoundedSessionCandidate | None:
     )
 
 
-def _status_fingerprint(status: os.stat_result) -> str:
-    return (
-        f"stat-v1:{status.st_dev}:{status.st_ino}:{status.st_size}:"
-        f"{status.st_mtime_ns}:{status.st_ctime_ns}"
-    )
-
-
-def _status_is_link_or_reparse(status: os.stat_result) -> bool:
-    return stat_module.S_ISLNK(status.st_mode) or bool(
-        getattr(status, "st_file_attributes", 0)
-        & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    )
-
-
 def _open_file_no_follow(path: Path) -> tuple[int, int]:
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -1584,22 +1577,6 @@ def _open_file_no_follow(path: Path) -> tuple[int, int]:
             os.close(parent)
             raise
     return os.open(path, flags), -1
-
-
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
 
 
 def _bounded_candidate_identities(

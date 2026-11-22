@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import os
-import stat
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -12,6 +11,13 @@ from shutil import copyfileobj
 from typing import Generic, Protocol, TypeVar, Union, cast
 from uuid import uuid4
 
+from loushang.foundation.file_identity import (
+    file_status_fingerprint as _file_status_fingerprint,
+)
+from loushang.foundation.file_identity import (
+    regular_file_status_no_follow as _is_regular_file_no_follow,
+)
+from loushang.foundation.file_identity import same_file_status as _same_file_status
 from loushang.harness.runtime.transition import SessionTransitionHost
 
 S = TypeVar("S")
@@ -424,39 +430,10 @@ def _open_source_no_follow(source: Path) -> tuple[int, int]:
     return os.open(source, file_flags), -1
 
 
-def _is_regular_file_no_follow(metadata: os.stat_result) -> bool:
-    return stat.S_ISREG(metadata.st_mode) and not (
-        stat.S_ISLNK(metadata.st_mode)
-        or bool(
-            getattr(metadata, "st_file_attributes", 0)
-            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-        )
-    )
-
-
 def file_status_fingerprint(metadata: os.stat_result) -> str:
     """Encode the stable local identity carried by discovery projections."""
 
-    return (
-        f"stat-v1:{metadata.st_dev}:{metadata.st_ino}:{metadata.st_size}:"
-        f"{metadata.st_mtime_ns}:{metadata.st_ctime_ns}"
-    )
-
-
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
+    return _file_status_fingerprint(metadata)
 
 
 async def run_replacement_callbacks(

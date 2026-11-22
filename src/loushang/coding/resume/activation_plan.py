@@ -6,7 +6,6 @@ discardable and never constitutes Writer, Plugin, Approval, or Worker authority.
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -33,13 +32,13 @@ from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.session._resume_continuation import (
     activation_plan_fingerprint,
     checked_activation_plan_owner_refs,
+    require_activation_plan_source,
+    require_activation_plan_workspace_root,
 )
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _OWNER = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
 _GENERATION = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
-_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
-_SOURCE_FINGERPRINT = re.compile(r"stat-v1:(?:[0-9]+:){4}[0-9]+\Z")
 
 
 _ACTIVATION_PLAN_MAX_REFS = 64
@@ -133,7 +132,7 @@ def build_session_activation_plan(
 ) -> SessionActivationPlanV1:
     """Aggregate historical facts and existing owner choices without effects."""
 
-    _require_plan_workspace_root(workspace_root)
+    require_activation_plan_workspace_root(workspace_root)
     inputs = checked_activation_plan_owner_refs(
         owner_inputs,
         ActivationOwnerInputRefV1,
@@ -152,31 +151,7 @@ def build_session_activation_plan(
         history, current_composition
     )
     session_id = history.header_preview.header.conversation_id
-    if (
-        type(session_id) is not str
-        or _IDENTIFIER.fullmatch(session_id) is None
-    ):
-        raise ValueError("activation Plan Session id is invalid")
-    if history.selected_leaf_id is not None and (
-        type(history.selected_leaf_id) is not str
-        or _IDENTIFIER.fullmatch(history.selected_leaf_id) is None
-    ):
-        raise ValueError("activation Plan selected leaf id is invalid")
-    if (
-        type(history.source_fingerprint) is not str
-        or _SOURCE_FINGERPRINT.fullmatch(history.source_fingerprint) is None
-    ):
-        raise ValueError("activation Plan source fingerprint is invalid")
-    if (
-        type(history.source_content_digest) is not str
-        or _DIGEST.fullmatch(history.source_content_digest) is None
-    ):
-        raise ValueError("activation Plan source content digest is invalid")
-    if history.selected_ancestry_digest is not None and (
-        type(history.selected_ancestry_digest) is not str
-        or _DIGEST.fullmatch(history.selected_ancestry_digest) is None
-    ):
-        raise ValueError("activation Plan ancestry digest is invalid")
+    require_activation_plan_source(history, session_id=session_id)
     status: Literal["needs_final_validation", "unavailable"] = (
         "unavailable"
         if comparison.status == "unavailable"
@@ -271,7 +246,7 @@ def plan_coding_resume(
     handle, Resource receipt, selected Runtime, or execution authority.
     """
 
-    _require_plan_workspace_root(workspace_root)
+    require_activation_plan_workspace_root(workspace_root)
     inputs: tuple[ActivationOwnerInputRefV1, ...] = ()
     if (
         compare_coding_resume_composition(history, current_composition).status
@@ -291,15 +266,6 @@ def plan_coding_resume(
         workspace_root=workspace_root,
         owner_inputs=inputs,
     )
-
-
-def _require_plan_workspace_root(workspace_root: Path) -> None:
-    if not isinstance(workspace_root, Path) or not workspace_root.is_absolute():
-        raise ValueError("activation Plan requires a canonical absolute workspace root")
-    if str(workspace_root) != os.path.normpath(str(workspace_root)):
-        raise ValueError("activation Plan requires a canonical absolute workspace root")
-    if len(str(workspace_root).encode("utf-8")) > 4096:
-        raise ValueError("activation Plan workspace root exceeds its budget")
 
 
 async def plan_coding_resume_async(
@@ -322,7 +288,7 @@ async def plan_coding_resume_async(
     settlement; no Runtime, Writer, or selected Package escapes this entry.
     """
 
-    _require_plan_workspace_root(workspace_root)
+    require_activation_plan_workspace_root(workspace_root)
     inputs = _resume_domain_input_refs(
         policy_digest=policy_digest, subject_digest=subject_digest
     )

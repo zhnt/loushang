@@ -8,15 +8,19 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import os
+import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import replace
 from datetime import datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.types import ImagePart, UserMessage
+from loushang.foundation.file_identity import is_file_status_fingerprint
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     execution_profile_expansion_codes,
@@ -40,6 +44,53 @@ class _ActivationOwnerRef(Protocol):
 
 
 _RefT = TypeVar("_RefT", bound=_ActivationOwnerRef)
+_PLAN_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
+_PLAN_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+
+
+class _ActivationPlanSource(Protocol):
+    @property
+    def selected_leaf_id(self) -> str | None: ...
+    @property
+    def source_fingerprint(self) -> str: ...
+    @property
+    def source_content_digest(self) -> str: ...
+    @property
+    def selected_ancestry_digest(self) -> str | None: ...
+
+
+def require_activation_plan_workspace_root(workspace_root: Path) -> None:
+    if not isinstance(workspace_root, Path) or not workspace_root.is_absolute():
+        raise ValueError("activation Plan requires a canonical absolute workspace root")
+    if str(workspace_root) != os.path.normpath(str(workspace_root)):
+        raise ValueError("activation Plan requires a canonical absolute workspace root")
+    if len(str(workspace_root).encode("utf-8")) > 4096:
+        raise ValueError("activation Plan workspace root exceeds its budget")
+
+
+def require_activation_plan_source(
+    history: _ActivationPlanSource, *, session_id: str
+) -> None:
+    """Check the typed file identity and ancestry facts before fingerprinting a Plan."""
+    if type(session_id) is not str or _PLAN_IDENTIFIER.fullmatch(session_id) is None:
+        raise ValueError("activation Plan Session id is invalid")
+    if history.selected_leaf_id is not None and (
+        type(history.selected_leaf_id) is not str
+        or _PLAN_IDENTIFIER.fullmatch(history.selected_leaf_id) is None
+    ):
+        raise ValueError("activation Plan selected leaf id is invalid")
+    if not is_file_status_fingerprint(history.source_fingerprint):
+        raise ValueError("activation Plan source fingerprint is invalid")
+    if (
+        type(history.source_content_digest) is not str
+        or _PLAN_DIGEST.fullmatch(history.source_content_digest) is None
+    ):
+        raise ValueError("activation Plan source content digest is invalid")
+    if history.selected_ancestry_digest is not None and (
+        type(history.selected_ancestry_digest) is not str
+        or _PLAN_DIGEST.fullmatch(history.selected_ancestry_digest) is None
+    ):
+        raise ValueError("activation Plan ancestry digest is invalid")
 
 
 def checked_activation_plan_owner_refs(

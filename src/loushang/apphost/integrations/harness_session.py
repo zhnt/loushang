@@ -39,6 +39,7 @@ from loushang.apphost.errors import (
 from loushang.foundation._owned_tasks import (
     _observe_task_result as _observe_background_result,
 )
+from loushang.foundation.file_identity import file_status_fingerprint
 from loushang.harness.conversation import ConversationJsonlHeaderCodec
 from loushang.harness.journal import DEFAULT_JSONL_FORMAT
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
@@ -821,10 +822,7 @@ def _reject_json_constant(_value: str) -> object:
 def _status_fingerprint(status: os.stat_result) -> str:
     if not stat.S_ISREG(status.st_mode):
         raise SessionCandidateStaleError()
-    return (
-        f"stat-v1:{status.st_dev}:{status.st_ino}:{status.st_size}:"
-        f"{status.st_mtime_ns}:{status.st_ctime_ns}"
-    )
+    return file_status_fingerprint(status)
 
 
 __all__ = [
