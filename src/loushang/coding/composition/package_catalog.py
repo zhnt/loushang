@@ -39,6 +39,12 @@ from loushang.coding.resources.catalog import (
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
+from loushang.harness.package_product._selected_plugin_revisions import (
+    ProductAdmissionFailure,
+    capture_selected_manifests,
+    observe_requested_plugins,
+    require_current_manifests,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
@@ -55,25 +61,17 @@ from loushang.harness.resources._catalog_input_receipt import (
 )
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.session._cleanup import run_cleanup_steps
-from loushang.harness.session.bootstrap_construction import PreparationRootCustody
+from loushang.harness.session.bootstrap_construction import (
+    PreparationRootCustody,
+    require_catalog_receipt,
+)
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
     ProductPluginPlanSeed,
     assemble_product_composition,
 )
 
-from .catalog_preparation import (
-    _AdmissionFailure,
-    capture_selected_manifests,
-    observe_requested_plugins,
-    require_catalog_receipt,
-    require_current_manifests,
-)
-
 if TYPE_CHECKING:
-    from loushang.coding.composition.capability_plugins import (
-        CodingCapabilityPluginCompositionAssembly,
-    )
     from loushang.coding.composition.capability_specs import (
         CodingCapabilityPluginConfig,
     )
@@ -90,7 +88,6 @@ if TYPE_CHECKING:
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.session.bootstrap_services import BootstrapServices
 
-_SessionT = TypeVar("_SessionT")
 _CatalogProjector = Callable[
     ..., tuple["InitialResourceCatalogProductAdapter", "ResourceBundle"]
 ]
@@ -127,7 +124,7 @@ class CatalogProductAuthority:
         return self.runtime
 
     def require_current(
-        self, *, refresh_failure: _AdmissionFailure | None = None
+        self, *, refresh_failure: ProductAdmissionFailure | None = None
     ) -> None:
         """Check admission evidence, with additional membership checks on refresh."""
         if self.capability_selections:
@@ -241,7 +238,7 @@ class InitialCatalogHandoff:
         reconcile_compatibility: Callable[[], None],
         clock: Callable[[], int] | None,
         project_catalog: _CatalogProjector,
-        admission_failure: _AdmissionFailure,
+        admission_failure: ProductAdmissionFailure,
     ) -> ResourceBundle:
         receipt = require_catalog_receipt(loader, cwd, admission_failure)
         evaluated_at = clock() if clock is not None else int(time.time())
@@ -321,16 +318,19 @@ class InitialCatalogHandoff:
         return projection
 
 
+_CatalogSessionT = TypeVar("_CatalogSessionT")
+
+
 def construct_catalog_session(
     adapter: InitialResourceCatalogProductAdapter,
     *,
     product_id: str,
     session_id: str,
     bundle: ResourceBundle,
-    construct: Callable[[InitialSessionResourceCatalogBootstrap], _SessionT],
-    unpublished_assembly: CodingCapabilityPluginCompositionAssembly | None,
+    construct: Callable[[InitialSessionResourceCatalogBootstrap], _CatalogSessionT],
+    abort_unpublished: Callable[[], None] | None,
     cleanup_label: str,
-) -> _SessionT:
+) -> _CatalogSessionT:
     try:
         return adapter.construct_session(
             product_id=product_id,
@@ -339,8 +339,8 @@ def construct_catalog_session(
             construct=construct,
         )
     except BaseException as error:
-        if unpublished_assembly is not None:
-            run_cleanup_steps(error, ((cleanup_label, unpublished_assembly.abort_unpublished),))
+        if abort_unpublished is not None:
+            run_cleanup_steps(error, ((cleanup_label, abort_unpublished),))
         raise
 
 
@@ -365,7 +365,7 @@ def prepare_fenced_catalog(
     ],
     custody: PreparationRootCustody[CodingCapabilityPluginCompositionPreparation],
     resume_parents: CodingResumePluginParents | None,
-    admission_failure: _AdmissionFailure,
+    admission_failure: ProductAdmissionFailure,
     product_label: str,
     cleanup_labels: tuple[str, str],
 ) -> FencedCatalogPreparation:
@@ -491,7 +491,7 @@ def prepare_initial_composition(
         CodingCapabilityPluginCompositionPreparation | None,
     ]
     | None,
-    admission_failure: _AdmissionFailure,
+    admission_failure: ProductAdmissionFailure,
 ) -> tuple[
     ProductCompositionCompilation | None, CodingBasePluginSessionPreparation | None
 ]:
@@ -530,7 +530,7 @@ def prepare_refresh_composition(
     preparation: CodingCapabilityPluginCompositionPreparation | None,
     include_configured: bool,
     require_resource_seed: bool,
-    admission_failure: _AdmissionFailure,
+    admission_failure: ProductAdmissionFailure,
 ) -> ProductCompositionCompilation | None:
     if authority.base is not None:
         return authority.base.product_composition
@@ -577,7 +577,7 @@ def prepare_catalog_refresh(
     disabled_source_policy: CodingResourceCatalogSourcePolicy,
     clock: Callable[[], int],
     project_catalog: _CatalogProjector,
-    admission_failure: _AdmissionFailure,
+    admission_failure: ProductAdmissionFailure,
 ) -> InitialSessionResourceCatalogBootstrap:
     """Refresh the Catalog over the original selected composition and receipt."""
     authority.require_current(refresh_failure=admission_failure)

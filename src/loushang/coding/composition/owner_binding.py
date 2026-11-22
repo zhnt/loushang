@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loushang.coding.arch._plugin_tool_owner import CodingArchToolRegistrationSlot
 from loushang.coding.composition.base_owners import CodingBaseToolRegistrationSlot
 from loushang.coding.composition.base_plugin import build_coding_base_plugin_owners
 from loushang.coding.lsp._plugin_tool_owner import CodingLspToolRegistrationSlot
-from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.command_controller import SessionCommandGenerationRegistry
 from loushang.harness.tools.workspace.factory import ToolsOptions
 
@@ -25,15 +24,11 @@ if TYPE_CHECKING:
         CodingCapabilityPluginCompositionAssembly,
     )
     from loushang.coding.lsp._plugin_tool_owner import CodingLspToolOwner
-    from loushang.harness.capabilities import StagedResourceCompositionCandidate
     from loushang.harness.config.agent import SettingsManager
     from loushang.harness.diagnostics.service import DiagnosticsService
-    from loushang.harness.runtime.registration import RegistrationLease
-    from loushang.harness.session._cleanup import CleanupStep
     from loushang.harness.session.capability_composition_inputs import (
         SessionCapabilityOwnerGenerationBinding,
     )
-    from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
     from loushang.harness.session.tool_owner_binding import DeferredToolRegistrationSlot
 
 
@@ -143,38 +138,3 @@ def prepare_owner_bindings(
     return PreparedOwnerBindings(
         tuple(owner_bindings), command_generations, tuple(tool_slots)
     )
-
-
-def rollback_unpublished_construction(
-    error: BaseException,
-    *,
-    worker_tool_lease: RegistrationLease | None,
-    capability_assembly: CodingCapabilityPluginCompositionAssembly | None,
-    base_assembly: CodingBasePluginAssembly | None,
-    owned_side_question: LegacySideQuestionBinding | None,
-    owned_runtime: StagedResourceCompositionCandidate | None,
-    product_label: str,
-) -> None:
-    steps: list[CleanupStep] = []
-    if worker_tool_lease is not None:
-        # The cleanup runner discards callback return values.
-        rollback = cast("Callable[[], None]", worker_tool_lease.rollback_registration)
-        steps.append((f"{product_label} Worker turn Tool admission rollback", rollback))
-    if capability_assembly is not None:
-        steps.append(
-            (
-                f"{product_label} Capability Plugin evidence cleanup",
-                capability_assembly.abort_unpublished,
-            )
-        )
-    if base_assembly is not None:
-        steps.append(
-            (f"{product_label} base Plugin evidence cleanup", base_assembly.close)
-        )
-    if owned_side_question is not None:
-        steps.append(
-            ("direct Session side-question cleanup", owned_side_question.dispose)
-        )
-    if owned_runtime is not None:
-        steps.append(("direct Session capability cleanup", owned_runtime.dispose))
-    run_cleanup_steps(error, steps)

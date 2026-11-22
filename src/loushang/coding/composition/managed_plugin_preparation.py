@@ -1,40 +1,81 @@
-"""Prepare managed package state and transfer its cleanup to Session consumers."""
+"""Prepare the selected Coding plugin owners over the existing Session custody."""
 
 from __future__ import annotations
 
+import secrets
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from loushang.coding.composition import bootstrap as _binding
+from loushang.coding.composition.base_plugin import (
+    CodingBasePluginAssembly,
+    CodingBasePluginAssemblyError,
+)
+from loushang.coding.composition.capability_plugins import (
+    CodingCapabilityPluginCompositionAssembly,
+    CodingCapabilityPluginCompositionPreparation,
+    CodingCapabilityPluginCompositionRequest,
+    create_coding_capability_plugin_composition_request,
+    prepare_coding_capability_plugin_composition,
+)
+from loushang.coding.composition.capability_specs import CodingCapabilityPluginConfig
+from loushang.coding.composition.product_capability_plugins import (
+    prepare_coding_product_capability_plugin_composition,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycle,
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.resources.runtime import CodingPackageMaterializer
+from loushang.coding.session.manager import SessionManager
+from loushang.harness.capabilities.provider_binding import (
+    CapabilityBundleProviderBinding,
+)
+from loushang.harness.config.agent import CapabilityMountMode
+from loushang.harness.package_product._selected_plugin_revisions import (
+    ProductAdmissionFailure,
+    capture_enabled_plugin_recheck,
+)
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeBindingV1,
+)
+from loushang.harness.resources.packages.catalog_diagnostics import (
+    record_package_lockfile_diagnostics,
+)
+from loushang.harness.resources.packages.materializer import (
+    GitPackageMaterializerBackend,
+)
+from loushang.harness.session._cleanup import ExplicitTemporaryDirectory
+from loushang.harness.session.bootstrap_services import BootstrapServices
+from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+    share_startup_cleanup,
+)
+from loushang.harness.session.product_composition_assembly import ProductPluginPlanSeed
 
-if TYPE_CHECKING:
-    from loushang.coding.composition.capability_plugins import (
-        CodingCapabilityPluginCompositionRequest,
-    )
-    from loushang.coding.composition.capability_specs import (
-        CodingCapabilityPluginConfig,
-    )
-    from loushang.harness.capabilities.provider_binding import (
-        CapabilityBundleProviderBinding,
-    )
-    from loushang.harness.config.agent import CapabilityMountMode
+_MANAGED_PACKAGE_AUTHORITY_MISMATCH = (
+    "Durable Coding base package storage must use the canonical workspace authority",
+    "coding_base_package_authority_mismatch",
+)
+_MANAGED_PACKAGE_REPLAY_CHECK = "coding_base_exact_replay"
 
-    from .catalog_preparation import _AdmissionFailure
+_SESSION_MANAGER_PLUGIN_OWNER_LOCK = threading.Lock()
+_SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE = "_loushang_coding_plugin_owner_id"
 
 _Cleanup = Callable[[], None]
 _PreparePrimary = Callable[
-    ["_binding.CodingPluginLifecycle", "_binding.PackageMaterializer", _Cleanup | None],
-    "_binding.CodingBasePluginAssembly | None",
+    ["CodingPluginLifecycle", "CodingPackageMaterializer", _Cleanup | None],
+    "CodingBasePluginAssembly | None",
 ]
 
 
 @dataclass(frozen=True, slots=True)
 class ManagedPluginPreparation:
-    lifecycle: _binding.CodingPluginLifecycle
-    materializer: _binding.PackageMaterializer
-    primary: _binding.CodingBasePluginAssembly | None
+    lifecycle: CodingPluginLifecycle
+    materializer: CodingPackageMaterializer
+    primary: CodingBasePluginAssembly | None
     eager_cleanup: _Cleanup | None
     deferred_cleanup: _Cleanup | None
 
@@ -43,7 +84,7 @@ class ManagedPluginPreparation:
         request: CodingCapabilityPluginCompositionRequest,
         configurations: Mapping[str, CodingCapabilityPluginConfig],
         *,
-        session_manager: _binding.SessionManager,
+        session_manager: SessionManager,
         session_id: str,
         state_root: Path,
         clock: Callable[[], int],
@@ -51,17 +92,17 @@ class ManagedPluginPreparation:
         management_cleanup: _Cleanup | None,
         state_cleanup: _Cleanup | None,
         private_state_cleanup: _Cleanup | None = None,
-        base: _binding.CodingBasePluginAssembly | None = None,
-        plan_seed: _binding.ProductPluginPlanSeed | None = None,
-    ) -> _binding.CodingCapabilityPluginCompositionPreparation:
-        return _binding.prepare_coding_capability_plugin_composition(
+        base: CodingBasePluginAssembly | None = None,
+        plan_seed: ProductPluginPlanSeed | None = None,
+    ) -> CodingCapabilityPluginCompositionPreparation:
+        return prepare_coding_capability_plugin_composition(
             request,
             session_id=session_id,
             configurations=configurations,
             package_materializer=self.materializer,
             lifecycle=self.lifecycle,
             legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
-            session_owner_id=_binding._session_manager_plugin_owner_id(session_manager),
+            session_owner_id=_session_manager_plugin_owner_id(session_manager),
             management_state_cleanup=management_cleanup,
             state_root=state_root,
             clock=clock,
@@ -74,18 +115,18 @@ class ManagedPluginPreparation:
 
 def prepare_managed_plugins(
     *,
-    session_manager: _binding.SessionManager,
-    services: _binding.BootstrapServices,
+    session_manager: SessionManager,
+    services: BootstrapServices,
     session_id: str,
-    package_materializer: _binding.PackageMaterializer | None,
-    resolved_package_materializer: _binding.PackageMaterializer | None,
+    package_materializer: CodingPackageMaterializer | None,
+    resolved_package_materializer: CodingPackageMaterializer | None,
     ephemeral_prefix: str | None,
     prepare_primary: _PreparePrimary | None,
     needs_eager: bool,
     needs_deferred: bool,
 ) -> ManagedPluginPreparation:
     ephemeral_state = (
-        _binding._ExplicitTemporaryDirectory(prefix=ephemeral_prefix)
+        ExplicitTemporaryDirectory(prefix=ephemeral_prefix)
         if ephemeral_prefix is not None
         else None
     )
@@ -95,11 +136,11 @@ def prepare_managed_plugins(
     primary_cleanup = eager_cleanup = deferred_cleanup = None
     try:
         layout = (
-            _binding.resolve_coding_plugin_lifecycle_state_layout(
+            resolve_coding_plugin_lifecycle_state_layout(
                 session_manager.get_cwd()
             )
             if ephemeral_state is None
-            else _binding.resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+            else resolve_ephemeral_coding_plugin_lifecycle_state_layout(
                 ephemeral_state.name, cwd=session_manager.get_cwd()
             )
         )
@@ -112,29 +153,29 @@ def prepare_managed_plugins(
                 plugin_revision_root=layout.plugin_revision_root,
             )
         ):
-            message, code = _binding._MANAGED_PACKAGE_AUTHORITY_MISMATCH
-            raise _binding.CodingBasePluginAssemblyError(message, code=code)
-        lifecycle = _binding.build_coding_plugin_lifecycle(layout)
-        materializer = package_materializer or _binding.PackageMaterializer(
+            message, code = _MANAGED_PACKAGE_AUTHORITY_MISMATCH
+            raise CodingBasePluginAssemblyError(message, code=code)
+        lifecycle = build_coding_plugin_lifecycle(layout)
+        materializer = package_materializer or CodingPackageMaterializer(
             install_root=layout.package_install_root,
             lockfile_path=layout.package_lockfile,
             plugin_revision_root=layout.plugin_revision_root,
-            backend=_binding.GitPackageMaterializerBackend(),
+            backend=GitPackageMaterializerBackend(),
         )
         if materializer is not resolved_package_materializer:
             recorded_diagnostics = materializer.get_lockfile_diagnostics()
-            _binding.record_package_lockfile_diagnostics(
+            record_package_lockfile_diagnostics(
                 recorded_diagnostics,
                 diagnostics_service=services.diagnostics_service,
                 session_id=session_id,
             )
         if ephemeral_state is not None:
-            primary_cleanup, eager_cleanup, deferred_cleanup = _cleanup_claims(
-                lifecycle,
-                ephemeral_state,
-                prepare_primary is not None,
-                needs_eager,
-                needs_deferred,
+            primary_cleanup, eager_cleanup, deferred_cleanup = share_startup_cleanup(
+                lifecycle.release_owned_process_startup_lease,
+                ephemeral_state.cleanup,
+                primary=prepare_primary is not None,
+                eager=needs_eager,
+                deferred=needs_deferred,
             )
         lifecycle.complete_startup_recovery()
         primary = (
@@ -143,18 +184,18 @@ def prepare_managed_plugins(
             else None
         )
     except BaseException as error:
-        if isinstance(error, _binding.CodingBasePluginAssemblyError):
+        if isinstance(error, CodingBasePluginAssemblyError):
             services.diagnostics_service.capture_failure(
                 code=error.code,
                 error=str(error),
                 phase="startup",
                 source="bootstrap",
                 session_id=session_id,
-                details={"check": _binding._MANAGED_PACKAGE_REPLAY_CHECK, "ok": False},
+                details={"check": _MANAGED_PACKAGE_REPLAY_CHECK, "ok": False},
             )
         # Exact replay can discover additional lock corruption during preparation.
         if materializer is not None:
-            _binding.record_package_lockfile_diagnostics(
+            record_package_lockfile_diagnostics(
                 [
                     diagnostic
                     for diagnostic in materializer.get_lockfile_diagnostics()
@@ -180,46 +221,14 @@ def prepare_managed_plugins(
     )
 
 
-def _cleanup_claims(
-    lifecycle: _binding.CodingPluginLifecycle,
-    ephemeral_state: _binding._ExplicitTemporaryDirectory,
-    primary: bool,
-    eager: bool,
-    deferred: bool,
-) -> tuple[_Cleanup | None, _Cleanup | None, _Cleanup | None]:
-    remaining = sum((primary, eager, deferred))
-    cleanup_done = False
-
-    def create_claim() -> _Cleanup:
-        released = False
-
-        def release() -> None:
-            nonlocal remaining, cleanup_done, released
-            if not released:
-                remaining -= 1
-                released = True
-            if remaining == 0 and not cleanup_done:
-                lifecycle.release_owned_process_startup_lease()
-                ephemeral_state.cleanup()
-                cleanup_done = True
-
-        return release
-
-    return (
-        create_claim() if primary else None,
-        create_claim() if eager else None,
-        create_claim() if deferred else None,
-    )
-
-
 def bind_deferred_plugin(
     workspace_binding: CapabilityBundleProviderBinding,
     *,
-    session_manager: _binding.SessionManager,
+    session_manager: SessionManager,
     session_id: str,
     plugin_id: str,
     managed: ManagedPluginPreparation | None,
-    runtime: _binding.PackageProductRuntimeBindingV1 | None,
+    runtime: PackageProductRuntimeBindingV1 | None,
     build_config: Callable[[], CodingCapabilityPluginConfig],
     temporary_prefix: str,
     persistent_root: Callable[[], Path],
@@ -229,11 +238,11 @@ def bind_deferred_plugin(
     tool_modes: Mapping[str, CapabilityMountMode],
     max_manifest_files: int,
     max_manifest_bytes: int,
-    admission_failure: _AdmissionFailure,
-) -> tuple[_binding.CodingCapabilityPluginCompositionAssembly, _Cleanup | None]:
+    admission_failure: ProductAdmissionFailure,
+) -> tuple[CodingCapabilityPluginCompositionAssembly, _Cleanup | None]:
     """Prepare a requested generation and retain its selected Product evidence."""
     temporary_state = (
-        _binding._ExplicitTemporaryDirectory(prefix=temporary_prefix)
+        ExplicitTemporaryDirectory(prefix=temporary_prefix)
         if not session_manager.persist
         else None
     )
@@ -245,21 +254,14 @@ def bind_deferred_plugin(
     try:
         configurations = {plugin_id: build_config()}
         if runtime is not None:
-            selection = runtime.capture_plugin_desired_selection_for(plugin_id)
-            if selection.desired_state != "installed_enabled":
-                raise admission_failure(("product_requested_capability_not_installed",))
-            selected_manifest = runtime.capture_selected_plugin_manifest_for(
+            current_selection_check = capture_enabled_plugin_recheck(
+                runtime,
                 plugin_id,
                 max_files=max_manifest_files,
                 max_total_bytes=max_manifest_bytes,
+                admission_failure=admission_failure,
             )
-
-            def require_current() -> None:
-                runtime.assert_plugin_desired_selection_current(selection)
-                runtime.assert_selected_plugin_manifest_current(selected_manifest)
-
-            current_selection_check = require_current
-            preparation = _binding.prepare_coding_product_capability_plugin_composition(
+            preparation = prepare_coding_product_capability_plugin_composition(
                 runtime,
                 session_id=session_id,
                 configurations=configurations,
@@ -271,7 +273,7 @@ def bind_deferred_plugin(
         else:
             assert managed is not None
             preparation = managed.prepare_capabilities(
-                _binding.create_coding_capability_plugin_composition_request(
+                create_coding_capability_plugin_composition_request(
                     clock=clock, plugin_ids=frozenset({plugin_id})
                 ),
                 configurations,
@@ -293,3 +295,22 @@ def bind_deferred_plugin(
         if temporary_state is not None:
             temporary_state.cleanup()
         raise
+
+
+def _session_manager_plugin_owner_id(session_manager: SessionManager) -> str:
+    with _SESSION_MANAGER_PLUGIN_OWNER_LOCK:
+        owner_id = getattr(
+            session_manager,
+            _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE,
+            None,
+        )
+        if owner_id is None:
+            owner_id = f"session-manager:{secrets.token_hex(16)}"
+            setattr(
+                session_manager,
+                _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE,
+                owner_id,
+            )
+        if not isinstance(owner_id, str) or not owner_id:
+            raise RuntimeError("Coding SessionManager Plugin owner id is invalid")
+        return owner_id

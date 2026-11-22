@@ -31,10 +31,7 @@ CODING_CATALOG_ADAPTER_PATH = Path(
     "src/loushang/coding/harness/session/catalog_adapter.py"
 )
 CODING_PACKAGE_CATALOG_PATH = Path(
-    "src/loushang/coding/harness/session/package_catalog.py"
-)
-CODING_REGISTRATION_AUTHORITY_PATH = Path(
-    "src/loushang/coding/harness/session/registration_authority.py"
+    "src/loushang/coding/composition/package_catalog.py"
 )
 CODING_BOOTSTRAP_PATH = Path('src/loushang/coding/composition/bootstrap.py')
 CODING_BASE_PRODUCT_COMPOSITION_PATH = Path(
@@ -335,7 +332,7 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
         CODING_SHADOW_ADAPTER_PATH,
         CODING_CATALOG_ADAPTER_PATH,
         CODING_PACKAGE_CATALOG_PATH,
-        CODING_REGISTRATION_AUTHORITY_PATH,
+        Path("src/loushang/coding/composition/managed_plugin_preparation.py"),
     }
     imports = _imported_modules(PRODUCT_COMPOSITION_ASSEMBLY_PATH)
     assert not imports & {

@@ -5,10 +5,27 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from re import fullmatch
-from typing import TypeGuard, cast
+from typing import TYPE_CHECKING, TypeGuard, cast
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.config.agent import CapabilityMountMode
+from loushang.harness.plugin_management.current_preview import (
+    plugin_package_revision_fingerprint,
+)
+from loushang.harness.resources._catalog_records import (
+    ResourceCatalogSnapshot,
+    fingerprint_catalog_value,
+)
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
+    from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
+    from loushang.harness.transcript.product_session import ProductTranscriptSession
+    from loushang.harness.worker.product_activation import (
+        ProductWorkerActivationReceiptV1,
+    )
 
 _IDENTITY_FIELDS = {"version", "setId", "planFingerprint"}
 _MOUNT_MODES = frozenset({"disabled", "on_demand", "always"})
@@ -244,3 +261,158 @@ def should_defer_mount(
         item["pluginId"] == plugin_id
         for item in cast(list[dict[str, object]], startup["selectedRevisions"])
     )
+
+
+
+def composition_manifest_revision_evidence(
+    selected: Iterable[PackageProductSelectedPluginManifestV1],
+) -> list[dict[str, object]]:
+    """Project selected manifests with their existing Package fingerprints."""
+    return [
+        {
+            "pluginId": item.manifest.name,
+            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
+                item.snapshot.package_revision
+            ),
+            "instanceRevisionRef": item.snapshot.instance_revision_ref.to_dict(),
+        }
+        for item in selected
+    ]
+
+
+def composition_generation_evidence(
+    receipts: Iterable[OwnerGenerationRetirementReceipt],
+) -> list[dict[str, object]]:
+    """Project the ordered live generations without changing their ownership."""
+    return sorted(
+        (
+            {
+                "ownerReference": receipt.owner_reference,
+                "ownerGenerationReference": receipt.owner_generation_reference,
+                "contributionIds": list(receipt.contribution_ids),
+            }
+            for receipt in receipts
+        ),
+        key=lambda item: (
+            str(item["ownerReference"]),
+            str(item["ownerGenerationReference"]),
+        ),
+    )
+
+def catalog_composition_selection_fingerprint(
+    catalog_snapshot: object | None, *, catalog_schema: str
+) -> str | None:
+    """Fingerprint the currently projected Catalog selections."""
+    return (
+        fingerprint_catalog_value(
+            catalog_schema,
+            {
+                "activationPolicyFingerprint": (
+                    catalog_snapshot.activation_policy_fingerprint
+                ),
+                "mergePolicyRevision": catalog_snapshot.merge_policy_revision,
+                "effectiveEntries": [
+                    {
+                        "identity": item.identity.to_payload(),
+                        "modelInvocable": item.model_invocable,
+                        "candidates": [
+                            {
+                                "canonicalName": candidate.canonical_name,
+                                "description": candidate.description,
+                                "mediaType": candidate.media_type,
+                                "sourceClass": candidate.source_class,
+                                "sourceRootOrder": candidate.source_root_order,
+                                "expectedContentDigest": candidate.expected_content_digest,
+                                "expectedContentLength": candidate.expected_content_length,
+                                "invocationPolicy": candidate.invocation_policy.to_payload(),
+                            }
+                            for candidate in sorted(
+                                (
+                                    catalog_snapshot.candidate_by_fingerprint(
+                                        fingerprint
+                                    )
+                                    for fingerprint in item.candidate_fingerprints
+                                ),
+                                key=lambda candidate: (
+                                    candidate.canonical_name,
+                                    candidate.source_class,
+                                    candidate.expected_content_digest or "",
+                                ),
+                            )
+                        ],
+                    }
+                    for item in catalog_snapshot.effective_entries
+                ],
+            },
+        )
+        if isinstance(catalog_snapshot, ResourceCatalogSnapshot)
+        else None
+    )
+
+def worker_composition_selection_evidence(
+    worker_receipt: ProductWorkerActivationReceiptV1 | None,
+) -> dict[str, object] | None:
+    """Project the ordered Worker activation facts already selected by the caller."""
+    return (
+        {
+            "pluginId": worker_receipt.policy.plugin_id,
+            "receiptFingerprint": worker_receipt.fingerprint,
+            "productPolicyRevision": worker_receipt.policy.product_policy_revision,
+            "nativeProfileId": worker_receipt.policy.native_profile_id,
+            "selectedLocatorRevision": worker_receipt.policy.selected_locator_revision,
+            "selectedLocatorFingerprint": (
+                worker_receipt.policy.selected_locator_fingerprint
+            ),
+            "workerConfigurationFingerprint": (
+                worker_receipt.policy.worker_configuration_fingerprint
+            ),
+        }
+        if worker_receipt is not None
+        else None
+    )
+
+async def publish_composition_startup(
+    transcript: ProductTranscriptSession,
+    *,
+    set_id: str,
+    existing_only: bool,
+    had_entries_at_construction: Callable[[], bool],
+
+    build_current_receipt: Callable[[], dict[str, object]],
+    mark_prepared: Callable[[], None],
+    header_key: str,
+    extension_type: str,
+    label: str,
+) -> None:
+    """Correlate sealed history under the caller's existing startup lock."""
+    identity = read_composition_header(
+        transcript.get_header().metadata, header_key=header_key, label=label
+    )
+    if identity is None or identity[0] != set_id:
+        raise ValueError(f"{label} composition startup changed its pinned set")
+    set_id, plan_fingerprint = identity
+    existing = read_composition_receipt(
+        transcript.get_entries(), extension_type=extension_type, label=label
+    )
+    if existing is not None:
+        if (
+            existing.get("setId") != set_id
+            or existing.get("planFingerprint") != plan_fingerprint
+        ):
+            raise ValueError(f"{label} composition startup differs from its header")
+        if not existing_only:
+            mark_prepared()
+        return
+    startup_data = build_current_receipt()
+    if had_entries_at_construction():
+        raise ValueError(
+            f"{label} has input without startup composition evidence; "
+            "create a new Session"
+        )
+    if existing_only:
+        return
+    await transcript.append_custom_entry(
+        extension_type,
+        startup_data,
+    )
+    mark_prepared()

@@ -12,7 +12,7 @@ import pytest
 
 from loushang.agent import synthetic_model_transport
 from loushang.ai.model import Capabilities, Model
-from loushang.coding.composition import bootstrap
+from loushang.coding.composition import bootstrap, managed_plugin_preparation
 from loushang.coding.control import ControlConfig, SettingsManager
 from loushang.coding.session.manager import SessionManager
 from loushang.coding.ui.product_binding import (
@@ -63,7 +63,7 @@ def test_lsp_admission_keeps_input_timer_and_escape_live(
             asyncio.Event() for _ in range(6)
         )
         release = threading.Event()
-        prepare = bootstrap.prepare_coding_capability_plugin_composition
+        prepare = managed_plugin_preparation.prepare_coding_capability_plugin_composition
 
         def controlled_prepare(*args, **kwargs):
             assert threading.get_ident() != ui_thread
@@ -73,7 +73,7 @@ def test_lsp_admission_keeps_input_timer_and_escape_live(
             return prepare(*args, **kwargs)
 
         monkeypatch.setattr(
-            bootstrap,
+            managed_plugin_preparation,
             "prepare_coding_capability_plugin_composition",
             controlled_prepare,
         )

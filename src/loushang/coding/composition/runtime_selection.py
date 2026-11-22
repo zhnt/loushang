@@ -19,12 +19,13 @@ from loushang.harness.plugin_management.current_preview import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.resources._catalog_records import (
-    ResourceCatalogSnapshot,
-    fingerprint_catalog_value,
+from loushang.harness.session.composition_evidence import (
+    catalog_composition_selection_fingerprint,
+    composition_generation_evidence,
+    composition_manifest_revision_evidence,
+    publish_composition_startup,
+    worker_composition_selection_evidence,
 )
-
-from .composition_receipt import read_composition_header, read_composition_receipt
 
 if TYPE_CHECKING:
     from loushang.coding.composition.base_product import (
@@ -239,16 +240,7 @@ def observe_composition_selection(
         and worker_binding.selected_worker_manifest is not None
     ):
         selected = (*selected, worker_binding.selected_worker_manifest)
-    revisions = [
-        {
-            "pluginId": item.manifest.name,
-            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
-                item.snapshot.package_revision
-            ),
-            "instanceRevisionRef": item.snapshot.instance_revision_ref.to_dict(),
-        }
-        for item in selected
-    ]
+    revisions = composition_manifest_revision_evidence(selected)
     if (
         compilation is None
         and not session._coding_selected_capability_manifests
@@ -293,90 +285,19 @@ def observe_composition_selection(
             for receipt in group
         ),
     )
-    generations = sorted(
-        (
-            {
-                "ownerReference": receipt.owner_reference,
-                "ownerGenerationReference": receipt.owner_generation_reference,
-                "contributionIds": list(receipt.contribution_ids),
-            }
-            for receipt in receipts
-        ),
-        key=lambda item: (
-            str(item["ownerReference"]),
-            str(item["ownerGenerationReference"]),
-        ),
-    )
+    generations = composition_generation_evidence(receipts)
     catalog_snapshot = (
         prepared_catalog_snapshot
         if prepared_catalog_snapshot is not None
         else session._resource_catalog_snapshot
     )
-    catalog_fingerprint = (
-        fingerprint_catalog_value(
-            catalog_schema,
-            {
-                "activationPolicyFingerprint": (
-                    catalog_snapshot.activation_policy_fingerprint
-                ),
-                "mergePolicyRevision": catalog_snapshot.merge_policy_revision,
-                "effectiveEntries": [
-                    {
-                        "identity": item.identity.to_payload(),
-                        "modelInvocable": item.model_invocable,
-                        "candidates": [
-                            {
-                                "canonicalName": candidate.canonical_name,
-                                "description": candidate.description,
-                                "mediaType": candidate.media_type,
-                                "sourceClass": candidate.source_class,
-                                "sourceRootOrder": candidate.source_root_order,
-                                "expectedContentDigest": candidate.expected_content_digest,
-                                "expectedContentLength": candidate.expected_content_length,
-                                "invocationPolicy": candidate.invocation_policy.to_payload(),
-                            }
-                            for candidate in sorted(
-                                (
-                                    catalog_snapshot.candidate_by_fingerprint(
-                                        fingerprint
-                                    )
-                                    for fingerprint in item.candidate_fingerprints
-                                ),
-                                key=lambda candidate: (
-                                    candidate.canonical_name,
-                                    candidate.source_class,
-                                    candidate.expected_content_digest or "",
-                                ),
-                            )
-                        ],
-                    }
-                    for item in catalog_snapshot.effective_entries
-                ],
-            },
-        )
-        if isinstance(catalog_snapshot, ResourceCatalogSnapshot)
-        else None
+    catalog_fingerprint = catalog_composition_selection_fingerprint(
+        catalog_snapshot, catalog_schema=catalog_schema
     )
     worker_receipt = (
         worker_binding.activation_receipt if worker_binding is not None else None
     )
-    worker_selection: dict[str, object] | None = (
-        {
-            "pluginId": worker_receipt.policy.plugin_id,
-            "receiptFingerprint": worker_receipt.fingerprint,
-            "productPolicyRevision": worker_receipt.policy.product_policy_revision,
-            "nativeProfileId": worker_receipt.policy.native_profile_id,
-            "selectedLocatorRevision": worker_receipt.policy.selected_locator_revision,
-            "selectedLocatorFingerprint": (
-                worker_receipt.policy.selected_locator_fingerprint
-            ),
-            "workerConfigurationFingerprint": (
-                worker_receipt.policy.worker_configuration_fingerprint
-            ),
-        }
-        if worker_receipt is not None
-        else None
-    )
+    worker_selection = worker_composition_selection_evidence(worker_receipt)
     evidence: dict[str, object] = {
         "productPolicyRevision": policy_revision,
         "catalogSelectionFingerprint": catalog_fingerprint,
@@ -401,36 +322,16 @@ async def record_composition_startup(
     plan = session._coding_composition_plan
     if plan is None or not session.session_manager.persist:
         return
-    identity = read_composition_header(
-        session.session_manager.get_header().metadata, header_key=header_key, label=label
+    await publish_composition_startup(
+        session.session_manager,
+        set_id=plan.set_id,
+        existing_only=existing_only,
+        had_entries_at_construction=lambda: session._coding_composition_had_entries_at_construction,
+        build_current_receipt=lambda: session._build_current_coding_composition_receipt(
+            prepared_catalog_snapshot=prepared_catalog_snapshot
+        ),
+        mark_prepared=session._coding_session_manager.mark_composition_startup_prepared,
+        header_key=header_key,
+        extension_type=extension_type,
+        label=label,
     )
-    if identity is None or identity[0] != plan.set_id:
-        raise ValueError(f"{label} composition startup changed its pinned set")
-    set_id, plan_fingerprint = identity
-    existing = read_composition_receipt(
-        session.session_manager.get_entries(), extension_type=extension_type, label=label
-    )
-    if existing is not None:
-        if (
-            existing.get("setId") != set_id
-            or existing.get("planFingerprint") != plan_fingerprint
-        ):
-            raise ValueError(f"{label} composition startup differs from its header")
-        if not existing_only:
-            session._coding_session_manager.mark_composition_startup_prepared()
-        return
-    startup_data = session._build_current_coding_composition_receipt(
-        prepared_catalog_snapshot=prepared_catalog_snapshot,
-    )
-    if session._coding_composition_had_entries_at_construction:
-        raise ValueError(
-            f"{label} has input without startup composition evidence; "
-            "create a new Session"
-        )
-    if existing_only:
-        return
-    await session.session_manager.append_custom_entry(
-        extension_type,
-        startup_data,
-    )
-    session._coding_session_manager.mark_composition_startup_prepared()

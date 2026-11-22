@@ -10,6 +10,9 @@ from loushang.harness.capabilities.commands import (
     CommandRuntimeSource,
     SessionCommandRuntime,
 )
+from loushang.harness.capabilities.contribution_admission import (
+    OwnerContributionAdmissionRecord,
+)
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt_preflight import (
     PromptPreflightResult,
@@ -33,6 +36,11 @@ from loushang.harness.runtime.registration import (
     RegistrationLease,
     RegistrationLeaseState,
     RegistrationOwner,
+    RegistrationScope,
+    rollback_registration_scope,
+)
+from loushang.harness.session.capability_composition_inputs import (
+    product_contribution_registration_owner,
 )
 from loushang.harness.session.command_sources import (
     ExtensionCommandProvider,
@@ -94,6 +102,30 @@ class SessionCommandGenerationRegistry:
     def __init__(self) -> None:
         self._staged: dict[str, _RegisteredSessionCommandPack] = {}
         self._active: dict[str, _RegisteredSessionCommandPack] = {}
+
+    def stage_standard_pack_scope(
+        self,
+        admission: OwnerContributionAdmissionRecord,
+        *,
+        scope_id: str,
+        pack_id: str,
+        expected_names: tuple[str, ...],
+        label: str,
+    ) -> RegistrationScope:
+        """Stage the identified standard Command catalog for an admitted owner."""
+        descriptors = tuple(list_standard_session_command_descriptors())
+        if tuple(sorted(item.name for item in descriptors)) != expected_names:
+            raise RuntimeError(f"{label} catalog changed admitted identities")
+        owner = product_contribution_registration_owner(admission, scope_id)
+        scope = RegistrationScope(owner)
+        try:
+            scope.add(self.stage_pack(descriptors, owner=owner, pack_id=pack_id))
+        except BaseException as error:
+            rollback_registration_scope(
+                scope, error, incomplete_note=f"{label} rollback remains incomplete"
+            )
+            raise
+        return scope
 
     def stage_pack(
         self,

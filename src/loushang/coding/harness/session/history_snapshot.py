@@ -9,8 +9,7 @@ from __future__ import annotations
 from typing import Literal
 
 from loushang.coding.resume import history as _binding
-
-from .composition_receipt import composition_receipt_matches
+from loushang.harness.session.composition_evidence import composition_receipt_matches
 
 
 def read_resume_snapshot(

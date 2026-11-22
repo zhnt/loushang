@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,6 +18,7 @@ from loushang.harness.authorization import (
 )
 from loushang.harness.capabilities.workspace_provider import (
     workspace_capability_provider_binding,
+    workspace_profile_binding_fingerprint,
 )
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.exec import ExecService
@@ -135,19 +135,9 @@ def bind_session_workspace(
         )
     )
     workspace_root = str(workspace_root_path)
-    workspace_binding_fingerprint = sha256(
-        "\0".join(
-            (
-                fingerprint_namespace,
-                *(str(path) for path in execution_ceiling.readable_roots),
-                "--writable--",
-                *(str(path) for path in execution_ceiling.writable_roots),
-                "--denied--",
-                *(str(path) for path in execution_ceiling.denied_roots),
-                f"network:{execution_ceiling.network}",
-            )
-        ).encode("utf-8")
-    ).hexdigest()
+    workspace_binding_fingerprint = workspace_profile_binding_fingerprint(
+        execution_ceiling, namespace=fingerprint_namespace
+    )
     workspace_binding = workspace_capability_provider_binding(
         operations=CodingWorkspaceOperations(
             root=workspace_root_path,

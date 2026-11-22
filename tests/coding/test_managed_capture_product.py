@@ -7,7 +7,7 @@ import pytest
 
 from loushang.apphost.managed import storage_budget
 from loushang.apphost.managed.output_capture import ManagedOutputCaptureFactory
-from loushang.coding.composition import bootstrap
+from loushang.coding.composition import bootstrap, managed_plugin_preparation
 from loushang.coding.composition.bootstrap import create_agent_session
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
 from loushang.harness.session import output_artifacts
@@ -32,6 +32,9 @@ def test_real_coding_session_uses_managed_capture_and_keeps_session_blob(registr
     # plugin state either. Patch the consumers, not tempfile globally.
     monkeypatch.setattr(output_artifacts, "TemporaryDirectory", reject_unmanaged_scratch)
     monkeypatch.setattr(bootstrap, "_ExplicitTemporaryDirectory", reject_unmanaged_scratch)
+    monkeypatch.setattr(
+        managed_plugin_preparation, "ExplicitTemporaryDirectory", reject_unmanaged_scratch
+    )
     native = capture(registry, directory)
     request = native.allocations[0]
     factory = ManagedOutputCaptureFactory(native.owner, native.budget, service_id=request.service_id,

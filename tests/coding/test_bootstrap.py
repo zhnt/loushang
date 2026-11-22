@@ -1107,7 +1107,7 @@ def test_disabled_lsp_session_does_not_resolve_the_default_plugin(
     capability_mode: Literal["disabled", "always"],
     no_tools: Literal["all"] | None,
 ) -> None:
-    import loushang.coding.composition.bootstrap as coding_bootstrap
+    from loushang.coding.composition import managed_plugin_preparation
     from loushang.coding.composition.bootstrap import (
         create_agent_session,
         create_services,
@@ -1119,7 +1119,7 @@ def test_disabled_lsp_session_does_not_resolve_the_default_plugin(
         raise AssertionError("disabled LSP must not resolve or import its Plugin")
 
     monkeypatch.setattr(
-        coding_bootstrap,
+        managed_plugin_preparation,
         "prepare_coding_capability_plugin_composition",
         reject_plugin_resolution,
     )
@@ -1155,6 +1155,7 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import loushang.coding.composition.bootstrap as coding_bootstrap
+    from loushang.coding.composition import managed_plugin_preparation
     from loushang.coding.composition.bootstrap import (
         create_agent_session,
         create_services,
@@ -1181,7 +1182,7 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
         capture_base,
     )
     monkeypatch.setattr(
-        coding_bootstrap,
+        managed_plugin_preparation,
         "prepare_coding_capability_plugin_composition",
         reject_lsp,
     )
@@ -1298,6 +1299,7 @@ def test_default_base_materializer_is_not_constructed_after_package_fence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import loushang.coding.composition.bootstrap as coding_bootstrap
+    from loushang.coding.composition import managed_plugin_preparation
     from loushang.coding.composition.bootstrap import (
         create_agent_session,
         create_services,
@@ -1345,6 +1347,9 @@ def test_default_base_materializer_is_not_constructed_after_package_fence(
         return original_materializer(**kwargs)
 
     monkeypatch.setattr(coding_bootstrap, "PackageMaterializer", materializer_spy)
+    monkeypatch.setattr(
+        managed_plugin_preparation, "CodingPackageMaterializer", materializer_spy
+    )
     manager = asyncio.run(
         SessionManager.new(
             session_dir=tmp_path / "sessions",

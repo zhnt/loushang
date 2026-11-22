@@ -5,8 +5,10 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
+from hashlib import sha256
 from pathlib import Path
 
+from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.capabilities.contracts import CapabilityContractRange
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -160,6 +162,25 @@ class _AuthorizedProcessLaunchFacet:
             correlation_id=correlation_id,
             signal=signal,
         )
+
+
+def workspace_profile_binding_fingerprint(
+    profile: EffectiveExecutionProfile, *, namespace: str
+) -> str:
+    """Fingerprint the effective workspace and process ceiling in owner order."""
+    return sha256(
+        "\0".join(
+            (
+                namespace,
+                *(str(path) for path in profile.readable_roots),
+                "--writable--",
+                *(str(path) for path in profile.writable_roots),
+                "--denied--",
+                *(str(path) for path in profile.denied_roots),
+                f"network:{profile.network}",
+            )
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def workspace_capability_provider_binding(

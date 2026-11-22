@@ -666,6 +666,37 @@ reads, workspace identity, source records, SDK/CLI repair, original
 bootstrap and preview probes, and existing architecture constraints.
 Native Windows and host-runtime verification remain pending.
 
+### C01 Session Startup, Registration And Provenance
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `registration_authority` | Formal Session composition joins the compiled owner snapshots to the live admission gate, including the independently selected route. |
+| `registration_generations` | Harness owns workspace facet capture, exact Tool and Command staging, and RegistrationScope rollback. Coding supplies reserved pack identities, Product options and compatibility generation values. |
+| `catalog_preparation` | Formal Package Product captures and verifies selected manifests. The formal Session composition owner resolves resource-only plans, and bootstrap consumes the original Catalog receipt. |
+| `managed_plugin_preparation` | Formal Session cleanup allocates and releases claims against the original resource and startup lease. Coding selects the layout, Materializer type and configured Plugin requests. |
+| `plugin_preparation` and `selected_plugin_preparation` | Existing formal selection, lease and failure cleanup owners handle native custody. Coding keeps its approved base and Capability plan, Product authorization and nominal preparation results. |
+| `composition_receipt` and `runtime_selection` | Formal Session decodes historical receipts, projects the live Catalog, Worker and owner facts and publishes startup evidence through the original Transcript. Coding keeps the composition set, schema namespace, selection inputs and error labels. |
+| `owner_binding` | Formal bootstrap runs unpublished rollback in the existing order. Coding selects its base, Arch and LSP owners and their registration slots. |
+| `package_catalog` | Coding retains Catalog policy, capability and configured-source selection and Profile assembly. Existing formal Catalog and Session owners retain projection and publication. |
+| `workspace_bootstrap` | Harness fingerprints the effective workspace binding and retains actual sandbox operations. Coding selects its execution and composition policy. |
+
+The batch removes 2,898 net staging lines and adds 1,961 Coding Product and
+901 formal Harness lines. Hosting, other production code and scripts have
+no changes. System production Python decreases by 36 lines in this batch
+and 859 cumulatively. Staging has 44 files and 7,413 lines, including 4,898
+Session lines. Direct absolute imports of other Coding components remain in
+33 staged files.
+
+The startup, managed capture, Tool and Command registration and owner
+publication candidate passed 214 cases before the Catalog import inventory
+found one misplaced projection helper. The helper now uses the existing
+formal composition owner, and final Catalog custody keeps its private
+adapter with the original reader. All 88 selected architecture, Product
+composition receipt and native Runtime publication cases pass on the
+corrected source. This includes startup receipt concurrency, retained
+workspaces, partial failure and exact persisted input publication on Linux.
+Native Windows remains pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

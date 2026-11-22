@@ -19,11 +19,7 @@ from loushang.coding.composition.dependency_grants import (
     coding_plugin_distribution_evidence_resolver,
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
-from loushang.coding.harness.session import plugin_preparation as _preparation_programs
 from loushang.coding.harness.session import plugin_resume as _resume_effects
-from loushang.coding.harness.session.registration_authority import (
-    bind_selected_registration_authority,
-)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
@@ -119,6 +115,7 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginCompositionPreparation,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
+    bind_selected_registration_authority,
 )
 from loushang.harness.session.product_composition_assembly import (
     prepare_product_plugin_composition as prepare_product_plugin_composition,
@@ -142,18 +139,6 @@ _FAILURE_CUSTODIAN_ATTRIBUTE = "_coding_capability_plugin_cleanup_custodian"
 _RESUME_PLUGIN_LABEL = "Coding Resume Plugin"
 _DEFINITION_DECISIONS_FILENAME = "definition-decisions.jsonl"
 _ACTIVATION_DECISIONS_FILENAME = "activation-decisions.jsonl"
-
-
-_PLUGIN_PREPARATION_PROGRAM_VALUES = {
-    "value_001": "Coding Capability Plugin preparation cleanup also failed: ",
-    "value_002": "Coding Capability Plugin state cleanup is invalid",
-    "value_003": "Coding Capability Plugin private-state cleanup is invalid",
-    "value_004": "Coding Capability Plugin management cleanup is invalid",
-    "value_005": "Coding Capability Plugin legacy selection is invalid",
-    "value_006": "Coding Capability Plugins require a common lifecycle",
-    "value_007": "No requested Coding Capability Plugin is management-enabled.",
-    "value_008": "coding_capability_plugins_management_disabled",
-}
 
 
 class CodingCapabilityPluginApprovalOwner(Protocol):
@@ -805,22 +790,135 @@ def prepare_coding_capability_plugin_composition(
 ) -> CodingCapabilityPluginCompositionPreparation:
     """Resolve, approve and compile once without constructing host Providers."""
 
-    return _preparation_programs.prepare_capability_plugins(
+
+    _validate_preparation_inputs(
         request,
         session_id=session_id,
         configurations=configurations,
         package_materializer=package_materializer,
-        lifecycle=lifecycle,
-        session_owner_id=session_owner_id,
-        management_state_cleanup=management_state_cleanup,
-        state_root=state_root,
         clock=clock,
         coding_base_plugin_assembly=coding_base_plugin_assembly,
         coding_product_plan_seed=coding_product_plan_seed,
-        state_cleanup=state_cleanup,
-        private_state_cleanup=private_state_cleanup,
-        legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
     )
+    _read_clock(clock)
+    if state_cleanup is not None and not callable(state_cleanup):
+        raise TypeError('Coding Capability Plugin state cleanup is invalid')
+    if private_state_cleanup is not None and not callable(private_state_cleanup):
+        raise TypeError('Coding Capability Plugin private-state cleanup is invalid')
+    if management_state_cleanup is not None and not callable(management_state_cleanup):
+        raise TypeError('Coding Capability Plugin management cleanup is invalid')
+    if not isinstance(legacy_disabled_plugin_ids, frozenset) or any(
+        not isinstance(item, str) or not item for item in legacy_disabled_plugin_ids
+    ):
+        raise TypeError('Coding Capability Plugin legacy selection is invalid')
+    if lifecycle is not None and not isinstance(
+        lifecycle, CodingPluginLifecycle
+    ):
+        raise TypeError('Coding Capability Plugins require a common lifecycle')
+    resolved_state_root = Path(state_root).expanduser().resolve()
+    scope_id = f"session:{session_id.strip()}"
+
+    try:
+        resolved_state_root.mkdir(parents=True, exist_ok=True)
+        runtime, selected_configurations, management_leases = (
+            _resolve_managed_capability_plugins(
+                configurations,
+                session_id=session_id,
+                package_materializer=package_materializer,
+                lifecycle=lifecycle,
+                session_owner_id=session_owner_id,
+                legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
+            )
+        )
+        if not selected_configurations:
+            runtime.close()
+            raise CodingCapabilityPluginCompositionError(
+                'No requested Coding Capability Plugin is management-enabled.',
+                code='coding_capability_plugins_management_disabled',
+            )
+    except BaseException as error:
+        custodian = coding_capability_plugin_failure_custodian(error)
+        if custodian is None:
+            custodian = CodingCapabilityPluginCleanupCustodian(
+                runtime=PluginRuntimeResolution((), (), ()),
+                management_leases={},
+            )
+        custodian.adopt_cleanup_callbacks(
+            management_state_cleanup=management_state_cleanup,
+            state_cleanup=state_cleanup,
+            private_state_cleanup=private_state_cleanup,
+        )
+        if not custodian.close_after_failed_preparation(
+            error, cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: "
+        ):
+            _attach_failure_custodian(error, custodian)
+        raise
+    try:
+        resolved_product_seed = coding_product_plan_seed or (
+            coding_base_plugin_assembly.plan_seed
+            if coding_base_plugin_assembly is not None
+            else None
+        )
+        tool_authority = _tool_owner_authority(
+            frozenset(selected_configurations)
+        )
+        plan_seed = _prepare_selection_plan_seed(
+            runtime,
+            scope_id=scope_id,
+            configurations=selected_configurations,
+            management_leases=management_leases,
+            coding_product_plan_seed=resolved_product_seed,
+            tool_authority=tool_authority,
+        )
+        request = _bind_default_approval_request_to_plan(request, plan_seed)
+        selection = _finalize_selection(
+            plan_seed,
+            request=request,
+            scope_id=scope_id,
+            state_root=resolved_state_root,
+            clock=clock,
+        )
+        selection_seed = complete_coding_package_plugin_selection_seed(
+            plan_seed,
+            selection=selection,
+        )
+        provider_authorities = _provider_owner_authorities(
+            frozenset(selected_configurations)
+        )
+        product = prepare_product_plugin_composition(
+            _assembly_request(
+                selection_seed,
+                provider_authorities=provider_authorities,
+            ),
+            evaluated_at=_read_clock(clock),
+        )
+        return CodingCapabilityPluginCompositionPreparation(
+            request=request,
+            runtime=runtime,
+            selection=selection,
+            product=product,
+            provider_owner_authorities=provider_authorities,
+            tool_owner_authority=tool_authority,
+            scope_id=scope_id,
+            state_root=resolved_state_root,
+            management_leases=management_leases,
+            management_state_cleanup=management_state_cleanup,
+            state_cleanup=state_cleanup,
+            private_state_cleanup=private_state_cleanup,
+        )
+    except BaseException as error:
+        custodian = CodingCapabilityPluginCleanupCustodian(
+            runtime=runtime,
+            management_leases=dict(management_leases),
+            management_state_cleanup=management_state_cleanup,
+            state_cleanup=state_cleanup,
+            private_state_cleanup=private_state_cleanup,
+        )
+        if not custodian.close_after_failed_preparation(
+            error, cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: "
+        ):
+            _attach_failure_custodian(error, custodian)
+        raise
 
 
 def _build_tool_owners(

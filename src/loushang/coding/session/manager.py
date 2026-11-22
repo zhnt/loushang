@@ -29,10 +29,6 @@ from loushang.coding.harness.session.activation_history import (
     find_input_records,
     select_input_record,
 )
-from loushang.coding.harness.session.composition_receipt import (
-    composition_identity_fields,
-    composition_receipt_matches,
-)
 from loushang.coding.harness.session.writer_acquisition import acquire_writer
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
@@ -79,6 +75,10 @@ from loushang.harness.runtime import (
     ResolvedRuntimeProfile,
     RuntimeProfileBinding,
     RuntimeProfileSnapshot,
+)
+from loushang.harness.session.composition_evidence import (
+    composition_identity_fields,
+    composition_receipt_matches,
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
