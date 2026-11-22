@@ -11,6 +11,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Generic, TextIO, TypeAlias, TypeVar, cast
 
+from loushang.foundation._owned_tasks import _join_failure_first
 from loushang.harness.cli.agent_args import (
     AgentCliArgs,
     agent_cli_bootstrap_args,
@@ -817,16 +818,7 @@ async def _settle_runtime_disposal(
     async def run() -> None:
         await _resolve(dispose(runtime))
 
-    task = asyncio.create_task(run())
-    interrupted = False
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError:
-            interrupted = True
-    task.result()
-    if interrupted:
-        raise asyncio.CancelledError
+    await _join_failure_first(asyncio.create_task(run()))
 
 
 def capture_cli_parse(

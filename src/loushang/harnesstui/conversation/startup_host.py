@@ -6,8 +6,13 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from contextvars import Context, copy_context
-from typing import TYPE_CHECKING, Any, TextIO
+from dataclasses import replace
+from pathlib import Path
+from threading import Lock
+from typing import TYPE_CHECKING, Any, TextIO, TypeVar, cast
 
+from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
+from loushang.harness.runtime import await_owned_task as join_screen_settlement
 from loushang.harnesstui.conversation.control import ConversationActionHost
 from loushang.harnesstui.conversation.input import (
     ConversationInputResult,
@@ -29,11 +34,32 @@ from loushang.harnesstui.conversation.screen_runner import (
     TextHandler,
     run_conversation_screen,
 )
+from loushang.tui.cell_width import strip_control_sequences
 from loushang.tui.input import InputEvent
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
+from loushang.tui.terminal_backends import native_terminal_input_is_tty
 
 if TYPE_CHECKING:
+    from loushang.harness.cli.agent_args import AgentCliArgs
+    from loushang.harness.cli.agent_host import (
+        AgentCliHostRunners,
+        AgentCliSessionHostBinding,
+    )
+    from loushang.harness.cli.application import (
+        AgentCliApplicationBinding,
+        AgentCliApplicationState,
+    )
     from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
+
+ArgsT = TypeVar("ArgsT", bound="AgentCliArgs")
+PreparedScreenCliRunner = Callable[
+    [
+        "AgentCliApplicationBinding[ArgsT]",
+        "AgentCliSessionHostBinding[ArgsT, AgentCliApplicationState[ArgsT]]",
+        "AgentCliHostRunners",
+    ],
+    Awaitable[int],
+]
 
 
 def startup_failure_summary(error: BaseException) -> str:
@@ -43,20 +69,6 @@ def startup_failure_summary(error: BaseException) -> str:
             startup_failure_summary(item) for item in error.exceptions[:4]
         )[:1000]
     return (str(error) or type(error).__name__)[:1000]
-
-
-async def join_screen_settlement(task: asyncio.Task[None]) -> None:
-    """Defer repeated cancellation until the owned cleanup has settled."""
-
-    interrupted = False
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError:
-            interrupted = True
-    task.result()
-    if interrupted:
-        raise asyncio.CancelledError
 
 
 class _StartupRouter:
@@ -397,7 +409,211 @@ class ScreenConversationStartup:
         return self.exit_code or result
 
 
+class StartupOutput:
+    """Bounded Product output with TTY routing metadata, but no terminal writes."""
+
+    def __init__(self, original: TextIO, *, limit: int = 65_536) -> None:
+        self.original = original
+        self.limit = limit
+        self._text = ""
+        self._truncated = False
+
+    @property
+    def encoding(self) -> str:
+        return self.original.encoding or "utf-8"
+
+    def isatty(self) -> bool:
+        return stream_is_tty(self.original)
+
+    def writable(self) -> bool:
+        return True
+
+    def flush(self) -> None:
+        """Product flush never writes over the live screen."""
+
+    def write(self, text: str) -> int:
+        available = max(0, self.limit - len(self._text))
+        self._text += text[:available]
+        self._truncated |= len(text) > available
+        return len(text)
+
+    def drain(self) -> None:
+        text, truncated = self._text, self._truncated
+        self._text, self._truncated = "", False
+        if text:
+            self.original.write(text)
+        if truncated:
+            self.original.write("\n[Startup output truncated]\n")
+        self.original.flush()
+
+    def diagnostic_text(self) -> str:
+        return strip_control_sequences(self._text).strip()[-1000:]
+
+
+class _StartupPhase:
+    """Share coarse Product progress with the borrowed loading screen."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._value: str | None = None
+
+    def set(self, value: str) -> None:
+        with self._lock:
+            self._value = value
+
+    def current(self) -> str | None:
+        with self._lock:
+            return self._value
+
+
+async def run_screen_first_agent_cli(
+    argv: tuple[str, ...],
+    *,
+    app: ScreenConversationApp,
+    prepare_cli: Callable[[PreparedScreenCliRunner[ArgsT]], Awaitable[int]],
+    run_tui: Callable[..., Awaitable[int]],
+    lifecycle: ProductHostLifecycle,
+    cwd: str | Path | None,
+) -> int:
+    """Run the canonical CLI phases inside a terminal owned by the startup host."""
+    from loushang.harnesstui.conversation.threaded_startup import ThreadedScreenStartup
+
+    streams = lifecycle.streams
+    output = StartupOutput(streams.stdout)
+    errors = StartupOutput(streams.stderr)
+    phase = _StartupPhase()
+    app.startup_phase_provider = phase.current
+
+    async def attach_tui(**kwargs: Any) -> int:
+        phase.set("opening interface")
+        if threaded_startup is not None:
+            await threaded_startup.before_product_ui()
+        return await run_tui(
+            **kwargs,
+            startup_app=app,
+            prepared_screen_runner=startup.attach,
+        )
+
+    async def run_prepared_binding(
+        binding: AgentCliApplicationBinding[ArgsT],
+        host_binding: AgentCliSessionHostBinding[
+            ArgsT, AgentCliApplicationState[ArgsT]
+        ],
+        host_runners: AgentCliHostRunners,
+    ) -> int:
+        from loushang.harness.cli.application import (
+            CliApplicationRuntime,
+            build_agent_cli_application_ports,
+        )
+
+        buffered_lifecycle = ProductHostLifecycle.resolve(
+            stdin=streams.stdin,
+            stdout=cast(TextIO, output),
+            stderr=cast(TextIO, errors),
+        )
+        buffered_binding = replace(
+            binding,
+            host_lifecycle=buffered_lifecycle,
+            run_host=host_binding.bind(replace(host_runners, tui=attach_tui)),
+        )
+        ports = build_agent_cli_application_ports(buffered_binding)
+        runtime: object | None = None
+        primary_error: BaseException | None = None
+
+        async def build_runtime(context: Any, state: Any) -> object:
+            nonlocal runtime
+            phase.set("initializing runtime")
+            result = ports.build_runtime(context, state)
+            runtime = await result if inspect.isawaitable(result) else result
+            phase.set("opening session")
+            return runtime
+
+        async def dispose_once() -> None:
+            assert runtime is not None and ports.dispose_runtime is not None
+            try:
+                result = ports.dispose_runtime(runtime)
+                if inspect.isawaitable(result):
+                    await result
+            except asyncio.CancelledError as error:
+                raise RuntimeError(
+                    "Session runtime cleanup cancelled before settlement"
+                ) from error
+
+        async def dispose_runtime() -> None:
+            try:
+                await dispose_once()
+            except Exception as first_error:
+                # Preserve the failed release retry before the terminal lease ends.
+                try:
+                    await dispose_once()
+                except Exception as retry_error:
+                    raise ExceptionGroup(
+                        "Session runtime cleanup and retry failed",
+                        [first_error, retry_error],
+                    ) from None
+                raise
+
+        # The terminal lease covers the whole cleanup. Early operations such as
+        # help still own any temporary runtime created by their internal ports.
+        application = CliApplicationRuntime(
+            replace(ports, build_runtime=build_runtime, dispose_runtime=None)
+        )
+        buffered = buffered_lifecycle.streams
+        try:
+            return await application.run(
+                argv,
+                stdin=buffered.stdin,
+                stdout=buffered.stdout,
+                stderr=buffered.stderr,
+                cwd=cwd,
+            )
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            startup.begin_cleanup()
+            if runtime is not None and ports.dispose_runtime is not None:
+                try:
+                    await join_screen_settlement(asyncio.create_task(dispose_runtime()))
+                except BaseException as cleanup_error:
+                    if primary_error is not None:
+                        raise BaseExceptionGroup(
+                            "Session preparation and cleanup failed",
+                            [primary_error, cleanup_error],
+                        ) from None
+                    raise
+
+    def failure_summary(exit_code: int) -> str:
+        # A non-verbose UI failure can be reported to either stream.
+        parts = [stream.diagnostic_text() for stream in (output, errors)]
+        detail = "\n".join(part[-500:] for part in parts if part)
+        return detail or f"Session preparation failed (exit {exit_code})."
+
+    startup = ScreenConversationStartup(
+        app, lambda: prepare_cli(run_prepared_binding), failure_summary=failure_summary
+    )
+    threaded_startup = (
+        ThreadedScreenStartup(startup)
+        if native_terminal_input_is_tty(streams.stdin)
+        else None
+    )
+    try:
+        runner = threaded_startup or startup
+        return await runner.run(stdin=streams.stdin, stdout=streams.stdout)
+    except (Exception, BaseExceptionGroup) as error:
+        errors.write(f"Error: {startup_failure_summary(error)}\n")
+        return 1
+    finally:
+        try:
+            output.drain()
+        finally:
+            errors.drain()
+
+
 __all__ = [
+    "PreparedScreenCliRunner",
+    "StartupOutput",
+    "run_screen_first_agent_cli",
     "ScreenConversationStartup",
     "join_screen_settlement",
     "startup_failure_summary",
