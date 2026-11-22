@@ -638,6 +638,34 @@ bootstrap fault-order and architecture cases pass. The seven source paths
 that hold the change and updated inventory were applied from that candidate.
 Native Windows startup and Resume are pending.
 
+### Package Management, Source Custody And Compatibility
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `management` | Formal Package Product binds strict management reads and verifies Desired transitions and exact handoff commits. The shared Wheel catalog compares current sources against selected revisions and projects management evidence. Coding sets the actor, workspace guard and Source catalog. |
+| `source_admission` | Formal Package Product prepares the fenced state and Source roots. Existing POSIX and Windows catalog owners perform capture. Coding selects the catalog and supplies the original Product scope and native admission. |
+| `data_source_record` and `worker_source_record` | The formal controlled Source catalog shares the Plugin Wheel path and identity field checks. Coding retains nominal records, exact wire, artifact tags and Worker admission policy. |
+| `dependency_source_record` | Coding retains the nominal dependency record and its historical source filename contract. The existing formal dependency catalog owns verification and custody. |
+| `builtin_sources` | Coding retains its selected built-in recipes. Exact Source read and publication remain with the existing formal POSIX and Windows readers. |
+| `package_change` | Coding retains CLI admission, status and failure presentation. The existing formal Package runtime executes updates and owns transaction results; the formal read path verifies durable progress after a failed command. |
+| `repair` | Coding retains the SDK client and workspace admission. The existing Harness Package repair operation executes with the bound runtime. |
+| `__init__` | Removed with the final Package Product staging modules. |
+
+This batch retires 951 staging lines and adds 460 Coding Product lines and
+227 formal Harness lines. Hosting, other production code and scripts have no
+changes. System production Python decreases by 264 lines for the batch and
+823 against baseline. The Package Product staging directory is empty.
+Across the task, staging contains 55 files and 10,311 lines. Direct absolute
+imports of other Coding components remain in 41 staged source files. That
+count does not include deferred or indirect call paths.
+
+The selected Linux suite reports 74 passed and seven host-runtime cases
+skipped, including the three Legacy CLI reruns inside the registered source
+tree. It covers recovery after an interrupted retention handoff, strict
+reads, workspace identity, source records, SDK/CLI repair, original
+bootstrap and preview probes, and existing architecture constraints.
+Native Windows and host-runtime verification remain pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

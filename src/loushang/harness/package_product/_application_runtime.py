@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
+import stat
 from collections.abc import Callable, Iterable
 from hashlib import sha256
 from pathlib import Path
-from typing import NamedTuple, Protocol, TypedDict, TypeVar, Unpack, cast
+from typing import Literal, NamedTuple, Protocol, TypedDict, TypeVar, Unpack, cast
 
+from loushang.harness.journal import JournalLoadPolicy
+from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
+from loushang.harness.plugin_management.journal_codecs import (
+    PluginDesiredStateJournalTransition,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -17,6 +24,12 @@ from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+    PackageRetentionHandoffReceiptV1,
+)
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
 )
@@ -89,6 +102,21 @@ def prepare_product_state_for_recovery(
     return state_root, gate
 
 
+def prepare_fenced_source_catalog(
+    runtime: _FencedRuntime, *, no_namespace: str
+) -> tuple[str, Path, Path]:
+    """Prepare both controlled Source paths after selecting the current fence."""
+
+    switch = runtime.cutover_result.switch_receipt
+    if switch is None:
+        raise ValueError(no_namespace)
+    return (
+        switch.namespace_id,
+        runtime.prepare_product_state_root(),
+        runtime.prepare_product_source_root(),
+    )
+
+
 class FencedProductManagementState(NamedTuple):
     desired_state: PluginDesiredStateLedger
     management: PluginManagementService
@@ -114,6 +142,104 @@ def open_fenced_product_management_state(
         desired,
         management,
         PluginPackageGcBindingJournal(state_root / _GC_BINDINGS_NAME),
+    )
+
+
+def open_read_only_product_management_state(
+    state_root: Path,
+) -> tuple[PluginDesiredStateLedger, PluginManagementService, JournalLoadPolicy]:
+    """Open existing state and operation authorities with strict read policies."""
+
+    try:
+        state_metadata = state_root.lstat()
+    except FileNotFoundError as exc:
+        raise ValueError("Fenced Product management state is absent") from exc
+    if (
+        not stat.S_ISDIR(state_metadata.st_mode)
+        or stat.S_IMODE(state_metadata.st_mode) & 0o077
+        or state_metadata.st_uid != os.geteuid()
+    ):
+        raise ValueError("Fenced Product management state is unsafe")
+    load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
+    desired = bind_plugin_desired_state(
+        state_root / _GC_RESERVATIONS_NAME,
+        state_root / _DESIRED_NAME,
+        load_policy=load_policy,
+    ).desired
+    management = PluginManagementService(
+        desired_state=desired,
+        operation_journal_path=state_root / _MANAGEMENT_NAME,
+        load_policy=load_policy,
+    )
+    return desired, management, load_policy
+
+
+def read_fenced_product_desired_transition(
+    runtime: PackageProductPosixFencedRuntimeOwner,
+    operation_id: str,
+) -> PluginDesiredStateJournalTransition | None:
+    """Read the exact Desired transition under the existing observation fence."""
+
+    desired = PluginDesiredStateLedger(
+        runtime.control_root / "product-state" / _DESIRED_NAME,
+        load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+    )
+    _snapshot, transitions = desired.capture_read_only()
+    matches = [
+        transition
+        for transition in transitions
+        if transition.mutation.operation_id == operation_id
+    ]
+    runtime.assert_current()
+    if len(matches) > 1:
+        raise ValueError("Desired operation identity is ambiguous")
+    return matches[0] if matches else None
+
+
+def verify_handoff_desired_commit(
+    handoff: PackageRetentionHandoffReceiptV1,
+    *,
+    read_transition: Callable[[str], PluginDesiredStateJournalTransition | None],
+) -> (
+    tuple[int, dict[str, object], Literal["owner_receipt", "verified_transition"]]
+    | None
+):
+    """Prove an exact Desired commit even before handoff settlement is journaled."""
+
+    desired_request = handoff.request.desired_request
+    if handoff.desired_receipt is not None:
+        return (
+            handoff.desired_receipt.inventory_revision,
+            desired_request.root_ref.to_dict(),
+            "owner_receipt",
+        )
+    if handoff.state != "dependency_pinned":
+        return None
+    transition = read_transition(desired_request.command_id)
+    if transition is None:
+        return None
+    key = transition.mutation.installation_key
+    selected = transition.committed_state.selection.package_revision
+    if (
+        transition.mutation.expected_inventory_revision
+        != desired_request.expected_inventory_revision
+        or transition.inventory_revision
+        != desired_request.expected_inventory_revision + 1
+        or (key.product_id, key.scope_id, key.plugin_id)
+        != (
+            desired_request.product_id,
+            desired_request.scope_id,
+            desired_request.plugin_id,
+        )
+        or selected is None
+        or selected.plugin_version != desired_request.root_ref.version
+        or selected.package_content_digest != desired_request.root_ref.artifact_digest
+    ):
+        return None
+    return (
+        transition.inventory_revision,
+        desired_request.root_ref.to_dict(),
+        "verified_transition",
     )
 
 

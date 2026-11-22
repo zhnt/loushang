@@ -13,9 +13,8 @@ from hashlib import sha256
 from importlib.metadata import version as version
 from pathlib import Path
 from threading import Lock, RLock
-from typing import cast
+from typing import Literal, cast
 
-from loushang.coding.harness.package_product import source_admission as _source_programs
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
 )
@@ -33,6 +32,7 @@ from loushang.harness.package_product._application_runtime import (
     close_product_applications,
     fingerprint_product_resume_epoch,
     open_fenced_product_management_state,
+    prepare_fenced_source_catalog,
     prepare_product_state_for_recovery,
     product_management_paths_match,
     require_current_product_admission,
@@ -191,14 +191,6 @@ _RESUME_EPOCH_DOMAIN = b"loushang.coding.resume-epoch/v1\0"
 
 
 _LIFECYCLE_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
-
-
-_SOURCE_ADMISSION_PROGRAM_VALUES = {
-    "value_001": "Coding Package Product root is not fenced",
-    "value_002": "external-data-wheel-bindings.jsonl",
-    "value_003": "external-dependency-wheel-bindings.jsonl",
-    "value_004": "external-worker-wheel-bindings.jsonl",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -874,7 +866,7 @@ def admit_coding_external_data_wheel(
 
     return cast(
         "CodingExternalDataWheelBindingV1",
-        _source_programs.capture_inert_source(lifecycle, source=source, kind="data"),
+        _capture_coding_inert_source(lifecycle, source=source, kind="data"),
     )
 
 
@@ -887,9 +879,7 @@ def admit_coding_external_dependency_wheel(
 
     return cast(
         "CodingExternalDependencyWheelBindingV1",
-        _source_programs.capture_inert_source(
-            lifecycle, source=source, kind="dependency"
-        ),
+        _capture_coding_inert_source(lifecycle, source=source, kind="dependency"),
     )
 
 
@@ -901,9 +891,81 @@ def admit_coding_external_worker_wheel(
 ) -> CodingExternalWorkerWheelBindingV1:
     """Capture one inert Worker candidate; the normal Session route stays dark."""
 
-    return _source_programs.capture_worker_source(
-        lifecycle, source=source, admission=admission
+    return _capture_coding_worker_source(lifecycle, source=source, admission=admission)
+
+
+def _capture_coding_inert_source(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    *,
+    source: Path,
+    kind: Literal["data", "dependency"],
+) -> CodingExternalDataWheelBindingV1 | CodingExternalDependencyWheelBindingV1:
+    """Capture one inert source through the original epoch and catalog owners."""
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
+        **epoch.fenced_runtime_open_kwargs()
     )
+    try:
+        namespace_id, state_root, source_root = prepare_fenced_source_catalog(
+            epoch_runtime, no_namespace="Coding Package Product root is not fenced"
+        )
+        return (
+            CodingExternalDataWheelCatalog
+            if kind == "data"
+            else CodingExternalDependencyWheelCatalog
+        )(
+            state_root
+            / (
+                "external-data-wheel-bindings.jsonl"
+                if kind == "data"
+                else "external-dependency-wheel-bindings.jsonl"
+            ),
+            source_root=source_root,
+            store_id=epoch.store_id,
+            namespace_id=namespace_id,
+            scope_id=lifecycle.scope_id,
+        ).capture(source, epoch_runtime=epoch_runtime)
+    finally:
+        epoch_runtime.close()
+
+
+def _capture_coding_worker_source(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    *,
+    source: Path,
+    admission: PackageProductLocalWorkerAdmissionV1,
+) -> CodingExternalWorkerWheelBindingV1:
+    """Capture one inert Worker candidate; the normal Session route stays dark."""
+
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    epoch_owner_type = (
+        PackageProductWindowsFencedRuntimeOwner
+        if os.name == "nt"
+        else PackageProductPosixFencedRuntimeOwner
+    )
+    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
+    try:
+        namespace_id, state_root, source_root = prepare_fenced_source_catalog(
+            epoch_runtime, no_namespace="Coding Package Product root is not fenced"
+        )
+        if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
+            return CodingWindowsExternalWorkerWheelCatalog(
+                epoch_runtime=epoch_runtime,
+                state_root=state_root,
+                source_root=source_root,
+                store_id=epoch.store_id,
+                namespace_id=namespace_id,
+                scope_id=lifecycle.scope_id,
+            ).capture(source, admission=admission)
+        return CodingExternalWorkerWheelCatalog(
+            state_root / "external-worker-wheel-bindings.jsonl",
+            source_root=source_root,
+            store_id=epoch.store_id,
+            namespace_id=namespace_id,
+            scope_id=lifecycle.scope_id,
+        ).capture(source, admission=admission, epoch_runtime=epoch_runtime)
+    finally:
+        epoch_runtime.close()
 
 
 def bootstrap_coding_builtin_product_plugins(

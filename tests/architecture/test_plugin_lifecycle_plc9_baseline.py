@@ -1092,8 +1092,8 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
         ),
         # P1 transition-status reads keep the CLI on the same read-only ledger.
         (
-            Path("src/loushang/coding/package/management_binding.py"),
-            "read_coding_fenced_desired_transition",
+            Path("src/loushang/harness/package_product/_application_runtime.py"),
+            "read_fenced_product_desired_transition",
         ),
     }
     assembly = Path("src/loushang/harness/plugin_management/assembly.py")

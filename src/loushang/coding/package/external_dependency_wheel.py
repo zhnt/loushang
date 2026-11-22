@@ -16,9 +16,6 @@ from packaging.utils import InvalidWheelFilename as InvalidWheelFilename
 from packaging.utils import parse_wheel_filename as parse_wheel_filename
 from packaging.version import Version
 
-from loushang.coding.harness.package_product import (
-    dependency_source_record as _lifecycle_programs,
-)
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
     JournalRecordCodec,
@@ -61,19 +58,22 @@ _INSPECTION_BUDGET = PackageInspectionBudgetV1(
 )
 
 
-_LIFECYCLE_PROGRAM_VALUES = {
-    "value_001": "Dependency Wheel binding is invalid",
-    "value_002": "Dependency Wheel binding identity changed",
-    "wheel_filename_invalid": "Dependency Wheel filename is invalid",
-}
-
-
 class CodingExternalDependencyWheelError(RuntimeError):
     """Dependency Source custody or its durable binding could not be proved."""
 
 
 def _wheel_identity(filename: str) -> tuple[str, str]:
-    return _lifecycle_programs.wheel_identity(filename)
+    if (
+        not isinstance(filename, str)
+        or len(filename) > _MAX_WHEEL_FILENAME
+        or _WHEEL_FILENAME.fullmatch(filename) is None
+    ):
+        raise ValueError("Dependency Wheel filename is invalid")
+    try:
+        project_name, version, _build, _tags = parse_wheel_filename(filename)
+    except InvalidWheelFilename as exc:
+        raise ValueError("Dependency Wheel filename is invalid") from exc
+    return (project_name, str(version))
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +90,29 @@ class CodingExternalDependencyWheelBindingV1:
     record_id: str
 
     def __post_init__(self) -> None:
-        return _lifecycle_programs.validate_record(self)
+        project_name, version = _wheel_identity(self.wheel_filename)
+        if (
+            type(self.record_revision) is not int
+            or self.record_revision < 1
+            or not isinstance(self.store_id, str)
+            or not self.store_id
+            or not isinstance(self.namespace_id, str)
+            or _DIGEST.fullmatch(self.namespace_id) is None
+            or not isinstance(self.scope_id, str)
+            or not self.scope_id
+            or not isinstance(self.original_source, str)
+            or not Path(self.original_source).is_absolute()
+            or os.path.normpath(self.original_source) != self.original_source
+            or self.project_name != project_name
+            or self.version != version
+            or not isinstance(self.artifact_digest, str)
+            or _DIGEST.fullmatch(self.artifact_digest) is None
+            or not isinstance(self.record_id, str)
+            or _DIGEST.fullmatch(self.record_id) is None
+        ):
+            raise ValueError("Dependency Wheel binding is invalid")
+        if self.record_id != sha256(canonical_json_bytes(self._identity())).hexdigest():
+            raise ValueError("Dependency Wheel binding identity changed")
 
     @classmethod
     def create(
@@ -104,15 +126,29 @@ class CodingExternalDependencyWheelBindingV1:
         wheel_filename: str,
         artifact_digest: str,
     ) -> CodingExternalDependencyWheelBindingV1:
-        return _lifecycle_programs.create_record(
-            cls,
+        project_name, version = _wheel_identity(wheel_filename)
+        fields = {
+            "recordRevision": record_revision,
+            "storeId": store_id,
+            "namespaceId": namespace_id,
+            "scopeId": scope_id,
+            "originalSource": original_source,
+            "wheelFilename": wheel_filename,
+            "projectName": project_name,
+            "version": version,
+            "artifactDigest": artifact_digest,
+        }
+        return cls(
             record_revision=record_revision,
             store_id=store_id,
             namespace_id=namespace_id,
             scope_id=scope_id,
             original_source=original_source,
             wheel_filename=wheel_filename,
+            project_name=project_name,
+            version=version,
             artifact_digest=artifact_digest,
+            record_id=sha256(canonical_json_bytes(fields)).hexdigest(),
         )
 
     def _identity(self) -> dict[str, object]:

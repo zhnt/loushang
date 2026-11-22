@@ -32,6 +32,12 @@ from loushang.harness.journal import (
     journal_file_read_lock,
     load_jsonl,
 )
+from loushang.harness.plugin_management.application import (
+    PluginManagementSourceRecordV1,
+    PluginManagementSourceSnapshotV1,
+)
+from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
 )
@@ -132,9 +138,34 @@ class _PluginSourceRecord(_SourceRecord, Protocol):
     def plugin_id(self) -> str: ...
     @property
     def version(self) -> str: ...
+    def to_dict(self) -> dict[str, object]: ...
     def policy_binding(
         self, source_root: Path
     ) -> PackageProductLocalWheelBindingV1: ...
+
+
+_SOURCE_RECORD_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def plugin_wheel_source_fields_match(
+    record: _PluginSourceRecord, match: re.Match[str] | None, *, maximum_filename: int
+) -> bool:
+    """Check shared identity and path fields of a controlled Plugin Wheel."""
+
+    return not (
+        type(record.record_revision) is not int
+        or record.record_revision < 1
+        or not record.store_id
+        or _SOURCE_RECORD_DIGEST.fullmatch(record.namespace_id) is None
+        or not record.scope_id
+        or not Path(record.original_source).is_absolute()
+        or os.path.normpath(record.original_source) != record.original_source
+        or match is None
+        or len(record.wheel_filename) > maximum_filename
+        or record.plugin_id != match["plugin"]
+        or record.version != match["version"]
+        or _SOURCE_RECORD_DIGEST.fullmatch(record.artifact_digest) is None
+    )
 
 
 RecordT = TypeVar("RecordT", bound=_SourceRecord)
@@ -462,6 +493,76 @@ class _PluginWheelSourceCatalog(
 ):
     def _record_key(self, record: PluginRecordT) -> Hashable:
         return record.plugin_id, record.version
+
+    def project_management_source_snapshot(
+        self,
+        desired_state: PluginDesiredStateLedger,
+        *,
+        owner_revision_prefix: str,
+        verify_record: Callable[[PluginRecordT], None],
+        verification_error: type[Exception],
+    ) -> PluginManagementSourceSnapshotV1:
+        """Project current controlled sources with committed selections preferred."""
+
+        all_bindings = self.records()
+        selected = {
+            item.installation_key.plugin_id: item.selection.package_revision
+            for item in desired_state.snapshot().installations
+            if item.installation_key.product_id == self._product_id
+            and item.installation_key.scope_id == self.scope_id
+        }
+        latest: dict[str, PluginRecordT] = {}
+        for item in all_bindings:
+            prior = latest.get(item.plugin_id)
+            if prior is None or item.record_revision > prior.record_revision:
+                latest[item.plugin_id] = item
+        for item in all_bindings:
+            revision = selected.get(item.plugin_id)
+            if (
+                revision is not None
+                and revision.package_source_identity
+                == str(self.source_root / item.wheel_filename)
+                and revision.package_content_digest == item.artifact_digest
+            ):
+                latest[item.plugin_id] = item
+        records = []
+        for item in latest.values():
+            availability: Literal["available", "unavailable"]
+            try:
+                verify_record(item)
+            except (verification_error, OSError):
+                availability = "unavailable"
+            else:
+                availability = "available"
+            records.append(
+                PluginManagementSourceRecordV1(
+                    installation_key=PluginInstallationKeyV1(
+                        product_id=self._product_id,
+                        installation_scope="workspace",
+                        scope_id=item.scope_id,
+                        plugin_id=item.plugin_id,
+                    ),
+                    source_identity=f"local:{self.source_root / item.wheel_filename}",
+                    source_kind="local",
+                    availability=availability,
+                    source_location=item.original_source,
+                    plugin_version=item.version,
+                    manifest_enabled_default=None,
+                )
+            )
+        ordered = tuple(sorted(records, key=lambda value: value.installation_key))
+        owner_revision = sha256(
+            canonical_json_bytes(
+                {
+                    "bindings": [item.to_dict() for item in all_bindings],
+                    "selected": [item.to_dict() for item in ordered],
+                }
+            )
+        ).hexdigest()
+        return PluginManagementSourceSnapshotV1(
+            owner_revision=f"{owner_revision_prefix}{owner_revision}",
+            records=ordered,
+        )
 
 
 class _DependencySourceRecord(_SourceRecord, Protocol):
