@@ -721,6 +721,25 @@ reader compatibility cases. Scoped mypy passed on nine implementation
 files before the final two codec call sites were pointed at the same
 Coding intent-matching policy. Native Windows remains pending.
 
+### Configured Continuity And Local Discovery
+
+| Retired staged module | Current owner and retained policy |
+| --- | --- |
+| `configured_continuity` | Formal Plugin Management joins actual and historical Source identities, reopens selected revisions, reconciles installed Instances, and releases unused revision handles. Formal Continuity keeps its Hub publication and generation. Coding supplies its scope, compatibility choices, approval policy and error identity. |
+| `local_discovery` | Formal Plugin Management joins read-only management, support and native Catalog evidence, then checks drift, sorts, filters and reports truncation. Coding retains the declared roots, selected resource and artifact policies, workspace admission and exact CLI output. |
+
+The batch removes 1,272 staging lines and adds 587 Coding Product and 766
+formal Harness lines. The explicit borrowed read and admission interfaces
+add 81 system production lines for the batch. The system still decreases
+by 881 lines against baseline. Hosting, other production code and scripts
+have no changes. Staging has 36 files and 5,418 lines.
+
+The Linux candidate passes 61 Continuity lifecycle, local discovery and
+existing architecture cases. Moving the installed selection helper to
+its Plugin Management owner resolved the dependency-cycle finding. The
+three affected restart, exact source inventory and no-cycle cases pass
+after the correction. Native Windows remains pending.
+
 ## Validation And Commit Rhythm
 
 Use static/import checks and focused tests during a batch. Run affected

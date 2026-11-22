@@ -65,7 +65,6 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/cli/package_cutover.py"),
     Path("src/loushang/coding/composition/bootstrap.py"),
     Path("src/loushang/coding/composition/continuity.py"),
-    Path("src/loushang/coding/harness/session/configured_continuity.py"),
     Path("src/loushang/coding/package/legacy_builtin_review.py"),
     Path("src/loushang/coding/package/legacy_classification.py"),
     Path("src/loushang/coding/package/legacy_configured_source.py"),
@@ -92,7 +91,7 @@ MANIFEST_ENABLED_FILES = {
     Path("src/loushang/coding/composition/capability_plugins.py"),
     Path("src/loushang/coding/composition/product_capability_plugins.py"),
     Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
-    Path("src/loushang/coding/harness/session/configured_continuity.py"),
+    Path("src/loushang/harness/plugin_management/_continuity_installed_plugins.py"),
     Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
@@ -155,11 +154,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "bind_coding_configured_continuity",
-        ): 4,
-        (
-            Path("src/loushang/coding/harness/session/configured_continuity.py"),
-            "bind_configured_continuity",
-        ): 5,
+        ): 6,
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "_configured_sources",
@@ -387,8 +382,8 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
             "_resolve_managed_capability_plugins",
         ): 1,
         (
-            Path("src/loushang/coding/harness/session/configured_continuity.py"),
-            "_reconcile_enabled_instances",
+            Path("src/loushang/harness/plugin_management/_continuity_installed_plugins.py"),
+            "reconcile_enabled_continuity_instances",
         ): 1,
         (
             Path("src/loushang/harness/plugin_management/configured_sources.py"),
