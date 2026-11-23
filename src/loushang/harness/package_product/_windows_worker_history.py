@@ -8,7 +8,8 @@ exact staged retry and read-back; they introduce no journal or authority switch.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Generic, Protocol, TypeVar, cast
@@ -23,6 +24,7 @@ from loushang.harness.package_product._windows_worker_references import (
 from loushang.harness.package_product._worker_history_access import (
     windows_product_worker_quiescence,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -115,140 +117,171 @@ def _read_pending_history_publication(
     return published, staged
 
 
+@contextmanager
+def _hold_windows_worker_history(
+    product: WindowsLocalWheelProductSessionOwner, *, active_message: str
+) -> Iterator[
+    tuple[PackageWindowsEpochRuntimeLeaseRegistry, PackageWindowsRuntimeQuiescenceV1]
+]:
+    """Borrow existing offline and GC guards for a complete history operation."""
+
+    with windows_product_worker_quiescence(
+        product, active_message=active_message
+    ) as authority:
+        product.assert_root_gc_authority_current()
+        with product.gc_gate.guard(require_write=True):
+            yield authority
+
+
+def _require_windows_history_product(
+    product: WindowsLocalWheelProductSessionOwner, product_id: str, message: str
+) -> None:
+    if not is_windows_product(
+        product, product_id, os.name, WindowsLocalWheelProductSessionOwner
+    ):
+        raise ValueError(message)
+
+
 def prepare_windows_product_worker_history(
     product: WindowsLocalWheelProductSessionOwner,
     *,
+    product_id: str,
     record_type: type[_PreparationT],
     capture_semantic: CapturePreparedWindowsSemantic[_WindowsHistorySemanticFacts],
     io: WindowsPrivateReceiptIO,
     name: str,
 ) -> _PreparationT:
     """Complete the original preparation transaction under unchanged guards."""
-    with windows_product_worker_quiescence(
+    _require_windows_history_product(
+        product, product_id, "Windows Worker history preparation requires its Product"
+    )
+    with _hold_windows_worker_history(
         product, active_message="Windows Worker history runtime remains active"
     ) as (registry, quiescence):
+        gc_snapshot = product.gc_gate.snapshot()
+        if gc_snapshot.active:
+            raise ValueError("Windows Worker history GC reservation remains")
+        path = product.state_root / name
+        published, staged = _read_pending_history_publication(
+            io, path, name=name,
+            maximum_bytes=record_type._wire_maximum(),
+        )
+        if staged is not None:
+            record_type.from_bytes(staged)
+        semantic = capture_semantic(
+            product,
+            store=registry,
+            quiescence=quiescence,
+            gc_snapshot=gc_snapshot,
+            allow_preparation_stage=staged is not None,
+        )()
+        prepared = record_type._create_from_semantic_read(semantic)
+        for existing in (published, staged):
+            if existing is not None:
+                record_type.from_bytes(existing)._require_semantic_read(semantic)
+        if staged is not None:
+            io.write_private_receipt(
+                path, staged, maximum_bytes=record_type._wire_maximum()
+            )
+        if published is None and staged is None:
+            io.write_private_receipt(
+                path, prepared.to_bytes(), maximum_bytes=record_type._wire_maximum()
+            )
+        retained = io.read_private_receipt(
+            path, maximum_bytes=record_type._wire_maximum()
+        )
+        if retained != prepared.to_bytes():
+            raise ValueError("Windows Worker history preparation changed")
         product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            gc_snapshot = product.gc_gate.snapshot()
-            if gc_snapshot.active:
-                raise ValueError("Windows Worker history GC reservation remains")
-            path = product.state_root / name
-            published, staged = _read_pending_history_publication(
-                io, path, name=name,
-                maximum_bytes=record_type._wire_maximum(),
-            )
-            if staged is not None:
-                record_type.from_bytes(staged)
-            semantic = capture_semantic(
-                product,
-                store=registry,
-                quiescence=quiescence,
-                gc_snapshot=gc_snapshot,
-                allow_preparation_stage=staged is not None,
-            )()
-            prepared = record_type._create_from_semantic_read(semantic)
-            for existing in (published, staged):
-                if existing is not None:
-                    record_type.from_bytes(existing)._require_semantic_read(semantic)
-            if staged is not None:
-                io.write_private_receipt(
-                    path, staged, maximum_bytes=record_type._wire_maximum()
-                )
-            if published is None and staged is None:
-                io.write_private_receipt(
-                    path, prepared.to_bytes(), maximum_bytes=record_type._wire_maximum()
-                )
-            retained = io.read_private_receipt(
-                path, maximum_bytes=record_type._wire_maximum()
-            )
-            if retained != prepared.to_bytes():
-                raise ValueError("Windows Worker history preparation changed")
-            product.assert_root_gc_authority_current()
-        return prepared
+    return prepared
 
 
 def read_windows_product_worker_checkpoint(
     product: WindowsLocalWheelProductSessionOwner,
     *,
+    product_id: str,
     record_type: type[_CheckpointT],
     review_checkpoint: ReviewWindowsCheckpoint[_CheckpointT],
     io: WindowsPrivateReceiptIO,
     name: str,
 ) -> _CheckpointT:
     """Use existing proof and IO owners without granting an authority switch."""
-    with windows_product_worker_quiescence(
+    _require_windows_history_product(
+        product, product_id, "Windows Worker checkpoint requires its Product"
+    )
+    with _hold_windows_worker_history(
         product, active_message="Windows Worker checkpoint runtime remains active"
     ) as (_, quiescence):
+        published = io.read_private_receipt(
+            product.state_root / name,
+            maximum_bytes=record_type._wire_maximum(),
+        )
+        if published is None:
+            raise ValueError("Windows Worker checkpoint is absent")
+        checkpoint = record_type.from_bytes(published)
+        current = review_checkpoint(
+            product,
+            quiescence=quiescence,
+            gc_snapshot=product.gc_gate.snapshot(),
+            allow_checkpoint_stage=False,
+        )
+        if checkpoint != current:
+            raise ValueError("Windows Worker checkpoint source changed")
+        retained = io.read_private_receipt(
+            product.state_root / name,
+            maximum_bytes=record_type._wire_maximum(),
+        )
+        if retained != published:
+            raise ValueError("Windows Worker checkpoint publication changed")
         product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            published = io.read_private_receipt(
-                product.state_root / name,
-                maximum_bytes=record_type._wire_maximum(),
-            )
-            if published is None:
-                raise ValueError("Windows Worker checkpoint is absent")
-            checkpoint = record_type.from_bytes(published)
-            current = review_checkpoint(
-                product,
-                quiescence=quiescence,
-                gc_snapshot=product.gc_gate.snapshot(),
-                allow_checkpoint_stage=False,
-            )
-            if checkpoint != current:
-                raise ValueError("Windows Worker checkpoint source changed")
-            retained = io.read_private_receipt(
-                product.state_root / name,
-                maximum_bytes=record_type._wire_maximum(),
-            )
-            if retained != published:
-                raise ValueError("Windows Worker checkpoint publication changed")
-            product.assert_root_gc_authority_current()
-            return checkpoint
+        return checkpoint
 
 
 def publish_windows_product_worker_checkpoint(
     product: WindowsLocalWheelProductSessionOwner,
     *,
+    product_id: str,
     record_type: type[_CheckpointT],
     review_checkpoint: ReviewWindowsCheckpoint[_CheckpointT],
     io: WindowsPrivateReceiptIO,
     name: str,
 ) -> _CheckpointT:
     """Use existing proof and IO owners without granting an authority switch."""
-    with windows_product_worker_quiescence(
+    _require_windows_history_product(
+        product, product_id, "Windows Worker checkpoint requires its Product"
+    )
+    with _hold_windows_worker_history(
         product, active_message="Windows Worker checkpoint runtime remains active"
     ) as (_, quiescence):
+        gc_snapshot = product.gc_gate.snapshot()
+        path = product.state_root / name
+        published, staged = _read_pending_history_publication(
+            io, path, name=name,
+            maximum_bytes=record_type._wire_maximum(),
+        )
+        for raw in (published, staged):
+            if raw is not None:
+                record_type.from_bytes(raw)
+        checkpoint = review_checkpoint(
+            product,
+            quiescence=quiescence,
+            gc_snapshot=gc_snapshot,
+            allow_checkpoint_stage=staged is not None,
+        )
+        candidate = checkpoint.to_bytes()
+        if any(raw is not None and raw != candidate for raw in (published, staged)):
+            raise ValueError("Windows Worker checkpoint source changed")
+        if published is None:
+            io.write_private_receipt(
+                path, candidate, maximum_bytes=record_type._wire_maximum()
+            )
+        retained = io.read_private_receipt(
+            path, maximum_bytes=record_type._wire_maximum()
+        )
+        if retained != candidate:
+            raise ValueError("Windows Worker checkpoint publication changed")
         product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            gc_snapshot = product.gc_gate.snapshot()
-            path = product.state_root / name
-            published, staged = _read_pending_history_publication(
-                io, path, name=name,
-                maximum_bytes=record_type._wire_maximum(),
-            )
-            for raw in (published, staged):
-                if raw is not None:
-                    record_type.from_bytes(raw)
-            checkpoint = review_checkpoint(
-                product,
-                quiescence=quiescence,
-                gc_snapshot=gc_snapshot,
-                allow_checkpoint_stage=staged is not None,
-            )
-            candidate = checkpoint.to_bytes()
-            if any(raw is not None and raw != candidate for raw in (published, staged)):
-                raise ValueError("Windows Worker checkpoint source changed")
-            if published is None:
-                io.write_private_receipt(
-                    path, candidate, maximum_bytes=record_type._wire_maximum()
-                )
-            retained = io.read_private_receipt(
-                path, maximum_bytes=record_type._wire_maximum()
-            )
-            if retained != candidate:
-                raise ValueError("Windows Worker checkpoint publication changed")
-            product.assert_root_gc_authority_current()
-            return checkpoint
+        return checkpoint
 
 
 class WindowsHistorySettlement(Protocol):
@@ -400,12 +433,9 @@ class WindowsProductWorkerHistorySources(
     recovery_reader: ReadWindowsOfflineRecovery
 
     def _require_product(self, product: WindowsLocalWheelProductSessionOwner) -> None:
-        if (
-            os.name != "nt"
-            or type(product) is not WindowsLocalWheelProductSessionOwner
-            or product.policy.product_id != self.product_id
-        ):
-            raise ValueError("Windows Worker history requires its Product owner")
+        _require_windows_history_product(
+            product, self.product_id, "Windows Worker history requires its Product owner"
+        )
 
     def capture_sources(
         self, product: WindowsLocalWheelProductSessionOwner
@@ -648,8 +678,12 @@ def capture_windows_product_worker_reference_inputs_under_guard(
 def review_windows_product_worker_package_references(
     product: WindowsLocalWheelProductSessionOwner,
     *,
+    product_id: str,
     review_under_guard: ReviewWindowsReferences[_ReferenceT],
 ) -> _ReferenceT:
+    _require_windows_history_product(
+        product, product_id, "Windows Worker Package references require their Product"
+    )
     with windows_product_worker_quiescence(
         product, active_message="Windows Worker Package runtime remains active"
     ) as (_, quiescence):
@@ -704,51 +738,51 @@ def capture_windows_product_worker_persisted_history(
     read_under_guard: ReadWindowsPersistedBases[_PersistedT],
     require_cutover: bool,
 ) -> tuple[_PersistedT, _WindowsHistoryCutoverMethods | None]:
-    with windows_product_worker_quiescence(
+    with _hold_windows_worker_history(
         product, active_message="Windows Worker persisted bases runtime remains active"
     ):
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            result = read_under_guard(
+                product, root, require_cutover=require_cutover
+            )
         product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                result = read_under_guard(
-                    product, root, require_cutover=require_cutover
-                )
-            product.assert_root_gc_authority_current()
-            return result
+        return result
 
 
 def review_windows_product_worker_history_cutover_candidate(
     product: WindowsLocalWheelProductSessionOwner,
     *,
+    product_id: str,
     record_type: type[_CutoverT],
     read_persisted: ReadWindowsPersistedBases[_WindowsPersistedBasesMethods],
     review_checkpoint: ReviewWindowsCheckpoint[_WindowsHistoryCheckpointMethods],
 ) -> _CutoverT:
     """Reprove both old sources and retained bases; no marker writer is borrowed."""
-    with windows_product_worker_quiescence(
+    _require_windows_history_product(
+        product, product_id, "Windows Worker cutover review requires its Product"
+    )
+    with _hold_windows_worker_history(
         product, active_message="Windows Worker cutover runtime remains active"
     ) as (_, quiescence):
+        gc_snapshot = product.gc_gate.snapshot()
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            persisted, marker = read_persisted(product, root, require_cutover=False)
+        if marker is not None:
+            raise ValueError("Windows Worker cutover marker is already present")
+        current = review_checkpoint(
+            product,
+            quiescence=quiescence,
+            gc_snapshot=gc_snapshot,
+            allow_checkpoint_stage=False,
+        )
+        if current != persisted.checkpoint:
+            raise ValueError("Windows Worker cutover source changed")
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            reread, marker = read_persisted(product, root, require_cutover=False)
+        if marker is not None or reread != persisted:
+            raise ValueError("Windows Worker cutover bases changed")
         product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            gc_snapshot = product.gc_gate.snapshot()
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                persisted, marker = read_persisted(product, root, require_cutover=False)
-            if marker is not None:
-                raise ValueError("Windows Worker cutover marker is already present")
-            current = review_checkpoint(
-                product,
-                quiescence=quiescence,
-                gc_snapshot=gc_snapshot,
-                allow_checkpoint_stage=False,
-            )
-            if current != persisted.checkpoint:
-                raise ValueError("Windows Worker cutover source changed")
-            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                reread, marker = read_persisted(product, root, require_cutover=False)
-            if marker is not None or reread != persisted:
-                raise ValueError("Windows Worker cutover bases changed")
-            product.assert_root_gc_authority_current()
-            return record_type._from_persisted_bases(persisted)
+        return record_type._from_persisted_bases(persisted)
 
 
 class _WindowsSemanticBase(Protocol):
@@ -760,6 +794,7 @@ class _WindowsSemanticBase(Protocol):
 def guard_windows_product_worker_history_bases(
     product: WindowsLocalWheelProductSessionOwner,
     *,
+    product_id: str,
     publish: bool,
     record_type: type[_CheckpointT],
     review_checkpoint: ReviewWindowsCheckpoint[_CheckpointT],
@@ -773,95 +808,96 @@ def guard_windows_product_worker_history_bases(
     The old sources remain authoritative. This operation owns guard/retry/IO
     custody, and grants neither a history cutover nor source retirement.
     """
-    with windows_product_worker_quiescence(
+    _require_windows_history_product(
+        product, product_id, "Windows Worker bases require their Product"
+    )
+    with _hold_windows_worker_history(
         product, active_message="Windows Worker bases runtime remains active"
     ) as (_, quiescence):
-        product.assert_root_gc_authority_current()
-        with product.gc_gate.guard(require_write=True):
-            checkpoint_path = product.state_root / checkpoint_name
-            published_checkpoint = io.read_private_receipt(
-                checkpoint_path, maximum_bytes=limits()[0]
+        checkpoint_path = product.state_root / checkpoint_name
+        published_checkpoint = io.read_private_receipt(
+            checkpoint_path, maximum_bytes=limits()[0]
+        )
+        if published_checkpoint is None:
+            raise ValueError("Windows Worker bases checkpoint is absent")
+        checkpoint = record_type.from_bytes(published_checkpoint)
+        gc_snapshot = product.gc_gate.snapshot()
+        current = review_checkpoint(
+            product,
+            quiescence=quiescence,
+            gc_snapshot=gc_snapshot,
+            allow_checkpoint_stage=False,
+            allow_base_stage=publish,
+        )
+        if checkpoint != current:
+            raise ValueError("Windows Worker bases checkpoint changed")
+        review, prepared, semantic = review_references(
+            product,
+            quiescence=quiescence,
+            gc_snapshot=gc_snapshot,
+            allow_base_stage=publish,
+        )
+        if (
+            semantic.source_snapshot != checkpoint.source_snapshot
+            or prepared.record_digest != checkpoint.preparation_digest
+            or review.review_digest != checkpoint.package_reference_digest
+        ):
+            raise ValueError("Windows Worker bases checkpoint changed")
+        joined = record_type._join_type._from_prepared_history(prepared, semantic)
+        bases: tuple[_WindowsSemanticBase, ...] = (
+            joined.opt_in,
+            joined.receipt,
+            joined.supervisor,
+            joined.c5,
+            joined.launch_intent,
+            joined.native_provisioning,
+        )
+        if checkpoint.base_digests != tuple(
+            (key, base.record_digest)
+            for (key, _), base in zip(WINDOWS_WORKER_BASE_FILES, bases, strict=True)
+        ):
+            raise ValueError("Windows Worker bases checkpoint changed")
+        expected = tuple(
+            (product.state_root / name, base.to_bytes())
+            for (_, name), base in zip(
+                WINDOWS_WORKER_BASE_FILES, bases, strict=True
             )
-            if published_checkpoint is None:
-                raise ValueError("Windows Worker bases checkpoint is absent")
-            checkpoint = record_type.from_bytes(published_checkpoint)
-            gc_snapshot = product.gc_gate.snapshot()
-            current = review_checkpoint(
-                product,
-                quiescence=quiescence,
-                gc_snapshot=gc_snapshot,
-                allow_checkpoint_stage=False,
-                allow_base_stage=publish,
+        )
+        retained_bases: list[bytes | None] = []
+        for path, raw in expected:
+            retained = io.read_private_receipt(
+                path,
+                maximum_bytes=limits()[1],
+                allow_unpublished_stage=publish,
             )
-            if checkpoint != current:
-                raise ValueError("Windows Worker bases checkpoint changed")
-            review, prepared, semantic = review_references(
-                product,
-                quiescence=quiescence,
-                gc_snapshot=gc_snapshot,
-                allow_base_stage=publish,
-            )
-            if (
-                semantic.source_snapshot != checkpoint.source_snapshot
-                or prepared.record_digest != checkpoint.preparation_digest
-                or review.review_digest != checkpoint.package_reference_digest
-            ):
-                raise ValueError("Windows Worker bases checkpoint changed")
-            joined = record_type._join_type._from_prepared_history(prepared, semantic)
-            bases: tuple[_WindowsSemanticBase, ...] = (
-                joined.opt_in,
-                joined.receipt,
-                joined.supervisor,
-                joined.c5,
-                joined.launch_intent,
-                joined.native_provisioning,
-            )
-            if checkpoint.base_digests != tuple(
-                (key, base.record_digest)
-                for (key, _), base in zip(WINDOWS_WORKER_BASE_FILES, bases, strict=True)
-            ):
-                raise ValueError("Windows Worker bases checkpoint changed")
-            expected = tuple(
-                (product.state_root / name, base.to_bytes())
-                for (_, name), base in zip(
-                    WINDOWS_WORKER_BASE_FILES, bases, strict=True
-                )
-            )
-            retained_bases: list[bytes | None] = []
-            for path, raw in expected:
-                retained = io.read_private_receipt(
-                    path,
+            staged = (
+                io.read_private_receipt(
+                    path.with_name(path.name + ".stage"),
                     maximum_bytes=limits()[1],
-                    allow_unpublished_stage=publish,
                 )
-                staged = (
-                    io.read_private_receipt(
-                        path.with_name(path.name + ".stage"),
-                        maximum_bytes=limits()[1],
-                    )
-                    if publish
-                    else None
-                )
-                if (retained is not None and retained != raw) or (
-                    staged is not None and staged != raw
-                ):
-                    raise ValueError("Windows Worker base source changed")
-                retained_bases.append(retained)
-            if not publish and any(raw is None for raw in retained_bases):
-                raise ValueError("Windows Worker base is absent")
-            if publish:
-                for (path, raw), retained in zip(expected, retained_bases, strict=True):
-                    if retained is None:
-                        io.write_private_receipt(path, raw, maximum_bytes=limits()[1])
-            if any(
-                io.read_private_receipt(path, maximum_bytes=limits()[1]) != raw
-                for path, raw in expected
+                if publish
+                else None
+            )
+            if (retained is not None and retained != raw) or (
+                staged is not None and staged != raw
             ):
-                raise ValueError("Windows Worker base publication changed")
-            if (
-                io.read_private_receipt(checkpoint_path, maximum_bytes=limits()[0])
-                != published_checkpoint
-            ):
-                raise ValueError("Windows Worker bases checkpoint changed")
-            product.assert_root_gc_authority_current()
-            return checkpoint
+                raise ValueError("Windows Worker base source changed")
+            retained_bases.append(retained)
+        if not publish and any(raw is None for raw in retained_bases):
+            raise ValueError("Windows Worker base is absent")
+        if publish:
+            for (path, raw), retained in zip(expected, retained_bases, strict=True):
+                if retained is None:
+                    io.write_private_receipt(path, raw, maximum_bytes=limits()[1])
+        if any(
+            io.read_private_receipt(path, maximum_bytes=limits()[1]) != raw
+            for path, raw in expected
+        ):
+            raise ValueError("Windows Worker base publication changed")
+        if (
+            io.read_private_receipt(checkpoint_path, maximum_bytes=limits()[0])
+            != published_checkpoint
+        ):
+            raise ValueError("Windows Worker bases checkpoint changed")
+        product.assert_root_gc_authority_current()
+        return checkpoint

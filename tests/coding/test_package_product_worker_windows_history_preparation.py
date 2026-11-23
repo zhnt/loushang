@@ -208,8 +208,8 @@ def test_windows_worker_preparation_rechecks_before_staged_publication() -> None
         raise ValueError("source changed")
 
     with (
-        patch.object(preparation, "os", SimpleNamespace(name="nt")),
-        patch.object(preparation, "WindowsLocalWheelProductSessionOwner", FakeProduct),
+        patch.object(history_owner, "os", SimpleNamespace(name="nt")),
+        patch.object(history_owner, "WindowsLocalWheelProductSessionOwner", FakeProduct),
         patch.object(
             type(preparation._receipt_io),
             "read_private_receipt",
