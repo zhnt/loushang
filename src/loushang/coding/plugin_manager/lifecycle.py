@@ -451,33 +451,16 @@ class CodingPluginSessionLease(
     _membership_policy = CodingPluginLifecycle._membership_policy
 
     def evaluate_management_change(self) -> CodingPluginManagementChange:
-        snapshot = self.lifecycle.desired.snapshot()
-        state = snapshot.installation(self.installation_key)
-        current_ref = state.selection.instance_revision_ref
-        current_package = state.selection.package_revision
-        if (
-            state.selection.desired_state == "installed_enabled"
-            and current_ref == self.instance_revision_ref
-            and current_package == self.package_revision
-        ):
-            disposition: Literal["no_change", "restart_required"] = "no_change"
-            reason = "selected_revision_unchanged"
-        else:
-            disposition = "restart_required"
-            reason = {
-                "absent": "plugin_removed",
-                "installed_disabled": "plugin_disabled",
-                "installed_enabled": "plugin_updated",
-            }[state.selection.desired_state]
+        inventory_revision, selection, disposition, reason = self._read_management_change()
         return CodingPluginManagementChange(
             disposition=disposition,
             reason=reason,
-            inventory_revision=snapshot.inventory_revision,
-            desired_state=state.selection.desired_state,
+            inventory_revision=inventory_revision,
+            desired_state=selection.desired_state,
             pinned_instance_revision_ref=self.instance_revision_ref,
-            current_instance_revision_ref=current_ref,
+            current_instance_revision_ref=selection.instance_revision_ref,
             pinned_package_revision=self.package_revision,
-            current_package_revision=current_package,
+            current_package_revision=selection.package_revision,
         )
 
 

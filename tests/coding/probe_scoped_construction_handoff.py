@@ -287,6 +287,7 @@ def test_generic_session_preserves_original_cleanup_policy(monkeypatch, cancelle
         default_system_prompt="default",
         append_system_prompt=(),
         model=None,
+        use_default_model=True,
         on_default_model_unavailable=None,
         thinking_level=None,
         convert_to_llm=None,

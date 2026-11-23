@@ -59,6 +59,9 @@ from loushang.harness.resources.plugins.types import (
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
+from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+    _PreparedCompositionCleanup,
+)
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginCompositionAssembly,
@@ -98,7 +101,7 @@ class CodingBasePluginAssemblyError(RuntimeError):
 
 
 @dataclass(slots=True)
-class CodingBasePluginAssembly:
+class CodingBasePluginAssembly(_PreparedCompositionCleanup):
     """Inert base package plan retained until whole-Product finalization."""
 
     runtime: PluginRuntimeResolution = field(repr=False)
@@ -123,30 +126,21 @@ class CodingBasePluginAssembly:
     _state_cleaned: bool = field(default=False, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
+    _cleanup_label = "Coding base"
+    _transferred = False
+    _private_state_cleaned = True  # Base has no separate private-state root.
+
     def evaluate_management_change(self) -> CodingPluginManagementChange | None:
         if self.management_lease is None:
             return None
         return self.management_lease.evaluate_management_change()
 
-    def close(self) -> None:
-        if self._closed:
-            return
-        # The Package handle must close before durable retirement can complete.
-        # Ephemeral lifecycle state is different: its journals and held lock
-        # files are the authority needed to release the Session family, so the
-        # temporary root can only be removed after that release succeeds.
-        if not self._runtime_closed:
-            self.runtime.close()
-            self._runtime_closed = True
-        if not self._management_released:
-            if self.management_lease is not None:
-                self.management_lease.close()
-            self._management_released = True
-        if not self._state_cleaned:
-            if self.state_cleanup is not None:
-                self.state_cleanup()
-            self._state_cleaned = True
-        self._closed = True
+    def _release_management_leases(self) -> None:
+        # A base has one lease. Keep its release fail-fast and retry it before
+        # removing the root that still holds its journals and lock files.
+        if self.management_lease is not None:
+            self.management_lease.close()
+        self._management_released = True
 
 
 @dataclass(frozen=True, slots=True)

@@ -115,6 +115,7 @@ from loushang.harness.session.composition_evidence import (
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 if TYPE_CHECKING:
+    from loushang.harness.config.agent import CapabilityMountMode
     from loushang.harness.package_product._selected_plugin_revisions import (
         ProductSessionSelection,
     )
@@ -183,6 +184,89 @@ class _PreparedCapabilitySession(Protocol):
     def selection(self) -> PluginSelection: ...
     @property
     def plugin_assembly(self) -> ProductPluginCompositionAssembly: ...
+
+
+_WorkspaceAssemblyCo = TypeVar("_WorkspaceAssemblyCo", covariant=True)
+_ProductBaseAssemblyCo = TypeVar("_ProductBaseAssemblyCo", covariant=True)
+_CapabilityAssemblyT = TypeVar("_CapabilityAssemblyT")
+_LegacyBaseAssemblyT = TypeVar("_LegacyBaseAssemblyT")
+_ProductBaseAssemblyT = TypeVar("_ProductBaseAssemblyT")
+
+
+class _PreparedWorkspacePlugin(Protocol[_WorkspaceAssemblyCo]):
+    def bind_workspace(
+        self,
+        workspace_binding: CapabilityBundleProviderBinding,
+        *,
+        host_boot_id: str,
+        tool_modes: Mapping[str, CapabilityMountMode],
+        clock: Callable[[], int],
+    ) -> _WorkspaceAssemblyCo: ...
+
+
+class _PreparedWorkspaceBase(Protocol[_WorkspaceAssemblyCo]):
+    def bind_workspace(
+        self, workspace_binding: CapabilityBundleProviderBinding, /
+    ) -> _WorkspaceAssemblyCo: ...
+
+
+class _CombinedWorkspaceAssembly(Protocol[_WorkspaceAssemblyCo, _ProductBaseAssemblyCo]):
+    @property
+    def capability_assembly(self) -> _WorkspaceAssemblyCo: ...
+
+    @property
+    def base_session(self) -> _ProductBaseAssemblyCo: ...
+
+
+def bind_workspace_plugins(
+    workspace_binding: CapabilityBundleProviderBinding,
+    *,
+    builtin_product_preparation: _PreparedWorkspacePlugin[
+        _CombinedWorkspaceAssembly[_CapabilityAssemblyT, _ProductBaseAssemblyT]
+    ] | None,
+    capability_preparation: _PreparedWorkspacePlugin[_CapabilityAssemblyT] | None,
+    base_plugin_session_preparation: _PreparedWorkspaceBase[_LegacyBaseAssemblyT] | None,
+    product_base_compilation: _PreparedWorkspaceBase[_ProductBaseAssemblyT] | None,
+    host_boot_id: str,
+    tool_modes: Mapping[str, CapabilityMountMode],
+    clock: Callable[[], int],
+) -> tuple[_CapabilityAssemblyT | None, _LegacyBaseAssemblyT | None, _ProductBaseAssemblyT | None]:
+    """Bind one prepared Product graph, retaining the order of its owner handoffs."""
+    builtin_product_session = (
+        builtin_product_preparation.bind_workspace(
+            workspace_binding,
+            host_boot_id=host_boot_id,
+            tool_modes=tool_modes,
+            clock=clock,
+        )
+        if builtin_product_preparation is not None
+        else None
+    )
+    capability_plugin_assembly = (
+        builtin_product_session.capability_assembly
+        if builtin_product_session is not None
+        else capability_preparation.bind_workspace(
+            workspace_binding=workspace_binding,
+            host_boot_id=host_boot_id,
+            tool_modes=tool_modes,
+            clock=clock,
+        )
+        if capability_preparation is not None
+        else None
+    )
+    base_plugin_session_assembly = (
+        base_plugin_session_preparation.bind_workspace(workspace_binding)
+        if base_plugin_session_preparation is not None
+        else None
+    )
+    product_base_session_assembly = (
+        builtin_product_session.base_session
+        if builtin_product_session is not None
+        else product_base_compilation.bind_workspace(workspace_binding)
+        if product_base_compilation is not None
+        else None
+    )
+    return capability_plugin_assembly, base_plugin_session_assembly, product_base_session_assembly
 
 
 def admit_prepared_product_session(

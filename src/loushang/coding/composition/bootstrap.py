@@ -84,10 +84,7 @@ from loushang.coding.composition.sets import (
     infer_coding_composition_set,
     resolve_coding_composition_set,
 )
-from loushang.coding.composition.workspace_bootstrap import (
-    bind_session_workspace,
-    bind_workspace_plugins,
-)
+from loushang.coding.composition.workspace_bootstrap import bind_session_workspace
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -256,6 +253,7 @@ from loushang.harness.session.legacy_side_question import LegacySideQuestionBind
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
     ProductPluginPlanSeed,
+    bind_workspace_plugins,
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -1285,12 +1283,10 @@ def _create_agent_session(
             clock=coding_plugin_clock,
         )
 
-        process_session: AgentSession | None = None
-
         async def emit_process_audit_event(event: Mapping[str, object]) -> None:
-            if process_session is None:
+            if constructed_session is None:
                 raise RuntimeError("Coding workspace Session is not yet bound")
-            await process_session.emit_product_tool_audit_event(event)
+            await constructed_session.emit_product_tool_audit_event(event)
 
         sandbox_runtime, workspace_binding = bind_session_workspace(
             services,
@@ -1301,12 +1297,6 @@ def _create_agent_session(
             tool_policy_evaluator=tool_policy_evaluator,
             approval_resolver=approval_resolver,
             audit_sink=emit_process_audit_event,
-            provider_id="coding.workspace.standard",
-            source_id=CODING_PRODUCT_ID,
-            fingerprint_namespace="coding.workspace.standard.v1",
-            ceiling_type_error=(
-                "Coding workspace execution ceiling must be an EffectiveExecutionProfile"
-            ),
         )
 
         capability_tool_modes = (
@@ -1577,7 +1567,6 @@ def _create_agent_session(
                 else None
             ),
         )
-        process_session = child_session
         constructed_session = child_session
         return child_session
 
