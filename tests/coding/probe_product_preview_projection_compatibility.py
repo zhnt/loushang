@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding.package.product_preview as code
+import loushang.coding.resources.catalog as catalog_binding
 import loushang.harness.plugin_management.current_preview as preview_owner
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
@@ -384,7 +385,7 @@ def observe(case, monkeypatch, tmp_path):
     )
     monkeypatch.setattr(code, "CodingResourceLoader", Loader)
     monkeypatch.setattr(
-        code, "build_coding_initial_resource_catalog_adapter", build_adapter
+        catalog_binding, "build_coding_initial_resource_catalog_adapter", build_adapter
     )
     monkeypatch.setattr(preview_owner, "project_current_selection_evidence", evidence)
     monkeypatch.setattr(code, "time", SimpleNamespace(time=clock, time_ns=clock_ns))

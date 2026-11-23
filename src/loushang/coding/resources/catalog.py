@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
@@ -45,6 +45,13 @@ from loushang.harness.session.product_composition_assembly import (
     _prepare_catalog_plugin_plan_seed,
     assemble_product_composition,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from loushang.harness.resource_catalog.bootstrap_projection import (
+        ResourceCatalogBootstrapResult,
+    )
 
 _CATALOG_PRODUCT_ID = "coding"
 _CATALOG_PRODUCT_LABEL = "Coding"
@@ -230,6 +237,35 @@ def build_coding_initial_resource_catalog_adapter(
         disabled_skills=disabled_skills,
         reject=CodingResourceCatalogAdmissionError,
         compile_package=_compile_package_composition,
+    )
+
+
+def prepare_coding_catalog_projection(
+    receipt: ResourceCatalogInputReceipt,
+    *,
+    cwd: Path,
+    session_id: str,
+    admission_now: int | None,
+    product_id: str = _CATALOG_PRODUCT_ID,
+    disabled_skills: Sequence[str] = (),
+    product_composition: ProductCompositionCompilation | None = None,
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None = None,
+    clock: Callable[[], int] | None = None,
+    source_policy: CodingResourceCatalogSourcePolicy = CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+) -> tuple[InitialResourceCatalogProductAdapter, ResourceCatalogBootstrapResult]:
+    """Bind one loader receipt to the Catalog projection used by the caller."""
+    adapter = build_coding_initial_resource_catalog_adapter(
+        receipt,
+        product_scope_id=session_id,
+        disabled_skills=disabled_skills,
+        product_composition=product_composition,
+        product_snapshot_resources=product_snapshot_resources,
+        package_admission_now=int(time.time()) if admission_now is None else admission_now,
+        clock=clock,
+        source_policy=source_policy,
+    )
+    return adapter, adapter.prepare_bootstrap_projection_with_receipt(
+        product_id=product_id, session_id=session_id, cwd=cwd
     )
 
 

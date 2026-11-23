@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from loushang.coding.package.worker_preparation_inputs import (
+    bind_pending_session_inputs,
     prepare_pending_provider,
-    prepare_pending_session_inputs,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderOwnerAuthority,
@@ -19,9 +19,8 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.session._worker_provider import PendingWorkerSessionPolicy
-from loushang.harness.session.capability_composition_inputs import (
-    SessionCapabilityCompositionInputs,
+from loushang.harness.session._worker_provider import (
+    PendingWorkerSessionPolicy,
 )
 from loushang.harness.worker._ordinary_prepare import (
     _prepare_windows_native_worker,
@@ -106,41 +105,14 @@ class CodingWindowsProductWorkerPendingHost:
         )
 
 
-def prepare_coding_windows_product_worker_pending_session_inputs(
-    *,
-    resolved_providers: ResolvedCapabilityProviderSet,
-    provider_owner: CapabilityProviderOwnerAuthority,
-    receipt_owner: CodingWindowsWorkerProductReceiptOwner,
-    receipt: ProductWorkerActivationReceiptV1,
-    pending_launch: CodingWindowsProductWorkerPendingLaunchV1,
-    evaluated_at: int,
-    clock: Callable[[], int],
-    base_policy_binding: CodingWorkerBaseCompositionPolicyBinding,
-    resume_parent_context: ResumeEffectParentContextV1 | None = None,
-    resume_settlement: CodingWorkerResumeSettlementBinding | None = None,
-) -> SessionCapabilityCompositionInputs:
-    """Compile one Windows Worker whose effects begin during graph prepare."""
-
-    if (
-        type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
-        or type(pending_launch) is not CodingWindowsProductWorkerPendingLaunchV1
-    ):
-        raise _PENDING_POLICY.failure("selection_invalid")
-    return prepare_pending_session_inputs(
-        resolved_providers=resolved_providers,
-        provider_owner=provider_owner,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        pending_launch=pending_launch,
-        evaluated_at=evaluated_at,
-        clock=clock,
-        base_policy_binding=base_policy_binding,
-        resume_parent_context=resume_parent_context,
-        resume_settlement=resume_settlement,
-        host_type=CodingWindowsProductWorkerPendingHost,
-        policy=_PENDING_POLICY,
-        require_bound_receipt_owner=True,
-    )
+_PENDING_INPUTS = bind_pending_session_inputs(
+    receipt_owner_type=CodingWindowsWorkerProductReceiptOwner,
+    pending_launch_type=CodingWindowsProductWorkerPendingLaunchV1,
+    host_type=CodingWindowsProductWorkerPendingHost,
+    policy=_PENDING_POLICY,
+    require_bound_receipt_owner=True,
+)
+prepare_coding_windows_product_worker_pending_session_inputs = _PENDING_INPUTS.prepare
 
 
 __all__ = [

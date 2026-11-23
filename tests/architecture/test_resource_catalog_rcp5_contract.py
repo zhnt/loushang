@@ -52,6 +52,7 @@ METHOD_LOADER_PATH = Path("src/loushang/method/loader.py")
 CODING_CLI_PATH = Path("src/loushang/coding/cli/application.py")
 CODING_BOOTSTRAP_PATH = Path('src/loushang/coding/composition/bootstrap.py')
 CODING_PACKAGE_CATALOG_PATH = Path("src/loushang/coding/composition/package_catalog.py")
+CODING_CATALOG_BINDING_PATH = Path("src/loushang/coding/resources/catalog.py")
 CATALOG_RECEIPT_PREPARATION_PATH = Path(
     "src/loushang/harness/session/bootstrap_construction.py"
 )
@@ -328,7 +329,9 @@ def test_rcp54_refresh_has_one_async_catalog_publication_authority() -> None:
     assert "await self.refresh_async(reason=reason)" in runtime_source
     assert "request_resource_refresh=self.request_resource_refresh" in product_source
     assert "prepare_resource_catalog_refresh" in coding_source
-    assert "build_coding_initial_resource_catalog_adapter" in coding_catalog
+    binding_source = CODING_CATALOG_BINDING_PATH.read_text(encoding="utf-8")
+    assert "prepare_coding_catalog_projection(" in coding_catalog
+    assert "build_coding_initial_resource_catalog_adapter" in binding_source
     preparation_source = CATALOG_RECEIPT_PREPARATION_PATH.read_text(encoding="utf-8")
     assert "require_catalog_receipt(" in coding_catalog
     assert "loader.prepare_catalog_input_receipt(cwd)" in preparation_source
@@ -366,7 +369,8 @@ def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
     preparation_source = CATALOG_RECEIPT_PREPARATION_PATH.read_text(encoding="utf-8")
     assert "require_catalog_receipt(" in coding_catalog
     assert "loader.prepare_catalog_input_receipt(cwd)" in preparation_source
-    assert "prepare_bootstrap_projection" in coding_catalog
+    binding_source = CODING_CATALOG_BINDING_PATH.read_text(encoding="utf-8")
+    assert "prepare_bootstrap_projection_with_receipt" in binding_source
     assert "reload_resources(" not in coding_source
     assert "_discover_snapshot" not in input_source
     assert "_loader_precedence" not in input_source
