@@ -14,6 +14,7 @@ from loushang.harness.package_product._legacy_inventory import (
     legacy_review_scalar_schema,
 )
 from loushang.harness.package_product._legacy_runtime import (
+    guard_legacy_snapshot_admission,
     legacy_review_fence_identity,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
@@ -142,7 +143,10 @@ def admit_coding_builtin_only_snapshot(
 ) -> None:
     """Refuse unsupported old state before the irreversible first fence."""
 
-    try:
+    with guard_legacy_snapshot_admission(
+        "Coding builtin-only snapshot cannot be admitted before first fence",
+        code="coding_legacy_builtin_snapshot_refused",
+    ):
         classification = prepared.legacy_classification
         if (
             classification.kind != "legacy_state"
@@ -164,13 +168,6 @@ def admit_coding_builtin_only_snapshot(
         _require_builtin_only_inventory(
             _project_inventory_facts(inventory, desired_journal_digest=digest)
         )
-    except PackagePosixEpochCutoverError:
-        raise
-    except (OSError, ValueError, TypeError) as exc:
-        raise PackagePosixEpochCutoverError(
-            "Coding builtin-only snapshot cannot be admitted before first fence",
-            code="coding_legacy_builtin_snapshot_refused",
-        ) from exc
 
 
 def review_coding_first_b_builtin_only(
