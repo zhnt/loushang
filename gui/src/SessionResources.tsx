@@ -31,6 +31,13 @@ export function AttachmentImage({ blob, label }: { blob: Blob; label: string }) 
   </>;
 }
 
+export function AttachmentLabel({ label, folder, title = label }: { label: string; folder?: boolean; title?: string }) {
+  return <span className="attachment-label" title={title}>
+    {folder ? <UiIcon name="folder" /> : null}
+    <span>{label}</span>
+  </span>;
+}
+
 export function AttachmentText({ blob, label }: { blob: Blob; label: string }) {
   const { t } = useTranslation("session");
   const dialog = useRef<HTMLDialogElement>(null);
@@ -43,8 +50,8 @@ export function AttachmentText({ blob, label }: { blob: Blob; label: string }) {
     return () => { active = false; };
   }, [blob]);
   return <>
-    <button type="button" className="permission-label" title={label}
-      aria-label={t("attachments.preview", { name: label })} onClick={() => dialog.current?.showModal()}>{label}</button>
+    <button type="button" className="attachment-label" title={label}
+      aria-label={t("attachments.preview", { name: label })} onClick={() => dialog.current?.showModal()}><span>{label}</span></button>
     <dialog ref={dialog} className="frame-dialog" aria-label={label}>
       <div className="settings-header">
         <h2>{label}</h2>
@@ -72,9 +79,8 @@ export function StoredResource({ client, sessionId, id, allowRevoke }: StoredPro
   }, [client, sessionId, id]);
   if (result === "unavailable") return <span role="status">{t("attachments.unavailable")}</span>;
   if (!result) return null;
-  if (!result.blob) return <span className="permission-label">
-    {result.resource.kind === "directory" ? <UiIcon name="folder" /> : null}
-    {result.resource.name ?? t("attachments.file")}
+  if (!result.blob) return <span className="attachment-item">
+    <AttachmentLabel label={result.resource.name ?? t("attachments.file")} folder={result.resource.kind === "directory"} />
     {allowRevoke && result.resource.source === "client_reference" && client.revokeClientDirectory && !revoked ? <button
       type="button" className="icon-button" title={t("attachments.stopSharing")} aria-label={t("attachments.stopSharing")}
       onClick={() => { void client.revokeClientDirectory?.(id).then(() => setRevoked(true)).catch(() => {}); }}>
