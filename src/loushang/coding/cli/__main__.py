@@ -32,9 +32,10 @@ def _entry_stream_is_tty(stream: Any) -> bool:
 
 
 async def _run_entry(argv: list[str] | tuple[str, ...]) -> int:
+    raw_argv = tuple(argv)
     # Only this exact invocation has no grammar/extension/dispatch decisions.
     # Explicitly materialized or replaced run_cli bindings retain their behavior.
-    if tuple(argv) == ("--version",) and "run_cli" not in globals():
+    if raw_argv == ("--version",) and "run_cli" not in globals():
         from importlib.metadata import PackageNotFoundError, version
 
         try:
@@ -43,35 +44,52 @@ async def _run_entry(argv: list[str] | tuple[str, ...]) -> int:
             installed_version = "0.1.0"
         sys.stdout.write(f"{installed_version}\n")
         return 0
-    # These exact forms cannot name another operation. Product still applies
-    # the canonical grammar and extension checks after the screen appears.
-    if (
-        tuple(argv) in ((), ("--tui",))
-        and "run_cli" not in globals()
-        and "loushang.coding.cli.application" not in sys.modules
-    ):
-        from pathlib import Path
-
-        if _entry_stream_is_tty(sys.stdin) and _entry_stream_is_tty(sys.stdout):
-            from loushang.coding.cli.screen_startup import run_screen_first_cli
-
-            return await run_screen_first_cli(
-                tuple(argv), project_root=Path.cwd().resolve(), cwd=None
-            )
     if (
         "run_cli" not in globals()
         and "loushang.coding.cli.application" not in sys.modules
     ):
+        # These exact forms let the screen appear before application imports.
+        if raw_argv in ((), ("--tui",)) and (
+            _entry_stream_is_tty(sys.stdin) and _entry_stream_is_tty(sys.stdout)
+        ):
+            from pathlib import Path
+
+            from loushang.coding.cli.screen_startup import run_screen_first_cli
+
+            return await run_screen_first_cli(
+                raw_argv, project_root=Path.cwd().resolve(), cwd=None
+            )
+        from loushang.coding.cli.apphost import (
+            extract_apphost_argv,
+            run_coding_apphost_command,
+        )
+
+        apphost_argv = extract_apphost_argv(raw_argv)
+        if apphost_argv is not None:
+            from loushang.coding.cli.args import (
+                package_mutation_option_requested,
+                plugin_management_option_requested,
+                removed_legacy_resource_option,
+            )
+
+            if (
+                removed_legacy_resource_option(raw_argv) is None
+                and not package_mutation_option_requested(raw_argv)
+                and not plugin_management_option_requested(raw_argv)
+            ):
+                return await run_coding_apphost_command(
+                    apphost_argv, stdout=sys.stdout, stderr=sys.stderr
+                )
         from loushang.coding.cli.startup_route import early_screen_project_root
 
         project_root = early_screen_project_root(
-            tuple(argv), stdin=sys.stdin, stdout=sys.stdout
+            raw_argv, stdin=sys.stdin, stdout=sys.stdout
         )
         if project_root is not None:
             from loushang.coding.cli.screen_startup import run_screen_first_cli
 
             return await run_screen_first_cli(
-                tuple(argv), project_root=project_root, cwd=None
+                raw_argv, project_root=project_root, cwd=None
             )
     runner = globals()["run_cli"] if "run_cli" in globals() else __getattr__("run_cli")
     return await runner(argv)

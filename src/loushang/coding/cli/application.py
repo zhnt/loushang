@@ -29,6 +29,7 @@ from loushang.coding.cli.args import (
     CliArgs,
     ExtensionFlag,
     help_text,
+    package_mutation_option_requested,
     parse_args,
     plugin_management_option_requested,
     removed_legacy_resource_option,
@@ -464,11 +465,7 @@ async def run_cli(
     resolved_stderr = stderr or sys.stderr
     if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
         return 2
-    if any(
-        argument == option or argument.startswith(f"{option}=")
-        for option in ("--install-package", "--update-package", "--uninstall-package")
-        for argument in raw_argv
-    ):
+    if package_mutation_option_requested(raw_argv):
         candidate = _parse_application_args(raw_argv, resolved_stderr, None, True)
         # Wheels use the fenced Product installer. Existing source-package
         # commands keep their compatible owner in an unfenced workspace.

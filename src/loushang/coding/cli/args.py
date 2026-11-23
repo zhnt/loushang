@@ -145,6 +145,14 @@ def plugin_management_option_requested(argv: tuple[str, ...]) -> bool:
     return root_option_requested(argv, CODING_CLI_PROFILE, _PLUGIN_MANAGEMENT_OPTIONS)
 
 
+def package_mutation_option_requested(argv: tuple[str, ...]) -> bool:
+    return any(
+        argument.partition("=")[0]
+        in {"--install-package", "--update-package", "--uninstall-package"}
+        for argument in argv
+    )
+
+
 def parse_args(
     argv: list[str] | tuple[str, ...],
     *,
