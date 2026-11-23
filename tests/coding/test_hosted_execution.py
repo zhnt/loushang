@@ -95,6 +95,7 @@ async def _binding(
     settings_manager=None,
     allowed_tool_names=None,
     model_available=True,
+    model_registry=None,
 ):
     runner = None
     if command is not None:
@@ -133,6 +134,7 @@ async def _binding(
             persist=persist,
         ),
         settings_manager=settings_manager,
+        model_registry=model_registry,
         extension_runner=runner,
         approval_resolver=approval,
         tool_registry=registry,

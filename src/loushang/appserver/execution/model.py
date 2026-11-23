@@ -406,7 +406,7 @@ class ExecutionCallV1:
         if (self.command_prefix is not None) != (self.operation is ExecutionOperationV1.COMMAND_CATALOG):
             raise ValueError("unexpected command prefix")
         if self.command_prefix is not None:
-            _bounded_text(self.command_prefix, 512)
+            _bounded_text(self.command_prefix, 8450)
         validate_goal_fields(self)
 
 @dataclass(frozen=True, slots=True)

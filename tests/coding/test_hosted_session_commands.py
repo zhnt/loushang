@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import shlex
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
 
+from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import UserMessage
 from loushang.appserver.connection import AppServerConnectionV1
 from loushang.appserver.execution.model import (
@@ -21,7 +23,9 @@ from loushang.appserver.protocol import (
     MuxAttachV1,
     MuxCreateV1,
     MuxMemberOpenV1,
+    MuxReadV1,
     MuxSelectorV1,
+    SessionModelSelectV1,
     SessionOpenSpecV1,
     SessionSnapshotRequestV1,
 )
@@ -35,6 +39,7 @@ from loushang.coding.hosted.execution import (
     create_coding_execution_service_binding,
 )
 from loushang.coding.session.manager import SessionManager
+from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.execution import direct_execution
 from loushang.harness.transcript import CompactionResult
@@ -43,6 +48,9 @@ from loushang.tui.core import RenderConstraints
 from loushang.tui.input import InputEvent
 from tests.appserver.test_connection import _pair
 
+from .lsp.test_fake_launcher_vertical_slice import FakeLauncher
+from .lsp.test_fake_launcher_vertical_slice import _binding as _lsp_binding
+from .test_agent_session import _ai_model_registry
 from .test_hosted_execution import _binding, _message
 from .test_hosted_execution import _private_home as _private_home
 
@@ -58,7 +66,9 @@ async def _remote(scope) -> AsyncIterator[RemoteAppClientV1]:
         execution=scope.execution_client,
     )
     serving = asyncio.create_task(server.serve())
-    remote = RemoteAppClientV1(AppFramedStreamV1(left), profile=profile)
+    remote = RemoteAppClientV1(
+        AppFramedStreamV1(left), profile=profile, session_thinking=True
+    )
     try:
         await remote.start()
         yield remote
@@ -377,3 +387,259 @@ def test_hosted_tui_reports_compaction_failure_and_targeted_interrupt(
                     await shell.close()
 
     asyncio.run(asyncio.wait_for(scenario(), 10))
+
+
+def test_phase_two_model_rename_and_extension_commands(tmp_path):
+    async def scenario():
+        first = Model(
+            id="faux",
+            provider="faux",
+            endpoint="anthropic-messages",
+            name="Faux",
+            capabilities=Capabilities(input=("text",), context_window=128000),
+        )
+        second = Model(
+            id="reasoner",
+            provider="example",
+            endpoint="responses",
+            api="openai-responses",
+            name="Reasoner",
+            capabilities=Capabilities(
+                input=("text",),
+                context_window=64000,
+                reasoning=True,
+                reasoning_efforts=("low", "high"),
+                reasoning_required=False,
+            ),
+        )
+        catalog = ModelCatalog(ai_registry=_ai_model_registry(first, second))
+
+        async def extension_command(args, context):
+            pytest.fail("Inspecting an extension must not invoke one of its commands")
+
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=True
+        )
+        await manager.append_message(
+            UserMessage(role="user", content="Existing conversation", timestamp=0)
+        )
+        binding, session = await _binding(
+            tmp_path,
+            command=extension_command,
+            model_registry=catalog,
+            manager=manager,
+        )
+        async with _service(binding) as (owner, scope, selector, member):
+            async with _remote(scope) as remote:
+                shell = HostedMuxShellV1(
+                    remote,
+                    selector=selector,
+                    product_id="coding",
+                    scopes=(
+                        (binding.identity.scope, binding.identity.scope_fingerprint),
+                    ),
+                )
+                try:
+                    await shell.start()
+                    state = shell.state
+                    control = SessionSnapshotRequestV1(
+                        state.attachment_id, state.controller_generation, member
+                    )
+
+                    await _submit(shell, "/commands")
+                    assert all(
+                        f"/{name}" in _screen(shell)
+                        for name in ("model", "models", "rename", "extensions", "lsp")
+                    )
+                    shell.handle(InputEvent(kind="key", key="esc"))
+                    await _submit(shell, "/models")
+                    assert "faux:anthropic-messages:faux" in _screen(shell)
+                    assert "(current)" in _screen(shell)
+                    assert "example:responses:reasoner" in _screen(shell)
+                    shell.handle(InputEvent(kind="key", key="esc"))
+
+                    await _submit(shell, "/model")
+                    assert shell.screen._model_picker is not None
+                    shell.handle(InputEvent(kind="text", text="reasoner"))
+                    shell.handle(InputEvent(kind="key", key="enter"))
+                    async with asyncio.timeout(3):
+                        while shell.pending_actions:
+                            await asyncio.sleep(0.01)
+                    assert (
+                        shell.state.active_window.model_label
+                        == "example:responses:reasoner"
+                    ), shell.notice
+                    shell.handle(InputEvent(kind="key", key="esc"))
+                    await _submit(shell, "/model --thinking high")
+                    assert session.thinking_level == "high"
+                    shell.handle(InputEvent(kind="key", key="esc"))
+                    await _submit(shell, "/model --thinking medium")
+                    assert session.thinking_level == "high"
+                    shell.handle(InputEvent(kind="key", key="esc"))
+                    await _submit(shell, "/model nonexistent")
+                    assert "No models match" in _screen(shell)
+                    assert session.agent.model.id == "reasoner"
+                    shell.handle(InputEvent(kind="key", key="esc"))
+                    with pytest.raises(AppServiceError):
+                        await remote.select_session_model(
+                            SessionModelSelectV1(
+                                control.attachment_id,
+                                control.controller_generation,
+                                member,
+                                "example:responses:reasoner",
+                                "medium",
+                            )
+                        )
+                    assert session.thinking_level == "high"
+
+                    await _submit(shell, "/rename")
+                    assert shell.screen.composer.value == "/rename "
+                    await _submit(shell, "Saved title")
+                    assert session.session_name == "Saved title"
+                    await shell.poll()
+                    assert shell.state.active_window.title == "Saved title"
+                    assert (await remote.read_mux(MuxReadV1(selector))).members[
+                        0
+                    ].title == "Saved title"
+                    assert (
+                        await remote.snapshot_session(control)
+                    ).title == "Saved title"
+                    shell.handle(InputEvent(kind="key", key="esc"))
+
+                    await _submit(shell, "/extensions execution-test")
+                    assert "execution-test" in _screen(shell)
+                    assert str(tmp_path) not in _screen(shell)
+                    shell.handle(InputEvent(kind="key", key="esc"))
+                    await _submit(shell, "/extensions missing")
+                    assert "Unknown extension" in _screen(shell)
+                finally:
+                    await shell.close()
+            await scope.close()
+            reconnect = owner.open_client_scope()
+            async with _remote(reconnect) as remote:
+                attached = await remote.attach_mux(MuxAttachV1(selector))
+                assert attached.sessions[0].member.title == "Saved title"
+                with pytest.raises(AppServiceError):
+                    await remote.select_session_model(
+                        SessionModelSelectV1(
+                            control.attachment_id,
+                            control.controller_generation,
+                            member,
+                            "faux:anthropic-messages:faux",
+                        )
+                    )
+        saved = await SessionManager.open(session.get_session_file(), persist=True)
+        try:
+            assert saved.get_session_record().metadata.name == "Saved title"
+        finally:
+            await saved.dispose_runtime_profile()
+
+    asyncio.run(asyncio.wait_for(scenario(), 15))
+
+
+def test_phase_two_lsp_stop_uses_guard_and_session_owned_runtime(tmp_path):
+    async def scenario():
+        release, entered = asyncio.Event(), asyncio.Event()
+
+        async def work(args, context):
+            entered.set()
+            await release.wait()
+
+        binding, session = await _binding(tmp_path, command=work)
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        launcher = FakeLauncher(definition_result=None)
+        lsp = _lsp_binding(tmp_path, launcher, {source.resolve(): "value = 1\n"})
+        session._lsp_access = lsp
+        await lsp.inspect_symbol(
+            path="main.py", line=1, character=1, correlation_id="hosted-status"
+        )
+        try:
+            async with _service(binding) as (_, scope, selector, member):
+                async with _remote(scope) as remote:
+                    shell = HostedMuxShellV1(
+                        remote,
+                        selector=selector,
+                        product_id="coding",
+                        scopes=(
+                            (
+                                binding.identity.scope,
+                                binding.identity.scope_fingerprint,
+                            ),
+                        ),
+                    )
+                    try:
+                        await shell.start()
+                        state = shell.state
+                        control = SessionSnapshotRequestV1(
+                            state.attachment_id, state.controller_generation, member
+                        )
+                        client = remote.execution_client
+                        await _submit(shell, "/lsp status")
+                        assert '"ready_count": 1' in _screen(shell)
+                        shell.handle(InputEvent(kind="key", key="esc"))
+                        stop = f"stop fake-python {shlex.quote(str(tmp_path))}"
+                        with pytest.raises(AppServiceError):
+                            await client.read_session_command(
+                                control,
+                                "instance",
+                                SessionCommandInvocationV1("lsp", stop),
+                            )
+                        running = await client.submit_execution(
+                            control, "instance", "in-flight", "/work"
+                        )
+                        await asyncio.wait_for(entered.wait(), 3)
+                        for command in (
+                            SessionCommandInvocationV1("lsp", stop),
+                            SessionCommandInvocationV1("rename", "Busy"),
+                        ):
+                            with pytest.raises(ExecutionServiceErrorV1) as busy:
+                                await client.submit_session_command(
+                                    control, "instance", command.name, command
+                                )
+                            assert busy.value.code is ExecutionErrorCodeV1.BUSY
+                        with pytest.raises(AppServiceError) as busy_model:
+                            await remote.select_session_model(
+                                SessionModelSelectV1(
+                                    control.attachment_id,
+                                    control.controller_generation,
+                                    member,
+                                    "faux:anthropic-messages:faux",
+                                )
+                            )
+                        assert (
+                            busy_model.value.code
+                            is AppErrorCodeV1.OPERATION_UNAVAILABLE
+                        )
+                        release.set()
+                        async with asyncio.timeout(3):
+                            while not (
+                                await client.get_execution(
+                                    control, "instance", running.state.execution_id
+                                )
+                            ).state.status.terminal:
+                                await asyncio.sleep(0.01)
+                        await _submit(
+                            shell,
+                            f"/lsp stop fake-python {shlex.quote(str(tmp_path.parent))}",
+                        )
+                        assert "must stay within" in _screen(shell)
+                        assert lsp.status().ready_count == 1
+                        shell.handle(InputEvent(kind="key", key="esc"))
+                        await _submit(shell, f"/lsp {stop}")
+                        assert '"stopped": true' in _screen(shell)
+                        assert launcher.handles[0].server.methods()[-2:] == [
+                            "shutdown",
+                            "exit",
+                        ]
+                        shell.handle(InputEvent(kind="key", key="esc"))
+                        await _submit(shell, "/lsp")
+                        assert '"state": "stopped"' in _screen(shell)
+                    finally:
+                        release.set()
+                        await shell.close()
+        finally:
+            await lsp.dispose()
+
+    asyncio.run(asyncio.wait_for(scenario(), 15))

@@ -86,7 +86,7 @@ from .protocol import (
     decode_response,
     encode_request,
 )
-from .protocol.codec import _loads
+from .protocol.codec import _dumps, _loads
 from .protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
@@ -123,11 +123,12 @@ class RemoteAppClientV1:
 
     def __init__(
         self, stream: AppMessageStreamV1, *, profile: AppConnectionProfileV1,
-        phase_timeout: float = 10.0,
+        phase_timeout: float = 10.0, session_thinking: bool = False,
     ) -> None:
         require_timeout(phase_timeout)
         self._hello = b"" if supports_execution(profile) else connection_hello(profile)
         self._profile = profile
+        self._session_thinking = session_thinking
         self._stream = stream
         self._timeout = phase_timeout
         self._reader: asyncio.Task[None] | None = None
@@ -223,7 +224,13 @@ class RemoteAppClientV1:
                     )
                 elif hello != self._hello:
                     raise InvalidAppMessageError()
-                await self._stream.send(self._hello)
+                if self._session_thinking and supports_execution(self._profile):
+                    self._hello = _dumps({**_loads(self._hello), "sessionThinking": True})
+                    await self._stream.send(self._hello)
+                    if await self._stream.receive() != self._hello:
+                        raise InvalidAppMessageError()
+                else:
+                    await self._stream.send(self._hello)
             self._ready = True
             self._reader = asyncio.create_task(self._receive_responses())
         except BaseException:

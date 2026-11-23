@@ -35,24 +35,36 @@ def lsp_session_command_descriptor() -> SessionCommandDescriptor:
     )
 
 
+def _parse_arguments(args: str) -> tuple[str, ...] | None:
+    values = tuple(shlex.split(args))
+    if not values or values == ("status",):
+        return ("status",)
+    return values if len(values) == 3 and values[0] == "stop" else None
+
+
+def lsp_command_mutates(args: str) -> bool:
+    try:
+        parsed = _parse_arguments(args)
+    except ValueError:
+        return False
+    return parsed is not None and parsed[0] == "stop"
+
+
 async def execute_lsp_session_command(
     runtime: LspSessionRuntime | None,
     args: str,
 ) -> CommandExecutionResult:
     try:
-        values = shlex.split(args)
+        values = _parse_arguments(args)
     except ValueError as exc:
         return _result(status="error", message=f"Invalid /lsp arguments: {exc}")
-    action = values[0] if values else "status"
-    if action == "status":
-        if len(values) != 1 and values:
-            return _usage_error()
+    if values is None:
+        return _usage_error()
+    if values[0] == "status":
         status = (
             runtime.status() if runtime is not None else disabled_lsp_session_status()
         )
         return _status_result(status)
-    if action != "stop" or len(values) != 3:
-        return _usage_error()
     if runtime is None:
         return _result(
             status="error",
@@ -158,4 +170,5 @@ __all__ = [
     "LspSessionRuntime",
     "execute_lsp_session_command",
     "lsp_session_command_descriptor",
+    "lsp_command_mutates",
 ]
