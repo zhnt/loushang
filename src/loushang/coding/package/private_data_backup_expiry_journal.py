@@ -17,6 +17,9 @@ from loushang.harness.plugin_management._private_data_expiry import (
     expiry_event_schema,
     validate_expiry_event,
 )
+from loushang.harness.plugin_management._private_data_records import (
+    PrivateDataRecordWire,
+)
 
 from .private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
@@ -31,7 +34,7 @@ _MAX_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataBackupExpiryEventV1:
+class CodingArchPrivateDataBackupExpiryEventV1(PrivateDataRecordWire):
     revision: int
     phase: Literal["confirmed", "started", "renamed", "completed"]
     plan: CodingArchPrivateDataBackupExpiryPlanV1
@@ -53,14 +56,7 @@ class CodingArchPrivateDataBackupExpiryEventV1:
             unfinished_receipt_error="Unfinished backup expiry cannot claim a receipt",
         )
 
-    def to_dict(self) -> dict[str, object]:
-        return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.encode(self, sort_keys=True)
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingArchPrivateDataBackupExpiryEventV1:
-        if type(value) is not dict or set(value) != _SCHEMA_BACKUP_EXPIRY_EVENT_V1.keys:
-            raise ValueError("Coding Arch backup expiry event fields are invalid")
-        return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.decode(cls, value)
+    _invalid_fields = "Coding Arch backup expiry event fields are invalid"
 
 
 _CODEC = FunctionalJournalRecordCodec.with_decode_error(
@@ -124,6 +120,7 @@ _SCHEMA_BACKUP_EXPIRY_EVENT_V1 = expiry_event_schema(
     archive=CodingArchPrivateDataTargetSnapshotV1,
     receipt=CodingArchPrivateDataBackupExpiryReceiptV1,
 )
+CodingArchPrivateDataBackupExpiryEventV1._wire_schema = _SCHEMA_BACKUP_EXPIRY_EVENT_V1
 
 __all__ = [
     "CodingArchPrivateDataBackupExpiryConfirmationV1",

@@ -45,7 +45,7 @@ from ._private_data_backup_windows import (
     WindowsPrivateArchiveSnapshot,
 )
 from ._private_data_deletion_windows import require_finished_windows_deletion
-from ._private_data_expiry import ExpiryPlan
+from ._private_data_expiry import ExpiryPlan, plan_verified_backup_expiry
 from .journal_codecs import PluginDesiredStateJournalTransition
 from .ledger import PluginDesiredStateLedger, PluginDesiredStateSnapshotV1
 from .private_data_backup import R
@@ -900,7 +900,10 @@ class WindowsPrivateRestoreTransaction(
 _ArchiveT = TypeVar("_ArchiveT", bound=WindowsPrivateArchiveSnapshot)
 
 
-def read_windows_expiry_restore_proof(
+_ExpiryPlanT = TypeVar("_ExpiryPlanT", bound=ExpiryPlan)
+
+
+def preview_windows_backup_expiry(
     restore: WindowsPrivateRestoreTransaction[
         _PlanT, _EventT, _ConfirmationT, _SourceT, _PublicationT
     ],
@@ -910,7 +913,8 @@ def read_windows_expiry_restore_proof(
     *,
     archive_io: WindowsPrivateArchiveIO[_SourceT, R],
     capture_archive: Callable[[_SourceT, R], _ArchiveT],
-) -> tuple[R, _SourceT, _ConfirmationT, _EventT, _SourceT, _ArchiveT, int]:
+    create_plan: Callable[..., _ExpiryPlanT],
+) -> _ExpiryPlanT:
     """Join the retained archive, latest deletion, and confirmed restore."""
     label = restore._label
     desired = restore._desired_state.snapshot()
@@ -943,9 +947,17 @@ def read_windows_expiry_restore_proof(
         raise ValueError(f"{label} backup archive disappeared")
     if restore.verify_confirmation(plan, confirmation_id) != confirmation:
         raise ValueError(f"{label} restore confirmation changed")
-    return (
-        receipt, source, confirmation, completion, restored, archive,
-        desired.inventory_revision,
+    return plan_verified_backup_expiry(
+        create_plan,
+        source,
+        confirmation,
+        completion,
+        archive,
+        key=key,
+        backup_id=backup_id,
+        backup_receipt_id=receipt.receipt_id,
+        restored_target_id=restored.target_id,
+        desired_inventory_revision=desired.inventory_revision,
     )
 
 

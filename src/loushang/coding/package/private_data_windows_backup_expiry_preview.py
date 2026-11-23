@@ -9,7 +9,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management._private_data_restore_windows import (
-    read_windows_expiry_restore_proof,
+    preview_windows_backup_expiry,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
@@ -64,9 +64,7 @@ class CodingWindowsArchPrivateDataBackupExpiryPreview:
             or not confirmation_id.startswith("arch-restore-confirm:")
         ):
             raise ValueError("Windows Coding Arch backup expiry request is invalid")
-        (
-            receipt, source, confirmation, completion, restored, archive, revision,
-        ) = read_windows_expiry_restore_proof(
+        return preview_windows_backup_expiry(
             transaction,
             key,
             backup_id,
@@ -75,18 +73,7 @@ class CodingWindowsArchPrivateDataBackupExpiryPreview:
             capture_archive=lambda source, receipt: capture_windows_arch_backup_archive(
                 self.layout, key, backup_id, source, receipt
             ),
-        )
-        return CodingArchPrivateDataBackupExpiryPlanV1(
-            installation_key=key,
-            backup_id=backup_id,
-            backup_receipt_id=receipt.receipt_id,
-            source_target_id=source.target_id,
-            confirmation_id=confirmation.confirmation_id,
-            restore_completion_digest=completion.record_digest,
-            restored_target_id=restored.target_id,
-            desired_inventory_revision=revision,
-            archive_root_identity=archive.root_identity,
-            archive_target_id=archive.target_id,
+            create_plan=CodingArchPrivateDataBackupExpiryPlanV1,
         )
 
 

@@ -31,7 +31,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from ._private_data_expiry import ExpiryHistoryEvent, ExpiryPlan
+from ._private_data_expiry import (
+    ExpiryHistoryEvent,
+    ExpiryPlan,
+    plan_verified_backup_expiry,
+)
+from .ledger import PluginDesiredStateSnapshotV1
 from .private_data_deletion import (
     PluginPrivateDataDeletionEventV1,
     PluginPrivateDataDeletionReceiptV1,
@@ -39,6 +44,7 @@ from .private_data_deletion import (
     latest_deleted_target_receipt,
 )
 from .private_data_restore_journal import (
+    PrivateDataRestoreConfirmationJournal,
     PrivateDataRestoreEvent,
     PrivateDataRestoreJournal,
 )
@@ -54,6 +60,9 @@ class PrivateBackupReceipt(Protocol):
 
     @property
     def source_target_id(self) -> str: ...
+
+    @property
+    def receipt_id(self) -> str: ...
 
 
 S = TypeVar("S", bound=PrivateBackupSource)
@@ -632,6 +641,9 @@ _RestoreResultT = TypeVar("_RestoreResultT")
 _RestoreSourceT = TypeVar("_RestoreSourceT", bound=PrivateDataDeletionTarget)
 
 
+_ExpiryPlanT = TypeVar("_ExpiryPlanT", bound=ExpiryPlan)
+
+
 @dataclass(frozen=True, slots=True)
 class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
     """Verify and restore a Product-admitted archive under its offline fence."""
@@ -707,6 +719,55 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
             source.target_id,
             receipt.receipt_id,
             "same_bytes" if target_present else "absent",
+        )
+
+    def preview_expiry(
+        self,
+        key: PluginInstallationKeyV1,
+        backup_id: str,
+        confirmation_id: str,
+        *,
+        completed_restore: Callable[[], tuple[PrivateDataRestoreEvent, str]],
+        desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
+        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
+        create_plan: Callable[..., _ExpiryPlanT],
+    ) -> _ExpiryPlanT:
+        """Read the completed recovery, its confirmation, and the exact archive."""
+        label = self.io.label
+        completion, target_id = completed_restore()
+        confirmation = confirmation_journal().require_current(
+            confirmation_id,
+            key,
+            backup_id,
+            completion,
+            target_id,
+            message=f"{label} backup expiry confirmation is stale",
+        )
+        desired = desired_snapshot()
+        if desired.installation(key).selection.desired_state != "absent":
+            raise ValueError(f"{label} backup expiry requires removal")
+        receipt, source, _identity, archive = inspect_private_expiry_archive(
+            self.private_base,
+            self.backup_parent(key),
+            backup_id,
+            key,
+            io=self.io,
+            codec=self.codec,
+            recapture=lambda: self.capture_target(self.backup_parent(key) / backup_id),
+            installation_error=f"{label} backup expiry Installation changed",
+            changed_error=f"{label} backup expiry archive changed",
+        )
+        return plan_verified_backup_expiry(
+            create_plan,
+            source,
+            confirmation,
+            completion,
+            archive,
+            key=key,
+            backup_id=backup_id,
+            backup_receipt_id=receipt.receipt_id,
+            restored_target_id=target_id,
+            desired_inventory_revision=desired.inventory_revision,
         )
 
     def completed(

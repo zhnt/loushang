@@ -10,16 +10,16 @@ from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
 )
 from loushang.harness.plugin_management._private_data_records import (
+    PRIVATE_DATA_INSTALLATION_KEY_FIELD,
+    PrivateDataRecordWire,
+)
+from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
 )
 from loushang.harness.plugin_management.private_data_restore_journal import (
     PrivateDataRestoreConfirmationJournal,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -34,7 +34,7 @@ _MAX_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataRestoreConfirmationV1:
+class CodingArchPrivateDataRestoreConfirmationV1(PrivateDataRecordWire):
     revision: int
     installation_key: PluginInstallationKeyV1
     backup_id: str
@@ -138,14 +138,7 @@ class CodingArchPrivateDataRestoreConfirmationV1:
             and self.confirmation_id == other.confirmation_id
         )
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingArchPrivateDataRestoreConfirmationV1:
-        if (
-            type(value) is not dict
-            or set(value) != _SCHEMA_RESTORE_CONFIRMATION_V1.keys
-        ):
-            raise ValueError("Coding Arch restore confirmation fields are invalid")
-        return _SCHEMA_RESTORE_CONFIRMATION_V1.decode(cls, value)
+    _invalid_fields = "Coding Arch restore confirmation fields are invalid"
 
 
 def _confirmation_facts(
@@ -215,14 +208,10 @@ class CodingArchPrivateDataRestoreConfirmationJournal(
         )
 
 
-_SCHEMA_RESTORE_CONFIRMATION_V1 = RecordSchema.for_dataclass(
-    CodingArchPrivateDataRestoreConfirmationV1,
-    lambda value: value,
-    RecordField(
-        "installation_key",
-        decoder=PluginInstallationKeyV1.from_dict,
-        encoder=PluginInstallationKeyV1.to_dict,
-    ),
+_SCHEMA_RESTORE_CONFIRMATION_V1 = (
+    CodingArchPrivateDataRestoreConfirmationV1._bind_wire_schema(
+        PRIVATE_DATA_INSTALLATION_KEY_FIELD,
+    )
 )
 
 __all__ = [

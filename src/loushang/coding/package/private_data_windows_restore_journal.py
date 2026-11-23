@@ -23,6 +23,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management._private_data_deletion_windows import (
     read_windows_deletion_history,
 )
+from loushang.harness.plugin_management._private_data_records import (
+    PrivateDataRecordWire,
+)
 from loushang.harness.plugin_management._private_data_restore_windows import (
     WindowsPrivateRestoreTransaction,
 )
@@ -36,7 +39,6 @@ from loushang.harness.resources.packages._private_tree_windows import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
-    RecordSchema,
 )
 
 from .installation_private_data import (
@@ -76,7 +78,7 @@ _CONFIRM_MAX_BYTES = 16 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsArchRestorePublicationV1:
+class CodingWindowsArchRestorePublicationV1(PrivateDataRecordWire):
     restore_id: str
     started_digest: str
     plan_fingerprint: str
@@ -112,23 +114,20 @@ class CodingWindowsArchRestorePublicationV1:
     def stage_name(self) -> str:
         return ".arch-restore-" + self.restore_id.split(":", 1)[1] + ".staging"
 
-    def to_dict(self) -> dict[str, object]:
-        return _PUBLICATION_SCHEMA.encode(self, sort_keys=True)
+    _invalid_fields = "Windows Coding Arch restore publication fields changed"
 
     @classmethod
     def from_dict(cls, value: object) -> CodingWindowsArchRestorePublicationV1:
-        if type(value) is not dict or set(value) != _PUBLICATION_SCHEMA.keys:
-            raise ValueError("Windows Coding Arch restore publication fields changed")
-        parent = value["parentIdentity"]
-        stage = value["stageIdentity"]
-        if type(parent) is not list or type(stage) is not list:
+        document = cls._wire_document(value)
+        if (
+            type(document["parentIdentity"]) is not list
+            or type(document["stageIdentity"]) is not list
+        ):
             raise ValueError("Windows Coding Arch restore publication identity changed")
-        return _PUBLICATION_SCHEMA.decode(cls, value)
+        return cls._wire_schema.decode(cls, document)
 
 
-_PUBLICATION_SCHEMA = RecordSchema.for_dataclass(
-    CodingWindowsArchRestorePublicationV1,
-    lambda value: value,
+_PUBLICATION_SCHEMA = CodingWindowsArchRestorePublicationV1._bind_wire_schema(
     RecordField("stage_identity", decoder=tuple, encoder=list),
     RecordField("parent_identity", decoder=tuple, encoder=list),
 )

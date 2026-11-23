@@ -29,6 +29,9 @@ from loushang.harness.plugin_management._private_data_expiry import (
 from loushang.harness.plugin_management._private_data_expiry_windows import (
     WindowsPrivateExpiryTransaction,
 )
+from loushang.harness.plugin_management._private_data_records import (
+    PrivateDataRecordWire,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
@@ -73,7 +76,7 @@ _MAX_EVENT_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsArchBackupExpiryEventV1:
+class CodingWindowsArchBackupExpiryEventV1(PrivateDataRecordWire):
     revision: int
     phase: Literal["confirmed", "started", "renamed", "completed"]
     plan: CodingArchPrivateDataBackupExpiryPlanV1
@@ -94,22 +97,7 @@ class CodingWindowsArchBackupExpiryEventV1:
             unfinished_receipt_error="Unfinished Windows Coding Arch backup expiry has receipt",
         )
 
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "archive": None if self.archive is None else self.archive.to_dict(),
-            "confirmation": self.confirmation.to_dict(),
-            "phase": self.phase,
-            "plan": self.plan.to_dict(),
-            "receipt": None if self.receipt is None else self.receipt.to_dict(),
-            "recordVersion": self.record_version,
-            "revision": self.revision,
-        }
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingWindowsArchBackupExpiryEventV1:
-        if type(value) is not dict or set(value) != _SCHEMA_BACKUP_EXPIRY_EVENT_V1.keys:
-            raise ValueError("Windows Coding Arch backup expiry event fields changed")
-        return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.decode(cls, value)
+    _invalid_fields = "Windows Coding Arch backup expiry event fields changed"
 
 
 _SCHEMA_BACKUP_EXPIRY_EVENT_V1 = expiry_event_schema(
@@ -119,6 +107,7 @@ _SCHEMA_BACKUP_EXPIRY_EVENT_V1 = expiry_event_schema(
     archive=CodingWindowsArchBackupArchiveSnapshotV1,
     receipt=CodingArchPrivateDataBackupExpiryReceiptV1,
 )
+CodingWindowsArchBackupExpiryEventV1._wire_schema = _SCHEMA_BACKUP_EXPIRY_EVENT_V1
 
 
 @dataclass(frozen=True, slots=True)

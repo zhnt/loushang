@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar
+from typing import TYPE_CHECKING, ClassVar, Generic, Literal, Protocol, Self, TypeVar
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -33,6 +33,10 @@ from .private_data_restore_journal import (
     PrivateDataRestoreEvent,
 )
 from .records import PluginInstallationKeyV1
+
+if TYPE_CHECKING:
+    from .private_data_deletion import PrivateDataDeletionTarget
+
 
 
 class ExpiryPlan(Protocol):
@@ -127,6 +131,48 @@ class _ArchiveReference(Protocol):
 
 _PlanT = TypeVar("_PlanT", bound=ExpiryPlan)
 _RecordConfirmationT = TypeVar("_RecordConfirmationT", bound=_ExpiryConfirmation)
+
+
+def plan_verified_backup_expiry(
+    create: Callable[..., _PlanT],
+    source: PrivateDataDeletionTarget,
+    confirmation: PrivateDataRestoreConfirmation,
+    completion: PrivateDataRestoreEvent,
+    archive: _ArchiveReference,
+    *,
+    key: PluginInstallationKeyV1,
+    backup_id: str,
+    backup_receipt_id: str,
+    restored_target_id: str,
+    desired_inventory_revision: int,
+) -> _PlanT:
+    """Freeze the exact proof already captured under native Product custody."""
+    return create(
+        installation_key=key,
+        backup_id=backup_id,
+        backup_receipt_id=backup_receipt_id,
+        source_target_id=source.target_id,
+        confirmation_id=confirmation.confirmation_id,
+        restore_completion_digest=completion.record_digest,
+        restored_target_id=restored_target_id,
+        desired_inventory_revision=desired_inventory_revision,
+        archive_root_identity=archive.root_identity,
+        archive_target_id=archive.target_id,
+    )
+
+
+def expiry_acceptance_matches(
+    plan: object,
+    confirmation: object,
+    *,
+    plan_type: type[_PlanT],
+    confirmation_type: type[_RecordConfirmationT],
+) -> bool:
+    return (
+        isinstance(plan, plan_type)
+        and isinstance(confirmation, confirmation_type)
+        and confirmation.plan_fingerprint == plan.fingerprint
+    )
 
 
 def matches_expiry_archive(archive: _ArchiveReference, plan: ExpiryPlan) -> bool:

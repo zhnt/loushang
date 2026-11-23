@@ -43,6 +43,7 @@ from ._private_data_expiry import (
     ExpiryJournalTransitions,
     ExpiryPlan,
     _ExpiryConfirmation,
+    expiry_acceptance_matches,
     matches_expiry_archive,
     validate_expiry_history,
 )
@@ -101,9 +102,12 @@ class WindowsPrivateExpiryTransaction(
         self, plan: _PlanT, confirmation: _ConfirmationT, archive: _ArchiveT
     ) -> _EventT:
         if (
-            not isinstance(plan, self._plan_type)
-            or not isinstance(confirmation, self._confirmation_type)
-            or confirmation.plan_fingerprint != plan.fingerprint
+            not expiry_acceptance_matches(
+                plan,
+                confirmation,
+                plan_type=self._plan_type,
+                confirmation_type=self._confirmation_type,
+            )
             or not isinstance(archive, self._archive_type)
             or not matches_expiry_archive(archive, plan)
         ):
