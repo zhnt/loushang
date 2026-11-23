@@ -28,9 +28,11 @@ from .test_repository_goal import digest, implementation_adapter, model, task_pa
 
 
 @pytest.fixture(autouse=True)
-def cleanup_adapter():
+def cleanup_adapter(monkeypatch):
     from loushang.ai.api_registry import get_default_api_registry
 
+    # Keep synthetic verifier subprocesses independent of installed pytest plugins.
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     yield
     get_default_api_registry().unregister_api_adapters("repository-goal-offline")
 
