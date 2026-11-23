@@ -142,6 +142,10 @@
     "sessionResources": "会话资源",
     "unavailable": "附件不可用。",
     "empty": "本会话暂无资源。",
-    "file": "文件"
+    "file": "文件",
+    "pickUpload": "上传图片或文件",
+    "referenceHostPath": "引用 AppHost 路径",
+    "hostPath": "工作空间内的 AppHost 文件或文件夹绝对路径",
+    "reference": "添加引用"
   }
 }

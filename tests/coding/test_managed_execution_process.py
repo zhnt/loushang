@@ -186,9 +186,12 @@ def test_managed_image_upload_execution_and_transcript_restore(owners, tmp_path,
     from loushang.appserver.protocol import (
         AppErrorCodeV1,
         AppServiceError,
+        InteractionOutcomeV1,
+        InteractionRespondV1,
         MuxAttachV1,
         MuxMemberOpenV1,
         MuxSelectorV1,
+        SessionEventKindV1,
         SessionOpenSpecV1,
         SessionSnapshotRequestV1,
         WorkspaceRequestV1,
@@ -291,7 +294,7 @@ def test_managed_image_upload_execution_and_transcript_restore(owners, tmp_path,
             assert (await stop).cleanly_stopped
 
             (tmp_path / "image-model").unlink()
-            _, _, reopened, _, restored = await connect()
+            _, restored_connection, reopened, _, restored = await connect()
             restored_control = SessionSnapshotRequestV1(restored.attachment_id, restored.controller_generation,
                                                         restored.mux_space.members[0].member_id)
             new_instance = reopened.service_instance_id
@@ -334,6 +337,57 @@ def test_managed_image_upload_execution_and_transcript_restore(owners, tmp_path,
             assert any(json.loads(row["text"])["text"] == file_data.decode()
                        for row in map(json.loads, (tmp_path / "execution-audit.jsonl").read_text().splitlines())
                        if row["kind"] == "model_received_file")
+            if linked:
+                directory = project / "folder"
+                directory.mkdir()
+                (directory / "nested.txt").write_text("host reference file contents")
+                result = await reopened.session_resource(
+                    restored_control, new_instance, SessionResourceQueryV1("reference", path=str(directory)),
+                )
+                resource, = result.resources
+                assert resource.kind == "directory" and resource.source == "host_reference"
+                assert resource.name == "folder"
+                control_client = restored_connection.client
+
+                async def operate(action):
+                    receipt = await reopened.submit_execution(
+                        restored_control, new_instance, f"host-reference-{action}",
+                        f"host-resource-{action} {resource.id}", (ResourceRefV1(resource.id, resource.id),),
+                    )
+                    approvals = set()
+                    async with asyncio.timeout(12):
+                        while True:
+                            for envelope in await control_client.read_events(
+                                attachment_id=restored_control.attachment_id,
+                                controller_generation=restored_control.controller_generation,
+                            ):
+                                event = envelope.event
+                                if event.kind is SessionEventKindV1.INTERACTION_REQUESTED and event.interaction_id not in approvals:
+                                    await control_client.respond_interaction(InteractionRespondV1(
+                                        restored_control.attachment_id, restored_control.controller_generation,
+                                        restored_control.member_id, event.interaction_id, InteractionOutcomeV1.APPROVE,
+                                    ))
+                                    approvals.add(event.interaction_id)
+                            result = await reopened.get_execution(restored_control, new_instance, receipt.state.execution_id)
+                            if result.state.status.terminal:
+                                assert result.state.status.value == "succeeded", result
+                                assert approvals, f"{action} bypassed Workspace approval"
+                                return
+                            await asyncio.sleep(0.05)
+
+                await operate("read")
+                await operate("write")
+                assert (directory / "written.txt").read_text() == "allowed edit"
+                assert any("host reference file contents" in row["text"]
+                           for row in map(json.loads, (tmp_path / "execution-audit.jsonl").read_text().splitlines())
+                           if row.get("tool") == "resource_read")
+                directory.rename(project / "moved")
+                with pytest.raises(AppServiceError) as unavailable_reference:
+                    await reopened.submit_execution(
+                        restored_control, new_instance, "host-reference-moved", "",
+                        (ResourceRefV1(resource.id, resource.id),),
+                    )
+                assert unavailable_reference.value.code is AppErrorCodeV1.RESOURCE_UNAVAILABLE
             transcript = next((Path(namespace.platform_home) / "data/sessions").rglob("*.jsonl"))
             assert image64 not in transcript.read_text()
         finally:

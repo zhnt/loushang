@@ -41,7 +41,11 @@ from loushang.coding.hosted.catalog import (
     CodingHostedHistoryCandidateBindingV1,
     CodingHostedScopeV1,
 )
-from loushang.coding.hosted.resource_tools import SESSION_FILES, session_files_tool
+from loushang.coding.hosted.resource_tools import (
+    SESSION_FILES,
+    HostReferencePolicy,
+    hosted_resource_tools,
+)
 from loushang.coding.hosted.resources import (
     SUBMISSION_ID,
     HostedResourceAccess,
@@ -440,7 +444,9 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
 
     def create_resource_access(self) -> HostedResourceAccess:
         manager = self._session.session_manager
-        return HostedResourceAccess(self.identity.session_id, manager.session_dir, self.canonical_records)
+        return HostedResourceAccess(
+            self.identity.session_id, manager.session_dir, self.canonical_records, manager._hosted_workspace,
+        )
 
     def create_execution_work(
         self, text: str, cancel_requested: Callable[[], bool],
@@ -610,8 +616,10 @@ class CodingRealHostedSessionFactoryV1:
             manager._hosted_workspace = hosted_workspace
             tools = self._tools
             if resource_tools:
-                access = HostedResourceAccess(identity.session_id, manager.session_dir, lambda: manager.entries)
-                tools = [*(tools or ()), session_files_tool(lambda: access)]
+                access = HostedResourceAccess(
+                    identity.session_id, manager.session_dir, lambda: manager.entries, hosted_workspace,
+                )
+                tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=workspace_tools)]
             services = self._services_factory(settings_cwd)
             policy = workspace_tool_runtime_settings(services.settings_manager)
             runtime_factory = None
@@ -631,6 +639,10 @@ class CodingRealHostedSessionFactoryV1:
                 model = _resolve_hosted_saved_model(
                     manager.build_session_context().model, services.model_registry, model,
                 )
+            effective_policy = PolicyEvaluatorChain(
+                tuple(p for p in (workspace_policy, policy.policy_engine) if p is not None),
+                strategy="most_restrictive",
+            ) if workspace_policy is not None else policy.policy_engine
             session = create_agent_session(
                 session_manager=manager,
                 model=model,
@@ -640,10 +652,7 @@ class CodingRealHostedSessionFactoryV1:
                 tools=tools,
                 no_tools=None if workspace_tools else "builtin" if resource_tools else "all",
                 approval_resolver=approval,
-                tool_policy_evaluator=(PolicyEvaluatorChain(
-                    tuple(p for p in (workspace_policy, policy.policy_engine) if p is not None),
-                    strategy="most_restrictive",
-                ) if workspace_policy is not None else policy.policy_engine),
+                tool_policy_evaluator=HostReferencePolicy(effective_policy) if effective_policy else None,
                 active_tool_names=self._session_active_tools,
                 allowed_tool_names=(
                     [SESSION_FILES] if resource_tools and not workspace_tools

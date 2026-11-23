@@ -144,6 +144,10 @@
     "sessionResources": "Session resources",
     "unavailable": "Attachment unavailable.",
     "empty": "No resources in this session.",
-    "file": "File"
+    "file": "File",
+    "pickUpload": "Upload images or files",
+    "referenceHostPath": "Reference an AppHost path",
+    "hostPath": "Absolute AppHost file or folder path in the workspace",
+    "reference": "Add reference"
   }
 }

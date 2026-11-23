@@ -1,6 +1,9 @@
 import type { ResourceRefV1, ResourceV1, SessionResourceQueryV1, SessionResourceResultV1 } from "../../contracts/generated/bridge";
 import type { HarnessClientUiPort } from "./model";
 
+export type HostPathDraft = { readonly hostPath: string };
+export type AttachmentDraft = File | HostPathDraft;
+
 export const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 const imageLimit = 4 * 1024 * 1024;
 const textLimit = 1024 * 1024;
@@ -42,11 +45,20 @@ function encode(bytes: Uint8Array) {
   return btoa(ascii);
 }
 
-export async function uploadAttachments(client: HarnessClientUiPort, sessionId: string, files: readonly File[]): Promise<ResourceRefV1[]> {
+export async function uploadAttachments(client: HarnessClientUiPort, sessionId: string, files: readonly AttachmentDraft[]): Promise<ResourceRefV1[]> {
   const refs: ResourceRefV1[] = [];
   if (!files.length) return refs;
   if (!client.sessionResource || files.length > maxAttachments) throw new Error("resource_unavailable");
   for (const file of files) {
+    if ("hostPath" in file) {
+      const result = await client.sessionResource(sessionId, query("reference", { path: file.hostPath }));
+      const resource = result.resources[0];
+      if (!resource || resource.source !== "host_reference" || !/^[a-f0-9]{64}$/.test(resource.id)) {
+        throw new Error("resource_unavailable");
+      }
+      if (!refs.some((ref) => ref.id === resource.id)) refs.push({ id: resource.id, sha256: resource.id });
+      continue;
+    }
     if (!supportedAttachment(file)) throw new Error("resource_unavailable");
     const image = supportedImage(file);
     const bytes = await file.arrayBuffer();
@@ -74,7 +86,7 @@ export async function listResources(client: HarnessClientUiPort, sessionId: stri
   return result?.resources ?? [];
 }
 
-export async function readResource(client: HarnessClientUiPort, sessionId: string, id: string, signal: AbortSignal): Promise<{ blob: Blob; resource: ResourceV1 }> {
+export async function readResource(client: HarnessClientUiPort, sessionId: string, id: string, signal: AbortSignal): Promise<{ blob: Blob | null; resource: ResourceV1 }> {
   if (!client.sessionResource) throw new Error("resource_unavailable");
   const parts: Uint8Array<ArrayBuffer>[] = [];
   let resource: ResourceV1 | undefined;
@@ -83,6 +95,9 @@ export async function readResource(client: HarnessClientUiPort, sessionId: strin
     signal.throwIfAborted();
     const reply = await client.sessionResource(sessionId, query("read", { resourceId: id, offset }));
     const item = reply.resources[0];
+    if (item?.id === id && item.source === "host_reference" && offset === 0 && reply.data === "") {
+      return { blob: null, resource: item };
+    }
     if (!item || item.id !== id || item.kind !== "file" || item.source !== "managed"
       || (!imageTypes.includes(item.mediaType) && item.mediaType !== "text/plain")
       || !Number.isInteger(item.sizeBytes)

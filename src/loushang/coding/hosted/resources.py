@@ -22,6 +22,7 @@ from loushang.appserver.execution.resources import (
     SessionResourceResultV1,
 )
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
+from loushang.coding.hosted_workspace import CodingHostedWorkspace
 from loushang.foundation.json import JSONValue
 from loushang.harness.artifacts import (
     ArtifactStoreError,
@@ -30,6 +31,8 @@ from loushang.harness.artifacts import (
     resolve_session_blob_data_root,
 )
 from loushang.harness.transcript.types import AgentTranscriptRecord, SessionImagePart
+
+from .host_references import HOST_REFERENCE, HostReference
 
 _SOURCE = "managed-resource"
 SUBMISSION_ID = "hosted_resource_submission_id"
@@ -80,10 +83,12 @@ def _image_signature(data: bytes, mime: str) -> bool:
 class HostedResourceAccess:
     def __init__(
         self, session_id: str, session_dir: Path, records: Callable[[], Iterable[AgentTranscriptRecord]],
+        workspace: CodingHostedWorkspace | None = None,
     ) -> None:
         self._root = resolve_session_blob_data_root(session_dir)
         self._session_id = session_id
         self._records = records
+        self._workspace = workspace
         self._uploads: dict[str, _Upload] = {}
 
     def submission_digest(self, submission_id: str) -> str | None:
@@ -115,7 +120,7 @@ class HostedResourceAccess:
 
     def input_metadata(self, refs: tuple[ResourceRefV1, ...]) -> dict[str, JSONValue]:
         _, selected = self._uploaded(refs)
-        ids: list[JSONValue] = [blob.sha256 for blob in selected if blob.kind == "file"]
+        ids: list[JSONValue] = [blob.sha256 for blob in selected if blob.kind != "image"]
         return {_FILE_IDS: ids} if ids else {}
 
     def images(self, refs: tuple[ResourceRefV1, ...]) -> list[ImagePart]:
@@ -123,6 +128,9 @@ class HostedResourceAccess:
             store, selected = self._uploaded(refs)
             images = []
             for blob in selected:
+                if blob.kind == HOST_REFERENCE:
+                    HostReference.load(store, blob).resolve(self._workspace)
+                    continue
                 content = store.read_bytes(blob)
                 if blob.kind != "image":
                     continue
@@ -133,10 +141,30 @@ class HostedResourceAccess:
             raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from exc
 
     def associated(self, *, kind: str | None = None) -> tuple[ResourceV1, ...]:
-        _, resources = self._manifest()
+        store, resources = self._manifest()
         used = {id for entry in self._records() for id in record_resource_ids(entry)}
-        return tuple(_resource(blob) for id, blob in resources.items() if id in used
-                     and (kind is None or blob.kind == kind))
+        return tuple(self._metadata(store, blob) for id, blob in resources.items() if id in used
+                     and (kind is None or blob.kind == kind or blob.kind == HOST_REFERENCE))
+
+    def _metadata(self, store: SessionBlobStore, blob: SessionBlobRef) -> ResourceV1:
+        if blob.kind == HOST_REFERENCE:
+            return HostReference.load(store, blob).resource(blob)
+        return _resource(blob)
+
+    def resolve_host(
+        self, resource_id: str, relative: str,
+    ) -> tuple[HostReference, Path]:
+        try:
+            store, resources = self._manifest()
+            blob = resources.get(resource_id)
+            if blob is None or blob.kind != HOST_REFERENCE or not any(
+                resource_id in record_resource_ids(entry) for entry in self._records()
+            ):
+                raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)
+            reference = HostReference.load(store, blob)
+            return reference, reference.resolve(self._workspace, relative)
+        except (ArtifactStoreError, OSError, ValueError) as exc:
+            raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from exc
 
     def read_text(self, id: str, *, offset: int = 0) -> dict[str, JSONValue]:
         if type(offset) is not int or not 0 <= offset <= 2**20:
@@ -160,12 +188,27 @@ class HostedResourceAccess:
                 # The canonical transcript is authoritative, including messages outside the UI window.
                 return SessionResourceResultV1(self.associated())
             store, resources = self._manifest()
+            if query.action == "reference":
+                assert query.path is not None
+                ref = HostReference.select(self._workspace, query.path)
+                data = ref.descriptor()
+                id = sha256(data).hexdigest()
+                blob = resources.get(id)
+                if blob is None:
+                    blob = store.put_bytes(data, logical_name=f"resources/{id}", kind=HOST_REFERENCE,
+                                           media_type="application/json", source=_SOURCE)
+                return SessionResourceResultV1((ref.resource(blob),))
             id = query.resource_id
             if id is None or re.fullmatch(r"[a-f0-9]{64}", id) is None:
                 raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST)
             blob = resources.get(id)
             if query.action == "upload":
                 return self._upload(store, query, id, blob)
+            if blob is not None and blob.kind == HOST_REFERENCE:
+                # Descriptor bytes can include paths and native file identities.
+                if query.offset:
+                    raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)
+                return SessionResourceResultV1((self._metadata(store, blob),))
             if blob is None or query.offset >= blob.size_bytes:
                 raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)
             chunk = store.read_bytes(blob)[query.offset:query.offset + RESOURCE_CHUNK_BYTES]
