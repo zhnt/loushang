@@ -623,10 +623,10 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     )
     monkeypatch.setattr(
         product_runtime_module,
-        "_initialize_fresh_coding_product_for_session",
+        "_bootstrap_coding_product_for_session",
         timed_sync(
-            "fresh-product-cutover",
-            product_runtime_module._initialize_fresh_coding_product_for_session,
+            "product-bootstrap",
+            product_runtime_module._bootstrap_coding_product_for_session,
         ),
     )
     monkeypatch.setattr(
@@ -1075,10 +1075,10 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
     )
     monkeypatch.setattr(
         product_runtime_module,
-        "_initialize_fresh_coding_product_for_session",
+        "_bootstrap_coding_product_for_session",
         timed_sync(
-            "fresh-product-cutover",
-            product_runtime_module._initialize_fresh_coding_product_for_session,
+            "product-bootstrap",
+            product_runtime_module._bootstrap_coding_product_for_session,
         ),
     )
     monkeypatch.setattr(
