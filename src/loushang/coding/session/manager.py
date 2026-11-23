@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import datetime
 from functools import partial
 from pathlib import Path
+from threading import Event
 from typing import Self
 
 from loushang.ai.types import UserMessage
@@ -108,6 +109,7 @@ from loushang.harness.transcript.jsonl_file import (
 from loushang.harness.transcript.product_session import (
     _ApplicationProductTranscriptSession,
 )
+from loushang.harness.transcript.session_factory import SessionFileFactory
 from loushang.harness.transcript.types import ExtensionData
 
 _RESUME_WRITER_LABEL = "Coding Resume Writer"
@@ -593,6 +595,8 @@ def _create_owned_session_factory(
     *,
     store_state_root: Path | None = None,
     enroll_legacy_shared_store: bool = False,
+    store_root_observed: Event | None = None,
+    session_file_factory: SessionFileFactory | None = None,
 ) -> AgentTranscriptSessionFactory[
     ResolvedRuntimeProfile,
     RuntimeProfileBinding,
@@ -602,14 +606,17 @@ def _create_owned_session_factory(
         bind_runtime=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle,
         bind_runtime_owned=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle_owned,
     )
+    if session_file_factory is None:
+        session_file_factory = lifecycle.default_jsonl_session_file
     return AgentTranscriptSessionFactory(
         lifecycle=lifecycle,
         resolve_binding_input=_resolve_coding_binding_input,
         header_metadata=_coding_header_metadata,
         validate_restored_header=_validate_coding_restored_header,
-        session_file_factory=lifecycle.default_jsonl_session_file,
+        session_file_factory=session_file_factory,
         owned_product_id=CODING_PRODUCT_ID,
         store_state_root=store_state_root,
+        store_root_observed=store_root_observed,
         enroll_legacy_shared_store=enroll_legacy_shared_store,
     )
 

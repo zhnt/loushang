@@ -12,7 +12,7 @@ import errno
 import os
 import threading
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -117,6 +117,18 @@ class CanonicalTranscriptRecord(Protocol):
     def operation_id(self) -> str: ...
     @property
     def header(self) -> ConversationHeader: ...
+
+
+@asynccontextmanager
+async def close_unpublished_candidate(
+    close: Callable[[], Awaitable[None]],
+) -> AsyncIterator[None]:
+    """On failed construction, settle the candidate that still holds custody."""
+    try:
+        yield
+    except BaseException:
+        await close()
+        raise
 
 
 class _AsyncBinding(Protocol):
@@ -284,12 +296,9 @@ class _CanonicalTranscriptCatalogMethods(
         binding: BindingT,
         project: Callable[[RecordT, BindingT], CandidateT],
     ) -> CandidateT:
-        try:
+        async with close_unpublished_candidate(lambda: binding.close()):
             async with self._current_discovered_record(reference) as record:
                 return project(record, binding)
-        except BaseException:
-            await binding.close()
-            raise
 
     def _admitted_scope(self, scope: SessionScopeV1, fingerprint: str) -> CanonicalTranscriptScope | None:
         return next(
@@ -336,16 +345,13 @@ class _CanonicalTranscriptCatalogMethods(
             raise error()
         context = self._record_lifecycle_context(record)
         manager = manager_type(lifecycle_session=await factory.restore_context(context))
-        try:
+        async with close_unpublished_candidate(lambda: manager.dispose_runtime_profile()):
             if (
                 manager.header != record.header
                 or revision(record.path) != record.projection.reference.revision
             ):
                 raise error()
             return candidate(record, manager)
-        except BaseException:
-            await manager.dispose_runtime_profile()
-            raise
 
     def _on_loop(self) -> None:
         loop = asyncio.get_running_loop()
@@ -694,15 +700,12 @@ class _CanonicalTranscriptCatalogMethods(
                 if recovered is None:
                     raise self._catalog_error_class()() from None
                 return recovered
-            try:
+            async with close_unpublished_candidate(lambda: manager.dispose_runtime_profile()):
                 assert manager.session_file is not None
                 record = self._read_record(scope, manager.session_file)
                 if record is None:
                     raise self._catalog_error_class()()
                 return self._candidate_from_manager(record, manager, created=True)
-            except BaseException:
-                await manager.dispose_runtime_profile()
-                raise
 
 
 class _ManagedCanonicalTranscriptCatalogMethods(

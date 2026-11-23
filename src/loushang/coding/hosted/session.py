@@ -15,6 +15,9 @@ from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
+from loushang.apphost.integrations._canonical_transcript_catalog import (
+    close_unpublished_candidate,
+)
 from loushang.apphost.integrations._session_projection import (
     _first_user_prompt,
     _hosted_session_title,
@@ -411,7 +414,7 @@ class CodingRealHostedSessionFactoryV1:
             from loushang.coding.hosted.resume import CodingDeferredHostedSessionV1
 
             source = opaque_session_binding.take_resume_source()
-            try:
+            async with close_unpublished_candidate(lambda: source.close()):
                 binding = CodingDeferredHostedSessionV1(
                     source,
                     services=self._services_factory(source.record.scope.cwd),
@@ -424,11 +427,10 @@ class CodingRealHostedSessionFactoryV1:
                 )
                 await binding.start_background_planning()
                 return binding
-            except BaseException:
-                await source.close()
-                raise
         manager = opaque_session_binding.manager_for_construction()
-        try:
+        # The claimed candidate retains cleanup until the concrete Session
+        # takes ownership, including when cleanup must be retried by AppHost.
+        async with close_unpublished_candidate(lambda: opaque_session_binding.close()):
             approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
             services = self._services_factory(opaque_session_binding.record.scope.cwd)
             policy = workspace_tool_runtime_settings(services.settings_manager)
@@ -482,11 +484,6 @@ class CodingRealHostedSessionFactoryV1:
                 real_binding.enable_user_choice()
             opaque_session_binding.take_manager()
             return real_binding
-        except BaseException:
-            # The claimed candidate retains failed cleanup for the outer
-            # AppHost owner to retry; no acquired owner disappears on failure.
-            await opaque_session_binding.close()
-            raise
 
 
 def _resolve_hosted_saved_model(

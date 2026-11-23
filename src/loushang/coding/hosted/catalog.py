@@ -42,9 +42,9 @@ from loushang.appservice.discovery_ports import (
     HostedSessionDiscoverySnapshotV1,
 )
 from loushang.coding.adapters._goal_store import is_goal_journal_filename
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.plan import (
-    CODING_PRODUCT_ID,
-    CODING_TRANSCRIPT_RUNTIME,
+    CODING_TRANSCRIPT_RUNTIME as CODING_TRANSCRIPT_RUNTIME,
 )
 from loushang.coding.composition.provenance import composition_header_metadata
 from loushang.coding.composition.sets import resolve_coding_composition_set
@@ -64,7 +64,10 @@ from loushang.coding.resume.model_outcome import (
 from loushang.coding.session.manager import (
     CODING_SESSION_TRANSCRIPT_LIFECYCLE as _LIFECYCLE,
 )
-from loushang.coding.session.manager import SessionManager
+from loushang.coding.session.manager import (
+    SessionManager,
+    create_owned_coding_session_factory,
+)
 from loushang.coding.session.manager import (
     coding_session_header_metadata as _coding_header_metadata,
 )
@@ -79,7 +82,6 @@ from loushang.harness.conversation import ConversationHeader
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
 from loushang.harness.transcript import (
-    AgentTranscriptLifecycle,
     AgentTranscriptLifecycleSession,
     AgentTranscriptSessionFactory,
     _canonical_header,
@@ -570,16 +572,8 @@ class CodingHostedSessionCatalogV1(
         self._records: dict[SessionCandidateRefV1, _Record] = {}
         self._lock = asyncio.Lock()
         self._owned_factory = (
-            AgentTranscriptSessionFactory(
-                lifecycle=AgentTranscriptLifecycle(
-                    bind_runtime=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle,
-                    bind_runtime_owned=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle_owned,
-                ),
-                resolve_binding_input=_resolve_coding_binding_input,
-                header_metadata=_coding_header_metadata,
-                validate_restored_header=_validate_coding_restored_header,
+            create_owned_coding_session_factory(
                 session_file_factory=_session_path,
-                owned_product_id="coding",
                 store_state_root=store_state_root,
                 store_root_observed=store_root_observed,
             ) if owned_transcripts else None
