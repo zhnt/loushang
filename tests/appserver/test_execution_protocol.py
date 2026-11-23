@@ -35,6 +35,7 @@ from loushang.appserver.execution.model import (
     InteractiveGoalReviewSubmissionV1,
     InteractiveGoalViewV1,
 )
+from loushang.appserver.execution.resources import SessionResourceQueryV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -71,6 +72,8 @@ def test_closed_execution_call_round_trip(operation):
         if operation is ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT else None,
         resume_query=ResumeInputLookupQueryV1("input-1", "a" * 64)
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP else None,
+        resource_query=SessionResourceQueryV1("upload", "a" * 64, 0, 3, "text/plain", "YWJj", name="data.txt")
+        if operation is ExecutionOperationV1.RESOURCE else None,
     )
     assert decode_call(encode_call(call)) == call
     raw = json.loads(encode_call(call))

@@ -133,14 +133,15 @@
   "emptySession": "没有可用的会话。",
   "opening": "正在打开 {{appName}}…",
   "attachments": {
-    "add": "添加图片",
+    "add": "添加图片或文件",
     "preview": "预览 {{name}}",
     "close": "关闭预览",
     "remove": "移除 {{name}}",
     "image": "图片",
-    "invalid": "最多添加四张 PNG、JPEG、WebP 或 GIF 图片，每张不超过 4 MB。",
+    "invalid": "最多添加四个附件。图片不超过 4 MB，UTF-8 文本或代码文件不超过 1 MB。",
     "sessionResources": "会话资源",
-    "unavailable": "图片不可用。",
-    "empty": "本会话暂无图片。"
+    "unavailable": "附件不可用。",
+    "empty": "本会话暂无资源。",
+    "file": "文件"
   }
 }

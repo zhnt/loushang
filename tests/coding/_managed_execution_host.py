@@ -8,6 +8,7 @@ import json
 import os
 import runpy
 import sys
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 from time import monotonic
@@ -16,10 +17,11 @@ from _hosted_product_child import scripted_stream
 
 from loushang.agent import synthetic_model_transport
 from loushang.ai.context import normalize_context
+from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.provider import ProviderRequest
-from loushang.ai.types import ImagePart
+from loushang.ai.types import ImagePart, TextPart, ToolCall
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.appservice.execution_registry import ExecutionRegistryV1
 from loushang.coding.hosted.managed.local import CodingManagedLocalCommandV1
@@ -41,6 +43,25 @@ async def gate(name):
 
 @synthetic_model_transport
 async def held_stream(model, context, options=None):
+    latest = context.messages[-1]
+    text = latest.content if isinstance(latest.content, str) else "".join(
+        part.text for part in latest.content if isinstance(part, TextPart)
+    )
+    if latest.role == "user" and text.startswith("read-session-file "):
+        name = "session_files"
+        assert any(tool.name == name for tool in (context.tools or ()))
+        original = await scripted_stream(model, context, options)
+        message = replace(await original.result(), stop_reason="toolUse", content=[
+            ToolCall(type="toolCall", id="read-file", name=name,
+                     arguments={"action": "read", "id": text.split()[-1]}),
+        ])
+        stream = AssistantMessageEventStream()
+        stream.push({"type": "start", "partial": message})
+        stream.push({"type": "done", "reason": "toolUse", "message": message})
+        return stream
+    if latest.role == "toolResult" and latest.tool_name == "session_files":
+        audit("model_received_file", text=text)
+        return await scripted_stream(model, context, options)
     if (root / "image-model").exists():
         latest = context.messages[-1]
         parts = latest.content if isinstance(latest.content, list) else []

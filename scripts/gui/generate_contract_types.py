@@ -159,6 +159,12 @@ def generate() -> dict[str, str]:
                 ]
             )
         # The codec adds these canonical optional fields outside its static _FIELDS.
+        if cls.__name__ in {"ResourceV1", "SessionResourceQueryV1"}:
+            ts.append("  readonly name?: string;")
+            rs.extend([
+                '    #[serde(skip_serializing_if = "Option::is_none")]',
+                "    pub name: Option<String>,",
+            ])
         if cls is app.TranscriptRecordV1:
             ts.extend(["  readonly recordId?: string;", "  readonly resourceIds?: readonly string[];",
                        "  readonly submissionId?: string;"])

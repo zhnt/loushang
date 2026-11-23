@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { AttachmentImage } from "./SessionImages";
+import { AttachmentImage, AttachmentText } from "./SessionResources";
 import { UiIcon } from "./UiIcon";
-import { imageTypes, maxAttachments, supportedImage } from "./client/sessionResources";
+import { attachmentTypes, maxAttachments, supportedAttachment, supportedImage } from "./client/sessionResources";
 
 interface ComposerProps {
   readonly images?: readonly File[];
@@ -37,7 +37,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
   const canAttach = Boolean(onImagesChange && !disabled);
   function addImages(files: readonly File[]) {
     if (!canAttach || !files.length) return;
-    const valid = files.filter(supportedImage);
+    const valid = files.filter(supportedAttachment);
     const next = [...images, ...valid];
     setAttachmentError(valid.length !== files.length || next.length > maxAttachments);
     onImagesChange?.(next.slice(0, maxAttachments));
@@ -82,7 +82,9 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
       }}>
       {images.length ? <div className="attachment-list">
         {images.map((file, index) => <div key={JSON.stringify([file.name, file.lastModified, index])}>
-          <AttachmentImage blob={file} label={file.name || t("attachments.image")} />
+          {supportedImage(file)
+            ? <AttachmentImage blob={file} label={file.name || t("attachments.image")} />
+            : <AttachmentText blob={file} label={file.name || t("attachments.file")} />}
           <button type="button" className="icon-button" disabled={!canAttach}
             aria-label={t("attachments.remove", { name: file.name || t("attachments.image") })}
             onClick={() => { setAttachmentError(false); onImagesChange?.(images.filter((_, i) => i !== index)); }}>
@@ -119,7 +121,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
       <span id="message-keyboard-hint" className="visually-hidden">{t("composer.keyboardHint")}</span>
       <div className="composer-actions">
         <div className="composer-permissions">
-          {onImagesChange ? <input hidden ref={chooser} type="file" accept={imageTypes.join(",")} multiple
+          {onImagesChange ? <input hidden ref={chooser} type="file" accept={attachmentTypes.join(",")} multiple
             onChange={(event) => {
               addImages([...(event.currentTarget.files ?? [])]);
               event.currentTarget.value = "";

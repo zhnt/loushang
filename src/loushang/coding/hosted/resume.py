@@ -46,6 +46,7 @@ from loushang.coding.hosted.goal_recovery import (
     unavailable_recovery,
 )
 from loushang.coding.hosted.models import load_workspace_models
+from loushang.coding.hosted.resource_tools import SESSION_FILES, session_files_tool
 from loushang.coding.hosted.resources import HostedResourceAccess
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
@@ -76,6 +77,7 @@ from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.journal._owned_io import settled_io
@@ -161,6 +163,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         hosted_workspace: CodingHostedWorkspace | None = None,
         workspace_policy: PolicyEvaluator | None = None,
         user_choice_enabled: bool = False,
+        resource_tools: bool = False,
     ) -> None:
         self._source = source
         self.identity = source.record.identity
@@ -171,6 +174,10 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._hosted_workspace = hosted_workspace
         self._workspace = hosted_workspace.cwd if hosted_workspace is not None else source.record.scope.cwd
         self._workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
+        self._resource_tools = resource_tools
+        if resource_tools:
+            access = self.create_resource_access()
+            self._tools = [*(tools or ()), session_files_tool(lambda: access)]
         self._workspace_policy = workspace_policy
         self._user_choice_enabled = user_choice_enabled
         self._output_capture_factory = output_capture_factory
@@ -627,7 +634,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 tools=self._tools,
                 output_capture_factory=self._output_capture_factory,
                 approval_resolver=self._approval,
-                no_tools=None if self._workspace_tools else "all",
+                no_tools=None if self._workspace_tools else "builtin" if self._resource_tools else "all",
+                allowed_tool_names=[SESSION_FILES] if self._resource_tools and not self._workspace_tools else ToolSelection.ALL,
                 tool_policy_evaluator=PolicyEvaluatorChain((self._workspace_policy, policy_engine))
                 if self._workspace_policy is not None else policy_engine,
                 _hosted_workspace=self._hosted_workspace,

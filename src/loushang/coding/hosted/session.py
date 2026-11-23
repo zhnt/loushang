@@ -41,10 +41,11 @@ from loushang.coding.hosted.catalog import (
     CodingHostedHistoryCandidateBindingV1,
     CodingHostedScopeV1,
 )
+from loushang.coding.hosted.resource_tools import SESSION_FILES, session_files_tool
 from loushang.coding.hosted.resources import (
     SUBMISSION_ID,
     HostedResourceAccess,
-    image_ids,
+    record_resource_ids,
 )
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
@@ -571,6 +572,10 @@ class CodingRealHostedSessionFactoryV1:
         )
         workspace = hosted_workspace.cwd if hosted_workspace is not None else scope.cwd
         workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
+        resource_tools = hosted_workspace is not None and all(
+            names is None or SESSION_FILES in names
+            for names in (self._session_active_tools, self._session_allowed_tools)
+        )
         workspace_policy = (
             _HostedWorkspacePolicy(self._session_tool_policy)
             if hosted_workspace is not None else self._session_tool_policy
@@ -587,6 +592,7 @@ class CodingRealHostedSessionFactoryV1:
                     model=self._model,
                     stream_fn=self._stream_fn,
                     tools=self._tools,
+                    resource_tools=resource_tools,
                     hosted_workspace=hosted_workspace,
                     workspace_policy=workspace_policy,
                     user_choice_enabled=self._user_choice_enabled and workspace_tools,
@@ -602,6 +608,10 @@ class CodingRealHostedSessionFactoryV1:
         try:
             approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
             manager._hosted_workspace = hosted_workspace
+            tools = self._tools
+            if resource_tools:
+                access = HostedResourceAccess(identity.session_id, manager.session_dir, lambda: manager.entries)
+                tools = [*(tools or ()), session_files_tool(lambda: access)]
             services = self._services_factory(settings_cwd)
             policy = workspace_tool_runtime_settings(services.settings_manager)
             runtime_factory = None
@@ -627,15 +637,18 @@ class CodingRealHostedSessionFactoryV1:
                 _use_default_model=created,
                 stream_fn=self._stream_fn,
                 services=services,
-                tools=self._tools,
-                no_tools=None if workspace_tools else "all",
+                tools=tools,
+                no_tools=None if workspace_tools else "builtin" if resource_tools else "all",
                 approval_resolver=approval,
                 tool_policy_evaluator=(PolicyEvaluatorChain(
                     tuple(p for p in (workspace_policy, policy.policy_engine) if p is not None),
                     strategy="most_restrictive",
                 ) if workspace_policy is not None else policy.policy_engine),
                 active_tool_names=self._session_active_tools,
-                allowed_tool_names=self._session_allowed_tools if self._session_allowed_tools is not None else ToolSelection.ALL,
+                allowed_tool_names=(
+                    [SESSION_FILES] if resource_tools and not workspace_tools
+                    else self._session_allowed_tools if self._session_allowed_tools is not None else ToolSelection.ALL
+                ),
                 system_prompt=self._session_system_prompt,
                 output_capture_factory=self._output_capture_factory,
                 package_product_runtime_factory=runtime_factory,
@@ -731,10 +744,16 @@ def _session_title(name: str | None, messages: Iterable[object]) -> str:
 
 def _committed_message_record(entry: AgentTranscriptRecord) -> TranscriptRecordV1 | None:
     submission = entry.metadata.get(SUBMISSION_ID)
-    return _message_record(entry.payload, entry.record_id, submission if isinstance(submission, str) else None)
+    return _message_record(
+        entry.payload, entry.record_id, submission if isinstance(submission, str) else None,
+        record_resource_ids(entry)[:16],
+    )
 
 
-def _message_record(message: object, record_id: str | None = None, submission: str | None = None) -> TranscriptRecordV1 | None:
+def _message_record(
+    message: object, record_id: str | None = None, submission: str | None = None,
+    resource_ids: tuple[str, ...] = (),
+) -> TranscriptRecordV1 | None:
     if not isinstance(message, UserMessage | AssistantMessage):
         return None
     text = _message_text(message)
@@ -751,7 +770,7 @@ def _message_record(message: object, record_id: str | None = None, submission: s
         else TranscriptRecordKindV1.ASSISTANT,
         _bounded(text),
         record_id,
-        image_ids(message)[:16] if record_id is not None else (),
+        resource_ids,
         submission,
     )
 
