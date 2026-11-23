@@ -40,9 +40,7 @@ from loushang.coding.resources.catalog import (
 from loushang.coding.resources.catalog import (
     CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY as CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
 )
-from loushang.coding.resources.catalog import (
-    build_coding_initial_resource_catalog_adapter as build_coding_initial_resource_catalog_adapter,
-)
+from loushang.coding.resources.catalog import prepare_coding_catalog_projection
 from loushang.coding.resources.runtime import (
     CodingResourceLoader as CodingResourceLoader,
 )
@@ -282,27 +280,24 @@ class CodingFencedProductReadOnlyPreviewOwner:
         product_inputs = (
             compiled.product_resource_inputs() if compiled is not None else ()
         )
-        adapter = build_coding_initial_resource_catalog_adapter(
+        _, catalog_result = prepare_coding_catalog_projection(
             receipt,
-            product_scope_id="plugin-preview-current",
+            product_id=self.policy.product_id,
+            session_id="plugin-preview-current",
+            cwd=workspace,
             product_composition=(
                 compiled.product_composition if compiled is not None else None
             ),
             product_snapshot_resources=(
                 product_inputs if compiled is not None else None
             ),
-            package_admission_now=evaluated_at,
+            admission_now=evaluated_at,
             disabled_skills=disabled_skills or (),
             source_policy=(
                 CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
                 if compiled is None
                 else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
             ),
-        )
-        catalog_result = adapter.prepare_bootstrap_projection_with_receipt(
-            product_id=self.policy.product_id,
-            session_id="plugin-preview-current",
-            cwd=workspace,
         )
         return preview(
             compiled_plugin_ids=compiled_plugin_ids,

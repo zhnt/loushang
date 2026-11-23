@@ -68,7 +68,7 @@ from loushang.coding.package.product_worker_windows_supervisor_journal import (
     open_coding_windows_product_worker_supervisor_journal,
 )
 from loushang.harness.session._worker_provider import (
-    _prepare_pending_worker_session_inputs,
+    _PendingWorkerSessionInputs,
 )
 
 # Native preparation borrows the actual Receipt owner and existing components.
@@ -121,8 +121,8 @@ prepare_pending_provider = partial(
 )
 
 
-prepare_pending_session_inputs = partial(
-    _prepare_pending_worker_session_inputs,
+bind_pending_session_inputs = partial(
+    _PendingWorkerSessionInputs,
     definition=CODING_WORKER_QUERY_DEFINITION,
     expected_provider_owner=coding_worker_query_owner_authority,
     base_policy_type=CodingWorkerBaseCompositionPolicyBinding,
