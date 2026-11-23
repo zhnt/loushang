@@ -100,7 +100,7 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
   }
 
   const allowClientDirectories = isTauri() && Boolean(connectionId && connectionId !== "local")
-    && (platform() === "linux" || platform() === "windows");
+    && ["linux", "windows", "macos"].includes(platform());
   const pickClientDirectory: DirectoryPicker = async (labels) => {
     const value = await invoke<{ id: string; name: string } | null>("pick_client_directory", { connectionId, ...labels });
     if (value && (!/^[a-f0-9]{32}$/.test(value.id) || !value.name)) throw new Error("resource_unavailable");

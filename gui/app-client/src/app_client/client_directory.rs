@@ -1,7 +1,7 @@
 //! Read-only desktop grants. The Host sends relative names and never gets a local path.
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -92,10 +92,11 @@ fn relative(value: &str) -> Result<PathBuf> {
     Ok(value.split('/').collect())
 }
 
+#[cfg(any(target_os = "linux", windows))]
 fn checked_names(path: &Path) -> Result<(Vec<String>, bool)> {
     let mut names = Vec::new();
     let mut truncated = false;
-    for (index, entry) in fs::read_dir(path).map_err(|_| ())?.enumerate() {
+    for (index, entry) in std::fs::read_dir(path).map_err(|_| ())?.enumerate() {
         if index >= LIST_LIMIT {
             truncated = true;
             break;
@@ -114,14 +115,58 @@ fn checked_names(path: &Path) -> Result<(Vec<String>, bool)> {
     Ok((names, truncated))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod platform {
     use super::*;
+    use std::{ffi::OsStr, os::unix::fs::MetadataExt};
+
+    #[cfg(target_os = "linux")]
     use crate::app_client::record_native::{open_absolute_directory, openat};
-    use std::os::{
-        fd::AsRawFd,
-        unix::{ffi::OsStrExt, fs::MetadataExt},
-    };
+    #[cfg(target_os = "linux")]
+    use std::os::{fd::AsRawFd, unix::ffi::OsStrExt};
+
+    #[cfg(target_os = "linux")]
+    fn open_child(parent: &File, name: &OsStr, directory: bool) -> Result<File> {
+        openat(parent.as_raw_fd(), name.as_bytes(), directory)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn open_child(parent: &File, name: &OsStr, directory: bool) -> Result<File> {
+        use rustix::fs::{openat, Mode, OFlags};
+        let mut flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
+        if directory {
+            flags |= OFlags::DIRECTORY;
+        }
+        openat(parent, name, flags, Mode::empty())
+            .map(File::from)
+            .map_err(|_| ())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn open_absolute_directory(path: &Path) -> Result<File> {
+        use rustix::fs::{open, Mode, OFlags};
+        use std::path::Component;
+
+        if !path.is_absolute() {
+            return Err(());
+        }
+        let mut directory = File::from(
+            open(
+                "/",
+                OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY,
+                Mode::empty(),
+            )
+            .map_err(|_| ())?,
+        );
+        for component in path.components() {
+            match component {
+                Component::RootDir => (),
+                Component::Normal(name) => directory = open_child(&directory, name, true)?,
+                _ => return Err(()),
+            }
+        }
+        Ok(directory)
+    }
 
     pub type Identity = (u64, u64);
 
@@ -141,11 +186,7 @@ mod platform {
         }
         let mut names = path.iter().peekable();
         while let Some(name) = names.next() {
-            current = openat(
-                current.as_raw_fd(),
-                name.as_bytes(),
-                is_dir || names.peek().is_some(),
-            )?;
+            current = open_child(&current, name, is_dir || names.peek().is_some())?;
         }
         if !is_dir {
             let meta = current.metadata().map_err(|_| ())?;
@@ -160,12 +201,49 @@ mod platform {
         open(directory, path, false)
     }
 
+    #[cfg(target_os = "linux")]
     pub fn list(directory: &Directory, path: &Path) -> Result<(Vec<String>, bool)> {
         let anchored = open(directory, path, true)?;
         checked_names(&PathBuf::from(format!(
             "/proc/self/fd/{}",
             anchored.as_raw_fd()
         )))
+    }
+    #[cfg(target_os = "macos")]
+    pub fn list(directory: &Directory, path: &Path) -> Result<(Vec<String>, bool)> {
+        use rustix::fs::{statat, AtFlags, Dir, FileType};
+
+        let anchored = open(directory, path, true)?;
+        let stream = Dir::read_from(&anchored).map_err(|_| ())?;
+        let mut names = Vec::new();
+        let mut truncated = false;
+        for (index, item) in stream.enumerate() {
+            // Include room for the two system entries, which will be skipped.
+            if index >= LIST_LIMIT + 2 {
+                truncated = true;
+                break;
+            }
+            let item = item.map_err(|_| ())?;
+            let Ok(name) = item.file_name().to_str() else {
+                continue;
+            };
+            if !safe_component(name) {
+                continue;
+            }
+            let kind = match item.file_type() {
+                FileType::Unknown => {
+                    let info = statat(&anchored, item.file_name(), AtFlags::SYMLINK_NOFOLLOW)
+                        .map_err(|_| ())?;
+                    FileType::from_raw_mode(info.st_mode)
+                }
+                kind => kind,
+            };
+            if matches!(kind, FileType::RegularFile | FileType::Directory) {
+                names.push(name.to_owned());
+            }
+        }
+        names.sort();
+        Ok((names, truncated))
     }
 }
 
@@ -273,7 +351,7 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "linux", windows)))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
 mod platform {
     use super::*;
     pub type Identity = ();
@@ -288,9 +366,11 @@ mod platform {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos", windows)))]
 mod tests {
     use super::*;
+    use std::fs;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
     #[test]
@@ -298,11 +378,14 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("loushang-client-directory-{}", std::process::id()));
         fs::create_dir(&root).unwrap();
+        let root = fs::canonicalize(root).unwrap();
         let folder = root.join("chosen");
         fs::create_dir(&folder).unwrap();
         fs::write(folder.join("inside.txt"), "permit").unwrap();
         fs::write(root.join("outside.txt"), "private").unwrap();
+        #[cfg(unix)]
         symlink(root.join("outside.txt"), folder.join("escape")).unwrap();
+        fs::hard_link(root.join("outside.txt"), folder.join("linked.txt")).unwrap();
         let grant = Directory::open(folder.clone()).unwrap();
         let mut request = Request {
             id: "a".repeat(32),
@@ -311,7 +394,19 @@ mod tests {
             offset: 0,
         };
         assert_eq!(grant.respond(&request).unwrap()["text"], "permit");
-        for denied in ["../outside.txt", "escape", "/etc/passwd", "a\\b", "a:c"] {
+        request.operation = Operation::List;
+        request.path = ".".into();
+        let listed = grant.respond(&request).unwrap();
+        assert_eq!(listed["entries"], json!(["inside.txt", "linked.txt"]));
+        request.operation = Operation::Read;
+        for denied in [
+            "../outside.txt",
+            "escape",
+            "linked.txt",
+            "/outside",
+            "a\\b",
+            "a:c",
+        ] {
             request.path = denied.into();
             assert!(grant.respond(&request).is_err());
         }
