@@ -41,6 +41,7 @@ from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateL
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_runtime import (
     bind_legacy_pre_b_snapshot_owner,
+    legacy_product_projection_parent,
     prepare_legacy_product_cutover_roots,
     reopen_legacy_product_cutover,
 )
@@ -95,24 +96,13 @@ def prepare_coding_package_cutover_roots(
     if os.name not in {"posix", "nt"}:
         raise RuntimeError("Native Package cutover preparation is required")
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    windows = os.name == "nt"
-    roots: tuple[tuple[Path, Path], ...] = (
-        (lifecycle.root, lifecycle.private_state_base),
-        (epoch.control_root, lifecycle.private_state_base),
-        (epoch.snapshot_root, lifecycle.private_state_base),
+    prepare_legacy_product_cutover_roots(
+        lifecycle,
+        control_root=epoch.control_root,
+        snapshot_root=epoch.snapshot_root,
+        epochs_root=epoch.epochs_root,
+        label="Coding Package",
     )
-    if windows:
-        roots += (
-            (
-                _windows_projection_root(lifecycle),
-                lifecycle.private_state_base,
-            ),
-        )
-    roots += (
-        (lifecycle.package_root, lifecycle.private_data_base),
-        (epoch.epochs_root, lifecycle.private_data_base),
-    )
-    prepare_legacy_product_cutover_roots(roots, label="Coding Package")
     return epoch
 
 
@@ -147,7 +137,12 @@ def prepare_and_cutover_coding_package_store_from_legacy(
     prepare_coding_package_cutover_roots(lifecycle)
     if require_fresh:
         require_fresh_coding_product_inputs(lifecycle, settings_manager)
-    with _hold_projection_parent(lifecycle) as projection_parent:
+    with hold_legacy_product_projection_root(
+        legacy_product_projection_parent(lifecycle.root),
+        prefix="coding-pre-b-projection-",
+        projection_name=_PROJECTION_NAME,
+        projection_label="Coding Source projection",
+    ) as projection_parent:
         return cutover_coding_package_store_from_legacy(
             lifecycle,
             settings_manager,
@@ -157,30 +152,6 @@ def prepare_and_cutover_coding_package_store_from_legacy(
             minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
             snapshot_admission=snapshot_admission,
         )
-
-
-def _windows_projection_root(
-    lifecycle: CodingPluginLifecycleStateLayout,
-) -> Path:
-    return lifecycle.root.parent / f"{lifecycle.root.name}.pre-b-projections"
-
-
-@contextmanager
-def _hold_projection_parent(
-    lifecycle: CodingPluginLifecycleStateLayout,
-) -> Iterator[Path]:
-    parent = (
-        _windows_projection_root(lifecycle)
-        if os.name == "nt"
-        else lifecycle.root.parent
-    )
-    with hold_legacy_product_projection_root(
-        parent,
-        prefix="coding-pre-b-projection-",
-        projection_name=_PROJECTION_NAME,
-        projection_label="Coding Source projection",
-    ) as root:
-        yield root
 
 
 def cutover_and_bootstrap_coding_package_product(

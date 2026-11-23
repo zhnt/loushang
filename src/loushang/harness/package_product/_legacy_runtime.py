@@ -261,14 +261,33 @@ def require_legacy_snapshot_members(
         raise error
 
 
+def legacy_product_projection_parent(lifecycle_root: Path) -> Path:
+    """Keep the deployed native location of the private cutover projections."""
+    if os.name == "nt":
+        return lifecycle_root.parent / f"{lifecycle_root.name}.pre-b-projections"
+    return lifecycle_root.parent
+
+
 def prepare_legacy_product_cutover_roots(
-    roots: Iterable[tuple[Path, Path]], *, label: str
+    lifecycle: _LegacyStateRoots,
+    *,
+    control_root: Path,
+    snapshot_root: Path,
+    epochs_root: Path,
+    label: str,
 ) -> None:
-    """Prepare declared roots in order through the native private owner."""
+    """Prepare the state roots before either Package data root."""
     windows = os.name == "nt"
-    for root, private_base in roots:
+    state_roots: tuple[Path, ...] = (lifecycle.root, control_root, snapshot_root)
+    if windows:
+        state_roots += (legacy_product_projection_parent(lifecycle.root),)
+    for root in state_roots:
         prepare_legacy_product_cutover_root(
-            root, private_base=private_base, windows=windows, label=label
+            root, private_base=lifecycle.private_state_base, windows=windows, label=label
+        )
+    for root in (lifecycle.package_root, epochs_root):
+        prepare_legacy_product_cutover_root(
+            root, private_base=lifecycle.private_data_base, windows=windows, label=label
         )
 
 

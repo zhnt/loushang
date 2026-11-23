@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
 
 from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.private_directory import create_private_directory_chain
@@ -48,6 +49,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     prepare_windows_product_control_root,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_snapshot import (
+        PackageWindowsEpochSnapshotOwner,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,35 +178,10 @@ def reopen_posix_product_cutover(
     return result
 
 
-class PackageProductPreBSnapshotOwner:
-    """Keep native snapshot publication behind the Product Package boundary."""
+class _ProductPreBSnapshotOwner:
+    """Expose the same snapshot receipt and member reads on each native store."""
 
-    def __init__(
-        self,
-        snapshot_root: Path,
-        *,
-        store_id: str,
-        domain_roots: Mapping[str, Path],
-        domain_members: Mapping[str, tuple[str, ...] | None],
-        legacy_root_pointer_name: str,
-        shared_members: tuple[PackageProductPreBSnapshotSharedMemberV1, ...] = (),
-    ) -> None:
-        self._store_id = store_id
-        self._owner = PackagePosixEpochSnapshotOwner(
-            snapshot_root,
-            store_id=store_id,
-            domain_roots=domain_roots,
-            domain_members=domain_members,
-            legacy_root_pointer_name=legacy_root_pointer_name,
-            shared_members=tuple(
-                PackagePosixSnapshotSharedMemberV1(
-                    source_root=item.source_root,
-                    member_name=item.member_name,
-                    domains=item.domains,
-                )
-                for item in shared_members
-            ),
-        )
+    _owner: PackagePosixEpochSnapshotOwner | PackageWindowsEpochSnapshotOwner
 
     def capture(
         self,
@@ -243,6 +224,37 @@ class PackageProductPreBSnapshotOwner:
         """List one verified domain before the Product decides to fence."""
 
         return self._owner.list_domain_members(snapshot_receipt_id, domain=domain)
+
+
+class PackageProductPreBSnapshotOwner(_ProductPreBSnapshotOwner):
+    """Keep native snapshot publication behind the Product Package boundary."""
+
+    def __init__(
+        self,
+        snapshot_root: Path,
+        *,
+        store_id: str,
+        domain_roots: Mapping[str, Path],
+        domain_members: Mapping[str, tuple[str, ...] | None],
+        legacy_root_pointer_name: str,
+        shared_members: tuple[PackageProductPreBSnapshotSharedMemberV1, ...] = (),
+    ) -> None:
+        self._store_id = store_id
+        self._owner = PackagePosixEpochSnapshotOwner(
+            snapshot_root,
+            store_id=store_id,
+            domain_roots=domain_roots,
+            domain_members=domain_members,
+            legacy_root_pointer_name=legacy_root_pointer_name,
+            shared_members=tuple(
+                PackagePosixSnapshotSharedMemberV1(
+                    source_root=item.source_root,
+                    member_name=item.member_name,
+                    domains=item.domains,
+                )
+                for item in shared_members
+            ),
+        )
 
     def cutover_from_legacy(
         self,

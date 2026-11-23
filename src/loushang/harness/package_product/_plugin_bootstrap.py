@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Callable, Collection, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import NamedTuple, TypeVar
@@ -28,7 +29,11 @@ from ._application_runtime import (
     FencedOrdinaryProductApplication,
     hold_accepted_product_adoption,
 )
-from ._legacy_runtime import _FencedRuntime
+from ._legacy_runtime import (
+    FencedRuntimeOpenKwargs,
+    _FencedRuntime,
+    inspect_fresh_product_epoch,
+)
 from .product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
@@ -97,12 +102,14 @@ def _initial_install_was_enabled(
 
 
 def product_bootstrap_completed(
-    product: _ProductOwner,
+    application: FencedOrdinaryProductApplication,
     plugin_ids: tuple[str, ...],
     *,
-    store_id: str,
     policy: _PluginBootstrapPolicy,
 ) -> bool:
+    """Recognize completed startup even after later operator choices."""
+    product = application.runtime_owner.product_owner
+    store_id = application.epoch_runtime.registry.store_id
     transitions = product.desired_state.transitions()
     for plugin_id in plugin_ids:
         key = policy.installation_key(product.policy.project_scope_id, plugin_id)
@@ -118,6 +125,24 @@ def product_bootstrap_completed(
         ):
             return False
     return True
+
+
+def fresh_product_bootstrap_pending(
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    windows: bool,
+    verify_snapshot: Callable[[_FencedRuntime], bool],
+    open_application: Callable[[], FencedOrdinaryProductApplication],
+    plugin_ids: tuple[str, ...],
+    policy: _PluginBootstrapPolicy,
+) -> bool:
+    """Require authenticated first-cutover evidence before inspecting startup history."""
+    if not inspect_fresh_product_epoch(
+        roots, windows=windows, verify_snapshot=verify_snapshot
+    ):
+        return False
+    with closing(open_application()) as application:
+        return not product_bootstrap_completed(application, plugin_ids, policy=policy)
 
 
 def bootstrap_product_plugins(
