@@ -725,7 +725,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const actions = await screen.findByRole("button", { name: "Session actions" });
     expect(screen.queryByRole("button", { name: "Goal" })).not.toBeInTheDocument();
     fireEvent.click(actions);
-    const add = within(screen.getByRole("group", { name: "Add" }));
+    const add = within(screen.getByRole("group", { name: "Add (local)" }));
     expect(add.getByRole("menuitem", { name: "File or image" })).toBeVisible();
     expect(add.getByRole("menuitem", { name: "Folder" })).toBeVisible();
     fireEvent.click(within(screen.getByRole("group", { name: "Mode" })).getByRole("menuitem", { name: "Goal" }));

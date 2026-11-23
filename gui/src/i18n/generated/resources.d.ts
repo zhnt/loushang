@@ -300,7 +300,7 @@ export default interface Resources {
       "actions": "Session actions",
       "addFile": "File or image",
       "addFolder": "Folder",
-      "addGroup": "Add",
+      "addGroup": "Add (local)",
       "cancel": "Cancel",
       "close": "Close preview",
       "empty": "No resources in this session.",

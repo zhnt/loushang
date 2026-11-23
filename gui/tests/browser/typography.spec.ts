@@ -174,7 +174,7 @@ for (const sample of [
       await expect(hint).toHaveText((await actions.getAttribute("data-tooltip"))!);
       await page.locator("html").evaluate((root) => root.removeAttribute("data-appearance"));
       await actions.click();
-      const add = page.getByRole("group", { name: sample.locale === "zh-CN" ? "添加" : "Add", exact: true });
+      const add = page.getByRole("group", { name: sample.locale === "zh-CN" ? "添加（本地）" : "Add (local)", exact: true });
       await expect(add.getByRole("menuitem")).toHaveCount(2);
       const mode = page.getByRole("group", { name: sample.locale === "zh-CN" ? "模式" : "Mode", exact: true });
       const goal = mode.getByRole("menuitem", { name: sample.locale === "zh-CN" ? "目标" : "Goal", exact: true });
