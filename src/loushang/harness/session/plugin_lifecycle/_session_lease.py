@@ -29,7 +29,7 @@ class _PluginSessionLease(Generic[RootsT, EventT, FamilyT, LeaseT]):
     family: PluginInstanceLeaseFamilyV1
     _session_owner_lease: LeaseT
     _closed: bool
-    _membership_policy: _MembershipPolicy[RootsT]
+    _membership_policy: _MembershipPolicy
 
     def claim_runtime(self, runtime_claim_id: str | None = None) -> None:
         policy = self._membership_policy

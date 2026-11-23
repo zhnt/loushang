@@ -40,7 +40,6 @@ from loushang.harness.plugin_management import (
     PluginEnablementMigrationRequestV1,
     PluginEnablementMigrationSnapshotV1,
     PluginInstallationKeyV1,
-    PluginInstanceLeaseFamilyReleaseV1,
     PluginInstanceLeaseFamilyV1,
     PluginInstanceRuntimeLedger,
     PluginManagementApplicationPorts,
@@ -88,9 +87,6 @@ from loushang.harness.session.plugin_lifecycle import _owner_lease
 from loushang.harness.session.plugin_lifecycle._membership import (
     _MembershipPolicy,
     _PluginSessionLifecycle,
-    decode_holder_evidence,
-    encode_holder_reference,
-    normalize_owner_contributions,
 )
 from loushang.harness.session.plugin_lifecycle._session_lease import _PluginSessionLease
 
@@ -102,7 +98,6 @@ _CODING_PLUGIN_RUNTIME_BOOT_ID = secrets.token_hex(16)
 _PRODUCT_LABEL = "Coding"
 _LAYOUT_REQUIRED = "Coding Plugin lifecycle layout is required"
 _MEMBERSHIP_INSTALLATION_SCOPE: Literal["workspace"] = "workspace"
-_SESSION_OWNER_EVIDENCE_INVALID = "coding_plugin_session_owner_evidence_invalid"
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -214,6 +209,19 @@ _CODING_OWNER_RETIREMENT_REPORT_POLICY = OwnerRetirementReportPolicy(
 )
 
 
+_MEMBERSHIP_POLICY = _MembershipPolicy(
+    product_label=_PRODUCT_LABEL,
+    identity_prefix="coding",
+    error_code_prefix="coding_plugin",
+    make_error=_lifecycle_error,
+    holder_prefix="coding-session-owner-family:v2:",
+    startup_namespace=b"loushang.coding-plugin-startup/v1\0",
+    session_owner_namespace=b"loushang.coding-plugin-session-owner/v1\0",
+    startup_policy=_STARTUP_POLICY,
+    retirement_policy=_CODING_OWNER_RETIREMENT_REPORT_POLICY,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class CodingPluginLifecycleStateLayout:
     """One workspace namespace for every Coding Plugin Installation."""
@@ -265,96 +273,12 @@ class _CodingPluginEnablementStateCapture:
     migration_raw: str
 
 
-_SESSION_HOLDER_PREFIX = "coding-session-owner-family:v2:"
-
-
-def _family_release(
-    family: PluginInstanceLeaseFamilyV1,
-) -> PluginInstanceLeaseFamilyReleaseV1:
-    return PluginInstanceLeaseFamilyReleaseV1(
-        family_id=family.family_id,
-        operation_id=f"coding-plugin-release:{family.family_id}",
-        idempotency_key=f"coding-plugin-release:{family.family_id}",
-        release_reference=family.holder_reference,
-    )
-
-
-def _orphan_family_release(
-    family: PluginInstanceLeaseFamilyV1,
-    *,
-    inactive_startup_id: str,
-) -> PluginInstanceLeaseFamilyReleaseV1:
-    identity = hashlib.sha256(
-        repr((family.family_id, inactive_startup_id)).encode("utf-8")
-    ).hexdigest()
-    return PluginInstanceLeaseFamilyReleaseV1(
-        family_id=family.family_id,
-        operation_id=f"coding-plugin-orphan-release:{identity}",
-        idempotency_key=f"coding-plugin-orphan-release:{identity}",
-        release_reference=(
-            "coding-session-process-exit-confirmed:"
-            f"{inactive_startup_id}:{family.family_id}"
-        ),
-    )
-
-
-def _activation_identity(
-    key: PluginInstallationKeyV1,
-    ref: PluginInstanceRevisionRef,
-) -> str:
-    return hashlib.sha256(repr((key, ref)).encode("utf-8")).hexdigest()
-
-
-def _lease_identity(
-    key: PluginInstallationKeyV1,
-    ref: PluginInstanceRevisionRef,
-    session_id: str,
-    lease_attempt_id: str,
-    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
-) -> str:
-    return hashlib.sha256(
-        repr(
-            (
-                key,
-                ref,
-                _nonempty(session_id, name="Session id"),
-                _nonempty(lease_attempt_id, name="Lease attempt id"),
-                owner_contributions,
-            )
-        ).encode("utf-8")
-    ).hexdigest()
-
-
-@dataclass(frozen=True, slots=True)
-class _CodingSessionHolderEvidence:
-    startup_id: str
-    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...]
-
-
-
-def _decode_coding_holder_evidence(reference: str) -> _CodingSessionHolderEvidence | None:
-    try:
-        fields = decode_holder_evidence(
-            reference, prefix=_SESSION_HOLDER_PREFIX, product_label=_PRODUCT_LABEL
-        )
-        return _CodingSessionHolderEvidence(*fields) if fields is not None else None
-    except (TypeError, ValueError) as exc:
-        raise CodingPluginLifecycleError(
-            f"{_PRODUCT_LABEL} Session family owner evidence is invalid",
-            code=_SESSION_OWNER_EVIDENCE_INVALID,
-        ) from exc
-
-
 def _startup_lease_path(
     layout: CodingPluginLifecycleStateLayout,
     *,
     startup_id: str,
 ) -> Path:
-    identity = hashlib.sha256(
-        b"loushang.coding-plugin-startup/v1\0"
-        + _nonempty(startup_id, name="Startup id").encode("utf-8")
-    ).hexdigest()
-    return (layout.root / "process-startups" / f"{identity}.lease").resolve()
+    return _MEMBERSHIP_POLICY.startup_path(layout, startup_id)
 
 
 def _session_owner_lease_path(
@@ -362,43 +286,7 @@ def _session_owner_lease_path(
     *,
     session_id: str,
 ) -> Path:
-    identity = hashlib.sha256(
-        b"loushang.coding-plugin-session-owner/v1\0"
-        + _nonempty(session_id, name="Session id").encode("utf-8")
-    ).hexdigest()
-    return (layout.root / "session-owners" / f"{identity}.lease").resolve()
-
-
-def _coding_membership_policy() -> _MembershipPolicy[CodingPluginLifecycleStateLayout]:
-    return _MembershipPolicy(
-        product_label="Coding",
-        identity_prefix="coding",
-        error_code_prefix="coding_plugin",
-        make_error=_lifecycle_error,
-        family_release=_family_release,
-        orphan_release=lambda family, startup: _orphan_family_release(
-            family, inactive_startup_id=startup
-        ),
-        activation_identity=_activation_identity,
-        lease_identity=_lease_identity,
-        normalize_owners=lambda values: normalize_owner_contributions(
-            values, product_label=_PRODUCT_LABEL
-        ),
-        holder_reference=lambda session, attempt, owners, startup: (
-            encode_holder_reference(
-                session, attempt, owners, startup, prefix=_SESSION_HOLDER_PREFIX
-            )
-        ),
-        holder_evidence=_decode_coding_holder_evidence,
-        startup_path=lambda layout, startup: _startup_lease_path(
-            layout, startup_id=startup
-        ),
-        owner_path=lambda layout, session: _session_owner_lease_path(
-            layout, session_id=session
-        ),
-        startup_policy=_STARTUP_POLICY,
-        retirement_policy=_CODING_OWNER_RETIREMENT_REPORT_POLICY,
-    )
+    return _MEMBERSHIP_POLICY.owner_path(layout, session_id)
 
 
 @dataclass(slots=True)
@@ -438,7 +326,7 @@ class CodingPluginLifecycle(
     )
 
     _owner_lease_type = _ProcessSessionOwnerLease
-    _membership_policy = _coding_membership_policy()
+    _membership_policy = _MEMBERSHIP_POLICY
     _settled_host_policy = _SettledHostRetirementPolicy(
         cleanup_kind="coding.product_host.shutdown",
         handoff_namespace="coding-host-cleanup",
@@ -448,7 +336,7 @@ class CodingPluginLifecycle(
         outcome_namespace="coding-host-outcome",
         completion_namespace="coding-instance-retired",
         completion_reference_namespace="coding-instance",
-        family_release=_family_release,
+        family_release=_MEMBERSHIP_POLICY.family_release,
     )
 
     def prepare_gc_writer_epoch(self) -> None:
