@@ -335,27 +335,31 @@ class PluginSelectionPlanV2:
         additions: Iterable[PluginEffectiveConfigurationEntry],
         allowed_authority_ceiling: tuple[str, ...],
         base: PluginSelectionPlanV2 | None = None,
+        selected_contributions: tuple[PluginContributionRef, ...] | None = None,
     ) -> PluginSelectionPlanV2:
-        """Select every added entry while retaining a base plan's partial selection."""
+        """Build a plan from exact configuration, optionally with an explicit subset."""
 
         entries = tuple(additions)
-        base_refs = () if base is None else base.selected_contributions
-        base_entries = () if base is None else base.effective_configuration_set.entries
+        if selected_contributions is None:
+            base_refs = () if base is None else base.selected_contributions
+            base_entries = () if base is None else base.effective_configuration_set.entries
+            selected_contributions = tuple(
+                sorted((*base_refs, *(item.ref for item in entries)))
+            )
+            entries = tuple(
+                sorted(
+                    (*base_entries, *entries),
+                    key=lambda item: (item.plugin_id, item.contribution_id),
+                )
+            )
+        elif base is not None:
+            raise ValueError("Explicit Plugin selection requires the full configuration")
         return cls(
             context=context,
             selected_plugin_ids=selected_plugin_ids,
-            selected_contributions=tuple(
-                sorted((*base_refs, *(item.ref for item in entries)))
-            ),
+            selected_contributions=selected_contributions,
             source_trust_snapshots=source_trust_snapshots,
-            effective_configuration_set=PluginEffectiveConfigurationSetV1(
-                entries=tuple(
-                    sorted(
-                        (*base_entries, *entries),
-                        key=lambda item: (item.plugin_id, item.contribution_id),
-                    )
-                ),
-            ),
+            effective_configuration_set=PluginEffectiveConfigurationSetV1(entries=entries),
             allowed_authority_ceiling=allowed_authority_ceiling,
         )
 
@@ -2655,6 +2659,7 @@ def build_product_plugin_selection_plan(
     allowed_authority_ceiling: tuple[str, ...],
     base: PluginSelectionPlanV2 | None = None,
     extend_base_selection: bool = False,
+    selected_contributions: tuple[PluginContributionRef, ...] | None = None,
 ) -> PluginSelectionPlanV2:
     """Combine contribution entries with an exact Plugin selection.
 
@@ -2691,6 +2696,7 @@ def build_product_plugin_selection_plan(
         additions=additions,
         base=base,
         allowed_authority_ceiling=allowed_authority_ceiling,
+        selected_contributions=selected_contributions,
     )
 
 

@@ -56,12 +56,20 @@ class _BuiltinWheelSpec:
         self,
         artifact: CodingBaseProductWheelArtifactV1 | CodingCapabilityProductWheelArtifactV1,
         *,
-        plugin_id: str,
+        source_root: Path | None = None,
     ) -> PackageProductLocalWheelBindingV1:
+        if (
+            (source_root is not None and artifact.path.parent != source_root)
+            or artifact.path.name != self.filename
+            or artifact.byte_count <= 0
+            or artifact.byte_count > _MAX_WHEEL_BYTES
+        ):
+            label = "base" if source_root is None else "Capability"
+            raise ValueError(f"Coding {label} Product Wheel evidence is invalid")
         return PackageProductLocalWheelBindingV1(
             source_identity=str(artifact.path),
             requested_package=f"{self.distribution_name}==1",
-            plugin_id=plugin_id,
+            plugin_id=self.plugin_id,
             artifact_digest=artifact.artifact_digest,
             plugin_manifest_path=f"{self.package_name}/plugin.json",
             source_trust_class="host-equivalent-local",
@@ -145,18 +153,14 @@ def coding_base_product_local_wheel_policy(
 ) -> PackageProductLocalWheelPolicy:
     """Pin the installed base artifact to the Product's explicit Source policy."""
 
-    if (
-        not isinstance(artifact, CodingBaseProductWheelArtifactV1)
-        or artifact.path.name != CODING_BASE_PRODUCT_WHEEL_FILENAME
-        or artifact.byte_count <= 0
-        or artifact.byte_count > _MAX_WHEEL_BYTES
-    ):
+    if not isinstance(artifact, CodingBaseProductWheelArtifactV1):
         raise ValueError("Coding base Product Wheel evidence is invalid")
+    binding = _BASE_SPEC.bind(artifact)
     return PackageProductLocalWheelPolicy(
         product_id="coding",
         project_scope_id=project_scope_id,
         source_root=artifact.path.parent,
-        bindings=(_BASE_SPEC.bind(artifact, plugin_id=_BASE_SPEC.plugin_id),),
+        bindings=(binding,),
         policy_revision=policy_revision,
         quota_profile_revision=quota_profile_revision,
         resolution_environment_fingerprint=resolution_environment_fingerprint,
@@ -196,14 +200,7 @@ def coding_builtin_product_local_wheel_policy(
     bindings = list(base_policy.bindings)
     for artifact in capabilities:
         spec = _CAPABILITY_SPECS[artifact.plugin_id]
-        if (
-            artifact.path.parent != base_policy.source_root
-            or artifact.path.name != spec.filename
-            or artifact.byte_count <= 0
-            or artifact.byte_count > _MAX_WHEEL_BYTES
-        ):
-            raise ValueError("Coding Capability Product Wheel evidence is invalid")
-        bindings.append(spec.bind(artifact, plugin_id=artifact.plugin_id))
+        bindings.append(spec.bind(artifact, source_root=base_policy.source_root))
     return replace(
         base_policy,
         bindings=tuple(sorted(bindings, key=lambda item: item.source_identity)),

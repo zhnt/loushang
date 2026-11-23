@@ -46,11 +46,10 @@ from loushang.harness.resources.plugins.declarations import (
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
     PluginInstanceRevisionRef,
-    PluginPreflightContextV1,
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
+    build_product_plugin_selection_plan,
 )
 from loushang.harness.resources.plugins.types import (
     PluginSource,
@@ -615,7 +614,7 @@ def prepare_coding_base_product_plan(
         reservation for reservation, _ in selected.verified_data_only_declarations()
     )
     scope_id = f"session:{_normalized(session_id, name='Coding Session id')}"
-    plan, tool_id, tool_names = _build_selection_plan_from_evidence(
+    return _build_selection_plan_from_evidence(
         contributions=contributions,
         source_trust_snapshot=source_trust_snapshot,
         instance_revision_ref=selected.snapshot.instance_revision_ref,
@@ -630,23 +629,8 @@ def prepare_coding_base_product_plan(
         include_tool_claim_prompt=include_tool_claim_prompt,
         include_skill_contribution=include_skill_contribution,
         include_command_contribution=include_command_contribution,
+        require_complete=True,
     )
-    expected_ids = {
-        contribution_id
-        for contribution_id in (
-            tool_id,
-            "prompt-standard" if include_tool_claim_prompt else None,
-            "skill-standard" if include_skill_contribution else None,
-            "coding.standard" if include_command_contribution else None,
-        )
-        if contribution_id is not None
-    }
-    if {item.contribution_id for item in plan.selected_contributions} != expected_ids:
-        raise CodingBasePluginAssemblyError(
-            "Selected Coding base Product contributions are incomplete",
-            code="coding_base_product_selection_mismatch",
-        )
-    return plan, tool_id, tool_names
 
 
 def _build_selection_plan_from_evidence(
@@ -661,6 +645,7 @@ def _build_selection_plan_from_evidence(
     include_tool_claim_prompt: bool,
     include_skill_contribution: bool,
     include_command_contribution: bool,
+    require_complete: bool = False,
 ) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
     tool_contribution_id = (
         "coding.builtin.windows"
@@ -704,28 +689,31 @@ def _build_selection_plan_from_evidence(
             f"s{int(include_skill_contribution)}"
             f"c{int(include_command_contribution)}"
         )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id=CODING_PRODUCT_ID,
-            scope_id=scope_id,
-            policy_revision=policy_revision,
-            instance_revision_refs=(instance_revision_ref,),
-        ),
-        selected_plugin_ids=(_PLUGIN_ID,),
+    plan = build_product_plugin_selection_plan(
+        product_id=CODING_PRODUCT_ID,
+        scope_id=scope_id,
+        policy_revision=policy_revision,
+        instance_refs=(instance_revision_ref,),
+        plugin_ids=(_PLUGIN_ID,),
         selected_contributions=selected_contributions,
-        source_trust_snapshots=(source_trust_snapshot,),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                PluginEffectiveConfigurationEntry(
-                    plugin_id=_PLUGIN_ID,
-                    contribution_id=item.contribution_id,
-                    configuration=item.configuration,
-                )
-                for item in contributions
+        source_trust=(source_trust_snapshot,),
+        additions=(
+            PluginEffectiveConfigurationEntry(
+                plugin_id=_PLUGIN_ID,
+                contribution_id=item.contribution_id,
+                configuration=item.configuration,
             )
+            for item in contributions
         ),
         allowed_authority_ceiling=(),
     )
+    if require_complete and {
+        item.contribution_id for item in plan.selected_contributions
+    } != selected_ids:
+        raise CodingBasePluginAssemblyError(
+            "Selected Coding base Product contributions are incomplete",
+            code="coding_base_product_selection_mismatch",
+        )
     return (
         plan,
         tool_contribution_id if include_tool_contribution else None,
