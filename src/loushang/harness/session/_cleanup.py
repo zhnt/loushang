@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable
-from contextlib import suppress
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager, suppress
 from tempfile import TemporaryDirectory as _TemporaryDirectoryCleanup
 from tempfile import mkdtemp
 from typing import Protocol, cast
@@ -143,6 +143,19 @@ def retain_session_construction_failure(
             "get_session_construction_cleanup(error).retry_cleanup()",
         )
     return error
+
+
+@contextmanager
+def guard_session_construction_handoff(session: _ConstructedSession) -> Iterator[None]:
+    """Keep an already constructed Session reachable if its handoff fails."""
+
+    try:
+        yield
+    except BaseException as error:
+        failure = retain_session_construction_failure(error, session)
+        if failure is error:
+            raise
+        raise failure from error
 
 
 __all__ = [

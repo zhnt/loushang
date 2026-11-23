@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
@@ -1668,6 +1669,16 @@ def dispose_unbound_factory_after_failure(
             dispose()
         except BaseException:
             failure.add_note("Package Product runtime cleanup also failed")
+
+
+@contextmanager
+def guard_unbound_factory(factory: PackageProductRuntimeFactoryPort | None) -> Iterator[None]:
+    """Release an untransferred factory if the caller's construction fails."""
+    try:
+        yield
+    except BaseException as failure:
+        dispose_unbound_factory_after_failure(factory, failure)
+        raise
 
 
 __all__ = [

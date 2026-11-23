@@ -37,10 +37,14 @@ from loushang.appserver.resume_model import (
     ResumeInputLookupResultV1,
 )
 from loushang.appservice.execution_guard import ExecutionWorkV1
-from loushang.coding.composition.bootstrap import BootstrapServices
 from loushang.coding.composition.bootstrap import (
-    create_agent_session_with_model_policy as create_agent_session,
+    BootstrapServices,
+    select_ordinary_coding_session_factory,
 )
+from loushang.coding.composition.bootstrap import (
+    construct_coding_agent_session as create_agent_session,
+)
+from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.hosted.catalog import (
     CodingHostedCandidateBindingV1,
     CodingHostedCatalogError,
@@ -76,6 +80,7 @@ from loushang.harness.events import RuntimeEvent
 from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeFactoryPort,
+    guard_unbound_factory,
 )
 from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
 from loushang.harness.runtime._owned_tasks import _get_close_task
@@ -451,24 +456,40 @@ class CodingRealHostedSessionFactoryV1:
                 model = _resolve_hosted_saved_model(
                     manager.build_session_context().model, services.model_registry, model,
                 )
-            session = create_agent_session(
-                session_manager=manager,
-                model=model,
-                _use_default_model=created,
-                stream_fn=self._stream_fn,
-                services=services,
-                tools=self._tools,
-                approval_resolver=approval,
-                tool_policy_evaluator=(PolicyEvaluatorChain(
+            tool_policy = (
+                PolicyEvaluatorChain(
                     tuple(p for p in (self._session_tool_policy, policy.policy_engine) if p is not None),
                     strategy="most_restrictive",
-                ) if self._session_tool_policy is not None else policy.policy_engine),
-                active_tool_names=self._session_active_tools,
-                allowed_tool_names=self._session_allowed_tools if self._session_allowed_tools is not None else ToolSelection.ALL,
-                system_prompt=self._session_system_prompt,
-                output_capture_factory=self._output_capture_factory,
+                )
+                if self._session_tool_policy is not None
+                else policy.policy_engine
+            )
+            selected_factory = select_ordinary_coding_session_factory(
+                manager,
+                services=services,
                 package_product_runtime_factory=runtime_factory,
             )
+            with guard_unbound_factory(selected_factory):
+                session = create_agent_session(
+                    session_manager=manager,
+                    model=model,
+                    use_default_model=created,
+                    stream_fn=self._stream_fn,
+                    services=services,
+                    tools=self._tools,
+                    approval_resolver=approval,
+                    tool_policy_evaluator=tool_policy,
+                    active_tool_names=self._session_active_tools,
+                    allowed_tool_names=(
+                        self._session_allowed_tools
+                        if self._session_allowed_tools is not None
+                        else ToolSelection.ALL
+                    ),
+                    system_prompt=self._session_system_prompt,
+                    output_capture_factory=self._output_capture_factory,
+                    package_product_runtime_factory=selected_factory,
+                    composition_set=resolve_coding_composition_set(),
+                )
             opaque_session_binding.retain_constructed_owner(session.dispose)
             selection = normalize_model_selection(session.agent.model)
             if created and selection is not None and is_usable_model_selection(selection):

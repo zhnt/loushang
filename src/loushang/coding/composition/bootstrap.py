@@ -186,6 +186,7 @@ from loushang.harness.environment import LocalHostEnvironmentProbe
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.package_product._application_runtime import handoff_product_open
 from loushang.harness.package_product._selected_plugin_revisions import (
     capture_selected_manifests,
 )
@@ -198,6 +199,7 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
     dispose_unbound_factory_after_failure,
+    guard_unbound_factory,
 )
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
@@ -246,7 +248,7 @@ from loushang.harness.session._cleanup import (
     get_session_construction_cleanup as get_session_construction_cleanup,
 )
 from loushang.harness.session._cleanup import (
-    retain_session_construction_failure,
+    guard_session_construction_handoff,
     run_cleanup_steps,
 )
 from loushang.harness.session.bootstrap_construction import (
@@ -1677,7 +1679,7 @@ def _create_agent_session(
             ),
         )
         raise
-    try:
+    with guard_session_construction_handoff(result.session):
         result.session.cwd_bound_services_audit = (
             result.configuration.cwd_bound_services_audit
         )
@@ -1739,11 +1741,6 @@ def _create_agent_session(
                 register_tools=enable_multiagent_tools,
             )
         return result.session
-    except BaseException as error:
-        retained = retain_session_construction_failure(error, result.session)
-        if retained is error:
-            raise
-        raise retained from error
 
 
 
@@ -1760,17 +1757,11 @@ def _select_direct_coding_product_factory(
         worker_candidates=worker_candidates,
         windows_candidate=windows_candidate,
     )
-    try:
+    with handoff_product_open(selection, cleanup_note="Coding Product owner cleanup also failed"):
         factory = selection.factory_for_session(
             manager,
             settings_manager=(None if services is None else services.settings_manager),
         )
-    except BaseException as error:
-        try:
-            selection.close()
-        except BaseException:
-            error.add_note("Coding Product owner cleanup also failed")
-        raise
     if factory is None:
         selection.close()
         return None
@@ -1899,97 +1890,16 @@ def create_agent_session(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSession:
-    return _create_agent_session_with_model_policy(
-        session_manager=session_manager,
-        model=model,
-        stream_fn=stream_fn,
-        system_prompt=system_prompt,
-        thinking_level=thinking_level,
-        tools=tools,
-        tool_registry=tool_registry,
-        allowed_tool_names=allowed_tool_names,
-        active_tool_names=active_tool_names,
-        no_tools=no_tools,
-        composition_set=composition_set,
+    selected_factory = select_ordinary_coding_session_factory(
+        session_manager,
         services=services,
-        output_capture_factory=output_capture_factory,
-        agent_factory=agent_factory,
-        session_start_event=session_start_event,
-        package_materializer=package_materializer,
         package_product_runtime_factory=package_product_runtime_factory,
         worker_candidate_plugin_id=worker_candidate_plugin_id,
-        worker_query_turn_tool=worker_query_turn_tool,
-        resource_catalog_source_policy=resource_catalog_source_policy,
-        append_system_prompt=append_system_prompt,
-        extension_flag_values=extension_flag_values,
-        approval_resolver=approval_resolver,
-        tool_policy_evaluator=tool_policy_evaluator,
-        enable_multiagent=enable_multiagent,
-        lsp_definitions=lsp_definitions,
-        lsp_baseline_environment=lsp_baseline_environment,
-        lsp_read_text=lsp_read_text,
     )
-
-
-def _create_agent_session_with_model_policy(
-    *,
-    session_manager: SessionManager,
-    model: Model | ModelSelection | None = None,
-    stream_fn: StreamFn | None = None,
-    system_prompt: str | None = None,
-    thinking_level: ThinkingLevel | None = None,
-    tools: list[ToolDefinition] | None = None,
-    tool_registry: WorkspaceToolRegistry | None = None,
-    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
-    active_tool_names: list[str] | None = None,
-    no_tools: NoToolsMode | bool | None = None,
-    composition_set: CodingCompositionSetId | None = None,
-    services: BootstrapServices | None = None,
-    output_capture_factory: ExecCaptureFactory | None = None,
-    agent_factory: AgentFactory = Agent,
-    session_start_event: SessionStartEvent | None = None,
-    package_materializer: PackageMaterializer | None = None,
-    package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
-    worker_candidate_plugin_id: str | None = None,
-    worker_query_turn_tool: bool = False,
-    resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
-        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
-    ),
-    append_system_prompt: list[str] | tuple[str, ...] | None = None,
-    extension_flag_values: ExtensionFlagValues | None = None,
-    approval_resolver: InteractiveApprovalResolver | None = None,
-    tool_policy_evaluator: PolicyEvaluator | None = None,
-    enable_multiagent: bool = False,
-    lsp_definitions: Iterable[LspServerDefinition] = (),
-    lsp_baseline_environment: Mapping[str, str] | None = None,
-    lsp_read_text: WorkspaceTextReader | None = None,
-    _use_default_model: bool = True,
-) -> AgentSession:
-    session_manager.require_no_unsettled_resume_activation()
-    if worker_candidate_plugin_id is not None and (
-        not isinstance(worker_candidate_plugin_id, str)
-        or not worker_candidate_plugin_id
-        or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
-        or not session_manager.is_persisted()
-    ):
-        raise CodingWorkerOrdinaryBootstrapError(
-            "coding_worker_ordinary_transcript_not_materialized"
-        )
-    selected_factory = (
-        package_product_runtime_factory
-        if package_product_runtime_factory is not None
-        else _select_direct_coding_product_factory(
-            session_manager,
-            services=services,
-            worker_candidates=worker_candidate_plugin_id is not None,
-            windows_candidate=sys.platform == "win32",
-        )
-    )
-    try:
+    with guard_unbound_factory(selected_factory):
         return _create_agent_session(
             session_manager=session_manager,
             model=model,
-            use_default_model=_use_default_model,
             stream_fn=stream_fn,
             system_prompt=system_prompt,
             thinking_level=thinking_level,
@@ -2021,9 +1931,36 @@ def _create_agent_session_with_model_policy(
             lsp_baseline_environment=lsp_baseline_environment,
             lsp_read_text=lsp_read_text,
         )
-    except BaseException as error:
-        dispose_unbound_factory_after_failure(selected_factory, error)
-        raise
+
+
+def select_ordinary_coding_session_factory(
+    session_manager: SessionManager,
+    *,
+    services: BootstrapServices | None,
+    package_product_runtime_factory: PackageProductRuntimeFactoryPort | None,
+    worker_candidate_plugin_id: str | None = None,
+) -> PackageProductRuntimeFactoryPort | None:
+    """Admit the ordinary Session before selecting or transferring its Product factory."""
+    session_manager.require_no_unsettled_resume_activation()
+    if worker_candidate_plugin_id is not None and (
+        not isinstance(worker_candidate_plugin_id, str)
+        or not worker_candidate_plugin_id
+        or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
+        or not session_manager.is_persisted()
+    ):
+        raise CodingWorkerOrdinaryBootstrapError(
+            "coding_worker_ordinary_transcript_not_materialized"
+        )
+    return (
+        package_product_runtime_factory
+        if package_product_runtime_factory is not None
+        else _select_direct_coding_product_factory(
+            session_manager,
+            services=services,
+            worker_candidates=worker_candidate_plugin_id is not None,
+            windows_candidate=sys.platform == "win32",
+        )
+    )
 
 
 def create_agent_session_from_services(
@@ -2055,15 +1992,12 @@ def create_agent_session_from_services(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
-    try:
+    with guard_unbound_factory(package_product_runtime_factory):
         extension_flag_values = (
             agent_services.extension_runner.get_flag_values()
             if agent_services.extension_runner is not None
             else None
         )
-    except BaseException as error:
-        dispose_unbound_factory_after_failure(package_product_runtime_factory, error)
-        raise
     return create_agent_session_result(
         session_manager=session_manager,
         model=model,
@@ -2126,11 +2060,8 @@ def create_agent_session_result(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
-    try:
+    with guard_unbound_factory(package_product_runtime_factory):
         resolved_services = services or create_services()
-    except BaseException as error:
-        dispose_unbound_factory_after_failure(package_product_runtime_factory, error)
-        raise
     session = create_agent_session(
         session_manager=session_manager,
         model=model,
@@ -2161,7 +2092,7 @@ def create_agent_session_result(
         lsp_baseline_environment=lsp_baseline_environment,
         lsp_read_text=lsp_read_text,
     )
-    try:
+    with guard_session_construction_handoff(session):
         return build_standard_agent_session_result(
             session,
             resource_bundle=session.resource_bundle,
@@ -2169,11 +2100,6 @@ def create_agent_session_result(
             session_id=session.session_id,
             cwd_bound_services_audit=session.cwd_bound_services_audit,
         )
-    except BaseException as error:
-        retained = retain_session_construction_failure(error, session)
-        if retained is error:
-            raise
-        raise retained from error
 
 
 def _default_package_materializer(
@@ -2273,11 +2199,8 @@ def _build_with_package_product_selection(
     selected_factory = _borrow_application_coding_product_factory(
         selection, manager, services=services, worker_candidates=worker_candidates,
     )
-    try:
+    with guard_unbound_factory(selected_factory):
         return build(selected_factory)
-    except BaseException as error:
-        dispose_unbound_factory_after_failure(selected_factory, error)
-        raise
 
 
 def _create_agent_session_runtime(
@@ -2530,7 +2453,7 @@ def create_agent_session_runtime(
 
 # Component entry names borrow the existing operations and retain old identities.
 create_agent_session_services_with_catalog_policy = _create_agent_session_services
-create_agent_session_with_model_policy = _create_agent_session_with_model_policy
+construct_coding_agent_session = _create_agent_session
 create_agent_session_runtime_with_product_policy = _create_agent_session_runtime
 create_agent_invocation_session_runtime = _create_agent_invocation_session_runtime
 create_resume_agent_session = _create_resume_agent_session
