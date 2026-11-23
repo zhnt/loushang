@@ -725,11 +725,13 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const actions = await screen.findByRole("button", { name: "Session actions" });
     expect(screen.queryByRole("button", { name: "Goal" })).not.toBeInTheDocument();
     fireEvent.click(actions);
-    expect(screen.getByRole("menuitem", { name: "Add file" })).toBeVisible();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
+    const add = within(screen.getByRole("group", { name: "Add" }));
+    expect(add.getByRole("menuitem", { name: "File or image" })).toBeVisible();
+    expect(add.getByRole("menuitem", { name: "Folder" })).toBeVisible();
+    fireEvent.click(within(screen.getByRole("group", { name: "Mode" })).getByRole("menuitem", { name: "Goal" }));
     expect(screen.getByText("Send an ordinary message to prepare the Coding tools before creating a goal.")).toBeVisible();
     fireEvent.click(actions);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add folder" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Folder" }));
     expect(await screen.findByText("shared-source")).toBeVisible();
     expect(createChat).not.toHaveBeenCalled();
   });

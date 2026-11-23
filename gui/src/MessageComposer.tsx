@@ -187,13 +187,13 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
           <button type="button" className="icon-button" aria-label={t(hasActions ? "attachments.actions" : "composer.attachUnavailable")}
             title={t(hasActions ? "attachments.actions" : "composer.attachHint")} aria-haspopup="menu" disabled={!hasActions}
             onClick={(event) => menu(event, [
-              ...(canAttach ? [
-                { label: t("attachments.addFile"), run: () => chooser.current?.click() },
-                ...(pickClientDirectory ? [{ label: t("attachments.addFolder"), run: attachClientDirectory }] : []),
-                ...(hostReferences ? [{ label: t("attachments.referenceHostPath"), run: () => hostPathDialog.current?.showModal() }] : []),
-              ] : []),
-              ...(goalAction ? [goalAction] : []),
-            ])}>＋</button>
+              ...(canAttach ? [{ label: t("attachments.addGroup"), items: [
+                { label: t("attachments.addFile"), icon: "paperclip" as const, run: () => chooser.current?.click() },
+                ...(pickClientDirectory ? [{ label: t("attachments.addFolder"), icon: "folder-closed" as const, run: attachClientDirectory }] : []),
+                ...(hostReferences ? [{ label: t("attachments.referenceHostPath"), icon: "host" as const, run: () => hostPathDialog.current?.showModal() }] : []),
+              ] }] : []),
+              ...(goalAction ? [{ label: t("attachments.modeGroup"), items: [{ ...goalAction, icon: "goal" as const }] }] : []),
+            ], true)}><UiIcon name="plus" /></button>
           {fixture ? <span className="permission-label">◉ {t("composer.fixtureAccess")}</span> : null}
         </div>
         {notice}
