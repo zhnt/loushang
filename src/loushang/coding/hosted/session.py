@@ -166,6 +166,7 @@ class CodingHostedHistoryBindingV1:
         title = load_agent_transcript_session_metadata(
             history.header_preview.header, history.records
         ).name
+        self._explicit_title = _session_title(title, ()) if title and title.strip() else None
         self._projection = CodingHostedSnapshotProjectionV1(
             title=_session_title(title, (entry.payload for entry in history.records)),
             revision=0, running=False, records=tuple(records),
@@ -187,6 +188,9 @@ class CodingHostedHistoryBindingV1:
         if self._closed:
             raise RuntimeError("coding_hosted_session_closed")
         return self._history
+
+    def project_explicit_title(self) -> str | None:
+        return self._explicit_title
 
     def project_title(self) -> str:
         return self._projection.title
@@ -299,6 +303,10 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         if not isinstance(manager, SessionManager) or manager.header.conversation_id != self.identity.session_id:
             raise CodingHostedCatalogError()
         return await manager.lookup_resume_input(query)
+
+    def project_explicit_title(self) -> str | None:
+        name = self._session.session_name
+        return _session_title(name, ()) if name and name.strip() else None
 
     def project_title(self) -> str:
         return _session_title(self._session.session_name, _title_messages(self._session))
@@ -446,7 +454,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
 
     def create_resource_access(self) -> HostedResourceAccess:
         if self._resource_access is None:
-            manager = self._session.session_manager
+            manager = self._session._coding_session_manager
             self._resource_access = HostedResourceAccess(
                 self.identity.session_id, manager.session_dir, self.canonical_records, manager._hosted_workspace,
             )

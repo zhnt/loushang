@@ -27,14 +27,44 @@ from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
     SessionIdentityV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionSnapshotRequestV1,
 )
+from loushang.harness.commands import DEFAULT_LOCAL_COMMANDS_PROFILE
 from loushang.tui import CompletionItem, CompletionProvider
 from loushang.tui.completion import SlashCommand
+
+from ..selection.catalog import (
+    ModelChoice,
+    current_model_choice_first,
+    format_model_choices,
+    model_choice_select_items,
+    model_completion_provider,
+)
+from ..selection.interaction import ModelInteractionSnapshot, resolve_model_interaction
+from ..selection.model import ModelSelectorSurface
 
 if TYPE_CHECKING:
     from .model import HarnessWindowState
     from .shell import HostedMuxShellV1
+
+
+MODEL_COMMANDS = ("model", "models")
+
+
+def _model_choices(models: SessionModelsV1) -> tuple[ModelChoice, ...]:
+    return tuple(
+        ModelChoice(item.label, item.id, item, endpoint_id=item.endpoint_id)
+        for item in models.models
+    )
+
+
+def _thinking_hint(models: SessionModelsV1) -> str:
+    if models.thinking is None:
+        return ""
+    levels = ", ".join(models.thinking.available_levels)
+    return f"Reasoning {models.thinking.current_level or 'default'} · {levels} · /model --thinking <level>"
 
 
 def command_name(text: str) -> str:
@@ -49,6 +79,8 @@ class HostedSessionCommandUI:
         self._shell, self._local_names = shell, frozenset(local_names)
         self._catalog: SessionCommandCatalogV1 | None = None
         self._prefix = ""
+        self._model_arguments: CompletionProvider | None = None
+        self._model_request = 0
         self._catalog_pending = False
         self._checked_at = 0.0
         self._submissions: dict[
@@ -60,19 +92,44 @@ class HostedSessionCommandUI:
         client = self._shell._execution_client
         return client if isinstance(client, SessionCommandClientV1) else None
 
+    @property
+    def models_available(self) -> bool:
+        return all(
+            callable(getattr(self._shell._client, operation, None))
+            for operation in ("list_session_models", "select_session_model")
+        )
+
     def invalidate(self) -> None:
         self._catalog = None
+        self._model_arguments = None
         self._prefix = ""
         self._checked_at = 0.0
 
     def completions(self) -> list[SlashCommand]:
+        model_commands = (
+            [
+                SlashCommand(
+                    name,
+                    description=DEFAULT_LOCAL_COMMANDS_PROFILE.local_commands_by_name[
+                        name
+                    ].description
+                    or "",
+                    argument_provider=self._model_arguments
+                    if name == "model"
+                    else None,
+                )
+                for name in MODEL_COMMANDS
+            ]
+            if self.models_available and self._shell.state.active_window is not None
+            else []
+        )
         if self._catalog is None:
-            return []
+            return model_commands
         name, separator, _ = self._prefix.lstrip("/").partition(" ")
         arguments = CompletionProvider(
             tuple(CompletionItem(value) for value in self._catalog.completions)
         )
-        return [
+        return model_commands + [
             SlashCommand(
                 candidate,
                 description=entry.description,
@@ -94,11 +151,16 @@ class HostedSessionCommandUI:
         HarnessWindowState,
         Callable[[], bool],
     ]:
-        shell = self._shell
-        state, window = shell._target()
         client = self.client
         if client is None:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return client, *self._view_target()
+
+    def _view_target(
+        self,
+    ) -> tuple[SessionSnapshotRequestV1, HarnessWindowState, Callable[[], bool]]:
+        shell = self._shell
+        state, window = shell._target()
         control = SessionSnapshotRequestV1(
             state.attachment_id, state.controller_generation, window.member_id
         )
@@ -114,14 +176,13 @@ class HostedSessionCommandUI:
                 and shell._request_serial == serial
             )
 
-        return client, control, window, current
+        return control, window, current
 
     def refresh(self) -> None:
         shell = self._shell
         prefix = shell.screen.composer.value
         if (
-            self.client is None
-            or self._catalog_pending
+            self._catalog_pending
             or shell.state.snapshot_required
             or shell.state.active_window is None
             or not prefix.startswith("/")
@@ -130,25 +191,42 @@ class HostedSessionCommandUI:
             or "\n" in prefix
         ):
             return
-        if command_name(prefix) in self._local_names:
+        model_prefix = self.models_available and prefix.startswith("/model ")
+        if not model_prefix and (
+            self.client is None or command_name(prefix) in self._local_names
+        ):
             return
         now = asyncio.get_running_loop().time()
         if self._prefix == prefix and now - self._checked_at < 2:
             return
-        client, control, _, current = self._target()
+        control, _, current = self._view_target()
+        client = self.client
 
         async def refresh() -> None:
+            catalog = None
+            arguments = None
             try:
-                catalog = await client.session_command_catalog(
-                    control, client.service_instance_id, prefix
-                )
+                if model_prefix:
+                    models = await shell._client.list_session_models(control)
+                    arguments = model_completion_provider(
+                        _model_choices(models), current_value=models.current_id
+                    )
+                elif client is not None:
+                    catalog = await client.session_command_catalog(
+                        control, client.service_instance_id, prefix
+                    )
             except (AppServiceError, ExecutionServiceErrorV1):
                 catalog = None
             finally:
                 self._catalog_pending = False
             if current() and shell.screen.composer.value == prefix:
-                changed = catalog != self._catalog or prefix != self._prefix
+                changed = (
+                    catalog != self._catalog
+                    or prefix != self._prefix
+                    or arguments != self._model_arguments
+                )
                 self._catalog, self._prefix, self._checked_at = catalog, prefix, now
+                self._model_arguments = arguments
                 if changed:
                     shell.refresh_capability_completions(force=True)
                     shell.screen.composer.refresh_completions(force=True)
@@ -161,15 +239,106 @@ class HostedSessionCommandUI:
         text = composer.value.lstrip()
         name = command_name(text)
         if (
-            self.client is not None
-            and name
-            and name not in self._local_names
-            and not text.startswith("//")
-        ):
+            name in MODEL_COMMANDS
+            or (self.client is not None and name and name not in self._local_names)
+        ) and not text.startswith("//"):
             # Discovery is asynchronous. Enter must not replace a typed
             # command with a similar local one (e.g. /session and /sessions).
             # Tab still applies the selected suggestion.
             composer.clear_completion_items()
+
+    def submit_model(self, name: str, query: str) -> None:
+        shell = self._shell
+        control, window, view_current = self._view_target()
+        self._model_request += 1
+        request = self._model_request
+
+        def current() -> bool:
+            return self._model_request == request and view_current()
+
+        def update_model_label(models: SessionModelsV1) -> None:
+            selected = next(
+                (item.label for item in models.models if item.id == models.current_id),
+                None,
+            )
+            window.model_label = selected
+
+        async def select(model_id: str, level: str | None = None) -> None:
+            if not current():
+                return
+            models = await shell._client.select_session_model(
+                SessionModelSelectV1(
+                    control.attachment_id,
+                    control.controller_generation,
+                    control.member_id,
+                    model_id,
+                    level,
+                )
+            )
+            if current():
+                update_model_label(models)
+                shell.notice = f"Model {window.model_label or 'unavailable'}"
+                if hint := _thinking_hint(models):
+                    shell.screen.show_command_details(
+                        "Current model", f"{window.model_label}\n{hint}"
+                    )
+
+        async def run() -> None:
+            models = await shell._client.list_session_models(control)
+            if not current():
+                return
+            update_model_label(models)
+            choices = _model_choices(models)
+            if name == "models":
+                summary = format_model_choices(
+                    choices, query=query, current_value=models.current_id
+                )
+                shell.screen.show_command_details(
+                    "Models", "\n".join(filter(None, (summary, _thinking_hint(models))))
+                )
+                return
+            if query == "--thinking" or query.startswith("--thinking "):
+                level = query.removeprefix("--thinking").strip()
+                if (
+                    models.current_id
+                    and models.thinking
+                    and level in models.thinking.available_levels
+                ):
+                    await select(models.current_id, level)
+                else:
+                    shell.screen.show_command_details(
+                        "Reasoning levels",
+                        _thinking_hint(models)
+                        or "The current model has no reasoning settings",
+                    )
+                return
+            resolution = resolve_model_interaction(
+                ModelInteractionSnapshot(choices, models.current_id), query=query
+            )
+            if resolution.choice is not None:
+                await select(resolution.choice.value)
+            elif resolution.matches:
+                items = model_choice_select_items(
+                    current_model_choice_first(
+                        resolution.matches, current_value=models.current_id
+                    ),
+                    current_value=models.current_id,
+                )
+                shell.screen.show_model_picker(
+                    ModelSelectorSurface(
+                        tuple(items), selected_value=models.current_id
+                    ),
+                    lambda value: self._run_read(lambda: select(value), current),
+                )
+            else:
+                shell.screen.show_command_details(
+                    "Models",
+                    format_model_choices(
+                        choices, query=query, current_value=models.current_id
+                    ),
+                )
+
+        self._run_read(run, current)
 
     def submit(self, text: str) -> None:
         client, control, window, current = self._target()
@@ -245,7 +414,9 @@ class HostedSessionCommandUI:
         async def run() -> None:
             finished = False
             try:
-                catalog = await client.session_command_catalog(control, instance)
+                catalog = await client.session_command_catalog(
+                    control, instance, f"/{name} {args}"
+                )
                 entry = next(
                     (
                         entry
@@ -261,6 +432,11 @@ class HostedSessionCommandUI:
                         entry.unavailable_reason if entry else "command unavailable"
                     )
                     self._shell.notice = f"/{name}: {reason}"
+                    return
+                if entry.name == "rename" and not args:
+                    self._shell.screen.composer.set_text("/rename ")
+                    self._shell._set_draft("/rename ")
+                    self._shell.notice = "Enter the new Session name"
                     return
                 if entry.read_only:
                     result = await client.read_session_command(
@@ -312,8 +488,14 @@ class HostedSessionCommandUI:
         self._shell._actions.submit(run)
 
     def _show_catalog(self, catalog: SessionCommandCatalogV1) -> None:
-        lines = []
+        lines = [
+            f"/{name}  {DEFAULT_LOCAL_COMMANDS_PROFILE.local_commands_by_name[name].description}"
+            for name in MODEL_COMMANDS
+            if self.models_available
+        ]
         for entry in catalog.commands:
+            if entry.name in MODEL_COMMANDS:
+                continue
             reason = (
                 "reserved by Hosted TUI"
                 if entry.name in self._local_names

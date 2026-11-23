@@ -17,12 +17,14 @@ from loushang.appserver.execution.session_commands import (
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
 from loushang.appservice.execution_guard import ExecutionControlV1
+from loushang.coding.lsp.commands import LSP_SESSION_COMMAND_NAME, lsp_command_mutates
 from loushang.harness.commands import (
     CommandCatalog,
     CommandDescriptor,
     complete_slash_commands,
     normalize_command_name,
 )
+from loushang.harness.session import CommandExecutionResult
 from loushang.harness.session.commands.catalog import STANDARD_SESSION_COMMANDS
 from loushang.harness.transcript.maintenance import CompactionAborted
 
@@ -57,8 +59,14 @@ class CodingHostedSessionCommands:
             if isinstance(item, CommandDescriptor)
         )
 
+    @staticmethod
+    def _mode(name: str, args: str = "") -> str | None:
+        if name == LSP_SESSION_COMMAND_NAME:
+            return "session" if lsp_command_mutates(args) else "read"
+        return _HOSTED.get(name)
+
     def _unavailable(self, name: str, source: str) -> str | None:
-        mode = _HOSTED.get(name) if source == "builtin" else None
+        mode = self._mode(name) if source == "builtin" else None
         if mode is None:
             return "requires_a_different_command_route"
         if mode == "model" and not is_usable_model_selection(
@@ -71,6 +79,8 @@ class CodingHostedSessionCommands:
 
     async def catalog(self, prefix: str) -> SessionCommandCatalogV1:
         catalog = self._catalog()
+        command, separator, args = prefix.lstrip().partition(" ")
+        match = catalog.lookup(command)
         commands = []
         for item in catalog.commands():
             name = item.effective_invocation_name
@@ -89,13 +99,11 @@ class CodingHostedSessionCommands:
                         _text(item.argument_hint or "", 256),
                         self._unavailable(name, item.source),
                         read_only=item.source == "builtin"
-                        and _HOSTED.get(name) == "read",
+                        and self._mode(name, args if item is match else "") == "read",
                     )
                 )
             except ValueError:
                 continue
-        command, separator, args = prefix.lstrip().partition(" ")
-        match = catalog.lookup(command)
         if (
             separator
             and match is not None
@@ -148,7 +156,7 @@ class CodingHostedSessionCommands:
         self, invocation: SessionCommandInvocationV1
     ) -> SessionCommandResultV1:
         name = self.require_ready(invocation)
-        if _HOSTED[name] != "read":
+        if self._mode(name, invocation.args) != "read":
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         self._session.runtime.execution_admission.require_current()
         return _project_result(await self._dispatch(name, invocation.args))
@@ -156,9 +164,26 @@ class CodingHostedSessionCommands:
     async def _dispatch(self, name: str, args: str) -> dict[str, object]:
         # The caller resolved an admitted builtin. Invoke that bound owner,
         # even if an extension is published while other work is settling.
-        outcome = await self._session._composition.command_controller.execute_builtin_command_async(
-            name, args
+        invocation = (
+            self._session.execute_lsp_command(args)
+            if name == LSP_SESSION_COMMAND_NAME
+            else self._session._composition.command_controller.execute_builtin_command_async(
+                name, args
+            )
         )
+        outcome: CommandExecutionResult | None
+        if name == "rename" or (
+            name == LSP_SESSION_COMMAND_NAME and lsp_command_mutates(args)
+        ):
+            # Join an entered metadata write or process stop before releasing
+            # the guard. Its actual outcome survives an interrupt request.
+            task = asyncio.create_task(invocation)
+            try:
+                outcome = await asyncio.shield(task)
+            except asyncio.CancelledError:
+                outcome = await task
+        else:
+            outcome = await invocation
         result = outcome.result if outcome is not None else None
         if not isinstance(result, dict) or result.get("source") != "builtin":
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
@@ -174,7 +199,7 @@ class CodingHostedSessionCommands:
         admission.require_unbound_run()
         ticket = admission.begin_input()
         try:
-            if _HOSTED[name] == "model":
+            if self._mode(name, invocation.args) == "model":
                 await session.prepare_execution()
             ticket.check()
             admission.require_current()
@@ -183,6 +208,12 @@ class CodingHostedSessionCommands:
             # Dispatch through the same Session runtime and bound pack as the
             # Embedded TUI. Catalog changes are checked again after preparation.
             result = await self._dispatch(name, invocation.args)
+            if name == "rename" and result.get("status") == "ok":
+                result["persisted"] = session.session_manager.is_persisted()
+                if not result["persisted"]:
+                    result["message"] = (
+                        "Session renamed. This Session has no durable transcript yet."
+                    )
             data = _project_result(result)
             if result.get("status") != "ok":
                 error = (
@@ -250,6 +281,30 @@ def _project_result(result: dict[str, object]) -> SessionCommandResultV1:
             for entry in tools
             if isinstance(entry, dict)
         ]
+    if data.get("command") == "extensions":
+        data.pop("display", None)
+        if isinstance(extensions := data.get("extensions"), list):
+            data["extensions"] = [
+                _public_extension(entry)
+                for entry in extensions
+                if isinstance(entry, Mapping)
+            ]
+        if isinstance(extension := data.get("extension"), Mapping):
+            data["extension"] = _public_extension(extension)
+    if data.get("command") == LSP_SESSION_COMMAND_NAME:
+        data.pop("display", None)
+        if isinstance(servers := data.get("servers"), list):
+            data["servers"] = [
+                {key: value for key, value in entry.items() if key != "last_error"}
+                for entry in servers
+                if isinstance(entry, Mapping)
+            ]
+        if data.get("enabled") is False:
+            data.setdefault("message", "Coding LSP is disabled for this session.")
+        elif data.get("servers") == []:
+            data.setdefault(
+                "message", "No language server has been started in this session."
+            )
     try:
         return SessionCommandResultV1.from_data(data)
     except (ValueError, TypeError):
@@ -262,6 +317,29 @@ def _project_result(result: dict[str, object]) -> SessionCommandResultV1:
                 "truncated": True,
             }
         )
+
+
+def _public_extension(entry: Mapping[str, object]) -> dict[str, object]:
+    public = {
+        key: entry[key]
+        for key in (
+            "id",
+            "name",
+            "runtimeName",
+            "version",
+            "enabled",
+            "permissionLevel",
+        )
+        if key in entry
+    }
+    diagnostics = entry.get("diagnostics")
+    if isinstance(diagnostics, list):
+        public["diagnostics"] = [
+            {"code": item["code"]}
+            for item in diagnostics
+            if isinstance(item, Mapping) and isinstance(item.get("code"), str)
+        ]
+    return public
 
 
 class _CommandWork:

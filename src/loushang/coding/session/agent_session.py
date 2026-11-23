@@ -138,6 +138,7 @@ from loushang.harness.runtime.registration import (
 )
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession as AgentProductSession
+from loushang.harness.session import CommandExecutionResult
 from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session._resume_continuation import (
     _ResumeContinuationSession,
@@ -998,14 +999,15 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
     ) -> object | None:
         await self.prepare_model_call_runtime()
         if normalize_command_name(invocation_name) == LSP_SESSION_COMMAND_NAME:
-            return await execute_lsp_session_command(
-                self._lsp_access
-                or (
-                    _DORMANT_LSP_ACCESS if self._deferred_lsp_slot is not None else None
-                ),
-                args,
-            )
+            return await self.execute_lsp_command(args)
         return await super().execute_command_async(invocation_name, args)
+
+    async def execute_lsp_command(self, args: str) -> CommandExecutionResult:
+        return await execute_lsp_session_command(
+            self._lsp_access
+            or (_DORMANT_LSP_ACCESS if self._deferred_lsp_slot is not None else None),
+            args,
+        )
 
     async def emit_product_tool_audit_event(
         self,

@@ -272,7 +272,7 @@ class HostedForegroundClientV1:
             raise TimeoutError("hosted_startup_timeout")
         self._client = RemoteAppClientV1(
             AppFramedStreamV1(self._transport),
-            profile=self._profile,
+            profile=self._profile, session_thinking=True,
         )
         await self._client.start(timeout=remaining)
         if self._closing:

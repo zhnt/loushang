@@ -21,7 +21,9 @@ from loushang.appserver.protocol import (
     MuxDetachV1,
     MuxMemberCloseV1,
     MuxMemberOpenV1,
+    MuxReadV1,
     MuxSelectorV1,
+    SessionEventKindV1,
     SessionOpenSpecV1,
     SessionSnapshotRequestV1,
     SessionSubmissionModeV1,
@@ -100,6 +102,14 @@ class HostedMuxControllerV1:
             state.status_message = "snapshot_required"
             return state
         reduce_events(state, events)
+        if not state.snapshot_required and any(
+            item.event.kind is SessionEventKindV1.STATUS and item.event.text is None for item in events
+        ):
+            mux = await self._client.read_mux(MuxReadV1(self._selector))
+            if self.state is state and not state.snapshot_required and mux.mux_space_id == state.mux_space_id:
+                titles = {(member.member_id, member.session): member.title for member in mux.members}
+                for window in state.windows:
+                    window.title = titles.get((window.member_id, window.identity), window.title)
         return state
 
     async def refresh_snapshot(self) -> HostedMuxState:

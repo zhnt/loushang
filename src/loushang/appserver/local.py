@@ -512,7 +512,8 @@ class LocalAppClientConnectionV1:
             await frames.send(LOCAL_APP_MODE if self._mode is LocalConnectionModeV1.APP else LOCAL_STOP_MODE)
             if self._mode is LocalConnectionModeV1.APP:
                 self._client = RemoteAppClientV1(
-                    frames, profile=record.semantic_profile, phase_timeout=self._timeout
+                    frames, profile=record.semantic_profile, phase_timeout=self._timeout,
+                    session_thinking=True,
                 )
                 await self._client.start()
                 self._scopes = record.scopes

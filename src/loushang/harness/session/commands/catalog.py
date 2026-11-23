@@ -64,6 +64,7 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
         StandardSessionCommandId.RENAME,
         "Rename the current session",
         "<name>",
+        hosted="session",
     ),
     StandardSessionCommandDefinition(
         StandardSessionCommandId.SESSION,
@@ -99,6 +100,8 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
     StandardSessionCommandDefinition(
         StandardSessionCommandId.EXTENSIONS,
         "Show loaded extensions and diagnostics",
+        "[name or ID]",
+        hosted="read",
     ),
     StandardSessionCommandDefinition(
         StandardSessionCommandId.NEW,

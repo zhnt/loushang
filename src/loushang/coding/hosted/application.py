@@ -319,6 +319,10 @@ class _LeasedCodingHostedBinding:
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
         return self._binding.project_snapshot()
 
+    def project_explicit_title(self) -> str | None:
+        getter = getattr(self._binding, "project_explicit_title", None)
+        return getter() if callable(getter) else None
+
     def project_title(self) -> str:
         return self._binding.project_title()
 

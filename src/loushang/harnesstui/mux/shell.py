@@ -29,7 +29,7 @@ from loushang.tui.theme import ThemeResolver
 
 from ..conversation.input import ConversationInputRouter
 from ..conversation.input_policy import ConversationCapabilities, ConversationOperation
-from ._session_commands import HostedSessionCommandUI, command_name
+from ._session_commands import MODEL_COMMANDS, HostedSessionCommandUI, command_name
 from ._shell_screen import HostedMuxScreenV1, safe_text
 from ._shell_tasks import ShellActions, join, owned_task
 from .controller import HostedMuxControllerV1
@@ -47,6 +47,7 @@ _LOCAL_COMMANDS = (
     "help", "question", "refresh", "sessions", "resume", "new", "close",
     "steer", "followup", "approve", "deny", "interrupt", "detach", "exit",
     "commands", "command-result",
+    *MODEL_COMMANDS,
 )
 MAX_DRAFT_BYTES = 64 * 1024
 MAX_SHELL_DRAFT_BYTES = 1024 * 1024
@@ -455,6 +456,11 @@ class HostedMuxShellV1:
 
     def _command(self, text: str) -> None:
         name = command_name(text)
+        if name in MODEL_COMMANDS:
+            if not self._session_commands.models_available:
+                raise ValueError("unsupported action")
+            self._session_commands.submit_model(name, text[len(name) + 1:].strip())
+            return
         if name in {"commands", "command-result"} or name not in _LOCAL_COMMANDS:
             if self._session_commands.client is None and name not in _LOCAL_COMMANDS:
                 raise ValueError("unsupported action")

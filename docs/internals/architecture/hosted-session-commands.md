@@ -2,7 +2,7 @@
 
 ## Ownership and execution
 
-This increment is based on `lane/gui` at `b316ff49a`. Embedded Coding TUI uses
+Phase two builds on the command implementation merged at `6740f9c55`. Embedded Coding TUI uses
 `ConversationCommandCatalog` and `MixedCommandCatalog` for local and Session
 effects. The Coding dispatcher delegates a Session command to its
 `SessionCommandController`. `SessionCommandRuntime` and
@@ -32,20 +32,21 @@ existing reusable routes and the next step where the slash entry is absent.
 | `/session` | `harness.session.commands.catalog`, standard Session pack | `execute_standard_session_command_async` reads Session statistics, context and maintenance state | Shared read route for active Sessions, including without a model or while an Execution runs |
 | `/tools [on\|off\|only\|reset]` | Standard Session pack, Session tools | Standard tools handler uses the Session ToolController and refreshes activation through existing Session operations | Guarded shared route and argument completion from allowed tools |
 | `/compact [instructions]` | Standard Session pack, transcript maintenance | Standard handler calls Session compaction with optional instructions | Guarded shared route using the original checkpoint and context refresh |
-| `/rename [name]` | Standard pack and Embedded rename surface | Session metadata update or interactive rename | Catalog entry requires a future route. Use the existing metadata owner when adding it |
+| `/rename [name]` | Standard pack and Embedded rename surface | Session metadata update or interactive rename | Guarded standard command. The empty form prepares a name input. Metadata events refresh authoritative Mux titles |
 | `/new`, `/resume`, `/delete` | Standard pack and Embedded lifecycle surfaces | Session creation, replacement or deletion through lifecycle ports | `/new <scope>` opens a member. `/sessions` and `/resume` use discovery and admitted member open. Hosted `/close --yes` uses member close. Session deletion needs its own lifecycle action |
 | `/fork`, `/clone`, `/branch`, `/tree` | Standard pack, transcript navigation and lifecycle | Fork and its clone alias, branch picker or explicit branch point, tree navigation | Discoverable as requiring another route. Extend the existing member/session lifecycle and navigation contracts |
 | `/export`, `/import` | Standard pack, Session import/export | HTML, JSONL or bundle export and controlled Session import | Requires an explicit resource transfer and lifecycle route |
-| `/reload`, `/extensions` | Standard pack, resource and extension owners | Existing resource refresh graph and extension diagnostics | Discoverable as requiring another route. Keep publication and refresh with current owners |
+| `/extensions [name or ID]` | Standard pack and current Extension Runtime | Loaded extension inventory and details | Shared read route exposing identities, enabled state, permission level and diagnostic codes |
+| `/reload` | Standard pack and resource owners | Existing resource refresh graph | Discoverable as requiring another route |
 | `/copy`, `/changelog` | Standard pack with client or Product ports | Embedded clipboard and changelog handlers | Clipboard and display remain client actions when added |
-| `/model`, `/models` | `DEFAULT_LOCAL_COMMANDS_PROFILE` and model selection surface | Embedded model chooser and listing with model argument completion | AppClient already exposes model listing and selection. Hosted shortcut can use those routes |
+| `/model`, `/models` | `DEFAULT_LOCAL_COMMANDS_PROFILE` and model selection surface | Embedded model chooser and listing with model argument completion | Hosted local actions use the existing AppClient model catalog and selection operations. `/model --thinking <level>` uses levels returned for the current model |
 | `/command`, `/commands` | Local catalog/surface grammar | Embedded selection palette and filtered listing | Slash completion and local `/commands` display the live Hosted response |
 | `/settings`, `/config`, `/hotkeys`, `/terminal` | Local catalog/surface grammar | Embedded settings, keybindings and terminal diagnostics | Host and terminal settings belong to the applicable client or settings port |
 | `/permissions`, `/agents`, `/btw` | Local catalog/surface grammar | Embedded approval and grant surface, agent tree, side question | Existing `/question`, `/approve`, `/deny` preserve the Hosted approval path. Broader local surfaces are future work |
 | `/quit`, `/exit` | Embedded conversation host | Local teardown | Hosted `/exit` and `/detach` preserve the original attachment and foreground lifecycle rules |
 | `/goal` | Coding Goal overlay in `coding.ui.completion` and `product_binding` | Product Goal commands and status | Use existing interactive Goal operations for a future shortcut |
 | `/plugins` | Coding plugin overlay in `coding.ui._plugin_completion` and `product_binding` | Product Plugin status, list and management operations | Requires a scoped Plugin route. Package management remains in its owning subsystem |
-| `/lsp` | `coding.lsp.commands`, exposed by Coding AgentSession | Coding LSP access and command parser | Discoverable with no Hosted invocation route yet |
+| `/lsp` | `coding.lsp.commands`, exposed by Coding AgentSession | Coding LSP access and command parser | `/lsp` and `/lsp status` use the read route. `/lsp stop <server-id> <root>` uses guarded submission and the Session-owned supervisor |
 | Extension commands, Prompt names and `/skill:<name>` | `harness.session.command_sources`, resource descriptors and extension runtime | Registered extension handler, or Prompt/Skill preflight inside the ordinary turn | Current effective declarations appear in the catalog. A future route needs explicit extension execution or Prompt/Skill submission semantics |
 | `/help`, `/question`, `/refresh`, `/steer`, `/followup`, `/approve`, `/deny`, `/interrupt`, `/detach`, `/command-result` | Hosted shell commands | Embedded has separate controls and keybindings | Hosted reserves these names. `/command-result <submission ID>` reads an existing execution. `/interrupt` can target an acknowledged Session command |
 
@@ -56,8 +57,9 @@ when its raw input matches the local grammar. In the Session runtime, extension 
 ran before builtins. The catalog now gives the extension priority for
 colliding canonical names, so it does not advertise the shadowed builtin
 as executable. Hosted keeps its local names reserved and does not offer
-shadowed aliases. Hosted reads and executions bind the admitted builtin
-directly after checking the current directory and extension conflicts.
+shadowed aliases. Hosted reads and executions bind the admitted owner after checking the
+current catalog and extension conflicts. Coding contributes LSP through its
+existing descriptor and parser.
 
 ## AppClient capability
 
@@ -91,22 +93,49 @@ Session. A model must be selected for manual compaction. The reply preserves
 the operation outcome if a Product result exceeds the wire budget and marks
 the data as truncated.
 
-## Internal review and follow-up
+## Phase two behavior and review
 
-Codex performed internal design acceptance for the incremental command
-surface on this task branch, covering the Harness command pack, Coding Session,
-AppService authority, AppServer wire and Hosted TUI. The review traced the
-actual Embedded and Hosted dispatch paths, checked read-only admission and
-registered-versus-allowed tools, and verified execution identity, disconnect,
-duplicate submission and checkpoint behavior through the real Coding
-Session and framed AppClient. This record applies to the implementation
-accompanying this document. A mixed-version attachment to an older Host should
-use the existing commands until the Host is upgraded. An older decoder may
-close the connection on the new wire operations.
+The Hosted model chooser uses the Embedded matching and picker code with the
+current AppHost model catalog. The Python client opts in to the existing
+thinking hello. The existing selection lock, title settlement and execution
+checks remain on the server. A rejected model or reasoning selection retains
+the current selection. If default preference persistence fails after the
+Session commits its model, the result still reflects the committed model and
+the Host logs the preference failure.
 
-Next, use existing client operations for model selection and locally rendered
-surfaces, then add separately guarded metadata, history, and resource actions.
-Add dynamic execution only after its extension or Prompt/Skill route can
-express the necessary policy and results. GUI can bind the same four AppClient
-operations, keep its existing controls for local actions, and observe the
-ordinary execution records for progress and cancellation.
+Rename calls the standard metadata writer. Its metadata event prompts Hosted
+TUI to read the authoritative Mux title. Reattachment and the session directory
+use the stored name. A provisional transcript follows its existing first-message
+materialization policy. The rename result indicates whether the transcript has
+been persisted. An entered rename or LSP stop settles before the execution
+slot is released, including after an interrupt request.
+
+Extensions and LSP status use the read route. The Extensions projection
+exposes diagnostic codes and omits raw diagnostics, configuration, and source
+or manifest locations. The LSP adapter uses Coding's original parser to
+classify a stop as a mutation. The catalog projects `readOnly` for the
+invocation in `commandPrefix`, which can include arguments. The server checks
+the route again before invocation. The existing runtime validates each root
+against the Session workspace and only stops its own server. LSP status
+retains authorized workspace roots for selecting a stop target.
+
+Codex reviewed and accepted the phase two increment on
+`feature/gui-hosted-command-phase-two` from `6740f9c55`. The review covered
+command ownership, guarded writes, attachment identity, safe projections and
+the existing wire paths. Framed AppClient tests exercised the five commands
+with real Session state and a synthetic LSP process transport. The consolidated
+offline run passed 2,296 cases and skipped 12. The legacy AppProtocol schema
+error vocabulary mismatch and the existing LSP on-demand active-tool
+assertion both failed on the unchanged base as well.
+
+Clients can use these operations on the updated Host. Older Host decoders may
+close the connection on the command operations introduced in phase one.
+
+## Follow-up
+
+Use the existing lifecycle operations for history selection and deletion next.
+Add guarded reload and resource refresh, followed by fork, branch, tree and
+import or export. Goal and Plugin shortcuts can follow their existing Product
+routes. Extensions that execute work and Prompt or Skill submissions need
+their own policy-aware entry points. GUI can use the existing model operations
+and the four command operations with the same authority and result handling.
