@@ -213,14 +213,14 @@ def _coding_foreground_request(
     package_product_runtime_factory_for_session: CodingHostedProductRuntimeFactoryForSession | None = None,
 ) -> CodingForegroundHostedApplicationRequestV1:
     """Shared installed Product composition, independent of application persistence."""
-    admitted_scopes = tuple(HostedSessionDiscoveryScopeV1(
-        "coding", scope.scope, scope.fingerprint,
-    ) for scope in catalog.scopes)
-    from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
+    def current_scopes() -> tuple[HostedSessionDiscoveryScopeV1, ...]:
+        return tuple(
+            HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint)
+            for scope in catalog.scopes
+        )
 
-    def current_scopes():
-        return tuple(HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint)
-                     for scope in catalog.scopes)
+    admitted_scopes = current_scopes()
+    from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
 
     discovery = None if not session_discovery else HostedSessionDiscoveryBindingV1(
         generation, admitted_scopes, catalog,

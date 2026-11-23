@@ -6,6 +6,7 @@ import inspect
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from secrets import token_hex
 from typing import Protocol, cast
 
@@ -416,43 +417,23 @@ async def create_coding_foreground_hosted_application(
         raise TypeError("Coding foreground hosted application request is invalid")
     if request.managed_mux is not None:
         raise ValueError("managed Mux requires Coding application continuity")
-    from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
-
-    if type(request.sessions) is CodingWorkspaceCatalog:
-        await request.sessions.load()
-    product_factory = CodingForegroundProductFactoryV1(request.session_factory, session_owner=request.session_owner)
-
-    def catalog_input() -> AppHostCatalogInputV1:
-        product, profile = _coding_hosted_registrations(request, product_factory)
-        return AppHostCatalogInputV1(
-            generation_id=request.generation_id,
-            products=(product,),
-            profiles=(profile,),
-        )
+    await _load_coding_hosted_sessions(request)
+    product_factory = CodingForegroundProductFactoryV1(
+        request.session_factory, session_owner=request.session_owner
+    )
 
     def bind(runtime: AppHostRuntimeV1) -> HostedApplicationRuntimeV1:
-        resolver = CodingAppHostHostedSessionResolverV1(
-            runtime=runtime,
-            sessions=request.sessions,
-            profile_id=request.profile_id,
-            operation_id_factory=request.operation_id_factory,
-            admitted_scopes=request.admitted_scopes,
-            execution=request.execution is not None,
-            method=request.method,
-            goal=request.goal,
-            managed_selection=request.managed_selection,
-        )
         return create_hosted_application_runtime(
-            _coding_hosted_application_request(
+            _coding_hosted_request_for_runtime(
                 request,
                 product_factory=product_factory,
                 runtime=runtime,
-                resolver=resolver,
+                foreground_work=True,
             )
         )
 
     return await _construct_product_apphost(
-        catalog_input,
+        partial(_coding_hosted_catalog_input, request, product_factory),
         request.sessions,
         product_factory,
         bind,
@@ -461,10 +442,19 @@ async def create_coding_foreground_hosted_application(
     )
 
 
-def _coding_hosted_registrations(
+async def _load_coding_hosted_sessions(
+    request: CodingForegroundHostedApplicationRequestV1,
+) -> None:
+    from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
+
+    if type(request.sessions) is CodingWorkspaceCatalog:
+        await request.sessions.load()
+
+
+def _coding_hosted_catalog_input(
     request: CodingForegroundHostedApplicationRequestV1,
     product_factory: CodingForegroundProductFactoryV1,
-) -> tuple[ProductRegistrationV1, ProfileRegistrationV1]:
+) -> AppHostCatalogInputV1:
     product = ProductRegistrationV1(
         descriptor=ProductDescriptorV1(
             product_id=CODING_PRODUCT_ID,
@@ -494,16 +484,30 @@ def _coding_hosted_registrations(
         ),
         admission_source=request.profile_admission_source,
     )
-    return product, profile
+    return AppHostCatalogInputV1(
+        generation_id=request.generation_id, products=(product,), profiles=(profile,)
+    )
 
 
-def _coding_hosted_application_request(
+def _coding_hosted_request_for_runtime(
     request: CodingForegroundHostedApplicationRequestV1,
     *,
     product_factory: CodingForegroundProductFactoryV1,
     runtime: AppHostRuntimeV1,
-    resolver: CodingAppHostHostedSessionResolverV1,
+    foreground_work: bool = False,
 ) -> HostedApplicationRequestV1:
+    # Continuity binds the persisted Session route without creating new fixed Work.
+    resolver = CodingAppHostHostedSessionResolverV1(
+        runtime=runtime,
+        sessions=request.sessions,
+        profile_id=request.profile_id,
+        operation_id_factory=request.operation_id_factory,
+        admitted_scopes=request.admitted_scopes,
+        execution=request.execution is not None,
+        method=request.method if foreground_work else None,
+        goal=request.goal if foreground_work else None,
+        managed_selection=request.managed_selection,
+    )
     return HostedApplicationRequestV1(
         activation=request.activation,
         product_id=CODING_PRODUCT_ID,
