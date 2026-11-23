@@ -28,6 +28,11 @@ function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): Fi
   };
 }
 
+async function clickGoalAction() {
+  fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Goal" }));
+}
+
 describe("GUI-B1 Workspace / Task / Review fixture", () => {
   it("reveals a temporary Session artifact directly without reading its preview", async () => {
     const raw = liveSnapshot();
@@ -717,8 +722,14 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         openFolder: () => {}, closeFolder: () => {}, register: async () => false,
         createChat, togglePin: () => {}, select: () => {}, clientDirectories: { pickClientDirectory },
       }} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Add images or files" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Share a local folder (read-only)" }));
+    const actions = await screen.findByRole("button", { name: "Session actions" });
+    expect(screen.queryByRole("button", { name: "Goal" })).not.toBeInTheDocument();
+    fireEvent.click(actions);
+    expect(screen.getByRole("menuitem", { name: "Add file" })).toBeVisible();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
+    expect(screen.getByText("Send an ordinary message to prepare the Coding tools before creating a goal.")).toBeVisible();
+    fireEvent.click(actions);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add folder" }));
     expect(await screen.findByText("shared-source")).toBeVisible();
     expect(createChat).not.toHaveBeenCalled();
   });
@@ -847,11 +858,10 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     await waitFor(() => expect(picker).toHaveTextContent(/test · model\s*High/));
     expect(defaultModels).toHaveBeenCalledWith(null);
     expect(defaultModels).toHaveBeenCalledWith(null, defaultModel.id);
-    const goal = screen.getByRole("button", { name: "Development goal" });
-    fireEvent.click(goal);
+    await clickGoalAction();
     expect(screen.getByText(/Send an ordinary message/)).toBeVisible();
     expect(createChat).not.toHaveBeenCalled();
-    fireEvent.click(goal);
+    await clickGoalAction();
     expect(screen.getByText(/Send an ordinary message/)).not.toBeVisible();
     fireEvent.click(picker);
     fireEvent.click(screen.getByRole("menuitemradio", { name: /test · second/ }));
@@ -1422,14 +1432,12 @@ describe("Interactive development goal", () => {
     expect(interactiveGoalStatus).not.toHaveBeenCalled();
 
     act(() => publish(supported));
-    const entry = await screen.findByRole("button", { name: "Development goal" });
-    expect(entry.closest("form")).toContainElement(screen.getByRole("textbox", { name: /message/i }));
-    expect(entry).toHaveAttribute("aria-expanded", "false");
+    const actions = await screen.findByRole("button", { name: "Session actions" });
+    expect(actions.closest("form")).toContainElement(screen.getByRole("textbox", { name: /message/i }));
     expect(screen.queryByRole("button", { name: "Check goal status" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Goal target" })).not.toBeInTheDocument();
-    fireEvent.click(entry);
-    expect(entry).toHaveAttribute("aria-expanded", "true");
+    await clickGoalAction();
     const goal = within(await screen.findByRole("region", { name: "Development goal" }));
     expect(within(screen.getByRole("complementary", { name: "Work Dock" }))
       .getByRole("button", { name: "Execution" })).toHaveAttribute("aria-pressed", "true");
@@ -1458,8 +1466,7 @@ describe("Interactive development goal", () => {
     expect(goal.getByText("Goal created. Execution has not started.")).toBeVisible();
     expect(goal.queryByRole("button", { name: "Create goal" })).not.toBeInTheDocument();
     expect(createInteractiveGoal).toHaveBeenCalledTimes(1);
-    fireEvent.click(entry);
-    expect(entry).toHaveAttribute("aria-expanded", "false");
+    await clickGoalAction();
     expect(screen.queryByRole("region", { name: "Development goal" })).not.toBeInTheDocument();
   });
 });
@@ -1508,8 +1515,7 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
     interrupt: async () => ({ accepted: false }),
   };
   render(<HarnessGui client={client} />);
-  const entry = await screen.findByRole("button", { name: "Development goal" });
-  fireEvent.click(screen.getByRole("button", { name: "Execution" }));
+  await clickGoalAction();
   const goal = within(await screen.findByRole("region", { name: "Development goal" }));
   fireEvent.click(await goal.findByRole("button", { name: "Step" }));
   expect(await goal.findByText("Goal command finished")).toBeVisible();
@@ -1521,9 +1527,9 @@ it("reconciles a Goal command by identity and distinguishes pause from cancellat
     sessionId: session.id, serviceInstanceId: "goal-host", connectionEpoch: "1",
   });
   expect(goal.queryByRole("button", { name: "Step" })).not.toBeInTheDocument();
-  fireEvent.click(entry);
+  await clickGoalAction();
   expect(screen.queryByRole("region", { name: "Development goal" })).not.toBeInTheDocument();
-  fireEvent.click(entry);
+  await clickGoalAction();
   expect(goal.getByText("Goal command running")).toBeVisible();
 
   fireEvent.click(goal.getByRole("button", { name: /^Pause$/ }));
@@ -1579,8 +1585,7 @@ it("offers Goal review only for a current candidate and gates acceptance on chec
     interrupt: async () => ({ accepted: false }),
   };
   render(<HarnessGui client={client} />);
-  const entry = await screen.findByRole("button", { name: "Development goal" });
-  fireEvent.click(entry);
+  await clickGoalAction();
   const goal = within(await screen.findByRole("region", { name: "Development goal" }));
   expect(goal.getByRole("heading", { name: "Goal review needed" })).toBeVisible();
   const review = await goal.findByRole("button", { name: "Review result" });
@@ -1647,15 +1652,13 @@ it.each([
     interrupt: async () => ({ accepted: false }),
   };
   render(<HarnessGui client={client} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Development goal" }));
+  await clickGoalAction();
   expect(await screen.findByText("Goal command running")).toBeVisible();
   expect(recover).not.toHaveBeenCalled();
   act(() => publish({
     ...initial, sessions: [deferred],
     source: { kind: "live", serviceInstanceId: "second-host", muxSpaceId: "mux", connectionEpoch: "2" },
   }));
-  const entry = await screen.findByRole("button", { name: "Development goal" });
-  expect(entry).toHaveAttribute("aria-expanded", "true");
   const panel = within(await screen.findByRole("region", { name: "Historical Goal" }));
   expect(await panel.findByText(label)).toBeVisible();
   expect(panel.getByText(reason)).not.toBeVisible();

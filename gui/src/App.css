@@ -351,10 +351,8 @@ body:has([role="menu"], .account-popover, dialog[open]) .workspace-scroll {
 .composer-permissions { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .composer-permissions .icon-button { flex: 0 0 25px; }
 .composer-permissions .permission-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:is(.composer-goal, .attachment-label) { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-secondary); background: transparent; font-size: var(--font-size-small); font-weight: 500; line-height: 18px; white-space: nowrap; }
-:is(.composer-goal, .attachment-label) .ui-icon { width: 15px; height: 15px; flex: none; }
-.composer-goal:is(:hover, :focus-visible) { color: var(--ink); }
-.composer-goal[aria-expanded="true"] { color: var(--ink); background: var(--control-hover); }
+.attachment-label { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-secondary); background: transparent; font-size: var(--font-size-small); font-weight: 500; line-height: 18px; white-space: nowrap; }
+.attachment-label .ui-icon { width: 15px; height: 15px; flex: none; }
 .composer-goal-hint { margin: 0 0 8px; padding: 0 12px; color: var(--ink-secondary); font-size: var(--font-size-small); }
 .model-picker { justify-self: end; min-width: 0; max-width: 100%; }
 .model-trigger { display: flex; align-items: center; gap: 8px; min-height: 30px; max-width: 100%; padding: 4px 8px 4px 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 13px; line-height: 18px; font-weight: 600; }

@@ -23,7 +23,7 @@ interface ComposerProps {
   readonly submitLabel?: string;
   readonly buttonDisabled: boolean;
   readonly fixture?: boolean;
-  readonly leadingAction?: ReactNode;
+  readonly goalAction?: { label: string; run: () => void };
   readonly model?: ReactNode;
   readonly notice?: ReactNode;
 }
@@ -34,7 +34,7 @@ function resizeEditor(input: HTMLTextAreaElement) {
 }
 
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
-  buttonDisabled, fixture, leadingAction, model, notice, submitLabel, images = [], onImagesChange, hostReferences, attachmentScope, pickClientDirectory, revokeClientDirectory }: ComposerProps) {
+  buttonDisabled, fixture, goalAction, model, notice, submitLabel, images = [], onImagesChange, hostReferences, attachmentScope, pickClientDirectory, revokeClientDirectory }: ComposerProps) {
   const { t } = useTranslation("session");
   const editor = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
@@ -44,6 +44,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
   const chooser = useRef<HTMLInputElement>(null);
   const [attachmentError, setAttachmentError] = useState(false);
   const canAttach = Boolean(onImagesChange && !disabled);
+  const hasActions = canAttach || Boolean(goalAction);
   const [clientDirectoryError, setClientDirectoryError] = useState(false);
   const picking = useRef(false);
   const attachmentTarget = useRef({ scope: attachmentScope, images, change: onImagesChange, enabled: canAttach });
@@ -183,17 +184,16 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
               addImages([...(event.currentTarget.files ?? [])]);
               event.currentTarget.value = "";
             }} /> : null}
-          <button type="button" className="icon-button" aria-label={t(canAttach ? "attachments.add" : "composer.attachUnavailable")}
-            title={t(canAttach ? "attachments.add" : "composer.attachHint")} disabled={!canAttach}
-            onClick={(event) => {
-              if (!hostReferences && !pickClientDirectory) chooser.current?.click();
-              else menu(event, [
-                { label: t("attachments.pickUpload"), run: () => chooser.current?.click() },
+          <button type="button" className="icon-button" aria-label={t(hasActions ? "attachments.actions" : "composer.attachUnavailable")}
+            title={t(hasActions ? "attachments.actions" : "composer.attachHint")} aria-haspopup="menu" disabled={!hasActions}
+            onClick={(event) => menu(event, [
+              ...(canAttach ? [
+                { label: t("attachments.addFile"), run: () => chooser.current?.click() },
+                ...(pickClientDirectory ? [{ label: t("attachments.addFolder"), run: attachClientDirectory }] : []),
                 ...(hostReferences ? [{ label: t("attachments.referenceHostPath"), run: () => hostPathDialog.current?.showModal() }] : []),
-                ...(pickClientDirectory ? [{ label: t("attachments.shareDirectory"), run: attachClientDirectory }] : []),
-              ]);
-            }}>＋</button>
-          {leadingAction}
+              ] : []),
+              ...(goalAction ? [goalAction] : []),
+            ])}>＋</button>
           {fixture ? <span className="permission-label">◉ {t("composer.fixtureAccess")}</span> : null}
         </div>
         {notice}
