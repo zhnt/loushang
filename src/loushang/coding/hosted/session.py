@@ -232,8 +232,10 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         approval: InteractiveApprovalResolver,
         *,
         workspace: Path | None = None,
+        resource_access: HostedResourceAccess | None = None,
     ) -> None:
         self._session = session
+        self._resource_access = resource_access
         self.identity = identity
         self._approval = approval
         self._interactions: dict[str, str] = {}
@@ -443,10 +445,12 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         return self._session.session_manager.entries
 
     def create_resource_access(self) -> HostedResourceAccess:
-        manager = self._session.session_manager
-        return HostedResourceAccess(
-            self.identity.session_id, manager.session_dir, self.canonical_records, manager._hosted_workspace,
-        )
+        if self._resource_access is None:
+            manager = self._session.session_manager
+            self._resource_access = HostedResourceAccess(
+                self.identity.session_id, manager.session_dir, self.canonical_records, manager._hosted_workspace,
+            )
+        return self._resource_access
 
     def create_execution_work(
         self, text: str, cancel_requested: Callable[[], bool],
@@ -615,10 +619,10 @@ class CodingRealHostedSessionFactoryV1:
             approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
             manager._hosted_workspace = hosted_workspace
             tools = self._tools
+            access = HostedResourceAccess(
+                identity.session_id, manager.session_dir, lambda: manager.entries, hosted_workspace,
+            )
             if resource_tools:
-                access = HostedResourceAccess(
-                    identity.session_id, manager.session_dir, lambda: manager.entries, hosted_workspace,
-                )
                 tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=workspace_tools)]
             services = self._services_factory(settings_cwd)
             policy = workspace_tool_runtime_settings(services.settings_manager)
@@ -671,7 +675,7 @@ class CodingRealHostedSessionFactoryV1:
                 if session.agent.thinking_level is not None:
                     await manager.append_thinking_level_change(session.agent.thinking_level)
             real_binding = CodingRealHostedSessionV1(
-                session, identity, approval, workspace=workspace,
+                session, identity, approval, workspace=workspace, resource_access=access,
             )
             if self._user_choice_enabled and workspace_tools:
                 real_binding.enable_user_choice()

@@ -40,6 +40,7 @@ from loushang.harness.tools.workspace.factory import (
 )
 from loushang.harness.workspace.operations import ToolOperations
 
+from .client_references import ClientDirectoryOffline
 from .resources import HostedResourceAccess
 
 SESSION_FILES = "session_files"
@@ -62,8 +63,15 @@ def session_files_tool(get_access: Callable[[], HostedResourceAccess]) -> ToolDe
                     access.read_text(arguments["id"], offset=arguments.get("offset", 0)),
                     ensure_ascii=False,
                 )
+            elif action in {"client_list", "client_read"} and isinstance(arguments.get("id"), str):
+                text = json.dumps(await access.read_client_directory(
+                    arguments["id"], "list" if action == "client_list" else "read",
+                    arguments.get("path", "."), arguments.get("offset", 0),
+                ), ensure_ascii=False)
             else:
-                text = "Select list or read. Reading requires a Session file ID."
+                text = "Select list or a read operation with a Session resource ID."
+        except ClientDirectoryOffline:
+            text = "The client directory is offline. Reconnect the desktop to this session and retry."
         except (AppServiceError, OSError, ValueError):
             text = "The selected Session file is unavailable."
         return AgentToolResult([TextPart(type="text", text=text)], None)
@@ -71,12 +79,13 @@ def session_files_tool(get_access: Callable[[], HostedResourceAccess]) -> ToolDe
     return ToolDefinition(
         name=SESSION_FILES,
         label="Session files",
-        description="List resources attached to this session and read managed UTF-8 files by ID. Use resource_ tools for Host references.",
+        description="List Session resources, read managed UTF-8 files, and list/read client directories by ID. Use resource_ tools for Host references.",
         parameters={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["list", "read"]},
+                "action": {"type": "string", "enum": ["list", "read", "client_list", "client_read"]},
                 "id": {"type": "string", "description": "File ID returned by list."},
+                "path": {"type": "string", "description": "Relative path in the client directory. '.' selects the root."},
                 "offset": {"type": "integer", "minimum": 0, "description": "Use nextOffset to read the next page."},
             },
             "required": ["action"],

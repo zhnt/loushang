@@ -296,6 +296,7 @@ export default interface Resources {
     },
     "attachments": {
       "add": "Add images or files",
+      "cancel": "Cancel",
       "close": "Close preview",
       "empty": "No resources in this session.",
       "file": "File",
@@ -308,6 +309,10 @@ export default interface Resources {
       "referenceHostPath": "Reference an AppHost path",
       "remove": "Remove {{name}}",
       "sessionResources": "Session resources",
+      "shareDirectory": "Share a local folder (read-only)",
+      "shareReadOnly": "Share read-only access",
+      "sharingStopped": "Sharing stopped",
+      "stopSharing": "Stop sharing",
       "unavailable": "Attachment unavailable."
     },
     "bridge": {

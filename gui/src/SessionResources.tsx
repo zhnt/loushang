@@ -56,9 +56,10 @@ export function AttachmentText({ blob, label }: { blob: Blob; label: string }) {
   </>;
 }
 
-type StoredProps = { client: HarnessClientUiPort; sessionId: string; id: string };
-export function StoredResource({ client, sessionId, id }: StoredProps) {
+type StoredProps = { client: HarnessClientUiPort; sessionId: string; id: string; allowRevoke?: boolean };
+export function StoredResource({ client, sessionId, id, allowRevoke }: StoredProps) {
   const { t } = useTranslation("session");
+  const [revoked, setRevoked] = useState(false);
   const [result, setResult] = useState<Awaited<ReturnType<typeof readResource>> | "unavailable" | null>(null);
   useEffect(() => {
     const cancellation = new AbortController();
@@ -74,6 +75,12 @@ export function StoredResource({ client, sessionId, id }: StoredProps) {
   if (!result.blob) return <span className="permission-label">
     {result.resource.kind === "directory" ? <UiIcon name="folder" /> : null}
     {result.resource.name ?? t("attachments.file")}
+    {allowRevoke && result.resource.source === "client_reference" && client.revokeClientDirectory && !revoked ? <button
+      type="button" className="icon-button" title={t("attachments.stopSharing")} aria-label={t("attachments.stopSharing")}
+      onClick={() => { void client.revokeClientDirectory?.(id).then(() => setRevoked(true)).catch(() => {}); }}>
+      <UiIcon name="close" />
+    </button> : null}
+    {revoked ? <span role="status">{t("attachments.sharingStopped")}</span> : null}
   </span>;
   return result.resource.mediaType === "text/plain"
     ? <AttachmentText blob={result.blob} label={result.resource.name ?? t("attachments.file")} />
@@ -103,7 +110,7 @@ export function SessionResources({ client, sessionId, version }: Omit<StoredProp
     <summary className="section-label">{t("attachments.sessionResources")}</summary>
     {open ? <div className="attachment-list">
       {failed ? <span role="status">{t("attachments.unavailable")}</span>
-        : ids?.length ? ids.map((id) => <StoredResource key={id} client={client} sessionId={sessionId} id={id} />)
+        : ids?.length ? ids.map((id) => <StoredResource key={id} allowRevoke client={client} sessionId={sessionId} id={id} />)
         : ids ? <span>{t("attachments.empty")}</span> : null}
     </div> : null}
   </details>;

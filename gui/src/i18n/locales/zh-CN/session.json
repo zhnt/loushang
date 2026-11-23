@@ -146,6 +146,11 @@
     "pickUpload": "上传图片或文件",
     "referenceHostPath": "引用 AppHost 路径",
     "hostPath": "工作空间内的 AppHost 文件或文件夹绝对路径",
-    "reference": "添加引用"
+    "reference": "添加引用",
+    "shareDirectory": "共享本机目录（只读）",
+    "shareReadOnly": "共享只读访问",
+    "cancel": "取消",
+    "stopSharing": "停止共享",
+    "sharingStopped": "已停止共享"
   }
 }

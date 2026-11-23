@@ -1,4 +1,5 @@
 //! Browser and desktop requests use the same AppServer client.
+mod client_directories;
 mod live_view;
 mod service;
 use crate::{
@@ -32,6 +33,7 @@ pub struct Backend {
     next_view_epoch: Arc<Mutex<u64>>,
     manager: Option<PathBuf>,
     managed_record: Arc<Mutex<Option<PathBuf>>>,
+    client_directories: Arc<Mutex<client_directories::Grants>>,
 }
 
 impl Backend {
@@ -44,6 +46,7 @@ impl Backend {
             next_view_epoch: Arc::default(),
             manager: None,
             managed_record: Arc::new(Mutex::new(None)),
+            client_directories: Arc::default(),
         }
     }
 
@@ -61,7 +64,16 @@ impl Backend {
             next_view_epoch: self.next_view_epoch.clone(),
             manager: None,
             managed_record: Arc::new(Mutex::new(None)),
+            client_directories: self.client_directories.clone(),
         }
+    }
+
+    pub fn grant_client_directory(&self, path: PathBuf) -> Result<Value> {
+        let (credential_root, port) = self.tunnel.as_ref().ok_or("operation_unavailable")?;
+        self.client_directories
+            .lock()
+            .map_err(|_| "host_unavailable")?
+            .add(Target::Tunnel(credential_root.clone(), *port), path)
     }
 
     pub fn call(&self, request: Value) -> Result<Value> {
@@ -123,6 +135,16 @@ impl Backend {
             "manage" => status(target, field(request, "action")?),
             "workspace" => self.workspace(target.ok_or("not_connected")?, request),
             "live" => self.live(target.ok_or("not_connected")?, request),
+            "revoke-client-directory" if self.tunnel.is_some() => {
+                let selector = field(request, "id")?;
+                let target = Target::from(target.ok_or("not_connected")?);
+                let removed = self
+                    .client_directories
+                    .lock()
+                    .map_err(|_| "host_unavailable")?
+                    .revoke(&target, selector);
+                Ok(json!({"removed": removed}))
+            }
             _ => Err("unknown_operation".into()),
         }
     }
@@ -176,7 +198,21 @@ impl Backend {
         }
         let view = views.get(id).ok_or("connection_failed")?;
         match action {
-            "snapshot" => view.snapshot(),
+            "snapshot" => {
+                let snapshot = view.snapshot()?;
+                if matches!(view.target, Target::Tunnel(..)) {
+                    self.client_directories
+                        .lock()
+                        .map_err(|_| "host_unavailable")?
+                        .serve(view, &snapshot);
+                }
+                Ok(snapshot)
+            }
+            "client-directory-reference" if self.tunnel.is_some() => self
+                .client_directories
+                .lock()
+                .map_err(|_| "host_unavailable")?
+                .reference(view, &request["input"]),
             "create" => created(view.control(None, create_command(&request["input"])?)?),
             _ => session_control(view, action, &request["input"]),
         }

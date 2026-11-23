@@ -179,6 +179,11 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._workspace = hosted_workspace.cwd if hosted_workspace is not None else source.record.scope.cwd
         self._workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
         self._resource_tools = resource_tools
+        self._resource_access = HostedResourceAccess(
+            self.identity.session_id, self._source.record.scope.session_dir,
+            self._resource_records, self._hosted_workspace,
+        )
+        self._active: CodingRealHostedSessionV1 | None = None
         if resource_tools:
             access = self.create_resource_access()
             self._tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=self._workspace_tools)]
@@ -192,7 +197,6 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             self._present_approval, dismisser=self._dismiss_approval
         )
         self._control = _DeferredHostedControlV1(self)
-        self._active: CodingRealHostedSessionV1 | None = None
         self._planning: ResumePlanningSlot | None = None
         self._activation_lock = asyncio.Lock()
         self._close_task: asyncio.Task[None] | None = None
@@ -374,8 +378,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         )
 
     def create_resource_access(self) -> HostedResourceAccess:
-        return HostedResourceAccess(self.identity.session_id, self._source.record.scope.session_dir,
-                                    self._resource_records, self._hosted_workspace)
+        return self._resource_access
 
     def _resource_records(self):
         if self._active is not None:
@@ -656,7 +659,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 raise
             try:
                 real = CodingRealHostedSessionV1(
-                    continuation.session, self.identity, self._approval, workspace=self._workspace
+                    continuation.session, self.identity, self._approval, workspace=self._workspace,
+                    resource_access=self._resource_access,
                 )
                 if self._user_choice_enabled:
                     real.enable_user_choice()

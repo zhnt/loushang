@@ -52,7 +52,12 @@ from .model import (
     ResourceRefV1,
     _identifier,
 )
-from .resources import ResourceV1, SessionResourceQueryV1, SessionResourceResultV1
+from .resources import (
+    ClientResourceRequestV1,
+    ResourceV1,
+    SessionResourceQueryV1,
+    SessionResourceResultV1,
+)
 
 EXECUTION_PROTOCOL_VERSION = "loushang.execution/v1"
 
@@ -65,6 +70,7 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ResourceV1: ("id", "kind", "source", "media_type", "size_bytes"),
     SessionResourceQueryV1: ("action", "resource_id", "offset", "total_bytes", "media_type", "data"),
     SessionResourceResultV1: ("resources", "data"),
+    ClientResourceRequestV1: ("id", "operation", "path", "offset"),
     AckV1: (), AppFailureV1: ("code",), ExecutionFailureV1: ("code",),
     SessionIdentityV1: ("product_id", "continuity_id", "session_id", "scope", "scope_fingerprint"),
     TranscriptRecordV1: ("kind", "text"),
@@ -115,8 +121,13 @@ def _encode(value: object) -> object:
     encoded = {_camel(name): _encode(getattr(value, name)) for name in fields}
     if type(value) in (ResourceV1, SessionResourceQueryV1) and value.name is not None:
         encoded["name"] = value.name
-    if type(value) is SessionResourceQueryV1 and value.path is not None:
-        encoded["path"] = value.path
+    if type(value) is SessionResourceQueryV1:
+        for field in ("path", "proxy_key", "request_id"):
+            item = getattr(value, field)
+            if item is not None:
+                encoded[_camel(field)] = item
+    if type(value) is SessionResourceResultV1 and value.proxy_request is not None:
+        encoded["proxyRequest"] = _encode(value.proxy_request)
     if type(value) is TranscriptRecordV1:
         if value.record_id is not None:
             encoded["recordId"] = value.record_id
@@ -174,8 +185,10 @@ def _decode(expected: object, raw: object) -> object:
     wire_fields = {_camel(name) for name in fields}
     if expected in (ResourceV1, SessionResourceQueryV1) and type(raw) is dict and "name" in raw:
         wire_fields.add("name")
-    if expected is SessionResourceQueryV1 and type(raw) is dict and "path" in raw:
-        wire_fields.add("path")
+    if expected is SessionResourceQueryV1 and type(raw) is dict:
+        wire_fields.update({"path", "proxyKey", "requestId"} & raw.keys())
+    if expected is SessionResourceResultV1 and type(raw) is dict and "proxyRequest" in raw:
+        wire_fields.add("proxyRequest")
     if expected is TranscriptRecordV1 and type(raw) is dict:
         wire_fields.update({"recordId", "resourceIds", "submissionId"} & raw.keys())
     if expected is SessionSnapshotV1 and type(raw) is dict:
@@ -191,8 +204,12 @@ def _decode(expected: object, raw: object) -> object:
     }
     if expected in (ResourceV1, SessionResourceQueryV1) and "name" in value:
         values["name"] = _string(value["name"])
-    if expected is SessionResourceQueryV1 and "path" in value:
-        values["path"] = _string(value["path"])
+    if expected is SessionResourceQueryV1:
+        for field in ("path", "proxy_key", "request_id"):
+            if _camel(field) in value:
+                values[field] = _string(value[_camel(field)])
+    if expected is SessionResourceResultV1 and "proxyRequest" in value:
+        values["proxy_request"] = _decode(ClientResourceRequestV1, value["proxyRequest"])
     if expected is TranscriptRecordV1:
         if "recordId" in value:
             values["record_id"] = _string(value["recordId"])

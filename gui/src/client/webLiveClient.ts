@@ -1,3 +1,5 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { platform } from "@tauri-apps/plugin-os";
 import { validateGoalProgress } from "../../contracts/goalProgress";
 import type { ClientSnapshot, ControlReceipt, HarnessClientUiPort, SubmitReceipt } from "./model";
 import { projectNativeInitialSnapshot, validateSessionModels } from "./nativeLiveClient";
@@ -5,7 +7,7 @@ import { ApprovalResponses } from "./approvalResponses";
 import { validateInteractiveGoalRecovery } from "../../contracts/interactiveGoalRecovery";
 import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
-import { resourceResult } from "./sessionResources";
+import { resourceResult, type ClientDirectoryDraft, type DirectoryPicker } from "./sessionResources";
 import { webRequest } from "./hostApi";
 import type { WorkspacePreview, WorkspacePreviewRequest, WorkspacePreviewScope } from "./workspacePreview";
 
@@ -97,6 +99,13 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
     return result;
   }
 
+  const allowClientDirectories = isTauri() && Boolean(connectionId && connectionId !== "local")
+    && (platform() === "linux" || platform() === "windows");
+  const pickClientDirectory: DirectoryPicker = async (labels) => {
+    const value = await invoke<{ id: string; name: string } | null>("pick_client_directory", { connectionId, ...labels });
+    if (value && (!/^[a-f0-9]{32}$/.test(value.id) || !value.name)) throw new Error("resource_unavailable");
+    return value ? { grantId: value.id, name: value.name } satisfies ClientDirectoryDraft : null;
+  };
   const pageHidden = () => { void close(); };
   return {
     snapshot: refresh,
@@ -203,6 +212,16 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
         return unknown;
       }
     },
+    ...(allowClientDirectories ? {
+      pickClientDirectory,
+      async referenceClientDirectory(sessionId: string, grantId: string) {
+        return resourceResult(await call("client-directory-reference", { sessionId, grantId }));
+      },
+      async revokeClientDirectory(id: string) {
+        const value = await webRequest<{ removed: boolean }>({ operation: "revoke-client-directory", id }, connectionId);
+        return value.removed;
+      },
+    } : {}),
     async sessionResource(sessionId, query) {
       return resourceResult(await call("resource", { sessionId, query }));
     },

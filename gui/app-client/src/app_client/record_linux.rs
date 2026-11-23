@@ -8,7 +8,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path};
 
 type Result<T> = std::result::Result<T, ()>;
-fn openat(parent: i32, name: &[u8], directory: bool) -> Result<File> {
+pub(super) fn openat(parent: i32, name: &[u8], directory: bool) -> Result<File> {
     let name = CString::new(name).map_err(|_| ())?;
     let flags = libc::O_RDONLY
         | libc::O_CLOEXEC
@@ -22,7 +22,7 @@ fn openat(parent: i32, name: &[u8], directory: bool) -> Result<File> {
     }
     Ok(unsafe { File::from_raw_fd(fd) })
 }
-fn directory(path: &Path) -> Result<File> {
+pub(super) fn open_absolute_directory(path: &Path) -> Result<File> {
     if !path.is_absolute() {
         return Err(());
     }
@@ -36,6 +36,10 @@ fn directory(path: &Path) -> Result<File> {
             _ => return Err(()),
         }
     }
+    Ok(current)
+}
+fn directory(path: &Path) -> Result<File> {
+    let current = open_absolute_directory(path)?;
     private(&current.metadata().map_err(|_| ())?, true)?;
     Ok(current)
 }
