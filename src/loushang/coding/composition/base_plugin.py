@@ -68,7 +68,6 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginSelectionSeed,
     bind_compiled_registration_authority,
     prepare_product_plugin_composition,
-    select_resource_plan,
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
 
@@ -401,18 +400,7 @@ def prepare_coding_base_resource_plan_seed(
 
     if not isinstance(assembly, CodingBasePluginAssembly):
         raise TypeError("Coding base Resource plan requires base assembly")
-    seed = assembly.plan_seed
-    plan = select_resource_plan(seed.plan, assembly.package, plugin_id=_PLUGIN_ID)
-    if plan is None:
-        return None
-    return ProductPluginPlanSeed(
-        plan=plan,
-        packages=seed.packages,
-        bindings=seed.bindings,
-        owner_bindings=tuple(
-            item for item in seed.owner_bindings if item.owner_key[1] == "resource_item"
-        ),
-    )
+    return assembly.plan_seed.select_resources(assembly.package, plugin_id=_PLUGIN_ID)
 
 
 def build_coding_base_plugin_owners(

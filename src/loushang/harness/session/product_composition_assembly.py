@@ -977,6 +977,31 @@ class ProductPluginPlanSeed:
             owner_bindings=owner_bindings,
         )
 
+    def select_resources(
+        self, package: PublishedPluginPackage, *, plugin_id: str
+    ) -> ProductPluginPlanSeed | None:
+        """Retain exact package evidence but narrow the plan and owners to Resources."""
+        resource_ids = {
+            item.contribution_id
+            for item in package.contribution_index.items
+            if item.kind == "resource_item"
+        }
+        selected_resources = tuple(
+            item
+            for item in self.plan.selected_contributions
+            if item.plugin_id == plugin_id and item.contribution_id in resource_ids
+        )
+        if not selected_resources:
+            return None
+        return ProductPluginPlanSeed(
+            plan=replace(self.plan, selected_contributions=selected_resources),
+            packages=self.packages,
+            bindings=self.bindings,
+            owner_bindings=tuple(
+                item for item in self.owner_bindings if item.owner_key[1] == "resource_item"
+            ),
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.plan, PluginSelectionPlanV2):
             raise TypeError("Product Plugin seed plan is invalid")
@@ -1696,27 +1721,6 @@ def _assemble_product_contribution_candidates(
         definitions=definitions,
         optional_choices=optional_choices,
     )
-
-
-def select_resource_plan(
-    plan: PluginSelectionPlanV2,
-    package: PublishedPluginPackage,
-    *,
-    plugin_id: str,
-) -> PluginSelectionPlanV2 | None:
-    resource_ids = {
-        item.contribution_id
-        for item in package.contribution_index.items
-        if item.kind == "resource_item"
-    }
-    selected_resources = tuple(
-        item
-        for item in plan.selected_contributions
-        if item.plugin_id == plugin_id and item.contribution_id in resource_ids
-    )
-    if not selected_resources:
-        return None
-    return replace(plan, selected_contributions=selected_resources)
 
 
 def bind_compiled_registration_authority(

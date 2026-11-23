@@ -67,6 +67,9 @@ from loushang.harness.package_product._selected_plugin_revisions import (
     SelectedProductPreparationScope as SelectedProductPreparationScope,
 )
 from loushang.harness.package_product._selected_plugin_revisions import (
+    select_external_resource_owners,
+)
+from loushang.harness.package_product._selected_plugin_revisions import (
     selected_runtime_recheck as selected_runtime_recheck,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -427,8 +430,19 @@ def _product_plan_seed(
     selected_data_ids: set[str] = set()
     if base_compilation is not None:
         base_plan = base_compilation.plan
-        selected_data_ids, base_owner_bindings = _builtin_data_owner_bindings(
-            base_compilation, selected
+        selected_data_ids, external_trust = select_external_resource_owners(
+            selected,
+            trust_classes=EXTERNAL_DATA_TRUST_CLASSES,
+            permits_owner=permits_external_data_owner,
+            base_owner_ids=(
+                admission.owner_id
+                for admission in base_compilation.product_composition.resource_admissions
+                if admission.plugin_id == "coding.base"
+            ),
+            base_trust_class="host-equivalent-local",
+        )
+        base_owner_bindings = _bind_coding_external_resource_owners(
+            base_compilation.owner_bindings, external_trust
         )
     by_id = {item.manifest.name: item for item in selected}
     plugin_ids = tuple(sorted(by_id))
@@ -462,47 +476,6 @@ def _product_plan_seed(
             ProductContributionOwnerBinding(authority=tool_authority),
         ),
     )
-
-
-def _builtin_data_owner_bindings(
-    base_compilation: CodingBaseProductCompilation,
-    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
-) -> tuple[set[str], tuple[ProductContributionOwnerBinding, ...]]:
-    selected_data_ids: set[str] = set()
-    external_trust_by_owner: dict[str, set[str]] = {}
-    for item in selected:
-        trust = item.source_trust_snapshot
-        if trust is None or trust.source_trust_class not in EXTERNAL_DATA_TRUST_CLASSES:
-            continue
-        owners = tuple(
-            reservation.owner
-            for reservation, _ in item.verified_data_only_declarations()
-        )
-        if not all(
-            permits_external_data_owner(trust.source_trust_class, owner)
-            for owner in owners
-        ):
-            continue
-        selected_data_ids.add(item.manifest.name)
-        for owner in owners:
-            external_trust_by_owner.setdefault(owner, set()).add(
-                trust.source_trust_class
-            )
-
-    for admission in base_compilation.product_composition.resource_admissions:
-        if (
-            admission.plugin_id == "coding.base"
-            and admission.owner_id in external_trust_by_owner
-        ):
-            external_trust_by_owner[admission.owner_id].add("host-equivalent-local")
-    base_owner_bindings = _bind_coding_external_resource_owners(
-        base_compilation.owner_bindings,
-        {
-            owner: tuple(sorted(classes))
-            for owner, classes in external_trust_by_owner.items()
-        },
-    )
-    return selected_data_ids, base_owner_bindings
 
 
 def _required_trust(
