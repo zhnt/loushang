@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
-from argparse import SUPPRESS, ArgumentParser, Namespace
+from argparse import SUPPRESS, Namespace
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Never, TextIO
+from typing import Literal, TextIO
 
 from loushang.foundation.reasoning import THINKING_LEVELS
+from loushang.harness.cli.parser import (
+    CliCommandUsageError,
+    RaisingArgumentParser,
+    extract_root_command,
+)
 from loushang.harness.multiagent import (
     CollaborationRecipe,
     RecipeExecutionResult,
@@ -18,15 +23,12 @@ from loushang.harness.multiagent import (
 MultiAgentOutputFormat = Literal["plain", "json"]
 
 
-class MultiAgentCliUsageError(ValueError):
-    def __init__(self, message: str, *, usage: str) -> None:
-        super().__init__(message)
-        self.usage = usage
+class MultiAgentCliUsageError(CliCommandUsageError):
+    pass
 
 
-class _NoExitParser(ArgumentParser):
-    def error(self, message: str) -> Never:
-        raise MultiAgentCliUsageError(message, usage=self.format_usage())
+class _NoExitParser(RaisingArgumentParser):
+    usage_error_type = MultiAgentCliUsageError
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,24 +60,7 @@ MultiAgentCliCommand = MultiAgentRecipesCommand | MultiAgentRunCommand
 
 
 def extract_multiagent_argv(argv: Sequence[str]) -> tuple[str, ...] | None:
-    """Extract ``ma``/``multiagent``, preserving a leading common ``--cwd``."""
-
-    values = list(argv)
-    if values and values[0] in {"ma", "multiagent"}:
-        return tuple(values[1:])
-    if (
-        len(values) >= 3
-        and values[0] == "--cwd"
-        and values[2] in {"ma", "multiagent"}
-    ):
-        return (*values[3:], "--cwd", values[1])
-    if (
-        len(values) >= 2
-        and values[0].startswith("--cwd=")
-        and values[1] in {"ma", "multiagent"}
-    ):
-        return (*values[2:], values[0])
-    return None
+    return extract_root_command(argv, "ma", "multiagent", append_cwd=True)
 
 
 def parse_multiagent_command(argv: Sequence[str]) -> MultiAgentCliCommand:

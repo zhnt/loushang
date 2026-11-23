@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from argparse import ArgumentParser, RawTextHelpFormatter
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, cast
+from typing import Any, Never, TextIO, cast
 
 from loushang.harness.cli.profile import CliProfile
 from loushang.harness.cli.types import (
@@ -12,6 +12,45 @@ from loushang.harness.cli.types import (
     CliInvocation,
     CliProfileError,
 )
+
+
+class CliCommandUsageError(ValueError):
+    def __init__(self, message: str, *, usage: str) -> None:
+        super().__init__(message)
+        self.usage = usage
+
+
+class RaisingArgumentParser(ArgumentParser):
+    """Report usage through a command's existing error type."""
+
+    usage_error_type: type[CliCommandUsageError] = CliCommandUsageError
+
+    def error(self, message: str) -> Never:
+        raise self.usage_error_type(message, usage=self.format_usage())
+
+
+def write_usage_error(stderr: TextIO, error: CliCommandUsageError) -> int:
+    stderr.write(error.usage)
+    stderr.write(f"Error: {error}\n")
+    return 2
+
+
+def extract_root_command(
+    argv: Sequence[str], *families: str, append_cwd: bool = False
+) -> tuple[str, ...] | None:
+    """Remove an exact command name and preserve its optional leading cwd."""
+    values = tuple(argv)
+    if values and values[0] in families:
+        return values[1:]
+    if len(values) >= 3 and values[0] == "--cwd":
+        cwd, command = values[:2], values[2:]
+    elif len(values) >= 2 and values[0].startswith("--cwd="):
+        cwd, command = values[:1], values[1:]
+    else:
+        return None
+    if command[0] not in families:
+        return None
+    return (*command[1:], *cwd) if append_cwd else (*cwd, *command[1:])
 
 
 def root_option_requested(
