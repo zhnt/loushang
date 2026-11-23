@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import chain
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -107,6 +108,11 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityWorkerComponentRequest,
     validate_session_capability_composition_closure,
 )
+from loushang.harness.session.composition_evidence import (
+    _capture_worker_startup_selection,
+    read_composition_receipt,
+)
+from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 if TYPE_CHECKING:
     from loushang.harness.package_product._selected_plugin_revisions import (
@@ -120,6 +126,11 @@ if TYPE_CHECKING:
         PackageProductRuntimeBindingV1,
     )
     from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
+    from loushang.harness.resume_effects import ResumeEffectParentContextV1
+    from loushang.harness.transcript.product_session import ProductTranscriptSession
+    from loushang.harness.worker.product_activation import (
+        ProductWorkerActivationReceiptV1,
+    )
 
 
 ProductOptionalRequirementSelector = Callable[
@@ -308,6 +319,21 @@ def assemble_agent_data_composition(
     )
 
 
+_WorkerBindingT = TypeVar("_WorkerBindingT")
+
+
+class _StartupReceiptOwner(Protocol):
+    def issue(self) -> ProductWorkerActivationReceiptV1 | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _OrdinaryWorkerPlatform:
+    receipt_owner_type: type[_StartupReceiptOwner]
+    open_receipt_owner: Callable[..., _StartupReceiptOwner]
+    plan_launch: Callable[..., object]
+    prepare_pending: Callable[..., SessionCapabilityCompositionInputs]
+
+
 @dataclass(frozen=True, slots=True)
 class _WorkerSessionComposition:
     """Join one admitted Worker without replacing ordinary Session facts.
@@ -323,6 +349,110 @@ class _WorkerSessionComposition:
     error_prefix: str
     invalid_composition_inputs: str
     invalid_session_inputs: str
+
+    def prepare_ordinary(
+        self,
+        ordinary: _PreparedBaseSession,
+        *,
+        transcript: ProductTranscriptSession,
+        runtime: PackageProductRuntimeBindingV1,
+        product_owner: object,
+        plugin_id: str,
+        definition: CapabilityDefinition,
+        platform: _OrdinaryWorkerPlatform,
+        startup_type: str,
+        startup_label: str,
+        manifest_limits: tuple[int, int],
+        startup_failure: Callable[[str], RuntimeError],
+        bind_receipt_context: Callable[[ProductWorkerActivationReceiptV1], object],
+        make_base_policy: Callable[..., object],
+        make_provider_owner: Callable[[], CapabilityProviderOwnerAuthority],
+        resolve_provider: Callable[..., tuple[ResolvedCapabilityProviderSet, int]],
+        clock: Callable[[], int],
+        resume_parent_context: ResumeEffectParentContextV1 | None,
+        binding_type: Callable[..., _WorkerBindingT],
+    ) -> _WorkerBindingT:
+        """Prove one receipt and compile its deferred Worker into the Session graph."""
+        if not transcript.is_persisted():
+            raise startup_failure("transcript_not_materialized")
+        base_context = ordinary.session_inputs.product_composition.authority_context
+        plan_context = ordinary.compilation.plan.context
+        if (
+            runtime.session_id != transcript.get_header().conversation_id
+            or plan_context.scope_id != f"session:{runtime.session_id}"
+            or base_context.product_policy_revision != plan_context.policy_revision
+        ):
+            raise startup_failure("product_scope_changed")
+        startup = read_composition_receipt(
+            transcript.get_entries(), extension_type=startup_type, label=startup_label
+        )
+        if startup is None and transcript.get_entries():
+            raise startup_failure("startup_provenance_missing")
+        owner = platform.open_receipt_owner(
+            product_owner=product_owner,
+            runtime=runtime,
+            plugin_id=plugin_id,
+            transcript_directory=AgentTranscriptDirectoryRuntime(
+                session_dir=transcript.get_session_dir()
+            ),
+            session_manager=transcript,
+            active_session=True,
+        )
+        receipt = owner.issue()
+        if receipt is None:
+            raise startup_failure("candidate_not_allowed")
+        settlement = bind_receipt_context(receipt)
+        selected = _capture_worker_startup_selection(
+            runtime=runtime,
+            plugin_id=plugin_id,
+            receipt=receipt,
+            existing_startup=startup,
+            max_files=manifest_limits[0],
+            max_total_bytes=manifest_limits[1],
+            failure=startup_failure,
+        )
+        base_policy = make_base_policy(
+            base=ordinary.compilation, receipt_owner=owner, receipt=receipt
+        )
+        provider_owner = make_provider_owner()
+        resolved, evaluated_at = resolve_provider(
+            owner=provider_owner,
+            receipt_owner=owner,
+            receipt=receipt,
+            plugin_id=plugin_id,
+            clock=lambda: base_context.evaluated_at,
+            base_policy_binding=base_policy,
+        )
+        assert type(owner) is platform.receipt_owner_type
+        pending = platform.plan_launch(
+            receipt_owner=owner, receipt=receipt, attempt_id=secrets.token_hex(16)
+        )
+        worker = platform.prepare_pending(
+            resolved_providers=resolved,
+            provider_owner=provider_owner,
+            receipt_owner=owner,
+            receipt=receipt,
+            pending_launch=pending,
+            evaluated_at=evaluated_at,
+            clock=clock,
+            base_policy_binding=base_policy,
+            resume_parent_context=resume_parent_context,
+            resume_settlement=settlement,
+        )
+        combined = self.compose_selected(
+            ordinary=ordinary.session_inputs,
+            worker=worker,
+            worker_definition=definition,
+            workspace_binding=ordinary.workspace_binding,
+        )
+        return binding_type(
+            ordinary=ordinary.session_inputs,
+            combined=combined,
+            workspace_binding=ordinary.workspace_binding,
+            selected_worker_manifest=selected,
+            activation_receipt=receipt,
+            resume_settlement=settlement,
+        )
 
     def select_provider(
         self,

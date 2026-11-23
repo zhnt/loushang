@@ -19,11 +19,8 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.session.capability_composition_inputs import (
-    SessionCapabilityCompositionInputs,
-)
-from loushang.harness.session.composition_evidence import (
-    bind_ordinary_worker_startup,
+from loushang.harness.session.product_composition_assembly import (
+    _OrdinaryWorkerPlatform,
 )
 
 from .product_worker_ordinary_error import CodingWorkerOrdinaryBootstrapError
@@ -118,107 +115,50 @@ def prepare_coding_product_worker_ordinary_binding(
         )
     ):
         raise TypeError('Coding Worker ordinary Product inputs are invalid')
-    if not session_manager.is_persisted():
-        raise CodingWorkerOrdinaryBootstrapError(
-            'coding_worker_ordinary_transcript_not_materialized'
+    platform = (
+        _OrdinaryWorkerPlatform(
+            CodingWindowsWorkerProductReceiptOwner,
+            open_coding_windows_product_selected_worker_receipt_owner,
+            plan_coding_windows_product_worker_pending_launch,
+            prepare_coding_windows_product_worker_pending_session_inputs,
         )
-    base_context = ordinary.session_inputs.product_composition.authority_context
-    open_receipt_owner: Callable[
-        ..., CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
-    ] = (
-        open_coding_windows_product_selected_worker_receipt_owner
         if type(product_owner) is WindowsLocalWheelProductSessionOwner
-        else open_coding_product_selected_worker_receipt_owner
+        else _OrdinaryWorkerPlatform(
+            CodingWorkerProductReceiptOwner,
+            open_coding_product_selected_worker_receipt_owner,
+            plan_coding_product_worker_pending_launch,
+            prepare_coding_product_worker_pending_session_inputs,
+        )
     )
-    receipt_owner, receipt, selected_worker, resume_settlement = bind_ordinary_worker_startup(
-        session_manager,
-        runtime,
+    return _WORKER_SESSION_COMPOSITION.prepare_ordinary(
+        ordinary,
+        transcript=session_manager,
+        runtime=runtime,
+        product_owner=product_owner,
         plugin_id=plugin_id,
-        base_context=base_context,
-        plan_context=ordinary.compilation.plan.context,
-        extension_type=CODING_COMPOSITION_STARTUP_TYPE,
-        label="Coding Session",
-        max_files=_STARTUP_MAX_FILES,
-        max_total_bytes=_STARTUP_MAX_BYTES,
-        open_receipt_owner=lambda directory: open_receipt_owner(
-            product_owner=product_owner,
-            runtime=runtime,
-            plugin_id=plugin_id,
-            transcript_directory=directory,
-            session_manager=session_manager,
-            active_session=True,
-        ),
-        bind_receipt_context=lambda selected_receipt: (
+        definition=CODING_WORKER_QUERY_DEFINITION,
+        platform=platform,
+        startup_type=CODING_COMPOSITION_STARTUP_TYPE,
+        startup_label="Coding Session",
+        manifest_limits=(_STARTUP_MAX_FILES, _STARTUP_MAX_BYTES),
+        startup_failure=_startup_failure,
+        bind_receipt_context=lambda receipt: (
             CodingWorkerResumeSettlementBinding(
-                receipt=selected_receipt, context=resume_parent_context
+                receipt=receipt, context=resume_parent_context
             )
             if resume_parent_context is not None
             else None
         ),
-        failure=_startup_failure,
-    )
-    base_policy = CodingWorkerBaseCompositionPolicyBinding(
-        base=ordinary.compilation,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-    )
-    provider_owner = coding_worker_query_owner_authority()
-    resolved, evaluated_at = _resolve_selected_worker_query(
-        owner=provider_owner,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        plugin_id=plugin_id,
-        clock=lambda: base_context.evaluated_at,
-        eligibility_duration=_PROVIDER_ELIGIBILITY_DURATION,
-        admission_duration=_PROVIDER_ADMISSION_DURATION,
-        base_policy_binding=base_policy,
-    )
-    prepare_pending: Callable[..., SessionCapabilityCompositionInputs]
-    if type(product_owner) is WindowsLocalWheelProductSessionOwner:
-        assert type(receipt_owner) is CodingWindowsWorkerProductReceiptOwner
-        prepare_pending = partial(
-            prepare_coding_windows_product_worker_pending_session_inputs,
-            receipt_owner=receipt_owner,
-            pending_launch=plan_coding_windows_product_worker_pending_launch(
-                receipt_owner=receipt_owner,
-                receipt=receipt,
-                attempt_id=secrets.token_hex(16),
-            ),
-        )
-    else:
-        assert type(receipt_owner) is CodingWorkerProductReceiptOwner
-        prepare_pending = partial(
-            prepare_coding_product_worker_pending_session_inputs,
-            receipt_owner=receipt_owner,
-            pending_launch=plan_coding_product_worker_pending_launch(
-                receipt_owner=receipt_owner,
-                receipt=receipt,
-                attempt_id=secrets.token_hex(16),
-            ),
-        )
-    worker = prepare_pending(
-        resolved_providers=resolved,
-        provider_owner=provider_owner,
-        receipt=receipt,
-        evaluated_at=evaluated_at,
+        make_base_policy=CodingWorkerBaseCompositionPolicyBinding,
+        make_provider_owner=coding_worker_query_owner_authority,
+        resolve_provider=partial(
+            _resolve_selected_worker_query,
+            eligibility_duration=_PROVIDER_ELIGIBILITY_DURATION,
+            admission_duration=_PROVIDER_ADMISSION_DURATION,
+        ),
         clock=clock,
-        base_policy_binding=base_policy,
         resume_parent_context=resume_parent_context,
-        resume_settlement=resume_settlement,
-    )
-    combined = _WORKER_SESSION_COMPOSITION.compose_selected(
-        ordinary=ordinary.session_inputs,
-        worker=worker,
-        worker_definition=CODING_WORKER_QUERY_DEFINITION,
-        workspace_binding=ordinary.workspace_binding,
-    )
-    return CodingProductWorkerOrdinarySessionBinding(
-        ordinary=ordinary.session_inputs,
-        combined=combined,
-        workspace_binding=ordinary.workspace_binding,
-        selected_worker_manifest=selected_worker,
-        activation_receipt=receipt,
-        resume_settlement=resume_settlement,
+        binding_type=CodingProductWorkerOrdinarySessionBinding,
     )
 
 

@@ -8,7 +8,7 @@ from copy import deepcopy
 from hashlib import sha256
 from itertools import chain
 from re import fullmatch
-from typing import TYPE_CHECKING, Protocol, TypeGuard, TypeVar, cast
+from typing import TYPE_CHECKING, TypeGuard, cast
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.config.agent import CapabilityMountMode
@@ -19,12 +19,8 @@ from loushang.harness.resources._catalog_records import (
     ResourceCatalogSnapshot,
     fingerprint_catalog_value,
 )
-from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 if TYPE_CHECKING:
-    from loushang.harness.capabilities.consumer_requirements import (
-        ProductCompositionAuthorityContext,
-    )
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
@@ -34,7 +30,6 @@ if TYPE_CHECKING:
     from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
     from loushang.harness.resources.plugins.selection import (
         PluginInstanceRevisionRef,
-        PluginPreflightContextV1,
     )
     from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
     from loushang.harness.transcript.product_session import ProductTranscriptSession
@@ -108,65 +103,6 @@ def read_composition_receipt(
             payload.data, label=label, require_current=require_current
         )
     return found
-
-
-class _StartupReceiptOwner(Protocol):
-    def issue(self) -> ProductWorkerActivationReceiptV1 | None: ...
-
-
-_ReceiptOwnerT = TypeVar("_ReceiptOwnerT", bound=_StartupReceiptOwner)
-_ReceiptContextT = TypeVar("_ReceiptContextT")
-
-
-def bind_ordinary_worker_startup(
-    transcript: ProductTranscriptSession,
-    runtime: PackageProductRuntimeBindingV1,
-    *,
-    plugin_id: str,
-    base_context: ProductCompositionAuthorityContext,
-    plan_context: PluginPreflightContextV1,
-    extension_type: str,
-    label: str,
-    max_files: int,
-    max_total_bytes: int,
-    open_receipt_owner: Callable[[AgentTranscriptDirectoryRuntime], _ReceiptOwnerT],
-    bind_receipt_context: Callable[[ProductWorkerActivationReceiptV1], _ReceiptContextT],
-    failure: Callable[[str], RuntimeError],
-) -> tuple[
-    _ReceiptOwnerT,
-    ProductWorkerActivationReceiptV1,
-    PackageProductSelectedPluginManifestV1,
-    _ReceiptContextT,
-]:
-    """Issue authority for the attached transcript and reprove its selected manifest."""
-    if (
-        runtime.session_id != transcript.get_header().conversation_id
-        or plan_context.scope_id != f"session:{runtime.session_id}"
-        or base_context.product_policy_revision != plan_context.policy_revision
-    ):
-        raise failure("product_scope_changed")
-    startup = read_composition_receipt(
-        transcript.get_entries(), extension_type=extension_type, label=label
-    )
-    if startup is None and transcript.get_entries():
-        raise failure("startup_provenance_missing")
-    owner = open_receipt_owner(
-        AgentTranscriptDirectoryRuntime(session_dir=transcript.get_session_dir())
-    )
-    receipt = owner.issue()
-    if receipt is None:
-        raise failure("candidate_not_allowed")
-    context = bind_receipt_context(receipt)
-    selected = _capture_worker_startup_selection(
-        runtime=runtime,
-        plugin_id=plugin_id,
-        receipt=receipt,
-        existing_startup=startup,
-        max_files=max_files,
-        max_total_bytes=max_total_bytes,
-        failure=failure,
-    )
-    return owner, receipt, selected, context
 
 
 def _capture_worker_startup_selection(
