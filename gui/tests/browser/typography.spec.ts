@@ -150,9 +150,8 @@ for (const sample of [
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(680);
       expect(fontRequests).toEqual([]);
       await page.locator(".brand-actions .frame-icon").click();
-      const goal = page.locator(".composer-goal");
-      await goal.click();
-      await expect(goal).toHaveAttribute("aria-expanded", "true");
+      await page.getByRole("button", { name: sample.locale === "zh-CN" ? "会话操作" : "Session actions" }).click();
+      await page.getByRole("menuitem", { name: sample.locale === "zh-CN" ? "目标" : "Goal", exact: true }).click();
       await expect(page.locator(".interactive-goal")).toBeInViewport();
     } finally {
       await context.close();

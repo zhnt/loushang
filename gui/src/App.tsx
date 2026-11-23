@@ -1212,13 +1212,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     onClick={clearFailure}>{t("session:composer.dismissNotice")}</button> : null}
                 </div> : null}
                 <MessageComposer {...composer} title={conversationTitle} fixture={Boolean(fixture)}
-                  leadingAction={goalPanelScope || draftGoalScope ? <button type="button" className="composer-goal"
-                    aria-label={t("panels:interactiveGoal.title")} title={t("panels:interactiveGoal.title")}
-                    aria-expanded={goalPanelOpen || draftGoalOpen} aria-controls={goalPanelId} onClick={() => {
+                  goalAction={goalPanelScope || draftGoalScope ? {
+                    label: t("panels:interactiveGoal.shortcut"),
+                    run: () => {
                       if (draftGoalScope) setOpenDraftGoal(draftGoalOpen ? null : draftGoalScope);
                       else if (goalPanelOpen) dispatch({ type: "dock.closed" });
                       else openTasks();
-                    }}><UiIcon name="goal" /><span>{t("panels:interactiveGoal.shortcut")}</span></button> : null}
+                    },
+                  } : undefined}
                   model={<ModelPicker
                     models={draft ? draftModels.models : sessionModels}
                     emptyLabel={draft ? draftModels.label : modelLabel}
