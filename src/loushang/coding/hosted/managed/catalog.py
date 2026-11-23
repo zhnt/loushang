@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -22,10 +21,6 @@ from loushang.apphost.integrations._canonical_transcript_catalog import (
     _ManagedCanonicalTranscriptCatalogMethods,
 )
 from loushang.appserver.protocol import SessionIdentityV1, SessionScopeV1
-from loushang.appservice.discovery_ports import (
-    HostedSessionDiscoveryScopeV1,
-    HostedSessionDiscoverySnapshotV1,
-)
 from loushang.coding.hosted.catalog import (
     CODING_HOSTED_COMPATIBILITY_ID,
     CodingHostedCatalogError,
@@ -45,10 +40,6 @@ from loushang.coding.session.manager import (
 )
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
-from loushang.harness.transcript.store_admission import (
-    TranscriptStoreAdmission,
-    TranscriptStoreBinding,
-)
 
 _MAX_STORE_OBSERVATIONS = 8
 
@@ -66,40 +57,13 @@ class CodingManagedSessionCatalogV1(
 
     def __init__(self, *, session_root: Path, workspace: Path, initialize_session_root: bool = False,
                  store_state_root: Path | None = None) -> None:
-        if type(initialize_session_root) is not bool:
-            raise TypeError("invalid Session root initialization grant")
-        if store_state_root is not None and initialize_session_root:
-            raise ValueError("store admission cannot be combined with a root creation grant")
-        # Trusted first-initialization authority, NOT a missing-directory test.
-        # A production coordinator must prove this is a new store before
-        # granting it; no CLI/default/restore path supplies it automatically.
-        self._root_initialization = initialize_session_root
-        self._root_observed = threading.Event()
-        self._store_state_root = store_state_root
-        self._store_probes: dict[TranscriptStoreAdmission, bool] = {}
-        self._store_probe_lock = threading.Lock()
-        self._store_probes_fenced = False
-        self._store_active_reads = 0
-        self._observed_store_binding: TranscriptStoreBinding | None = None
-        self._observed_root_identity: tuple[int, int] | None = None
+        self._initialize_managed_store(
+            store_state_root, initialize_session_root=initialize_session_root
+        )
         super().__init__(tuple(
             CodingHostedScopeV1(scope, session_root, workspace)
             for scope in (SessionScopeV1.CWD, SessionScopeV1.USER_HOME)
         ), owned_transcripts=True, store_state_root=store_state_root, store_root_observed=self._root_observed)
-
-    async def discover_sessions(
-        self,
-        scope: HostedSessionDiscoveryScopeV1,
-        *,
-        stop: Callable[[], bool],
-    ) -> HostedSessionDiscoverySnapshotV1:
-        return await super().discover_sessions(scope, stop=stop)
-
-    def fence(self) -> None:
-        return super().fence()
-
-    async def close(self) -> None:
-        return await super().close()
 
     def _validate_scope_roots(self, scopes: tuple[CodingHostedScopeV1, ...]) -> None:
         if len({item.session_dir for item in scopes}) != 1 or len({item.cwd for item in scopes}) != 1:

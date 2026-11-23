@@ -165,11 +165,36 @@ class _CanonicalTranscriptCatalogMethods(
     _closing: bool
     _loop: asyncio.AbstractEventLoop | None
 
+    def _initialize_catalog(
+        self,
+        scopes: tuple[CanonicalTranscriptScope, ...],
+        *,
+        legacy_factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT],
+        legacy_type: type[ProductTranscriptSession[BindingInputT, ProductBindingT]],
+        owned_type: type[ProductTranscriptSession[BindingInputT, ProductBindingT]],
+        make_owned_factory: (
+            Callable[[], AgentTranscriptSessionFactory[BindingInputT, ProductBindingT]]
+            | None
+        ),
+    ) -> None:
+        self.scopes = scopes
+        self._legacy_transcript_factory = legacy_factory
+        self._legacy_transcript_type = legacy_type
+        self._owned_transcript_type = owned_type
+        self._records = {}
+        self._lock = asyncio.Lock()
+        self._owned_factory = (
+            make_owned_factory() if make_owned_factory is not None else None
+        )
+        self._pending_sessions = {}
+        self._closing = False
+        self._loop = None
+
     @property
     def pending_sessions(
         self,
     ) -> tuple[AgentTranscriptLifecycleSession[ProductBindingT], ...]:
-        raise NotImplementedError
+        return tuple(self._pending_sessions.values())
 
     def _product_id(self) -> str:
         raise NotImplementedError
@@ -207,28 +232,39 @@ class _CanonicalTranscriptCatalogMethods(
         raise NotImplementedError
 
     def _scope_for(self, request: SessionCreateRequestV1) -> CanonicalTranscriptScope:
-        raise NotImplementedError
+        if (
+            request.product_id != self._product_id()
+            or request.requested_continuity_id is None
+        ):
+            raise self._catalog_error_class()()
+        for scope in self.scopes:
+            if (
+                scope.discovery_scope is request.requested_scope
+                and scope.fingerprint == request.creator_scope_id
+            ):
+                return scope
+        raise self._catalog_error_class()()
 
     def _validate_open_record(self, record: RecordT) -> None:
         raise NotImplementedError
 
     def _display_identity(self, record: RecordT) -> SessionIdentityV1:
-        raise NotImplementedError
+        return record.identity
 
     def _record_visible(self, record: RecordT) -> bool:
-        raise NotImplementedError
+        return True
 
     def _record_compatible(self, record: RecordT) -> bool:
         raise NotImplementedError
 
     def _record_available(self, record: RecordT) -> bool:
-        raise NotImplementedError
+        return self._record_compatible(record)
 
     def _validate_records(self, records: list[RecordT]) -> None:
         raise NotImplementedError
 
     def _new_root_creation(self) -> bool:
-        raise NotImplementedError
+        return False
 
     def _project_catalog_record(
         self,
@@ -716,6 +752,17 @@ class _ManagedCanonicalTranscriptCatalogMethods(
 ):
     _root_initialization: bool
     _root_observed: threading.Event
+
+    def _initialize_managed_store(
+        self, store_state_root: Path | None, *, initialize_session_root: bool
+    ) -> None:
+        if type(initialize_session_root) is not bool:
+            raise TypeError("invalid Session root initialization grant")
+        if store_state_root is not None and initialize_session_root:
+            raise ValueError("store admission cannot be combined with a root creation grant")
+        # A caller must have established first-initialization authority.
+        self._root_initialization = initialize_session_root
+        self._initialize_store_observations(store_state_root)
 
     def _header_read_context(self) -> tuple[bool, threading.Event | None]:
         return True, self._root_observed

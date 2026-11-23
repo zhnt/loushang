@@ -6,7 +6,6 @@ in a parallel Session index. Candidate tokens never supply filesystem paths.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import os
 import threading
@@ -36,10 +35,6 @@ from loushang.apphost.integrations._canonical_transcript_catalog import (
 from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionScopeV1,
-)
-from loushang.appservice.discovery_ports import (
-    HostedSessionDiscoveryScopeV1,
-    HostedSessionDiscoverySnapshotV1,
 )
 from loushang.coding.adapters._goal_store import is_goal_journal_filename
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
@@ -565,22 +560,18 @@ class CodingHostedSessionCatalogV1(
         if len({item.scope for item in scopes}) != len(scopes):
             raise ValueError("duplicate hosted scope")
         self._validate_scope_roots(scopes)
-        self.scopes = scopes
-        self._legacy_transcript_factory = _HOSTED_FACTORY
-        self._legacy_transcript_type = _HostedTranscript
-        self._owned_transcript_type = _OwnedHostedTranscript
-        self._records: dict[SessionCandidateRefV1, _Record] = {}
-        self._lock = asyncio.Lock()
-        self._owned_factory = (
-            create_owned_coding_session_factory(
+        self._initialize_catalog(
+            scopes,
+            legacy_factory=_HOSTED_FACTORY,
+            legacy_type=_HostedTranscript,
+            owned_type=_OwnedHostedTranscript,
+            make_owned_factory=partial(
+                create_owned_coding_session_factory,
                 session_file_factory=_session_path,
                 store_state_root=store_state_root,
                 store_root_observed=store_root_observed,
-            ) if owned_transcripts else None
+            ) if owned_transcripts else None,
         )
-        self._pending_sessions: dict[int, AgentTranscriptLifecycleSession[RuntimeProfileBinding]] = {}
-        self._closing = False
-        self._loop: asyncio.AbstractEventLoop | None = None
 
     def _validate_scope_roots(self, scopes: tuple[CodingHostedScopeV1, ...]) -> None:
         if len({item.session_dir for item in scopes}) != len(scopes):
@@ -592,59 +583,18 @@ class CodingHostedSessionCatalogV1(
             envelope.product_compatibility_id == CODING_HOSTED_COMPATIBILITY_ID
         )
 
-    def _record_available(self, record: _Record) -> bool:
-        return self._record_compatible(record)
-
     def _validate_open_record(self, record: _Record) -> None:
         # Legacy v1 compatibility remains the Product validator's decision.
         # Managed catalogs additionally fence workspace/runtime before IO.
         return None
-
-    def _display_identity(self, record: _Record) -> SessionIdentityV1:
-        return record.identity
-
-    def _record_visible(self, record: _Record) -> bool:
-        return True
-
-    def _new_root_creation(self) -> bool:
-        return False
 
     def _validate_records(self, records: list[_Record]) -> None:
         identities = [item.identity.session_id for item in records]
         if len(set(identities)) != len(identities):
             raise CodingHostedCatalogError()
 
-    @property
-    def pending_sessions(self) -> tuple[AgentTranscriptLifecycleSession[RuntimeProfileBinding], ...]:
-        return tuple(self._pending_sessions.values())
-
-    def fence(self) -> None:
-        return super().fence()
-
-    async def close(self) -> None:
-        return await super().close()
-
     async def delete_session_history(self, identity: SessionIdentityV1) -> None:
         await self._delete_canonical_history(identity, _hosted_session_path)
-
-    async def discover_sessions(
-        self,
-        scope: HostedSessionDiscoveryScopeV1,
-        *,
-        stop: Callable[[], bool],
-    ) -> HostedSessionDiscoverySnapshotV1:
-        return await super().discover_sessions(scope, stop=stop)
-
-    async def list_identities(
-        self,
-        scopes: tuple[SessionDiscoveryScope, ...],
-        *,
-        limit: int,
-    ) -> tuple[SessionIdentityProjectionV1, ...]:
-        return await super().list_identities(scopes, limit=limit)
-
-    async def open_candidate(self, reference: SessionCandidateRefV1) -> _Candidate:
-        return await super().open_candidate(reference)
 
     async def preview_history_header(
         self, reference: SessionCandidateRefV1,
@@ -736,26 +686,6 @@ class CodingHostedSessionCatalogV1(
             reference, max_bytes=max_bytes, selected_leaf_id=selected_leaf_id,
         )
         return await self._open_discovered_history_candidate(reference, binding, project)
-
-    def _scope_for(self, request: SessionCreateRequestV1) -> CodingHostedScopeV1:
-        if request.product_id != "coding" or request.requested_continuity_id is None:
-            raise CodingHostedCatalogError()
-        for scope in self.scopes:
-            if (
-                scope.discovery_scope is request.requested_scope
-                and scope.fingerprint == request.creator_scope_id
-            ):
-                return cast(CodingHostedScopeV1, scope)
-        raise CodingHostedCatalogError()
-
-    async def find_created_candidate(
-        self, request: SessionCreateRequestV1
-    ) -> _Candidate | None:
-        return await super().find_created_candidate(request)
-
-    async def create_candidate(self, intent: SessionCreateIntentV1) -> _Candidate:
-        return await super().create_candidate(intent)
-
 
 class CodingHostedResumeCatalogV1:
     """Route only AppHost resume opens through the detached history owner.
