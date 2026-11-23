@@ -832,10 +832,10 @@ def test_plc9b_effect_inventory_freezes_owner_and_bypass_capabilities() -> None:
     documented = _documented_effect_counts()
     actual = _package_effect_scope_counts()
 
-    assert len(documented) == 146
-    assert sum(documented.values()) == 163
+    assert len(documented) == 153
+    assert sum(documented.values()) == 170
     assert actual == documented
-    assert "146 effect/capability rows\nwith 163 occurrences" in inventory
+    assert "153 effect/capability rows\nwith 170 occurrences" in inventory
     for required in (
         (
             PACKAGE_OPERATIONS,

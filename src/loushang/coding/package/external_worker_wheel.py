@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import sha256 as sha256
 from pathlib import Path
 from typing import cast
 
@@ -23,9 +23,10 @@ from loushang.harness.journal import (
 from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
     _WindowsWorkerSourceCatalog,
+    plugin_wheel_source_fields_match,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -85,18 +86,9 @@ class CodingExternalWorkerWheelBindingV1:
             raise ValueError("External Worker Wheel binding fields are invalid")
         match = _WHEEL_NAME.fullmatch(self.wheel_filename)
         if (
-            type(self.record_revision) is not int
-            or self.record_revision < 1
-            or not self.store_id
-            or _DIGEST.fullmatch(self.namespace_id) is None
-            or not self.scope_id
-            or not Path(self.original_source).is_absolute()
-            or os.path.normpath(self.original_source) != self.original_source
-            or match is None
-            or len(self.wheel_filename) > _MAX_WHEEL_FILENAME
-            or self.plugin_id != match["plugin"]
-            or self.version != match["version"]
-            or _DIGEST.fullmatch(self.artifact_digest) is None
+            not plugin_wheel_source_fields_match(
+                self, match, maximum_filename=_MAX_WHEEL_FILENAME
+            )
             or not isinstance(self.admission, PackageProductLocalWorkerAdmissionV1)
             or self.admission.native_platform
             != (

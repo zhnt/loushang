@@ -3,23 +3,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_inventory import (
+    reacquire_legacy_inventory_source,
+)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
 from .legacy_installation_inventory import (
     CodingLegacyInstallationInventoryEvidenceV1,
-    CodingLegacyInventoryError,
     CodingLegacyLocalInstallationV1,
-    read_coding_legacy_installation_inventory,
+    _legacy_inventory_query,
+    _project_inventory_evidence,
+)
+from .legacy_installation_inventory import (
+    CodingLegacyInventoryError as CodingLegacyInventoryError,
+)
+from .legacy_installation_inventory import (
+    read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
 )
 from .legacy_local_wheel import (
     CodingLegacyLocalWheelCandidateV1,
-    reacquire_coding_legacy_local_plugin_wheel,
+    _new_wheel_candidate,
+)
+from .legacy_local_wheel import (
+    reacquire_coding_legacy_local_plugin_wheel as reacquire_coding_legacy_local_plugin_wheel,
 )
 
 
@@ -46,42 +56,20 @@ def reacquire_coding_legacy_installed_local_source(
 
     if not isinstance(plugin_id, str) or not plugin_id:
         raise ValueError("Coding legacy Plugin identity is required")
-    inventory = read_coding_legacy_installation_inventory(lifecycle, epoch_runtime)
-    installation = next(
-        (
-            item
-            for item in inventory.inventory.active_local
-            if item.binding.plugin_id == plugin_id
-        ),
-        None,
+    evidence, position, wheel = reacquire_legacy_inventory_source(
+        _legacy_inventory_query(lifecycle, epoch_runtime),
+        epoch_runtime,
+        legacy_package_root=lifecycle.package_root,
+        plugin_id=plugin_id,
+        staging_prefix="loushang-legacy-review-",
+        error_type=CodingLegacyInventoryError,
+        label="Coding",
+        result_factory=_new_wheel_candidate,
     )
-    if installation is None:
-        raise CodingLegacyInventoryError(
-            "Coding legacy Plugin is not an installed local candidate"
-        )
-    binding = installation.binding
-    if not binding.source_identity.startswith("local:/"):
-        raise CodingLegacyInventoryError("Coding legacy local Source changed")
-    # Review can run under a read-only Product epoch. The verified revision is
-    # built in a disposable private directory; it never becomes Product Source
-    # authorization until a separate admission owner accepts it.
-    with TemporaryDirectory(prefix="loushang-legacy-review-") as staging:
-        wheel = reacquire_coding_legacy_local_plugin_wheel(
-            Path(binding.source_identity.removeprefix("local:")),
-            legacy_package_root=lifecycle.package_root,
-            staging_parent=Path(staging),
-            plugin_id=binding.plugin_id,
-            expected_source_identity=binding.source_identity,
-            expected_content_digest=binding.content_digest,
-            expected_manifest_digest=binding.manifest_digest,
-            expected_dependency_lock=binding.dependency_lock,
-        )
-    if read_coding_legacy_installation_inventory(lifecycle, epoch_runtime) != inventory:
-        raise CodingLegacyInventoryError(
-            "Coding legacy Installation snapshot changed during Source reacquisition"
-        )
-    epoch_runtime.assert_current()
-    return CodingLegacyReacquiredInstallationV1(inventory, installation, wheel)
+    inventory = _project_inventory_evidence(evidence)
+    return CodingLegacyReacquiredInstallationV1(
+        inventory, inventory.inventory.active_local[position], wheel
+    )
 
 
 __all__ = [

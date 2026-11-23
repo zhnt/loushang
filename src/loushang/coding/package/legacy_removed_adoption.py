@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 
@@ -9,26 +10,36 @@ from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateL
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
     bootstrap_reviewed_product_plugins,
-    preserve_removed_product_plugin,
+    replay_reviewed_removals,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
+    PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
-from .legacy_builtin_adoption import _key
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+)
 from .legacy_removed_acceptance import (
     CodingLegacyRemovedAcceptanceV1,
-    accept_coding_first_b_removed_local,
 )
-from .legacy_review import shared_coding_legacy_builtin_removal_operation_id
+from .legacy_removed_acceptance import (
+    accept_coding_first_b_removed_local as accept_coding_first_b_removed_local,
+)
+from .legacy_review import (
+    _reviewed_disabled_ids,
+    shared_coding_legacy_builtin_removal_operation_id,
+)
 from .product_runtime import (
-    _CODING_BUILTIN_BOOTSTRAP_POLICY,
-    CodingFencedProductApplicationOwner,
-    open_coding_fenced_product_application_owner,
+    _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
+)
+from .product_runtime import (
+    open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
 
 _BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
+
+
+_REMOVAL_LABEL = "Coding removed local Product"
 
 
 def adopt_coding_first_b_removed_local(
@@ -67,14 +78,14 @@ def adopt_coding_first_b_removed_local(
             *(item.plugin_id for item in receipt.review.removed_local),
             *receipt.review.removed_builtin_ids,
         }
-        for plugin_id in sorted(removed_ids):
-            _preserve_removed(owner, receipt, plugin_id)
-        disabled = {item.plugin_id for item in receipt.review.disabled_plugins}
-        disabled.update(
-            item.plugin_id
-            for item in receipt.review.builtin_intent
-            if item.desired_state == "installed_disabled"
+        replay_reviewed_removals(
+            product,
+            sorted(removed_ids),
+            product_id=_CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
+            operation_id_for=partial(_removed_operation_id, receipt),
+            error_prefix=_REMOVAL_LABEL,
         )
+        disabled = _reviewed_disabled_ids(receipt.review)
         bootstrap_reviewed_product_plugins(
             product,
             _BUILTINS,
@@ -103,22 +114,6 @@ def _removed_operation_id(
         + sha256(
             f"{receipt.review.store_id}\0{receipt.review.review_id}\0{plugin_id}".encode()
         ).hexdigest()
-    )
-
-
-def _preserve_removed(
-    owner: CodingFencedProductApplicationOwner,
-    receipt: CodingLegacyRemovedAcceptanceV1,
-    plugin_id: str,
-) -> None:
-    product = owner.runtime_owner.product_owner
-    key = _key(owner, plugin_id)
-    operation_id = _removed_operation_id(receipt, plugin_id)
-    preserve_removed_product_plugin(
-        product,
-        key,
-        operation_id,
-        error_prefix="Coding removed local Product",
     )
 
 

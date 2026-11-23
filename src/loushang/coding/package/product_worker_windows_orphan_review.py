@@ -15,6 +15,7 @@ from loushang.harness.package_product._windows_worker_recovery import (
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_orphan_runtime,
+    is_windows_product,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -68,9 +69,7 @@ def repair_coding_windows_product_worker_clean_exit_orphan_runtime(
     """Repair only a fully settled Worker whose Product runtime died later."""
 
     if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+        not is_windows_product(product, "coding", os.name)
         or type(expected_review) is not CodingWindowsWorkerOrphanRuntimeReviewV1
     ):
         raise ValueError(

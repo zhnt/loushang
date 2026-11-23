@@ -16,6 +16,7 @@ from loushang.harness.package_product._windows_worker_history import (
 from loushang.harness.package_product._windows_worker_references import (
     _WindowsPackageReferenceMethods,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -84,11 +85,7 @@ def review_coding_windows_worker_package_references(
 ) -> CodingWindowsWorkerPackageReferenceReviewV1:
     """Capture all preflight inputs while Package and Product guards stay held."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker Package references require their Product")
     return review_windows_product_worker_package_references(
         product,

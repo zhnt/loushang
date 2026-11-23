@@ -5,11 +5,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from hashlib import sha256
-from pathlib import Path
+from pathlib import Path as Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._legacy_runtime import (
+    require_legacy_snapshot_members,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -20,9 +23,14 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from .legacy_classification import CodingScopedLegacyDisableV1
 from .legacy_snapshot_member import (
     CodingLegacyInventoryDomain,
-    list_coding_first_b_snapshot_domain_members,
+    _snapshot_reader,
 )
-from .legacy_source_evidence import read_coding_legacy_source_evidence
+from .legacy_snapshot_member import (
+    list_coding_first_b_snapshot_domain_members as list_coding_first_b_snapshot_domain_members,
+)
+from .legacy_source_evidence import (
+    read_coding_legacy_source_evidence as read_coding_legacy_source_evidence,
+)
 
 _OLD_STATE_DOMAINS: tuple[CodingLegacyInventoryDomain, ...] = (
     "binding_history",
@@ -33,6 +41,17 @@ _OLD_STATE_DOMAINS: tuple[CodingLegacyInventoryDomain, ...] = (
     "store_bytes",
 )
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+_LEGACY_RECORD_VALUES = {
+    "value_001": "Coding disabled-only review record is invalid",
+    "value_002": "Coding disabled-only review entries are invalid",
+    "value_003": "Coding disabled-only review version is invalid",
+    "value_004": "Coding disabled-only review entries are duplicated",
+    "value_005": "Coding disabled-only review identity changed",
+    "value_006": "Coding disabled-only review digest is invalid",
+    "value_007": "Coding disabled-only review authority is invalid",
+}
 
 
 class CodingLegacyDisabledOnlyReviewError(ValueError):
@@ -57,7 +76,9 @@ class CodingLegacyDisabledOnlyReviewV1:
         if self.review_version != 1:
             raise ValueError("Unsupported disabled-only review version")
         object.__setattr__(
-            self, "review_id", sha256(canonical_json_bytes(self._identity_dict())).hexdigest()
+            self,
+            "review_id",
+            sha256(canonical_json_bytes(self._identity_dict())).hexdigest(),
         )
 
     def _identity_dict(self) -> dict[str, object]:
@@ -81,11 +102,17 @@ class CodingLegacyDisabledOnlyReviewV1:
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyDisabledOnlyReviewV1:
         if type(value) is not dict or set(value) != {
-            "reviewId", "storeId", "namespaceId", "scopeId", "firstFenceId",
-            "snapshotReceiptId", "sourceProjectionDigest", "reviewVersion",
+            "reviewId",
+            "storeId",
+            "namespaceId",
+            "scopeId",
+            "firstFenceId",
+            "snapshotReceiptId",
+            "sourceProjectionDigest",
+            "reviewVersion",
             "disabledPlugins",
         }:
-            raise ValueError("Coding disabled-only review record is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_001"])
         disabled = value["disabledPlugins"]
         if not isinstance(disabled, list) or any(
             type(item) is not dict
@@ -95,17 +122,28 @@ class CodingLegacyDisabledOnlyReviewV1:
             or not item["pluginId"]
             for item in disabled
         ):
-            raise ValueError("Coding disabled-only review entries are invalid")
-        for name in ("namespaceId", "firstFenceId", "snapshotReceiptId", "sourceProjectionDigest", "reviewId"):
-            if not isinstance(value[name], str) or _SHA256.fullmatch(value[name]) is None:
-                raise ValueError("Coding disabled-only review digest is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_002"])
+        for name in (
+            "namespaceId",
+            "firstFenceId",
+            "snapshotReceiptId",
+            "sourceProjectionDigest",
+            "reviewId",
+        ):
+            if (
+                not isinstance(value[name], str)
+                or _SHA256.fullmatch(value[name]) is None
+            ):
+                raise ValueError(_LEGACY_RECORD_VALUES["value_006"])
         for name in ("storeId", "scopeId"):
             if not isinstance(value[name], str) or not value[name]:
-                raise ValueError("Coding disabled-only review authority is invalid")
+                raise ValueError(_LEGACY_RECORD_VALUES["value_007"])
         if type(value["reviewVersion"]) is not int or value["reviewVersion"] != 1:
-            raise ValueError("Coding disabled-only review version is invalid")
-        if len({(item["scope"], item["pluginId"]) for item in disabled}) != len(disabled):
-            raise ValueError("Coding disabled-only review entries are duplicated")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_003"])
+        if len({(item["scope"], item["pluginId"]) for item in disabled}) != len(
+            disabled
+        ):
+            raise ValueError(_LEGACY_RECORD_VALUES["value_004"])
         review = cls(
             store_id=value["storeId"],
             namespace_id=value["namespaceId"],
@@ -119,7 +157,7 @@ class CodingLegacyDisabledOnlyReviewV1:
             ),
         )
         if review.review_id != value["reviewId"]:
-            raise ValueError("Coding disabled-only review identity changed")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_005"])
         return review
 
 
@@ -142,9 +180,7 @@ def review_coding_first_b_disabled_only(
     fence = epoch_runtime.cutover_result.fence
     switch = epoch_runtime.cutover_result.switch_receipt
     if fence is None or switch is None:
-        raise CodingLegacyDisabledOnlyReviewError(
-            "Coding first-B fence is unavailable"
-        )
+        raise CodingLegacyDisabledOnlyReviewError("Coding first-B fence is unavailable")
     source = read_coding_legacy_source_evidence(
         lifecycle,
         epoch_runtime,
@@ -158,13 +194,13 @@ def review_coding_first_b_disabled_only(
         raise CodingLegacyDisabledOnlyReviewError(
             "Coding first-B snapshot is not disabled-only"
         )
-    for domain in _OLD_STATE_DOMAINS:
-        if list_coding_first_b_snapshot_domain_members(
-            lifecycle, epoch_runtime, domain=domain
-        ):
-            raise CodingLegacyDisabledOnlyReviewError(
-                "Coding first-B snapshot contains old Plugin state"
-            )
+    require_legacy_snapshot_members(
+        _snapshot_reader(lifecycle, epoch_runtime).list_members,
+        dict.fromkeys(_OLD_STATE_DOMAINS, ()),
+        error=CodingLegacyDisabledOnlyReviewError(
+            "Coding first-B snapshot contains old Plugin state"
+        ),
+    )
     epoch_runtime.assert_current()
     return CodingLegacyDisabledOnlyReviewV1(
         store_id=fence.store_id,

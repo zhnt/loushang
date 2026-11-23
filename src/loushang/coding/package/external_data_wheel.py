@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import sha256 as sha256
 from pathlib import Path
 
 from loushang.harness.journal import (
@@ -14,12 +14,13 @@ from loushang.harness.journal import (
 )
 from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
+    plugin_wheel_source_fields_match,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -58,18 +59,9 @@ class CodingExternalDataWheelBindingV1:
     def __post_init__(self) -> None:
         match = _WHEEL_NAME.fullmatch(self.wheel_filename)
         if (
-            type(self.record_revision) is not int
-            or self.record_revision < 1
-            or not self.store_id
-            or _DIGEST.fullmatch(self.namespace_id) is None
-            or not self.scope_id
-            or not Path(self.original_source).is_absolute()
-            or os.path.normpath(self.original_source) != self.original_source
-            or match is None
-            or len(self.wheel_filename) > _MAX_WHEEL_FILENAME
-            or self.plugin_id != match["plugin"]
-            or self.version != match["version"]
-            or _DIGEST.fullmatch(self.artifact_digest) is None
+            not plugin_wheel_source_fields_match(
+                self, match, maximum_filename=_MAX_WHEEL_FILENAME
+            )
             or _DIGEST.fullmatch(self.record_id) is None
         ):
             raise ValueError("External data Wheel binding is invalid")
@@ -151,15 +143,16 @@ _CODEC = FunctionalJournalRecordCodec(
 )
 
 
-class CodingExternalDataWheelCatalog(_PluginWheelSourceCatalog[CodingExternalDataWheelBindingV1]):
+class CodingExternalDataWheelCatalog(
+    _PluginWheelSourceCatalog[CodingExternalDataWheelBindingV1]
+):
     """Append-only Product Source authorization for a fenced B namespace."""
 
-    _label = 'External data Wheel'
-    _path_label = 'External data Wheel'
+    _label = "External data Wheel"
+    _path_label = "External data Wheel"
     _error_factory = CodingExternalDataWheelError
     _product_id = "coding"
-    _source_label = 'External data Wheel'
-
+    _source_label = "External data Wheel"
 
     def capture(
         self,
@@ -180,9 +173,7 @@ class CodingExternalDataWheelCatalog(_PluginWheelSourceCatalog[CodingExternalDat
             or len(source.name) > _MAX_WHEEL_FILENAME
         ):
             raise CodingExternalDataWheelError("External data Wheel Source is invalid")
-        return self._capture_validated(
-            source, epoch_runtime=epoch_runtime
-        )
+        return self._capture_validated(source, epoch_runtime=epoch_runtime)
 
     def verify_record(self, record: CodingExternalDataWheelBindingV1) -> None:
         """Recheck a catalog record's controlled Source bytes without mutation."""
@@ -210,16 +201,22 @@ class CodingExternalDataWheelCatalog(_PluginWheelSourceCatalog[CodingExternalDat
         return _MAX_WHEEL_BYTES
 
     def _new_record(
-        self, source: Path, digest: str, revision: int,
-        *, admission: PackageProductLocalWorkerAdmissionV1 | None,
+        self,
+        source: Path,
+        digest: str,
+        revision: int,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1 | None,
     ) -> CodingExternalDataWheelBindingV1:
         return CodingExternalDataWheelBindingV1.create(
-            record_revision=revision, store_id=self.store_id,
-            namespace_id=self.namespace_id, scope_id=self.scope_id,
-            original_source=str(source), wheel_filename=source.name,
+            record_revision=revision,
+            store_id=self.store_id,
+            namespace_id=self.namespace_id,
+            scope_id=self.scope_id,
+            original_source=str(source),
+            wheel_filename=source.name,
             artifact_digest=digest,
         )
-
 
 
 __all__ = [

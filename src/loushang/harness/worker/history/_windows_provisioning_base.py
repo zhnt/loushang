@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import ClassVar, Self, cast
 
 from loushang.harness.journal import JournalCodecError
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -21,8 +24,8 @@ from loushang.harness.worker._windows_provisioning_journal import (
     _Record,
     windows_worker_provisioning_settlement_fingerprint,
 )
-from loushang.harness.worker.history._base_codec import _SourceBoundBaseWireMethods
 from loushang.harness.worker.history._windows_prepared import (
+    _record_tuple_field,
     _WindowsPreparedSourceMethods,
 )
 from loushang.harness.worker.history._windows_semantic_contracts import (
@@ -172,10 +175,12 @@ class _WindowsProvisioningRetainedMethods:
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsProvisioningBaseMethods(
-    _WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods
-):
+class _WindowsProvisioningBaseMethods(_WindowsPreparedSourceMethods):
     __slots__ = ()
+    _wire_label = "Windows Worker native provisioning semantic base"
+    _wire_lists = ("attemptIds", "retainedAttempts")
+    _wire_errors = (KeyError, RecursionError, TypeError, UnicodeError, ValueError)
+    _wire_capacity_label = "Windows Worker native provisioning base"
     scope_id: str
     store_id: str
     source_snapshot_digest: str
@@ -184,6 +189,15 @@ class _WindowsProvisioningBaseMethods(
     record_digest: str
     version: int = 1
     _retained_type: ClassVar[Callable[..., _WindowsProvisioningRetainedMethods]]
+
+    @classmethod
+    def _bind_record_schema(
+        cls, decode_attempt: Callable[[object], _WindowsProvisioningRetainedMethods]
+    ) -> None:
+        cls._bind_windows_wire_schema(
+            _record_tuple_field("retained_attempts", decode_attempt),
+            RecordField("attempt_ids", decoder=tuple, encoder=list),
+        )
 
     def __post_init__(self) -> None:
         if (

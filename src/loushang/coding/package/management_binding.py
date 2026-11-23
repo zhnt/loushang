@@ -4,31 +4,46 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.journal import JournalLoadPolicy
+from loushang.harness.package_product._application_runtime import (
+    open_read_only_product_management_state,
+    read_fenced_product_desired_transition,
+    verify_handoff_desired_commit,
+)
 from loushang.harness.plugin_management import (
-    PluginInstallationKeyV1,
+    PluginInstallationKeyV1 as PluginInstallationKeyV1,
+)
+from loushang.harness.plugin_management import (
     PluginManagementApplicationCommandV1,
     PluginManagementApplicationPorts,
     PluginManagementApplicationResultV1,
-    PluginManagementCommandApplication,
     PluginManagementProjectionV1,
     PluginManagementQueryV1,
-    PluginManagementReadModelProjector,
-    PluginManagementSourceRecordV1,
     PluginManagementSourceSnapshotV1,
 )
-from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
+from loushang.harness.plugin_management import (
+    PluginManagementCommandApplication as PluginManagementCommandApplication,
+)
+from loushang.harness.plugin_management import (
+    PluginManagementReadModelProjector as PluginManagementReadModelProjector,
+)
+from loushang.harness.plugin_management import (
+    PluginManagementSourceRecordV1 as PluginManagementSourceRecordV1,
+)
 from loushang.harness.plugin_management.desired_command import (
-    PluginDesiredCommandAuthorityV1,
+    PluginDesiredCommandAuthorityV1 as PluginDesiredCommandAuthorityV1,
+)
+from loushang.harness.plugin_management.desired_command import (
     PluginDesiredRepairResultV1,
-    resume_plugin_desired_operation,
+)
+from loushang.harness.plugin_management.desired_command import (
+    resume_plugin_desired_operation as resume_plugin_desired_operation,
 )
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
@@ -43,17 +58,13 @@ from loushang.harness.plugin_management.package_operation_explanation import (
     PackageOperationExplanationV1,
 )
 from loushang.harness.plugin_management.retirement import (
-    PluginRetirementIntentLedger,
+    PluginRetirementIntentLedger as PluginRetirementIntentLedger,
 )
 from loushang.harness.plugin_management.retirement_sets import (
-    PluginRetirementSetLedger,
+    PluginRetirementSetLedger as PluginRetirementSetLedger,
 )
-from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle.journal import (
     PackageLifecycleJournal,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
@@ -67,14 +78,17 @@ from .epoch_layout import (
     coding_fenced_product_exists as coding_fenced_product_exists,
 )
 from .epoch_layout import (
-    resolve_coding_package_epoch_layout,
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
 from .external_data_wheel import (
-    CodingExternalDataWheelBindingV1,
     CodingExternalDataWheelCatalog,
-    CodingExternalDataWheelError,
 )
-from .product_runtime import open_coding_package_product_state
+from .external_data_wheel import (
+    CodingExternalDataWheelError as CodingExternalDataWheelError,
+)
+from .product_runtime import (
+    open_coding_package_product_state as open_coding_package_product_state,
+)
 
 CODING_CLI_MANAGEMENT_ACTOR_ID = "coding:cli"
 CODING_CLI_MANAGEMENT_POLICY_REVISION = "coding-plugin-management-cli-v1"
@@ -86,17 +100,12 @@ def explain_coding_fenced_package_operation(
 ) -> PackageOperationExplanationV1:
     """Read an existing A2 operation without activating or repairing Product."""
 
-    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
-    try:
-        result = PackageOperationExplanationProjector(
+    with _ProductCliOwner(layout).scope(read_only=True) as (runtime, _):
+        return PackageOperationExplanationProjector(
             PackageLifecycleJournal(
                 runtime.control_root / "product-state" / "lifecycle.jsonl"
             )
         ).explain_operation(operation_id)
-        runtime.assert_current()
-        return result
-    finally:
-        runtime.close()
 
 
 def explain_coding_fenced_plugin_operation(
@@ -108,20 +117,14 @@ def explain_coding_fenced_plugin_operation(
 ) -> PluginOperationExplanationV1:
     """Observe A2, handoff, and A1 within one inert fenced Product lease."""
 
-    runtime, ports = _ProductCliOwner(layout, workspace_guard).open(read_only=True)
-    try:
+    owner = _ProductCliOwner(layout, workspace_guard)
+    with owner.scope(read_only=True) as (runtime, ports):
         state_root = runtime.control_root / "product-state"
-        result = PluginOperationExplanationProjector(
+        return PluginOperationExplanationProjector(
             package_operations=PackageLifecycleJournal(state_root / "lifecycle.jsonl"),
             management_commands=ports.commands,
             handoffs=PackageRetentionHandoffJournal(state_root / "handoff.jsonl"),
         ).explain_operation(operation_id, correlation_id=correlation_id)
-        runtime.assert_current()
-        if workspace_guard is not None:
-            workspace_guard()
-        return result
-    finally:
-        runtime.close()
 
 
 def read_coding_fenced_package_handoff(
@@ -130,15 +133,10 @@ def read_coding_fenced_package_handoff(
 ) -> PackageRetentionHandoffReceiptV1 | None:
     """Observe one exact A2 handoff receipt without repairing its owner."""
 
-    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
-    try:
-        result = PackageRetentionHandoffJournal(
+    with _ProductCliOwner(layout).scope(read_only=True) as (runtime, _):
+        return PackageRetentionHandoffJournal(
             runtime.control_root / "product-state" / "handoff.jsonl"
         ).read_operation(operation_id)
-        runtime.assert_current()
-        return result
-    finally:
-        runtime.close()
 
 
 def read_coding_fenced_desired_transition(
@@ -149,20 +147,7 @@ def read_coding_fenced_desired_transition(
 
     runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
     try:
-        desired = PluginDesiredStateLedger(
-            runtime.control_root / "product-state" / "desired-state.jsonl",
-            load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
-        )
-        _snapshot, transitions = desired.capture_read_only()
-        matches = [
-            transition
-            for transition in transitions
-            if transition.mutation.operation_id == operation_id
-        ]
-        runtime.assert_current()
-        if len(matches) > 1:
-            raise ValueError("Desired operation identity is ambiguous")
-        return matches[0] if matches else None
+        return read_fenced_product_desired_transition(runtime, operation_id)
     finally:
         runtime.close()
 
@@ -170,48 +155,17 @@ def read_coding_fenced_desired_transition(
 def read_coding_fenced_handoff_desired_commit(
     layout: CodingPluginLifecycleStateLayout,
     handoff: PackageRetentionHandoffReceiptV1,
-) -> tuple[
-    int, dict[str, object], Literal["owner_receipt", "verified_transition"]
-] | None:
+) -> (
+    tuple[int, dict[str, object], Literal["owner_receipt", "verified_transition"]]
+    | None
+):
     """Prove an exact Desired commit even before handoff settlement is journaled."""
 
-    desired_request = handoff.request.desired_request
-    if handoff.desired_receipt is not None:
-        return (
-            handoff.desired_receipt.inventory_revision,
-            desired_request.root_ref.to_dict(),
-            "owner_receipt",
-        )
-    if handoff.state != "dependency_pinned":
-        return None
-    transition = read_coding_fenced_desired_transition(
-        layout, desired_request.command_id
-    )
-    if transition is None:
-        return None
-    key = transition.mutation.installation_key
-    selected = transition.committed_state.selection.package_revision
-    if (
-        transition.mutation.expected_inventory_revision
-        != desired_request.expected_inventory_revision
-        or transition.inventory_revision
-        != desired_request.expected_inventory_revision + 1
-        or (key.product_id, key.scope_id, key.plugin_id)
-        != (
-            desired_request.product_id,
-            desired_request.scope_id,
-            desired_request.plugin_id,
-        )
-        or selected is None
-        or selected.plugin_version != desired_request.root_ref.version
-        or selected.package_content_digest
-        != desired_request.root_ref.artifact_digest
-    ):
-        return None
-    return (
-        transition.inventory_revision,
-        desired_request.root_ref.to_dict(),
-        "verified_transition",
+    return verify_handoff_desired_commit(
+        handoff,
+        read_transition=lambda command_id: read_coding_fenced_desired_transition(
+            layout, command_id
+        ),
     )
 
 
@@ -241,28 +195,8 @@ class _ProductCliOwner:
             self.assert_workspace_current()
             state_root = runtime.control_root / "product-state"
             if read_only:
-                try:
-                    state_metadata = state_root.lstat()
-                except FileNotFoundError as exc:
-                    raise ValueError(
-                        "Fenced Product management state is absent"
-                    ) from exc
-                if (
-                    not stat.S_ISDIR(state_metadata.st_mode)
-                    or stat.S_IMODE(state_metadata.st_mode) & 0o077
-                    or state_metadata.st_uid != os.geteuid()
-                ):
-                    raise ValueError("Fenced Product management state is unsafe")
-                load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
-                desired = bind_plugin_desired_state(
-                    state_root / "gc-reservations.jsonl",
-                    state_root / "desired-state.jsonl",
-                    load_policy=load_policy,
-                ).desired
-                management = PluginManagementService(
-                    desired_state=desired,
-                    operation_journal_path=state_root / "management-operations.jsonl",
-                    load_policy=load_policy,
+                desired, management, load_policy = (
+                    open_read_only_product_management_state(state_root)
                 )
             else:
                 runtime.prepare_product_state_root()
@@ -301,6 +235,20 @@ class _ProductCliOwner:
             runtime.close()
             raise
 
+    @contextmanager
+    def scope(
+        self, *, read_only: bool
+    ) -> Iterator[
+        tuple[PackageProductPosixFencedRuntimeOwner, PluginManagementApplicationPorts]
+    ]:
+        runtime, ports = self.open(read_only=read_only)
+        try:
+            yield runtime, ports
+            runtime.assert_current()
+            self.assert_workspace_current()
+        finally:
+            runtime.close()
+
 
 @dataclass(frozen=True, slots=True)
 class _ProductSources:
@@ -308,64 +256,11 @@ class _ProductSources:
     desired_state: PluginDesiredStateLedger
 
     def snapshot(self) -> PluginManagementSourceSnapshotV1:
-        all_bindings = self.catalog.records()
-        selected = {
-            item.installation_key.plugin_id: item.selection.package_revision
-            for item in self.desired_state.snapshot().installations
-            if item.installation_key.product_id == "coding"
-            and item.installation_key.scope_id == self.catalog.scope_id
-        }
-        latest: dict[str, CodingExternalDataWheelBindingV1] = {}
-        for item in all_bindings:
-            prior = latest.get(item.plugin_id)
-            if prior is None or item.record_revision > prior.record_revision:
-                latest[item.plugin_id] = item
-        for item in all_bindings:
-            revision = selected.get(item.plugin_id)
-            if (
-                revision is not None
-                and revision.package_source_identity
-                == str(self.catalog.source_root / item.wheel_filename)
-                and revision.package_content_digest == item.artifact_digest
-            ):
-                latest[item.plugin_id] = item
-        records = []
-        for item in latest.values():
-            availability: Literal["available", "unavailable"]
-            try:
-                self.catalog.verify_record(item)
-            except (CodingExternalDataWheelError, OSError):
-                availability = "unavailable"
-            else:
-                availability = "available"
-            records.append(
-                PluginManagementSourceRecordV1(
-                    installation_key=PluginInstallationKeyV1(
-                        product_id="coding",
-                        installation_scope="workspace",
-                        scope_id=item.scope_id,
-                        plugin_id=item.plugin_id,
-                    ),
-                    source_identity=f"local:{self.catalog.source_root / item.wheel_filename}",
-                    source_kind="local",
-                    availability=availability,
-                    source_location=item.original_source,
-                    plugin_version=item.version,
-                    manifest_enabled_default=None,
-                )
-            )
-        ordered = tuple(sorted(records, key=lambda value: value.installation_key))
-        owner_revision = sha256(
-            canonical_json_bytes(
-                {
-                    "bindings": [item.to_dict() for item in all_bindings],
-                    "selected": [item.to_dict() for item in ordered],
-                }
-            )
-        ).hexdigest()
-        return PluginManagementSourceSnapshotV1(
-            owner_revision=f"coding-product-source:{owner_revision}",
-            records=ordered,
+        return self.catalog.project_management_source_snapshot(
+            self.desired_state,
+            owner_revision_prefix="coding-product-source:",
+            verify_record=self.catalog.verify_record,
+            verification_error=CodingExternalDataWheelError,
         )
 
 
@@ -412,15 +307,9 @@ class _ProductCliQueries:
     owner: _ProductCliOwner
 
     def snapshot(self, query: PluginManagementQueryV1) -> PluginManagementProjectionV1:
-        runtime, ports = self.owner.open(read_only=True)
-        try:
+        with self.owner.scope(read_only=True) as (_, ports):
             self.owner.assert_workspace_current()
-            result = ports.queries.snapshot(query)
-            runtime.assert_current()
-            self.owner.assert_workspace_current()
-            return result
-        finally:
-            runtime.close()
+            return ports.queries.snapshot(query)
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,30 +319,16 @@ class _ProductCliCommands:
     def submit(
         self, request: PluginManagementApplicationCommandV1
     ) -> PluginManagementApplicationResultV1:
-        runtime, ports = self.owner.open(read_only=False)
-        try:
+        with self.owner.scope(read_only=False) as (_, ports):
             self.owner.assert_workspace_current()
-            result = ports.commands.submit(request)
-            runtime.assert_current()
-            self.owner.assert_workspace_current()
-            return result
-        finally:
-            runtime.close()
+            return ports.commands.submit(request)
 
     def operation(
         self, operation_id: str, *, correlation_id: str
     ) -> PluginManagementApplicationResultV1 | None:
-        runtime, ports = self.owner.open(read_only=True)
-        try:
+        with self.owner.scope(read_only=True) as (_, ports):
             self.owner.assert_workspace_current()
-            result = ports.commands.operation(
-                operation_id, correlation_id=correlation_id
-            )
-            runtime.assert_current()
-            self.owner.assert_workspace_current()
-            return result
-        finally:
-            runtime.close()
+            return ports.commands.operation(operation_id, correlation_id=correlation_id)
 
 
 def build_coding_fenced_product_management_cli_ports(

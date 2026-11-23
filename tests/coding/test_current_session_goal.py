@@ -58,8 +58,8 @@ def _model():
 
 @pytest.mark.parametrize("stream_kind", ["default", "standard", "declared"])
 @pytest.mark.parametrize("existing_backend", [False, True])
-def test_current_session_goal_preserves_history_configuration_and_original_transport(tmp_path, monkeypatch, stream_kind, existing_backend):
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+def test_current_session_goal_preserves_history_configuration_and_original_transport(standalone_workspace, monkeypatch, stream_kind, existing_backend):
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
     adapter = _PreparedAdapter()
     registry = get_default_api_registry()
     registry.register_api_adapter(adapter, source_id=adapter.api)
@@ -73,7 +73,7 @@ def test_current_session_goal_preserves_history_configuration_and_original_trans
             return await stream(model, context, options)
 
         sdk = create_agent_session_runtime(
-            session_dir=tmp_path / "data/custom-history", model=_model(),
+            session_dir=standalone_workspace / "data/custom-history", model=_model(),
             stream_fn={"default": None, "standard": stream, "declared": declared}[stream_kind],
             active_tool_names=["read", "edit", "write", "bash"],
             allowed_tool_names=["read", "edit", "write", "bash"],
@@ -81,7 +81,7 @@ def test_current_session_goal_preserves_history_configuration_and_original_trans
         )
         owner = None
         try:
-            session = await sdk.create_session(cwd=str(_goal_project(tmp_path)))
+            session = await sdk.create_session(cwd=str(_goal_project(standalone_workspace)))
             await session.prompt("ordinary input before Goal")
             assert len(adapter.tools) == 1
             manager, agent = session.session_manager, session.runtime.agent
@@ -152,18 +152,18 @@ def test_current_session_goal_preserves_history_configuration_and_original_trans
         registry.unregister_api_adapters(adapter.api)
 
 
-def test_current_goal_refuses_changed_transport_without_restoring_old_baseline(tmp_path, monkeypatch):
+def test_current_goal_refuses_changed_transport_without_restoring_old_baseline(standalone_workspace, monkeypatch):
     from loushang.agent import prepared_request_conformant
     from loushang.ai.api import stream
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
     adapter = _PreparedAdapter()
     registry = get_default_api_registry()
     registry.register_api_adapter(adapter, source_id=adapter.api)
 
     async def scenario():
         sdk = create_agent_session_runtime(
-            session_dir=tmp_path / "data/sessions", model=_model(), enable_multiagent=False,
+            session_dir=standalone_workspace / "data/sessions", model=_model(), enable_multiagent=False,
             active_tool_names=["read", "edit", "write"],
         )
         owner = None
@@ -175,7 +175,7 @@ def test_current_goal_refuses_changed_transport_without_restoring_old_baseline(t
             return await stream(model, context, options)
 
         try:
-            session = await sdk.create_session(cwd=str(_goal_project(tmp_path)))
+            session = await sdk.create_session(cwd=str(_goal_project(standalone_workspace)))
             owner = await CodingGoal.attach(session=session)
             owner.create("g", command_id="create")
             session.runtime.agent.stream_fn = changed
@@ -200,10 +200,10 @@ def test_current_goal_refuses_changed_transport_without_restoring_old_baseline(t
         registry.unregister_api_adapters(adapter.api)
 
 
-def test_public_direct_application_message_cannot_enter_committed_planning_input(tmp_path, monkeypatch):
+def test_public_direct_application_message_cannot_enter_committed_planning_input(standalone_workspace, monkeypatch):
     from loushang.harness.session.execution_admission import SessionExecutionUnavailable
 
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform"))
     adapter = _PreparedAdapter()
     registry = get_default_api_registry()
     registry.register_api_adapter(adapter, source_id=adapter.api)
@@ -211,12 +211,12 @@ def test_public_direct_application_message_cannot_enter_committed_planning_input
     async def scenario():
         entered, release = asyncio.Event(), asyncio.Event()
         sdk = create_agent_session_runtime(
-            session_dir=tmp_path / "data/sessions", model=_model(), enable_multiagent=False,
+            session_dir=standalone_workspace / "data/sessions", model=_model(), enable_multiagent=False,
             active_tool_names=["read", "edit", "write"],
         )
         owner = advancing = None
         try:
-            session = await sdk.create_session(cwd=str(_goal_project(tmp_path)))
+            session = await sdk.create_session(cwd=str(_goal_project(standalone_workspace)))
             await session.prompt("ordinary context")
             owner = await CodingGoal.attach(session=session)
             owner.create("g", command_id="create")

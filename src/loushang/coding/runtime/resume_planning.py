@@ -4,17 +4,28 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from weakref import ref
+from weakref import ref as ref
 
 from loushang.coding.composition.sets import CodingCompositionSetPlan
 from loushang.coding.resume.activation_plan import (
     ActivationOwnerInputRefV1,
-    ResumePlanStaleError,
     SessionActivationPlanV1,
-    build_session_activation_plan,
-    plan_coding_resume_async,
-    require_current_resume_plan_inputs,
-    require_current_resume_plan_source,
+    _resume_domain_input_refs,
+)
+from loushang.coding.resume.activation_plan import (
+    ResumePlanStaleError as ResumePlanStaleError,
+)
+from loushang.coding.resume.activation_plan import (
+    build_session_activation_plan as build_session_activation_plan,
+)
+from loushang.coding.resume.activation_plan import (
+    plan_coding_resume_async as plan_coding_resume_async,
+)
+from loushang.coding.resume.activation_plan import (
+    require_current_resume_plan_inputs as require_current_resume_plan_inputs,
+)
+from loushang.coding.resume.activation_plan import (
+    require_current_resume_plan_source as require_current_resume_plan_source,
 )
 from loushang.coding.resume.history import CodingResumeHistoryPreview
 from loushang.harness.resources.loader import ResourceLoader
@@ -47,27 +58,26 @@ class ResumePlanningSlot(_SessionPlanningSlot[SessionActivationPlanV1]):
 
         self._on_loop()
         if self._closed:
-            raise RuntimeError("coding_resume_planning_closed")
+            raise RuntimeError('coding_resume_planning_closed')
         # Validate all envelope inputs before scheduling. These are dependency
         # observations, without approval/selection meaning.
         baseline = build_session_activation_plan(
             history,
             current_composition,
             workspace_root=workspace_root,
-            owner_inputs=(
-                ActivationOwnerInputRefV1("coding.policy", policy_digest),
-                ActivationOwnerInputRefV1("coding.subject", subject_digest),
+            owner_inputs=_resume_domain_input_refs(
+                policy_digest=policy_digest, subject_digest=subject_digest
             ),
         )
         if type(max_work_units) is not int or max_work_units < 1:
-            raise ValueError("invalid Resume planning work budget")
+            raise ValueError('invalid Resume planning work budget')
         if (
             type(time_budget_seconds) not in {int, float}
             or not 0 < time_budget_seconds <= 60
         ):
-            raise ValueError("invalid Resume planning time budget")
+            raise ValueError('invalid Resume planning time budget')
         if not isinstance(resource_loader, ResourceLoader):
-            raise TypeError("Resume planning requires the original ResourceLoader")
+            raise TypeError('Resume planning requires the original ResourceLoader')
         key = (
             baseline.plan_id,
             ref(resource_loader),

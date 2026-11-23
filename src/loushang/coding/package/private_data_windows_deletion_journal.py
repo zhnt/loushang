@@ -7,7 +7,6 @@ An unpublished or malformed next event remains visible as recovery debt.
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,8 +16,15 @@ from pathlib import Path
 from typing import ClassVar
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._private_data_custody import (
+    private_data_mutation_fence,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management._installation_root_windows import (
+    read_windows_deletion_target,
+    require_unchanged_windows_target,
 )
 from loushang.harness.plugin_management._private_data_deletion_windows import (
     WindowsPrivateDeletionTransaction,
@@ -50,6 +56,7 @@ from .private_data_windows_confirmation import (
 )
 from .private_data_windows_preview import (
     CodingWindowsArchPrivateDataReadPreview,
+    _absent_windows_target_snapshot,
     _capture_windows_target_snapshot,
     _native_io,
 )
@@ -79,29 +86,23 @@ class CodingWindowsArchPrivateDataDeletionJournal:
     def transaction(self) -> Iterator[CodingWindowsArchPrivateDataDeletionTransaction]:
         """Hold one offline Product gate from start through physical effects."""
 
-        registry = self.product.epoch_runtime.registry
-        with registry.exclusive_runtime_quiescence(
-            store_id=registry.store_id
-        ) as quiescence:
-            if quiescence.active_runtime_lease_ids:
-                raise ValueError("Windows Coding Arch deletion runtime is active")
-            self.product.assert_root_gc_authority_current()
-            with self.product.gc_gate.guard(require_write=True):
-                with (
-                    self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd
-                ):
-                    transaction = CodingWindowsArchPrivateDataDeletionTransaction(
-                        self.product.state_root,
-                        fd,
-                        CodingWindowsArchPrivateDataConfirmationOwner(
-                            self.layout, self.product
-                        ),
-                    )
-                    try:
-                        yield transaction
-                    finally:
-                        transaction._close()
-            self.product.assert_root_gc_authority_current()
+        with (
+            private_data_mutation_fence(
+                self.product,
+                active_message="Windows Coding Arch deletion runtime is active",
+                require_write=True,
+            ),
+            self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd,
+        ):
+            transaction = CodingWindowsArchPrivateDataDeletionTransaction(
+                self.product.state_root,
+                fd,
+                CodingWindowsArchPrivateDataConfirmationOwner(self.layout, self.product),
+            )
+            try:
+                yield transaction
+            finally:
+                transaction._close()
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,65 +206,29 @@ def _capture_current_target(
     allow_pending: bool = False,
 ) -> CodingArchPrivateDataTargetSnapshotV1:
     root = coding_arch_installation_private_data_root(owner.layout, key)
-    if allow_pending:
-        expected_root = _windows_arch_current_root_generation(
-            key,
-            root,
-            owner.product.state_root,
-            inspect_windows_product_private_directory_identity(
-                owner.layout.package_root
-            ),
-            allow_pending=True,
-        ).identity
-    else:
-        expected_root = inspect_coding_windows_arch_installation_root(
-            owner.layout, key, state_root=owner.product.state_root
-        )
-    if expected_root is None:
-        try:
-            root.lstat()
-        except FileNotFoundError:
-            pass
-        else:
-            raise ValueError("Windows Coding Arch absent target changed")
-        if (
-            allow_pending
-            and _windows_arch_current_root_generation(
+
+    def observe_root() -> tuple[int, int] | None:
+        if allow_pending:
+            return _windows_arch_current_root_generation(
                 key,
                 root,
                 owner.product.state_root,
-                inspect_windows_product_private_directory_identity(
-                    owner.layout.package_root
-                ),
+                inspect_windows_product_private_directory_identity(owner.layout.package_root),
                 allow_pending=True,
             ).identity
-            is not None
-        ):
-            raise ValueError("Windows Coding Arch absent target changed")
-        return CodingArchPrivateDataTargetSnapshotV1(
-            root_path_digest=sha256(os.fsencode(str(root))).hexdigest(),
-            root_identity=None,
-            members=(),
-        )
-    target = _capture_windows_target_snapshot(root, expected_root=expected_root)
-    current_root = (
-        _windows_arch_current_root_generation(
-            key,
-            root,
-            owner.product.state_root,
-            inspect_windows_product_private_directory_identity(
-                owner.layout.package_root
-            ),
-            allow_pending=True,
-        ).identity
-        if allow_pending
-        else inspect_coding_windows_arch_installation_root(
+        return inspect_coding_windows_arch_installation_root(
             owner.layout, key, state_root=owner.product.state_root
         )
+
+    return read_windows_deletion_target(
+        root,
+        observe_root=observe_root,
+        capture=_capture_windows_target_snapshot,
+        absent=_absent_windows_target_snapshot,
+        recheck_absent=allow_pending,
+        changed="Windows Coding Arch deletion root changed",
+        absent_changed="Windows Coding Arch absent target changed",
     )
-    if current_root != expected_root:
-        raise ValueError("Windows Coding Arch deletion root changed")
-    return target
 
 
 def _require_staged_start_target_unchanged(
@@ -273,20 +238,12 @@ def _require_staged_start_target_unchanged(
 ) -> None:
     """Recapture a staged start without reading its own unpublished journal."""
 
-    root = coding_arch_installation_private_data_root(owner.layout, key)
-    if target.root_path_digest != sha256(os.fsencode(str(root))).hexdigest():
-        raise ValueError("Windows Coding Arch deletion target changed")
-    if target.root_identity is None:
-        try:
-            root.lstat()
-        except FileNotFoundError:
-            return
-        raise ValueError("Windows Coding Arch deletion target changed")
-    if (
-        _capture_windows_target_snapshot(root, expected_root=target.root_identity[:2])
-        != target
-    ):
-        raise ValueError("Windows Coding Arch deletion target changed")
+    require_unchanged_windows_target(
+        coding_arch_installation_private_data_root(owner.layout, key),
+        target,
+        capture=_capture_windows_target_snapshot,
+        changed="Windows Coding Arch deletion target changed",
+    )
 
 
 def _require_windows_tombstone(
@@ -298,12 +255,11 @@ def _require_windows_tombstone(
     target_identity = started.target.root_identity
     if target_identity is None:
         raise ValueError("Windows Coding Arch tombstone requires a present target")
-    root = coding_arch_installation_private_data_root(
-        owner.layout, started.plan.installation_key
-    )
+    key = started.plan.installation_key
+    root = coding_arch_installation_private_data_root(owner.layout, key)
     parent_identity = inspect_windows_product_private_directory_identity(root.parent)
     generation = _windows_arch_current_root_generation(
-        started.plan.installation_key,
+        key,
         root,
         owner.product.state_root,
         inspect_windows_product_private_directory_identity(owner.layout.package_root),

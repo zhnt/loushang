@@ -149,6 +149,76 @@ _RestoreT = TypeVar("_RestoreT", bound=_RestoreReadScope)
 _EventT = TypeVar("_EventT", bound=_ExpiryRetentionEvent)
 
 
+def _retention_status(
+    key: PluginInstallationKeyV1,
+    latest: _ExpiryRetentionEvent | None,
+    pending: bool,
+    receipts: tuple[R, ...],
+    *,
+    receipt_error: str,
+) -> tuple[PluginBackupRetentionStatus, str | None]:
+    if pending:
+        return "expiry_pending", None
+    if receipts:
+        return "retained", None
+    if latest is not None and latest.phase == "completed":
+        if latest.receipt is None or latest.plan.installation_key != key:
+            raise ValueError(receipt_error)
+        return "expired", latest.receipt.receipt_id
+    return "unknown", None
+
+
+def read_posix_private_backup_retention(
+    epoch: PackageProductPosixFencedRuntimeOwner,
+    key: PluginInstallationKeyV1,
+    *,
+    read_expiry: Callable[[], tuple[_EventT, ...]],
+    tombstone_name: Callable[[_EventT], str],
+    retained_receipts: Callable[[str | None], tuple[R, ...]],
+    revision_for: Callable[
+        [PluginBackupRetentionStatus, str | None, tuple[R, ...], str], str
+    ],
+    revision_prefix: str,
+    label: str,
+) -> PluginBackupRetentionSnapshotV1:
+    """Project expiry and archive evidence under an already checked Product epoch."""
+    from loushang.harness.plugin_management.application import (
+        PluginBackupRetentionRecordV1,
+        PluginBackupRetentionSnapshotV1,
+    )
+
+    try:
+        events = read_expiry()
+        latest = events[-1] if events else None
+        pending = latest is not None and latest.phase in {"started", "renamed"}
+        receipts = retained_receipts(
+            tombstone_name(latest) if pending and latest is not None else None
+        )
+        if (
+            latest is not None
+            and latest.phase == "completed"
+            and any(item.backup_id == latest.plan.backup_id for item in receipts)
+        ):
+            raise ValueError(f"{label} expired backup reappeared")
+        status, receipt_id = _retention_status(
+            key,
+            latest,
+            pending,
+            receipts,
+            receipt_error=f"{label} backup expiry receipt changed",
+        )
+        trust = "verified"
+    except (OSError, ValueError):
+        status, receipt_id, receipts, trust = "unknown", None, (), "untrusted"
+    epoch.assert_current()
+    return PluginBackupRetentionSnapshotV1(
+        owner_revision=revision_prefix + revision_for(status, receipt_id, receipts, trust),
+        records=(
+            PluginBackupRetentionRecordV1(key, status, expiry_receipt_id=receipt_id),
+        ),
+    )
+
+
 def read_windows_private_backup_retention(
     owner: _BackupProductOwner,
     key: PluginInstallationKeyV1,
@@ -228,15 +298,13 @@ def read_windows_private_backup_retention(
                 and any(item.backup_id == latest.plan.backup_id for item in receipts)
             ):
                 raise ValueError(f"{label} expired archive reappeared")
-            if pending:
-                status = "expiry_pending"
-            elif receipts:
-                status = "retained"
-            elif latest is not None and latest.phase == "completed":
-                if latest.receipt is None:
-                    raise ValueError(f"{label} expiry receipt changed")
-                status = "expired"
-                expiry_receipt_id = latest.receipt.receipt_id
+            status, expiry_receipt_id = _retention_status(
+                key,
+                latest,
+                pending,
+                receipts,
+                receipt_error=f"{label} expiry receipt changed",
+            )
         except (OSError, ValueError):
             trust = "untrusted"
             receipts = ()

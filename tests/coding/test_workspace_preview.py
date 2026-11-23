@@ -88,15 +88,15 @@ def test_does_not_read_special_files(tmp_path):
     assert rejected.value.code == AppErrorCodeV1.PERMISSION_DENIED
 
 
-def test_catalog_requires_the_exact_registered_workspace_scope(tmp_path):
+def test_catalog_requires_the_exact_registered_workspace_scope(standalone_workspace):
     from loushang.apphost.managed.workspaces import WorkspaceRegistry
     from loushang.appserver.protocol import WorkspaceRequestV1
     from loushang.appserver.protocol.workspace_preview import WorkspacePreviewRequestV1
     from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
 
-    registry = WorkspaceRegistry(tmp_path / "registry")
-    catalog = CodingWorkspaceCatalog(registry, tmp_path / "sessions", tmp_path / "stores")
-    workspace = tmp_path / "project"
+    registry = WorkspaceRegistry(standalone_workspace / "registry")
+    catalog = CodingWorkspaceCatalog(registry, standalone_workspace / "sessions", standalone_workspace / "stores")
+    workspace = standalone_workspace / "project"
     workspace.mkdir()
     (workspace / "README.md").write_text("project file", encoding="utf-8")
 

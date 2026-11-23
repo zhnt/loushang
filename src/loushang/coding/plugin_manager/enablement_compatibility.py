@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from contextlib import nullcontext
+from contextlib import nullcontext as nullcontext
 from dataclasses import dataclass, field
 
-from loushang.coding.composition.plan import CODING_PRODUCT_ID
+from loushang.coding.composition.plan import CODING_PRODUCT_ID as CODING_PRODUCT_ID
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
-    _capture_existing_plugin_enablement_state,
     project_coding_plugin_enablement_compatibility,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    _capture_existing_plugin_enablement_state as _capture_existing_plugin_enablement_state,
 )
 from loushang.harness.config.agent._legacy_compatibility import (
     LegacyPluginCompatibilityRegistry as _ConfigLegacyPluginCompatibilityRegistry,
@@ -17,16 +19,23 @@ from loushang.harness.config.agent._legacy_compatibility import (
 from loushang.harness.config.agent._legacy_compatibility import (
     bind_legacy_plugin_compatibility_registry,
 )
-from loushang.harness.config.agent.manager import LegacyPluginCompatibilityProjectionV1
+from loushang.harness.config.agent.manager import (
+    LegacyPluginCompatibilityProjectionV1 as LegacyPluginCompatibilityProjectionV1,
+)
 from loushang.harness.plugin_management import (
-    PluginEnablementMigrationError,
-    PluginInstallationKeyV1,
-    decode_plugin_enablement_migration_snapshots,
+    PluginEnablementMigrationError as PluginEnablementMigrationError,
+)
+from loushang.harness.plugin_management import (
+    PluginInstallationKeyV1 as PluginInstallationKeyV1,
+)
+from loushang.harness.plugin_management import (
+    decode_plugin_enablement_migration_snapshots as decode_plugin_enablement_migration_snapshots,
 )
 
 _COMPATIBILITY_CACHE_ATTRIBUTE = (
     "_loushang_coding_plugin_enablement_compatibility_writer"
 )
+
 
 
 class CodingPluginEnablementCompatibilityError(RuntimeError):
@@ -55,7 +64,9 @@ class CodingPluginEnablementCompatibilityWriter:
         notifications = defer() if callable(defer) else nullcontext()
         with notifications:
             try:
-                with _capture_existing_plugin_enablement_state(self.layout) as capture:
+                with _capture_existing_plugin_enablement_state(
+                    self.layout
+                ) as capture:
                     if capture is None:
                         return
                     projection, migrated = (
@@ -70,15 +81,13 @@ class CodingPluginEnablementCompatibilityWriter:
                         disabled_plugin_ids=projection.disabled_plugin_ids,
                         migrated_plugin_ids=tuple(sorted(migrated)),
                         desired_inventory_revision=projection.desired_inventory_revision,
-                        migration_journal_revision=(
-                            projection.migration_journal_revision
-                        ),
+                        migration_journal_revision=(projection.migration_journal_revision),
                     )
                 self._registry.publish(self, compatibility)
             except FileNotFoundError:
                 raise CodingPluginEnablementCompatibilityError(
-                    "Coding Plugin lifecycle coordination evidence disappeared",
-                    code="coding_plugin_compatibility_coordination_missing",
+                    'Coding Plugin lifecycle coordination evidence disappeared',
+                    code='coding_plugin_compatibility_coordination_missing',
                 )
 
     def _assert_legacy_mutation_allowed(self, plugin_id: str) -> None:
@@ -97,8 +106,8 @@ class CodingPluginEnablementCompatibilityWriter:
             )
             if any(item.request.installation_key == key for item in snapshots):
                 raise PluginEnablementMigrationError(
-                    "Legacy Plugin enablement is read-only after migration acceptance",
-                    code="plugin_enablement_legacy_mutation_rejected",
+                    'Legacy Plugin enablement is read-only after migration acceptance',
+                    code='plugin_enablement_legacy_mutation_rejected',
                     path=self.layout.enablement_migration,
                 )
 

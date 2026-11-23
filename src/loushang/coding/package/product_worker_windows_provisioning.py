@@ -13,6 +13,7 @@ from loushang.harness.package_product._worker_windows_attempt import (
     WindowsProductWorkerPayload,
     WindowsProductWorkerProvisioningAccess,
     WindowsWorkerLaunchPayload,
+    is_windows_product,
     read_windows_product_worker_attempts,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -93,10 +94,8 @@ def inspect_coding_windows_product_worker_provisioning_attempts(
 ) -> tuple[WindowsWorkerProvisioningAttemptV1, ...]:
     """Reopen all LPAC attempt histories for Product-owned recovery review."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+    if not is_windows_product(
+        product, "coding", os.name, WindowsLocalWheelProductSessionOwner
     ):
         raise OSError("Windows Worker Product recovery inventory is unavailable")
     return read_windows_product_worker_attempts(

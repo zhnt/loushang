@@ -20,6 +20,7 @@ from loushang.coding.cli import lmux
 from tests.apphost.test_managed_namespace_admission import tree
 
 from . import test_lmux_status as fixtures
+from .test_lmux_command import mux_workspace as mux_workspace
 
 namespace = fixtures.namespace
 pytestmark = fixtures.pytestmark

@@ -5,12 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from loushang.coding import _plugins as _coding_plugin_sources
-from loushang.harness.resources.packages.materializer import plugin_source_identity
+from loushang.harness.resources.packages.materializer import (
+    collect_source_identities,
+    resolve_exact_source_grant,
+)
 from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
     resolve_installed_product_root,
-)
-from loushang.harness.resources.plugins.dependency_grants import (
-    PluginDependencyGrantError,
 )
 from loushang.harness.resources.plugins.distribution_evidence import (
     InstalledPythonDistributionEvidenceResolver,
@@ -19,6 +19,7 @@ from loushang.harness.resources.plugins.distribution_evidence import (
 _CODING_LSP_PLUGIN_ID = "coding.lsp.default"
 _CODING_ARCH_PLUGIN_ID = "coding.arch.default"
 _LOUSHANG_DISTRIBUTION = "loushang"
+_SOURCE_LABEL = "Coding Plugin"
 
 
 _CODING_PRODUCT_SOURCE_LOCATIONS = {
@@ -76,17 +77,9 @@ class CoDistributedPluginDependencyGrantResolver:
                 coding_arch_source,
                 "coding_arch_plugin_source_mismatch",
             )
-        identities: dict[str, tuple[str, str]] = {}
-        for plugin_id, (source, error_code) in sources.items():
-            path = Path(source).expanduser()
-            try:
-                resolved = path.resolve(strict=True)
-            except (OSError, RuntimeError) as exc:
-                raise ValueError("Coding Plugin root does not exist") from exc
-            if not resolved.is_dir():
-                raise ValueError("Coding Plugin root is invalid")
-            identities[plugin_id] = (plugin_source_identity(resolved), error_code)
-        self._source_identities = identities
+        self._source_identities = collect_source_identities(
+            sources, source_label=_SOURCE_LABEL
+        )
 
     def resolve(
         self,
@@ -94,16 +87,13 @@ class CoDistributedPluginDependencyGrantResolver:
         plugin_id: str,
         source_identity: str,
     ) -> tuple[str, ...]:
-        expected = self._source_identities.get(plugin_id)
-        if expected is None:
-            return ()
-        expected_identity, error_code = expected
-        if source_identity != expected_identity:
-            raise PluginDependencyGrantError(
-                "The reserved Coding Plugin id came from a foreign source",
-                code=error_code,
-            )
-        return (_LOUSHANG_DISTRIBUTION,)
+        return resolve_exact_source_grant(
+            self._source_identities,
+            plugin_id=plugin_id,
+            source_identity=source_identity,
+            distribution=_LOUSHANG_DISTRIBUTION,
+            source_label=_SOURCE_LABEL,
+        )
 
 
 __all__ = [

@@ -11,15 +11,21 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_runtime import matches_epoch_layout
+from loushang.harness.package_product._private_data_custody import (
+    windows_private_data_read_fence,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management._installation_root_windows import (
+    read_windows_private_target,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_tree_windows import (
@@ -32,8 +38,10 @@ from loushang.harness.resources.packages._private_tree_windows_observation impor
 
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
-    coding_arch_installation_private_data_root,
-    inspect_coding_windows_arch_installation_root,
+    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+)
+from .installation_private_data import (
+    inspect_coding_windows_arch_installation_root as inspect_coding_windows_arch_installation_root,
 )
 from .private_data_deletion_preview import (
     _MAX_ENTRIES,
@@ -80,8 +88,7 @@ class CodingWindowsArchPrivateDataReadPreview:
         if (
             self.product.policy.product_id != "coding"
             or self.product.policy.project_scope_id != self.layout.scope_id
-            or self.product.epoch_runtime.registry.store_id != epoch.store_id
-            or self.product.epoch_runtime.control_root != epoch.control_root
+            or not matches_epoch_layout(self.product.epoch_runtime, epoch)
             or self.product.epoch_runtime.selected_store_root().parent
             != epoch.epochs_root
         ):
@@ -98,39 +105,30 @@ class CodingWindowsArchPrivateDataReadPreview:
             / "product-state"
         )
         with self._offline():
-            expected = inspect_coding_windows_arch_installation_root(
-                self.layout, key, state_root=state_root
-            )
-            if expected is None:
-                return CodingArchPrivateDataTargetSnapshotV1(
-                    root_path_digest=sha256(os.fsencode(str(root))).hexdigest(),
-                    root_identity=None,
-                    members=(),
-                )
-            snapshot = _capture_windows_target_snapshot(root, expected_root=expected)
-            if (
-                inspect_coding_windows_arch_installation_root(
+            return read_windows_private_target(
+                root,
+                observe_root=lambda: inspect_coding_windows_arch_installation_root(
                     self.layout, key, state_root=state_root
-                )
-                != expected
-            ):
-                raise ValueError("Windows Coding Arch private-data root changed")
-            return snapshot
+                ),
+                capture=_capture_windows_target_snapshot,
+                absent=_absent_windows_target_snapshot,
+                changed="Windows Coding Arch private-data root changed",
+            )
 
-    @contextmanager
-    def _offline(self) -> Iterator[None]:
-        registry = self.product.epoch_runtime.registry
-        with registry.exclusive_runtime_quiescence(
-            store_id=registry.store_id
-        ) as quiescence:
-            if quiescence.active_runtime_lease_ids:
-                raise ValueError(
-                    "Windows Coding Arch private-data Product runtime is active"
-                )
-            self.product.assert_private_data_read_authority_current()
-            with self.product.gc_gate.read_guard():
-                yield
-            self.product.assert_private_data_read_authority_current()
+    def _offline(self) -> AbstractContextManager[None]:
+        return windows_private_data_read_fence(
+            self.product, label="Windows Coding Arch"
+        )
+
+
+def _absent_windows_target_snapshot(
+    root: Path,
+) -> CodingArchPrivateDataTargetSnapshotV1:
+    return CodingArchPrivateDataTargetSnapshotV1(
+        root_path_digest=sha256(os.fsencode(str(root))).hexdigest(),
+        root_identity=None,
+        members=(),
+    )
 
 
 def _capture_windows_target_snapshot(

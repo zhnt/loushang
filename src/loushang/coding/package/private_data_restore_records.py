@@ -15,7 +15,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from .private_data_backup_records import _digest
+from .private_data_backup_records import _digest as _digest
 
 
 @dataclass(frozen=True, slots=True)

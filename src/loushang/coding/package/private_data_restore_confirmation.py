@@ -26,8 +26,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .private_data_restore_journal import (
-    CodingArchPrivateDataRestoreEventV1,
-    restore_id_for,
+    restore_id_for as restore_id_for,
 )
 
 _JOURNAL_NAME = "private-data-restore-confirmations.jsonl"
@@ -84,27 +83,16 @@ class CodingArchPrivateDataRestoreConfirmationV1:
         restore_completion_digest: str,
         restored_target_id: str,
     ) -> CodingArchPrivateDataRestoreConfirmationV1:
-        facts = {
-            "backupId": backup_id,
-            "deletionReceiptId": deletion_receipt_id,
-            "installationKey": installation_key.to_dict(),
-            "restoreCompletionDigest": restore_completion_digest,
-            "restoredTargetId": restored_target_id,
-            "restoreId": restore_id,
-        }
-        confirmation_id = (
-            "arch-restore-confirm:"
-            + sha256(
-                b"loushang.coding-arch-restore-confirmation/v1\0"
-                + canonical_json_bytes(facts)
-            ).hexdigest()
+        facts = _confirmation_facts(
+            installation_key,
+            backup_id,
+            deletion_receipt_id,
+            restore_id,
+            restore_completion_digest,
+            restored_target_id,
         )
-        unsigned = {
-            **facts,
-            "confirmationId": confirmation_id,
-            "recordVersion": 1,
-            "revision": revision,
-        }
+        confirmation_id = _confirmation_id(facts)
+        unsigned = _confirmation_fields(facts, confirmation_id, revision, 1)
         return cls(
             revision=revision,
             installation_key=installation_key,
@@ -118,31 +106,22 @@ class CodingArchPrivateDataRestoreConfirmationV1:
         )
 
     def _facts(self) -> dict[str, object]:
-        return {
-            "backupId": self.backup_id,
-            "deletionReceiptId": self.deletion_receipt_id,
-            "installationKey": self.installation_key.to_dict(),
-            "restoreCompletionDigest": self.restore_completion_digest,
-            "restoredTargetId": self.restored_target_id,
-            "restoreId": self.restore_id,
-        }
-
-    def _expected_id(self) -> str:
-        return (
-            "arch-restore-confirm:"
-            + sha256(
-                b"loushang.coding-arch-restore-confirmation/v1\0"
-                + canonical_json_bytes(self._facts())
-            ).hexdigest()
+        return _confirmation_facts(
+            self.installation_key,
+            self.backup_id,
+            self.deletion_receipt_id,
+            self.restore_id,
+            self.restore_completion_digest,
+            self.restored_target_id,
         )
 
+    def _expected_id(self) -> str:
+        return _confirmation_id(self._facts())
+
     def _unsigned(self) -> dict[str, object]:
-        return {
-            **self._facts(),
-            "confirmationId": self.confirmation_id,
-            "recordVersion": self.record_version,
-            "revision": self.revision,
-        }
+        return _confirmation_fields(
+            self._facts(), self.confirmation_id, self.revision, self.record_version
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {**self._unsigned(), "recordDigest": self.record_digest}
@@ -168,6 +147,45 @@ class CodingArchPrivateDataRestoreConfirmationV1:
         ):
             raise ValueError("Coding Arch restore confirmation fields are invalid")
         return _SCHEMA_RESTORE_CONFIRMATION_V1.decode(cls, value)
+
+
+def _confirmation_facts(
+    installation_key: PluginInstallationKeyV1,
+    backup_id: str,
+    deletion_receipt_id: str,
+    restore_id: str,
+    restore_completion_digest: str,
+    restored_target_id: str,
+) -> dict[str, object]:
+    return {
+        "backupId": backup_id,
+        "deletionReceiptId": deletion_receipt_id,
+        "installationKey": installation_key.to_dict(),
+        "restoreCompletionDigest": restore_completion_digest,
+        "restoredTargetId": restored_target_id,
+        "restoreId": restore_id,
+    }
+
+
+def _confirmation_id(facts: dict[str, object]) -> str:
+    return (
+        "arch-restore-confirm:"
+        + sha256(
+            b"loushang.coding-arch-restore-confirmation/v1\0"
+            + canonical_json_bytes(facts)
+        ).hexdigest()
+    )
+
+
+def _confirmation_fields(
+    facts: dict[str, object], confirmation_id: str, revision: int, record_version: int
+) -> dict[str, object]:
+    return {
+        **facts,
+        "confirmationId": confirmation_id,
+        "recordVersion": record_version,
+        "revision": revision,
+    }
 
 
 def _decode(value: object) -> CodingArchPrivateDataRestoreConfirmationV1:
@@ -204,33 +222,6 @@ class CodingArchPrivateDataRestoreConfirmationJournal(
             max_records=_MAX_RECORDS,
             max_bytes=_MAX_BYTES,
         )
-
-
-def _require_restore_confirmation(
-    records: tuple[CodingArchPrivateDataRestoreConfirmationV1, ...],
-    confirmation_id: str,
-    key: PluginInstallationKeyV1,
-    backup_id: str,
-    completion: CodingArchPrivateDataRestoreEventV1,
-    target_id: str,
-    *,
-    message: str,
-) -> CodingArchPrivateDataRestoreConfirmationV1:
-    matched = next(
-        (item for item in reversed(records) if item.confirmation_id == confirmation_id),
-        None,
-    )
-    if (
-        matched is None
-        or matched.installation_key != key
-        or matched.backup_id != backup_id
-        or matched.restore_id != completion.restore_id
-        or matched.deletion_receipt_id != completion.deletion_receipt_id
-        or matched.restore_completion_digest != completion.record_digest
-        or matched.restored_target_id != target_id
-    ):
-        raise ValueError(message)
-    return matched
 
 
 _SCHEMA_RESTORE_CONFIRMATION_V1 = RecordSchema.for_dataclass(

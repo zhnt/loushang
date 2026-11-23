@@ -7,6 +7,7 @@ only the later Product policy may authorize the resulting Wheel candidate.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import tempfile
@@ -18,13 +19,22 @@ from typing import TypeVar
 from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
     _pack_product_wheel_members,
 )
+from loushang.harness.resources.plugins.dependencies import PluginDependencyClosureLock
 
 _LEGACY_SOURCE_MAX_ENTRIES = 128
 _LEGACY_SOURCE_MAX_FILES = 64
 _LEGACY_SOURCE_MAX_FILE_BYTES = 256 * 1024
 _LEGACY_SOURCE_MAX_CONTENT_BYTES = 1024 * 1024
 _LEGACY_SOURCE_MAX_WHEEL_BYTES = 2 * 1024 * 1024
+_SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _LegacyWheelT = TypeVar("_LegacyWheelT")
+_LegacyWheelValues = tuple[str, str, str, str, str, str, str, str, bytes]
+
+
+def legacy_source_wheel_prefix(plugin_id: str, content_digest: str) -> str:
+    digest = sha256(f"{plugin_id}\0{content_digest}".encode()).hexdigest()
+    return f"loushang_legacy_{digest[:24]}"
 
 
 def _reacquire_legacy_local_plugin_wheel(
@@ -36,11 +46,26 @@ def _reacquire_legacy_local_plugin_wheel(
     expected_source_identity: str,
     expected_content_digest: str,
     expected_manifest_digest: str,
-    result_factory: Callable[
-        [tuple[str, str, str, str, str, str, str, str, bytes]], _LegacyWheelT
-    ],
+    expected_dependency_lock: PluginDependencyClosureLock,
+    result_factory: Callable[[_LegacyWheelValues], _LegacyWheelT],
 ) -> _LegacyWheelT:
     """Recapture admitted original Source bytes; this grants no Product authority."""
+    if os.name != "posix":
+        raise RuntimeError("POSIX local Plugin Source reacquisition is required")
+    if not isinstance(plugin_id, str) or _SAFE_ID.fullmatch(plugin_id) is None:
+        raise ValueError("Legacy Plugin identity is invalid")
+    if any(
+        not isinstance(value, str) or _SHA256.fullmatch(value) is None
+        for value in (expected_content_digest, expected_manifest_digest)
+    ):
+        raise ValueError("Legacy Plugin revision evidence is invalid")
+    if (
+        not isinstance(expected_dependency_lock, PluginDependencyClosureLock)
+        or expected_dependency_lock.package_content_digest != expected_content_digest
+        or expected_dependency_lock.python_distributions
+    ):
+        raise ValueError("Legacy Plugin dependency closure is unsupported")
+
     from loushang.harness.resources.plugins.locators import (
         canonical_plugin_relative_path,
     )
@@ -81,12 +106,7 @@ def _reacquire_legacy_local_plugin_wheel(
             ):
                 raise ValueError("Legacy Plugin Source revision changed")
             handle.verify()
-            prefix = (
-                "loushang_legacy_"
-                + sha256(
-                    f"{plugin_id}\0{expected_content_digest}".encode()
-                ).hexdigest()[:24]
-            )
+            prefix = legacy_source_wheel_prefix(plugin_id, expected_content_digest)
             files: dict[str, bytes] = {}
             total_bytes = 0
             paths = sorted(published.root.rglob("*"))

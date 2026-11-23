@@ -32,14 +32,15 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     coding_arch_installation_private_data_root,
+    coding_arch_workspace_installation_key,
     inspect_coding_windows_arch_installation_root,
 )
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
-    _backup_receipt,
     _backup_retention_revision,
     _WindowsArchBackupCodec,
     backup_parent,
+    make_backup_receipt,
 )
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .private_data_windows_preview import (
@@ -79,9 +80,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
         with preview._offline():
             state = self.product.desired_state.snapshot().installation(key)
             if state.latest_instance_revision_ref is None:
-                raise ValueError(
-                    "Coding Arch backup Installation has no Product history"
-                )
+                raise ValueError("Coding Arch backup Installation has no Product history")
             expected_root = inspect_coding_windows_arch_installation_root(
                 self.layout, key, state_root=state_root
             )
@@ -90,7 +89,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
             source = _capture_windows_target_snapshot(
                 source_root, expected_root=expected_root
             )
-            receipt = _backup_receipt(key, source)
+            receipt = make_backup_receipt(key, source)
             parent_path = backup_parent(self.layout, key)
             prepare_windows_product_private_directory_chain(
                 self.layout.package_root, "installation-backups", parent_path.name
@@ -102,16 +101,14 @@ class CodingWindowsArchPrivateDataBackupOwner:
                 key,
                 parent_path,
                 source_is_current=lambda: (
-                    not (
-                        _capture_windows_target_snapshot(
-                            source_root, expected_root=expected_root
-                        )
-                        != source
-                        or inspect_coding_windows_arch_installation_root(
-                            self.layout, key, state_root=state_root
-                        )
-                        != expected_root
+                    _capture_windows_target_snapshot(
+                        source_root, expected_root=expected_root
                     )
+                    == source
+                    and inspect_coding_windows_arch_installation_root(
+                        self.layout, key, state_root=state_root
+                    )
+                    == expected_root
                 ),
             )
 
@@ -127,11 +124,10 @@ class CodingWindowsArchPrivateDataBackupOwner:
         with preview._offline(), WindowsPrivateDirectoryAcl() as acl:
             state = self.product.desired_state.snapshot().installation(key)
             if state.latest_instance_revision_ref is None:
-                raise ValueError(
-                    "Coding Arch backup Installation has no Product history"
-                )
-            parent_path = backup_parent(self.layout, key)
-            return _archive_io.verify_retained(parent_path, backup_id_value, key, acl)
+                raise ValueError("Coding Arch backup Installation has no Product history")
+            return _archive_io.verify_retained(
+                backup_parent(self.layout, key), backup_id_value, key, acl
+            )
 
     def snapshot(self) -> PluginBackupRetentionSnapshotV1:
         """Project verified archives and receipt-backed expiry conservatively."""
@@ -144,12 +140,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
             CodingWindowsArchPrivateDataRestoreTransaction,
         )
 
-        key = PluginInstallationKeyV1(
-            product_id="coding",
-            installation_scope="workspace",
-            scope_id=self.layout.scope_id,
-            plugin_id="coding.arch.default",
-        )
+        key = coding_arch_workspace_installation_key(self.layout.scope_id)
         return read_windows_private_backup_retention(
             self,
             key,

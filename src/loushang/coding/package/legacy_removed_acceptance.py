@@ -18,7 +18,9 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout,
+)
 from .legacy_disabled_acceptance import CodingLegacyDisabledOnlyAcceptanceError
 from .legacy_removed_review import (
     CodingLegacyRemovedReviewV1,
@@ -96,15 +98,15 @@ def accept_coding_first_b_removed_local(
     review = review_coding_first_b_removed_local(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
-    if accepted_review_id != review.review_id:
-        raise CodingLegacyRemovedAcceptanceError("Old removal review ID changed")
-    proposed = CodingLegacyRemovedAcceptanceV1.create(review)
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if epoch_runtime.registry.store_id != epoch.store_id:
-        raise CodingLegacyRemovedAcceptanceError("Product Store changed")
-    return _acceptance_journal.accept(
+    return _acceptance_journal.accept_review(
         epoch_runtime,
-        proposed,
+        accepted_review_id=accepted_review_id,
+        current_review_id=review.review_id,
+        create=lambda: CodingLegacyRemovedAcceptanceV1.create(review),
+        expected_store_id=lambda: (
+            resolve_coding_package_epoch_layout(lifecycle).store_id
+        ),
+        changed_review="Old removal review ID changed",
         conflict_message="Old removal acceptance conflicts with prior review",
     )
 
@@ -117,24 +119,15 @@ def read_coding_first_b_removed_local_acceptance(
 ) -> CodingLegacyRemovedAcceptanceV1 | None:
     """Reopen acceptance against the current authenticated first-B review."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if epoch_runtime.registry.store_id != epoch.store_id:
-        raise CodingLegacyRemovedAcceptanceError("Product Store changed")
-    path = epoch_runtime.control_root / "product-state" / _acceptance_journal.filename
-    records = _acceptance_journal.records(path)
-    if not records:
-        return None
-    review = review_coding_first_b_removed_local(
-        lifecycle, epoch_runtime, settings_manager=settings_manager
+    return _acceptance_journal.read_acceptance(
+        epoch_runtime,
+        expected_store_id=resolve_coding_package_epoch_layout(lifecycle).store_id,
+        review=lambda: review_coding_first_b_removed_local(
+            lifecycle, epoch_runtime, settings_manager=settings_manager
+        ),
+        create=CodingLegacyRemovedAcceptanceV1.create,
+        conflict_message="Old removal acceptance conflicts with first-B review",
     )
-    if len(records) != 1 or records[0] != CodingLegacyRemovedAcceptanceV1.create(
-        review
-    ):
-        raise CodingLegacyRemovedAcceptanceError(
-            "Old removal acceptance conflicts with first-B review"
-        )
-    epoch_runtime.assert_current()
-    return records[0]
 
 
 def _write_private_acceptance(

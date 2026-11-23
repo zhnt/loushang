@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from hashlib import sha256
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from loushang.foundation.json import JsonValueError, require_json_mapping
 from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
@@ -16,6 +16,9 @@ from loushang.harness.resources.packages.plugin_lifecycle._record_schema import 
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import PluginDeclarationCodecError
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+
+if TYPE_CHECKING:
+    from loushang.harness.resources.plugins.types import PublishedPluginPackage
 
 PLUGIN_PACKAGE_REVISION_REF_VERSION = 1
 PLUGIN_INSTALLATION_KEY_VERSION = 1
@@ -69,6 +72,19 @@ class PluginPackageRevisionRefV1:
         _require_version(
             self.schema_version,
             expected=PLUGIN_PACKAGE_REVISION_REF_VERSION,
+        )
+
+    @classmethod
+    def from_published_package(
+        cls, package: PublishedPluginPackage, *, source_identity: str
+    ) -> PluginPackageRevisionRefV1:
+        """Project the exact published revision using its observed Source binding."""
+        return cls(
+            plugin_id=package.manifest.name,
+            plugin_version=package.manifest.version,
+            package_content_digest=package.content_digest,
+            dependency_lock_digest=package.dependency_lock.digest,
+            package_source_identity=source_identity,
         )
 
     def to_dict(self) -> dict[str, object]:

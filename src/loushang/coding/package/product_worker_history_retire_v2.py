@@ -11,20 +11,8 @@ from loushang.harness.package_product._linux_worker_history import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.worker.history._publication import HistoryPublication
-from loushang.harness.worker.history._read_v2 import (
-    _MAX_HEAD_BYTES as _MAX_HEAD_BYTES,
-)
-from loushang.harness.worker.history._read_v2 import (
-    _MAX_LEDGER_BYTES as _MAX_LEDGER_BYTES,
-)
-from loushang.harness.worker.history._read_v2 import (
-    _MAX_SEGMENT_BYTES as _MAX_SEGMENT_BYTES,
-)
 
-from .product_worker_history_read_v2 import _HISTORY_READER
-
-_HISTORY_PUBLICATION = HistoryPublication(_HISTORY_READER)
+from .product_worker_history_read_v2 import _HISTORY_PUBLICATION
 
 
 class CodingWorkerV2RetirementError(RuntimeError):
@@ -33,24 +21,10 @@ class CodingWorkerV2RetirementError(RuntimeError):
         self.code = code
 
 
-def _retirement_limits() -> dict[str, int]:
-    from . import product_worker_history_stage_v2 as preparation
-
-    return dict(
-        max_segment_bytes=_MAX_SEGMENT_BYTES,
-        max_head_bytes=_MAX_HEAD_BYTES,
-        max_ledger_bytes=_MAX_LEDGER_BYTES,
-        max_intent_bytes=preparation._MAX_INTENT_BYTES,
-        max_base_bytes=preparation._MAX_BASE_BYTES,
-        max_stream_bytes=preparation._MAX_STREAM_BYTES,
-        max_index_bytes=preparation._MAX_INDEX_BYTES,
-    )
-
-
 def retire_coding_worker_v2_history_under_guard(rooted: RootedFile) -> bool:
     """Write exact deletion debt before unlinking any retired source bytes."""
     return _HISTORY_PUBLICATION.retire_under_guard(
-        rooted, error_type=CodingWorkerV2RetirementError, **_retirement_limits()
+        rooted, error_type=CodingWorkerV2RetirementError
     )
 
 
@@ -69,7 +43,6 @@ def retire_coding_product_worker_v2_history(
         product,
         publication=_HISTORY_PUBLICATION,
         error_type=CodingWorkerV2RetirementError,
-        limits=_retirement_limits,
     )
 
 

@@ -42,7 +42,10 @@ from tests.coding.test_package_product_worker_activation_segments import (
 )
 
 
-def test_activation_checkpoint_preserves_source_and_retired_attempt_id() -> None:
+def test_activation_checkpoint_preserves_source_and_retired_attempt_id(
+    tmp_path: Path,
+) -> None:
+    journal = CodingProductWorkerActivationStateJournal(tmp_path / "worker-activation-state.jsonl")
     attempt_id = "a" * 32
     receipt = "b" * 64
     original = b'{"journalRevision":1}\n'
@@ -75,20 +78,13 @@ def test_activation_checkpoint_preserves_source_and_retired_attempt_id() -> None
     history = CodingWorkerSegmentedHistoryV1(
         manifest=None, segments=(original + appended,)
     )
-    assert (
-        CodingProductWorkerActivationStateJournal._assert_checkpoint_source(
-            (checkpoint,), history
-        )
-        == 1
-    )
+    assert journal._source_revision((checkpoint,), history) == 1
 
     rewritten = CodingWorkerSegmentedHistoryV1(
         manifest=None, segments=(b'{"journalRevision":9}\n' + appended,)
     )
     with pytest.raises(WorkerActivationStateJournalError) as changed:
-        CodingProductWorkerActivationStateJournal._assert_checkpoint_source(
-            (checkpoint,), rewritten
-        )
+        journal._source_revision((checkpoint,), rewritten)
     assert changed.value.code == "worker_activation_state_checkpoint_source_changed"
 
     initial = _initial_state(restart_budget=3)

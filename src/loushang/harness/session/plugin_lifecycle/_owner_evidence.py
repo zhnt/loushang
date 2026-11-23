@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 from typing import Generic, Literal, Protocol, Self, TypeVar
 
@@ -18,10 +19,48 @@ from loushang.harness.journal import (
     journal_file_lock,
     load_jsonl,
 )
+from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 
 OwnerGenerationEventKind = Literal["prepared", "published", "retired"]
+
+
+
+def owner_generation_event_payload(
+    *,
+    event_kind: OwnerGenerationEventKind,
+    family_id: str,
+    instance_revision_ref: PluginInstanceRevisionRef,
+    receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+    outcome_reference: str,
+) -> dict[str, object]:
+    return {
+        "eventKind": event_kind,
+        "familyId": family_id,
+        "instanceRevisionRef": instance_revision_ref.to_dict(),
+        "outcomeReference": outcome_reference,
+        "receipts": [item.to_dict() for item in receipts],
+    }
+
+
+def owner_generation_event_identity(
+    *,
+    digest_domain: bytes,
+    event_kind: OwnerGenerationEventKind,
+    family_id: str,
+    instance_revision_ref: PluginInstanceRevisionRef,
+    receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+    outcome_reference: str,
+) -> str:
+    payload = owner_generation_event_payload(
+        event_kind=event_kind,
+        family_id=family_id,
+        instance_revision_ref=instance_revision_ref,
+        receipts=receipts,
+        outcome_reference=outcome_reference,
+    )
+    return sha256(digest_domain + StrictPluginJsonCodec.encode(payload)).hexdigest()
 
 
 class _Event(Protocol):

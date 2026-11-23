@@ -222,7 +222,7 @@ def test_readonly_snapshot_selects_one_parent_linked_history_path(
         return result
 
     monkeypatch.setattr(
-        'loushang.coding.resume.history.load_agent_transcript_file_with_content_digest',
+        'loushang.harness.transcript.session_catalog.load_agent_transcript_file_with_content_digest',
         change_after_read,
     )
     with pytest.raises(ValueError, match="source changed"):

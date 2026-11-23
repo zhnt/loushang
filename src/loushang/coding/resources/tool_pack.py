@@ -32,6 +32,10 @@ from loushang.harness.tools.workspace.factory import (
     create_profiled_workspace_tools,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.tools.workspace.selection import (
+    platform_tool_names,
+    platform_tool_profile,
+)
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import ToolOperations
 
@@ -104,17 +108,7 @@ def coding_workspace_tool_profile(
 ) -> WorkspaceToolProfile:
     """Select the command tool from execution-target facts."""
 
-    if environment.os_family != "windows":
-        return CODING_WORKSPACE_TOOL_PROFILE
-    return replace(
-        CODING_WORKSPACE_TOOL_PROFILE,
-        tool_names=tuple(
-            "shell" if name == "bash" else name for name in CODING_TOOL_NAMES
-        ),
-        builtin_tool_names=tuple(
-            "shell" if name == "bash" else name for name in CODING_BUILTIN_TOOL_NAMES
-        ),
-    )
+    return platform_tool_profile(CODING_WORKSPACE_TOOL_PROFILE, environment)
 
 
 def coding_default_active_tool_names(
@@ -131,18 +125,7 @@ def coding_platform_tool_names(
 ) -> tuple[str, ...]:
     """Resolve platform-neutral Coding Tool intents for one execution host."""
 
-    resolved: list[str] = []
-    seen: set[str] = set()
-    for name in tool_names:
-        platform_name = (
-            "shell"
-            if environment.os_family == "windows" and name == "bash"
-            else name
-        )
-        if platform_name not in seen:
-            resolved.append(platform_name)
-            seen.add(platform_name)
-    return tuple(resolved)
+    return platform_tool_names(tool_names, environment)
 
 
 def _profile_from_options(options: ToolsOptions | None) -> WorkspaceToolProfile:

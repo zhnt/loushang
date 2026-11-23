@@ -416,14 +416,13 @@ class RootedSupervisorJournal(WorkerSupervisorJournal):
     def _checkpoint_writer_fence(
         self, rooted: RootedFile
     ) -> tuple[_CheckpointMethods, ...]:
-        with self._history_reader.checkpoints.translated_errors(
-            lambda code: self._error(
+        return self._history_reader.checkpoints.read_bound_writer_fence(
+            rooted,
+            self._access,
+            error_type=lambda code: self._error(
                 "Worker Supervisor checkpoint could not be verified", code=code
-            )
-        ):
-            return self._history_reader.checkpoints.read_writer_fence(
-                rooted, scope_id=self._access.scope_id, store_id=self._access.store_id
-            )
+            ),
+        )
 
     def _assert_checkpoint_write(
         self,

@@ -45,6 +45,7 @@ from loushang.harness.transcript.jsonl_file import (
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
 
 from .test_hosted_catalog import _intent
+from .test_managed_launch import managed_workspace as managed_workspace
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux owned managed catalog")
 

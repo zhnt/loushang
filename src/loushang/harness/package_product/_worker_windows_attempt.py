@@ -76,11 +76,23 @@ from loushang.harness.worker.history._windows_product_journals import (
     WindowsSupervisorJournal,
 )
 from loushang.harness.worker.history._windows_recovery import (
+    WINDOWS_STAGE_RETIREMENT_RECEIPT_MAX_BYTES,
     WindowsRecoveryAdmission,
     WindowsRecoveryAttemptV1,
     project_windows_recovery_attempts,
 )
-from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_BASE_FILES,
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+    WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES,
+    WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+    WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES,
+    WindowsHistoryNames,
+)
+from loushang.harness.worker.history._windows_stage_review_wire import (
+    WINDOWS_STAGE_REVIEW_MAX_BYTES,
+)
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from loushang.harness.worker.payload._selected_payload import (
     _PendingPayload,
@@ -123,10 +135,6 @@ def read_windows_product_worker_persisted_bases(
     require_cutover: bool,
     io: WindowsPrivateReceiptIO,
     history_names: WindowsHistoryNames,
-    checkpoint_name: str,
-    base_files: tuple[tuple[str, str], ...],
-    cutover_name: str,
-    limits: Callable[[], tuple[int, int, int]],
     decode_checkpoint: Callable[[bytes], _PersistedCheckpointT],
     make_result: Callable[[_PersistedCheckpointT, tuple[bytes, ...]], _PersistedBasesT],
     cutover_codec: Callable[
@@ -144,23 +152,30 @@ def read_windows_product_worker_persisted_bases(
             raise ValueError("Windows Worker persisted root changed")
         names = tuple(windows_listdir_at(root))
         if require_cutover:
-            if names.count(cutover_name) != 1:
+            if names.count(WINDOWS_WORKER_HISTORY_CUTOVER_NAME) != 1:
                 raise ValueError("Windows Worker cutover marker is absent")
-            known_names = tuple(name for name in names if name != cutover_name)
+            known_names = tuple(
+                name for name in names if name != WINDOWS_WORKER_HISTORY_CUTOVER_NAME
+            )
         else:
             known_names = names
         history_names.require_known(known_names)
         if any(name.casefold().endswith(".stage") for name in names):
             raise ValueError("Windows Worker persisted stage remains")
         checkpoint_raw = io._read_file(
-            root, acl, checkpoint_name, maximum_bytes=limits()[0]
+            root,
+            acl,
+            WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+            maximum_bytes=WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
         )
         if checkpoint_raw is None:
             raise ValueError("Windows Worker persisted checkpoint is absent")
         checkpoint = decode_checkpoint(checkpoint_raw)
         raw_bases = tuple(
-            io._read_file(root, acl, name, maximum_bytes=limits()[1])
-            for _, name in base_files
+            io._read_file(
+                root, acl, name, maximum_bytes=WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES
+            )
+            for _, name in WINDOWS_WORKER_BASE_FILES
         )
         if any(raw is None for raw in raw_bases):
             raise ValueError("Windows Worker persisted base is absent")
@@ -178,8 +193,8 @@ def read_windows_product_worker_persisted_bases(
             cutover_raw = io._read_file(
                 root,
                 acl,
-                cutover_name,
-                maximum_bytes=limits()[2],
+                WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+                maximum_bytes=WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES,
             )
             if cutover_raw is None:
                 raise ValueError("Windows Worker cutover marker is absent")
@@ -188,13 +203,18 @@ def read_windows_product_worker_persisted_bases(
             io._read_file(
                 root,
                 acl,
-                checkpoint_name,
-                maximum_bytes=limits()[0],
+                WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+                maximum_bytes=WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
             )
             != checkpoint_raw
             or tuple(
-                io._read_file(root, acl, name, maximum_bytes=limits()[1])
-                for _, name in base_files
+                io._read_file(
+                    root,
+                    acl,
+                    name,
+                    maximum_bytes=WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES,
+                )
+                for _, name in WINDOWS_WORKER_BASE_FILES
             )
             != raw_bases
             or (
@@ -202,8 +222,8 @@ def read_windows_product_worker_persisted_bases(
                 and io._read_file(
                     root,
                     acl,
-                    cutover_name,
-                    maximum_bytes=limits()[2],
+                    WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+                    maximum_bytes=WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES,
                 )
                 != cutover_raw
             )
@@ -258,8 +278,8 @@ class WindowsWorkerRetirementRecords(Generic[_RetirementReviewT, IntentT]):
     stem: str
     review_type: type[_RetirementReviewT]
     receipt_type: type[IntentT]
-    review_maximum_bytes: int
-    receipt_maximum_bytes: int
+    review_maximum_bytes: int = WINDOWS_STAGE_REVIEW_MAX_BYTES
+    receipt_maximum_bytes: int = WINDOWS_STAGE_RETIREMENT_RECEIPT_MAX_BYTES
     read_bytes: Callable[[Path, int], bytes | None]
     error_type: type[Exception]
     start_invalid: str
@@ -292,6 +312,11 @@ class WindowsWorkerRetirementRecords(Generic[_RetirementReviewT, IntentT]):
             attempt_id,
             invalid_error=lambda: self.error_type(self.start_invalid),
         )
+
+    def publish_start(
+        self, path: Path, review: _RetirementReviewT, *, write: _ReceiptWriter
+    ) -> None:
+        write(path, review.to_bytes(), maximum_bytes=self.review_maximum_bytes)
 
     def read_root_intent(
         self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
@@ -2013,3 +2038,25 @@ class WindowsProductWorkerPayload(
             error_type=self.error_type,
             error_prefix=self.error_prefix,
         )
+
+
+_ATTEMPT_ID = re.compile(r"[0-9a-f]{32}\Z")
+
+
+def is_windows_product(
+    product: WindowsLocalWheelProductSessionOwner,
+    product_id: str,
+    platform: str,
+    owner_type: type[WindowsLocalWheelProductSessionOwner] = (
+        WindowsLocalWheelProductSessionOwner
+    ),
+) -> bool:
+    return not (
+        platform != "nt"
+        or type(product) is not owner_type
+        or product.policy.product_id != product_id
+    )
+
+
+def is_attempt_id(attempt_id: object) -> bool:
+    return type(attempt_id) is str and _ATTEMPT_ID.fullmatch(attempt_id) is not None

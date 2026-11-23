@@ -206,16 +206,6 @@ def _history_proof_bindings() -> HistoryProofBindings[
 
         return _PREPARATION_HISTORY
 
-    def preparation_limits():
-        from . import product_worker_history_stage_v2 as stage
-
-        return dict(
-            max_intent_bytes=stage._MAX_INTENT_BYTES,
-            max_base_bytes=stage._MAX_BASE_BYTES,
-            max_stream_bytes=stage._MAX_STREAM_BYTES,
-            max_index_bytes=stage._MAX_INDEX_BYTES,
-        )
-
     def checkpoints():
         from .product_worker_history_checkpoint import _checkpoint_commands
 
@@ -268,7 +258,6 @@ def _history_proof_bindings() -> HistoryProofBindings[
         access=access,
         reader=reader,
         preparation=preparation,
-        preparation_limits=preparation_limits,
         checkpoints=checkpoints,
         registered=registered,
         payload=payload,

@@ -7,14 +7,17 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.worker.history._base_codec import (
     _BaseWireMethods,
-    _SourceBoundBaseWireMethods,
 )
 from loushang.harness.worker.history._windows_prepared import (
+    _record_tuple_field,
     _WindowsPreparedSourceMethods,
 )
 from loushang.harness.worker.history._windows_semantic_contracts import (
@@ -28,10 +31,18 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
-class _WindowsLaunchIntentBaseMethods(
-    _WindowsPreparedSourceMethods, _SourceBoundBaseWireMethods
-):
+class _WindowsLaunchIntentBaseMethods(_WindowsPreparedSourceMethods):
     __slots__ = ()
+    _wire_label = "Windows Worker launch-intent semantic base"
+    _wire_lists = ("intentAttemptIds", "retainedIntents")
+    _wire_errors: ClassVar[tuple[type[Exception], ...]] = (
+        KeyError,
+        RecursionError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+    )
+    _wire_max_bytes = 16 * 1024 * 1024
     scope_id: str
     store_id: str
     source_snapshot_digest: str
@@ -41,6 +52,18 @@ class _WindowsLaunchIntentBaseMethods(
     version: int = 1
     _intent_type: ClassVar[type[_LaunchIntentFacts]]
     _replay_type: ClassVar[Callable[..., object]]
+
+    @classmethod
+    def _bind_record_schema(
+        cls, decode_intent: Callable[[bytes], _LaunchIntentFacts]
+    ) -> None:
+        cls._bind_windows_wire_schema(
+            _record_tuple_field(
+                "retained_intents",
+                lambda item: decode_intent(canonical_json_bytes(item)),
+            ),
+            RecordField("intent_attempt_ids", decoder=tuple, encoder=list),
+        )
 
     def __post_init__(self) -> None:
         if (

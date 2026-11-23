@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from loushang.harness.package_product._windows_worker_recovery import (
     WindowsProductWorkerCrashRecovery,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -25,11 +26,7 @@ def recover_coding_windows_product_worker_crash_attempt(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingProductWorkerRetainedAttemptV1:
     """Resume each completed edge without granting authority from a stale review."""
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker crash recovery requires its Coding Product")
     return cast(
         CodingProductWorkerRetainedAttemptV1,

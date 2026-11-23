@@ -131,6 +131,21 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
             "loushang.harness.resources._catalog_input_receipt.ResourceCatalogInputReceipt",
         },
     }
+    input_receipt = "loushang.harness.resources._catalog_input_receipt"
+    reviewed_catalog_imports[Path("src/loushang/harness/session/bootstrap_construction.py")] = {
+        input_receipt,
+        f"{input_receipt}.ResourceCatalogInputReceipt",
+    }
+    reviewed_catalog_imports[Path("src/loushang/coding/composition/package_catalog.py")] = {
+        input_receipt,
+        f"{input_receipt}.ResourceCatalogInputReceipt",
+    }
+    records = "loushang.harness.resources._catalog_records"
+    reviewed_catalog_imports[Path("src/loushang/harness/session/composition_evidence.py")] = {
+        records,
+        f"{records}.ResourceCatalogSnapshot",
+        f"{records}.fingerprint_catalog_value",
+    }
     optional_consumers = {
         path
         for path in consumers

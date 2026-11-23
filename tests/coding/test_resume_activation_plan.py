@@ -196,7 +196,7 @@ def test_activation_plan_rejects_noncanonical_or_duplicate_owner_inputs() -> Non
 def test_activation_plan_rejects_rewritten_real_transcript(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.resume import history as resume_history_module
+    from loushang.harness.transcript import session_catalog
 
     async def create() -> Path:
         manager = await SessionManager.new_with_composition(
@@ -211,7 +211,7 @@ def test_activation_plan_rejects_rewritten_real_transcript(
 
     path = asyncio.run(create())
     monkeypatch.setattr(
-        resume_history_module, "session_file_authority_fingerprint",
+        session_catalog, "session_file_authority_fingerprint",
         lambda _path: "stat-v1:1:2:3:4:5",
     )
     current = resolve_coding_composition_set("coding-standard")

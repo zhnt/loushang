@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Protocol
 
 from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
     ExactProductSourceFiles,
@@ -76,6 +77,46 @@ class CodingCapabilityProductWheelArtifactV1:
     path: Path
     artifact_digest: str
     byte_count: int
+
+
+class _ExactWheelSourceOperation(Protocol):
+    def __call__(
+        self, source_root: Path, *, filename: str, body: bytes, label: str
+    ) -> tuple[Path, str, int]: ...
+
+
+def _access_base_wheel(
+    source_root: Path, *, operation: _ExactWheelSourceOperation
+) -> CodingBaseProductWheelArtifactV1:
+    path, digest, byte_count = operation(
+        source_root,
+        filename=CODING_BASE_PRODUCT_WHEEL_FILENAME,
+        body=build_coding_base_product_wheel(),
+        label="base",
+    )
+    return CodingBaseProductWheelArtifactV1(path, digest, byte_count)
+
+
+def _access_capability_wheels(
+    source_root: Path, *, operation: _ExactWheelSourceOperation
+) -> tuple[CodingCapabilityProductWheelArtifactV1, ...]:
+    artifacts = []
+    for plugin_id, spec in _CAPABILITY_SPECS.items():
+        path, digest, byte_count = operation(
+            source_root,
+            filename=spec.filename,
+            body=build_coding_capability_product_wheel(plugin_id),
+            label="Capability",
+        )
+        artifacts.append(
+            CodingCapabilityProductWheelArtifactV1(
+                plugin_id=plugin_id,
+                path=path,
+                artifact_digest=digest,
+                byte_count=byte_count,
+            )
+        )
+    return tuple(artifacts)
 
 
 def coding_base_product_local_wheel_policy(
@@ -177,13 +218,7 @@ def prepare_posix_coding_base_product_wheel(
 ) -> CodingBaseProductWheelArtifactV1:
     """Publish exact installed bytes in a private Product Source root once."""
 
-    path, digest, byte_count = _publish_posix_product_wheel(
-        source_root,
-        filename=CODING_BASE_PRODUCT_WHEEL_FILENAME,
-        body=build_coding_base_product_wheel(),
-        label="base",
-    )
-    return CodingBaseProductWheelArtifactV1(path, digest, byte_count)
+    return _access_base_wheel(source_root, operation=_publish_posix_product_wheel)
 
 
 def prepare_posix_coding_capability_product_wheels(
@@ -191,23 +226,9 @@ def prepare_posix_coding_capability_product_wheels(
 ) -> tuple[CodingCapabilityProductWheelArtifactV1, ...]:
     """Publish the exact checked-in LSP and Arch packages into Product Source."""
 
-    artifacts = []
-    for plugin_id, spec in _CAPABILITY_SPECS.items():
-        path, digest, byte_count = _publish_posix_product_wheel(
-            source_root,
-            filename=spec.filename,
-            body=build_coding_capability_product_wheel(plugin_id),
-            label="Capability",
-        )
-        artifacts.append(
-            CodingCapabilityProductWheelArtifactV1(
-                plugin_id=plugin_id,
-                path=path,
-                artifact_digest=digest,
-                byte_count=byte_count,
-            )
-        )
-    return tuple(artifacts)
+    return _access_capability_wheels(
+        source_root, operation=_publish_posix_product_wheel
+    )
 
 
 def inspect_posix_coding_base_product_wheel(
@@ -215,13 +236,7 @@ def inspect_posix_coding_base_product_wheel(
 ) -> CodingBaseProductWheelArtifactV1:
     """Verify an already published built-in Wheel without publishing it."""
 
-    path, digest, byte_count = _inspect_posix_product_wheel(
-        source_root,
-        filename=CODING_BASE_PRODUCT_WHEEL_FILENAME,
-        body=build_coding_base_product_wheel(),
-        label="base",
-    )
-    return CodingBaseProductWheelArtifactV1(path, digest, byte_count)
+    return _access_base_wheel(source_root, operation=_inspect_posix_product_wheel)
 
 
 def inspect_posix_coding_capability_product_wheels(
@@ -229,23 +244,9 @@ def inspect_posix_coding_capability_product_wheels(
 ) -> tuple[CodingCapabilityProductWheelArtifactV1, ...]:
     """Verify all first-party Capability Sources without creating files."""
 
-    artifacts = []
-    for plugin_id, spec in _CAPABILITY_SPECS.items():
-        path, digest, byte_count = _inspect_posix_product_wheel(
-            source_root,
-            filename=spec.filename,
-            body=build_coding_capability_product_wheel(plugin_id),
-            label="Capability",
-        )
-        artifacts.append(
-            CodingCapabilityProductWheelArtifactV1(
-                plugin_id=plugin_id,
-                path=path,
-                artifact_digest=digest,
-                byte_count=byte_count,
-            )
-        )
-    return tuple(artifacts)
+    return _access_capability_wheels(
+        source_root, operation=_inspect_posix_product_wheel
+    )
 
 
 def prepare_windows_coding_base_product_wheel(
@@ -253,13 +254,7 @@ def prepare_windows_coding_base_product_wheel(
 ) -> CodingBaseProductWheelArtifactV1:
     """Publish exact installed base bytes under the private Windows Source."""
 
-    path, digest, byte_count = _publish_windows_product_wheel(
-        source_root,
-        filename=CODING_BASE_PRODUCT_WHEEL_FILENAME,
-        body=build_coding_base_product_wheel(),
-        label="base",
-    )
-    return CodingBaseProductWheelArtifactV1(path, digest, byte_count)
+    return _access_base_wheel(source_root, operation=_publish_windows_product_wheel)
 
 
 def prepare_windows_coding_capability_product_wheels(
@@ -267,56 +262,22 @@ def prepare_windows_coding_capability_product_wheels(
 ) -> tuple[CodingCapabilityProductWheelArtifactV1, ...]:
     """Publish exact first-party Capability bytes under the Windows Source."""
 
-    return tuple(
-        CodingCapabilityProductWheelArtifactV1(
-            plugin_id=plugin_id,
-            path=path,
-            artifact_digest=digest,
-            byte_count=byte_count,
-        )
-        for plugin_id, spec in _CAPABILITY_SPECS.items()
-        for path, digest, byte_count in (
-            _publish_windows_product_wheel(
-                source_root,
-                filename=spec.filename,
-                body=build_coding_capability_product_wheel(plugin_id),
-                label="Capability",
-            ),
-        )
+    return _access_capability_wheels(
+        source_root, operation=_publish_windows_product_wheel
     )
 
 
 def inspect_windows_coding_base_product_wheel(
     source_root: Path,
 ) -> CodingBaseProductWheelArtifactV1:
-    path, digest, byte_count = _inspect_windows_product_wheel(
-        source_root,
-        filename=CODING_BASE_PRODUCT_WHEEL_FILENAME,
-        body=build_coding_base_product_wheel(),
-        label="base",
-    )
-    return CodingBaseProductWheelArtifactV1(path, digest, byte_count)
+    return _access_base_wheel(source_root, operation=_inspect_windows_product_wheel)
 
 
 def inspect_windows_coding_capability_product_wheels(
     source_root: Path,
 ) -> tuple[CodingCapabilityProductWheelArtifactV1, ...]:
-    return tuple(
-        CodingCapabilityProductWheelArtifactV1(
-            plugin_id=plugin_id,
-            path=path,
-            artifact_digest=digest,
-            byte_count=byte_count,
-        )
-        for plugin_id, spec in _CAPABILITY_SPECS.items()
-        for path, digest, byte_count in (
-            _inspect_windows_product_wheel(
-                source_root,
-                filename=spec.filename,
-                body=build_coding_capability_product_wheel(plugin_id),
-                label="Capability",
-            ),
-        )
+    return _access_capability_wheels(
+        source_root, operation=_inspect_windows_product_wheel
     )
 
 

@@ -8,8 +8,6 @@ and Session Graph authorities.
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, cast
@@ -19,9 +17,13 @@ from loushang.coding.composition.capabilities import (
     CODING_LSP_CAPABILITY,
 )
 from loushang.harness.config.agent import CapabilityMountMode
+from loushang.harness.session.composition_evidence import (
+    composition_plan_fingerprint,
+)
 
 CODING_COMPOSITION_SET_PLAN_VERSION = 1
 CODING_KERNEL_PROMPT_REVISION = "coding-kernel-prompt-v1"
+_COMPOSITION_PLAN_DIGEST_DOMAIN = b"loushang.coding-composition-set-plan/v1\0"
 
 CodingCompositionSetId = Literal[
     "coding-minimal",
@@ -129,15 +131,10 @@ class CodingCompositionSetPlan:
 
     @property
     def fingerprint(self) -> str:
-        payload = json.dumps(
+        return composition_plan_fingerprint(
             self.to_dict(include_fingerprint=False),
-            ensure_ascii=True,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8")
-        return hashlib.sha256(
-            b"loushang.coding-composition-set-plan/v1\0" + payload
-        ).hexdigest()
+            digest_domain=_COMPOSITION_PLAN_DIGEST_DOMAIN,
+        )
 
     def to_dict(self, *, include_fingerprint: bool = True) -> dict[str, object]:
         document: dict[str, object] = {

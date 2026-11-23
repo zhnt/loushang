@@ -766,6 +766,12 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         {"path_read": 1},
     ),
     (
+        "resources/packages/product_epoch_guard.py",
+        "PackageProductPosixFencedRuntimeOwner.require_existing_product_state_root",
+        "PackageProductPosixFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
         "resources/packages/product_pre_b_snapshot.py",
         "PackageProductPreBSnapshotOwner.cutover_from_legacy",
         "PackageProductPreBSnapshotOwner",
@@ -4455,10 +4461,11 @@ def test_plc6abcde_freezes_sets_owners_management_and_authority_cutover() -> Non
 
 def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> None:
     coding_sources = tuple(Path("src/loushang/coding").rglob("*.py"))
+    command_owner = Path("src/loushang/harness/session/command_controller.py")
     tool_calls: list[Path] = []
     command_stage_calls: list[Path] = []
     standard_command_catalog_calls: list[Path] = []
-    for path in coding_sources:
+    for path in (*coding_sources, command_owner):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         tool_names: set[str] = set()
         tool_modules: set[str] = set()
@@ -4507,9 +4514,6 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
                 and node.func.id in command_catalog_names
             ):
                 standard_command_catalog_calls.append(path)
-    agent_session = Path("src/loushang/coding/session/agent_session.py").read_text(
-        encoding="utf-8"
-    )
     coding_sdk = Path("src/loushang/coding/__init__.py").read_text(encoding="utf-8")
     coding_bootstrap = Path('src/loushang/coding/composition/bootstrap.py').read_text(
         encoding="utf-8"
@@ -4532,12 +4536,11 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
     assert '"register_coding_builtin_tools",' not in coding_sdk
     assert '"register_coding_builtin_tools",' not in tool_pack
     assert "peer_exact_tool_publisher" in coding_bootstrap
-    assert set(command_stage_calls) == {
-        Path('src/loushang/coding/composition/base_owners.py')
-    }
-    assert set(standard_command_catalog_calls) == {
-        Path('src/loushang/coding/composition/base_owners.py')
-    }
-    assert "build_coding_base_plugin_owners(" in agent_session
-    assert "SessionCommandGenerationRegistry()" in agent_session
+    assert set(command_stage_calls) == {command_owner}
+    assert set(standard_command_catalog_calls) == {command_owner}
+    owner_binding = Path(
+        "src/loushang/coding/composition/owner_binding.py"
+    ).read_text(encoding="utf-8")
+    assert "build_coding_base_plugin_owners(" in owner_binding
+    assert "SessionCommandGenerationRegistry()" in owner_binding
     assert "command_generations=self._command_generation_registry" in agent_product

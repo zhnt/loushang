@@ -997,10 +997,10 @@ def test_ready_and_failed_diagnostics_are_best_effort(
 
 
 def test_real_configured_continuity_plugin_lifecycle_and_restart(
-    tmp_path: Path,
+    standalone_workspace: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    asyncio.run(_real_configured_lifecycle(tmp_path, monkeypatch))
+    asyncio.run(_real_configured_lifecycle(standalone_workspace, monkeypatch))
 
 
 def test_removed_continuity_tombstone_never_reinspects_configured_source(
@@ -1008,6 +1008,7 @@ def test_removed_continuity_tombstone_never_reinspects_configured_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from loushang.coding.composition import continuity as continuity_bootstrap
+    from loushang.harness.session.plugin_lifecycle import _continuity_installed_plugins
 
     async def scenario() -> None:
         marker = tmp_path / "removed-plugin.log"
@@ -1057,7 +1058,7 @@ def test_removed_continuity_tombstone_never_reinspects_configured_source(
             raise AssertionError("removed source was reinspected")
 
         monkeypatch.setattr(
-            continuity_bootstrap,
+            _continuity_installed_plugins,
             "_inspect_continuity_source",
             reject_inspection,
         )

@@ -22,6 +22,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management._private_data_backup_windows import (
     WindowsArchiveExpiryIO,
 )
+from loushang.harness.plugin_management._private_data_expiry import (
+    validate_expiry_event,
+)
 from loushang.harness.plugin_management._private_data_expiry_windows import (
     WindowsPrivateExpiryTransaction,
 )
@@ -42,9 +45,14 @@ from .private_data_backup_expiry_records import (
 from .private_data_backup_records import backup_parent
 from .private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
-    capture_windows_arch_backup_archive,
 )
-from .private_data_windows_backup import _archive_io, _read_archive_manifest
+from .private_data_windows_archive_snapshot import (
+    capture_windows_arch_backup_archive as capture_windows_arch_backup_archive,
+)
+from .private_data_windows_backup import _archive_io
+from .private_data_windows_backup import (
+    _read_archive_manifest as _read_archive_manifest,
+)
 from .private_data_windows_backup_expiry_preview import (
     CodingWindowsArchPrivateDataBackupExpiryPreview,
 )
@@ -74,37 +82,16 @@ class CodingWindowsArchBackupExpiryEventV1:
     record_version: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            type(self.revision) is not int
-            or self.revision < 1
-            or self.phase not in {"confirmed", "started", "renamed", "completed"}
-            or not isinstance(self.plan, CodingArchPrivateDataBackupExpiryPlanV1)
-            or not isinstance(
-                self.confirmation, CodingArchPrivateDataBackupExpiryConfirmationV1
-            )
-            or self.confirmation.plan_fingerprint != self.plan.fingerprint
-            or self.record_version != 1
-        ):
-            raise ValueError("Windows Coding Arch backup expiry event is invalid")
-        if self.phase == "confirmed":
-            if self.archive is not None or self.receipt is not None:
-                raise ValueError(
-                    "Unstarted Windows Coding Arch backup expiry has effects"
-                )
-            return
-        if (
-            not isinstance(self.archive, CodingWindowsArchBackupArchiveSnapshotV1)
-            or self.archive.root_identity != self.plan.archive_root_identity
-            or self.archive.target_id != self.plan.archive_target_id
-        ):
-            raise ValueError("Windows Coding Arch backup expiry archive changed")
-        if self.phase == "completed":
-            if self.receipt != CodingArchPrivateDataBackupExpiryReceiptV1.create(
-                self.plan, self.confirmation
-            ):
-                raise ValueError("Windows Coding Arch backup expiry receipt changed")
-        elif self.receipt is not None:
-            raise ValueError("Unfinished Windows Coding Arch backup expiry has receipt")
+        validate_expiry_event(
+            self,
+            plan_type=CodingArchPrivateDataBackupExpiryPlanV1,
+            confirmation_type=CodingArchPrivateDataBackupExpiryConfirmationV1,
+            archive_type=CodingWindowsArchBackupArchiveSnapshotV1,
+            receipt_for=CodingArchPrivateDataBackupExpiryReceiptV1.create,
+            label="Windows Coding Arch",
+            unstarted_effects_error="Unstarted Windows Coding Arch backup expiry has effects",
+            unfinished_receipt_error="Unfinished Windows Coding Arch backup expiry has receipt",
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {

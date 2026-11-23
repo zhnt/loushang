@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.package_product._legacy_management_evidence import (
+    classify_management_members,
+)
 from loushang.harness.plugin_management.retirement_sets import (
     RetirementCaptureFields,
 )
@@ -15,33 +18,6 @@ from loushang.harness.plugin_management.service import (
 from .legacy_desired_evidence import CodingLegacyDesiredEvidenceV1
 
 _MAX_OPERATION_BYTES = 2 * 1024 * 1024
-_SIMPLE_DESIRED_MEMBERS = ("desired-state.jsonl",)
-_SERVICE_DESIRED_MEMBERS = (
-    "desired-state.jsonl",
-    "desired-state.jsonl.lock",
-    "management-operations.jsonl",
-    "management-operations.jsonl.lock",
-)
-_SERVICE_INSTANCE_MEMBERS = (
-    "retirement-intents.jsonl.lock",
-    "retirement-sets.jsonl.lock",
-)
-_SERVICE_RETIRED_INSTANCE_MEMBERS = (
-    "retirement-intents.jsonl",
-    "retirement-intents.jsonl.lock",
-    "retirement-sets.jsonl",
-    "retirement-sets.jsonl.lock",
-)
-_SERVICE_RETIRED_RUNTIME_INSTANCE_MEMBERS = (
-    "instance-runtime.jsonl",
-    "instance-runtime.jsonl.lock",
-    "instance-runtime.security-acceptances.jsonl.lock",
-    *_SERVICE_RETIRED_INSTANCE_MEMBERS,
-)
-_LOCK_HISTORY_MEMBERS = {
-    ("package-lock.json",),
-    ("package-lock.json", "package-lock.json.lock"),
-}
 
 
 class CodingLegacyOperationEvidenceError(ValueError):
@@ -59,35 +35,15 @@ def classify_coding_legacy_management_members(
 ) -> bool:
     """Identify only the simple or exact Service shape without retirement rows."""
 
-    if (
-        type(has_binding) is not bool
-        or type(allow_retirement) is not bool
-        or type(allow_retired_runtime) is not bool
-    ):
-        raise CodingLegacyOperationEvidenceError(
-            "Coding old Package binding shape is invalid"
-        )
-    valid_locks = (
-        lock_members in _LOCK_HISTORY_MEMBERS if has_binding else lock_members == ()
-    )
-    if not valid_locks:
-        raise CodingLegacyOperationEvidenceError(
-            "Coding old Package lock shape is unsupported"
-        )
-    if desired_members == _SIMPLE_DESIRED_MEMBERS and instance_members == ():
-        return False
-    if desired_members == _SERVICE_DESIRED_MEMBERS and (
-        instance_members == _SERVICE_INSTANCE_MEMBERS
-        or (allow_retirement and instance_members == _SERVICE_RETIRED_INSTANCE_MEMBERS)
-        or (
-            allow_retirement
-            and allow_retired_runtime
-            and instance_members == _SERVICE_RETIRED_RUNTIME_INSTANCE_MEMBERS
-        )
-    ):
-        return True
-    raise CodingLegacyOperationEvidenceError(
-        "Coding old management journal shape is unsupported"
+    return classify_management_members(
+        desired_members=desired_members,
+        instance_members=instance_members,
+        lock_members=lock_members,
+        has_binding=has_binding,
+        allow_retirement=allow_retirement,
+        allow_retired_runtime=allow_retired_runtime,
+        error_type=CodingLegacyOperationEvidenceError,
+        label="Coding old",
     )
 
 

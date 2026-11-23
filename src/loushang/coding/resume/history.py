@@ -14,23 +14,30 @@ from loushang.coding.composition.plan import (
 from loushang.coding.composition.provenance import (
     CodingCompositionProvenanceV1,
     historical_composition_provenance,
-    historical_startup_composition_record,
+)
+from loushang.coding.composition.provenance import (
+    historical_startup_composition_record as historical_startup_composition_record,
 )
 from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
 from loushang.coding.resume.activation_projection_v2 import (
-    project_coding_activation_attempt_path_v2,
+    project_coding_activation_attempt_path_v2 as project_coding_activation_attempt_path_v2,
 )
 from loushang.coding.resume.binding import CodingRuntimeBindingV1
 from loushang.coding.resume.binding_v2 import CodingRuntimeBindingV2
-from loushang.harness.conversation import ConversationHeader, ConversationRepository
+from loushang.harness.conversation import ConversationHeader
+from loushang.harness.conversation import (
+    ConversationRepository as ConversationRepository,
+)
 from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.session.composition_evidence import composition_receipt_matches
 from loushang.harness.transcript.jsonl_file import (
-    load_agent_transcript_file_with_content_digest,
     load_agent_transcript_header,
 )
 from loushang.harness.transcript.session_catalog import (
-    read_agent_transcript_bounded_preview,
-    session_file_authority_fingerprint,
+    capture_transcript_history_snapshot,
+)
+from loushang.harness.transcript.session_catalog import (
+    read_agent_transcript_bounded_preview as read_agent_transcript_bounded_preview,
 )
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
@@ -126,24 +133,14 @@ def read_coding_resume_snapshot(
         or not 1 <= max_bytes <= MAX_CODING_RESUME_HISTORY_BYTES
     ):
         raise ValueError("Coding Resume snapshot budget must be within 1 to 64 MiB")
-    source_path = Path(path)
-    source_fingerprint = session_file_authority_fingerprint(source_path)
-    if (
-        expected_source_fingerprint is not None
-        and source_fingerprint != expected_source_fingerprint
-    ):
-        raise ValueError("Coding Resume source changed before snapshot")
-    (
-        header,
-        records,
-        source_content_digest,
-    ) = load_agent_transcript_file_with_content_digest(
-        source_path,
-        max_bytes=max_bytes,
-        read_only=True,
+    header, records, source_content_digest, source_fingerprint = (
+        capture_transcript_history_snapshot(
+            path,
+            max_bytes=max_bytes,
+            expected_source_fingerprint=expected_source_fingerprint,
+            label="Coding Resume",
+        )
     )
-    if session_file_authority_fingerprint(source_path) != source_fingerprint:
-        raise ValueError("Coding Resume source changed during snapshot")
     header_preview = inspect_coding_resume_header(header)
     repository = ConversationRepository.create(
         header=header,
@@ -187,9 +184,8 @@ def read_coding_resume_snapshot(
         provenance_conflict=(
             startup is not None
             and composition is not None
-            and (
-                startup["setId"] != composition.set_id
-                or startup["planFingerprint"] != composition.plan_fingerprint
+            and not composition_receipt_matches(
+                startup, composition.set_id, composition.plan_fingerprint
             )
         ),
         binding_status=binding_status,

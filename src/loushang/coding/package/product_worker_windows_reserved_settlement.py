@@ -15,6 +15,7 @@ from functools import partial
 from loushang.harness.package_product._windows_worker_recovery import (
     settle_windows_product_worker_reserved_no_effect,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -49,11 +50,8 @@ def settle_coding_windows_product_worker_reserved_no_effect(
     expected_review: CodingWindowsWorkerReservedNoEffectReviewV1,
 ) -> None:
     """Durably close an exact no-effect reservation under Product custody."""
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or (type(expected_review) is not CodingWindowsWorkerReservedNoEffectReviewV1)
+    if not is_windows_product(product, "coding", os.name) or (
+        type(expected_review) is not CodingWindowsWorkerReservedNoEffectReviewV1
     ):
         raise OSError("Windows Worker reserved settlement requires a Product review")
     settle_windows_product_worker_reserved_no_effect(

@@ -14,6 +14,9 @@ CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
 PRODUCT_WORKER_BOUNDED_IMPORTS = {
+    CODING_ROOT / "package/product_worker_windows_native_approval_owner.py": {
+        "loushang.harness.worker.history._native_approval",
+    },
     CODING_ROOT / "package/product_worker_windows_reserved_settlement.py": {
         "loushang.harness.worker.history._windows_stage_review_wire",
     },
@@ -34,19 +37,15 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._windows_recovery"
     },
     CODING_ROOT / "package/product_worker_windows_opt_in_base.py": {
-        "loushang.harness.worker.history._base_codec",
         "loushang.harness.worker.history._windows_opt_in_base",
     },
     CODING_ROOT / "package/product_worker_windows_receipt_base.py": {
-        "loushang.harness.worker.history._base_codec",
         "loushang.harness.worker.history._windows_receipt_base",
     },
     CODING_ROOT / "package/product_worker_windows_launch_intent_base.py": {
-        "loushang.harness.worker.history._base_codec",
         "loushang.harness.worker.history._windows_launch_intent_base",
     },
     CODING_ROOT / "package/product_worker_windows_provisioning_base.py": {
-        "loushang.harness.worker.history._base_codec",
         "loushang.harness.worker.history._windows_provisioning_base",
     },
     CODING_ROOT / "package/product_worker_windows_stage_retirement.py": {
@@ -77,7 +76,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.activation_state_journal"
     },
     CODING_ROOT / "package/product_worker_activation_state_journal.py": {
-        "loushang.harness.worker._segmented_history",
         "loushang.harness.worker.activation_state_journal",
         "loushang.harness.worker.history._activation_store",
     },
@@ -95,11 +93,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package/product_worker_windows_c5_base.py": {
         "loushang.harness.worker.activation_state_journal",
-        "loushang.harness.worker.history._base_codec",
         "loushang.harness.worker.history._windows_c5_base",
-    },
-    CODING_ROOT / "package/product_worker_crash_c5_settlement.py": {
-        "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package/product_worker_history_retention.py": {"loushang.harness.worker.history._retention", "loushang.harness.worker.journal"},
     CODING_ROOT / "package/product_worker_history_prepared_v2.py": {
@@ -132,7 +126,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package/product_worker_windows_supervisor_base.py": {
-        "loushang.harness.worker.history._base_codec",
         "loushang.harness.worker.history._windows_supervisor_base",
         "loushang.harness.worker.journal",
     },
@@ -256,18 +249,11 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._deletion"
     },
     CODING_ROOT / "package/product_worker_history_read_v2.py": {
+        "loushang.harness.worker.history._publication",
         "loushang.harness.worker.history._read_v2"
     },
     CODING_ROOT / "package/product_worker_history_retirement_preview.py": {
         "loushang.harness.worker.history._preview"
-    },
-    CODING_ROOT / "package/product_worker_history_commit_v2.py": {
-        "loushang.harness.worker.history._publication",
-        "loushang.harness.worker.history._read_v2",
-    },
-    CODING_ROOT / "package/product_worker_history_retire_v2.py": {
-        "loushang.harness.worker.history._publication",
-        "loushang.harness.worker.history._read_v2",
     },
     CODING_ROOT / "package/product_worker_history_stage_v2.py": {
         "loushang.harness.worker.history._preparation"
@@ -296,6 +282,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._start_gate"
     },
     CODING_ROOT / 'package/worker_preparation_inputs.py': {
+        "loushang.harness.worker._ordinary_prepare",
         'loushang.harness.worker.capability_query',
         'loushang.harness.worker.contracts',
         'loushang.harness.worker.product_activation',
@@ -303,9 +290,9 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / 'package/product_worker_windows_checkpoint.py': {
         'loushang.harness.worker.history._base_codec',
         'loushang.harness.worker.history._windows_checkpoint',
+        'loushang.harness.worker.history._windows_sources',
     },
     CODING_ROOT / 'package/product_worker_windows_history_cutover_record.py': {
-        'loushang.harness.worker.history._base_codec',
         'loushang.harness.worker.history._windows_persisted',
     },
     CODING_ROOT / 'package/product_worker_windows_history_preparation.py': {

@@ -27,11 +27,17 @@ from loushang.harness.capabilities.tools import (
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.package_product._selected_plugin_revisions import (
+    ProductAdmissionFailure,
+)
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
     PackageProductRuntimeRequestV1,
     activate_package_product_runtime,
+)
+from loushang.harness.resources._catalog_input_receipt import (
+    ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources.activation import (
     ResourceActivation,
@@ -47,7 +53,9 @@ from loushang.harness.resources.packages.product_contract import (
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import ResolvedRuntimeProfile
+from loushang.harness.runtime.registration import RegistrationLease
 from loushang.harness.session._cleanup import (
+    CleanupStep,
     ExplicitTemporaryDirectory,
     get_session_construction_cleanup,
     retain_session_construction_failure,
@@ -894,6 +902,57 @@ if TYPE_CHECKING:
     )
 
 _PreparationT = TypeVar("_PreparationT", bound="_PreparedCompositionCleanup")
+
+
+def rollback_unpublished_construction(
+    error: BaseException,
+    *,
+    worker_tool_lease: RegistrationLease | None,
+    abort_capability: Callable[[], None] | None,
+    close_base: Callable[[], None] | None,
+    owned_side_question: LegacySideQuestionBinding | None,
+    owned_runtime: StagedResourceCompositionCandidate | None,
+    product_label: str,
+) -> None:
+    steps: list[CleanupStep] = []
+    if worker_tool_lease is not None:
+        # The cleanup runner discards callback return values.
+        rollback = cast("Callable[[], None]", worker_tool_lease.rollback_registration)
+        steps.append((f"{product_label} Worker turn Tool admission rollback", rollback))
+    if abort_capability is not None:
+        steps.append(
+            (
+                f"{product_label} Capability Plugin evidence cleanup",
+                abort_capability,
+            )
+        )
+    if close_base is not None:
+        steps.append(
+            (f"{product_label} base Plugin evidence cleanup", close_base)
+        )
+    if owned_side_question is not None:
+        steps.append(
+            ("direct Session side-question cleanup", owned_side_question.dispose)
+        )
+    if owned_runtime is not None:
+        steps.append(("direct Session capability cleanup", owned_runtime.dispose))
+    run_cleanup_steps(error, steps)
+
+
+def require_catalog_receipt(
+    loader: ResourceLoader,
+    cwd: Path,
+    admission_failure: ProductAdmissionFailure,
+    receipt: ResourceCatalogInputReceipt | None = None,
+) -> ResourceCatalogInputReceipt:
+    if receipt is None:
+        try:
+            receipt = loader.prepare_catalog_input_receipt(cwd)
+        except (AttributeError, RuntimeError) as exc:
+            raise admission_failure(("catalog_receipt_unavailable",)) from exc
+    if not isinstance(receipt, ResourceCatalogInputReceipt):
+        raise admission_failure(("catalog_receipt_unavailable",))
+    return receipt
 
 
 @dataclass(slots=True)

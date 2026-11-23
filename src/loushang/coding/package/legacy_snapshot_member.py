@@ -48,7 +48,7 @@ class CodingFirstBLegacyStateObserver:
     def observe(
         self, *, store_id: str, legacy_root_identity: str
     ) -> PackageLegacyStateEvidenceV1:
-        return _snapshot_binding(self.lifecycle, self.epoch_runtime).observe(
+        return _snapshot_reader(self.lifecycle, self.epoch_runtime).observe(
             store_id=store_id, legacy_root_identity=legacy_root_identity
         )
 
@@ -71,7 +71,7 @@ def read_coding_first_b_snapshot_member(
         "source_configuration",
     ):
         raise ValueError("Coding legacy evidence domain is unsupported")
-    return _snapshot_binding(lifecycle, epoch_runtime).read_member(
+    return _snapshot_reader(lifecycle, epoch_runtime).read_member(
         domain=domain, member_name=member_name, maximum_bytes=maximum_bytes
     )
 
@@ -94,25 +94,19 @@ def list_coding_first_b_snapshot_domain_members(
         "store_bytes",
     ):
         raise ValueError("Coding legacy evidence domain is unsupported")
-    return _snapshot_binding(lifecycle, epoch_runtime).list_members(domain=domain)
+    return _snapshot_reader(lifecycle, epoch_runtime).list_members(domain=domain)
 
 
-def _snapshot_binding(
+def _snapshot_reader(
     lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: CodingFencedEpochRuntime,
 ) -> _LegacyFirstSnapshot:
     if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
-    if not isinstance(
-        epoch_runtime,
-        (
-            PackageProductPosixFencedRuntimeOwner,
-            PackageProductWindowsFencedRuntimeOwner,
-        ),
-    ):
+    if not isinstance(epoch_runtime, CodingFencedEpochRuntime):
         raise TypeError("Fenced Product epoch owner is required")
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    return _LegacyFirstSnapshot.open(
+    return _LegacyFirstSnapshot(
         epoch_runtime,
         store_id=epoch.store_id,
         control_root=epoch.control_root,

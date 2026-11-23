@@ -475,13 +475,13 @@ def test_owner_resolution_rejects_forged_final_candidate_set(
 
 def test_installed_plugin_traverses_owner_generation_and_product_bridge(
     continuity_plugin: _ContinuityPlugin,
-    tmp_path: Path,
+    standalone_workspace: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     asyncio.run(
         _installed_plugin_traverses_owner_generation_and_product_bridge(
             continuity_plugin,
-            tmp_path,
+            standalone_workspace,
             monkeypatch,
         )
     )
@@ -503,13 +503,13 @@ def test_installed_mutation_plugin_deletes_through_product_authority(
 
 def test_legacy_installed_plugin_publishes_activation_only(
     legacy_continuity_plugin: _ContinuityPlugin,
-    tmp_path: Path,
+    standalone_workspace: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     asyncio.run(
         _installed_plugin_traverses_owner_generation_and_product_bridge(
             legacy_continuity_plugin,
-            tmp_path,
+            standalone_workspace,
             monkeypatch,
         )
     )

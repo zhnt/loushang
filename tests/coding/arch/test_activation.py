@@ -184,13 +184,13 @@ def test_disabled_arch_paths_do_not_resolve_any_capability_plugin(
     arch_mode: CapabilityMountMode,
     no_tools: bool,
 ) -> None:
-    import loushang.coding.composition.bootstrap as coding_bootstrap
+    from loushang.coding.composition import managed_plugin_preparation
 
     def reject_plugin_resolution(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("disabled Capability Plugins must not resolve")
 
     monkeypatch.setattr(
-        coding_bootstrap,
+        managed_plugin_preparation,
         "prepare_coding_capability_plugin_composition",
         reject_plugin_resolution,
     )

@@ -67,16 +67,12 @@ class CodingArchPrivateDataDeletionOwner:
     def plan_for(self, key: PluginInstallationKeyV1) -> PluginPrivateDataDeletionPlanV1:
         root = coding_arch_installation_private_data_root(self.layout, key)
         with self._preview._offline():
-            pending = self.journal.current_start()
-            if pending is not None:
-                if pending.plan.installation_key != key:
-                    raise ValueError("Another private-data deletion is unfinished")
-                return pending.plan
-            target = _capture_target_snapshot(
-                root, private_base=self.layout.private_data_base
-            )
-            return PluginPrivateDataDeletionPlanV1(
-                installation_key=key, owner_id=_OWNER_ID, target_id=target.target_id
+            return self.journal.preview_plan(
+                key,
+                owner_id=_OWNER_ID,
+                capture_target=lambda: _capture_target_snapshot(
+                    root, private_base=self.layout.private_data_base
+                ),
             )
 
     def receipt_for(
@@ -100,18 +96,14 @@ class CodingArchPrivateDataDeletionOwner:
             or confirmation.plan_fingerprint != plan.fingerprint
         ):
             raise ValueError("Coding Arch private-data deletion command is invalid")
-        root = coding_arch_installation_private_data_root(
-            self.layout, plan.installation_key
-        )
+        root = coding_arch_installation_private_data_root(self.layout, plan.installation_key)
         with self._preview._offline():
             if not self.confirmations.is_confirmed(plan, confirmation):
                 raise ValueError("Coding Arch private-data confirmation is missing")
-            if (
-                self.product.desired_state.snapshot()
-                .installation(plan.installation_key)
-                .selection.desired_state
-                != "absent"
-            ):
+            installation = self.product.desired_state.snapshot().installation(
+                plan.installation_key
+            )
+            if installation.selection.desired_state != "absent":
                 raise ValueError("Coding Arch Installation must be removed first")
             return self.journal.execute_deletion(
                 plan,

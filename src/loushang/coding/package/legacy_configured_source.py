@@ -6,10 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .legacy_classification import classify_coding_legacy_source_configuration
+from .legacy_classification import (
+    classify_coding_legacy_source_configuration,
+)
 
 CodingLegacySourceScope = Literal["global", "project"]
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
+
+
+_LEGACY_EVIDENCE_MAX_SOURCES = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,16 +40,30 @@ def match_coding_legacy_local_skill_configured_source(
         if installed_source_identities is None
         else installed_source_identities
     )
+    if type(source_identity) is not str:
+        raise ValueError("Legacy local data Source set is invalid")
+    configured = _index_configured_sources(
+        projection, identities, required_identity=source_identity
+    )
+    return configured.get(source_identity.removeprefix("local:"))
+
+
+def _index_configured_sources(
+    projection: object,
+    identities: tuple[str, ...],
+    *,
+    required_identity: str | None = None,
+) -> dict[str, CodingLegacyLocalConfiguredSourceV1]:
+    """Verify every configured source against one exact local installation set."""
     if (
-        type(source_identity) is not str
-        or type(identities) is not tuple
-        or not 0 < len(identities) <= 16
+        type(identities) is not tuple
+        or not 0 < len(identities) <= _LEGACY_EVIDENCE_MAX_SOURCES
         or any(
             type(identity) is not str or not identity.startswith("local:/")
             for identity in identities
         )
         or len(identities) != len(set(identities))
-        or source_identity not in identities
+        or (required_identity is not None and required_identity not in identities)
     ):
         raise ValueError("Legacy local data Source set is invalid")
     classification = classify_coding_legacy_source_configuration(projection)
@@ -81,7 +100,7 @@ def match_coding_legacy_local_skill_configured_source(
         or len(classification.configured_source_keys) != configured_scopes
     ):
         raise ValueError("Legacy local data settings need a separate migration")
-    return configured.get(source_identity.removeprefix("local:"))
+    return configured
 
 
 __all__ = [

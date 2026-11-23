@@ -15,6 +15,7 @@ from loushang.harness.package_product._windows_worker_history import (
     capture_windows_product_worker_persisted_history,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
+    is_windows_product,
     read_windows_product_worker_persisted_bases,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -25,16 +26,10 @@ from loushang.harness.worker.history._windows_persisted import (
 )
 
 from .legacy_windows_receipt import _receipt_io
-from .product_worker_windows_base_files import (
-    WINDOWS_WORKER_BASE_FILES,
-    WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
-)
 from .product_worker_windows_c5_base import CodingWindowsWorkerC5SemanticBaseV1
 from .product_worker_windows_checkpoint import (
-    _CHECKPOINT_NAME,
     CodingWindowsWorkerHistoryCheckpointV1,
 )
-from .product_worker_windows_checkpoint import _MAX_BYTES as _MAX_CHECKPOINT_BYTES
 from .product_worker_windows_gc_history import _history_names
 from .product_worker_windows_history_join import (
     CodingWindowsWorkerHistorySemanticJoinV1,
@@ -52,9 +47,6 @@ from .product_worker_windows_receipt_base import (
 from .product_worker_windows_supervisor_base import (
     CodingWindowsWorkerSupervisorSemanticBaseV1,
 )
-
-_MAX_BASE_BYTES = 32 * 1024 * 1024
-_MAX_CUTOVER_BYTES = 4096
 
 if TYPE_CHECKING:
     from .product_worker_windows_history_cutover_record import (
@@ -86,11 +78,7 @@ def _read_coding_windows_worker_persisted_bases(
 ]:
     """Read one Product snapshot under quiescence, its GC gate, and pinned root."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker persisted bases require their Product")
     result, marker = capture_windows_product_worker_persisted_history(
         product,
@@ -112,9 +100,7 @@ def _read_coding_windows_worker_persisted_bases_under_gc_guard(
     """Read a pinned root while its caller holds the Product GC gate."""
 
     if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+        not is_windows_product(product, "coding", os.name)
         or type(root) is not int
         or root < 0
     ):
@@ -125,10 +111,6 @@ def _read_coding_windows_worker_persisted_bases_under_gc_guard(
         require_cutover=require_cutover,
         io=_receipt_io,
         history_names=_history_names(),
-        checkpoint_name=_CHECKPOINT_NAME,
-        base_files=WINDOWS_WORKER_BASE_FILES,
-        cutover_name=WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
-        limits=lambda: (_MAX_CHECKPOINT_BYTES, _MAX_BASE_BYTES, _MAX_CUTOVER_BYTES),
         decode_checkpoint=CodingWindowsWorkerHistoryCheckpointV1.from_bytes,
         make_result=CodingWindowsWorkerPersistedBasesV1._from_retained_bytes,
         cutover_codec=_persisted_cutover_codec,

@@ -2,32 +2,40 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management._private_data_deletion_windows import (
+    read_windows_deletion_history,
+    require_finished_windows_deletion,
+)
+from loushang.harness.plugin_management._private_data_restore_windows import (
+    read_windows_expiry_restore_proof,
+    require_windows_restore_product_state,
+)
 from loushang.harness.plugin_management.private_data_deletion import (
-    latest_deleted_target_receipt,
+    latest_deleted_target_receipt as latest_deleted_target_receipt,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    windows_listdir_at,
-)
-from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    inspect_windows_product_private_directory_identity,
-)
 
-from .installation_private_data import coding_arch_installation_private_data_root
+from .installation_private_data import (
+    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+)
 from .private_data_backup_expiry_records import CodingArchPrivateDataBackupExpiryPlanV1
-from .private_data_backup_records import _digest, backup_parent
-from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
-from .private_data_windows_archive_snapshot import capture_windows_arch_backup_archive
-from .private_data_windows_backup import _archive_io, _read_archive_manifest
+from .private_data_backup_records import _digest as _digest
+from .private_data_backup_records import backup_parent as backup_parent
+from .private_data_restore_records import (
+    CodingArchPrivateDataRestorePlanV1 as CodingArchPrivateDataRestorePlanV1,
+)
+from .private_data_windows_archive_snapshot import (
+    capture_windows_arch_backup_archive as capture_windows_arch_backup_archive,
+)
+from .private_data_windows_backup import _archive_io as _archive_io
 from .private_data_windows_deletion_journal import (
-    CodingWindowsArchPrivateDataDeletionTransaction,
+    CodingWindowsArchPrivateDataDeletionTransaction as CodingWindowsArchPrivateDataDeletionTransaction,
 )
 from .private_data_windows_preview import CodingWindowsArchPrivateDataReadPreview
 from .private_data_windows_restore_journal import (
@@ -72,70 +80,38 @@ class CodingWindowsArchPrivateDataBackupExpiryPreview:
         ):
             raise ValueError("Windows Coding Arch backup expiry request is invalid")
         desired = self.product.desired_state.snapshot()
-        state = desired.installation(key)
-        if (
-            state.latest_instance_revision_ref is None
-            or state.selection.desired_state != "absent"
-        ):
-            raise ValueError("Windows Coding Arch backup expiry requires removal")
-        parent_path = backup_parent(self.layout, key)
-        parent_identity = inspect_windows_product_private_directory_identity(
-            parent_path
+        require_windows_restore_product_state(
+            desired, key, error="Windows Coding Arch backup expiry requires removal"
         )
-        with WindowsPrivateDirectoryAcl() as acl:
-            with _archive_io._parent_scope(
-                parent_path,
-                parent_identity,
-                acl,
-                changed="Windows Coding Arch backup parent changed",
-            ) as parent_fd:
-                if any(
-                    name.endswith(".staging") for name in windows_listdir_at(parent_fd)
-                ):
-                    raise ValueError("Windows Coding Arch backup parent changed")
-                receipt, source = _read_archive_manifest(parent_fd, backup_id, acl)
-                if receipt.installation_key != key or receipt.backup_id != backup_id:
-                    raise ValueError("Windows Coding Arch backup Installation changed")
-        deletion = CodingWindowsArchPrivateDataDeletionTransaction(
-            self.product.state_root, transaction.state_fd
+        receipt, source = _archive_io.read_expiry_manifest(
+            backup_parent(self.layout, key), backup_id, key, label="Windows Coding Arch"
         )
-        try:
-            events = deletion.events()
-        finally:
-            deletion._close()
-        if events and events[-1].phase != "completed":
-            raise ValueError("Windows Coding Arch deletion is unfinished")
-        deletion_receipt = latest_deleted_target_receipt(
-            events, key, receipt.source_target_id
+        events = read_windows_deletion_history(
+            CodingWindowsArchPrivateDataDeletionTransaction(
+                self.product.state_root, transaction.state_fd
+            )
         )
-        if deletion_receipt is None:
+        require_finished_windows_deletion(events, label="Windows Coding Arch")
+        deletion = latest_deleted_target_receipt(events, key, receipt.source_target_id)
+        if deletion is None:
             raise ValueError("Windows Coding Arch backup expiry lacks deletion")
         restore_plan = CodingArchPrivateDataRestorePlanV1(
             installation_key=key,
             backup_id=backup_id,
-            deletion_receipt_id=deletion_receipt.receipt_id,
+            deletion_receipt_id=deletion.receipt_id,
             source_target_id=source.target_id,
             desired_inventory_revision=desired.inventory_revision,
             target_state="absent",
         )
-        restore_plan = replace(
+        confirmation, completion, restored, archive = read_windows_expiry_restore_proof(
+            transaction,
             restore_plan,
-            desired_inventory_revision=(
-                transaction.completed_plan_revision_for(restore_plan)
+            confirmation_id,
+            capture_archive=lambda: capture_windows_arch_backup_archive(
+                self.layout, key, backup_id, source, receipt
             ),
+            label="Windows Coding Arch",
         )
-        confirmation = transaction.verify_confirmation(restore_plan, confirmation_id)
-        completion, restored = transaction._completed_restore(restore_plan)
-        archive = capture_windows_arch_backup_archive(
-            self.layout, key, backup_id, source, receipt
-        )
-        if archive.root_identity is None:
-            raise ValueError("Windows Coding Arch backup archive disappeared")
-        if (
-            transaction.verify_confirmation(restore_plan, confirmation_id)
-            != confirmation
-        ):
-            raise ValueError("Windows Coding Arch restore confirmation changed")
         return CodingArchPrivateDataBackupExpiryPlanV1(
             installation_key=key,
             backup_id=backup_id,

@@ -7,7 +7,6 @@ replayable operation id for each command.
 
 from __future__ import annotations
 
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -15,11 +14,14 @@ from typing import Literal
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.package.epoch_layout import coding_fenced_product_exists
 from loushang.coding.package.management_binding import (
-    build_coding_fenced_product_management_cli_ports,
+    build_coding_fenced_product_management_cli_ports as build_coding_fenced_product_management_cli_ports,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
+    matches_coding_workspace_layout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout as resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.plugin_management.application import (
     PluginManagementApplicationPorts,
@@ -32,7 +34,14 @@ from loushang.harness.plugin_management.desired_command import (
     resume_plugin_desired_operation,
     submit_plugin_desired_command,
 )
-from loushang.harness.workspace.paths import assert_workspace_directory_identity
+from loushang.harness.workspace.paths import (
+    assert_workspace_directory_identity,
+    capture_workspace_directory_identity,
+    is_workspace_directory_identity,
+    require_workspace_directory,
+)
+
+_WORKSPACE_UNAVAILABLE = "Plugin management workspace is unavailable"
 
 
 class CodingPluginManagementCommandSdkError(RuntimeError):
@@ -49,22 +58,9 @@ class CodingPluginManagementCommandClientV1:
     owner_profile: Literal["sdk", "tui"] = "sdk"
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.workspace, Path)
-            or not self.workspace.is_absolute()
-            or self.workspace != self.workspace.resolve(strict=True)
-            or not isinstance(self.layout, CodingPluginLifecycleStateLayout)
-            or self.layout
-            != resolve_coding_plugin_lifecycle_state_layout(self.workspace)
-        ):
+        if not matches_coding_workspace_layout(self.workspace, self.layout):
             raise ValueError("Coding management workspace scope is invalid")
-        if (
-            type(self.workspace_identity) is not tuple
-            or len(self.workspace_identity) != 2
-            or any(
-                type(item) is not int or item < 0 for item in self.workspace_identity
-            )
-        ):
+        if not is_workspace_directory_identity(self.workspace_identity):
             raise ValueError("Coding management workspace identity is invalid")
         if not isinstance(self.owner_profile, str) or self.owner_profile not in {
             "sdk",
@@ -135,11 +131,7 @@ class CodingPluginManagementCommandClientV1:
 
     def _ports(self) -> PluginManagementApplicationPorts:
         self._assert_workspace_identity()
-        if not coding_fenced_product_exists(self.layout):
-            raise CodingPluginManagementCommandSdkError(
-                "Coding Plugin Product is not fenced",
-                code="coding_product_not_fenced",
-            )
+        _require_fenced_product(self.layout)
         ports = build_coding_fenced_product_management_cli_ports(
             self.layout, workspace_guard=self._assert_workspace_identity
         )
@@ -173,7 +165,7 @@ class CodingPluginManagementCommandClientV1:
 def open_coding_plugin_management_command_client(
     workspace: str | Path,
 ) -> CodingPluginManagementCommandClientV1:
-    return _open_coding_plugin_management_command_client(workspace, owner_profile="sdk")
+    return _open_command_client(workspace, owner_profile="sdk")
 
 
 def open_coding_plugin_management_tui_command_client(
@@ -181,32 +173,34 @@ def open_coding_plugin_management_tui_command_client(
 ) -> CodingPluginManagementCommandClientV1:
     """Bind the local TUI actor to the same fenced Product command owner."""
 
-    return _open_coding_plugin_management_command_client(workspace, owner_profile="tui")
+    return _open_command_client(workspace, owner_profile="tui")
 
 
-def _open_coding_plugin_management_command_client(
+def _open_command_client(
     workspace: str | Path,
     *,
     owner_profile: Literal["sdk", "tui"],
 ) -> CodingPluginManagementCommandClientV1:
-    root = Path(workspace).expanduser().resolve(strict=True)
-    if not root.is_dir():
-        raise ValueError("Plugin management workspace is unavailable")
+    root = require_workspace_directory(workspace, unavailable=_WORKSPACE_UNAVAILABLE)
     layout = resolve_coding_plugin_lifecycle_state_layout(root)
+    _require_fenced_product(layout)
+    identity = capture_workspace_directory_identity(
+        root, unavailable=_WORKSPACE_UNAVAILABLE
+    )
+    return CodingPluginManagementCommandClientV1(
+        workspace=root,
+        layout=layout,
+        workspace_identity=identity,
+        owner_profile=owner_profile,
+    )
+
+
+def _require_fenced_product(layout: CodingPluginLifecycleStateLayout) -> None:
     if not coding_fenced_product_exists(layout):
         raise CodingPluginManagementCommandSdkError(
             "Coding Plugin Product is not fenced",
             code="coding_product_not_fenced",
         )
-    metadata = root.lstat()
-    if not stat.S_ISDIR(metadata.st_mode):
-        raise ValueError("Plugin management workspace is unavailable")
-    return CodingPluginManagementCommandClientV1(
-        workspace=root,
-        layout=layout,
-        workspace_identity=(metadata.st_dev, metadata.st_ino),
-        owner_profile=owner_profile,
-    )
 
 
 __all__ = [

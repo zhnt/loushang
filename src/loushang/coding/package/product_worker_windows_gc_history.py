@@ -12,6 +12,7 @@ import os
 from loushang.harness.package_product._windows_worker_recovery import (
     require_windows_product_worker_settled_history,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -44,11 +45,7 @@ class CodingWindowsWorkerGcHistoryAuthority:
     """Read-only Coding proof consumed by the Product Package GC owner."""
 
     def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
-        if (
-            os.name != "nt"
-            or type(product) is not WindowsLocalWheelProductSessionOwner
-            or product.policy.product_id != "coding"
-        ):
+        if not is_windows_product(product, "coding", os.name):
             raise ValueError("Coding Windows Worker GC requires its Product owner")
         self._product = product
 

@@ -11,11 +11,15 @@ from collections.abc import Callable
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from ._base_codec import _BaseWireMethods
+from ._base_codec import _BaseWireMethods, _unchanged
 from ._windows_c5_base import _WindowsC5BaseMethods
 from ._windows_checkpoint import _WindowsHistoryCheckpointMethods
 from ._windows_history_join import _WindowsHistoryJoinMethods
@@ -24,7 +28,10 @@ from ._windows_opt_in_base import _WindowsOptInBaseMethods
 from ._windows_provisioning_base import _WindowsProvisioningBaseMethods
 from ._windows_receipt_base import _WindowsReceiptBaseMethods
 from ._windows_semantic_contracts import _DIGEST
-from ._windows_sources import WINDOWS_WORKER_BASE_FILES
+from ._windows_sources import (
+    WINDOWS_WORKER_BASE_FILES,
+    WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES,
+)
 from ._windows_supervisor_base import _WindowsSupervisorBaseMethods
 
 
@@ -112,6 +119,12 @@ class _WindowsPersistedBasesMethods:
 class _WindowsHistoryCutoverMethods(_BaseWireMethods):
     __slots__ = ()
     _persisted_type: ClassVar[type[_WindowsPersistedBasesMethods]]
+    _wire_label = "Windows Worker history cutover record"
+    _wire_lists = ("baseDigests",)
+    _wire_invalid_bytes = _wire_invalid_fields = _wire_invalid_encoding = "is invalid"
+    _wire_errors = (KeyError, RecursionError, TypeError, UnicodeError, ValueError)
+    _wire_nested_lists = ("baseDigests",)
+    _wire_max_bytes = WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES
     scope_id: str
     store_id: str
     checkpoint_digest: str
@@ -119,6 +132,17 @@ class _WindowsHistoryCutoverMethods(_BaseWireMethods):
     base_digests: tuple[tuple[str, str], ...]
     record_digest: str
     cutover_version: int
+
+    @classmethod
+    def _bind_record_schema(cls) -> None:
+        cls._wire_schema = RecordSchema.for_dataclass(
+            cls,
+            _unchanged,
+            RecordField(
+                "base_digests",
+                decoder=lambda value: tuple(tuple(item) for item in value),
+            ),
+        )
 
     def __post_init__(self) -> None:
         if (

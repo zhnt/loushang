@@ -12,6 +12,12 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from loushang.coding.package.installation_private_data import (
+    _ARCH_PLUGIN_ID as _PLUGIN_ID,
+)
+from loushang.coding.package.installation_private_data import (
+    coding_arch_workspace_installation_key,
+)
 from loushang.coding.package.private_data_backup import CodingArchPrivateDataBackupOwner
 from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryOwner,
@@ -69,7 +75,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 
 _POLICY_REVISION = "coding-arch-private-data-cli:1"
 _EXPIRY_POLICY_REVISION = "coding-arch-backup-expiry-cli:1"
-_PLUGIN_ID = "coding.arch.default"
 _MAX_INPUT_BYTES = 16 * 1024
 
 
@@ -171,12 +176,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             try:
                 read_result: dict[str, object]
-                key = PluginInstallationKeyV1(
-                    product_id="coding",
-                    installation_scope="workspace",
-                    scope_id=layout.scope_id,
-                    plugin_id=_PLUGIN_ID,
-                )
+                key = coding_arch_workspace_installation_key(layout.scope_id)
                 if args.action == "backup-verify":
                     receipt = reader.verify_backup(key, args.backup_id)
                     read_result = {"backupReceipt": receipt.to_dict()}
@@ -224,12 +224,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ):
                 raise ValueError("Coding private-data Product owner is unsupported")
             if args.action == "backup":
-                key = PluginInstallationKeyV1(
-                    product_id="coding",
-                    installation_scope="workspace",
-                    scope_id=layout.scope_id,
-                    plugin_id=_PLUGIN_ID,
-                )
+                key = coding_arch_workspace_installation_key(layout.scope_id)
                 receipt = CodingArchPrivateDataBackupOwner(
                     layout, product
                 ).retain(key)
@@ -237,12 +232,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             elif args.action == "restore":
                 result = _run_restore(layout, product, args)
             elif args.action == "restore-confirm":
-                key = PluginInstallationKeyV1(
-                    product_id="coding",
-                    installation_scope="workspace",
-                    scope_id=layout.scope_id,
-                    plugin_id=_PLUGIN_ID,
-                )
+                key = coding_arch_workspace_installation_key(layout.scope_id)
                 owner = CodingArchPrivateDataRestoreOwner(layout, product)
                 confirmation = owner.confirm(key, args.backup_id)
                 result = {"restoreConfirmation": confirmation.to_dict()}
@@ -379,12 +369,7 @@ def _run_restore(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    key = PluginInstallationKeyV1(
-        product_id="coding",
-        installation_scope="workspace",
-        scope_id=layout.scope_id,
-        plugin_id=_PLUGIN_ID,
-    )
+    key = coding_arch_workspace_installation_key(layout.scope_id)
     owner = CodingArchPrivateDataRestoreOwner(layout, product)
     if args.action == "restore-preview":
         plan = owner.preview(key, args.backup_id)
@@ -423,12 +408,7 @@ def _run_backup_expiry(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    key = PluginInstallationKeyV1(
-        product_id="coding",
-        installation_scope="workspace",
-        scope_id=layout.scope_id,
-        plugin_id=_PLUGIN_ID,
-    )
+    key = coding_arch_workspace_installation_key(layout.scope_id)
     plan = _read_expiry_plan(Path(args.plan_file))
     if plan.installation_key != key:
         raise ValueError("Coding Arch backup expiry plan is foreign")
@@ -464,12 +444,7 @@ def _run_product_action(
         domain_owner,
         confirmation_authority=state.private_data_confirmation,
     )
-    key = PluginInstallationKeyV1(
-        product_id="coding",
-        installation_scope="workspace",
-        scope_id=layout.scope_id,
-        plugin_id=_PLUGIN_ID,
-    )
+    key = coding_arch_workspace_installation_key(layout.scope_id)
     return _run(coordinator, state.private_data_confirmation, key, args)
 
 

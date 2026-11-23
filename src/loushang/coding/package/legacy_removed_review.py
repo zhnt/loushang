@@ -2,101 +2,100 @@
 
 from __future__ import annotations
 
-import json
+import json as json
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
-from hashlib import sha256
-from pathlib import Path
+from hashlib import sha256 as sha256
+from pathlib import Path as Path
 from typing import cast
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._legacy_removed_review import (
+    LEGACY_REMOVAL_STORE_ROOTS,
+    LegacyRemovalFacts,
+    LegacyRemovalSnapshot,
+)
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
-    PackagePosixEpochCutoverError,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackagePosixEpochCutoverError as PackagePosixEpochCutoverError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
 from .legacy_classification import CodingScopedLegacyDisableV1
-from .legacy_configured_source import match_coding_legacy_local_skill_configured_source
-from .legacy_desired_evidence import parse_coding_legacy_desired_evidence
-from .legacy_installation_inventory import (
-    CodingLegacyBuiltinIntentV1,
-    CodingLegacyRemovedLocalInstallationV1,
-    classify_coding_legacy_installations,
-    classify_coding_legacy_removed_local_installations,
+from .legacy_configured_source import _index_configured_sources
+from .legacy_desired_evidence import CodingLegacyDesiredError
+from .legacy_desired_evidence import (
+    parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
 )
-from .legacy_instance_evidence import parse_coding_legacy_retired_instance_capture
-from .legacy_lock_evidence import parse_coding_legacy_local_binding_heads
+from .legacy_installation_inventory import (
+    _BUILTINS,
+    _MAX_REMOVAL_BINDINGS,
+    CodingLegacyBuiltinIntentV1,
+    CodingLegacyInventoryError,
+    CodingLegacyRemovedLocalInstallationV1,
+)
+from .legacy_installation_inventory import (
+    classify_coding_legacy_installations as classify_coding_legacy_installations,
+)
+from .legacy_installation_inventory import (
+    classify_coding_legacy_removed_local_installations as classify_coding_legacy_removed_local_installations,
+)
+from .legacy_instance_evidence import (
+    CodingLegacyInstanceEvidenceError,
+    _management_capture_paths,
+)
+from .legacy_instance_evidence import (
+    parse_coding_legacy_retired_instance_capture as parse_coding_legacy_retired_instance_capture,
+)
+from .legacy_lock_evidence import (
+    CodingLegacyLocalBindingEvidenceV1,
+    CodingLegacyLockError,
+)
+from .legacy_lock_evidence import (
+    parse_coding_legacy_local_binding_heads as parse_coding_legacy_local_binding_heads,
+)
 from .legacy_operation_evidence import (
-    CodingLegacyOperationEvidenceError,
-    CodingLegacyRetirementCaptureV1,
-    classify_coding_legacy_management_members,
-    parse_coding_legacy_operation_evidence,
+    CodingLegacyOperationEvidenceError as CodingLegacyOperationEvidenceError,
+)
+from .legacy_operation_evidence import (
+    CodingLegacyRetirementCaptureV1 as CodingLegacyRetirementCaptureV1,
+)
+from .legacy_operation_evidence import (
+    classify_coding_legacy_management_members as classify_coding_legacy_management_members,
+)
+from .legacy_operation_evidence import (
+    parse_coding_legacy_operation_evidence as parse_coding_legacy_operation_evidence,
+)
+from .legacy_snapshot_member import _snapshot_reader
+from .legacy_snapshot_member import (
+    list_coding_first_b_snapshot_domain_members as list_coding_first_b_snapshot_domain_members,
 )
 from .legacy_snapshot_member import (
-    CodingLegacyInventoryDomain,
-    list_coding_first_b_snapshot_domain_members,
-    read_coding_first_b_snapshot_member,
+    read_coding_first_b_snapshot_member as read_coding_first_b_snapshot_member,
 )
-from .legacy_source_evidence import read_coding_legacy_source_evidence
+from .legacy_source_evidence import (
+    read_coding_legacy_source_evidence as read_coding_legacy_source_evidence,
+)
 from .pre_b_snapshot import CodingPreBSnapshotPreparation
+from .source_snapshot import _PROJECTION_NAME
 
-_BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 _REMOVABLE_BUILTINS = frozenset(
     {"coding.base", "coding.lsp.default", "coding.arch.default"}
 )
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
-_EXPECTED: dict[CodingLegacyInventoryDomain, tuple[str, ...]] = {
-    "binding_history": ("package-lock.json",),
-    "desired_state": ("desired-state.jsonl",),
-    "source_configuration": ("coding-source-configuration.json",),
-    "enablement_state": (),
-    "instance_state": (),
-    "lock_history": ("package-lock.json",),
-    "store_bytes": (),
-}
-_RETAINED_STORE_ROOTS = frozenset({"installed", "plugin-revisions"})
-
-
-def _removed_snapshot_has_operations(
-    members: Mapping[CodingLegacyInventoryDomain, tuple[str, ...]],
-) -> bool:
-    if any(
-        members[domain] != expected
-        for domain, expected in _EXPECTED.items()
-        if domain
-        not in {"desired_state", "instance_state", "lock_history", "store_bytes"}
-    ) or members["store_bytes"] not in {
-        (),
-        ("installed",),
-        ("plugin-revisions",),
-        ("installed", "plugin-revisions"),
-    }:
-        raise CodingLegacyRemovedReviewError("Old removal snapshot shape changed")
-    try:
-        return classify_coding_legacy_management_members(
-            desired_members=members["desired_state"],
-            instance_members=members["instance_state"],
-            lock_members=members["lock_history"],
-            allow_retirement=True,
-            allow_retired_runtime=True,
-        )
-    except CodingLegacyOperationEvidenceError as exc:
-        raise CodingLegacyRemovedReviewError(
-            "Old removal snapshot shape changed"
-        ) from exc
 
 
 class CodingLegacyRemovedReviewError(ValueError):
@@ -253,7 +252,7 @@ class CodingLegacyRemovedReviewV1:
             or self.review_version not in {1, 2}
             or type(self.retained_store_roots) is not tuple
             or any(
-                type(root) is not str or root not in _RETAINED_STORE_ROOTS
+                type(root) is not str or root not in LEGACY_REMOVAL_STORE_ROOTS
                 for root in self.retained_store_roots
             )
             or self.retained_store_roots
@@ -466,125 +465,23 @@ def admit_coding_removed_local_snapshot(
     """Check the entire old removal set before the first irreversible fence."""
 
     try:
-        owner = prepared.owner
-        evidence = owner.snapshot(snapshot.receipt_id)
-        members: dict[CodingLegacyInventoryDomain, tuple[str, ...]] = {
-            domain: owner.list_domain_members(snapshot.receipt_id, domain=domain) or ()
-            for domain in _EXPECTED
-        }
-        if (
-            prepared.legacy_classification.kind != "legacy_state"
-            or prepared.legacy_classification.configured_source_keys
-            or evidence is None
-            or evidence.snapshot != snapshot
-        ):
-            raise CodingLegacyRemovedReviewError("Old removal snapshot shape changed")
-        has_operations = _removed_snapshot_has_operations(members)
-        for domain in ("desired_state", "instance_state", "lock_history"):
-            for name in members[domain]:
-                if (
-                    name.endswith(".lock")
-                    and owner.read_regular_member(
-                        snapshot.receipt_id,
-                        domain=domain,
-                        member_name=name,
-                        maximum_bytes=8,
-                    )
-                    != b"\0"
-                ):
-                    raise CodingLegacyRemovedReviewError(
-                        "Old removal journal lock changed"
-                    )
-        lock_raw = owner.read_regular_member(
-            snapshot.receipt_id,
-            domain="binding_history",
-            member_name="package-lock.json",
+        classification = prepared.legacy_classification
+        capture = LegacyRemovalSnapshot.before_fence(
+            prepared.owner,
+            snapshot,
+            eligible=classification.kind == "legacy_state"
+            and not classification.configured_source_keys,
+            source_member=_PROJECTION_NAME,
+            review_error=CodingLegacyRemovedReviewError,
+            operation_error=CodingLegacyOperationEvidenceError,
+            label="Coding",
         )
-        desired_raw = owner.read_regular_member(
-            snapshot.receipt_id,
-            domain="desired_state",
-            member_name="desired-state.jsonl",
-        )
-        if lock_raw is None or desired_raw is None:
-            raise CodingLegacyRemovedReviewError("Old removal evidence is missing")
-        bindings = parse_coding_legacy_local_binding_heads(lock_raw)
-        desired = parse_coding_legacy_desired_evidence(desired_raw, lifecycle=lifecycle)
-        inventory = classify_coding_legacy_installations(
-            bindings, desired, scope_id=lifecycle.scope_id
-        )
-        removed = classify_coding_legacy_removed_local_installations(
-            bindings,
-            desired,
-            scope_id=lifecycle.scope_id,
-        )
-        if has_operations:
-            operations_raw = owner.read_regular_member(
-                snapshot.receipt_id,
-                domain="desired_state",
-                member_name="management-operations.jsonl",
-            )
-            if operations_raw is None:
-                raise CodingLegacyRemovedReviewError(
-                    "Old management operation evidence is missing"
-                )
-            retirements = None
-            if "retirement-intents.jsonl" in members["instance_state"]:
-                intents_raw = owner.read_regular_member(
-                    snapshot.receipt_id,
-                    domain="instance_state",
-                    member_name="retirement-intents.jsonl",
-                    maximum_bytes=2 * 1024 * 1024,
-                )
-                sets_raw = owner.read_regular_member(
-                    snapshot.receipt_id,
-                    domain="instance_state",
-                    member_name="retirement-sets.jsonl",
-                    maximum_bytes=2 * 1024 * 1024,
-                )
-                if intents_raw is None or sets_raw is None:
-                    raise CodingLegacyRemovedReviewError(
-                        "Old retirement evidence is missing"
-                    )
-                retirements = CodingLegacyRetirementCaptureV1(
-                    intents_raw=intents_raw,
-                    sets_raw=sets_raw,
-                    intents_path=lifecycle.retirement_intents,
-                    sets_path=lifecycle.retirement_sets,
-                )
-            parse_coding_legacy_operation_evidence(
-                operations_raw,
-                desired=desired,
-                path=lifecycle.management_operations,
-                retirements=retirements,
-            )
-            if "instance-runtime.jsonl" in members["instance_state"]:
-                runtime_raw = owner.read_regular_member(
-                    snapshot.receipt_id,
-                    domain="instance_state",
-                    member_name="instance-runtime.jsonl",
-                    maximum_bytes=2 * 1024 * 1024,
-                )
-                if runtime_raw is None or retirements is None:
-                    raise CodingLegacyRemovedReviewError(
-                        "Old Instance evidence is missing"
-                    )
-                parse_coding_legacy_retired_instance_capture(
-                    runtime_raw,
-                    intents_raw=retirements.intents_raw,
-                    sets_raw=retirements.sets_raw,
-                    desired=desired,
-                    lifecycle=lifecycle,
-                )
-        if inventory.active_local:
+        facts = _prove_removal(capture, lifecycle)
+        if facts.inventory.active_local:
             raise CodingLegacyRemovedReviewError(
                 "Old removal preparation requires no active local Installation"
             )
-        allowed = _BUILTINS | {item.binding.plugin_id for item in removed}
-        if any(
-            item.plugin_id not in allowed
-            for item in prepared.legacy_classification.disabled_plugins
-        ):
-            raise CodingLegacyRemovedReviewError("Old disable set is unsupported")
+        _require_supported_disabled_plugins(classification.disabled_plugins, facts)
     except PackagePosixEpochCutoverError:
         raise
     except (OSError, ValueError, TypeError) as exc:
@@ -606,27 +503,13 @@ def review_coding_first_b_removed_local(
     switch = epoch_runtime.cutover_result.switch_receipt
     if fence is None or switch is None:
         raise CodingLegacyRemovedReviewError("Coding first-B fence is missing")
-    members: dict[CodingLegacyInventoryDomain, tuple[str, ...]] = {
-        domain: list_coding_first_b_snapshot_domain_members(
-            lifecycle, epoch_runtime, domain=domain
-        )
-        for domain in _EXPECTED
-    }
-    has_operations = _removed_snapshot_has_operations(members)
-    for domain in ("desired_state", "instance_state", "lock_history"):
-        for name in members[domain]:
-            if (
-                name.endswith(".lock")
-                and read_coding_first_b_snapshot_member(
-                    lifecycle,
-                    epoch_runtime,
-                    domain=domain,
-                    member_name=name,
-                    maximum_bytes=8,
-                )
-                != b"\0"
-            ):
-                raise CodingLegacyRemovedReviewError("Old removal journal lock changed")
+    capture = LegacyRemovalSnapshot.after_fence(
+        _snapshot_reader(lifecycle, epoch_runtime),
+        source_member=_PROJECTION_NAME,
+        review_error=CodingLegacyRemovedReviewError,
+        operation_error=CodingLegacyOperationEvidenceError,
+        label="Coding",
+    )
     global_path = settings_manager.global_settings_path
     project_path = settings_manager.project_settings_path
     if not isinstance(global_path, Path) or not isinstance(project_path, Path):
@@ -637,117 +520,23 @@ def review_coding_first_b_removed_local(
         global_settings_path=global_path,
         project_settings_path=project_path,
     )
-    lock_raw = read_coding_first_b_snapshot_member(
-        lifecycle,
-        epoch_runtime,
-        domain="binding_history",
-        member_name="package-lock.json",
-        maximum_bytes=2 * 1024 * 1024,
-    )
-    desired_raw = read_coding_first_b_snapshot_member(
-        lifecycle,
-        epoch_runtime,
-        domain="desired_state",
-        member_name="desired-state.jsonl",
-        maximum_bytes=2 * 1024 * 1024,
-    )
-    if lock_raw is None or desired_raw is None:
-        raise CodingLegacyRemovedReviewError("Old removal evidence is missing")
-    bindings = parse_coding_legacy_local_binding_heads(lock_raw)
-    desired = parse_coding_legacy_desired_evidence(desired_raw, lifecycle=lifecycle)
-    operation_digest: str | None = None
-    if has_operations:
-        operations_raw = read_coding_first_b_snapshot_member(
-            lifecycle,
-            epoch_runtime,
-            domain="desired_state",
-            member_name="management-operations.jsonl",
-            maximum_bytes=2 * 1024 * 1024,
-        )
-        if operations_raw is None:
-            raise CodingLegacyRemovedReviewError(
-                "Old management operation evidence is missing"
-            )
-        retirements = None
-        if "retirement-intents.jsonl" in members["instance_state"]:
-            intents_raw = read_coding_first_b_snapshot_member(
-                lifecycle,
-                epoch_runtime,
-                domain="instance_state",
-                member_name="retirement-intents.jsonl",
-                maximum_bytes=2 * 1024 * 1024,
-            )
-            sets_raw = read_coding_first_b_snapshot_member(
-                lifecycle,
-                epoch_runtime,
-                domain="instance_state",
-                member_name="retirement-sets.jsonl",
-                maximum_bytes=2 * 1024 * 1024,
-            )
-            if intents_raw is None or sets_raw is None:
-                raise CodingLegacyRemovedReviewError(
-                    "Old retirement evidence is missing"
-                )
-            retirements = CodingLegacyRetirementCaptureV1(
-                intents_raw=intents_raw,
-                sets_raw=sets_raw,
-                intents_path=lifecycle.retirement_intents,
-                sets_path=lifecycle.retirement_sets,
-            )
-        operation_digest = parse_coding_legacy_operation_evidence(
-            operations_raw,
-            desired=desired,
-            path=lifecycle.management_operations,
-            retirements=retirements,
-        ).journal_digest
-        if "instance-runtime.jsonl" in members["instance_state"]:
-            runtime_raw = read_coding_first_b_snapshot_member(
-                lifecycle,
-                epoch_runtime,
-                domain="instance_state",
-                member_name="instance-runtime.jsonl",
-                maximum_bytes=2 * 1024 * 1024,
-            )
-            if runtime_raw is None or retirements is None:
-                raise CodingLegacyRemovedReviewError("Old Instance evidence is missing")
-            parse_coding_legacy_retired_instance_capture(
-                runtime_raw,
-                intents_raw=retirements.intents_raw,
-                sets_raw=retirements.sets_raw,
-                desired=desired,
-                lifecycle=lifecycle,
-            )
-    removed = classify_coding_legacy_removed_local_installations(
-        bindings, desired, scope_id=lifecycle.scope_id
-    )
-    inventory = classify_coding_legacy_installations(
-        bindings, desired, scope_id=lifecycle.scope_id
-    )
+    facts = _prove_removal(capture, lifecycle)
+    inventory = facts.inventory
     active_identities = tuple(
-        item.binding.source_identity for item in inventory.active_local
+        binding.source_identity for binding, _, _ in inventory.active_local
     )
     if active_identities:
-        source_projection = json.loads(source.projection_bytes)
-        for identity in active_identities:
-            match_coding_legacy_local_skill_configured_source(
-                source_projection,
-                source_identity=identity,
-                installed_source_identities=active_identities,
-            )
+        _index_configured_sources(
+            json.loads(source.projection_bytes), active_identities
+        )
     elif source.classification.configured_source_keys:
         raise CodingLegacyRemovedReviewError("Old removal Source set is unsupported")
-    allowed = _BUILTINS | {item.binding.plugin_id for item in removed}
-    if any(
-        item.plugin_id not in allowed for item in source.classification.disabled_plugins
-    ):
-        raise CodingLegacyRemovedReviewError("Old disable set is unsupported")
-    removed_builtin_ids = tuple(
-        item for item in inventory.removed_plugin_ids if item in _REMOVABLE_BUILTINS
-    )
+    disables = source.classification.disabled_plugins
+    _require_supported_disabled_plugins(disables, facts)
     review_version = (
         2
-        if has_operations
-        or any(item.head_transition_kind == "update" for item in removed)
+        if capture.has_operations
+        or any(item.head_transition_kind == "update" for item in facts.removed)
         else 1
     )
     epoch_runtime.assert_current()
@@ -758,21 +547,57 @@ def review_coding_first_b_removed_local(
         first_fence_id=fence.fence_id,
         snapshot_receipt_id=fence.request.snapshot_receipt_id,
         source_projection_digest=source.projection_digest,
-        lockfile_digest=bindings[0].lockfile_digest,
-        desired_journal_digest=desired.journal_digest,
-        disabled_plugins=source.classification.disabled_plugins,
-        builtin_intent=inventory.builtin_intent,
-        removed_builtin_ids=removed_builtin_ids,
+        lockfile_digest=facts.removed[0].binding.lockfile_digest,
+        desired_journal_digest=facts.desired_digest,
+        disabled_plugins=disables,
+        builtin_intent=tuple(
+            CodingLegacyBuiltinIntentV1(*item) for item in inventory.builtin_intent
+        ),
+        removed_builtin_ids=tuple(
+            item for item in inventory.removed_plugin_ids if item in _REMOVABLE_BUILTINS
+        ),
         removed_local=tuple(
             CodingLegacyRemovedReviewEntryV1.from_evidence(
-                item, review_version=review_version
+                CodingLegacyRemovedLocalInstallationV1(
+                    CodingLegacyLocalBindingEvidenceV1(*item.binding),
+                    item.install_operation_id,
+                    item.remove_operation_id,
+                    item.head_operation_id,
+                    item.head_transition_kind,
+                ),
+                review_version=review_version,
             )
-            for item in removed
+            for item in facts.removed
         ),
         review_version=review_version,
-        operation_journal_digest=operation_digest,
-        retained_store_roots=members["store_bytes"],
+        operation_journal_digest=facts.operation_digest,
+        retained_store_roots=capture.retained_store_roots,
     )
+
+
+def _prove_removal(
+    capture: LegacyRemovalSnapshot, lifecycle: CodingPluginLifecycleStateLayout
+) -> LegacyRemovalFacts:
+    return capture.prove(
+        desired_path=lifecycle.desired_state,
+        management_paths=_management_capture_paths(lifecycle),
+        product_id="coding",
+        scope_id=lifecycle.scope_id,
+        builtin_ids=_BUILTINS,
+        maximum_bindings=_MAX_REMOVAL_BINDINGS,
+        inventory_error=CodingLegacyInventoryError,
+        lock_error=CodingLegacyLockError,
+        desired_error=CodingLegacyDesiredError,
+        instance_error=CodingLegacyInstanceEvidenceError,
+    )
+
+
+def _require_supported_disabled_plugins(
+    disables: tuple[CodingScopedLegacyDisableV1, ...], facts: LegacyRemovalFacts
+) -> None:
+    allowed = _BUILTINS | {item.binding.plugin_id for item in facts.removed}
+    if any(item.plugin_id not in allowed for item in disables):
+        raise CodingLegacyRemovedReviewError("Old disable set is unsupported")
 
 
 __all__ = [

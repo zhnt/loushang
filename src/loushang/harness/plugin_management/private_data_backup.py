@@ -46,6 +46,9 @@ class PrivateBackupReceipt(Protocol):
     @property
     def installation_key(self) -> PluginInstallationKeyV1: ...
 
+    @property
+    def source_target_id(self) -> str: ...
+
 
 S = TypeVar("S", bound=PrivateBackupSource)
 R = TypeVar("R", bound=PrivateBackupReceipt)
@@ -120,12 +123,63 @@ def verify_private_archive(
             )
 
 
-class _DeletedBackupReceipt(PrivateBackupReceipt, Protocol):
-    @property
-    def source_target_id(self) -> str: ...
+def _verify_retained_private_archive_at(
+    parent_fd: int,
+    name: str,
+    key: PluginInstallationKeyV1,
+    *,
+    io: PrivatePosixTreeIO,
+    codec: PrivateArchiveCodec[S, R],
+    installation_error: str,
+) -> R:
+    receipt, source = read_private_archive(parent_fd, name, io=io, codec=codec)
+    if receipt.installation_key != key or receipt.backup_id != name:
+        raise ValueError(installation_error)
+    verify_private_archive(parent_fd, name, key, source, receipt, io=io, codec=codec)
+    return receipt
 
 
-_DeletedReceiptT = TypeVar("_DeletedReceiptT", bound=_DeletedBackupReceipt)
+def verify_retained_private_archive(
+    private_base: Path,
+    parent: Path,
+    name: str,
+    key: PluginInstallationKeyV1,
+    *,
+    io: PrivatePosixTreeIO,
+    codec: PrivateArchiveCodec[S, R],
+    installation_error: str,
+) -> R:
+    """Open one exact retained archive through the configured rooted I/O."""
+    with closing_descriptor(io.open_path(private_base, parent)) as parent_fd:
+        return _verify_retained_private_archive_at(
+            parent_fd,
+            name,
+            key,
+            io=io,
+            codec=codec,
+            installation_error=installation_error,
+        )
+
+
+def require_deleted_archive_receipt(
+    receipt: PrivateBackupReceipt,
+    name: str,
+    key: PluginInstallationKeyV1,
+    *,
+    deletion_events: Callable[
+        [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
+    ],
+    installation_error: str,
+    deletion_error: str,
+) -> PluginPrivateDataDeletionReceiptV1:
+    if receipt.installation_key != key or receipt.backup_id != name:
+        raise ValueError(installation_error)
+    deletion = latest_deleted_target_receipt(
+        deletion_events(), key, receipt.source_target_id
+    )
+    if deletion is None:
+        raise ValueError(deletion_error)
+    return deletion
 
 
 def read_deleted_restore_source(
@@ -135,7 +189,7 @@ def read_deleted_restore_source(
     key: PluginInstallationKeyV1,
     *,
     io: PrivatePosixTreeIO,
-    codec: PrivateArchiveCodec[S, _DeletedReceiptT],
+    codec: PrivateArchiveCodec[S, R],
     deletion_events: Callable[
         [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
     ],
@@ -145,17 +199,55 @@ def read_deleted_restore_source(
     """Bind and verify retained bytes before releasing their parent descriptor."""
     with closing_descriptor(io.open_path(private_base, parent)) as parent_fd:
         receipt, source = read_private_archive(parent_fd, name, io=io, codec=codec)
-        if receipt.installation_key != key or receipt.backup_id != name:
-            raise ValueError(installation_error)
-        deletion = latest_deleted_target_receipt(
-            deletion_events(), key, receipt.source_target_id
+        deletion = require_deleted_archive_receipt(
+            receipt,
+            name,
+            key,
+            deletion_events=deletion_events,
+            installation_error=installation_error,
+            deletion_error=deletion_error,
         )
-        if deletion is None:
-            raise ValueError(deletion_error)
         verify_private_archive(
             parent_fd, name, key, source, receipt, io=io, codec=codec
         )
     return source, deletion
+
+
+def verify_posix_restored_target(
+    private_base: Path,
+    target: Path,
+    source: PrivateBackupSource,
+    *,
+    io: PrivatePosixTreeIO,
+) -> None:
+    with closing_descriptor(io.open_path(private_base, target)) as target_fd:
+        verify_private_tree(
+            target_fd, source.members, label=io.label, max_read_bytes=io.max_read_bytes
+        )
+
+
+def preview_posix_restore_target(
+    private_base: Path,
+    target: Path,
+    source: PrivateBackupSource,
+    *,
+    io: PrivatePosixTreeIO,
+    target_present: bool,
+    stage_name: str,
+    stage_prefix: str,
+    stage_suffix: str,
+) -> Literal["absent", "same_bytes"]:
+    if target_present:
+        verify_posix_restored_target(private_base, target, source, io=io)
+    io.require_no_foreign_restore_stage(
+        private_base,
+        target,
+        stage_name=stage_name,
+        stage_prefix=stage_prefix,
+        stage_suffix=stage_suffix,
+        target_present=target_present,
+    )
+    return "same_bytes" if target_present else "absent"
 
 
 def inspect_private_expiry_archive(
@@ -252,21 +344,12 @@ def retain_private_archive(
         return receipt
 
 
-class _Plan(ExpiryPlan, Protocol):
-    @property
-    def archive_root_identity(self) -> tuple[int, int, int, int, int]: ...
-
-
 class _Event(ExpiryHistoryEvent, Protocol):
     @property
-    def plan(self) -> _Plan: ...
-    @property
     def archive(self) -> PrivateBackupSource | None: ...
-    @property
-    def receipt(self) -> object | None: ...
 
 
-_PlanT = TypeVar("_PlanT", bound=_Plan)
+_PlanT = TypeVar("_PlanT", bound=ExpiryPlan)
 _ConfirmationT = TypeVar("_ConfirmationT")
 _EventT = TypeVar("_EventT", bound=_Event)
 _P_contra = TypeVar("_P_contra", contravariant=True)
@@ -482,11 +565,13 @@ def enumerate_private_archives(
                 continue
             if not is_archive_name(name):
                 raise ValueError(f"{io.label} backup member is unexpected")
-            receipt, source = read_private_archive(parent_fd, name, io=io, codec=codec)
-            if receipt.installation_key != key or receipt.backup_id != name:
-                raise ValueError(f"{io.label} backup identity changed")
-            verify_private_archive(
-                parent_fd, name, key, source, receipt, io=io, codec=codec
+            receipt = _verify_retained_private_archive_at(
+                parent_fd,
+                name,
+                key,
+                io=io,
+                codec=codec,
+                installation_error=f"{io.label} backup identity changed",
             )
             receipts.append(receipt)
         return tuple(receipts)

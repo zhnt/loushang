@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from collections.abc import Callable, Mapping
@@ -12,35 +13,55 @@ from loushang.coding.composition.base_plugin import _owner_bindings
 from loushang.coding.composition.base_product import (
     CodingBaseProductCompilation,
     CodingBaseProductSessionAssembly,
-    _resource_bodies,
+)
+from loushang.coding.composition.base_product import (
+    _resource_bodies as _resource_bodies,
 )
 from loushang.coding.composition.capability_plugins import (
     _PRODUCT_POLICY_REVISION,
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionPreparation,
     CodingResumePluginParents,
-    _assembly_request,
-    _bind_default_approval_request_to_plan,
-    _finalize_selection,
-    _provider_owner_authorities,
-    _read_clock,
-    _tool_owner_authority,
-    create_coding_capability_plugin_composition_request,
+)
+from loushang.coding.composition.capability_plugins import (
+    _assembly_request as _assembly_request,
+)
+from loushang.coding.composition.capability_plugins import (
+    _bind_default_approval_request_to_plan as _bind_default_approval_request_to_plan,
+)
+from loushang.coding.composition.capability_plugins import (
+    _finalize_selection as _finalize_selection,
+)
+from loushang.coding.composition.capability_plugins import (
+    _provider_owner_authorities as _provider_owner_authorities,
+)
+from loushang.coding.composition.capability_plugins import (
+    _read_clock as _read_clock,
+)
+from loushang.coding.composition.capability_plugins import (
+    _tool_owner_authority as _tool_owner_authority,
+)
+from loushang.coding.composition.capability_plugins import (
+    create_coding_capability_plugin_composition_request as create_coding_capability_plugin_composition_request,
 )
 from loushang.coding.composition.capability_specs import (
     CodingCapabilityPluginConfig,
-    ordered_coding_capability_plugin_specs,
+)
+from loushang.coding.composition.capability_specs import (
+    ordered_coding_capability_plugin_specs as ordered_coding_capability_plugin_specs,
 )
 from loushang.coding.package.legacy_data_trust import (
     EXTERNAL_DATA_TRUST_CLASSES,
     permits_external_data_owner,
 )
 from loushang.coding.package.product_revisions import (
-    open_coding_product_builtin_resolution,
-    open_coding_product_capability_resolution,
+    open_coding_product_builtin_resolution as open_coding_product_builtin_resolution,
+)
+from loushang.coding.package.product_revisions import (
+    open_coding_product_capability_resolution as open_coding_product_capability_resolution,
 )
 from loushang.coding.resources.catalog import (
-    complete_coding_package_plugin_selection_seed,
+    complete_coding_package_plugin_selection_seed as complete_coding_package_plugin_selection_seed,
 )
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
@@ -54,8 +75,12 @@ from loushang.harness.machine_resources.control_plane import (
     prepare_private_directory_chain,
 )
 from loushang.harness.package_product._selected_plugin_revisions import (
-    SelectedProductPreparationScope,
-    selected_runtime_recheck,
+    SelectedProductPreparationScope as SelectedProductPreparationScope,
+)
+from loushang.harness.package_product._selected_plugin_revisions import (
+    selected_runtime_recheck as selected_runtime_recheck,
+)
+from loushang.harness.package_product._selected_plugin_revisions import (
     validate_preparation_lineage,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -86,11 +111,21 @@ from loushang.harness.resources.plugins.selection import (
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
-    prepare_product_plugin_composition,
+)
+from loushang.harness.session.product_composition_assembly import (
+    prepare_product_plugin_composition as prepare_product_plugin_composition,
 )
 
 _MAX_FILES = 64
 _MAX_BYTES = 1024 * 1024
+
+
+def coding_session_plugin_state_relative_path(session_id: str) -> Path:
+    """Return the historical Product Plugin location without creating it."""
+    state_id = hashlib.sha256(
+        b"loushang.coding-capability-plugin-state/v1\0" + session_id.encode("utf-8")
+    ).hexdigest()
+    return Path("plugin-state", "coding-capability-plugins", state_id)
 
 
 def prepare_coding_product_approval_state_root(state_root: Path) -> Path:
@@ -184,12 +219,13 @@ def prepare_coding_builtin_product_composition(
     resume_parents: CodingResumePluginParents | None = None,
 ) -> CodingBuiltinProductCompositionPreparation:
     """Compile all first-party Product selections before binding host Providers."""
+
     if not isinstance(base_compilation, CodingBaseProductCompilation):
-        raise TypeError("Coding Product base compilation is invalid")
+        raise TypeError('Coding Product base compilation is invalid')
     if not isinstance(session_id, str) or not session_id.strip():
-        raise ValueError("Coding Product Session id is invalid")
+        raise ValueError('Coding Product Session id is invalid')
     if not isinstance(configurations, Mapping) or not configurations:
-        raise ValueError("Coding Product Capability configuration is invalid")
+        raise ValueError('Coding Product Capability configuration is invalid')
     specs = ordered_coding_capability_plugin_specs(configurations)
     if any(
         (
@@ -197,7 +233,7 @@ def prepare_coding_builtin_product_composition(
             for spec in specs
         )
     ):
-        raise TypeError("Coding Product Capability configuration type is invalid")
+        raise TypeError('Coding Product Capability configuration type is invalid')
     _read_clock(clock)
     root = _prepare_product_approval_state_root(state_root)
     with SelectedProductPreparationScope(
@@ -211,21 +247,23 @@ def prepare_coding_builtin_product_composition(
         selection_items=lambda runtime: runtime.packages,
         maximum_files=lambda: _MAX_FILES,
         maximum_bytes=lambda: _MAX_BYTES,
-        label="Coding Product Capability",
+        label='Coding Product Capability',
     ) as (runtime, selected):
         by_id = {item.manifest.name: item for item in selected}
-        base = by_id["coding.base"]
+        base = by_id['coding.base']
         if (
             base != base_compilation.selected_manifest
-            or base_compilation.plan.selected_plugin_ids != ("coding.base",)
+            or base_compilation.plan.selected_plugin_ids
+            != ('coding.base',)
             or base_compilation.plan.context.scope_id != f"session:{session_id.strip()}"
         ):
-            raise ValueError("Coding Product base selection changed")
+            raise ValueError('Coding Product base selection changed')
         trust_revisions = {
-            _required_trust(item).source_trust_policy_revision for item in selected
+            _required_trust(item).source_trust_policy_revision
+            for item in selected
         }
         if len(trust_revisions) != 1:
-            raise ValueError("Coding Product trust policy changed")
+            raise ValueError('Coding Product trust policy changed')
         plugin_ids = frozenset(configurations)
         scope_id = base_compilation.plan.context.scope_id
         policy_revision = base_compilation.plan.context.policy_revision
@@ -324,10 +362,11 @@ def prepare_coding_product_capability_plugin_composition(
     owns only verified revision handles and Approval journals; activation still
     requires the normal host-Provider binding and Session graph publication.
     """
+
     if not isinstance(session_id, str) or not session_id.strip():
-        raise ValueError("Coding Product Capability Session id is invalid")
+        raise ValueError('Coding Product Capability Session id is invalid')
     if not isinstance(configurations, Mapping) or not configurations:
-        raise ValueError("Coding Product Capability configuration is invalid")
+        raise ValueError('Coding Product Capability configuration is invalid')
     specs = ordered_coding_capability_plugin_specs(configurations)
     if any(
         (
@@ -335,9 +374,9 @@ def prepare_coding_product_capability_plugin_composition(
             for spec in specs
         )
     ):
-        raise TypeError("Coding Product Capability configuration type is invalid")
+        raise TypeError('Coding Product Capability configuration type is invalid')
     if not isinstance(product_policy_revision, str) or not product_policy_revision:
-        raise ValueError("Coding Product Capability policy revision is invalid")
+        raise ValueError('Coding Product Capability policy revision is invalid')
     _read_clock(clock)
     root = _prepare_product_approval_state_root(state_root)
     with SelectedProductPreparationScope(
@@ -349,7 +388,7 @@ def prepare_coding_product_capability_plugin_composition(
         selection_items=lambda runtime: specs,
         maximum_files=lambda: _MAX_FILES,
         maximum_bytes=lambda: _MAX_BYTES,
-        label="Coding Product Capability",
+        label='Coding Product Capability',
     ) as (runtime, selected):
         trust_revisions = {
             item.source_trust_snapshot.source_trust_policy_revision
@@ -357,7 +396,7 @@ def prepare_coding_product_capability_plugin_composition(
             if item.source_trust_snapshot is not None
         }
         if len(trust_revisions) != 1:
-            raise ValueError("Coding Product Capability trust policy changed")
+            raise ValueError('Coding Product Capability trust policy changed')
         plugin_ids = frozenset(configurations)
         scope_id = f"session:{session_id.strip()}"
         tool_authority = _tool_owner_authority(plugin_ids)

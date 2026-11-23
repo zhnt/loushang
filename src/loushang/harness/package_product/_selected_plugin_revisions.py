@@ -19,6 +19,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
 from loushang.harness.package_product.product_runtime import (
+    PackageProductPluginDesiredSelectionV1,
     PackageProductRuntimeActivationError,
     PackageProductRuntimeBindingV1,
 )
@@ -520,3 +521,79 @@ def selected_runtime_recheck(runtime: PluginRuntimeResolution) -> Callable[[], N
             package.revision_handle.verify()
 
     return recheck_selected_revisions
+
+
+ProductAdmissionFailure = Callable[[tuple[str, ...]], Exception]
+
+
+def observe_requested_plugins(
+    runtime: PackageProductRuntimeBindingV1,
+    requests: tuple[tuple[str, bool], ...],
+    admission_failure: ProductAdmissionFailure,
+) -> tuple[list[str], tuple[PackageProductPluginDesiredSelectionV1, ...]]:
+    enabled: list[str] = []
+    observed: list[PackageProductPluginDesiredSelectionV1] = []
+    for plugin_id, requested in requests:
+        if not requested:
+            continue
+        selection = runtime.capture_plugin_desired_selection_for(plugin_id)
+        observed.append(selection)
+        if selection.desired_state == "absent" and not selection.recorded:
+            raise admission_failure(("product_requested_capability_not_installed",))
+        if selection.desired_state == "installed_enabled":
+            enabled.append(plugin_id)
+    return enabled, tuple(observed)
+
+
+def require_current_manifests(
+    runtime: PackageProductRuntimeBindingV1,
+    manifests: tuple[PackageProductSelectedPluginManifestV1, ...],
+    reason: str,
+    admission_failure: ProductAdmissionFailure,
+) -> None:
+    for manifest in manifests:
+        try:
+            runtime.assert_selected_plugin_manifest_current(manifest)
+        except (
+            PackageProductRuntimeActivationError,
+            PackageProductRuntimeReadError,
+        ) as exc:
+            raise admission_failure((reason,)) from exc
+
+
+def capture_selected_manifests(
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_ids: Iterable[str],
+    *,
+    max_files: int,
+    max_total_bytes: int,
+) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
+    return tuple(
+        runtime.capture_selected_plugin_manifest_for(
+            plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
+        )
+        for plugin_id in plugin_ids
+    )
+
+
+def capture_enabled_plugin_recheck(
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_id: str,
+    *,
+    max_files: int,
+    max_total_bytes: int,
+    admission_failure: ProductAdmissionFailure,
+) -> Callable[[], None]:
+    """Retain the exact enabled selection and immutable manifest for rebinding."""
+    selection = runtime.capture_plugin_desired_selection_for(plugin_id)
+    if selection.desired_state != "installed_enabled":
+        raise admission_failure(("product_requested_capability_not_installed",))
+    manifest = runtime.capture_selected_plugin_manifest_for(
+        plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
+    )
+
+    def require_current() -> None:
+        runtime.assert_plugin_desired_selection_current(selection)
+        runtime.assert_selected_plugin_manifest_current(manifest)
+
+    return require_current

@@ -16,7 +16,9 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
-from loushang.coding.package.epoch_layout import coding_fenced_product_exists
+from loushang.coding.package.epoch_layout import (
+    coding_fenced_product_exists,
+)
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
@@ -37,7 +39,9 @@ from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
+from loushang.harness.workspace.paths import capture_workspace_directory_identity
 
+from .installation_private_data import coding_arch_workspace_installation_key
 from .private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
     CodingArchPrivateDataBackupExpiryPlanV1,
@@ -102,12 +106,7 @@ class CodingWindowsArchBackupCandidateClientV1:
 
     @property
     def installation_key(self) -> PluginInstallationKeyV1:
-        return PluginInstallationKeyV1(
-            product_id="coding",
-            installation_scope="workspace",
-            scope_id=self.layout.scope_id,
-            plugin_id="coding.arch.default",
-        )
+        return coding_arch_workspace_installation_key(self.layout.scope_id)
 
     def retain(self) -> CodingArchPrivateDataBackupReceiptV1:
         """Retain the current exact source under the Product offline gate."""
@@ -300,8 +299,7 @@ class CodingWindowsArchBackupCandidateClientV1:
                 application.epoch_runtime, PackageProductWindowsFencedRuntimeOwner
             ):
                 raise ValueError("Windows Coding Arch backup Product owner changed")
-            owner = CodingWindowsArchPrivateDataBackupOwner(self.layout, product)
-            yield owner
+            yield CodingWindowsArchPrivateDataBackupOwner(self.layout, product)
             self._assert_workspace_identity()
         finally:
             application.close()
@@ -324,13 +322,13 @@ def open_coding_windows_arch_backup_candidate_client(
     runtime_protocol_epoch: int = CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
 ) -> CodingWindowsArchBackupCandidateClientV1:
     root = Path(workspace).expanduser().resolve(strict=True)
-    metadata = root.lstat()
-    if not stat.S_ISDIR(metadata.st_mode):
-        raise ValueError("Windows Coding Arch backup workspace is unavailable")
+    identity = capture_workspace_directory_identity(
+        root, unavailable="Windows Coding Arch backup workspace is unavailable"
+    )
     return CodingWindowsArchBackupCandidateClientV1(
         workspace=root,
         layout=layout or resolve_coding_plugin_lifecycle_state_layout(root),
-        workspace_identity=(metadata.st_dev, metadata.st_ino),
+        workspace_identity=identity,
         runtime_version=runtime_version or version("loushang"),
         runtime_protocol_epoch=runtime_protocol_epoch,
     )

@@ -15,14 +15,12 @@ from loushang.coding.plugin_manager.command_sdk import (
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.host.types import HostActionResult
 from loushang.harness.plugin_management.desired_command import PluginDesiredActionV1
+from loushang.harness.plugin_management.operations import (
+    PLUGIN_DESIRED_ACTIONS,
+    desired_state_for_action,
+)
 
 _SAFE_CODE = re.compile(r"[a-z0-9_]{1,96}\Z")
-_ACTIONS = frozenset({"enable", "disable", "remove"})
-_TARGET = {
-    "enable": "installed_enabled",
-    "disable": "installed_disabled",
-    "remove": "absent",
-}
 _USAGE = (
     "Usage: /plugins [list | explain OPERATION_ID | enable ID | disable ID | "
     "remove ID | repair OPERATION_ID]"
@@ -66,7 +64,7 @@ def execute_coding_plugin_management_ui_command(
     if (
         len(tokens) != 3
         or tokens[0] != "/plugins"
-        or tokens[1] not in _ACTIONS | {"repair"}
+        or tokens[1] not in PLUGIN_DESIRED_ACTIONS | {"repair"}
         or not 0 < len(tokens[2]) <= 256
         or not tokens[2].isascii()
         or not tokens[2].isprintable()
@@ -109,7 +107,7 @@ def _submit(
     if len(matches) != 1:
         return HostActionResult(error_message=f"Plugin is not installed: {plugin_id}")
     current = matches[0].get("desiredState")
-    if current == _TARGET[action]:
+    if current == desired_state_for_action(action):
         return HostActionResult(status_message=f"Plugin already {current}: {plugin_id}")
     if current not in {"installed_enabled", "installed_disabled"}:
         return HostActionResult(error_message=f"Plugin is not installed: {plugin_id}")

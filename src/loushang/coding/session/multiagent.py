@@ -4,32 +4,23 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, cast
 
-from loushang.ai.model import Model, ModelSelection, parse_model_selection_reference
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import Message
 from loushang.coding.control.sandbox import coding_workspace_execution_profile
 from loushang.coding.prompt.defaults import CODING_KERNEL_SYSTEM_PROMPT
-from loushang.coding.resources.tool_authority import (
-    CODING_EXACT_OWNER_TOOL_NAMES,
-    coding_peer_tool_names,
-)
+from loushang.coding.resources.tool_authority import CODING_EXACT_OWNER_TOOL_NAMES
 from loushang.coding.resources.tool_pack import coding_platform_tool_names
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
-from loushang.harness.approval import (
-    ActorBoundApprovalResolver,
-    InteractiveApprovalResolver,
-)
+from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.multiagent import (
     AgentTypeRegistry,
     AgentTypeSpec,
-    DelegatedExecutionProfile,
     ForkedHistory,
     ForkTier,
     SubagentContextPlan,
-    WorkspaceLease,
     WorkspaceLeasePort,
 )
 from loushang.harness.session import BootstrapServices
@@ -40,7 +31,10 @@ from loushang.harness.session.multiagent import (
     SessionSubagentRequest,
     bind_agent_session_multiagent,
 )
-from loushang.harness.session.subagent import AgentSessionSubagentFactory
+from loushang.harness.session.subagent import (
+    AgentSessionSubagentFactory,
+    SubagentConstruction,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 _RuntimeBuilder = Callable[..., AgentSessionRuntime]
@@ -277,7 +271,7 @@ def coding_recipe_context_plan(
     if spec is None:
         raise ValueError(f"Coding recipe agent type is not admitted: {agent_type}")
     return SubagentContextPlan(
-        system_prompt=_coding_role_system_prompt(agent_type),
+        system_prompt=coding_agent_type_system_prompt(agent_type),
         model=model,
         history=ForkedHistory(
             requested_tier=ForkTier.none(),
@@ -310,31 +304,30 @@ class CodingSubagentFactory(SessionSubagentFactory):
         resolved_cwd = Path(cwd).expanduser().resolve()
         if not resolved_cwd.is_dir():
             raise NotADirectoryError(20, "Not a directory", str(resolved_cwd))
-        self._session_dir = Path(session_dir)
-        self._tool_registry = tool_registry
-        self._default_model_provider = default_model_provider or (lambda: default_model)
-        self._services = services
-        self._runtime_builder = runtime_builder
-        self._host_environment = (
-            host_environment or LocalHostEnvironmentProbe().detect()
+        session_directory = Path(session_dir)
+        model_provider = default_model_provider or (lambda: default_model)
+        environment = host_environment or LocalHostEnvironmentProbe().detect()
+        construction = SubagentConstruction(
+            product_label="Coding",
+            session_dir=session_directory,
+            registry=tool_registry,
+            runtime_builder=runtime_builder,
+            default_model=model_provider,
+            services=services,
+            host_environment=environment,
+            exact_owner_tools=CODING_EXACT_OWNER_TOOL_NAMES,
+            selected_exact_tools=selected_exact_tool_names,
+            writable_roles=frozenset(
+                {"implementation_worker", "shared_implementation_worker", "test_runner"}
+            ),
+            workspace_ceiling=lambda path, writable: coding_workspace_execution_profile(
+                path, writable=writable
+            ),
+            role_prompt=coding_agent_type_system_prompt,
         )
-        selected_exact_names = tuple(selected_exact_tool_names)
-        if len(set(selected_exact_names)) != len(selected_exact_names):
-            raise ValueError("selected exact Tool names must not contain duplicates")
-        unknown_exact_names = tuple(
-            name
-            for name in selected_exact_names
-            if name not in CODING_EXACT_OWNER_TOOL_NAMES
-        )
-        if unknown_exact_names:
-            raise ValueError(
-                "selected exact Tool names are not Coding exact-owner identities: "
-                + ", ".join(unknown_exact_names)
-            )
-        self._selected_exact_tool_names = frozenset(selected_exact_names)
         self._children = AgentSessionSubagentFactory(
             cwd=resolved_cwd,
-            runtime_builder=self._build_child_runtime,
+            runtime_builder=construction.build,
             approval_resolver=approval_resolver,
             workspace_leases=workspace_leases,
             missing_response="Coding child produced no assistant response.",
@@ -343,84 +336,6 @@ class CodingSubagentFactory(SessionSubagentFactory):
 
     async def create(self, request: SessionSubagentRequest) -> SessionSubagentBinding:
         return await self._children.create(request)
-
-    def _build_child_runtime(
-        self,
-        request: SessionSubagentRequest,
-        cwd: Path,
-        approval_resolver: ActorBoundApprovalResolver,
-        workspace_lease: WorkspaceLease | None,
-    ) -> AgentSessionRuntime:
-        plan = request.context_plan
-        allowed_tools = coding_platform_tool_names(
-            _resolve_allowed_tools(request),
-            self._host_environment,
-        )
-        unavailable_exact_tools = tuple(
-            name
-            for name in allowed_tools
-            if name in CODING_EXACT_OWNER_TOOL_NAMES
-            and name not in self._selected_exact_tool_names
-        )
-        if unavailable_exact_tools:
-            raise ValueError(
-                "Coding child exact-owner tools are not selected: "
-                + ", ".join(unavailable_exact_tools)
-            )
-        model_ref = plan.model if plan is not None else None
-        if model_ref is None:
-            model_ref = request.agent_type.default_model
-        selection_registry = getattr(
-            getattr(self._services, "model_registry", None),
-            "ai_registry",
-            None,
-        )
-        model: Model | ModelSelection | None = (
-            parse_model_selection_reference(
-                model_ref,
-                registry=selection_registry,
-            )
-            if model_ref is not None
-            else self._default_model_provider()
-        )
-        delegated_execution_profile = DelegatedExecutionProfile(
-            actor_ref=request.record.ref,
-            allowed_tools=allowed_tools,
-            execution_profile_ceiling=coding_workspace_execution_profile(
-                cwd,
-                writable=_sandbox_workspace_is_writable(request.agent_type.name),
-            ),
-            approval_actor_id=str(request.record.ref),
-            workspace_ref=(
-                workspace_lease.workspace_ref if workspace_lease is not None else None
-            ),
-        )
-        return self._runtime_builder(
-            session_dir=self._session_dir,
-            model=model,
-            system_prompt=_resolve_system_prompt(request),
-            tool_registry=_select_tool_registry(
-                self._tool_registry,
-                allowed_tools,
-            ),
-            allowed_tool_names=list(allowed_tools),
-            active_tool_names=list(allowed_tools),
-            services=self._services,
-            persist=False,
-            sandbox_workspace_writable=_sandbox_workspace_is_writable(
-                request.agent_type.name
-            ),
-            approval_resolver=cast(Any, approval_resolver),
-            delegated_execution_profile=delegated_execution_profile,
-        )
-
-
-def _sandbox_workspace_is_writable(agent_type: str) -> bool:
-    return agent_type in {
-        "implementation_worker",
-        "shared_implementation_worker",
-        "test_runner",
-    }
 
 
 def install_coding_multiagent_session(
@@ -447,12 +362,6 @@ def install_coding_multiagent_session(
     )
 
 
-def _resolve_system_prompt(request: SessionSubagentRequest) -> str:
-    if request.context_plan is not None:
-        return request.context_plan.system_prompt
-    return _coding_role_system_prompt(request.agent_type.name)
-
-
 def coding_agent_type_system_prompt(agent_type: str) -> str:
     """Return Coding's complete system prompt for one admitted agent type."""
 
@@ -460,38 +369,6 @@ def coding_agent_type_system_prompt(agent_type: str) -> str:
     if role_prompt is None:
         raise ValueError(f"Coding has no system prompt for agent type {agent_type!r}")
     return f"{CODING_KERNEL_SYSTEM_PROMPT}\n\n{role_prompt}"
-
-
-def _coding_role_system_prompt(agent_type: str) -> str:
-    return coding_agent_type_system_prompt(agent_type)
-
-
-def _resolve_allowed_tools(request: SessionSubagentRequest) -> tuple[str, ...]:
-    admitted = request.agent_type.allowed_tools
-    if request.context_plan is None:
-        return admitted
-    requested = request.context_plan.allowed_tools
-    unexpected = tuple(tool for tool in requested if tool not in admitted)
-    if unexpected:
-        joined = ", ".join(unexpected)
-        raise ValueError(
-            f"subagent context requested non-admitted Coding tools: {joined}"
-        )
-    return requested
-
-
-def _select_tool_registry(
-    source: WorkspaceToolRegistry,
-    allowed_tools: tuple[str, ...],
-) -> WorkspaceToolRegistry:
-    peer_tool_names = coding_peer_tool_names(allowed_tools)
-    enabled = {definition.name for definition in source.list_enabled_definitions()}
-    missing = tuple(name for name in peer_tool_names if name not in enabled)
-    if missing:
-        raise ValueError(
-            "Coding child tools are not registered and enabled: " + ", ".join(missing)
-        )
-    return source.select(peer_tool_names)
 
 
 __all__ = [

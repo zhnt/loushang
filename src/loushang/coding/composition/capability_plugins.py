@@ -25,26 +25,36 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginSessionLease,
 )
 from loushang.coding.resources.catalog import (
-    complete_coding_package_plugin_selection_seed,
+    complete_coding_package_plugin_selection_seed as complete_coding_package_plugin_selection_seed,
 )
 from loushang.coding.resources.runtime import CodingPackageMaterializer
-from loushang.coding.resume.activation_attempt import CodingResumeRecoveryRequired
+from loushang.coding.resume.activation_attempt import (
+    CodingResumeRecoveryRequired as CodingResumeRecoveryRequired,
+)
 from loushang.coding.resume.activation_attempt_v2 import (
     CodingActivationAttemptV2,
     CodingResumeEffectOwnerV1,
 )
-from loushang.harness.approval._plugin_resume_parents import _PluginResumeParentMethods
+from loushang.coding.resume.plugin_effects import _require_resume_effect_owners
+from loushang.harness.approval._plugin_resume_parents import (
+    _PluginResumeParentMethods,
+    plugin_resume_journals,
+)
 from loushang.harness.approval.plugin_activation import (
     ContributionActivationApprovalSubject,
     PluginActivationDecisionJournal,
     PluginActivationDecisionRecordV1,
-    PluginActivationJournalError,
+)
+from loushang.harness.approval.plugin_activation import (
+    PluginActivationJournalError as PluginActivationJournalError,
 )
 from loushang.harness.approval.plugin_execution import (
     PluginApprovalAuthorizationV1,
     PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
-    PluginExecutionJournalError,
+)
+from loushang.harness.approval.plugin_execution import (
+    PluginExecutionJournalError as PluginExecutionJournalError,
 )
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -55,7 +65,6 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
     OwnerContributionPolicy,
-    OwnerContributionSnapshot,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
@@ -93,7 +102,6 @@ from loushang.harness.runtime.registration import OwnerGenerationRetirementRecei
 from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
-    SessionCapabilityOwnerAuthorityGate,
 )
 from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
     _PreparationFailureCleanup,
@@ -110,7 +118,10 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginCompositionPreparation,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
-    prepare_product_plugin_composition,
+    bind_selected_registration_authority,
+)
+from loushang.harness.session.product_composition_assembly import (
+    prepare_product_plugin_composition as prepare_product_plugin_composition,
 )
 
 _BASE_PLUGIN_ID = "coding.base"
@@ -128,6 +139,11 @@ _DEFAULT_APPROVAL_TTL_MS = 300_000
 _DEFAULT_DEFINITION_ENTRYPOINT = "definition.py:declare"
 _PLUGIN_IDS = CODING_CAPABILITY_PLUGIN_IDS
 _FAILURE_CUSTODIAN_ATTRIBUTE = "_coding_capability_plugin_cleanup_custodian"
+_RESUME_PLUGIN_LABEL = "Coding Resume Plugin"
+_DEFINITION_OWNER = "harness.plugin-execution"
+_ACTIVATION_OWNER = "harness.plugin-activation"
+_DEFINITION_DECISIONS_FILENAME = "definition-decisions.jsonl"
+_ACTIVATION_DECISIONS_FILENAME = "activation-decisions.jsonl"
 
 
 class CodingCapabilityPluginApprovalOwner(Protocol):
@@ -204,26 +220,16 @@ class CodingResumePluginParents(_PluginResumeParentMethods):
         self, *, session_id: str, state_root: Path, clock: Callable[[], int]
     ) -> tuple[PluginExecutionDecisionJournal, PluginActivationDecisionJournal]:
         if self.definition.session_id != session_id:
-            raise ValueError("Coding Resume Plugin parents belong to another Session")
-        scope_id = f"session:{session_id}"
-        definition = PluginExecutionDecisionJournal(
-            state_root / "definition-decisions.jsonl",
-            scope_kind="workspace",
-            scope_id=scope_id,
+            raise ValueError(
+                f"{_RESUME_PLUGIN_LABEL} parents belong to another Session"
+            )
+        return plugin_resume_journals(
+            session_id,
+            state_root / _DEFINITION_DECISIONS_FILENAME,
+            state_root / _ACTIVATION_DECISIONS_FILENAME,
             clock=clock,
-            required_writer_capabilities=frozenset(
-                {"harness.plugin-execution.resume-context/v1"}
-            ),
+            require_resume_context=True,
         )
-        activation = PluginActivationDecisionJournal(
-            state_root / "activation-decisions.jsonl",
-            scope_id=scope_id,
-            clock=clock,
-            required_writer_capabilities=frozenset(
-                {"harness.plugin-activation.resume-context/v1"}
-            ),
-        )
-        return definition, activation
 
     def _sealed_parent_error(
         self, *, definition: bool
@@ -245,30 +251,25 @@ def prepare_coding_resume_plugin_effect_owners(
     """Freeze the two original Plugin journal lookup obligations without I/O."""
 
     if not isinstance(session_id, str) or not session_id.strip():
-        raise ValueError("Coding Resume Plugin owner Session id is invalid")
+        raise ValueError(f"{_RESUME_PLUGIN_LABEL} owner Session id is invalid")
     if not isinstance(state_root, Path) or not state_root.is_absolute():
-        raise ValueError("Coding Resume Plugin owner state root is invalid")
-    scope_id = f"session:{session_id}"
-    definition = PluginExecutionDecisionJournal(
-        state_root / "definition-decisions.jsonl",
-        scope_kind="workspace",
-        scope_id=scope_id,
-    )
-    activation = PluginActivationDecisionJournal(
-        state_root / "activation-decisions.jsonl",
-        scope_id=scope_id,
+        raise ValueError(f"{_RESUME_PLUGIN_LABEL} owner state root is invalid")
+    definition, activation = plugin_resume_journals(
+        session_id,
+        state_root / _DEFINITION_DECISIONS_FILENAME,
+        state_root / _ACTIVATION_DECISIONS_FILENAME,
     )
     return tuple(
         sorted(
             (
                 CodingResumeEffectOwnerV1(
-                    "harness.plugin-execution",
+                    _DEFINITION_OWNER,
                     definition.resume_parent_scope_digest(product_id=CODING_PRODUCT_ID),
                     definition.resume_parent_contract_digest,
                     ("declaration",),
                 ),
                 CodingResumeEffectOwnerV1(
-                    "harness.plugin-activation",
+                    _ACTIVATION_OWNER,
                     activation.resume_parent_scope_digest(product_id=CODING_PRODUCT_ID),
                     activation.resume_parent_contract_digest,
                     ("activation",),
@@ -297,95 +298,31 @@ def require_coding_resume_plugin_effect_settlement(
     """
 
     if type(attempt) is not CodingActivationAttemptV2:
-        raise TypeError("Coding Resume Plugin settlement requires an exact v2 intent")
+        raise TypeError(
+            f"{_RESUME_PLUGIN_LABEL} settlement requires an exact v2 intent"
+        )
     if not isinstance(receipt, Mapping):
-        raise TypeError("Coding Resume Plugin settlement requires a current receipt")
+        raise TypeError(
+            f"{_RESUME_PLUGIN_LABEL} settlement requires a current receipt"
+        )
     owners = {owner.owner_id: owner for owner in attempt.effect_owners}
-    plugin_owner_ids = {"harness.plugin-activation", "harness.plugin-execution"}
-    if (
-        set(owners) != plugin_owner_ids | allowed_external_owner_ids
-        or attempt.effect_classes
-        or any(owner.effect_classes for owner in attempt.effect_owners)
-    ):
-        raise CodingResumeRecoveryRequired("input.effect_owner_set_unsupported")
+    _require_resume_effect_owners(
+        attempt,
+        set(owners),
+        {_DEFINITION_OWNER, _ACTIVATION_OWNER} | allowed_external_owner_ids,
+    )
     parents = CodingResumePluginParents(
-        definition=attempt.parent_context(owners["harness.plugin-execution"]),
-        activation=attempt.parent_context(owners["harness.plugin-activation"]),
+        definition=attempt.parent_context(owners[_DEFINITION_OWNER]),
+        activation=attempt.parent_context(owners[_ACTIVATION_OWNER]),
     )
-    try:
-        definition, activation = parents._journals(
-            session_id=attempt.session_id,
-            state_root=state_root,
-            clock=clock,
-        )
-        definition_snapshot = definition.resume_parent_snapshot(parents.definition)
-        activation_snapshot = activation.resume_parent_snapshot(parents.activation)
-    except (PluginExecutionJournalError, PluginActivationJournalError) as error:
-        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown") from error
-    if (
-        not definition_snapshot.sealed
-        or definition_snapshot.membership_digest is None
-        or not activation_snapshot.sealed
-        or activation_snapshot.membership_digest is None
-        or activation_snapshot.unfenced_recovered_use_ids
-        or not definition_snapshot.execution_uses
-        or not activation_snapshot.activation_uses
-        or any(use.state != "EVALUATED" for use in definition_snapshot.execution_uses)
-        or any(use.state != "COMMITTED" for use in activation_snapshot.activation_uses)
-    ):
-        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
-
-    raw_revisions = receipt.get("selectedRevisions")
-    if not isinstance(raw_revisions, list):
-        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
-    selected: dict[str, PluginInstanceRevisionRef] = {}
-    try:
-        for raw in raw_revisions:
-            if not isinstance(raw, Mapping) or set(raw) != {
-                "pluginId",
-                "packageRevisionFingerprint",
-                "instanceRevisionRef",
-            }:
-                raise ValueError("invalid current revision receipt")
-            plugin_id = raw["pluginId"]
-            revision_fingerprint = raw["packageRevisionFingerprint"]
-            if not isinstance(plugin_id, str) or not isinstance(
-                revision_fingerprint, str
-            ):
-                raise ValueError("invalid current revision identity")
-            if plugin_id not in CODING_CAPABILITY_PLUGIN_IDS:
-                continue
-            revision = PluginInstanceRevisionRef.from_dict(raw["instanceRevisionRef"])
-            if revision.plugin_id != plugin_id or plugin_id in selected:
-                raise ValueError("current revision receipt changed")
-            selected[plugin_id] = revision
-    except (TypeError, ValueError) as error:
-        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown") from error
-
-    definition_refs = tuple(
-        sorted(
-            (use.instance_revision_ref for use in definition_snapshot.execution_uses),
-            key=lambda ref: (ref.plugin_id, ref.instance_id, ref.revision),
-        )
+    parents.require_settled_revisions(
+        receipt,
+        session_id=attempt.session_id,
+        state_root=state_root,
+        clock=clock,
+        capability_plugin_ids=CODING_CAPABILITY_PLUGIN_IDS,
+        unsettled=lambda: CodingResumeRecoveryRequired("input.effect_settlement_unknown"),
     )
-    activation_refs = tuple(
-        sorted(
-            (use.instance_revision_ref for use in activation_snapshot.activation_uses),
-            key=lambda ref: (ref.plugin_id, ref.instance_id, ref.revision),
-        )
-    )
-    selected_refs = tuple(
-        sorted(
-            selected.values(),
-            key=lambda ref: (ref.plugin_id, ref.instance_id, ref.revision),
-        )
-    )
-    if (
-        not selected_refs
-        or definition_refs != selected_refs
-        or activation_refs != selected_refs
-    ):
-        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
 
 
 @dataclass(slots=True)
@@ -909,6 +846,7 @@ def prepare_coding_capability_plugin_composition(
 ) -> CodingCapabilityPluginCompositionPreparation:
     """Resolve, approve and compile once without constructing host Providers."""
 
+
     _validate_preparation_inputs(
         request,
         session_id=session_id,
@@ -920,17 +858,19 @@ def prepare_coding_capability_plugin_composition(
     )
     _read_clock(clock)
     if state_cleanup is not None and not callable(state_cleanup):
-        raise TypeError("Coding Capability Plugin state cleanup is invalid")
+        raise TypeError('Coding Capability Plugin state cleanup is invalid')
     if private_state_cleanup is not None and not callable(private_state_cleanup):
-        raise TypeError("Coding Capability Plugin private-state cleanup is invalid")
+        raise TypeError('Coding Capability Plugin private-state cleanup is invalid')
     if management_state_cleanup is not None and not callable(management_state_cleanup):
-        raise TypeError("Coding Capability Plugin management cleanup is invalid")
+        raise TypeError('Coding Capability Plugin management cleanup is invalid')
     if not isinstance(legacy_disabled_plugin_ids, frozenset) or any(
         not isinstance(item, str) or not item for item in legacy_disabled_plugin_ids
     ):
-        raise TypeError("Coding Capability Plugin legacy selection is invalid")
-    if lifecycle is not None and not isinstance(lifecycle, CodingPluginLifecycle):
-        raise TypeError("Coding Capability Plugins require a common lifecycle")
+        raise TypeError('Coding Capability Plugin legacy selection is invalid')
+    if lifecycle is not None and not isinstance(
+        lifecycle, CodingPluginLifecycle
+    ):
+        raise TypeError('Coding Capability Plugins require a common lifecycle')
     resolved_state_root = Path(state_root).expanduser().resolve()
     scope_id = f"session:{session_id.strip()}"
 
@@ -949,8 +889,8 @@ def prepare_coding_capability_plugin_composition(
         if not selected_configurations:
             runtime.close()
             raise CodingCapabilityPluginCompositionError(
-                "No requested Coding Capability Plugin is management-enabled.",
-                code="coding_capability_plugins_management_disabled",
+                'No requested Coding Capability Plugin is management-enabled.',
+                code='coding_capability_plugins_management_disabled',
             )
     except BaseException as error:
         custodian = coding_capability_plugin_failure_custodian(error)
@@ -964,13 +904,9 @@ def prepare_coding_capability_plugin_composition(
             state_cleanup=state_cleanup,
             private_state_cleanup=private_state_cleanup,
         )
-        try:
-            custodian.close()
-        except BaseException as cleanup_error:
-            error.add_note(
-                "Coding Capability Plugin preparation cleanup also failed: "
-                f"{cleanup_error}"
-            )
+        if not custodian.close_after_failed_preparation(
+            error, cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: "
+        ):
             _attach_failure_custodian(error, custodian)
         raise
     try:
@@ -979,7 +915,9 @@ def prepare_coding_capability_plugin_composition(
             if coding_base_plugin_assembly is not None
             else None
         )
-        tool_authority = _tool_owner_authority(frozenset(selected_configurations))
+        tool_authority = _tool_owner_authority(
+            frozenset(selected_configurations)
+        )
         plan_seed = _prepare_selection_plan_seed(
             runtime,
             scope_id=scope_id,
@@ -1032,13 +970,9 @@ def prepare_coding_capability_plugin_composition(
             state_cleanup=state_cleanup,
             private_state_cleanup=private_state_cleanup,
         )
-        try:
-            custodian.close()
-        except BaseException as cleanup_error:
-            error.add_note(
-                "Coding Capability Plugin preparation cleanup also failed: "
-                f"{cleanup_error}"
-            )
+        if not custodian.close_after_failed_preparation(
+            error, cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: "
+        ):
             _attach_failure_custodian(error, custodian)
         raise
 
@@ -1052,47 +986,14 @@ def _build_tool_owners(
     tool_modes: Mapping[str, CapabilityMountMode],
     clock: Callable[[], int],
 ) -> Mapping[str, CodingCapabilityToolOwner]:
-    trust_snapshots = selection.plan.source_trust_snapshots
-
-    def read_owner(
-        owner_id: str,
-        contribution_kind: str,
-        product_id: str,
-    ) -> OwnerContributionSnapshot:
-        policy = authority.policy
-        if (
-            owner_id != policy.owner_id
-            or contribution_kind != policy.contribution_kind
-            or product_id != policy.product_id
-        ):
-            raise ValueError("Coding Tool owner reader received another owner")
-        return authority.snapshot()
-
-    def read_trust(
-        plugin_id: str,
-        source_identity: str,
-    ) -> PluginSourceTrustSnapshotV1:
-        matches = tuple(
-            item
-            for item in trust_snapshots
-            if item.plugin_id == plugin_id
-            and item.package_source_identity == source_identity
-        )
-        if len(matches) != 1:
-            raise ValueError("Coding Tool owner requires one trust snapshot")
-        return matches[0]
-
-    def read_product_policy(product_id: str, requested_scope_id: str) -> str:
-        if product_id != CODING_PRODUCT_ID or requested_scope_id != scope_id:
-            raise ValueError("Coding Tool owner received another Product scope")
-        return selection.plan.context.policy_revision
-
-    gate = SessionCapabilityOwnerAuthorityGate(
-        authority_context=(plugin_assembly.product_composition.authority_context),
-        owner_snapshot_reader=read_owner,
-        trust_snapshot_reader=read_trust,
-        product_policy_revision_reader=read_product_policy,
+    gate = bind_selected_registration_authority(
+        selection,
+        plugin_assembly,
+        authority=authority,
+        product_id=CODING_PRODUCT_ID,
+        scope_id=scope_id,
         clock=clock,
+        label="Coding Tool owner",
     )
     admissions = plugin_assembly.product_composition.catalog_admissions
 
@@ -1142,7 +1043,7 @@ def _approve_activation_and_bind_inputs(
     component_host = CapabilityComponentHost.from_product_selection(
         selection,
         provider_authorities=provider_authorities,
-        journal_path=state_root / "activation-decisions.jsonl",
+        journal_path=state_root / _ACTIVATION_DECISIONS_FILENAME,
         scope_id=scope_id,
         host_boot_id=host_boot_id,
         clock=clock,
@@ -1199,13 +1100,14 @@ def _finalize_selection(
         and approval_owner.approval_source == _DEFAULT_APPROVAL_SOURCE
     ):
         windows_initial_approval_recovery = (
-            _default_approval_authorization(_DEFAULT_APPROVAL_SOURCE), approval_owner.plugin_ids,
+            _default_approval_authorization(_DEFAULT_APPROVAL_SOURCE),
+            approval_owner.plugin_ids,
         )
     return PluginDeclarationHost.resolve_for_product(
         seed.packages,
         bindings=seed.bindings,
         plan=seed.plan,
-        journal_path=state_root / "definition-decisions.jsonl",
+        journal_path=state_root / _DEFINITION_DECISIONS_FILENAME,
         scope_kind="workspace",
         scope_id=scope_id,
         clock=clock,

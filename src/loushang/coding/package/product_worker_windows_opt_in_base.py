@@ -9,13 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
-)
-from loushang.harness.worker.history._base_codec import (
-    _unchanged,
-)
 from loushang.harness.worker.history._windows_opt_in_base import (
     _WindowsOptInBaseMethods,
 )
@@ -30,8 +23,6 @@ from .product_worker_windows_history_preparation import (
 from .product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
-
-_MAX_BASE_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,14 +47,6 @@ class CodingWindowsWorkerOptInSemanticBaseV1(_WindowsOptInBaseMethods):
     ) -> CodingWindowsWorkerOptInReplayV1:
         return cast(CodingWindowsWorkerOptInReplayV1, self._replay_retained(events))
 
-    _wire_label = "Windows Worker opt-in semantic base"
-    _wire_lists = ("latestDecisions", "retiredOperationIds")
-    _wire_errors = (TypeError, UnicodeError, ValueError)
-
-    @classmethod
-    def _wire_maximum(cls) -> int:
-        return _MAX_BASE_BYTES
-
 
 __all__ = [
     "CodingWindowsWorkerOptInReplayV1",
@@ -71,17 +54,4 @@ __all__ = [
 ]
 
 
-CodingWindowsWorkerOptInSemanticBaseV1._bind_wire_schema(
-    RecordSchema.for_dataclass(
-        CodingWindowsWorkerOptInSemanticBaseV1,
-        _unchanged,
-        RecordField(
-            "latest_decisions",
-            decoder=lambda xs: tuple(
-                (CodingWorkerOptInDecisionV1.from_dict(item) for item in xs)
-            ),
-            encoder=lambda values: [value.to_dict() for value in values],
-        ),
-        RecordField("retired_operation_ids", decoder=tuple, encoder=list),
-    )
-)
+CodingWindowsWorkerOptInSemanticBaseV1._bind_record_schema()

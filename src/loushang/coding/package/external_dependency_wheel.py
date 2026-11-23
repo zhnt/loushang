@@ -9,10 +9,11 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import sha256 as sha256
 from pathlib import Path
 
-from packaging.utils import InvalidWheelFilename, parse_wheel_filename
+from packaging.utils import InvalidWheelFilename as InvalidWheelFilename
+from packaging.utils import parse_wheel_filename as parse_wheel_filename
 from packaging.version import Version
 
 from loushang.harness.journal import (
@@ -26,7 +27,7 @@ from loushang.harness.resources.packages.plugin_lifecycle._record_schema import 
     RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
@@ -72,7 +73,7 @@ def _wheel_identity(filename: str) -> tuple[str, str]:
         project_name, version, _build, _tags = parse_wheel_filename(filename)
     except InvalidWheelFilename as exc:
         raise ValueError("Dependency Wheel filename is invalid") from exc
-    return project_name, str(version)
+    return (project_name, str(version))
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,7 +243,6 @@ class CodingExternalDependencyWheelCatalog(
                 "Dependency Wheel version is already bound"
             )
 
-
     def capture(
         self,
         source: Path,
@@ -261,7 +261,6 @@ class CodingExternalDependencyWheelCatalog(
                 "Dependency Wheel Source is invalid"
             )
         return self._capture_validated(source, epoch_runtime=epoch_runtime)
-
 
     def _record_codec(
         self,

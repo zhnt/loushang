@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import json as json
 import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -11,13 +11,19 @@ from pathlib import Path
 
 from loushang.coding.package.epoch_layout import (
     CodingPackageEpochLayoutV1,
-    resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
-    resolve_coding_package_pre_b_store_members,
+)
+from loushang.coding.package.epoch_layout import (
+    resolve_coding_lifecycle_pre_b_members as resolve_coding_lifecycle_pre_b_members,
+)
+from loushang.coding.package.epoch_layout import (
+    resolve_coding_package_pre_b_store_members as resolve_coding_package_pre_b_store_members,
 )
 from loushang.coding.package.legacy_classification import (
     CodingLegacyWorkspaceClassificationV1,
-    classify_coding_legacy_workspace,
+)
+from loushang.coding.package.legacy_classification import (
+    classify_coding_legacy_workspace as classify_coding_legacy_workspace,
 )
 from loushang.coding.package.product_runtime import (
     _require_current_coding_product_admission,
@@ -26,11 +32,18 @@ from loushang.coding.package.product_runtime import (
 )
 from loushang.coding.package.source_snapshot import (
     _PROJECTION_NAME,
-    hold_coding_pre_b_source_configuration,
     require_coding_fresh_settings_without_writes,
+)
+from loushang.coding.package.source_snapshot import (
+    hold_coding_pre_b_source_configuration as hold_coding_pre_b_source_configuration,
 )
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._legacy_runtime import (
+    bind_legacy_pre_b_snapshot_owner,
+    prepare_legacy_product_cutover_roots,
+    reopen_legacy_product_cutover,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
@@ -38,17 +51,20 @@ from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackagePosixEpochCutoverResultV1,
     PackageProductPosixCutoverAttemptV1,
     PackageProductPreBSnapshotOwner,
-    PackageProductPreBSnapshotSharedMemberV1,
     hold_legacy_product_projection_root,
-    prepare_legacy_product_cutover_root,
-    read_legacy_product_projection,
-    reopen_posix_product_cutover,
+)
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    PackageProductPreBSnapshotSharedMemberV1 as PackageProductPreBSnapshotSharedMemberV1,
+)
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    read_legacy_product_projection as read_legacy_product_projection,
 )
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
     PackageProductWindowsCutoverAttemptV1,
     PackageProductWindowsPreBSnapshotOwner,
-    reopen_windows_product_cutover,
 )
+
+_FRESH_SETTINGS_PATHS_REQUIRED = "Coding fresh Product settings paths are required"
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,29 +95,24 @@ def prepare_coding_package_cutover_roots(
     if os.name not in {"posix", "nt"}:
         raise RuntimeError("Native Package cutover preparation is required")
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if os.name == "nt":
-        for root, private_base in (
-            (lifecycle.root, lifecycle.private_state_base),
-            (epoch.control_root, lifecycle.private_state_base),
-            (epoch.snapshot_root, lifecycle.private_state_base),
-            (_windows_projection_root(lifecycle), lifecycle.private_state_base),
-            (lifecycle.package_root, lifecycle.private_data_base),
-            (epoch.epochs_root, lifecycle.private_data_base),
-        ):
-            prepare_legacy_product_cutover_root(
-                root, private_base=private_base, windows=True, label="Coding Package"
-            )
-        return epoch
-    for root, private_base in (
+    windows = os.name == "nt"
+    roots: tuple[tuple[Path, Path], ...] = (
         (lifecycle.root, lifecycle.private_state_base),
         (epoch.control_root, lifecycle.private_state_base),
         (epoch.snapshot_root, lifecycle.private_state_base),
+    )
+    if windows:
+        roots += (
+            (
+                _windows_projection_root(lifecycle),
+                lifecycle.private_state_base,
+            ),
+        )
+    roots += (
         (lifecycle.package_root, lifecycle.private_data_base),
         (epoch.epochs_root, lifecycle.private_data_base),
-    ):
-        prepare_legacy_product_cutover_root(
-            root, private_base=private_base, windows=False, label="Coding Package"
-        )
+    )
+    prepare_legacy_product_cutover_roots(roots, label="Coding Package")
     return epoch
 
 
@@ -125,7 +136,7 @@ def prepare_and_cutover_coding_package_store_from_legacy(
             settings_manager.global_settings_path is None
             or settings_manager.project_settings_path is None
         ):
-            raise RuntimeError("Coding fresh Product settings paths are required")
+            raise RuntimeError(_FRESH_SETTINGS_PATHS_REQUIRED)
         require_coding_fresh_settings_without_writes(
             settings_manager.global_settings_path,
             settings_manager.project_settings_path,
@@ -228,20 +239,8 @@ def reopen_coding_package_cutover(
     """Reopen the current B root without reading legacy Coding Source state."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if os.name == "nt":
-        return reopen_windows_product_cutover(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
-            read_only=read_only,
-        )
-    return reopen_posix_product_cutover(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
-        read_only=read_only,
+    return reopen_legacy_product_cutover(
+        **epoch.fenced_runtime_open_kwargs(), read_only=read_only
     )
 
 
@@ -348,12 +347,7 @@ def hold_coding_pre_b_snapshot_owner(
                 if package.binding_history
                 else ()
             )
-            owner_type = (
-                PackageProductWindowsPreBSnapshotOwner
-                if os.name == "nt"
-                else PackageProductPreBSnapshotOwner
-            )
-            owner = owner_type(
+            owner = bind_legacy_pre_b_snapshot_owner(
                 epoch.snapshot_root,
                 store_id=epoch.store_id,
                 domain_roots=domain_roots,

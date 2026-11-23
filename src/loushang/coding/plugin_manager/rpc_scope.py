@@ -24,7 +24,9 @@ from loushang.coding.plugin_manager.preview import (
 from loushang.coding.plugin_manager.read_sdk import (
     CodingPluginManagementReadClientV1,
     CodingPluginManagementReadSdkError,
-    open_coding_plugin_management_read_client,
+)
+from loushang.coding.plugin_manager.read_sdk import (
+    open_coding_plugin_management_read_client as open_coding_plugin_management_read_client,
 )
 
 
@@ -67,23 +69,13 @@ class CodingPluginRpcSessionScope:
     def bind_desired(self, cwd: str) -> CodingPluginDesiredRpcClientV1:
         client = self._client_for(cwd)
         bound = bind_coding_plugin_desired_rpc_client(client.workspace)
-        client._assert_workspace_identity()
-        if (
-            bound.local.workspace != client.workspace
-            or bound.local.workspace_identity != client.workspace_identity
-        ):
-            raise _unavailable()
+        _require_matching_workspace(client, bound)
         return bound
 
     def bind_package_repair(self, cwd: str) -> CodingPackageRepairRpcClientV1:
         client = self._client_for(cwd)
         bound = bind_coding_package_repair_rpc_client(client.workspace)
-        client._assert_workspace_identity()
-        if (
-            bound.local.workspace != client.workspace
-            or bound.local.workspace_identity != client.workspace_identity
-        ):
-            raise _unavailable()
+        _require_matching_workspace(client, bound)
         return bound
 
     def bind_preview(self, cwd: str) -> CodingCurrentPreviewQuery:
@@ -120,6 +112,19 @@ class CodingPluginRpcSessionScope:
         except (OSError, RuntimeError, ValueError) as exc:
             raise _unavailable() from exc
         return client
+
+
+def _require_matching_workspace(
+    client: CodingPluginManagementReadClientV1,
+    bound: CodingPluginDesiredRpcClientV1
+    | CodingPackageRepairRpcClientV1,
+) -> None:
+    client._assert_workspace_identity()
+    if (
+        bound.local.workspace != client.workspace
+        or bound.local.workspace_identity != client.workspace_identity
+    ):
+        raise _unavailable()
 
 
 def _unavailable() -> CodingPluginManagementReadSdkError:

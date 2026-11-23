@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding.package.product_worker_history_rotate_v2 as coding
+import loushang.harness.package_product._linux_worker_history as history_owner
 import loushang.harness.worker.history._publication as publication
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.worker.history._snapshot import (
@@ -110,7 +111,7 @@ def observe(root, patch, mode, faults=()):
 
     patch.setattr(type(product), "pinned_state_root_gc_read", pin)
 
-    def checkpoints(product):
+    def checkpoints(_bindings, _product):
         event("checkpoints")
         qualified = mode in ("empty_qualified", "missing_qualified", "missing_owner")
         if not qualified:
@@ -124,11 +125,7 @@ def observe(root, patch, mode, faults=()):
         )
         return (SimpleNamespace(stream_snapshots=(None, None, None, None, snapshot)),)
 
-    patch.setattr(
-        coding,
-        "read_coding_product_worker_history_checkpoints_under_gc_guard",
-        checkpoints,
-    )
+    patch.setattr(history_owner, "_read_checkpoints", checkpoints)
 
     for name in (
         "initialize_coding_worker_active_head",
@@ -136,9 +133,7 @@ def observe(root, patch, mode, faults=()):
         "read_coding_worker_segmented_history",
         "seal_coding_worker_active_segment",
     ):
-        # R1 Code references are aliases of these original Core operations.
-        original = getattr(coding, name, None) or getattr(publication, name, None)
-        assert original is not None
+        original = getattr(publication, name)
 
         def wrapped(*args, _name=name, _original=original, **kwargs):
             stem = kwargs["stem"]
@@ -147,8 +142,7 @@ def observe(root, patch, mode, faults=()):
             event(_name + ".after:" + stem)
             return value
 
-        patch.setattr(coding, name, wrapped, raising=False)
-        patch.setattr(publication, name, wrapped, raising=False)
+        patch.setattr(publication, name, wrapped)
     for name in ("acquire_lock", "create_new", "stat", "scan_sibling_names"):
         original = getattr(RootedFile, name)
 

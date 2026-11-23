@@ -8,7 +8,7 @@ transaction engine, retained handles or Product reference.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,11 +40,22 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
 
-from .private_data_backup import PrivateArchiveCodec, R, S
+from .private_data_backup import (
+    PrivateArchiveCodec,
+    R,
+    S,
+    require_deleted_archive_receipt,
+)
+from .private_data_deletion import (
+    PluginPrivateDataDeletionEventV1,
+    PluginPrivateDataDeletionReceiptV1,
+    PrivateDataDeletionTarget,
+)
 from .records import PluginInstallationKeyV1
 
 _MemberT = TypeVar("_MemberT", bound=PrivateTreeMember)
 _ArchiveT = TypeVar("_ArchiveT")
+_BindingT = TypeVar("_BindingT")
 
 
 class WindowsPrivateArchiveSnapshot(Protocol):
@@ -172,7 +183,7 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
             if receipt.installation_key != key or receipt.backup_id != name:
                 raise ValueError(f"{self.io.backup_label} backup Installation changed")
 
-        receipt, _source = self._read_verified_source(
+        receipt, _source, _binding = self._read_verified_source(
             parent_path,
             name,
             key,
@@ -206,7 +217,7 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
                 raise ValueError(f"{label} restore archive changed")
 
         with WindowsPrivateDirectoryAcl() as acl:
-            _receipt, source = self._read_verified_source(
+            _receipt, source, _binding = self._read_verified_source(
                 parent_path,
                 name,
                 key,
@@ -218,6 +229,38 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
             )
             return source
 
+    def read_deleted_restore_source(
+        self,
+        parent_path: Path,
+        name: str,
+        key: PluginInstallationKeyV1,
+        acl: WindowsPrivateDirectoryAcl,
+        events: Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]],
+        *,
+        label: str,
+    ) -> tuple[S, PluginPrivateDataDeletionReceiptV1]:
+        parent_identity = inspect_windows_product_private_directory_identity(
+            parent_path
+        )
+        _receipt, source, deletion = self._read_verified_source(
+            parent_path,
+            name,
+            key,
+            acl,
+            parent_identity,
+            require_binding=lambda receipt, _source: require_deleted_archive_receipt(
+                receipt,
+                name,
+                key,
+                deletion_events=lambda: events,
+                installation_error=f"{label} backup Installation changed",
+                deletion_error=f"{label} restore lacks deletion",
+            ),
+            label=label,
+            stage_error=f"{label} backup stage needs recovery",
+        )
+        return source, deletion
+
     def _read_verified_source(
         self,
         parent_path: Path,
@@ -226,23 +269,55 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
         acl: WindowsPrivateDirectoryAcl,
         parent_identity: tuple[int, int],
         *,
-        require_binding: Callable[[R, S], None],
+        require_binding: Callable[[R, S], _BindingT],
         stage_error: str,
         label: str,
-    ) -> tuple[R, S]:
+    ) -> tuple[R, S, _BindingT]:
         """One original parent scope, shared by retained and restore queries."""
         with self._parent_scope(
             parent_path, parent_identity, acl, changed=f"{label} backup parent changed"
         ) as parent_fd:
-            if any(
-                name.endswith(self.codec.stage_suffix)
-                for name in windows_listdir_at(parent_fd)
-            ):
-                raise ValueError(stage_error)
-            receipt, source = self.read_manifest(parent_fd, name, acl)
-            require_binding(receipt, source)
+            receipt, source = self._read_unstaged_manifest(
+                parent_fd, name, acl, stage_error
+            )
+            binding = require_binding(receipt, source)
             self.verify_archive(parent_fd, parent_path, name, key, source, receipt, acl)
+            return receipt, source, binding
+
+    def read_expiry_manifest(
+        self, parent_path: Path, name: str, key: PluginInstallationKeyV1, *, label: str
+    ) -> tuple[R, S]:
+        """Bind the retained manifest before checking its independent restore evidence."""
+        parent_identity = inspect_windows_product_private_directory_identity(
+            parent_path
+        )
+        changed = f"{label} backup parent changed"
+        with (
+            WindowsPrivateDirectoryAcl() as acl,
+            self._parent_scope(
+                parent_path, parent_identity, acl, changed=changed
+            ) as parent_fd,
+        ):
+            receipt, source = self._read_unstaged_manifest(
+                parent_fd, name, acl, changed
+            )
+            if receipt.installation_key != key or receipt.backup_id != name:
+                raise ValueError(f"{label} backup Installation changed")
             return receipt, source
+
+    def _read_unstaged_manifest(
+        self,
+        parent_fd: int,
+        name: str,
+        acl: WindowsPrivateDirectoryAcl,
+        stage_error: str,
+    ) -> tuple[R, S]:
+        if any(
+            entry.endswith(self.codec.stage_suffix)
+            for entry in windows_listdir_at(parent_fd)
+        ):
+            raise ValueError(stage_error)
+        return self.read_manifest(parent_fd, name, acl)
 
     def retain(
         self,

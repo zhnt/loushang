@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, Self, TypeVar, cast
 
@@ -554,6 +555,19 @@ class _SelectedWorkerManifestOwner(Protocol):
     def current_selected_manifest(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> PackageProductSelectedPluginManifestV1: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PendingWorkerSessionPolicy:
+    invalid_generation: str
+    error_type: type[RuntimeError]
+    error_prefix: str
+    task_name_prefix: str
+    correlation_id: str
+    cleanup_note: str
+
+    def failure(self, code: str) -> RuntimeError:
+        return self.error_type(f"{self.error_prefix}_pending_{code}")
 
 
 class _PendingWorkerHost(Protocol):

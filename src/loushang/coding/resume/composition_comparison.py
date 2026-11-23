@@ -9,12 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
 from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
     resolve_coding_composition_set,
 )
 from loushang.coding.resume.history import CodingResumeHistoryPreview
+
+_ComparisonStatus = Literal["same", "changed", "legacy_unknown", "unavailable"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,11 +48,36 @@ def compare_coding_resume_composition(
         or resolve_coding_composition_set(current.set_id) != current
     ):
         raise ValueError("Coding Resume comparison requires a canonical current set")
+    status, origin, difference_codes, reason_codes = _compare_history(
+        history, current, product_id=CODING_PRODUCT_ID
+    )
+    return CodingResumeCompositionComparisonV1(
+        status=status,
+        origin=origin,
+        candidate_set_id=current.set_id,
+        candidate_fingerprint=current.fingerprint,
+        difference_codes=difference_codes,
+        reason_codes=reason_codes,
+    )
+
+
+def _compare_history(
+    history: CodingResumeHistoryPreview,
+    current: CodingCompositionSetPlan,
+    *,
+    product_id: str,
+) -> tuple[
+    _ComparisonStatus,
+    CodingCompositionProvenanceV1 | None,
+    tuple[str, ...],
+    tuple[str, ...],
+]:
+    """Classify the selected historical facts in the original precedence order."""
     origin = history.header_preview.composition
-    status: Literal["same", "changed", "legacy_unknown", "unavailable"]
+    status: _ComparisonStatus
     difference_codes: tuple[str, ...] = ()
     reason_codes: tuple[str, ...] = ()
-    if history.header_preview.product_identity != "coding":
+    if history.header_preview.product_identity != product_id:
         status, reason_codes = "unavailable", ("history.identity_unverified",)
     elif history.provenance_conflict:
         status, reason_codes = "unavailable", ("history.provenance_conflict",)
@@ -69,14 +97,7 @@ def compare_coding_resume_composition(
         status, difference_codes = "changed", ("composition.definition_changed",)
     else:
         status = "same"
-    return CodingResumeCompositionComparisonV1(
-        status=status,
-        origin=origin,
-        candidate_set_id=current.set_id,
-        candidate_fingerprint=current.fingerprint,
-        difference_codes=difference_codes,
-        reason_codes=reason_codes,
-    )
+    return status, origin, difference_codes, reason_codes
 
 
 __all__ = [

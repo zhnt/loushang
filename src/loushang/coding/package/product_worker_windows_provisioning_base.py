@@ -8,13 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
-)
-from loushang.harness.worker.history._base_codec import (
-    _unchanged,
-)
 from loushang.harness.worker.history._windows_provisioning_base import (
     _WindowsProvisioningBaseMethods,
     _WindowsProvisioningRetainedMethods,
@@ -27,8 +20,6 @@ from .product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1 as CodingWindowsWorkerHistorySemanticReadV1,
 )
 from .product_worker_windows_provisioning_journal import _Record as _Record
-
-_MAX_BASE_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,15 +45,6 @@ class CodingWindowsWorkerNativeProvisioningSemanticBaseV1(
         CodingWindowsWorkerNativeProvisioningRetainedAttemptV1, ...
     ]
 
-    _wire_label = "Windows Worker native provisioning semantic base"
-    _wire_lists = ("attemptIds", "retainedAttempts")
-    _wire_errors = (KeyError, RecursionError, TypeError, UnicodeError, ValueError)
-    _wire_capacity_label = "Windows Worker native provisioning base"
-
-    @classmethod
-    def _wire_maximum(cls) -> int:
-        return _MAX_BASE_BYTES
-
 
 __all__ = [
     "CodingWindowsWorkerNativeProvisioningRetainedAttemptV1",
@@ -70,22 +52,8 @@ __all__ = [
 ]
 
 
-CodingWindowsWorkerNativeProvisioningSemanticBaseV1._bind_wire_schema(
-    RecordSchema.for_dataclass(
-        CodingWindowsWorkerNativeProvisioningSemanticBaseV1,
-        _unchanged,
-        RecordField(
-            "retained_attempts",
-            decoder=lambda xs: tuple(
-                (
-                    CodingWindowsWorkerNativeProvisioningRetainedAttemptV1.from_dict(
-                        item
-                    )
-                    for item in xs
-                )
-            ),
-            encoder=lambda values: [value.to_dict() for value in values],
-        ),
-        RecordField("attempt_ids", decoder=tuple, encoder=list),
+CodingWindowsWorkerNativeProvisioningSemanticBaseV1._bind_record_schema(
+    lambda value: CodingWindowsWorkerNativeProvisioningRetainedAttemptV1.from_dict(
+        value
     )
 )

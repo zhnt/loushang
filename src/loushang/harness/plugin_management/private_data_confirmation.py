@@ -269,3 +269,15 @@ def accept_windows_private_confirmation(
     if io.read_private_receipt(path, maximum_bytes=maximum_bytes) != payload:
         raise ValueError(f"{label} confirmation changed")
     return record
+
+
+def verify_windows_private_confirmation(
+    raw: bytes | None,
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
+    *,
+    decode: Callable[[bytes], PluginPrivateDataConfirmationRecordV1],
+) -> bool:
+    """Compare the exact immutable confirmation read under the caller's authority."""
+    record = None if raw is None else decode(raw)
+    return record is not None and record.plan == plan and record.confirmation == confirmation

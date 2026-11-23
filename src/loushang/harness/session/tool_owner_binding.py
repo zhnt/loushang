@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import ClassVar, Protocol
+from dataclasses import dataclass, field, replace
+from typing import ClassVar, Protocol, cast
 
 from loushang.harness.capabilities.contracts import CapabilityRequirement
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
+)
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_EDIT_FACET,
+    WORKSPACE_LIST_FACET,
+    WORKSPACE_PROCESS_LAUNCH_FACET,
+    WORKSPACE_READ_FACET,
+    WORKSPACE_SEARCH_FACET,
+    WORKSPACE_WRITE_FACET,
 )
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.runtime.registration import (
@@ -16,13 +24,28 @@ from loushang.harness.runtime.registration import (
     RegistrationOwner,
     RegistrationScope,
     registration_scope_retirement_receipt,
+    rollback_registration_scope,
 )
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.workspace.bash import BashOperations
+from loushang.harness.tools.workspace.factory import ToolsOptions
+from loushang.harness.workspace.exec import AuthorizedProcessExecBackend, ExecService
+from loushang.harness.workspace.generation_bindings import GenerationBoundOperationSet
+from loushang.harness.workspace.operations import (
+    EditOperations,
+    FindOperations,
+    GrepOperations,
+    LsOperations,
+    ReadOperations,
+    WriteOperations,
+)
+from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 from .capability_composition_inputs import (
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
+    product_contribution_registration_owner,
 )
 
 
@@ -123,12 +146,7 @@ def bind_admitted_tool_pack(
     ) -> _ToolPackGeneration:
         definitions = tuple(definitions_from_captures(captures))
         admission = inputs.admission
-        owner = RegistrationOwner(
-            owner_kind="product",
-            owner_id=admission.owner_id,
-            runtime_id=f"{inputs.scope_id}:{admission.plugin_id}:{admission.contribution_id}",
-            generation=admission.candidate.instance_revision_ref.revision,
-        )
+        owner = product_contribution_registration_owner(admission, inputs.scope_id)
         scope = RegistrationScope(owner)
         source_info = _ToolPackSourceInfo(
             admission.plugin_id, admission.contribution_id, admission.fingerprint
@@ -144,12 +162,9 @@ def bind_admitted_tool_pack(
                     )
                 )
         except BaseException as error:
-            if scope.state == "committed":
-                scope.rollback_commit()
-            if scope.state == "open":
-                rollback = scope.rollback_admission()
-                if rollback.has_failures:
-                    error.add_note(f"{label} staging rollback remains incomplete")
+            rollback_registration_scope(
+                scope, error, incomplete_note=f"{label} staging rollback remains incomplete"
+            )
             raise
         return _ToolPackGeneration(scope, generation_family)
 
@@ -175,6 +190,77 @@ def bind_admitted_tool_pack(
         commit=lambda value: require_generation(value).scope.commit(),
         rollback_commit=lambda value: require_generation(value).scope.rollback_commit(),
     )
+
+
+def workspace_options_from_capture(
+    options: ToolsOptions,
+    capture: SessionCapabilityConsumerCapture,
+    *,
+    label: str,
+    stale_message: str,
+) -> tuple[ToolsOptions, GenerationBoundOperationSet]:
+    """Capture the admitted facets into one revocable workspace binding."""
+    facets = capture.facets
+    launcher = facets.require(WORKSPACE_PROCESS_LAUNCH_FACET)
+    if not callable(getattr(launcher, "start", None)):
+        raise TypeError(f"{label} process facet is invalid")
+    process_operations = ExecService(
+        backend=AuthorizedProcessExecBackend(cast(AuthorizedProcessLauncher, launcher))
+    )
+    operation_set = GenerationBoundOperationSet(
+        {
+            "process": process_operations,
+            "read": facets.require(WORKSPACE_READ_FACET),
+            "list": facets.require(WORKSPACE_LIST_FACET),
+            "search": facets.require(WORKSPACE_SEARCH_FACET),
+            "write": facets.require(WORKSPACE_WRITE_FACET),
+            "edit": facets.require(WORKSPACE_EDIT_FACET),
+        },
+        stale_message=stale_message,
+    )
+    return replace(
+        options,
+        exec_service=None,
+        bash_operations=cast(BashOperations, operation_set.capture("process")),
+        shell_operations=cast(BashOperations, operation_set.capture("process")),
+        read_operations=cast(ReadOperations, operation_set.capture("read")),
+        ls_operations=cast(LsOperations, operation_set.capture("list")),
+        find_operations=cast(FindOperations, operation_set.capture("search")),
+        grep_operations=cast(GrepOperations, operation_set.capture("search")),
+        write_operations=cast(WriteOperations, operation_set.capture("write")),
+        edit_operations=cast(EditOperations, operation_set.capture("edit")),
+    ), operation_set
+
+
+def stage_workspace_tool_scope(
+    scope: RegistrationScope,
+    operation_set: GenerationBoundOperationSet,
+    tool_names: tuple[str, ...],
+    *,
+    registration: SessionToolRegistrationPort,
+    source_info: object,
+    build_definitions: Callable[[], list[ToolDefinition]],
+    label: str,
+    failed_generation_message: str,
+) -> None:
+    """Stage the complete admitted pack under one revocable scope."""
+
+    try:
+        by_name = {item.name: item for item in build_definitions()}
+        if set(by_name) != set(tool_names):
+            raise RuntimeError(f"{label} catalog changed admitted identities")
+        for name in tool_names:
+            scope.add(
+                registration.stage_runtime_tool(
+                    by_name[name], owner=scope.owner, source_info=source_info
+                )
+            )
+    except BaseException as error:
+        operation_set.invalidate(failed_generation_message)
+        rollback_registration_scope(
+            scope, error, incomplete_note=f"{label} rollback remains incomplete"
+        )
+        raise
 
 
 class _ToolOwnerBoundState(Protocol):

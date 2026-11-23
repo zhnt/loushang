@@ -19,6 +19,8 @@ from loushang.coding.cli import lmux
 from loushang.hosting.service import LinuxServiceObserverV1
 from tests.apphost.test_managed_namespace_admission import tree
 
+from .test_lmux_command import mux_workspace as mux_workspace
+
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux managed status")
 
 

@@ -33,6 +33,9 @@ if TYPE_CHECKING:
 _PLUGIN_ID = "coding.arch.default"
 
 
+_RECEIPT_PREFIX = "arch-backup:"
+
+
 @dataclass(frozen=True, slots=True)
 class CodingArchPrivateDataBackupReceiptV1:
     installation_key: PluginInstallationKeyV1
@@ -54,7 +57,7 @@ class CodingArchPrivateDataBackupReceiptV1:
             or self.file_count < 0
             or type(self.byte_count) is not int
             or self.byte_count < 0
-            or self.receipt_id != "arch-backup:" + self.backup_id
+            or self.receipt_id != _RECEIPT_PREFIX + self.backup_id
             or self.receipt_version != 1
         ):
             raise ValueError("Coding Arch backup receipt is invalid")
@@ -87,7 +90,7 @@ def backup_id(
     ).hexdigest()
 
 
-def _backup_receipt(
+def make_backup_receipt(
     key: PluginInstallationKeyV1, source: CodingArchPrivateDataTargetSnapshotV1
 ) -> CodingArchPrivateDataBackupReceiptV1:
     identity = backup_id(key, source)
@@ -96,10 +99,8 @@ def _backup_receipt(
         source_target_id=source.target_id,
         backup_id=identity,
         file_count=sum(item.kind == "file" for item in source.members),
-        byte_count=sum(
-            item.identity[3] for item in source.members if item.kind == "file"
-        ),
-        receipt_id="arch-backup:" + identity,
+        byte_count=sum(item.identity[3] for item in source.members if item.kind == "file"),
+        receipt_id=_RECEIPT_PREFIX + identity,
     )
 
 
@@ -171,11 +172,12 @@ class _WindowsArchBackupCodec(_BackupManifestCodec):
             )
         except (UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError("Coding Arch backup manifest is invalid") from exc
+        identity_error = "Coding Arch backup manifest identity changed"
         receipt, source = self._decode_backup_manifest(
-            document, identity_error="Coding Arch backup manifest identity changed"
+            document, identity_error=identity_error
         )
         if bytes(raw) != canonical_json_bytes(document) + b"\n":
-            raise ValueError("Coding Arch backup manifest identity changed")
+            raise ValueError(identity_error)
         return receipt, source
 
 

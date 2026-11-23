@@ -6,19 +6,25 @@ deletion receipt and grants no filesystem deletion authority by itself.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.journal.codec import decode_json_record
+from loushang.harness.package_product._private_data_custody import (
+    windows_private_data_read_descriptor,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management._installation_root_windows import (
+    read_windows_private_target,
 )
 from loushang.harness.plugin_management.private_data_confirmation import (
     PluginPrivateDataConfirmationRecordV1,
     accept_windows_private_confirmation,
+    verify_windows_private_confirmation,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
@@ -31,17 +37,23 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 
 from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
-    coding_arch_installation_private_data_root,
-    inspect_coding_windows_arch_installation_root,
+    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+)
+from .installation_private_data import (
+    inspect_coding_windows_arch_installation_root as inspect_coding_windows_arch_installation_root,
 )
 from .legacy_windows_receipt import (
-    _MAX_RECEIPT_BYTES,
-    _receipt_io,
-    read_windows_private_receipt,
+    _MAX_RECEIPT_BYTES as _MAX_RECEIPT_BYTES,
 )
-from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
+from .legacy_windows_receipt import (
+    _receipt_io as _receipt_io,
+)
+from .legacy_windows_receipt import (
+    read_windows_private_receipt as read_windows_private_receipt,
+)
 from .private_data_windows_preview import (
     CodingWindowsArchPrivateDataReadPreview,
+    _absent_windows_target_snapshot,
     _capture_windows_target_snapshot,
 )
 
@@ -84,41 +96,21 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
         self._require_plan(plan, confirmation)
         preview = CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
         with preview._offline():
-            state = self.product.desired_state.snapshot().installation(
-                plan.installation_key
-            )
+            key = plan.installation_key
+            state = self.product.desired_state.snapshot().installation(key)
             if state.latest_instance_revision_ref is None:
-                raise ValueError(
-                    "Windows Coding Arch Installation has no Product history"
-                )
-            # Avoid nesting the native quiescence gate through plan_for().
-            root = coding_arch_installation_private_data_root(
-                self.layout, plan.installation_key
+                raise ValueError("Windows Coding Arch Installation has no Product history")
+            root = coding_arch_installation_private_data_root(self.layout, key)
+            read_windows_private_target(
+                root,
+                observe_root=lambda: inspect_coding_windows_arch_installation_root(
+                    self.layout, key, state_root=self.product.state_root
+                ),
+                capture=_capture_windows_target_snapshot,
+                absent=_absent_windows_target_snapshot,
+                expected_target_id=plan.target_id,
+                changed="Windows Coding Arch confirmation plan is stale",
             )
-            expected_root = inspect_coding_windows_arch_installation_root(
-                self.layout,
-                plan.installation_key,
-                state_root=self.product.state_root,
-            )
-            current = (
-                CodingArchPrivateDataTargetSnapshotV1(
-                    root_path_digest=sha256(os.fsencode(str(root))).hexdigest(),
-                    root_identity=None,
-                    members=(),
-                )
-                if expected_root is None
-                else _capture_windows_target_snapshot(root, expected_root=expected_root)
-            )
-            if (
-                current.target_id != plan.target_id
-                or inspect_coding_windows_arch_installation_root(
-                    self.layout,
-                    plan.installation_key,
-                    state_root=self.product.state_root,
-                )
-                != expected_root
-            ):
-                raise ValueError("Windows Coding Arch confirmation plan is stale")
             record = PluginPrivateDataConfirmationRecordV1(
                 record_revision=1,
                 plan=plan,
@@ -150,18 +142,13 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
         """Read one exact private receipt through the current Product root."""
 
         self._require_plan(plan, confirmation)
-        self.product.assert_private_data_read_authority_current()
-        with self.product.epoch_runtime.borrow_product_state_root_descriptor():
+        with windows_private_data_read_descriptor(self.product):
             raw = read_windows_private_receipt(
-                self._record_path(confirmation),
-                maximum_bytes=_MAX_CONFIRMATION_BYTES,
+                self._record_path(confirmation), maximum_bytes=_MAX_CONFIRMATION_BYTES
             )
-            record = None if raw is None else self._decode(raw)
-            result = record is not None and (
-                record.plan == plan and record.confirmation == confirmation
+            return verify_windows_private_confirmation(
+                raw, plan, confirmation, decode=self._decode
             )
-        self.product.assert_private_data_read_authority_current()
-        return result
 
     def _record_path(
         self, confirmation: PluginPrivateDataDeletionConfirmationV1

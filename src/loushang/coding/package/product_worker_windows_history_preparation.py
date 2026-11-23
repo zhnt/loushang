@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from loushang.harness.package_product._windows_worker_history import (
     prepare_windows_product_worker_history,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -88,10 +89,8 @@ def prepare_coding_windows_worker_history(
 ) -> CodingWindowsWorkerHistoryPreparationV1:
     """Durably bind guarded source/semantic proof without switching authority."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+    if not is_windows_product(
+        product, "coding", os.name, WindowsLocalWheelProductSessionOwner
     ):
         raise ValueError("Windows Worker history preparation requires its Product")
     return prepare_windows_product_worker_history(

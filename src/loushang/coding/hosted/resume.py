@@ -449,42 +449,25 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         if active is not None:
             return await active.lookup_resume_input(query)
         from loushang.coding.resume.activation_projection_v2 import (
-            project_coding_activation_attempt_path_v2,
+            observe_latest_bound_input,
         )
         from loushang.coding.resume.input_lookup import (
             coding_resume_input_record_digest,
         )
 
         try:
-            records = self._source.history.selected_records
-            projection = project_coding_activation_attempt_path_v2(
-                records, current_session_id=self.identity.session_id
+            selected = observe_latest_bound_input(
+                self._source.history.selected_records,
+                current_session_id=self.identity.session_id,
+                input_id=query.input_id, expected_digest=query.record_digest,
+                digest=coding_resume_input_record_digest,
             )
-            binding = projection.binding
-            if (
-                projection.binding_status == "bound"
-                and binding is not None
-                and binding.input_id == query.input_id
-                and projection.binding_record_id is not None
-            ):
-                candidates = tuple(
-                    record
-                    for record in records
-                    if record.record_id == projection.binding_record_id
-                )
-                if len(candidates) != 1:
-                    return CodingResumeInputLookupResultV1(
-                        query.input_id, None, "unknown"
-                    )
-                if coding_resume_input_record_digest(candidates[0]) != query.record_digest:
-                    return CodingResumeInputLookupResultV1(
-                        query.input_id, None, "conflict"
-                    )
-                return CodingResumeInputLookupResultV1(
-                    query.input_id, candidates[0].record_id, "committed"
-                )
         except ValueError:
             return CodingResumeInputLookupResultV1(query.input_id, None, "unknown")
+        if isinstance(selected, str):
+            return CodingResumeInputLookupResultV1(query.input_id, None, selected)
+        if selected is not None:
+            return CodingResumeInputLookupResultV1(query.input_id, selected.record_id, "committed")
         retained = self._latest_input_query
         if retained is not None and retained.input_id == query.input_id:
             return CodingResumeInputLookupResultV1(
@@ -524,20 +507,16 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             require_coding_resume_plugin_effect_settlement,
         )
         from loushang.coding.composition.product_capability_plugins import (
-            prepare_coding_product_approval_state_root,
+            coding_session_plugin_state_relative_path,
         )
-        from loushang.coding.resume.activation_attempt import (
-            CodingActivationAttemptV1,
-            CodingResumeRecoveryRequired,
-        )
-        from loushang.coding.resume.activation_attempt_v2 import (
-            CodingActivationAttemptV2,
-        )
+        from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
         from loushang.coding.resume.continuation import (
             prepare_coding_resume_continuation,
         )
-        from loushang.coding.resume.plugin_effects import (
-            require_no_capability_plugin_effects as _require_no_capability_plugin_effects,
+        from loushang.coding.resume.first_input import (
+            bind_first_input_settlement,
+            build_first_input_attempt,
+            require_first_input_attempt,
         )
         from loushang.coding.resume.plugin_effects import (
             resume_capability_plugins_required as _resume_capability_plugins_required,
@@ -584,15 +563,11 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 no_tools=None if self._workspace_tools else "all",
                 history=self._source.history,
             )
-            state_id = hashlib.sha256(
-                b"loushang.coding-capability-plugin-state/v1\0"
-                + plan.session_id.encode()
-            ).hexdigest()
+            relative_plugin_state = coding_session_plugin_state_relative_path(
+                plan.session_id
+            )
             plugin_state_root = (
-                self._source.record.scope.session_dir
-                / "plugin-state"
-                / "coding-capability-plugins"
-                / state_id
+                self._source.record.scope.session_dir / relative_plugin_state
             )
             plugin_owners = (
                 prepare_coding_resume_plugin_effect_owners(
@@ -610,48 +585,28 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                     + submission_id
                 ).encode()
             ).hexdigest()
-            attempt: CodingActivationAttemptV1 = CodingActivationAttemptV2(
+            attempt = build_first_input_attempt(
+                plan,
                 attempt_id=f"resume-attempt:{token_hex(16)}",
                 request_id=f"resume-input:{stable}",
-                session_id=plan.session_id,
-                original_leaf_id=plan.selected_leaf_id,
-                ancestry_digest=plan.ancestry_digest,
-                plan_fingerprint=plan.plan_id,
                 epoch_fingerprint=epoch_fingerprint,
                 subject_digest=subject_digest,
                 effect_owners=tuple(sorted(plugin_owners, key=lambda owner: owner.identity)),
             )
+
             def admit(observed: CodingActivationAttemptV1) -> None:
-                if type(observed) is not CodingActivationAttemptV2:
-                    raise CodingResumeRecoveryRequired(
-                        "input.effect_owner_set_unsupported"
-                    )
+                require_first_input_attempt(observed)
                 require_subject()
                 if self._close_task is not None:
                     raise CodingHostedCatalogError()
 
-            def settle(
-                observed: CodingActivationAttemptV1, receipt: Mapping[str, object]
-            ) -> None:
-                if type(observed) is not CodingActivationAttemptV2:
-                    raise CodingResumeRecoveryRequired(
-                        "input.effect_owner_set_unsupported"
-                    )
-                if plugin_owners:
-                    require_coding_resume_plugin_effect_settlement(
-                        observed,
-                        receipt,
-                        state_root=prepare_coding_product_approval_state_root(
-                            plugin_state_root
-                        ),
-                        clock=lambda: time.time_ns() // 1_000_000,
-                    )
-                else:
-                    _require_no_capability_plugin_effects(
-                        observed,
-                        receipt,
-                        expected_set_id=plan.composition_comparison.candidate_set_id,
-                    )
+            settle = bind_first_input_settlement(
+                plan,
+                plugin_owners=plugin_owners,
+                plugin_state_root=plugin_state_root,
+                clock=lambda: time.time_ns() // 1_000_000,
+                verify_plugin_effects=require_coding_resume_plugin_effect_settlement,
+            )
 
             continuation = await prepare_coding_resume_continuation(
                 manager_type=self._source.manager_type,

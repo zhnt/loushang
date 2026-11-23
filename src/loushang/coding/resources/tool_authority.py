@@ -11,6 +11,7 @@ from loushang.coding.package.worker_tool_identity import (
     CODING_WORKER_QUERY_TOOL_NAME,
 )
 from loushang.coding.resources.tool_pack import CODING_RESERVED_BASE_TOOL_NAMES
+from loushang.harness.tools.workspace.selection import peer_tool_names
 
 CODING_LSP_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
     DOCUMENT_OUTLINE_TOOL_NAME,
@@ -30,8 +31,7 @@ CODING_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
 def coding_peer_tool_names(tool_names: tuple[str, ...]) -> tuple[str, ...]:
     """Keep only Tool identities that are not published by exact owners."""
 
-    exact_names = frozenset(CODING_EXACT_OWNER_TOOL_NAMES)
-    return tuple(name for name in tool_names if name not in exact_names)
+    return peer_tool_names(tool_names, CODING_EXACT_OWNER_TOOL_NAMES)
 
 
 __all__ = [

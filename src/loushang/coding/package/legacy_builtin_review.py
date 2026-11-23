@@ -4,59 +4,72 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
 from hashlib import sha256
-from pathlib import Path
+from pathlib import Path as Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._legacy_inventory import (
+    classify_legacy_builtin_snapshot,
+    read_legacy_builtin_admission,
+)
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
-    PackagePosixEpochCutoverError,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackagePosixEpochCutoverError as PackagePosixEpochCutoverError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 
 from .legacy_classification import CodingScopedLegacyDisableV1
-from .legacy_desired_evidence import parse_coding_legacy_desired_evidence
+from .legacy_desired_evidence import CodingLegacyDesiredError
+from .legacy_desired_evidence import (
+    parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
+)
 from .legacy_installation_inventory import (
     CodingLegacyBuiltinIntentV1,
     CodingLegacyInstallationInventoryV1,
-    classify_coding_legacy_installations,
-    read_coding_legacy_installation_inventory,
+    CodingLegacyInventoryError,
+    _project_inventory_facts,
+)
+from .legacy_installation_inventory import (
+    classify_coding_legacy_installations as classify_coding_legacy_installations,
+)
+from .legacy_installation_inventory import (
+    read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
+)
+from .legacy_instance_evidence import _management_capture_paths
+from .legacy_operation_evidence import CodingLegacyOperationEvidenceError
+from .legacy_operation_evidence import (
+    classify_coding_legacy_management_members as classify_coding_legacy_management_members,
 )
 from .legacy_operation_evidence import (
-    classify_coding_legacy_management_members,
-    parse_coding_legacy_operation_evidence,
+    parse_coding_legacy_operation_evidence as parse_coding_legacy_operation_evidence,
 )
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
-    CodingLegacyInventoryDomain,
-    list_coding_first_b_snapshot_domain_members,
+    _snapshot_reader,
 )
-from .legacy_source_evidence import read_coding_legacy_source_evidence
+from .legacy_snapshot_member import (
+    list_coding_first_b_snapshot_domain_members as list_coding_first_b_snapshot_domain_members,
+)
+from .legacy_source_evidence import (
+    read_coding_legacy_source_evidence as read_coding_legacy_source_evidence,
+)
 from .pre_b_snapshot import CodingPreBSnapshotPreparation
+from .source_snapshot import _PROJECTION_NAME
 
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 _REMOVABLE = _BUILTINS
-_DOMAINS: tuple[CodingLegacyInventoryDomain, ...] = (
-    "binding_history",
-    "desired_state",
-    "source_configuration",
-    "enablement_state",
-    "instance_state",
-    "lock_history",
-    "store_bytes",
-)
 _EXPECTED = {
     "binding_history": (),
-    "desired_state": ("desired-state.jsonl",),
-    "source_configuration": ("coding-source-configuration.json",),
+    "source_configuration": (_PROJECTION_NAME,),
     "enablement_state": (),
-    "instance_state": (),
     "lock_history": (),
     "store_bytes": (),
 }
@@ -268,88 +281,35 @@ def admit_coding_builtin_only_snapshot(
     """Refuse unsupported old state before the irreversible first fence."""
 
     try:
-        owner = prepared.owner
+        classification = prepared.legacy_classification
         if (
-            prepared.legacy_classification.kind != "legacy_state"
-            or prepared.legacy_classification.configured_source_keys
+            classification.kind != "legacy_state"
+            or classification.configured_source_keys
             or any(
                 item.plugin_id not in _BUILTINS
-                for item in prepared.legacy_classification.disabled_plugins
-            )
-            or (
-                (evidence := owner.snapshot(snapshot.receipt_id)) is None
-                or evidence.snapshot != snapshot
-            )
-            or any(
-                owner.list_domain_members(snapshot.receipt_id, domain=domain)
-                != _EXPECTED[domain]
-                for domain in _DOMAINS
-                if domain not in {"desired_state", "instance_state"}
+                for item in classification.disabled_plugins
             )
         ):
             raise CodingLegacyBuiltinOnlyReviewError(
                 "Coding old snapshot is not builtin-only"
             )
-        has_operations = classify_coding_legacy_management_members(
-            desired_members=owner.list_domain_members(
-                snapshot.receipt_id, domain="desired_state"
-            )
-            or (),
-            instance_members=owner.list_domain_members(
-                snapshot.receipt_id, domain="instance_state"
-            )
-            or (),
-            lock_members=(),
-            has_binding=False,
+        inventory, digest = read_legacy_builtin_admission(
+            prepared.owner,
+            snapshot,
+            expected=_EXPECTED,
+            desired_path=lifecycle.desired_state,
+            management_paths=_management_capture_paths(lifecycle),
+            product_id="coding",
+            scope_id=lifecycle.scope_id,
+            builtin_ids=_BUILTINS,
+            review_error=CodingLegacyBuiltinOnlyReviewError,
+            inventory_error=CodingLegacyInventoryError,
+            desired_error=CodingLegacyDesiredError,
+            operation_error=CodingLegacyOperationEvidenceError,
+            label="Coding",
         )
-        raw = owner.read_regular_member(
-            snapshot.receipt_id,
-            domain="desired_state",
-            member_name="desired-state.jsonl",
-        )
-        if raw is None:
-            raise CodingLegacyBuiltinOnlyReviewError(
-                "Coding old Desired State is missing"
-            )
-        desired = parse_coding_legacy_desired_evidence(raw, lifecycle=lifecycle)
-        if has_operations:
-            for domain, name in (
-                ("desired_state", "desired-state.jsonl.lock"),
-                ("desired_state", "management-operations.jsonl.lock"),
-                ("instance_state", "retirement-intents.jsonl.lock"),
-                ("instance_state", "retirement-sets.jsonl.lock"),
-            ):
-                if (
-                    owner.read_regular_member(
-                        snapshot.receipt_id,
-                        domain=domain,
-                        member_name=name,
-                        maximum_bytes=8,
-                    )
-                    != b"\0"
-                ):
-                    raise CodingLegacyBuiltinOnlyReviewError(
-                        "Coding old management lock changed"
-                    )
-            operations_raw = owner.read_regular_member(
-                snapshot.receipt_id,
-                domain="desired_state",
-                member_name="management-operations.jsonl",
-                maximum_bytes=2 * 1024 * 1024,
-            )
-            if operations_raw is None:
-                raise CodingLegacyBuiltinOnlyReviewError(
-                    "Coding old management operations are missing"
-                )
-            parse_coding_legacy_operation_evidence(
-                operations_raw,
-                desired=desired,
-                path=lifecycle.management_operations,
-            )
         _require_builtin_only_inventory(
-            classify_coding_legacy_installations(
-                (), desired, scope_id=lifecycle.scope_id
-            )
+            _project_inventory_facts(inventory, desired_journal_digest=digest)
         )
     except PackagePosixEpochCutoverError:
         raise
@@ -378,26 +338,14 @@ def review_coding_first_b_builtin_only(
         raise CodingLegacyBuiltinOnlyReviewError(
             "Coding legacy settings paths are unavailable"
         )
-    if any(
-        list_coding_first_b_snapshot_domain_members(
-            lifecycle, epoch_runtime, domain=domain
-        )
-        != _EXPECTED[domain]
-        for domain in _DOMAINS
-        if domain not in {"desired_state", "instance_state"}
-    ):
-        raise CodingLegacyBuiltinOnlyReviewError(
+    classify_legacy_builtin_snapshot(
+        _snapshot_reader(lifecycle, epoch_runtime).list_members,
+        _EXPECTED,
+        shape_error=CodingLegacyBuiltinOnlyReviewError(
             "Coding first-B snapshot is not builtin-only"
-        )
-    classify_coding_legacy_management_members(
-        desired_members=list_coding_first_b_snapshot_domain_members(
-            lifecycle, epoch_runtime, domain="desired_state"
         ),
-        instance_members=list_coding_first_b_snapshot_domain_members(
-            lifecycle, epoch_runtime, domain="instance_state"
-        ),
-        lock_members=(),
-        has_binding=False,
+        operation_error=CodingLegacyOperationEvidenceError,
+        label="Coding",
     )
     source = read_coding_legacy_source_evidence(
         lifecycle,

@@ -14,11 +14,19 @@ from pathlib import Path
 from typing import ClassVar
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._private_data_custody import (
+    private_data_mutation_fence,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management._private_data_deletion_windows import (
+    read_windows_deletion_history,
+    require_finished_windows_deletion,
+)
 from loushang.harness.plugin_management._private_data_restore_windows import (
     WindowsPrivateRestoreTransaction,
+    require_windows_restore_product_state,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
     latest_deleted_target_receipt,
@@ -49,7 +57,7 @@ from .private_data_restore_journal import CodingArchPrivateDataRestoreEventV1
 from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
 from .private_data_windows_backup import _archive_io
 from .private_data_windows_deletion_journal import (
-    CodingWindowsArchPrivateDataDeletionTransaction,
+    CodingWindowsArchPrivateDataDeletionTransaction as CodingWindowsArchPrivateDataDeletionTransaction,
 )
 from .private_data_windows_preview import (
     CodingWindowsArchPrivateDataReadPreview,
@@ -159,25 +167,21 @@ class CodingWindowsArchPrivateDataRestoreJournal:
 
     @contextmanager
     def transaction(self) -> Iterator[CodingWindowsArchPrivateDataRestoreTransaction]:
-        registry = self.product.epoch_runtime.registry
-        with registry.exclusive_runtime_quiescence(
-            store_id=registry.store_id
-        ) as quiescence:
-            if quiescence.active_runtime_lease_ids:
-                raise ValueError("Windows Coding Arch restore runtime is active")
-            self.product.assert_root_gc_authority_current()
-            with self.product.gc_gate.guard(require_write=True):
-                with (
-                    self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd
-                ):
-                    transaction = CodingWindowsArchPrivateDataRestoreTransaction(
-                        self.layout, self.product, fd
-                    )
-                    try:
-                        yield transaction
-                    finally:
-                        transaction._close()
-            self.product.assert_root_gc_authority_current()
+        with (
+            private_data_mutation_fence(
+                self.product,
+                active_message="Windows Coding Arch restore runtime is active",
+                require_write=True,
+            ),
+            self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd,
+        ):
+            transaction = CodingWindowsArchPrivateDataRestoreTransaction(
+                self.layout, self.product, fd
+            )
+            try:
+                yield transaction
+            finally:
+                transaction._close()
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,30 +258,21 @@ class CodingWindowsArchPrivateDataRestoreTransaction(
         self, plan: CodingArchPrivateDataRestorePlanV1
     ) -> CodingArchPrivateDataTargetSnapshotV1:
         desired, transitions = self.product.desired_state.capture()
-        state = desired.installation(plan.installation_key)
-        if (
-            state.latest_instance_revision_ref is None
-            or state.selection.desired_state != "absent"
-            or desired.inventory_revision < plan.desired_inventory_revision
-            or any(
-                transition.inventory_revision > plan.desired_inventory_revision
-                and transition.mutation.installation_key == plan.installation_key
-                for transition in transitions
-            )
-        ):
-            raise ValueError("Windows Coding Arch restore Product state changed")
-        deletion = CodingWindowsArchPrivateDataDeletionTransaction(
-            self.product.state_root, self.state_fd
+        require_windows_restore_product_state(
+            desired,
+            plan.installation_key,
+            expected_revision=plan.desired_inventory_revision,
+            transitions=transitions,
+            error=f"{self._label} restore Product state changed",
         )
-        try:
-            events = deletion.events()
-        finally:
-            deletion._close()
-        if events and events[-1].phase != "completed":
-            raise ValueError("Windows Coding Arch deletion is unfinished")
-        receipt = _latest_deletion_receipt(events, plan)
-        if receipt != plan.deletion_receipt_id:
-            raise ValueError("Windows Coding Arch restore deletion changed")
+        events = read_windows_deletion_history(
+            CodingWindowsArchPrivateDataDeletionTransaction(
+                self.product.state_root, self.state_fd
+            )
+        )
+        require_finished_windows_deletion(events, label=self._label)
+        if _latest_deletion_receipt(events, plan) != plan.deletion_receipt_id:
+            raise ValueError(f"{self._label} restore deletion changed")
         return self._verify_plan_archive(plan)
 
     def _verify_plan_archive(

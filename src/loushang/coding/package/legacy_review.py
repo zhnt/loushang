@@ -2,43 +2,87 @@
 
 from __future__ import annotations
 
-import json
+import json as json
 import re
 from dataclasses import dataclass, field, fields
 from hashlib import sha256
+from typing import TYPE_CHECKING
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_local_review import (
+    LegacyLocalReviewEvidence,
+    read_live_legacy_local_review,
+)
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+    canonical_json_bytes as canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
 from .legacy_classification import (
+    CodingLegacySourceConfigurationV1,
     CodingScopedLegacyDisableV1,
-    classify_coding_legacy_source_configuration,
 )
-from .legacy_configured_source import match_coding_legacy_local_skill_configured_source
+from .legacy_classification import (
+    classify_coding_legacy_source_configuration as classify_coding_legacy_source_configuration,
+)
+from .legacy_configured_source import CodingLegacyLocalConfiguredSourceV1
+from .legacy_configured_source import (
+    match_coding_legacy_local_skill_configured_source as match_coding_legacy_local_skill_configured_source,
+)
+from .legacy_installation_inventory import (
+    _BUILTINS as _BUILTINS,
+)
 from .legacy_installation_inventory import (
     CodingLegacyBuiltinIntentV1,
     CodingLegacyInstalledState,
-    CodingLegacyInventoryError,
-    read_coding_legacy_installation_inventory,
+    _legacy_inventory_query,
 )
-from .legacy_reacquisition import reacquire_coding_legacy_installed_local_source
+from .legacy_installation_inventory import (
+    CodingLegacyInventoryError as CodingLegacyInventoryError,
+)
+from .legacy_installation_inventory import (
+    read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
+)
+from .legacy_local_wheel import _new_wheel_candidate
+from .legacy_reacquisition import (
+    reacquire_coding_legacy_installed_local_source as reacquire_coding_legacy_installed_local_source,
+)
 from .legacy_snapshot_member import (
-    CodingFirstBLegacyStateObserver,
-    read_coding_first_b_snapshot_member,
+    CodingFirstBLegacyStateObserver as CodingFirstBLegacyStateObserver,
 )
+from .legacy_snapshot_member import _snapshot_reader
+from .legacy_snapshot_member import (
+    read_coding_first_b_snapshot_member as read_coding_first_b_snapshot_member,
+)
+from .source_snapshot import _PROJECTION_NAME
+
+if TYPE_CHECKING:
+    from .legacy_builtin_review import CodingLegacyBuiltinOnlyReviewV1
+    from .legacy_removed_review import CodingLegacyRemovedReviewV1
+
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _WHEEL_NAME = re.compile(r"loushang_legacy_[0-9a-f]{24}-1-py3-none-any\.whl\Z")
+
+
+_LEGACY_RECORD_VALUES = {
+    "value_001": "Coding legacy review digest is invalid",
+    "value_002": "Coding legacy review count is invalid",
+    "value_003": "Coding legacy review authority is invalid",
+    "value_004": "Coding legacy review disabled Plugins are invalid",
+    "value_005": "Coding legacy review builtin intent is invalid",
+    "value_006": "Coding legacy review removed builtin IDs are invalid",
+    "value_007": "Coding legacy review configured Source scope is invalid",
+    "value_011": "Coding legacy review record is invalid",
+    "value_012": "Coding legacy review identity changed",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,12 +137,12 @@ class CodingLegacyLocalAdoptionReviewV1:
             type(value) is not str or _SHA256.fullmatch(value) is None
             for value in digests
         ):
-            raise ValueError("Coding legacy review digest is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_001"])
         if any(
             type(value) is not int or value < 0
             for value in (self.legacy_entry_count, self.legacy_byte_count)
         ):
-            raise ValueError("Coding legacy review count is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_002"])
         if (
             type(self.store_id) is not str
             or _SAFE_ID.fullmatch(self.store_id) is None
@@ -114,7 +158,7 @@ class CodingLegacyLocalAdoptionReviewV1:
             or type(self.policy_revision) is not str
             or _SAFE_ID.fullmatch(self.policy_revision) is None
         ):
-            raise ValueError("Coding legacy review authority is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_003"])
         if any(
             not isinstance(item, CodingScopedLegacyDisableV1)
             or item.scope not in ("global", "project")
@@ -123,22 +167,19 @@ class CodingLegacyLocalAdoptionReviewV1:
         ) or len(
             {(item.scope, item.plugin_id) for item in self.disabled_plugins}
         ) != len(self.disabled_plugins):
-            raise ValueError("Coding legacy review disabled Plugins are invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_004"])
         if any(
             not isinstance(item, CodingLegacyBuiltinIntentV1)
-            or item.plugin_id
-            not in {"coding.base", "coding.lsp.default", "coding.arch.default"}
+            or item.plugin_id not in _BUILTINS
             or item.desired_state not in ("installed_disabled", "installed_enabled")
             for item in self.builtin_intent
         ) or tuple(item.plugin_id for item in self.builtin_intent) != tuple(
             sorted({item.plugin_id for item in self.builtin_intent})
         ):
-            raise ValueError("Coding legacy review builtin intent is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_005"])
         if (
             any(
-                type(item) is not str
-                or item
-                not in {"coding.base", "coding.lsp.default", "coding.arch.default"}
+                type(item) is not str or item not in _BUILTINS
                 for item in self.removed_builtin_ids
             )
             or self.removed_builtin_ids != tuple(sorted(set(self.removed_builtin_ids)))
@@ -146,9 +187,9 @@ class CodingLegacyLocalAdoptionReviewV1:
                 item.plugin_id for item in self.builtin_intent
             )
         ):
-            raise ValueError("Coding legacy review removed builtin IDs are invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_006"])
         if self.configured_plugin_source_scope not in (None, "global", "project"):
-            raise ValueError("Coding legacy review configured Source scope is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_007"])
         object.__setattr__(
             self,
             "review_id",
@@ -200,7 +241,7 @@ class CodingLegacyLocalAdoptionReviewV1:
             or not _REVIEW_WIRE_KEYS.issubset(value)
             or not set(value).issubset(_REVIEW_WIRE_KEYS | optional_keys)
         ):
-            raise ValueError("Coding legacy review record is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_011"])
         document = value
         disabled = document.get("disabledPlugins", [])
         if (
@@ -214,7 +255,7 @@ class CodingLegacyLocalAdoptionReviewV1:
                 for item in disabled
             )
         ):
-            raise ValueError("Coding legacy review disabled Plugins are invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_004"])
         builtin_intent = document.get("builtinIntent", [])
         if (
             not isinstance(builtin_intent, list)
@@ -227,17 +268,17 @@ class CodingLegacyLocalAdoptionReviewV1:
                 for item in builtin_intent
             )
         ):
-            raise ValueError("Coding legacy review builtin intent is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_005"])
         removed_builtin_ids = document.get("removedBuiltinIds", [])
         if (
             not isinstance(removed_builtin_ids, list)
             or ("removedBuiltinIds" in document and not removed_builtin_ids)
             or any(type(item) is not str for item in removed_builtin_ids)
         ):
-            raise ValueError("Coding legacy review removed builtin IDs are invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_006"])
         scalar_keys = _REVIEW_WIRE_KEYS - {"legacyEntryCount", "legacyByteCount"}
         if any(type(document[key]) is not str for key in scalar_keys):
-            raise ValueError("Coding legacy review record is invalid")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_011"])
         review = cls(
             **_REVIEW_SCHEMA.decode(dict, document),
             disabled_plugins=tuple(
@@ -252,7 +293,7 @@ class CodingLegacyLocalAdoptionReviewV1:
             configured_plugin_source_scope=document.get("configuredPluginSourceScope"),
         )
         if document["reviewId"] != review.review_id:
-            raise ValueError("Coding legacy review identity changed")
+            raise ValueError(_LEGACY_RECORD_VALUES["value_012"])
         return review
 
 
@@ -282,7 +323,7 @@ def shared_coding_legacy_builtin_removal_operation_id(
     if (
         not isinstance(first_fence_id, str)
         or _SHA256.fullmatch(first_fence_id) is None
-        or plugin_id not in {"coding.base", "coding.lsp.default", "coding.arch.default"}
+        or plugin_id not in _BUILTINS
     ):
         raise ValueError("Coding legacy builtin removal identity is invalid")
     return (
@@ -307,96 +348,80 @@ def review_coding_legacy_installed_local_source(
 
     if (
         not isinstance(policy_revision, str)
-        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}", policy_revision) is None
+        or _SAFE_ID.fullmatch(policy_revision) is None
     ):
         raise ValueError("Coding Product policy revision is required")
     epoch_runtime.assert_current()
-    reacquired = reacquire_coding_legacy_installed_local_source(
-        lifecycle, epoch_runtime, plugin_id=plugin_id
+    if not isinstance(plugin_id, str) or not plugin_id:
+        raise ValueError("Coding legacy Plugin identity is required")
+    query = _legacy_inventory_query(lifecycle, epoch_runtime)
+    evidence, desired_digest, artifact_digest = read_live_legacy_local_review(
+        _snapshot_reader(lifecycle, epoch_runtime),
+        query,
+        legacy_package_root=lifecycle.package_root,
+        plugin_id=plugin_id,
+        source_member=_PROJECTION_NAME,
+        staging_prefix="loushang-legacy-review-",
+        result_factory=_new_wheel_candidate,
+        inventory_error=CodingLegacyInventoryError,
+        label="Coding",
     )
-    fence = epoch_runtime.cutover_result.fence
-    switch = epoch_runtime.cutover_result.switch_receipt
-    inventory = read_coding_legacy_installation_inventory(lifecycle, epoch_runtime)
-    selected = reacquired.installation
-    binding = selected.binding
-    wheel = reacquired.wheel
-    if (
-        fence is None
-        or switch is None
-        or inventory != reacquired.inventory_evidence
-        or inventory.first_fence_id != fence.fence_id
-        or inventory.snapshot_receipt_id != fence.request.snapshot_receipt_id
-        or selected not in inventory.inventory.active_local
-        or wheel.plugin_id != binding.plugin_id
-        or wheel.original_source_identity != binding.source_identity
-        or wheel.source_content_digest != binding.content_digest
-        or wheel.manifest_digest != binding.manifest_digest
-        or sha256(wheel.wheel_bytes).hexdigest() != wheel.artifact_digest
-        or inventory.inventory.lockfile_digest != binding.lockfile_digest
-        or inventory.inventory.desired_journal_digest is None
-    ):
-        raise CodingLegacyInventoryError(
-            "Coding legacy review inputs differ from the first-B Installation"
-        )
-    legacy_state = CodingFirstBLegacyStateObserver(lifecycle, epoch_runtime).observe(
-        store_id=fence.store_id,
-        legacy_root_identity=fence.request.legacy_root_identity,
-    )
-    source_raw = read_coding_first_b_snapshot_member(
-        lifecycle,
-        epoch_runtime,
-        domain="source_configuration",
-        member_name="coding-source-configuration.json",
-        maximum_bytes=2 * 1024 * 1024,
-    )
-    if source_raw is None:
-        raise CodingLegacyInventoryError(
-            "Coding legacy Source configuration is missing from first B"
-        )
-    source_projection = json.loads(source_raw)
-    source = classify_coding_legacy_source_configuration(source_projection)
-    configured_source = match_coding_legacy_local_skill_configured_source(
-        source_projection,
-        source_identity=binding.source_identity,
-        installed_source_identities=tuple(
-            item.binding.source_identity for item in inventory.inventory.active_local
-        ),
-    )
+    source, configured = _review_source_choices(evidence)
+    builtin_intent, removed_builtins = _review_builtin_intent(evidence)
     epoch_runtime.assert_current()
     return CodingLegacyLocalAdoptionReviewV1(
-        store_id=epoch_runtime.registry.store_id,
-        namespace_id=switch.namespace_id,
+        **evidence.identity,
         scope_id=lifecycle.scope_id,
-        first_fence_id=inventory.first_fence_id,
-        snapshot_receipt_id=inventory.snapshot_receipt_id,
-        legacy_root_identity=legacy_state.legacy_root_identity,
-        legacy_state_evidence_id=legacy_state.evidence_id,
-        legacy_state_digest=legacy_state.state_digest,
-        legacy_entry_count=legacy_state.entry_count,
-        legacy_byte_count=legacy_state.byte_count,
-        plugin_id=binding.plugin_id,
-        desired_state=selected.desired_state,
-        legacy_source_identity=binding.source_identity,
-        legacy_binding_digest=binding.binding_digest,
-        legacy_lockfile_digest=binding.lockfile_digest,
-        legacy_desired_journal_digest=inventory.inventory.desired_journal_digest,
-        source_content_digest=binding.content_digest,
-        manifest_digest=binding.manifest_digest,
-        dependency_lock_digest=binding.dependency_lock.digest,
-        wheel_filename=wheel.filename,
-        wheel_artifact_digest=wheel.artifact_digest,
+        legacy_desired_journal_digest=desired_digest,
+        wheel_artifact_digest=artifact_digest,
         policy_revision=policy_revision,
         disabled_plugins=source.disabled_plugins,
-        builtin_intent=inventory.inventory.builtin_intent,
-        removed_builtin_ids=tuple(
-            item
-            for item in inventory.inventory.removed_plugin_ids
-            if item in {"coding.base", "coding.lsp.default", "coding.arch.default"}
-        ),
-        configured_plugin_source_scope=(
-            None if configured_source is None else configured_source.scope
+        builtin_intent=builtin_intent,
+        removed_builtin_ids=removed_builtins,
+        configured_plugin_source_scope=None if configured is None else configured.scope,
+    )
+
+
+def _review_source_choices(
+    evidence: LegacyLocalReviewEvidence,
+) -> tuple[
+    CodingLegacySourceConfigurationV1, CodingLegacyLocalConfiguredSourceV1 | None
+]:
+    projection = evidence.source_projection
+    source = classify_coding_legacy_source_configuration(projection)
+    configured = match_coding_legacy_local_skill_configured_source(
+        projection,
+        source_identity=evidence.identity["legacy_source_identity"],
+        installed_source_identities=tuple(
+            binding.source_identity
+            for binding, _, _ in evidence.inventory.inventory.active_local
         ),
     )
+    return source, configured
+
+
+def _review_builtin_intent(
+    evidence: LegacyLocalReviewEvidence,
+) -> tuple[tuple[CodingLegacyBuiltinIntentV1, ...], tuple[str, ...]]:
+    inventory = evidence.inventory.inventory
+    return (
+        tuple(CodingLegacyBuiltinIntentV1(*item) for item in inventory.builtin_intent),
+        tuple(item for item in inventory.removed_plugin_ids if item in _BUILTINS),
+    )
+
+
+def _reviewed_disabled_ids(
+    review: CodingLegacyBuiltinOnlyReviewV1
+    | CodingLegacyLocalAdoptionReviewV1
+    | CodingLegacyRemovedReviewV1,
+) -> set[str]:
+    disabled = {item.plugin_id for item in review.disabled_plugins}
+    disabled.update(
+        item.plugin_id
+        for item in review.builtin_intent
+        if item.desired_state == "installed_disabled"
+    )
+    return disabled
 
 
 __all__ = [

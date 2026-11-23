@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
 
 from loushang.harness.config.agent import CapabilityMountMode
+from loushang.harness.session.composition_evidence import (
+    configured_mount_mode,
+    parse_mount,
+    should_defer_mount,
+)
 
 CODING_ARCH_CAPABILITY = "coding.arch"
 CODING_LSP_CAPABILITY = "coding.lsp"
@@ -22,30 +26,17 @@ def coding_capability_mount_mode(
 ) -> CapabilityMountMode:
     """Resolve one Coding capability without leaking Product ids into Harness."""
 
-    default = _CODING_CAPABILITY_DEFAULTS.get(capability, "disabled")
-    if settings_manager is None:
-        return default
-    get_settings = getattr(settings_manager, "get_settings", None)
-    if not callable(get_settings):
-        return default
-    configured = getattr(get_settings(), "capabilities", {})
-    if not isinstance(configured, Mapping):
-        return default
-    mode = configured.get(capability, default)
-    return mode if mode in {"disabled", "on_demand", "always"} else default
+    return configured_mount_mode(
+        settings_manager,
+        capability,
+        _CODING_CAPABILITY_DEFAULTS.get(capability, "disabled"),
+    )
 
 
 def parse_capability_mount(value: str) -> tuple[str, CapabilityMountMode]:
     """Parse the generic ``CAPABILITY=MODE`` Coding CLI form."""
 
-    capability, separator, mode = value.partition("=")
-    capability = capability.strip()
-    mode = mode.strip()
-    if not separator or not capability:
-        raise ValueError("expected CAPABILITY=disabled|on_demand|always")
-    if mode not in {"disabled", "on_demand", "always"}:
-        raise ValueError("mount mode must be disabled, on_demand, or always")
-    return capability, cast(CapabilityMountMode, mode)
+    return parse_mount(value)
 
 
 def coding_lsp_should_defer(
@@ -65,15 +56,13 @@ def coding_lsp_should_defer(
     This decides initial assembly only, not settlement of pending effects.
     """
 
-    if not enabled or mode != "on_demand" or legacy_disabled:
-        return False
-    if not has_history:
-        return True
-    if startup is None:
-        return False
-    return not any(
-        item["pluginId"] == "coding.lsp.default"
-        for item in cast(list[dict[str, object]], startup["selectedRevisions"])
+    return should_defer_mount(
+        "coding.lsp.default",
+        enabled=enabled,
+        mode=mode,
+        has_history=has_history,
+        startup=startup,
+        legacy_disabled=legacy_disabled,
     )
 
 

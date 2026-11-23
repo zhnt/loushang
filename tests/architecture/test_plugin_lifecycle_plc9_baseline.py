@@ -61,21 +61,17 @@ PLUGIN_CONTINUITY_MUTATION = Path(
 SOURCE_ROOTS = (Path("src/loushang"),)
 
 LEGACY_DISABLED_PLUGIN_FILES = {
-    Path('src/loushang/coding/composition/bootstrap.py'),
     Path("src/loushang/coding/cli/application.py"),
     Path("src/loushang/coding/cli/package_cutover.py"),
-    Path('src/loushang/coding/composition/continuity.py'),
-    Path("src/loushang/coding/package/legacy_builtin_adoption.py"),
+    Path("src/loushang/coding/composition/bootstrap.py"),
+    Path("src/loushang/coding/composition/continuity.py"),
     Path("src/loushang/coding/package/legacy_builtin_review.py"),
     Path("src/loushang/coding/package/legacy_classification.py"),
     Path("src/loushang/coding/package/legacy_configured_source.py"),
     Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
     Path("src/loushang/coding/package/legacy_disabled_review.py"),
-    Path("src/loushang/coding/package/legacy_local_acceptance.py"),
-    Path("src/loushang/coding/package/legacy_local_adoption.py"),
-    Path("src/loushang/coding/package/legacy_local_adoption_read.py"),
-    Path("src/loushang/coding/package/legacy_removed_adoption.py"),
     Path("src/loushang/coding/package/legacy_removed_review.py"),
+    Path("src/loushang/coding/package/legacy_local_acceptance.py"),
     Path("src/loushang/coding/package/legacy_review.py"),
     Path("src/loushang/coding/package/product_runtime.py"),
     Path("src/loushang/coding/package/source_snapshot.py"),
@@ -91,17 +87,17 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/harness/session/bootstrap_activation.py"),
 }
 MANIFEST_ENABLED_FILES = {
-    Path('src/loushang/coding/composition/base_plugin.py'),
-    Path('src/loushang/coding/composition/capability_plugins.py'),
-    Path('src/loushang/coding/composition/product_capability_plugins.py'),
+    Path("src/loushang/coding/composition/base_plugin.py"),
+    Path("src/loushang/coding/composition/capability_plugins.py"),
+    Path("src/loushang/coding/composition/product_capability_plugins.py"),
     Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
-    Path('src/loushang/coding/composition/continuity.py'),
+    Path("src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py"),
     Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
 }
 SOURCE_ENABLED_FILES = {
-    Path('src/loushang/coding/composition/product_capability_plugins.py'),
+    Path("src/loushang/coding/composition/product_capability_plugins.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
     Path("src/loushang/harness/resources/plugins/manifest.py"),
@@ -152,14 +148,17 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             "build_settings_patch",
         ): 4,
         (
-            Path('src/loushang/coding/composition/continuity.py'),
+            Path("src/loushang/coding/composition/continuity.py"),
             "_bootstrap_request_fingerprint",
         ): 2,
         (
-            Path('src/loushang/coding/composition/continuity.py'),
+            Path("src/loushang/coding/composition/continuity.py"),
             "bind_coding_configured_continuity",
         ): 6,
-        (Path('src/loushang/coding/composition/continuity.py'), "_configured_sources"): 1,
+        (
+            Path("src/loushang/coding/composition/continuity.py"),
+            "_configured_sources",
+        ): 1,
         (
             Path("src/loushang/coding/cli/application.py"),
             "_run_list_packages.fallback_records",
@@ -173,7 +172,10 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             Path("src/loushang/harness/session/bootstrap_activation.py"),
             "standard_agent_session_activation_plan",
         ): 2,
-        (Path('src/loushang/coding/composition/bootstrap.py'), "_create_agent_session"): 1,
+        (
+            Path("src/loushang/coding/composition/bootstrap.py"),
+            "_create_agent_session",
+        ): 1,
         (
             Path("src/loushang/harness/resources/packages/roots.py"),
             "resolve_package_resource_roots",
@@ -248,10 +250,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "_require_disabled_only_preflight",
         ): 1,
         (
-            Path("src/loushang/coding/package/legacy_builtin_adoption.py"),
-            "adopt_coding_first_b_builtin_only",
-        ): 1,
-        (
             Path("src/loushang/coding/package/legacy_builtin_review.py"),
             "CodingLegacyBuiltinOnlyReviewV1",
         ): 1,
@@ -277,7 +275,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         ): 2,
         (
             Path("src/loushang/coding/package/legacy_configured_source.py"),
-            "match_coding_legacy_local_skill_configured_source",
+            "_index_configured_sources",
         ): 2,
         (
             Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
@@ -312,16 +310,8 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
             "_require_frozen_review",
         ): 2,
         (
-            Path("src/loushang/coding/package/legacy_local_adoption.py"),
-            "adopt_coding_legacy_local_data_review",
-        ): 1,
-        (
-            Path("src/loushang/coding/package/legacy_local_adoption_read.py"),
-            "coding_legacy_local_data_adoption_settled",
-        ): 1,
-        (
-            Path("src/loushang/coding/package/legacy_removed_adoption.py"),
-            "adopt_coding_first_b_removed_local",
+            Path("src/loushang/coding/package/legacy_review.py"),
+            "_reviewed_disabled_ids",
         ): 1,
         (
             Path("src/loushang/coding/package/legacy_removed_review.py"),
@@ -346,7 +336,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         (
             Path("src/loushang/coding/package/legacy_removed_review.py"),
             "review_coding_first_b_removed_local",
-        ): 3,
+        ): 2,
         (
             Path("src/loushang/coding/package/legacy_review.py"),
             "CodingLegacyLocalAdoptionReviewV1",
@@ -376,7 +366,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
 MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
     {
         (
-            Path('src/loushang/coding/composition/product_capability_plugins.py'),
+            Path("src/loushang/coding/composition/product_capability_plugins.py"),
             "_validate_product_lineage",
         ): 1,
         (
@@ -384,16 +374,16 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
             "_validate_builtin_selection",
         ): 2,
         (
-            Path('src/loushang/coding/composition/base_plugin.py'),
+            Path("src/loushang/coding/composition/base_plugin.py"),
             "prepare_managed_coding_base_plugin_assembly",
         ): 1,
         (
-            Path('src/loushang/coding/composition/capability_plugins.py'),
+            Path("src/loushang/coding/composition/capability_plugins.py"),
             "_resolve_managed_capability_plugins",
         ): 1,
         (
-            Path('src/loushang/coding/composition/continuity.py'),
-            "_reconcile_enabled_instances",
+            Path("src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py"),
+            "reconcile_enabled_continuity_instances",
         ): 1,
         (
             Path("src/loushang/harness/plugin_management/configured_sources.py"),
@@ -406,7 +396,7 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
 SOURCE_ENABLED_SCOPE_COUNTS = Counter(
     {
         (
-            Path('src/loushang/coding/composition/product_capability_plugins.py'),
+            Path("src/loushang/coding/composition/product_capability_plugins.py"),
             "_validate_product_lineage",
         ): 1,
         (PLUGIN_RESOLVER, "PluginResolver.project_package"): 1,
@@ -993,18 +983,18 @@ def test_plc9_freezes_the_current_management_and_enablement_split() -> None:
 
 # Optional moved sites: old passing inventories remain passing; no new required owner.
 _MANAGED_MANIFEST_OPTIONAL_FILES = {
-    Path('src/loushang/coding/composition/base_plugin.py'),
-    Path('src/loushang/coding/composition/capability_plugins.py'),
+    Path("src/loushang/coding/composition/base_plugin.py"),
+    Path("src/loushang/coding/composition/capability_plugins.py"),
     Path("src/loushang/harness/plugin_management/assembly.py"),
 }
 _MANAGED_MANIFEST_OPTIONAL_SCOPES = Counter(
     {
         (
-            Path('src/loushang/coding/composition/base_plugin.py'),
+            Path("src/loushang/coding/composition/base_plugin.py"),
             "prepare_managed_coding_base_plugin_assembly",
         ): 1,
         (
-            Path('src/loushang/coding/composition/capability_plugins.py'),
+            Path("src/loushang/coding/composition/capability_plugins.py"),
             "_resolve_managed_capability_plugins",
         ): 1,
         (
@@ -1021,16 +1011,16 @@ _MANAGED_MANIFEST_OPTIONAL_SCOPES = Counter(
 
 # Retired/moved lineage sites are optional; no new required sink or route.
 _PREPARATION_LINEAGE_OPTIONAL_MANIFEST_FILES = {
-    Path('src/loushang/coding/composition/product_capability_plugins.py'),
+    Path("src/loushang/coding/composition/product_capability_plugins.py"),
 }
 _PREPARATION_LINEAGE_OPTIONAL_SOURCE_FILES = {
-    Path('src/loushang/coding/composition/product_capability_plugins.py'),
+    Path("src/loushang/coding/composition/product_capability_plugins.py"),
     Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
 }
 _PREPARATION_LINEAGE_OPTIONAL_SCOPES = Counter(
     {
         (
-            Path('src/loushang/coding/composition/product_capability_plugins.py'),
+            Path("src/loushang/coding/composition/product_capability_plugins.py"),
             "_validate_product_lineage",
         ): 1,
         (
@@ -1092,34 +1082,18 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
         # Fresh B state is opened only behind the fenced Coding Product owner;
         # the management service remains the sole desired-state mutation site.
         (
-            Path("src/loushang/coding/package/product_runtime.py"),
-            "open_coding_package_product_state",
+            Path("src/loushang/harness/package_product/_application_runtime.py"),
+            "open_fenced_product_management_state",
         ),
         # P1 transition-status reads keep the CLI on the same read-only ledger.
         (
-            Path("src/loushang/coding/package/management_binding.py"),
-            "read_coding_fenced_desired_transition",
+            Path("src/loushang/harness/package_product/_application_runtime.py"),
+            "read_fenced_product_desired_transition",
         ),
     }
     assembly = Path("src/loushang/harness/plugin_management/assembly.py")
-    cli = Path("src/loushang/coding/package/management_binding.py")
-    legacy_sites = other_sites | {
-        (assembly, "bind_plugin_management_core"),
-        (cli, "_ProductCliOwner.open"),
-        (
-            Path("src/loushang/coding/package/product_preview.py"),
-            "CodingFencedProductReadOnlyPreviewOwner.open",
-        ),
-        (
-            Path("src/loushang/coding/package/private_data_read_owner.py"),
-            "CodingArchPrivateDataReadOwner.open",
-        ),
-    }
     shared_sites = other_sites | {(assembly, "bind_plugin_desired_state")}
-    assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") in (
-        legacy_sites,
-        shared_sites,
-    )
+    assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") == shared_sites
 
     synthetic_path = Path("src/loushang/example/rogue_writer.py")
     synthetic_source = """

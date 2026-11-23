@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from typing import ClassVar, Protocol, cast
+from dataclasses import dataclass, field
+from typing import ClassVar, Protocol
 
-from loushang.coding.resources.tool_pack import create_coding_builtin_tool_definitions
+from loushang.coding.resources.tool_pack import (
+    create_coding_builtin_tool_definitions as create_coding_builtin_tool_definitions,
+)
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
     CapabilityRequirement,
@@ -23,42 +25,39 @@ from loushang.harness.capabilities.workspace_contracts import (
 )
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
-    RegistrationOwner,
     RegistrationScope,
     registration_scope_retirement_receipt,
 )
 from loushang.harness.session.capability_composition_inputs import (
+    OwnerGenerationDispose,
+    OwnerGenerationStage,
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
+    product_contribution_registration_owner,
 )
 from loushang.harness.session.command_controller import (
     SessionCommandGenerationRegistry,
 )
-from loushang.harness.session.commands.catalog import (
-    list_standard_session_command_descriptors,
-)
 from loushang.harness.session.tool_owner_binding import (
     DeferredToolRegistrationSlot,
     SessionToolRegistrationPort,
+    stage_workspace_tool_scope,
+    workspace_options_from_capture,
 )
-from loushang.harness.tools.workspace.bash import BashOperations
 from loushang.harness.tools.workspace.factory import ToolsOptions
-from loushang.harness.workspace.exec import AuthorizedProcessExecBackend, ExecService
 from loushang.harness.workspace.generation_bindings import (
     GenerationBoundOperationSet,
 )
-from loushang.harness.workspace.operations import (
-    EditOperations,
-    FindOperations,
-    GrepOperations,
-    LsOperations,
-    ReadOperations,
-    WriteOperations,
-)
-from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 _PLUGIN_ID = "coding.base"
+_REGISTRATION_LABEL = "Coding base"
+_TOOL_LABEL = f"{_REGISTRATION_LABEL} Tool"
+_COMMAND_LABEL = f"{_REGISTRATION_LABEL} Command"
+_STALE_WORKSPACE_GENERATION = "Coding base workspace operation generation is stale."
+_FAILED_WORKSPACE_GENERATION = (
+    "Coding base workspace operation generation failed staging."
+)
 _TOOL_OWNER_ID = "tools.workspace"
 _TOOL_CATALOG_ID = "harness.workspace.core"
 _COMMAND_CONTRIBUTION_ID = "coding.standard"
@@ -148,15 +147,10 @@ class _CodingBaseGeneration:
 
     async def dispose(self) -> None:
         if self.operation_set is not None:
-            self.operation_set.invalidate(
-                "Coding base workspace operation generation is stale."
-            )
+            self.operation_set.invalidate(_STALE_WORKSPACE_GENERATION)
         report = await self.scope.dispose()
         if report.has_failures:
-            raise CodingBaseOwnerError(
-                f"Coding base {self.kind} generation disposal remains incomplete",
-                code=f"coding_base_{self.kind}_generation_disposal_failed",
-            )
+            raise _generation_disposal_error(self.kind)
 
     def retirement_receipt(
         self,
@@ -206,11 +200,12 @@ class CodingBaseToolOwner:
         if not callable(getattr(registration, "stage_runtime_tool", None)):
             raise TypeError("Coding base Tool owner registration port is invalid")
         self._bound = True
-        return _owner_binding(
+        return _bind_registration_owner(
             self.admission,
             self.authority_gate,
             stage=lambda captures: self._stage(captures, registration=registration),
             dispose=self._dispose,
+            label=_REGISTRATION_LABEL,
         )
 
     def _stage(
@@ -221,40 +216,28 @@ class CodingBaseToolOwner:
     ) -> _CodingBaseGeneration:
         options, operation_set = self._options_from_capture(captures)
         tool_names = _tool_identities(self.admission.contribution_id)
-        owner = _registration_owner(self.admission, self.scope_id)
-        scope = RegistrationScope(owner)
+        scope = RegistrationScope(
+            product_contribution_registration_owner(self.admission, self.scope_id)
+        )
         source_info = _CodingBaseSourceInfo(
             plugin_id=self.admission.plugin_id,
             contribution_id=self.admission.contribution_id,
             admission_fingerprint=self.admission.fingerprint,
         )
-        try:
-            by_name = {
-                item.name: item
-                for item in create_coding_builtin_tool_definitions(options=options)
-            }
-            if set(by_name) != set(tool_names):
-                raise RuntimeError(
-                    "Coding base Tool catalog changed admitted identities"
-                )
-            for name in tool_names:
-                scope.add(
-                    registration.stage_runtime_tool(
-                        by_name[name],
-                        owner=owner,
-                        source_info=source_info,
-                    )
-                )
-        except BaseException as error:
-            operation_set.invalidate(
-                "Coding base workspace operation generation failed staging."
-            )
-            _rollback_scope(scope, error, kind="Tool")
-            raise
+        stage_workspace_tool_scope(
+            scope,
+            operation_set,
+            tool_names,
+            registration=registration,
+            source_info=source_info,
+            build_definitions=lambda: create_coding_builtin_tool_definitions(
+                options=options
+            ),
+            label=_TOOL_LABEL,
+            failed_generation_message=_FAILED_WORKSPACE_GENERATION,
+        )
         return _CodingBaseGeneration(
-            scope=scope,
-            kind="tool",
-            operation_set=operation_set,
+            scope=scope, kind="tool", operation_set=operation_set
         )
 
     def _options_from_capture(
@@ -270,56 +253,12 @@ class CodingBaseToolOwner:
             or capture.entry.requirement != _WORKSPACE_REQUIREMENT
         ):
             raise ValueError("Coding base Tool owner received another Consumer")
-        facets = capture.facets
-        launcher = facets.require(WORKSPACE_PROCESS_LAUNCH_FACET)
-        if not callable(getattr(launcher, "start", None)):
-            raise TypeError("Coding base Tool process facet is invalid")
-        process_operations = ExecService(
-            backend=AuthorizedProcessExecBackend(
-                cast(AuthorizedProcessLauncher, launcher)
-            )
-        )
-        operation_set = GenerationBoundOperationSet(
-            {
-                "process": process_operations,
-                "read": facets.require(WORKSPACE_READ_FACET),
-                "list": facets.require(WORKSPACE_LIST_FACET),
-                "search": facets.require(WORKSPACE_SEARCH_FACET),
-                "write": facets.require(WORKSPACE_WRITE_FACET),
-                "edit": facets.require(WORKSPACE_EDIT_FACET),
-            },
-            stale_message="Coding base workspace operation generation is stale.",
-        )
-        return replace(
+        return workspace_options_from_capture(
             self.options,
-            exec_service=None,
-            bash_operations=cast(BashOperations, operation_set.capture("process")),
-            shell_operations=cast(BashOperations, operation_set.capture("process")),
-            read_operations=cast(
-                ReadOperations,
-                operation_set.capture("read"),
-            ),
-            ls_operations=cast(
-                LsOperations,
-                operation_set.capture("list"),
-            ),
-            find_operations=cast(
-                FindOperations,
-                operation_set.capture("search"),
-            ),
-            grep_operations=cast(
-                GrepOperations,
-                operation_set.capture("search"),
-            ),
-            write_operations=cast(
-                WriteOperations,
-                operation_set.capture("write"),
-            ),
-            edit_operations=cast(
-                EditOperations,
-                operation_set.capture("edit"),
-            ),
-        ), operation_set
+            capture,
+            label=_TOOL_LABEL,
+            stale_message=_STALE_WORKSPACE_GENERATION,
+        )
 
     async def _dispose(self, value: object) -> None:
         if not isinstance(value, _CodingBaseGeneration) or value.kind != "tool":
@@ -355,11 +294,12 @@ class CodingBaseCommandOwner:
         if not isinstance(registry, SessionCommandGenerationRegistry):
             raise TypeError("Coding base Command registration port is invalid")
         self._bound = True
-        return _owner_binding(
+        return _bind_registration_owner(
             self.admission,
             self.authority_gate,
             stage=lambda captures: self._stage(captures, registry=registry),
             dispose=self._dispose,
+            label=_REGISTRATION_LABEL,
         )
 
     def _stage(
@@ -369,25 +309,14 @@ class CodingBaseCommandOwner:
         registry: SessionCommandGenerationRegistry,
     ) -> _CodingBaseGeneration:
         if captures:
-            raise ValueError("Coding base Command owner declares no Consumers")
-        descriptors = tuple(list_standard_session_command_descriptors())
-        if tuple(sorted(item.name for item in descriptors)) != _COMMAND_NAMES:
-            raise RuntimeError(
-                "Coding base Command catalog changed admitted identities"
-            )
-        owner = _registration_owner(self.admission, self.scope_id)
-        scope = RegistrationScope(owner)
-        try:
-            scope.add(
-                registry.stage_pack(
-                    descriptors,
-                    owner=owner,
-                    pack_id=_COMMAND_CATALOG_ID,
-                )
-            )
-        except BaseException as error:
-            _rollback_scope(scope, error, kind="Command")
-            raise
+            raise ValueError(f"{_COMMAND_LABEL} owner declares no Consumers")
+        scope = registry.stage_standard_pack_scope(
+            self.admission,
+            scope_id=self.scope_id,
+            pack_id=_COMMAND_CATALOG_ID,
+            expected_names=_COMMAND_NAMES,
+            label=_COMMAND_LABEL,
+        )
         return _CodingBaseGeneration(scope=scope, kind="command")
 
     async def _dispose(self, value: object) -> None:
@@ -396,13 +325,21 @@ class CodingBaseCommandOwner:
         await value.dispose()
 
 
-def _owner_binding(
+def _bind_registration_owner(
     admission: OwnerContributionAdmissionRecord,
     authority_gate: SessionCapabilityOwnerAuthorityGate,
     *,
-    stage,
-    dispose,
+    stage: OwnerGenerationStage,
+    dispose: OwnerGenerationDispose,
+    label: str,
 ) -> SessionCapabilityOwnerGenerationBinding:
+    """Hand the staged scope to the existing capability Graph lifecycle."""
+
+    def require_generation(value: object) -> _CodingBaseGeneration:
+        if not isinstance(value, _CodingBaseGeneration):
+            raise TypeError(f"{label} owner received a foreign generation")
+        return value
+
     return SessionCapabilityOwnerGenerationBinding(
         owner_id=admission.owner_id,
         contribution_kind=admission.contribution_kind,
@@ -412,46 +349,18 @@ def _owner_binding(
         authority_gate=authority_gate,
         stage=stage,
         dispose=dispose,
-        retirement_receipt=lambda value: _retirement_receipt(
-            value,
+        retirement_receipt=lambda value: require_generation(value).retirement_receipt(
             contribution_id=admission.contribution_id,
         ),
-        commit=lambda value: _commit_generation(value),
-        rollback_commit=lambda value: _rollback_generation_commit(value),
+        commit=lambda value: require_generation(value).commit(),
+        rollback_commit=lambda value: require_generation(value).rollback_commit(),
     )
 
 
-def _commit_generation(value: object) -> None:
-    if not isinstance(value, _CodingBaseGeneration):
-        raise TypeError("Coding base owner received a foreign generation")
-    value.commit()
-
-
-def _rollback_generation_commit(value: object) -> None:
-    if not isinstance(value, _CodingBaseGeneration):
-        raise TypeError("Coding base owner received a foreign generation")
-    value.rollback_commit()
-
-
-def _retirement_receipt(
-    value: object,
-    *,
-    contribution_id: str,
-) -> OwnerGenerationRetirementReceipt:
-    if not isinstance(value, _CodingBaseGeneration):
-        raise TypeError("Coding base owner received a foreign generation")
-    return value.retirement_receipt(contribution_id=contribution_id)
-
-
-def _registration_owner(
-    admission: OwnerContributionAdmissionRecord,
-    scope_id: str,
-) -> RegistrationOwner:
-    return RegistrationOwner(
-        owner_kind="product",
-        owner_id=admission.owner_id,
-        runtime_id=(f"{scope_id}:{admission.plugin_id}:{admission.contribution_id}"),
-        generation=admission.candidate.instance_revision_ref.revision,
+def _generation_disposal_error(kind: str) -> CodingBaseOwnerError:
+    return CodingBaseOwnerError(
+        f"Coding base {kind} generation disposal remains incomplete",
+        code=f"coding_base_{kind}_generation_disposal_failed",
     )
 
 
@@ -460,20 +369,6 @@ def _tool_identities(contribution_id: str) -> tuple[str, ...]:
     if identities is None:
         raise ValueError("Coding base Tool owner admission is not a reserved pack")
     return identities
-
-
-def _rollback_scope(
-    scope: RegistrationScope,
-    error: BaseException,
-    *,
-    kind: str,
-) -> None:
-    if scope.state == "committed":
-        scope.rollback_commit()
-    if scope.state == "open":
-        rollback = scope.rollback_admission()
-        if rollback.has_failures:
-            error.add_note(f"Coding base {kind} rollback remains incomplete")
 
 
 def _validate_admission(

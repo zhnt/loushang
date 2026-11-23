@@ -8,7 +8,7 @@ record alone authorizes recovery cleanup or third-party Worker admission.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal
 
 from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 from loushang.harness.journal import (
@@ -18,7 +18,6 @@ from loushang.harness.journal import (
     JournalFormatProfile,
     JournalRecordCodec,
 )
-from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -42,16 +41,11 @@ from loushang.harness.worker.history._start_gate import (
 )
 from loushang.harness.worker.history._start_gate_store import (
     StartGateHistory,
-    assert_checkpoint_attempt_available,
 )
 
 from .product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )
-from .product_worker_history_segments import CodingWorkerSegmentedHistoryV1
-
-if TYPE_CHECKING:
-    from .product_worker_history_checkpoint import CodingWorkerHistoryCheckpointV1
 
 _FILE_NAME = "worker-start-gates.jsonl"
 _FORMAT = replace(SORTED_UNICODE_JSONL_FORMAT, separators=(",", ":"))
@@ -168,40 +162,6 @@ class CodingWorkerStartGateJournal(StartGateHistory[CodingWorkerStartGateRecordV
     def _activation_journal(self) -> CodingProductWorkerActivationStateJournal:
         return CodingProductWorkerActivationStateJournal(
             self._product.state_root / "worker-activation-state.jsonl"
-        )
-
-    def _checkpoint_writer_fence(
-        self, rooted: RootedFile
-    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
-        return cast(
-            "tuple[CodingWorkerHistoryCheckpointV1, ...]",
-            super()._checkpoint_writer_fence(rooted),
-        )
-
-    @staticmethod
-    def _assert_checkpoint_source(
-        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
-        history: CodingWorkerSegmentedHistoryV1,
-    ) -> int:
-        from .product_worker_history_checkpoint import _CHECKPOINT_HISTORY
-
-        return _CHECKPOINT_HISTORY.verify_source_revision(
-            checkpoints,
-            history,
-            stream_index=3,
-            error_type=CodingWorkerStartGateJournalError,
-            code="coding_worker_start_gate_checkpoint_source_changed",
-        )
-
-    @staticmethod
-    def _assert_checkpoint_attempt_available(
-        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
-        attempt_id: str,
-    ) -> None:
-        assert_checkpoint_attempt_available(
-            checkpoints,
-            attempt_id,
-            error_type=CodingWorkerStartGateJournalError,
         )
 
 

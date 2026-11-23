@@ -14,6 +14,7 @@ from loushang.harness.package_product._windows_worker_history import (
     read_current_windows_product_worker_checkpoint_under_guard,
     read_windows_product_worker_checkpoint,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -30,6 +31,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry
 from loushang.harness.worker.history._base_codec import _unchanged
 from loushang.harness.worker.history._windows_checkpoint import (
     _WindowsHistoryCheckpointMethods,
+)
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
+)
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME as _CHECKPOINT_NAME,
 )
 
 from .legacy_windows_receipt import _receipt_io
@@ -52,8 +59,7 @@ from .product_worker_windows_package_references import (
     _review_coding_windows_worker_package_references_under_guard,
 )
 
-_MAX_BYTES = 8 * 1024 * 1024
-_CHECKPOINT_NAME = "worker-history-checkpoint-v1.json"
+_MAX_BYTES = WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES
 _PREPARATION_NAME = "worker-history-preparation-v1.json"
 _BASE_NAMES = (
     "optIn",
@@ -162,11 +168,7 @@ def read_coding_windows_worker_history_checkpoint(
 ) -> CodingWindowsWorkerHistoryCheckpointV1:
     """Reprove published checkpoint bytes against the current guarded Product."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker checkpoint requires its Product")
     return read_windows_product_worker_checkpoint(
         product,
@@ -186,11 +188,7 @@ def publish_coding_windows_worker_history_checkpoint(
     when its full record still equals the freshly joined Product state.
     """
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker checkpoint requires its Product")
     return publish_windows_product_worker_checkpoint(
         product,

@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import Literal, cast
 
 from .application import (
     PluginManagementApplicationCommandV1,
     PluginManagementApplicationPorts,
     PluginManagementApplicationResultV1,
+    PluginManagementInstallationViewV1,
+    PluginManagementQueryV1,
 )
-from .operations import PluginManagementCommandV1, PluginManagementOperationEventV1
+from .operations import (
+    PLUGIN_DESIRED_ACTIONS,
+    PluginManagementCommandV1,
+    PluginManagementOperationEventV1,
+    desired_state_for_action,
+)
 from .records import (
-    PluginDesiredState,
     PluginDesiredStateMutationV1,
     PluginInstallationKeyV1,
 )
@@ -65,7 +72,7 @@ class PluginDesiredCommandRequestV1:
             value = getattr(self, name)
             if not isinstance(value, str) or not value or value != value.strip():
                 raise ValueError(f"Plugin desired command {name} is invalid")
-        if self.action not in {"enable", "disable", "remove"}:
+        if self.action not in PLUGIN_DESIRED_ACTIONS:
             raise ValueError("Plugin desired command action is unsupported")
         if (
             type(self.expected_inventory_revision) is not int
@@ -87,12 +94,7 @@ def submit_plugin_desired_command(
         raise TypeError("Plugin desired command Product authority is required")
     if not isinstance(request, PluginDesiredCommandRequestV1):
         raise TypeError("Plugin desired command request is required")
-    target_by_action: dict[PluginDesiredActionV1, PluginDesiredState] = {
-        "enable": "installed_enabled",
-        "disable": "installed_disabled",
-        "remove": "absent",
-    }
-    target = target_by_action[request.action]
+    target = desired_state_for_action(request.action)
     command = PluginManagementCommandV1(
         action=request.action,
         mutation=PluginDesiredStateMutationV1(
@@ -213,7 +215,7 @@ def resume_plugin_desired_operation(
     mutation = command.mutation
     key = mutation.installation_key
     if (
-        command.action not in {"enable", "disable", "remove"}
+        command.action not in PLUGIN_DESIRED_ACTIONS
         or mutation.package_revision is not None
     ):
         raise PluginDesiredCommandRepairError(
@@ -259,6 +261,78 @@ def resume_plugin_desired_operation(
         status_before=event.status,
         result=replayed,
     )
+
+
+@dataclass(slots=True)
+class PluginPackageRemovalAttempt:
+    """Retain the command identity for read-only failure observation."""
+
+    operation_id: str | None = None
+    pending: bool = False
+
+
+def remove_installed_plugin_package(
+    ports: PluginManagementApplicationPorts,
+    attempt: PluginPackageRemovalAttempt,
+    *,
+    query: PluginManagementQueryV1,
+    correlation_id: str,
+    actor_id: str,
+    policy_revision: str,
+    max_attempts: int,
+    operation_id_for_revision: Callable[[int], str],
+) -> PluginManagementInstallationViewV1 | None:
+    """Submit exact Desired State removal and retry a stale inventory CAS."""
+    plugin_id, = query.plugin_ids
+    for _ in range(max_attempts):
+        projection = ports.queries.snapshot(query)
+        if len(projection.installations) != 1:
+            raise ValueError(f"Product Plugin Installation is unavailable: {plugin_id}")
+        view = projection.installations[0]
+        if view.selected_package_revision is None or view.desired_state not in {
+            "installed_disabled",
+            "installed_enabled",
+        }:
+            raise ValueError(f"Product Plugin is not installed: {plugin_id}")
+        revision = projection.owner_revisions.desired_state
+        operation_id = operation_id_for_revision(revision)
+        attempt.operation_id = operation_id
+        result = ports.commands.submit(
+            PluginManagementApplicationCommandV1(
+                correlation_id=correlation_id,
+                command=PluginManagementCommandV1(
+                    action="remove",
+                    mutation=PluginDesiredStateMutationV1(
+                        operation_id=operation_id,
+                        idempotency_key=operation_id,
+                        expected_inventory_revision=revision,
+                        installation_key=view.installation_key,
+                        desired_state="absent",
+                        package_revision=None,
+                        actor_id=actor_id,
+                        policy_revision=policy_revision,
+                    ),
+                ),
+            )
+        )
+        operation = result.operation
+        if not isinstance(operation, PluginManagementOperationEventV1):
+            raise RuntimeError("Product uninstall returned incompatible evidence")
+        terminal = operation.result
+        if terminal is not None and terminal.disposition == "succeeded":
+            after = ports.queries.snapshot(
+                replace(query, correlation_id=f"{correlation_id}:after")
+            )
+            return after.installations[0] if len(after.installations) == 1 else None
+        error_code = (
+            "plugin_management_operation_incomplete"
+            if terminal is None or terminal.error_code is None
+            else terminal.error_code
+        )
+        attempt.pending = terminal is None
+        if error_code != "plugin_inventory_revision_conflict":
+            raise RuntimeError(f"Product uninstall failed: {error_code}")
+    raise RuntimeError("Product uninstall could not linearize")
 
 
 __all__ = [

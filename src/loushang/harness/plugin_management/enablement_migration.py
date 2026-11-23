@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -1065,10 +1065,28 @@ class PluginEnablementCompatibilityProjector:
         installation_scope: Literal["process", "tenant", "workspace"],
         scope_id: str,
     ) -> PluginEnablementCompatibilityProjectionV1:
-        desired = self._desired_state.snapshot()
+        projection, _ = self.from_snapshots(
+            self._desired_state.snapshot(),
+            self._journal.snapshots(),
+            product_id=product_id,
+            installation_scope=installation_scope,
+            scope_id=scope_id,
+        )
+        return projection
+
+    @staticmethod
+    def from_snapshots(
+        desired: PluginDesiredStateSnapshotV1,
+        migration_snapshots: Iterable[PluginEnablementMigrationSnapshotV1],
+        *,
+        product_id: str,
+        installation_scope: Literal["process", "tenant", "workspace"],
+        scope_id: str,
+    ) -> tuple[PluginEnablementCompatibilityProjectionV1, frozenset[str]]:
+        """Project an existing captured desired and migration view."""
         migrations = tuple(
             item
-            for item in self._journal.snapshots()
+            for item in migration_snapshots
             if item.request.installation_key.product_id == product_id
             and item.request.installation_key.installation_scope == installation_scope
             and item.request.installation_key.scope_id == scope_id
@@ -1084,7 +1102,7 @@ class PluginEnablementCompatibilityProjector:
                 != "installed_enabled"
             )
         )
-        return PluginEnablementCompatibilityProjectionV1(
+        projection = PluginEnablementCompatibilityProjectionV1(
             desired_inventory_revision=desired.inventory_revision,
             migration_journal_revision=max(
                 (item.journal_revision for item in migrations),
@@ -1092,6 +1110,8 @@ class PluginEnablementCompatibilityProjector:
             ),
             disabled_plugin_ids=disabled,
         )
+        migrated = frozenset(item.request.installation_key.plugin_id for item in migrations)
+        return projection, migrated
 
 
 def plugin_enablement_legacy_input_fingerprint(

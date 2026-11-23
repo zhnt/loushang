@@ -2,37 +2,43 @@
 
 from __future__ import annotations
 
-import os
+import os as os
 from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
     bootstrap_reviewed_product_plugins,
-    preserve_removed_product_plugin,
-)
-from loushang.harness.plugin_management.records import (
-    PluginInstallationKeyV1,
+    replay_reviewed_removals,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
+    PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    PackageProductWindowsFencedRuntimeOwner,
+    PackageProductWindowsFencedRuntimeOwner as PackageProductWindowsFencedRuntimeOwner,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+)
 from .legacy_builtin_acceptance import (
     CodingLegacyBuiltinOnlyAcceptanceV1,
-    accept_coding_first_b_builtin_only,
+)
+from .legacy_builtin_acceptance import (
+    accept_coding_first_b_builtin_only as accept_coding_first_b_builtin_only,
+)
+from .legacy_review import _reviewed_disabled_ids
+from .product_runtime import (
+    _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
-    _CODING_BUILTIN_BOOTSTRAP_POLICY,
-    CodingFencedProductApplicationOwner,
-    open_coding_fenced_product_application_owner,
+    open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
 
 _BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
+
+
+_REMOVAL_LABEL = "Coding removed builtin Product"
 
 
 def adopt_coding_first_b_builtin_only(
@@ -78,14 +84,14 @@ def adopt_coding_first_b_builtin_only(
     )
     try:
         product = owner.runtime_owner.product_owner
-        disabled = {item.plugin_id for item in receipt.review.disabled_plugins}
-        disabled.update(
-            item.plugin_id
-            for item in receipt.review.builtin_intent
-            if item.desired_state == "installed_disabled"
+        disabled = _reviewed_disabled_ids(receipt.review)
+        replay_reviewed_removals(
+            product,
+            receipt.review.removed_builtin_ids,
+            product_id=_CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
+            operation_id_for=receipt.review.removed_builtin_operation_id,
+            error_prefix=_REMOVAL_LABEL,
         )
-        for plugin_id in receipt.review.removed_builtin_ids:
-            _preserve_removed_builtin(owner, receipt, plugin_id)
         bootstrap_reviewed_product_plugins(
             product,
             _BUILTINS,
@@ -98,34 +104,6 @@ def adopt_coding_first_b_builtin_only(
         return receipt
     finally:
         owner.close()
-
-
-def _key(
-    owner: CodingFencedProductApplicationOwner, plugin_id: str
-) -> PluginInstallationKeyV1:
-    product = owner.runtime_owner.product_owner
-    return PluginInstallationKeyV1(
-        product_id="coding",
-        installation_scope="workspace",
-        scope_id=product.policy.project_scope_id,
-        plugin_id=plugin_id,
-    )
-
-
-def _preserve_removed_builtin(
-    owner: CodingFencedProductApplicationOwner,
-    receipt: CodingLegacyBuiltinOnlyAcceptanceV1,
-    plugin_id: str,
-) -> None:
-    product = owner.runtime_owner.product_owner
-    key = _key(owner, plugin_id)
-    operation_id = receipt.review.removed_builtin_operation_id(plugin_id)
-    preserve_removed_product_plugin(
-        product,
-        key,
-        operation_id,
-        error_prefix="Coding removed builtin Product",
-    )
 
 
 __all__ = ["adopt_coding_first_b_builtin_only"]

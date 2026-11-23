@@ -6,7 +6,6 @@ discardable and never constitutes Writer, Plugin, Approval, or Worker authority.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 from collections.abc import Callable, Sequence
@@ -16,24 +15,41 @@ from typing import Literal
 
 from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
-    resolve_coding_composition_set,
+)
+from loushang.coding.composition.sets import (
+    resolve_coding_composition_set as resolve_coding_composition_set,
 )
 from loushang.coding.resume.activation_projection_v2 import (
-    project_coding_activation_attempt_path_v2,
+    project_coding_activation_attempt_path_v2 as project_coding_activation_attempt_path_v2,
 )
 from loushang.coding.resume.composition_comparison import (
     CodingResumeCompositionComparisonV1,
-    compare_coding_resume_composition,
+)
+from loushang.coding.resume.composition_comparison import (
+    compare_coding_resume_composition as compare_coding_resume_composition,
 )
 from loushang.coding.resume.history import CodingResumeHistoryPreview
-from loushang.foundation.json import dump_json_value
 from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.session._resume_continuation import (
+    activation_plan_fingerprint,
+    checked_activation_plan_owner_refs,
+)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _OWNER = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
 _GENERATION = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _SOURCE_FINGERPRINT = re.compile(r"stat-v1:(?:[0-9]+:){4}[0-9]+\Z")
+
+
+_ACTIVATION_PLAN_MAX_REFS = 64
+_ACTIVATION_PLAN_MAX_BYTES = 32 * 1024
+_POLICY_INPUT_OWNER = "coding.policy"
+_SUBJECT_INPUT_OWNER = "coding.subject"
+
+
+_PLAN_LABEL = "Coding activation Plan"
+_PLAN_DIGEST_DOMAIN = b"loushang.coding.session-activation-plan/v1\0"
 
 
 class ResumePlanStaleError(ValueError):
@@ -80,6 +96,15 @@ class ActivationOwnerInputRefV1:
             raise ValueError("activation input fingerprint is invalid")
 
 
+def _resume_domain_input_refs(
+    *, policy_digest: str, subject_digest: str
+) -> tuple[ActivationOwnerInputRefV1, ...]:
+    return (
+        ActivationOwnerInputRefV1(_POLICY_INPUT_OWNER, policy_digest),
+        ActivationOwnerInputRefV1(_SUBJECT_INPUT_OWNER, subject_digest),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SessionActivationPlanV1:
     """Immutable Plan evidence awaiting live owner validation and admission."""
@@ -109,27 +134,28 @@ def build_session_activation_plan(
     """Aggregate historical facts and existing owner choices without effects."""
 
     _require_plan_workspace_root(workspace_root)
-    inputs = tuple(owner_inputs)
-    if len(inputs) > 64:
-        raise ValueError("activation Plan owner inputs exceed their budget")
-    if any(not isinstance(item, ActivationOwnerInputRefV1) for item in inputs):
-        raise TypeError("activation Plan owner inputs are invalid")
-    if inputs != tuple(sorted(inputs, key=lambda item: item.owner_id)) or len(
-        {item.owner_id for item in inputs}
-    ) != len(inputs):
-        raise ValueError("activation Plan owner inputs must be sorted and unique")
-    selections = tuple(owner_selections)
-    if len(selections) > 64:
-        raise ValueError("activation Plan owner selections exceed their budget")
-    if any(not isinstance(item, ActivationOwnerSelectionRefV1) for item in selections):
-        raise TypeError("activation Plan owner selections are invalid")
-    if selections != tuple(sorted(selections, key=lambda item: item.owner_id)) or len(
-        {item.owner_id for item in selections}
-    ) != len(selections):
-        raise ValueError("activation Plan owner selections must be sorted and unique")
-    comparison = compare_coding_resume_composition(history, current_composition)
+    inputs = checked_activation_plan_owner_refs(
+        owner_inputs,
+        ActivationOwnerInputRefV1,
+        type_error="activation Plan owner inputs are invalid",
+        order_error="activation Plan owner inputs must be sorted and unique",
+        budget=(_ACTIVATION_PLAN_MAX_REFS, "activation Plan owner inputs exceed their budget"),
+    )
+    selections = checked_activation_plan_owner_refs(
+        owner_selections,
+        ActivationOwnerSelectionRefV1,
+        type_error="activation Plan owner selections are invalid",
+        order_error="activation Plan owner selections must be sorted and unique",
+        budget=(_ACTIVATION_PLAN_MAX_REFS, "activation Plan owner selections exceed their budget"),
+    )
+    comparison = compare_coding_resume_composition(
+        history, current_composition
+    )
     session_id = history.header_preview.header.conversation_id
-    if type(session_id) is not str or _IDENTIFIER.fullmatch(session_id) is None:
+    if (
+        type(session_id) is not str
+        or _IDENTIFIER.fullmatch(session_id) is None
+    ):
         raise ValueError("activation Plan Session id is invalid")
     if history.selected_leaf_id is not None and (
         type(history.selected_leaf_id) is not str
@@ -209,17 +235,12 @@ def build_session_activation_plan(
         ],
         "status": status,
     }
-    encoded = dump_json_value(
+    plan_id = activation_plan_fingerprint(
         identity,
-        name="Coding activation Plan",
-        ensure_ascii=True,
-        sort_keys=True,
-    ).encode("utf-8")
-    if len(encoded) > 32 * 1024:
-        raise ValueError("activation Plan exceeds its byte budget")
-    plan_id = hashlib.sha256(
-        b"loushang.coding.session-activation-plan/v1\0" + encoded
-    ).hexdigest()
+        digest_domain=_PLAN_DIGEST_DOMAIN,
+        name=_PLAN_LABEL,
+        max_bytes=_ACTIVATION_PLAN_MAX_BYTES,
+    )
     return SessionActivationPlanV1(
         plan_id=plan_id,
         session_id=session_id,
@@ -251,29 +272,24 @@ def plan_coding_resume(
     """
 
     _require_plan_workspace_root(workspace_root)
+    inputs: tuple[ActivationOwnerInputRefV1, ...] = ()
     if (
         compare_coding_resume_composition(history, current_composition).status
-        == "unavailable"
+        != "unavailable"
     ):
-        return build_session_activation_plan(
-            history,
-            current_composition,
-            workspace_root=workspace_root,
+        receipt = resource_loader.preview_catalog_input_receipt(
+            workspace_root, work_probe=work_probe
         )
-    receipt = resource_loader.preview_catalog_input_receipt(
-        workspace_root,
-        work_probe=work_probe,
-    )
+        inputs = (
+            ActivationOwnerInputRefV1(
+                owner_id="resources.catalog", fingerprint=receipt.input_fingerprint
+            ),
+        )
     return build_session_activation_plan(
         history,
         current_composition,
         workspace_root=workspace_root,
-        owner_inputs=(
-            ActivationOwnerInputRefV1(
-                owner_id="resources.catalog",
-                fingerprint=receipt.input_fingerprint,
-            ),
-        ),
+        owner_inputs=inputs,
     )
 
 
@@ -307,39 +323,27 @@ async def plan_coding_resume_async(
     """
 
     _require_plan_workspace_root(workspace_root)
-    domain_inputs = (
-        ActivationOwnerInputRefV1("coding.policy", policy_digest),
-        ActivationOwnerInputRefV1("coding.subject", subject_digest),
+    inputs = _resume_domain_input_refs(
+        policy_digest=policy_digest, subject_digest=subject_digest
     )
     if (
         compare_coding_resume_composition(history, current_composition).status
-        == "unavailable"
+        != "unavailable"
     ):
-        return build_session_activation_plan(
-            history,
-            current_composition,
-            workspace_root=workspace_root,
-            owner_inputs=domain_inputs,
+        fingerprint = await resource_loader.preview_catalog_input_fingerprint(
+            workspace_root,
+            subject_digest=subject_digest,
+            policy_digest=policy_digest,
+            max_work_units=max_work_units,
+            time_budget_seconds=time_budget_seconds,
+            priority=priority,
         )
-    fingerprint = await resource_loader.preview_catalog_input_fingerprint(
-        workspace_root,
-        subject_digest=subject_digest,
-        policy_digest=policy_digest,
-        max_work_units=max_work_units,
-        time_budget_seconds=time_budget_seconds,
-        priority=priority,
-    )
+        inputs += (ActivationOwnerInputRefV1("resources.catalog", fingerprint),)
     return build_session_activation_plan(
         history,
         current_composition,
         workspace_root=workspace_root,
-        owner_inputs=(
-            *domain_inputs,
-            ActivationOwnerInputRefV1(
-                "resources.catalog",
-                fingerprint,
-            ),
-        ),
+        owner_inputs=inputs,
     )
 
 
@@ -350,7 +354,7 @@ def require_current_resume_plan_source(
     """Reject stale read evidence; live Writer and owner checks are separate."""
 
     if not isinstance(plan, SessionActivationPlanV1):
-        raise TypeError("invalid Coding activation Plan")
+        raise TypeError(f"invalid {_PLAN_LABEL}")
     current = resolve_coding_composition_set(
         plan.composition_comparison.candidate_set_id,
     )
@@ -363,7 +367,9 @@ def require_current_resume_plan_source(
         or plan.composition_comparison
         != compare_coding_resume_composition(history, current)
     ):
-        raise ResumePlanStaleError("Coding activation Plan source changed")
+        raise ResumePlanStaleError(
+            f"{_PLAN_LABEL} source changed"
+        )
 
 
 def require_current_resume_plan_inputs(
@@ -377,18 +383,17 @@ def require_current_resume_plan_inputs(
     """
 
     if not isinstance(plan, SessionActivationPlanV1):
-        raise TypeError("invalid Coding activation Plan")
-    inputs = tuple(current_owner_inputs)
-    if any(not isinstance(item, ActivationOwnerInputRefV1) for item in inputs):
-        raise TypeError("Coding activation Plan owner inputs are invalid")
-    if inputs != tuple(sorted(inputs, key=lambda item: item.owner_id)) or len(
-        {item.owner_id for item in inputs}
-    ) != len(inputs):
-        raise ValueError(
-            "Coding activation Plan owner inputs must be sorted and unique"
-        )
+        raise TypeError(f"invalid {_PLAN_LABEL}")
+    inputs = checked_activation_plan_owner_refs(
+        current_owner_inputs,
+        ActivationOwnerInputRefV1,
+        type_error=f"{_PLAN_LABEL} owner inputs are invalid",
+        order_error=f"{_PLAN_LABEL} owner inputs must be sorted and unique",
+    )
     if inputs != plan.owner_inputs:
-        raise ResumePlanStaleError("Coding activation Plan owner inputs changed")
+        raise ResumePlanStaleError(
+            f"{_PLAN_LABEL} owner inputs changed"
+        )
 
 
 __all__ = [

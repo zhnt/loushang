@@ -12,6 +12,7 @@ import os
 from loushang.harness.package_product._windows_worker_history import (
     guard_windows_product_worker_history_bases,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -35,11 +36,7 @@ def _guarded_bases(
     *,
     publish: bool,
 ) -> CodingWindowsWorkerHistoryCheckpointV1:
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker bases require their Product")
     return guard_windows_product_worker_history_bases(
         product,

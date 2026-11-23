@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import stat
+import stat as stat
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -15,13 +15,17 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
-    _digest,
     backup_parent,
+)
+from .private_data_backup_records import (
+    _digest as _digest,
 )
 from .private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
-    _valid_identity,
+)
+from .private_data_deletion_preview import (
+    _valid_identity as _valid_identity,
 )
 from .private_data_windows_backup import _archive_io
 

@@ -31,6 +31,7 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
     OwnerContributionKind,
+    OwnerContributionSnapshot,
     OwnerContributionSpec,
     ResourceContributionSpec,
     _digest_document,
@@ -98,6 +99,7 @@ from loushang.harness.resources.plugins.types import (
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
+    SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityWorkerComponentRequest,
     validate_session_capability_composition_closure,
 )
@@ -1265,6 +1267,140 @@ def _assemble_product_contribution_candidates(
     )
 
 
+def select_resource_plan(
+    plan: PluginSelectionPlanV2,
+    package: PublishedPluginPackage,
+    *,
+    plugin_id: str,
+) -> PluginSelectionPlanV2 | None:
+    resource_ids = {
+        item.contribution_id
+        for item in package.contribution_index.items
+        if item.kind == "resource_item"
+    }
+    selected_resources = tuple(
+        item
+        for item in plan.selected_contributions
+        if item.plugin_id == plugin_id and item.contribution_id in resource_ids
+    )
+    if not selected_resources:
+        return None
+    return replace(plan, selected_contributions=selected_resources)
+
+
+def bind_compiled_registration_authority(
+    compilation: ProductCompositionCompilation,
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+    *,
+    clock: Callable[[], int],
+    label: str,
+) -> SessionCapabilityOwnerAuthorityGate:
+    """Verify the complete owner inventory and read from its compiled context."""
+    authorities = {item.owner_key: item.authority for item in owner_bindings}
+    context = compilation.authority_context
+    if tuple(item.authority.snapshot() for item in owner_bindings) != (
+        context.owner_snapshots
+    ):
+        raise ValueError(f"{label} authority changed Product compilation")
+
+    def read_policy(product_id: str, scope_id: str) -> str:
+        if product_id != context.product_id or scope_id != context.scope_id:
+            raise ValueError(f"{label} received another Product scope")
+        return context.product_policy_revision
+
+    return _bind_authority(
+        context,
+        context,
+        authorities.get,
+        read_policy,
+        clock=clock,
+        label=label,
+    )
+
+
+def bind_selected_registration_authority(
+    selection: PluginSelection,
+    assembly: ProductPluginCompositionAssembly,
+    *,
+    authority: OwnerContributionAuthority,
+    product_id: str,
+    scope_id: str,
+    clock: Callable[[], int],
+    label: str,
+) -> SessionCapabilityOwnerAuthorityGate:
+    """Read the selected plan and match the single live contribution owner."""
+    trust_snapshots = selection.plan.source_trust_snapshots
+
+    def select_owner(key: tuple[str, str, str]) -> OwnerContributionAuthority | None:
+        owner_id, contribution_kind, requested_product_id = key
+        policy = authority.policy
+        if (
+            owner_id != policy.owner_id
+            or contribution_kind != policy.contribution_kind
+            or requested_product_id != policy.product_id
+        ):
+            return None
+        return authority
+
+    def read_policy(requested_product_id: str, requested_scope_id: str) -> str:
+        if requested_product_id != product_id or requested_scope_id != scope_id:
+            raise ValueError(f"{label} received another Product scope")
+        return selection.plan.context.policy_revision
+
+    return _bind_authority(
+        assembly.product_composition.authority_context,
+        trust_snapshots,
+        select_owner,
+        read_policy,
+        clock=clock,
+        label=label,
+    )
+
+
+def _bind_authority(
+    context: ProductCompositionAuthorityContext,
+    trust_source: ProductCompositionAuthorityContext
+    | tuple[PluginSourceTrustSnapshotV1, ...],
+    select_owner: Callable[[tuple[str, str, str]], OwnerContributionAuthority | None],
+    read_policy: Callable[[str, str], str],
+    *,
+    clock: Callable[[], int],
+    label: str,
+) -> SessionCapabilityOwnerAuthorityGate:
+    def read_owner(
+        owner_id: str, contribution_kind: str, product_id: str
+    ) -> OwnerContributionSnapshot:
+        authority = select_owner((owner_id, contribution_kind, product_id))
+        if authority is None:
+            raise ValueError(f"{label} reader received another owner")
+        return authority.snapshot()
+
+    def read_trust(plugin_id: str, source_identity: str) -> PluginSourceTrustSnapshotV1:
+        # The compiled route reads its context; the selected route pins its plan snapshots.
+        snapshots = (
+            trust_source.trust_snapshots
+            if isinstance(trust_source, ProductCompositionAuthorityContext)
+            else trust_source
+        )
+        matches = tuple(
+            item
+            for item in snapshots
+            if item.plugin_id == plugin_id
+            and item.package_source_identity == source_identity
+        )
+        if len(matches) != 1:
+            raise ValueError(f"{label} requires one trust snapshot")
+        return matches[0]
+
+    return SessionCapabilityOwnerAuthorityGate(
+        authority_context=context,
+        owner_snapshot_reader=read_owner,
+        trust_snapshot_reader=read_trust,
+        product_policy_revision_reader=read_policy,
+        clock=clock,
+    )
+
+
 def prepare_product_plugin_composition(
     request: ProductPluginCompositionAssemblyRequest,
     *,
@@ -1633,6 +1769,84 @@ def _prepare_catalog_plugin_plan_seed(
         packages=tuple((item.package for item in selected_inputs)),
         bindings=tuple((item.binding for item in selected_inputs)),
         owner_bindings=owner_bindings,
+    )
+
+
+def extend_product_data_selection_plan(
+    original: PluginSelectionPlanV2,
+    external: tuple[PackageProductSelectedPluginManifestV1, ...],
+) -> PluginSelectionPlanV2:
+    """Extend a Product plan with verified data declarations and exact Store facts."""
+    return PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id=original.context.product_id,
+            scope_id=original.context.scope_id,
+            policy_revision=original.context.policy_revision,
+            instance_revision_refs=tuple(
+                sorted(
+                    (
+                        *original.context.instance_revision_refs,
+                        *(item.snapshot.instance_revision_ref for item in external),
+                    ),
+                    key=lambda item: item.plugin_id,
+                )
+            ),
+        ),
+        selected_plugin_ids=tuple(
+            sorted(
+                (
+                    *original.selected_plugin_ids,
+                    *(item.manifest.name for item in external),
+                )
+            )
+        ),
+        selected_contributions=tuple(
+            sorted(
+                (
+                    *original.selected_contributions,
+                    *(
+                        PluginContributionRef(
+                            item.manifest.name, reservation.contribution_id
+                        )
+                        for item in external
+                        for reservation, _ in item.verified_data_only_declarations()
+                    ),
+                )
+            )
+        ),
+        source_trust_snapshots=tuple(
+            sorted(
+                (
+                    *original.source_trust_snapshots,
+                    *(
+                        item.source_trust_snapshot
+                        for item in external
+                        if item.source_trust_snapshot is not None
+                    ),
+                ),
+                key=lambda item: item.plugin_id,
+            )
+        ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=tuple(
+                sorted(
+                    (
+                        *original.effective_configuration_set.entries,
+                        *(
+                            PluginEffectiveConfigurationEntry(
+                                plugin_id=item.manifest.name,
+                                contribution_id=reservation.contribution_id,
+                                configuration=reservation.configuration,
+                            )
+                            for item in external
+                            for reservation, _ in item.verified_data_only_declarations()
+                        ),
+                    ),
+                    key=lambda item: (item.plugin_id, item.contribution_id),
+                )
+            )
+        ),
+        allowed_authority_ceiling=original.allowed_authority_ceiling,
     )
 
 

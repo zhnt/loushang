@@ -7,6 +7,7 @@ import os
 from loushang.harness.package_product._windows_worker_history import (
     review_windows_product_worker_history_cutover_candidate,
 )
+from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -29,11 +30,7 @@ def review_coding_windows_worker_history_cutover_candidate(
     cannot grant retirement or new-Session authority.
     """
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_windows_product(product, "coding", os.name):
         raise ValueError("Windows Worker cutover review requires its Product")
     return review_windows_product_worker_history_cutover_candidate(
         product,

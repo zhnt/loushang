@@ -3,19 +3,37 @@
 from __future__ import annotations
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_local_migration import (
+    verify_accepted_legacy_wheel,
+)
+from loushang.harness.package_product._legacy_runtime import matches_epoch_layout
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
+)
 from .legacy_binding_catalog import (
-    CodingLegacyBindingError,
-    CodingLegacyLocalBindingCatalog,
+    CodingLegacyBindingError as CodingLegacyBindingError,
+)
+from .legacy_binding_catalog import (
+    CodingLegacyLocalBindingCatalog as CodingLegacyLocalBindingCatalog,
+)
+from .legacy_binding_catalog import (
     CodingLegacyLocalBindingV1,
 )
-from .legacy_local_acceptance import reopen_coding_legacy_installed_local_acceptance
-from .legacy_reacquisition import reacquire_coding_legacy_installed_local_source
-from .legacy_skill_cutover_admission import inspect_coding_legacy_local_data_wheel
+from .legacy_local_acceptance import (
+    reopen_coding_legacy_installed_local_acceptance as reopen_coding_legacy_installed_local_acceptance,
+)
+from .legacy_reacquisition import (
+    reacquire_coding_legacy_installed_local_source as reacquire_coding_legacy_installed_local_source,
+)
+from .legacy_skill_cutover_admission import (
+    inspect_coding_legacy_local_data_wheel as inspect_coding_legacy_local_data_wheel,
+)
+
+_BINDINGS_JOURNAL = "legacy-local-bindings.jsonl"
 
 
 def bind_coding_accepted_legacy_local_source(
@@ -48,31 +66,19 @@ def bind_coding_accepted_legacy_local_source(
         raise CodingLegacyBindingError(
             "Legacy local Source Resource type is unsupported"
         ) from exc
-    if (
-        inspected.resource_kind != accepted.resource_kind
-        or selected.desired_state != review.desired_state
-        or binding.plugin_id != review.plugin_id
-        or binding.source_identity != review.legacy_source_identity
-        or binding.binding_digest != review.legacy_binding_digest
-        or binding.content_digest != review.source_content_digest
-        or binding.manifest_digest != review.manifest_digest
-        or binding.dependency_lock.digest != review.dependency_lock_digest
-        or candidate.plugin_id != review.plugin_id
-        or candidate.original_source_identity != review.legacy_source_identity
-        or candidate.source_content_digest != review.source_content_digest
-        or candidate.manifest_digest != review.manifest_digest
-        or candidate.filename != review.wheel_filename
-        or candidate.artifact_digest != review.wheel_artifact_digest
-    ):
-        raise CodingLegacyBindingError(
-            "Legacy local Source differs from accepted review"
-        )
+    verify_accepted_legacy_wheel(
+        accepted,
+        binding,
+        candidate,
+        desired_state=selected.desired_state,
+        inspected_kind=inspected.resource_kind,
+        error_type=CodingLegacyBindingError,
+    )
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     switch = epoch_runtime.cutover_result.switch_receipt
     if (
         switch is None
-        or epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
+        or not matches_epoch_layout(epoch_runtime, epoch)
         or switch.namespace_id != review.namespace_id
         or lifecycle.scope_id != review.scope_id
         or policy_revision != review.policy_revision
@@ -82,7 +88,7 @@ def bind_coding_accepted_legacy_local_source(
     source_root = epoch_runtime.prepare_product_source_root()
     state_root = epoch_runtime.prepare_product_state_root()
     catalog = CodingLegacyLocalBindingCatalog(
-        state_root / "legacy-local-bindings.jsonl",
+        state_root / _BINDINGS_JOURNAL,
         source_root=source_root,
         store_id=epoch.store_id,
         namespace_id=switch.namespace_id,
@@ -97,18 +103,15 @@ def bind_coding_accepted_legacy_local_source(
             )
         ),
     )
-    catalog.publish_candidate(candidate, epoch_runtime=epoch_runtime)
-    committed = catalog.append(
+    return catalog.publish_accepted_candidate(
         candidate,
+        epoch_runtime=epoch_runtime,
         legacy_source_identity=review.legacy_source_identity,
         legacy_binding_digest=review.legacy_binding_digest,
         dependency_lock_digest=review.dependency_lock_digest,
         approval_id=accepted.acceptance_id,
         resource_kind=accepted.resource_kind,
     )
-    catalog._require_accepted_binding(committed)
-    epoch_runtime.assert_current()
-    return committed
 
 
 __all__ = ["bind_coding_accepted_legacy_local_source"]

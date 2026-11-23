@@ -16,7 +16,9 @@ from loushang.apphost.managed.registry import ManagedMuxReservationV1
 from loushang.coding.cli import lmux
 from loushang.coding.cli import lmux_command as module
 
+from .test_lmux_command import _failure_diagnostic
 from .test_lmux_command import managed_cli as managed_cli
+from .test_lmux_command import mux_workspace as mux_workspace
 
 
 def observation(name):
@@ -197,7 +199,7 @@ def test_only_open_mux_on_the_shared_host_attaches_without_selector(managed_cli,
         return 0
 
     monkeypatch.setattr(terminal, "run_hosted_mux_shell", screen)
-    assert lmux.main(["new", "-s", "live"]) == 0
+    assert lmux.main(["new", "-s", "live"]) == 0, _failure_diagnostic(commands[-1])
     first = commands[-1].creation
     live_process = first._coordinator._starter._process
     other = tmp_path / "other"

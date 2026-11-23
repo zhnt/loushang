@@ -4160,11 +4160,15 @@ def test_product_transaction_commits_configured_local_dependency(
 )
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
+    standalone_workspace: Path,
     with_dependency: bool,
     entrypoint: str,
 ) -> None:
     _exercise_posix_local_wheel_product_composition(
-        tmp_path, with_dependency=with_dependency, entrypoint=entrypoint
+        tmp_path,
+        with_dependency=with_dependency,
+        entrypoint=entrypoint,
+        workspace=standalone_workspace / "workspace",
     )
 
 
@@ -4227,6 +4231,7 @@ def _exercise_posix_local_wheel_product_composition(
     *,
     with_dependency: bool,
     entrypoint: str,
+    workspace: Path | None = None,
 ) -> None:
     from loushang.ai.model import Capabilities, Model
     from loushang.coding.arch._provider_api import CodingArchPluginConfigV1
@@ -4422,7 +4427,8 @@ def _exercise_posix_local_wheel_product_composition(
             resolution_environment_fingerprint=environment.fingerprint,
             authority_id="coding-local-source:runtime",
         )
-    workspace = tmp_path / "workspace"
+    if workspace is None:
+        workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
     legacy_base = tmp_path / "legacy-coding"
     legacy_layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
@@ -5175,7 +5181,7 @@ def _exercise_posix_local_wheel_product_composition(
                 ):
                     with pytest.raises(ValueError, match="identity changed"):
                         factory.create(rejected_request)
-                moved_workspace = tmp_path / "moved-workspace"
+                moved_workspace = workspace.with_name("moved-workspace")
                 workspace.rename(moved_workspace)
                 workspace.mkdir(mode=0o700)
                 try:
@@ -6201,7 +6207,7 @@ def _exercise_posix_local_wheel_product_composition(
                         len(registry.snapshot(store_id=store_id).active_leases)
                         == prior_leases
                     )
-                    moved_workspace = tmp_path / "moved-product-hosted-workspace"
+                    moved_workspace = workspace.with_name("moved-product-hosted-workspace")
                     workspace.rename(moved_workspace)
                     workspace.mkdir(mode=0o700)
                     try:

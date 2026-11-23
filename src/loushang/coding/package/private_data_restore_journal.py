@@ -73,15 +73,15 @@ class CodingArchPrivateDataRestoreEventV1:
         deletion_receipt_id: str,
     ) -> CodingArchPrivateDataRestoreEventV1:
         restore_id = restore_id_for(installation_key, backup_id, deletion_receipt_id)
-        unsigned = {
-            "backupId": backup_id,
-            "deletionReceiptId": deletion_receipt_id,
-            "installationKey": installation_key.to_dict(),
-            "phase": phase,
-            "recordVersion": 1,
-            "restoreId": restore_id,
-            "revision": revision,
-        }
+        unsigned = _event_fields(
+            revision,
+            phase,
+            installation_key,
+            backup_id,
+            deletion_receipt_id,
+            restore_id,
+            1,
+        )
         return cls(
             revision=revision,
             phase=phase,
@@ -93,15 +93,15 @@ class CodingArchPrivateDataRestoreEventV1:
         )
 
     def _unsigned(self) -> dict[str, object]:
-        return {
-            "backupId": self.backup_id,
-            "deletionReceiptId": self.deletion_receipt_id,
-            "installationKey": self.installation_key.to_dict(),
-            "phase": self.phase,
-            "recordVersion": self.record_version,
-            "restoreId": self.restore_id,
-            "revision": self.revision,
-        }
+        return _event_fields(
+            self.revision,
+            self.phase,
+            self.installation_key,
+            self.backup_id,
+            self.deletion_receipt_id,
+            self.restore_id,
+            self.record_version,
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {**self._unsigned(), "recordDigest": self.record_digest}
@@ -111,6 +111,26 @@ class CodingArchPrivateDataRestoreEventV1:
         if type(value) is not dict or set(value) != _SCHEMA_RESTORE_EVENT_V1.keys:
             raise ValueError("Coding Arch restore event fields are invalid")
         return _SCHEMA_RESTORE_EVENT_V1.decode(cls, value)
+
+
+def _event_fields(
+    revision: int,
+    phase: Literal["started", "completed"],
+    installation_key: PluginInstallationKeyV1,
+    backup_id: str,
+    deletion_receipt_id: str,
+    restore_id: str,
+    record_version: int,
+) -> dict[str, object]:
+    return {
+        "backupId": backup_id,
+        "deletionReceiptId": deletion_receipt_id,
+        "installationKey": installation_key.to_dict(),
+        "phase": phase,
+        "recordVersion": record_version,
+        "restoreId": restore_id,
+        "revision": revision,
+    }
 
 
 def restore_id_for(

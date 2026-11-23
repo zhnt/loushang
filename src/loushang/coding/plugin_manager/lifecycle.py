@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import hashlib
-import json
+import json as json
 import os
 import secrets
-import sys
+import sys as sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from importlib.metadata import version
+from importlib.metadata import version as version
 from pathlib import Path
 from typing import Literal
 
@@ -22,7 +22,7 @@ from loushang.coding.plugin_manager.owner_generations import (
 )
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.journal import (
-    JournalLoadPolicy,
+    JournalLoadPolicy as JournalLoadPolicy,
 )
 from loushang.harness.journal import (
     journal_file_lock_at as journal_file_lock_at,
@@ -34,6 +34,7 @@ from loushang.harness.package_product import _legacy_runtime
 from loushang.harness.plugin_management import (
     PluginDesiredStateLedger,
     PluginEnablementCompatibilityProjectionV1,
+    PluginEnablementCompatibilityProjector,
     PluginEnablementMigrationCoordinator,
     PluginEnablementMigrationRequestV1,
     PluginEnablementMigrationSnapshotV1,
@@ -42,25 +43,41 @@ from loushang.harness.plugin_management import (
     PluginInstanceLeaseFamilyV1,
     PluginInstanceRuntimeLedger,
     PluginManagementApplicationPorts,
-    PluginManagementCommandApplication,
-    PluginManagementReadModelProjector,
     PluginManagementService,
     PluginPackageLifecycleLedger,
     PluginPackageRevisionRefV1,
     PluginRetirementSetLedger,
     PluginSourceProjectionSourcePort,
     _enablement_capture,
-    decode_plugin_desired_state_snapshot,
-    decode_plugin_enablement_migration_snapshots,
+)
+from loushang.harness.plugin_management import (
+    PluginManagementCommandApplication as PluginManagementCommandApplication,
+)
+from loushang.harness.plugin_management import (
+    PluginManagementReadModelProjector as PluginManagementReadModelProjector,
+)
+from loushang.harness.plugin_management import (
+    decode_plugin_desired_state_snapshot as decode_plugin_desired_state_snapshot,
+)
+from loushang.harness.plugin_management import (
+    decode_plugin_enablement_migration_snapshots as decode_plugin_enablement_migration_snapshots,
 )
 from loushang.harness.plugin_management.assembly import (
+    PluginManagementCoreBindings,
     _FirstPartyDefaultBootstrap,
     _FirstPartyDefaultPolicy,
     _gc_writer_epoch_ready,
     _prepare_gc_writer_epoch,
     _SettledHostRetirementPolicy,
-    bind_plugin_management_core,
-    bind_plugin_runtime_ledgers,
+    bind_plugin_enablement_migrations,
+    bind_plugin_management_application_ports,
+    prepare_plugin_management_runtime,
+)
+from loushang.harness.plugin_management.assembly import (
+    bind_plugin_management_core as bind_plugin_management_core,
+)
+from loushang.harness.plugin_management.assembly import (
+    bind_plugin_runtime_ledgers as bind_plugin_runtime_ledgers,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
@@ -78,12 +95,21 @@ from loushang.harness.session.plugin_lifecycle import _owner_lease
 from loushang.harness.session.plugin_lifecycle._membership import (
     _MembershipPolicy,
     _PluginSessionLifecycle,
+    decode_holder_evidence,
+    encode_holder_reference,
+    normalize_owner_contributions,
 )
 from loushang.harness.session.plugin_lifecycle._session_lease import _PluginSessionLease
 
 _PRODUCT_POLICY_REVISION = "coding-plugin-lifecycle-v1"
 _DEFAULT_APPROVAL_REFERENCE = "coding-first-party-default"
 _CODING_PLUGIN_RUNTIME_BOOT_ID = secrets.token_hex(16)
+
+
+_PRODUCT_LABEL = "Coding"
+_LAYOUT_REQUIRED = "Coding Plugin lifecycle layout is required"
+_MEMBERSHIP_INSTALLATION_SCOPE: Literal["workspace"] = "workspace"
+_SESSION_OWNER_EVIDENCE_INVALID = "coding_plugin_session_owner_evidence_invalid"
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -312,106 +338,23 @@ def _lease_identity(
     ).hexdigest()
 
 
-def _normalize_owner_contributions(
-    values: tuple[tuple[str, tuple[str, ...]], ...],
-) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    if not isinstance(values, tuple):
-        raise TypeError("Coding owner contributions must be a tuple")
-    normalized: list[tuple[str, tuple[str, ...]]] = []
-    for owner_reference, contribution_ids in values:
-        owner = _nonempty(owner_reference, name="Owner reference")
-        if (
-            not isinstance(contribution_ids, tuple)
-            or not contribution_ids
-            or any(
-                not isinstance(item, str) or not item or item.strip() != item
-                for item in contribution_ids
-            )
-        ):
-            raise ValueError("Owner contribution ids must be non-empty strings")
-        canonical_ids = tuple(sorted(set(contribution_ids)))
-        normalized.append((owner, canonical_ids))
-    canonical = tuple(sorted(normalized))
-    if len({owner for owner, _items in canonical}) != len(canonical):
-        raise ValueError("Coding owner references must be unique")
-    return canonical
-
-
 @dataclass(frozen=True, slots=True)
 class _CodingSessionHolderEvidence:
     startup_id: str
     owner_contributions: tuple[tuple[str, tuple[str, ...]], ...]
 
 
-def _session_holder_reference(
-    *,
-    session_id: str,
-    lease_attempt_id: str,
-    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
-    startup_id: str,
-) -> str:
-    payload = {
-        "leaseAttemptId": _nonempty(lease_attempt_id, name="Lease attempt id"),
-        "owners": [
-            {
-                "contributionIds": list(contribution_ids),
-                "ownerReference": owner_reference,
-            }
-            for owner_reference, contribution_ids in owner_contributions
-        ],
-        "sessionId": _nonempty(session_id, name="Session id"),
-        "startupId": _nonempty(startup_id, name="Startup id"),
-    }
-    return _SESSION_HOLDER_PREFIX + json.dumps(
-        payload,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
 
-
-def _session_holder_evidence(
-    holder_reference: str,
-) -> _CodingSessionHolderEvidence | None:
-    if not holder_reference.startswith(_SESSION_HOLDER_PREFIX):
-        # V1 and foreign holder references contain no process epoch.  Preserve
-        # them fail-closed because inactivity cannot be proven.
-        return None
+def _decode_coding_holder_evidence(reference: str) -> _CodingSessionHolderEvidence | None:
     try:
-        payload = json.loads(holder_reference[len(_SESSION_HOLDER_PREFIX) :])
-        if not isinstance(payload, dict) or set(payload) != {
-            "leaseAttemptId",
-            "owners",
-            "sessionId",
-            "startupId",
-        }:
-            raise ValueError("invalid Session holder fields")
-        _nonempty(payload["leaseAttemptId"], name="Lease attempt id")
-        _nonempty(payload["sessionId"], name="Session id")
-        startup_id = _nonempty(payload["startupId"], name="Startup id")
-        owners = payload["owners"]
-        if not isinstance(owners, list):
-            raise ValueError("owners must be an array")
-        values = tuple(
-            (
-                item["ownerReference"],
-                tuple(item["contributionIds"]),
-            )
-            for item in owners
-            if isinstance(item, dict)
-            and set(item) == {"contributionIds", "ownerReference"}
-            and isinstance(item["contributionIds"], list)
+        fields = decode_holder_evidence(
+            reference, prefix=_SESSION_HOLDER_PREFIX, product_label=_PRODUCT_LABEL
         )
-        if len(values) != len(owners):
-            raise ValueError("invalid owner entry")
-        return _CodingSessionHolderEvidence(
-            startup_id=startup_id,
-            owner_contributions=_normalize_owner_contributions(values),
-        )
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        return _CodingSessionHolderEvidence(*fields) if fields is not None else None
+    except (TypeError, ValueError) as exc:
         raise CodingPluginLifecycleError(
-            "Coding Session family owner evidence is invalid",
-            code="coding_plugin_session_owner_evidence_invalid",
+            f"{_PRODUCT_LABEL} Session family owner evidence is invalid",
+            code=_SESSION_OWNER_EVIDENCE_INVALID,
         ) from exc
 
 
@@ -451,16 +394,15 @@ def _coding_membership_policy() -> _MembershipPolicy[CodingPluginLifecycleStateL
         ),
         activation_identity=_activation_identity,
         lease_identity=_lease_identity,
-        normalize_owners=_normalize_owner_contributions,
+        normalize_owners=lambda values: normalize_owner_contributions(
+            values, product_label=_PRODUCT_LABEL
+        ),
         holder_reference=lambda session, attempt, owners, startup: (
-            _session_holder_reference(
-                session_id=session,
-                lease_attempt_id=attempt,
-                owner_contributions=owners,
-                startup_id=startup,
+            encode_holder_reference(
+                session, attempt, owners, startup, prefix=_SESSION_HOLDER_PREFIX
             )
         ),
-        holder_evidence=_session_holder_evidence,
+        holder_evidence=_decode_coding_holder_evidence,
         startup_path=lambda layout, startup: _startup_lease_path(
             layout, startup_id=startup
         ),
@@ -696,6 +638,17 @@ class CodingPluginManagementChange:
         }
 
 
+def _workspace_digest(workspace: Path) -> str:
+    # Keep the deployed Continuity namespace so existing journals stay reachable.
+    return hashlib.sha256(
+        b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
+    ).hexdigest()
+
+
+def _workspace_scope_id(workspace: Path) -> str:
+    return f"workspace:{_workspace_digest(workspace)}"
+
+
 def resolve_coding_plugin_lifecycle_state_layout(
     cwd: str | Path,
     *,
@@ -709,12 +662,7 @@ def resolve_coding_plugin_lifecycle_state_layout(
     ):
         raise ValueError("invalid historical Plugin workspace")
     workspace = historical_origin if historical_origin is not None else Path(cwd).expanduser().resolve(strict=False)
-    # Keep the deployed Continuity workspace identity and location.  PLC6D
-    # widens that namespace into the one Coding Product lifecycle authority;
-    # changing it would silently strand existing desired-state journals.
-    digest = hashlib.sha256(
-        b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
-    ).hexdigest()
+    digest = _workspace_digest(workspace)
     paths = platform_paths or resolve_platform_paths()
     root = paths.state / "plugins" / "coding" / "continuity" / "workspaces" / digest
     package_root = paths.data / "plugins" / "coding" / "workspaces" / digest
@@ -743,6 +691,17 @@ def resolve_coding_plugin_lifecycle_state_layout(
     )
 
 
+def matches_coding_workspace_layout(workspace: object, layout: object) -> bool:
+    """Check the deployed Product layout after canonical workspace admission."""
+    return not (
+        not isinstance(workspace, Path)
+        or not workspace.is_absolute()
+        or workspace != workspace.resolve(strict=True)
+        or not isinstance(layout, CodingPluginLifecycleStateLayout)
+        or layout != resolve_coding_plugin_lifecycle_state_layout(workspace)
+    )
+
+
 def resolve_ephemeral_coding_plugin_lifecycle_state_layout(
     session_dir: str | Path,
     *,
@@ -753,15 +712,13 @@ def resolve_ephemeral_coding_plugin_lifecycle_state_layout(
     base = Path(session_dir).expanduser().resolve(strict=False)
     root = base / "plugin-state" / "coding-lifecycle"
     workspace = Path(cwd).expanduser().resolve(strict=False)
-    digest = hashlib.sha256(
-        b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
-    ).hexdigest()
+    scope_id = _workspace_scope_id(workspace)
     return CodingPluginLifecycleStateLayout(
         root=root,
         private_state_base=base,
         package_root=base / "plugin-packages" / "coding-lifecycle",
         private_data_base=base,
-        scope_id=f"workspace:{digest}",
+        scope_id=scope_id,
         desired_state=root / "desired-state.jsonl",
         management_operations=root / "management-operations.jsonl",
         retirement_intents=root / "retirement-intents.jsonl",
@@ -778,38 +735,18 @@ def build_coding_plugin_lifecycle(
     security_acceptances: PluginInstanceSecurityRetirementJournal | None = None,
 ) -> CodingPluginLifecycle:
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
-        raise TypeError("Coding Plugin lifecycle layout is required")
+        raise TypeError(_LAYOUT_REQUIRED)
     resolved_startup_id = startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID
     owns_process_startup_lease = _hold_process_startup_lease(
-        layout,
-        startup_id=resolved_startup_id,
+        layout, startup_id=resolved_startup_id
     )
     try:
         if not owns_process_startup_lease:
             _prepare_private_state_layout(layout)
-        core = bind_plugin_management_core(
-            gc_reservations_path=layout.package_gc_reservations,
-            desired_state_path=layout.desired_state,
-            operation_journal_path=layout.management_operations,
-            retirement_intents_path=layout.retirement_intents,
-            retirement_sets_path=layout.retirement_sets,
-            migration_journal_path=layout.enablement_migration,
-        )
-        gc_reservations = core.gc_reservations
-        desired = core.desired
-        retirement_sets = core.retirement_sets
-        management = core.management
-        enablement_journal = core.migration_journal
-        enablement_journal.assert_runtime_compatible(
-            supported_migration_epoch=1,
-            runtime_version=version("loushang"),
-        )
-        management.recover()
-        enablement_migrations = PluginEnablementMigrationCoordinator(
-            journal=enablement_journal,
-            desired_state=desired,
-            commands=PluginManagementCommandApplication(management),
-            runtime_version=version("loushang"),
+        core = _bind_management_core(layout)
+        prepare_plugin_management_runtime(core, runtime_version=version("loushang"))
+        migrations = bind_plugin_enablement_migrations(
+            core, runtime_version=version("loushang")
         )
         runtime = bind_plugin_runtime_ledgers(
             core,
@@ -818,32 +755,25 @@ def build_coding_plugin_lifecycle(
             startup_id=resolved_startup_id,
             security_acceptances=security_acceptances,
         )
-        security = runtime.security
-        instances = runtime.instances
-        packages = runtime.packages
-        owner_evidence = CodingOwnerGenerationEvidenceLedger(
-            layout.owner_generation_evidence
-        )
         return CodingPluginLifecycle(
             layout=layout,
             startup_id=resolved_startup_id,
-            desired=desired,
-            management=management,
-            enablement_migrations=enablement_migrations,
-            instances=instances,
-            retirement_sets=retirement_sets,
-            packages=packages,
-            _gc_reservations=gc_reservations,
-            security=security,
-            owner_evidence=owner_evidence,
+            desired=core.desired,
+            management=core.management,
+            enablement_migrations=migrations,
+            instances=runtime.instances,
+            retirement_sets=core.retirement_sets,
+            packages=runtime.packages,
+            _gc_reservations=core.gc_reservations,
+            security=runtime.security,
+            owner_evidence=CodingOwnerGenerationEvidenceLedger(
+                layout.owner_generation_evidence
+            ),
             _owns_process_startup_lease=owns_process_startup_lease,
         )
     except BaseException:
         if owns_process_startup_lease:
-            _release_process_startup_lease(
-                layout,
-                startup_id=resolved_startup_id,
-            )
+            _release_process_startup_lease(layout, startup_id=resolved_startup_id)
         raise
 
 
@@ -856,68 +786,57 @@ def build_coding_plugin_management_application(
     """Compose command/query ports without acquiring a Product runtime lease."""
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
-        raise TypeError("Coding Plugin lifecycle layout is required")
+        raise TypeError(_LAYOUT_REQUIRED)
     owns_process_startup_lease = (
         not read_only
         and (sys.platform.startswith("linux") or os.name == "nt")
         and _hold_process_startup_lease(
-            layout,
-            startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
+            layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
         )
     )
     try:
         if not read_only and not owns_process_startup_lease:
             _prepare_private_state_layout(layout)
-        load_policy = (
-            JournalLoadPolicy(partial_tail="raise", create_lock=False)
-            if read_only
-            else None
+        core = _bind_management_core(
+            layout,
+            load_policy=(
+                JournalLoadPolicy(partial_tail="raise", create_lock=False)
+                if read_only
+                else None
+            ),
         )
-        core = bind_plugin_management_core(
-            gc_reservations_path=layout.package_gc_reservations,
-            desired_state_path=layout.desired_state,
-            operation_journal_path=layout.management_operations,
-            retirement_intents_path=layout.retirement_intents,
-            retirement_sets_path=layout.retirement_sets,
-            migration_journal_path=layout.enablement_migration,
-            load_policy=load_policy,
+        prepare_plugin_management_runtime(
+            core, runtime_version=version("loushang"), read_only=read_only
         )
-        desired = core.desired
-        retirement_sets = core.retirement_sets
-        management = core.management
-        migrations = core.migration_journal
-        migrations.assert_runtime_compatible(
-            supported_migration_epoch=1,
-            runtime_version=version("loushang"),
-        )
-        if not read_only:
-            management.recover()
         runtime = bind_plugin_runtime_ledgers(
             core,
             instance_runtime_path=layout.instance_runtime,
             package_lifecycle_path=layout.package_lifecycle,
             startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
         )
-        instances = runtime.instances
-        packages = runtime.packages
-        return PluginManagementApplicationPorts(
-            commands=PluginManagementCommandApplication(management),
-            queries=PluginManagementReadModelProjector(
-                desired_state=desired,
-                operations=management,
-                migrations=migrations,
-                source=source,
-                instances=instances,
-                packages=packages,
-                retirement=retirement_sets,
-            ),
-        )
+        return bind_plugin_management_application_ports(core, runtime, source=source)
     except BaseException:
         if owns_process_startup_lease:
             _release_process_startup_lease(
                 layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
             )
         raise
+
+
+def _bind_management_core(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    load_policy: JournalLoadPolicy | None = None,
+) -> PluginManagementCoreBindings:
+    return bind_plugin_management_core(
+        gc_reservations_path=layout.package_gc_reservations,
+        desired_state_path=layout.desired_state,
+        operation_journal_path=layout.management_operations,
+        retirement_intents_path=layout.retirement_intents,
+        retirement_sets_path=layout.retirement_sets,
+        migration_journal_path=layout.enablement_migration,
+        load_policy=load_policy,
+    )
 
 
 def project_coding_plugin_enablement_compatibility(
@@ -928,51 +847,28 @@ def project_coding_plugin_enablement_compatibility(
     """Read Coding's derived downgrade view without exposing owner stores."""
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
-        raise TypeError("Coding Plugin lifecycle layout is required")
+        raise TypeError(_LAYOUT_REQUIRED)
     if _capture is None:
         with _capture_existing_plugin_enablement_state(layout) as captured:
             if captured is None:
                 return _empty_plugin_enablement_compatibility_projection()
             return project_coding_plugin_enablement_compatibility(
-                layout,
-                _capture=captured,
+                layout, _capture=captured
             )
     desired = decode_plugin_desired_state_snapshot(
         _capture.desired_raw,
         path=layout.desired_state,
         gc_gate=PluginPackageGcReservationJournal(layout.package_gc_reservations),
     )
-    migrations = tuple(
-        item
-        for item in decode_plugin_enablement_migration_snapshots(
-            _capture.migration_raw,
-            path=layout.enablement_migration,
-        )
-        if item.request.installation_key.product_id == CODING_PRODUCT_ID
-        and item.request.installation_key.installation_scope == "workspace"
-        and item.request.installation_key.scope_id == layout.scope_id
-        and item.phase in {"compatibility_window", "finalized"}
-    )
-    migrated = frozenset(item.request.installation_key.plugin_id for item in migrations)
-    disabled = tuple(
-        sorted(
-            item.request.installation_key.plugin_id
-            for item in migrations
-            if desired.installation(
-                item.request.installation_key
-            ).selection.desired_state
-            != "installed_enabled"
-        )
-    )
-    projection = PluginEnablementCompatibilityProjectionV1(
-        desired_inventory_revision=desired.inventory_revision,
-        migration_journal_revision=max(
-            (item.journal_revision for item in migrations),
-            default=0,
+    return PluginEnablementCompatibilityProjector.from_snapshots(
+        desired,
+        decode_plugin_enablement_migration_snapshots(
+            _capture.migration_raw, path=layout.enablement_migration
         ),
-        disabled_plugin_ids=disabled,
+        product_id=CODING_PRODUCT_ID,
+        installation_scope=_MEMBERSHIP_INSTALLATION_SCOPE,
+        scope_id=layout.scope_id,
     )
-    return projection, migrated
 
 
 def _empty_plugin_enablement_compatibility_projection() -> tuple[

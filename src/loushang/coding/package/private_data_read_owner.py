@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -11,10 +9,19 @@ from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
-    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_manager.lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout as resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.journal import JournalLoadPolicy
-from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
+from loushang.harness.package_product._private_data_custody import (
+    assert_private_read_current,
+    private_data_read_fence,
+    private_read_state_identity,
+)
+from loushang.harness.plugin_management.assembly import (
+    bind_plugin_desired_state,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
@@ -23,39 +30,43 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionPlanV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages._file_consumption import closing_descriptor
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
-from .epoch_layout import resolve_coding_package_epoch_layout
-from .installation_private_data import coding_arch_installation_private_data_root
+from .epoch_layout import (
+    resolve_coding_package_epoch_layout,
+)
+from .installation_private_data import (
+    coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+)
 from .private_data_backup import (
     CodingArchPrivateDataBackupReceiptV1,
-    _backup_parent,
-    _digest,
-    _open_private_path,
-    _read_manifest,
-    _verify_archive,
+    _verify_retained_archive,
 )
-from .private_data_backup_expiry import (
-    CodingArchPrivateDataBackupExpiryPlanV1,
-    _expiry_preview,
+from .private_data_backup import (
+    _backup_parent as _backup_parent,
 )
-from .private_data_deletion_journal import CodingArchPrivateDataDeletionJournal
-from .private_data_deletion_preview import _OWNER_ID, _capture_target_snapshot
-from .private_data_restore import (
-    CodingArchPrivateDataRestorePlanV1,
-    _current_completed_restore,
-    _restore_preview,
+from .private_data_backup import (
+    _digest as _digest,
 )
+from .private_data_backup_expiry import _preview_expiry
+from .private_data_backup_expiry_records import CodingArchPrivateDataBackupExpiryPlanV1
+from .private_data_deletion_journal import (
+    CodingArchPrivateDataDeletionJournal as CodingArchPrivateDataDeletionJournal,
+)
+from .private_data_deletion_preview import _OWNER_ID as _OWNER_ID
+from .private_data_deletion_preview import (
+    _capture_target_snapshot as _capture_target_snapshot,
+)
+from .private_data_restore import _current_completed_restore, _preview_restore
 from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal,
     CodingArchPrivateDataRestoreConfirmationV1,
-    _require_restore_confirmation,
 )
 from .private_data_restore_journal import CodingArchPrivateDataRestoreEventV1
+from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
 
 _READ_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
@@ -91,14 +102,10 @@ class CodingArchPrivateDataReadOwner:
         try:
             _assert_workspace(workspace, workspace_identity)
             state_root = epoch.control_root / "product-state"
-            metadata = state_root.lstat()
-            if (
-                not stat.S_ISDIR(metadata.st_mode)
-                or stat.S_IMODE(metadata.st_mode) & 0o077
-                or metadata.st_uid != os.geteuid()
-            ):
-                raise ValueError("Coding Arch read Product state is unsafe")
-            desired_binding = bind_plugin_desired_state(
+            state_identity = private_read_state_identity(
+                state_root, message="Coding Arch read Product state is unsafe"
+            )
+            binding = bind_plugin_desired_state(
                 state_root / "gc-reservations.jsonl",
                 state_root / "desired-state.jsonl",
                 load_policy=_READ_POLICY,
@@ -111,9 +118,9 @@ class CodingArchPrivateDataReadOwner:
                 workspace_identity=workspace_identity,
                 epoch_runtime=epoch,
                 state_root=state_root,
-                state_identity=(metadata.st_dev, metadata.st_ino),
-                gc_gate=desired_binding.gc_reservations,
-                desired_state=desired_binding.desired,
+                state_identity=state_identity,
+                gc_gate=binding.gc_reservations,
+                desired_state=binding.desired,
             )
             owner.assert_current()
             return owner
@@ -131,47 +138,37 @@ class CodingArchPrivateDataReadOwner:
         if not _digest(backup_id):
             raise ValueError("Coding Arch backup ID is invalid")
         with self.offline():
-            with closing_descriptor(
-                _open_private_path(
-                    self.layout.private_data_base, _backup_parent(self.layout, key)
-                )
-            ) as parent_fd:
-                receipt, source = _read_manifest(parent_fd, backup_id)
-                if receipt.installation_key != key or receipt.backup_id != backup_id:
-                    raise ValueError("Coding Arch backup Installation changed")
-                _verify_archive(parent_fd, backup_id, key, source, receipt)
-                return receipt
+            return _verify_retained_archive(
+                self.layout.private_data_base,
+                _backup_parent(self.layout, key),
+                key,
+                backup_id,
+            )
 
     def deletion_preview(
         self, key: PluginInstallationKeyV1
     ) -> PluginPrivateDataDeletionPlanV1:
         root = coding_arch_installation_private_data_root(self.layout, key)
         with self.offline():
-            pending = CodingArchPrivateDataDeletionJournal(
-                self.state_root
-            ).current_start()
-            if pending is not None:
-                if pending.plan.installation_key != key:
-                    raise ValueError("Another private-data deletion is unfinished")
-                return pending.plan
-            target = _capture_target_snapshot(
-                root, private_base=self.layout.private_data_base
-            )
-            return PluginPrivateDataDeletionPlanV1(
-                installation_key=key, owner_id=_OWNER_ID, target_id=target.target_id
+            return CodingArchPrivateDataDeletionJournal(self.state_root).preview_plan(
+                key,
+                owner_id=_OWNER_ID,
+                capture_target=lambda: _capture_target_snapshot(
+                    root, private_base=self.layout.private_data_base
+                ),
             )
 
     def restore_preview(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> CodingArchPrivateDataRestorePlanV1:
-        source_root = coding_arch_installation_private_data_root(self.layout, key)
+        root = coding_arch_installation_private_data_root(self.layout, key)
         if not _digest(backup_id):
             raise ValueError("Coding Arch restore backup ID is invalid")
         with self.offline():
-            return _restore_preview(
+            return _preview_restore(
                 self.layout,
                 self.state_root,
-                source_root,
+                root,
                 key,
                 backup_id,
                 desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
@@ -182,11 +179,9 @@ class CodingArchPrivateDataReadOwner:
     ) -> CodingArchPrivateDataRestoreConfirmationV1:
         with self.offline():
             completion, target_id = self._current_completed_restore(key, backup_id)
-            records = CodingArchPrivateDataRestoreConfirmationJournal(
+            return CodingArchPrivateDataRestoreConfirmationJournal(
                 self.state_root
-            ).records()
-            matched = _require_restore_confirmation(
-                records,
+            ).require_current(
                 confirmation_id,
                 key,
                 backup_id,
@@ -194,7 +189,6 @@ class CodingArchPrivateDataReadOwner:
                 target_id,
                 message="Coding Arch restore confirmation is stale",
             )
-            return matched
 
     def expiry_preview(
         self, key: PluginInstallationKeyV1, backup_id: str, confirmation_id: str
@@ -202,7 +196,7 @@ class CodingArchPrivateDataReadOwner:
         if not _digest(backup_id):
             raise ValueError("Coding Arch backup expiry ID is invalid")
         with self.offline():
-            return _expiry_preview(
+            return _preview_expiry(
                 self.layout,
                 self.state_root,
                 key,
@@ -226,36 +220,30 @@ class CodingArchPrivateDataReadOwner:
         )
 
     def assert_current(self) -> None:
-        _assert_workspace(self.workspace, self.workspace_identity)
-        self.epoch_runtime.assert_current()
-        metadata = self.state_root.lstat()
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or stat.S_IMODE(metadata.st_mode) & 0o077
-            or metadata.st_uid != os.geteuid()
-            or (metadata.st_dev, metadata.st_ino) != self.state_identity
-        ):
-            raise ValueError("Coding Arch read Product state changed")
+        assert_private_read_current(
+            self.epoch_runtime,
+            self.workspace,
+            self.workspace_identity,
+            self.state_root,
+            self.state_identity,
+            label="Coding Arch",
+        )
 
     @contextmanager
     def offline(self) -> Iterator[None]:
         """Keep runtime and GC references fixed without creating lock files."""
 
-        self.assert_current()
-        registry = self.epoch_runtime.registry
-        with registry.exclusive_runtime_quiescence(
-            store_id=registry.store_id, read_only=True
-        ) as quiescence:
-            if quiescence.active_runtime_lease_ids:
-                raise ValueError("Coding Arch private-data Product runtime is active")
-            self.assert_current()
-            with self.gc_gate.read_guard():
-                self.assert_current()
-                self.desired_state.capture_read_only()
-                try:
-                    yield
-                finally:
-                    self.assert_current()
+        with private_data_read_fence(
+            self.epoch_runtime,
+            self.workspace,
+            self.workspace_identity,
+            self.state_root,
+            self.state_identity,
+            self.gc_gate,
+            self.desired_state,
+            label="Coding Arch",
+        ):
+            yield
 
 
 def _assert_workspace(workspace: Path, identity: tuple[int, int]) -> None:

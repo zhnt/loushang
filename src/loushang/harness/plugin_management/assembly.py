@@ -10,7 +10,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal, Protocol, TypeVar
 
 from loushang.harness.journal import JournalLoadPolicy, journal_file_lock
+from loushang.harness.plugin_management.application import (
+    PluginManagementApplicationPorts,
+    PluginManagementCommandApplication,
+    PluginManagementReadModelProjector,
+    PluginSourceProjectionSourcePort,
+)
 from loushang.harness.plugin_management.enablement_migration import (
+    PLUGIN_ENABLEMENT_MIGRATION_EPOCH,
     PluginEnablementMigrationCoordinator,
     PluginEnablementMigrationJournal,
     plugin_enablement_legacy_input_fingerprint,
@@ -135,6 +142,48 @@ def bind_plugin_management_core(
         management=management,
         migration_journal=migration_journal,
         load_policy=load_policy,
+    )
+
+
+def prepare_plugin_management_runtime(
+    core: PluginManagementCoreBindings, *, runtime_version: str, read_only: bool = False
+) -> None:
+    core.migration_journal.assert_runtime_compatible(
+        supported_migration_epoch=PLUGIN_ENABLEMENT_MIGRATION_EPOCH,
+        runtime_version=runtime_version,
+    )
+    if not read_only:
+        core.management.recover()
+
+
+def bind_plugin_enablement_migrations(
+    core: PluginManagementCoreBindings, *, runtime_version: str
+) -> PluginEnablementMigrationCoordinator:
+    return PluginEnablementMigrationCoordinator(
+        journal=core.migration_journal,
+        desired_state=core.desired,
+        commands=PluginManagementCommandApplication(core.management),
+        runtime_version=runtime_version,
+    )
+
+
+def bind_plugin_management_application_ports(
+    core: PluginManagementCoreBindings,
+    runtime: PluginRuntimeLedgerBindings,
+    *,
+    source: PluginSourceProjectionSourcePort | None,
+) -> PluginManagementApplicationPorts:
+    return PluginManagementApplicationPorts(
+        commands=PluginManagementCommandApplication(core.management),
+        queries=PluginManagementReadModelProjector(
+            desired_state=core.desired,
+            operations=core.management,
+            migrations=core.migration_journal,
+            source=source,
+            instances=runtime.instances,
+            packages=runtime.packages,
+            retirement=core.retirement_sets,
+        ),
     )
 
 
@@ -576,12 +625,8 @@ def _prepare_managed_plugin_runtime(
             )
             [package] = runtime.packages
             [binding] = runtime.bindings
-            revision = PluginPackageRevisionRefV1(
-                plugin_id=package.manifest.name,
-                plugin_version=package.manifest.version,
-                package_content_digest=package.content_digest,
-                dependency_lock_digest=package.dependency_lock.digest,
-                package_source_identity=binding.source_identity,
+            revision = PluginPackageRevisionRefV1.from_published_package(
+                package, source_identity=binding.source_identity
             )
             manifest_default = package.manifest.enabled
             lifecycle.migrate_legacy_enablement(
@@ -635,12 +680,8 @@ def _prepare_managed_plugin_runtime(
             )
         [package] = runtime.packages
         [binding] = runtime.bindings
-        actual_revision = PluginPackageRevisionRefV1(
-            plugin_id=package.manifest.name,
-            plugin_version=package.manifest.version,
-            package_content_digest=package.content_digest,
-            dependency_lock_digest=package.dependency_lock.digest,
-            package_source_identity=binding.source_identity,
+        actual_revision = PluginPackageRevisionRefV1.from_published_package(
+            package, source_identity=binding.source_identity
         )
         if actual_revision != selected_revision:
             raise errors.make("selected_revision_mismatch")
@@ -757,12 +798,8 @@ def _resolve_managed_plugin_runtimes(
                 [package] = published.packages
                 [binding] = published.bindings
                 current_package = package
-                revision = PluginPackageRevisionRefV1(
-                    plugin_id=package.manifest.name,
-                    plugin_version=package.manifest.version,
-                    package_content_digest=package.content_digest,
-                    dependency_lock_digest=package.dependency_lock.digest,
-                    package_source_identity=binding.source_identity,
+                revision = PluginPackageRevisionRefV1.from_published_package(
+                    package, source_identity=binding.source_identity
                 )
                 manifest_default = package.manifest.enabled
                 lifecycle.migrate_legacy_enablement(
@@ -803,12 +840,8 @@ def _resolve_managed_plugin_runtimes(
                     current_package = package
                 except PluginRevisionError as exc:
                     raise errors.make("revision_replay_failed", spec.plugin_id) from exc
-            actual_revision = PluginPackageRevisionRefV1(
-                plugin_id=package.manifest.name,
-                plugin_version=package.manifest.version,
-                package_content_digest=package.content_digest,
-                dependency_lock_digest=package.dependency_lock.digest,
-                package_source_identity=binding.source_identity,
+            actual_revision = PluginPackageRevisionRefV1.from_published_package(
+                package, source_identity=binding.source_identity
             )
             if actual_revision != selected_revision:
                 raise errors.make("selected_revision_mismatch", spec.plugin_id)
